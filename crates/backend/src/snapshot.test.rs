@@ -1365,10 +1365,14 @@ fn proof(id: &str, dest: &str, kind: MediaKind, present: bool) -> ProofResult {
     }
 }
 
-/// A throwaway HTTP server standing in for the artifact service: it answers `200`
-/// with the staged bytes for a known `/runs/<id>/<kind>/<file>` path and `404`
-/// otherwise, recording every path it is asked for so a test can assert the store
-/// fast-path skipped it. Returns its base URL and that request log.
+/// The service token the stub artifact service accepts.
+const ARTIFACTS_SERVICE_TOKEN: &str = "artifacts-svc-token";
+
+/// A throwaway HTTP server standing in for the artifact service: it answers `401`
+/// to a request without [`ARTIFACTS_SERVICE_TOKEN`], `200` with the staged bytes
+/// for a known `/runs/<id>/<kind>/<file>` path and `404` otherwise, recording every
+/// path it is asked for so a test can assert the store fast-path skipped it.
+/// Returns its base URL and that request log.
 async fn stub_artifacts(files: HashMap<String, Vec<u8>>) -> (String, Arc<Mutex<Vec<String>>>) {
     let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
     let addr = listener.local_addr().expect("addr");
@@ -1392,7 +1396,16 @@ async fn stub_artifacts(files: HashMap<String, Vec<u8>>) -> (String, Arc<Mutex<V
                     .unwrap_or("")
                     .to_string();
                 sink.lock().expect("lock").push(path.clone());
+                // Every read of the artifact service needs an identity: the backend
+                // presents the shared service token.
+                let authorized = req.lines().any(|line| {
+                    line.to_ascii_lowercase()
+                        == format!("authorization: bearer {ARTIFACTS_SERVICE_TOKEN}")
+                });
                 let resp = match files.get(&path) {
+                    _ if !authorized => {
+                        b"HTTP/1.1 401 Unauthorized\r\nContent-Length: 0\r\n\r\n".to_vec()
+                    }
                     Some(body) => {
                         let mut r =
                             format!("HTTP/1.1 200 OK\r\nContent-Length: {}\r\n\r\n", body.len())
@@ -2292,7 +2305,11 @@ async fn missing_store_media_falls_back_to_the_artifact_service() {
         vec![proof("title", "proof/title.png", MediaKind::Image, true)],
     );
     let snapshot = SnapshotBuilder::new(vec![run], vec![manifest()], store)
-        .with_artifacts(Some(base), reqwest::Client::new())
+        .with_artifacts(
+            Some(base),
+            Some(ARTIFACTS_SERVICE_TOKEN.to_string()),
+            reqwest::Client::new(),
+        )
         .build(now())
         .await
         .unwrap();
@@ -2312,6 +2329,42 @@ async fn missing_store_media_falls_back_to_the_artifact_service() {
 }
 
 #[tokio::test]
+async fn the_artifact_fallback_presents_the_service_token() {
+    // Without the service token the artifact service refuses the read, so the media
+    // cannot be recovered.
+    let (_tmp, store) = empty_store();
+    let (base, seen) = stub_artifacts(HashMap::from([(
+        "/runs/p1/proof/title.png".to_string(),
+        b"durable:title".to_vec(),
+    )]))
+    .await;
+
+    let run = proof_run(
+        "p1",
+        vec![proof("title", "proof/title.png", MediaKind::Image, true)],
+    );
+    let snapshot = SnapshotBuilder::new(vec![run], vec![manifest()], store)
+        .with_artifacts(Some(base), None, reqwest::Client::new())
+        .build(now())
+        .await
+        .unwrap();
+
+    assert!(
+        !snapshot
+            .objects
+            .iter()
+            .any(|o| o.key == "media/runs/p1/proof/title.png"),
+        "a refused read recovers nothing",
+    );
+    assert!(
+        seen.lock()
+            .unwrap()
+            .contains(&"/runs/p1/proof/title.png".to_string()),
+        "the builder asked the artifact service",
+    );
+}
+
+#[tokio::test]
 async fn store_media_is_used_without_calling_the_artifact_service() {
     // When the store has the media, it is the fast path: no artifact request is made
     // even though the fallback is configured.
@@ -2326,7 +2379,11 @@ async fn store_media_is_used_without_calling_the_artifact_service() {
         vec![proof("title", "proof/title.png", MediaKind::Image, true)],
     );
     let snapshot = SnapshotBuilder::new(vec![run], vec![manifest()], store)
-        .with_artifacts(Some(base), reqwest::Client::new())
+        .with_artifacts(
+            Some(base),
+            Some(ARTIFACTS_SERVICE_TOKEN.to_string()),
+            reqwest::Client::new(),
+        )
         .build(now())
         .await
         .unwrap();

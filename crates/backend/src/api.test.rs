@@ -138,6 +138,7 @@ async fn harness_with_prices(prices: test_cabinet_core::OpenRouterPrices) -> Har
         None,
         None,
         config.artifacts_internal_url.clone(),
+        None,
         crate::publisher::PublisherTiming {
             coalesce: config.coalesce,
             snapshot_retention: config.snapshot_retention,

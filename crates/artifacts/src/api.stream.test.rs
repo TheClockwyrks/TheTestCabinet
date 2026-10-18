@@ -3,7 +3,7 @@
 //!
 //! The property under test is the sibling of the one `api.spool.test.rs` pins for
 //! uploads: a *read* of a stored tree must not set the service's peak allocation
-//! either. `archive` is ungated — the console links it as a plain download — so the
+//! either. `archive` is any reviewer's — the console links it as a plain download — so the
 //! size of what this service is asked to build is a reviewer's choice, and it used to
 //! be held whole in memory before a byte was answered. Two properties make the
 //! streaming replacement safe, and both are here: bytes leave in bounded chunks as

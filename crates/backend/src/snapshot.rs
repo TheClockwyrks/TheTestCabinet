@@ -212,6 +212,9 @@ pub struct SnapshotBuilder {
     /// fallback (store-only) — the dev/single-box default, and what the unit tests
     /// use.
     artifacts_url: Option<String>,
+    /// The shared service token the fallback presents to the artifact service, whose
+    /// reads all need an identity. `None` presents none, which the service refuses.
+    artifacts_service_token: Option<String>,
     /// The HTTP client for that fallback. Unused when `artifacts_url` is `None`.
     http: reqwest::Client,
     /// The composed model catalog exported alongside the runs, so the public site
@@ -291,6 +294,7 @@ impl SnapshotBuilder {
             cases,
             store,
             artifacts_url: None,
+            artifacts_service_token: None,
             http: reqwest::Client::new(),
             models: Vec::new(),
             reference_builds: std::collections::HashMap::new(),
@@ -456,7 +460,8 @@ impl SnapshotBuilder {
     /// Enable the artifact-service fallback: when a run's proof/asset media is not in
     /// the local store, the builder fetches it from `artifacts_url` (the artifact
     /// service's in-cluster base URL, the one the backend itself can reach) using
-    /// `http`.
+    /// `http`, presenting `service_token` (`TCAB_BACKEND_SERVICE_TOKEN`), since every
+    /// read of the artifact service needs an identity.
     ///
     /// The backend store that media is normally mirrored into is an ephemeral
     /// emptyDir in production, so it can be wiped between a run finishing and a later
@@ -464,8 +469,14 @@ impl SnapshotBuilder {
     /// fallback lets a refresh re-export the media (to durable R2) even after the
     /// store loses it — without it a backend restart would silently drop media from
     /// the published site. A `None` URL leaves behavior store-only.
-    pub fn with_artifacts(mut self, artifacts_url: Option<String>, http: reqwest::Client) -> Self {
+    pub fn with_artifacts(
+        mut self,
+        artifacts_url: Option<String>,
+        service_token: Option<String>,
+        http: reqwest::Client,
+    ) -> Self {
         self.artifacts_url = artifacts_url;
+        self.artifacts_service_token = service_token;
         self.http = http;
         self
     }
@@ -1868,8 +1879,8 @@ impl SnapshotBuilder {
     }
 
     /// Fetch one run media file from the artifact service over the backend's
-    /// in-cluster URL (`GET {artifacts_url}/runs/{run_id}/{kind}/{file}`, an ungated
-    /// media read), or `None` when the
+    /// in-cluster URL (`GET {artifacts_url}/runs/{run_id}/{kind}/{file}`, a media read
+    /// presenting the service token), or `None` when the
     /// fallback is disabled (`artifacts_url` unset), the file is absent (404), or the
     /// request fails. A non-404 failure is logged — it means the durable copy could
     /// not be read, so the media will be missing from the snapshot until the next
@@ -1877,7 +1888,11 @@ impl SnapshotBuilder {
     async fn fetch_artifact(&self, run_id: &str, kind: &str, file: &str) -> Option<Vec<u8>> {
         let base = self.artifacts_url.as_deref()?;
         let url = format!("{base}/runs/{run_id}/{kind}/{file}");
-        match self.http.get(&url).send().await {
+        let mut request = self.http.get(&url);
+        if let Some(token) = &self.artifacts_service_token {
+            request = request.bearer_auth(token);
+        }
+        match request.send().await {
             Ok(resp) if resp.status().is_success() => match resp.bytes().await {
                 Ok(bytes) => Some(bytes.to_vec()),
                 Err(err) => {

@@ -20,12 +20,17 @@
 //!   `/runs/{id}/build/` the console actually loads), `/runs/{id}/build/{*path}`,
 //!   `/runs/{id}/proof/{file}`, `/runs/{id}/asset/{file}`, and the recorded
 //!   `/runs/{id}/events.jsonl`/`raw.jsonl` logs — and downloads the run's whole
-//!   produced tree as one gzip tar, `GET /runs/{id}/archive.tar.gz`. These are
-//!   **not** token-gated: the console loads them as
-//!   `<img src>`/`<iframe>`/relative build sub-resources (and offers the archive as
-//!   a plain download link), none of which carry an `Authorization` header, so read
-//!   protection is the private-network boundary, exactly as for the backend's run
-//!   reads.
+//!   produced tree as one gzip tar, `GET /runs/{id}/archive.tar.gz`. These reads
+//!   take the **Access assertion**: the console loads them as
+//!   `<img src>`/`<iframe>`/relative build sub-resources and a plain download link
+//!   through the edge, which turns the browser's Access cookie into the assertion
+//!   on every one of them. The backend's snapshot builder reads media with the
+//!   service token instead.
+//!
+//! Every route is served at the root, which is what an in-cluster caller uses, and
+//! under the edge's [`/artifacts`](crate::auth::EDGE_PREFIX) prefix, which
+//! `cloudflared` forwards unchanged. [`crate::auth::identify`] runs in front of all
+//! of them; `/healthz` alone is served without an identity.
 //!
 //! The serve handlers **reuse the core resolvers**
 //! ([`find_build_output`], [`serve_build_file`], [`serve_proof_file`],
@@ -38,7 +43,7 @@ use std::io::{Seek, Write};
 use std::sync::Arc;
 
 use axum::body::Body;
-use axum::extract::{Path, Request, State};
+use axum::extract::{OriginalUri, Path, Request, State};
 use axum::http::{StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
@@ -58,7 +63,9 @@ use test_cabinet_core::{
     serve_validation_file,
 };
 
-use crate::auth::{verify_job_token, verify_publish_job_token};
+use crate::auth::{
+    AccessMode, EDGE_PREFIX, require_reader, verify_job_token, verify_publish_job_token,
+};
 use crate::error::ApiError;
 use crate::store::{ArtifactStore, impl_dir};
 
@@ -93,7 +100,7 @@ const STREAM_CHUNK_BUFFER: usize = 8;
 /// This is what lets the two whole-tree downloads — [`tree_tar`] and [`archive`] —
 /// stop building their archive in memory before answering. Both used to return a
 /// `Vec<u8>`, so the service's peak allocation was the size of the largest tree any
-/// caller asked for, and `archive` is **ungated**: one reviewer clicking Download on
+/// caller asked for, and `archive` is any reviewer's to ask for: one clicking Download on
 /// a heavy run was enough to take artifact serving down for every run. Prod hit that
 /// twice, as an exit 137 against the 1536Mi limit. With this the peak is
 /// `STREAM_CHUNK_BUFFER * STREAM_CHUNK_BYTES` (2 MiB) plus the gzip window,
@@ -247,7 +254,8 @@ where
 }
 
 /// The shared handler state: the backing store, the backend URL for upload auth,
-/// and the HTTP client the upload-auth call uses.
+/// the HTTP client the upload-auth call uses, and the credentials the identity
+/// layer checks.
 #[derive(Clone)]
 pub struct AppState {
     /// The artifact backing store (local-fs today). Boxed behind the trait so an
@@ -263,14 +271,16 @@ pub struct AppState {
     /// tree management is disabled (both routes then reject every caller). See
     /// [`crate::auth::verify_service_token`].
     pub service_token: Option<Arc<String>>,
+    /// The Access verifier an edge request's assertion is checked with, or `None`
+    /// when the service takes a person's identity from the local identity header.
+    pub access: AccessMode,
 }
 
-/// Build the artifact service's Axum router. The upload route carries its own
-/// generous body limit (a tarball is buffered to unpack); the trace middleware
-/// continues an inbound W3C trace; CORS is permissive so a browser console reaching
-/// the service is never blocked — the same posture as the backend and auth service.
-pub fn router(state: AppState) -> Router {
-    Router::new()
+/// Every route of the service, served by [`router`] at the root and under the
+/// edge prefix. The read routes sit behind [`require_reader`]; the token routes
+/// check their own token.
+fn routes() -> Router<AppState> {
+    let token_routes = Router::new()
         .route("/healthz", get(healthz))
         // Upload a finished run's collected tree (driver → service, per-job token),
         // or delete it (backend → service, shared control-plane service token) when
@@ -284,13 +294,13 @@ pub fn router(state: AppState) -> Router {
         // contents against its own run rows.
         .route("/runs", get(list_runs))
         // Download a run's source tree as a tar (publisher → service, per-publish-job
-        // token). The one *gated* read: a server-to-server pull the publisher uses to
-        // drive the GitHub-repo + Pages release, verified against the backend like an
-        // upload — not browser-loaded media.
-        .route("/runs/{id}/tree.tar", get(tree_tar))
-        // Serve the run's playable build and media (reviewer → service, ungated:
-        // browser-loaded media carries no Authorization header). These mirror the
-        // worker's handlers exactly, reading from the store's per-run root.
+        // token): a server-to-server pull the publisher uses to drive the
+        // GitHub-repo + Pages release, verified against the backend like an upload.
+        .route("/runs/{id}/tree.tar", get(tree_tar));
+    let read_routes = Router::new()
+        // Serve the run's playable build and media (reviewer → service, through the
+        // edge with the Access assertion). These mirror the worker's handlers
+        // exactly, reading from the store's per-run root.
         //
         // Both the bare and trailing-slash roots serve the build's `index.html`:
         // the build link the driver emits — and the console loads into its iframe —
@@ -300,10 +310,9 @@ pub fn router(state: AppState) -> Router {
         .route("/runs/{id}/build", get(build_root))
         .route("/runs/{id}/build/", get(build_root))
         .route("/runs/{id}/build/{*path}", get(build_path))
-        // Download the run's whole stored tree as one gzip tar (reviewer → service,
-        // ungated). Same posture, and the same reason, as the media reads below: the
-        // console offers it as a plain `<a href download>`, which carries no
-        // Authorization header.
+        // Download the run's whole stored tree as one gzip tar (reviewer → service).
+        // The console offers it as a plain `<a href download>`, which the edge
+        // authorizes by the Access cookie like the media reads below.
         .route("/runs/{id}/archive.tar.gz", get(archive))
         .route("/runs/{id}/proof/{file}", get(proof_file))
         .route("/runs/{id}/asset/{file}", get(asset_file))
@@ -311,6 +320,24 @@ pub fn router(state: AppState) -> Router {
         .route("/runs/{id}/showcase/{file}", get(showcase_file))
         .route("/runs/{id}/events.jsonl", get(events_file))
         .route("/runs/{id}/raw.jsonl", get(raw_file))
+        .route_layer(axum::middleware::from_fn(require_reader));
+    token_routes.merge(read_routes)
+}
+
+/// Build the artifact service's Axum router: every route at the root and under the
+/// edge's [`EDGE_PREFIX`], behind the identity layer. The trace middleware
+/// continues an inbound W3C trace; CORS is permissive so a browser console reaching
+/// the service is never blocked — the same posture as the backend.
+pub fn router(state: AppState) -> Router {
+    Router::new()
+        .merge(routes())
+        .nest(EDGE_PREFIX, routes())
+        // Innermost, so the trace layer records a refused request, and inside CORS,
+        // so a browser's preflight (which carries no credential) is answered by it.
+        .layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            crate::auth::identify,
+        ))
         .layer(axum::middleware::from_fn(accept_trace))
         .layer(TraceLayer::new_for_http())
         // `permissive()` sets `Access-Control-Allow-Headers: *`, but per the Fetch
@@ -484,8 +511,9 @@ async fn upload(
 
 /// `DELETE /runs/{id}/artifacts` — remove a run's stored tree (build + media).
 ///
-/// `{id}` is the **run/record id** (the store key). Unlike the ungated reads, a
-/// delete is destructive, so it is gated by the shared control-plane service token
+/// `{id}` is the **run/record id** (the store key). Unlike the reads, which any
+/// signed-in reviewer may make, a delete is destructive, so it is gated by the
+/// shared control-plane service token
 /// (`TCAB_BACKEND_SERVICE_TOKEN`): only the backend, pruning a deleted run, may
 /// call it. With no token configured the service has deletion disabled and rejects
 /// every caller (`401`). Idempotent: deleting a run with no stored tree still
@@ -579,9 +607,10 @@ async fn list_runs(
 /// (`implementation/` plus `run-record.json` and, when present, `events.jsonl`) to
 /// the publisher Job, which untars it to drive the GitHub-repo + Pages release.
 ///
-/// `{id}` is the **run/record id** (the store key). Unlike the ungated build/media
-/// reads — browser-loaded `<img>`/`<iframe>` resources that cannot carry a token —
-/// this is a server-to-server pull, so it is gated by the **per-publish-job token**,
+/// `{id}` is the **run/record id** (the store key). Unlike the build/media reads —
+/// browser-loaded `<img>`/`<iframe>` resources a reviewer's Access assertion
+/// authorizes — this is a server-to-server pull, so it is gated by the
+/// **per-publish-job token**,
 /// verified against the backend exactly as an upload's per-job token is. The token
 /// was minted for the **publish-job id**, which differs from the run id in the path,
 /// so the publisher sends its publish-job id in the [`PUBLISH_JOB_ID_HEADER`] and the
@@ -657,12 +686,10 @@ async fn tree_tar(
 /// minutes. The console can reach this service directly, so it can just take the
 /// bytes in one response.
 ///
-/// **Ungated**, like the build/proof/asset reads and unlike
-/// [`tree_tar`]: the console offers this as an ordinary download link,
-/// which carries no `Authorization` header, and the artifact service is reachable
-/// only across the private-network boundary. That boundary — not a token — is what
-/// protects every read here. `tree_tar` stays gated because it is a
-/// server-to-server pull whose caller *can* hold a token.
+/// A read like the build/proof/asset reads, and unlike [`tree_tar`]: the console
+/// offers this as an ordinary download link through the edge, which authorizes it
+/// by the reviewer's Access assertion. `tree_tar` takes the per-publish-job token
+/// because it is a server-to-server pull whose caller never crosses the edge.
 ///
 /// The whole run root is archived (not `tree_tar`'s publisher-shaped subset) under
 /// an `<id>/` prefix, matching what the extract script produced. `Content-Disposition`
@@ -670,8 +697,9 @@ async fn tree_tar(
 /// anchor's own `download` attribute is ignored by the browser.
 ///
 /// The body is **streamed** — compressed into the response as the tree is walked —
-/// which is what keeps this route from setting the service's memory ceiling. It is
-/// ungated, so the size of what it is asked to build is a reviewer's choice; holding
+/// which is what keeps this route from setting the service's memory ceiling. Any
+/// reviewer may ask for it, so the size of what it is asked to build is a
+/// reviewer's choice; holding
 /// that whole is how a single Download click became an OOM kill for every run the
 /// service was serving. The cost is a chunked response with no `Content-Length`, so
 /// the browser shows an indeterminate download.
@@ -698,8 +726,8 @@ async fn archive(
     // Building the archive is blocking (it reads and compresses the whole tree); it
     // runs off the async runtime so a large run does not stall other connections, and
     // it compresses into the response body as it walks rather than holding the
-    // finished archive. This route is ungated, so the size of what it is asked for is
-    // a reviewer's choice — see `ChannelWriter` for why that had to stop setting the
+    // finished archive. Any reviewer may call this route, so the size of what it is
+    // asked for is a reviewer's choice — see `ChannelWriter` for why that had to stop setting the
     // service's peak allocation.
     let store = state.store.clone();
     let id_for_task = id.clone();
@@ -723,34 +751,54 @@ async fn archive(
 }
 
 /// `GET /runs/{id}/build` — serve a produced run's playable build at its root (the
-/// build's `index.html`). Ungated (browser-loaded).
+/// build's `index.html`). Browser-loaded, through the edge.
 async fn build_root(
     State(state): State<AppState>,
+    OriginalUri(uri): OriginalUri,
     Path(id): Path<String>,
 ) -> Result<Response, ApiError> {
-    serve_build(&state, &id, "")
+    serve_build(&state, mount_prefix(&uri), &id, "")
 }
 
 /// `GET /runs/{id}/build/{*path}` — serve a file within a produced run's playable
-/// build (an asset the `index.html` references). Ungated (browser-loaded).
+/// build (an asset the `index.html` references). Browser-loaded, through the edge.
 async fn build_path(
     State(state): State<AppState>,
+    OriginalUri(uri): OriginalUri,
     Path((id, path)): Path<(String, String)>,
 ) -> Result<Response, ApiError> {
-    serve_build(&state, &id, &path)
+    serve_build(&state, mount_prefix(&uri), &id, &path)
+}
+
+/// The prefix the request was routed under: [`EDGE_PREFIX`] for a request that
+/// came through the edge, empty for one at the root. A build's HTML is relocated
+/// under the path it was requested at, so a build loaded through the edge resolves
+/// its assets back through the edge rather than at the origin's root, which is the
+/// console's.
+fn mount_prefix(uri: &axum::http::Uri) -> &'static str {
+    match uri.path().strip_prefix(EDGE_PREFIX) {
+        Some(rest) if rest.starts_with('/') => EDGE_PREFIX,
+        _ => "",
+    }
 }
 
 /// Resolve and serve one file from a produced run's static build output, which
 /// lives under the store at `<root>/{id}/implementation/{dist|build|out}/`. The
-/// build is mounted under a per-run base path, so its HTML is relocated to resolve
-/// assets there (see [`serve_build_file`]). A `404` covers an unknown run, a run
+/// build is mounted under a per-run base path (behind `prefix`, the path the request
+/// was routed under), so its HTML is relocated to resolve assets there (see
+/// [`serve_build_file`]). A `404` covers an unknown run, a run
 /// with no build, and a path that does not resolve to a file inside the build —
 /// identical to the worker's `serve_build`, only reading from the store.
-fn serve_build(state: &AppState, id: &str, rel_path: &str) -> Result<Response, ApiError> {
+fn serve_build(
+    state: &AppState,
+    prefix: &str,
+    id: &str,
+    rel_path: &str,
+) -> Result<Response, ApiError> {
     let impl_dir = impl_dir(state.store.as_ref(), id);
     let build_dir = find_build_output(&impl_dir)
         .ok_or_else(|| ApiError::not_found(format!("run `{id}` has no playable build to serve")))?;
-    let base_href = format!("/runs/{id}/build/");
+    let base_href = format!("{prefix}/runs/{id}/build/");
     let file = serve_build_file(&build_dir, rel_path, &base_href)
         .ok_or_else(|| ApiError::not_found(format!("no build file `{rel_path}` for run `{id}`")))?;
     Ok(([(header::CONTENT_TYPE, file.content_type)], file.body).into_response())
@@ -759,7 +807,7 @@ fn serve_build(state: &AppState, id: &str, rel_path: &str) -> Result<Response, A
 /// `GET /runs/{id}/proof/{file}` — a produced run's proof-of-implementation media
 /// (`{file}` is `<proof-id>.<ext>`), resolved from the run record's
 /// `validation.proofs` via [`serve_proof_file`], the same resolver the worker
-/// used. Ungated (browser-loaded). `404` when the run, the proof, or the file is
+/// used. Browser-loaded, through the edge. `404` when the run, the proof, or the file is
 /// absent.
 async fn proof_file(
     State(state): State<AppState>,
@@ -778,7 +826,7 @@ async fn proof_file(
 /// `GET /runs/{id}/asset/{file}` — an asset-generation run's regenerated image,
 /// final preview, or action log (or an adversarial replay), resolved from the run
 /// record's `validation` frame via [`serve_asset_file`], the same resolver the
-/// worker used. Ungated (browser-loaded as `<img src>`/animation frames).
+/// worker used. Browser-loaded as `<img src>`/animation frames, through the edge.
 async fn asset_file(
     State(state): State<AppState>,
     Path((id, file)): Path<(String, String)>,
@@ -796,7 +844,7 @@ async fn asset_file(
 /// `GET /runs/{id}/validation/{file}` — a run's synthesized validation media
 /// (`{file}` is the flat `<item>__<output>[.baseline].<ext>` a debug script
 /// produced), resolved from the collected tree via [`serve_validation_file`], the
-/// same resolver the worker used. Ungated (browser-loaded). `404` when the run or
+/// same resolver the worker used. Browser-loaded, through the edge. `404` when the run or
 /// the media is absent.
 async fn validation_file(
     State(state): State<AppState>,
@@ -816,7 +864,7 @@ async fn validation_file(
 /// `GET /runs/{id}/showcase/{file}` — one of a run's showcase files (`{file}` is
 /// the plain file name in the produced tree's `showcase/` — a carousel media file,
 /// or an image the description references), resolved from the collected tree via
-/// [`serve_showcase_file`]. Ungated (browser-loaded). A `.json.gz` replay serves
+/// [`serve_showcase_file`]. Browser-loaded, through the edge. A `.json.gz` replay serves
 /// as JSON travelling gzip-framed, exactly as validation replays do, so a browser
 /// inflates it transparently. `404` when the run or the file is absent.
 async fn showcase_file(
@@ -858,7 +906,7 @@ fn media_response(
 
 /// `GET /runs/{id}/events.jsonl` — a finished run's recorded, normalized event
 /// stream, served verbatim as NDJSON when it was uploaded alongside the run.
-/// Ungated (browser-loaded). `404` when the run or its event log is absent.
+/// Browser-loaded, through the edge. `404` when the run or its event log is absent.
 async fn events_file(
     State(state): State<AppState>,
     Path(id): Path<String>,
@@ -867,7 +915,7 @@ async fn events_file(
 }
 
 /// `GET /runs/{id}/raw.jsonl` — a finished run's recorded raw harness output,
-/// served verbatim as NDJSON when it was uploaded. Ungated (browser-loaded). `404`
+/// served verbatim as NDJSON when it was uploaded. Browser-loaded, through the edge. `404`
 /// when the run or its raw log is absent.
 async fn raw_file(
     State(state): State<AppState>,

@@ -16,18 +16,19 @@
 //! - [`store`] — the [`ArtifactStore`](store::ArtifactStore) trait and its
 //!   [`LocalFsStore`] impl (a directory on a PVC), keyed per
 //!   run id. An R2 impl is a deferrable internal detail (see the trait's docs).
-//! - [`api`] — the HTTP surface: the driver's upload (per-job-token) and the
-//!   reviewer's ungated build/media reads, the reads built on the **shared core
-//!   resolvers** so serving logic is reused, not reinvented.
-//! - [`auth`] — upload auth (per-job token forwarded to the backend's verify
-//!   endpoint); reads are ungated because the console loads them as browser media.
+//! - [`api`] — the HTTP surface: the driver's upload (per-job-token), the
+//!   publisher's source-tree pull (per-publish-job token), the backend's tree
+//!   management (service token), and the reviewer's build/media reads, the reads
+//!   built on the **shared core resolvers** so serving logic is reused, not
+//!   reinvented. Every route is served at the root and under the edge's
+//!   `/artifacts` prefix.
+//! - [`auth`] — who is calling: the Access assertion every edge request carries
+//!   (checked by [`access`]), or one of the in-cluster tokens, with no route
+//!   reachable without one but the health probe.
+//! - [`access`] — the verification of the Cloudflare Access assertion.
 //! - [`config`] — the environment-sourced configuration.
-//!
-//! Like the backend and auth service it sits behind a private-network boundary.
-//! The upload's per-job token is a layer on top of that; reads rely on the boundary
-//! alone (plus unguessable run ids), matching the backend's signed-out run reads —
-//! browser-loaded media (`<img>`/`<iframe>`) cannot present a token.
 
+pub mod access;
 pub mod api;
 pub mod auth;
 pub mod config;
@@ -36,6 +37,7 @@ pub mod store;
 
 use std::sync::Arc;
 
+use crate::access::AccessVerifier;
 use crate::api::AppState;
 use crate::config::Config;
 use crate::store::LocalFsStore;
@@ -50,17 +52,23 @@ pub struct ArtifactService {
 }
 
 /// Assemble the artifact service from a configuration: open the local-fs store
-/// (creating its root if missing), build the verify HTTP client, and construct the
-/// router. Fails only if the store root cannot be created (an unwritable PVC) — the
+/// (creating its root if missing), build the verify HTTP client and the Access
+/// verifier, and construct the router. Fails only if the store root cannot be created (an unwritable PVC) — the
 /// service refuses to start rather than fail every upload later.
 pub fn build(config: Config) -> Result<ArtifactService, store::StoreError> {
     let store = LocalFsStore::new(&config.root)?;
     let bind = config.bind.clone();
+    let http = reqwest::Client::new();
+    let access = config
+        .access
+        .as_ref()
+        .map(|access| Arc::new(AccessVerifier::new(access, http.clone())));
     let state = AppState {
         store: Arc::new(store),
         backend_url: Arc::new(config.backend_url),
-        http: reqwest::Client::new(),
+        http,
         service_token: config.service_token.map(Arc::new),
+        access,
     };
     Ok(ArtifactService {
         router: api::router(state),

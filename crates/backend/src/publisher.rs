@@ -62,6 +62,9 @@ struct PublisherInner {
     /// the (ephemeral) store. `None` in a dev/single-box setup with no separate
     /// artifact service, and in any deployment that supplies no in-cluster URL.
     artifacts_url: Option<String>,
+    /// The shared service token (`TCAB_BACKEND_SERVICE_TOKEN`) the snapshot builder
+    /// presents on its artifact-service reads.
+    artifacts_service_token: Option<String>,
     coalesce: Duration,
     /// How long a superseded snapshot generation is kept before the post-upload
     /// prune removes it (see [`prune_stale_snapshots`]).
@@ -94,13 +97,15 @@ impl Publisher {
     /// form and the dirty flag cleared, but no upload or hook fire happens.
     ///
     /// `artifacts_url` is the artifact service's **in-cluster** base URL, the one the
-    /// backend itself can reach — not the address advertised to consoles.
+    /// backend itself can reach — not the address advertised to consoles — and
+    /// `artifacts_service_token` the shared service token presented on its reads.
     pub fn new(
         db: Arc<Db>,
         store: DefinitionStore,
         r2: Option<R2Client>,
         deploy_hook_url: Option<String>,
         artifacts_url: Option<String>,
+        artifacts_service_token: Option<String>,
         timing: PublisherTiming,
     ) -> Self {
         // Publishing is enabled (R2 is configured) but no site deploy hook is set:
@@ -122,6 +127,7 @@ impl Publisher {
                 deploy_hook_url,
                 http: reqwest::Client::new(),
                 artifacts_url,
+                artifacts_service_token,
                 coalesce: timing.coalesce,
                 snapshot_retention: timing.snapshot_retention,
                 wake: Notify::new(),
@@ -354,7 +360,11 @@ async fn run_refresh(inner: &PublisherInner) -> Result<RefreshOutcome> {
         .collect();
 
     let snapshot = SnapshotBuilder::new(runs, cases, inner.store.clone())
-        .with_artifacts(inner.artifacts_url.clone(), inner.http.clone())
+        .with_artifacts(
+            inner.artifacts_url.clone(),
+            inner.artifacts_service_token.clone(),
+            inner.http.clone(),
+        )
         .with_models(models)
         .with_reference_builds(reference_builds)
         .with_reference_sheets(reference_sheets)

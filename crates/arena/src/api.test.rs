@@ -24,6 +24,7 @@ use axum::{Json, Router};
 use tower::ServiceExt;
 
 use super::*;
+use crate::auth::LOCAL_IDENTITY_HEADER;
 use crate::executor::MatchExecutor;
 use crate::tournaments::TournamentRegistry;
 
@@ -146,6 +147,7 @@ fn app_with_token(backend_url: &str, cap: usize, token: Option<&str>) -> Router 
         backend_service_token: token.map(|t| Arc::new(t.to_string())),
         tournaments: TournamentRegistry::new(),
         executor: Arc::new(MatchExecutor::new(cap)),
+        access: None,
     };
     super::router(state)
 }
@@ -164,6 +166,7 @@ async fn run_match_between_baselines_returns_a_summary() {
     let request = Request::builder()
         .method("POST")
         .uri("/matches")
+        .header(LOCAL_IDENTITY_HEADER, "dev@local")
         .header("content-type", "application/json")
         .body(Body::from(serde_json::to_vec(&body).unwrap()))
         .unwrap();
@@ -195,6 +198,7 @@ async fn controllers_lists_baselines_and_pushed() {
     let request = Request::builder()
         .method("GET")
         .uri("/matches/controllers?testCase=pacman")
+        .header(LOCAL_IDENTITY_HEADER, "dev@local")
         .body(Body::empty())
         .unwrap();
     let response = app.oneshot(request).await.unwrap();
@@ -229,6 +233,7 @@ async fn an_unknown_baseline_is_rejected_400() {
     let request = Request::builder()
         .method("POST")
         .uri("/matches")
+        .header(LOCAL_IDENTITY_HEADER, "dev@local")
         .header("content-type", "application/json")
         .body(Body::from(serde_json::to_vec(&body).unwrap()))
         .unwrap();
@@ -251,6 +256,7 @@ async fn a_run_local_controller_is_rejected_400() {
     let request = Request::builder()
         .method("POST")
         .uri("/matches")
+        .header(LOCAL_IDENTITY_HEADER, "dev@local")
         .header("content-type", "application/json")
         .body(Body::from(serde_json::to_vec(&body).unwrap()))
         .unwrap();
@@ -274,6 +280,7 @@ async fn a_match_without_the_service_token_is_refused_by_the_backend() {
     let request = Request::builder()
         .method("POST")
         .uri("/matches")
+        .header(LOCAL_IDENTITY_HEADER, "dev@local")
         .header("content-type", "application/json")
         .body(Body::from(serde_json::to_vec(&body).unwrap()))
         .unwrap();

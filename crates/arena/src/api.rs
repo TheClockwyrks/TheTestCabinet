@@ -7,10 +7,12 @@
 //! backend). The handler/return shapes are ported verbatim from the worker so the
 //! console's hand-typed `httpArena.ts` reads them unchanged.
 //!
-//! These endpoints are **unauthenticated** behind the private-network boundary,
-//! faithful to the worker: the console posts matches/tournaments token-less today.
-//! Their CPU-bound wasm execution is gated by the [`MatchExecutor`] capacity guard,
-//! not by auth.
+//! Every route but the health probe needs an identity, resolved by
+//! [`crate::auth::identify`]: the Access assertion every request through the edge
+//! carries, verified as the backend verifies it. Every route is served at the root
+//! and under the edge's [`/arena`](crate::auth::EDGE_PREFIX) prefix, which
+//! `cloudflared` forwards unchanged. The CPU-bound wasm execution behind the routes
+//! is bounded by the [`MatchExecutor`] capacity guard.
 
 use std::sync::Arc;
 
@@ -37,6 +39,7 @@ use test_cabinet_core::match_play::{
 use test_cabinet_core::{BackendClient, HttpBackendClient};
 
 use crate::arena_resolve::{list_controllers, resolve_controller, with_pushed_controllers};
+use crate::auth::{AccessMode, EDGE_PREFIX};
 use crate::error::ApiError;
 use crate::executor::MatchExecutor;
 use crate::tournaments::{
@@ -44,8 +47,8 @@ use crate::tournaments::{
 };
 
 /// The shared handler state: the backend URL the service fetches inputs from and
-/// persists results to, the in-memory tournament registry (per-pod), and the
-/// capacity guard the CPU-bound work runs through.
+/// persists results to, the in-memory tournament registry (per-pod), the capacity
+/// guard the CPU-bound work runs through, and the Access verifier.
 #[derive(Clone)]
 pub struct AppState {
     /// The backend base URL (no trailing slash). Every handler builds a fresh
@@ -58,6 +61,9 @@ pub struct AppState {
     pub tournaments: TournamentRegistry,
     /// Bounds concurrent CPU-bound match/tournament execution.
     pub executor: Arc<MatchExecutor>,
+    /// The Access verifier a request's assertion is checked with, or `None` when
+    /// the arena takes a person's identity from the local identity header.
+    pub access: AccessMode,
 }
 
 impl AppState {
@@ -70,10 +76,9 @@ impl AppState {
     }
 }
 
-/// Build the arena service's Axum router. The trace middleware continues an inbound
-/// W3C trace; CORS is permissive so a browser console reaching the service is never
-/// blocked — the same posture as the backend and artifact services.
-pub fn router(state: AppState) -> Router {
+/// Every route of the arena, served by [`router`] at the root and under the edge
+/// prefix.
+fn routes() -> Router<AppState> {
     Router::new()
         .route("/healthz", get(healthz))
         .route("/matches/controllers", get(controllers))
@@ -81,12 +86,25 @@ pub fn router(state: AppState) -> Router {
         .route("/tournaments", post(submit_tournament))
         .route("/tournaments/{id}", get(tournament_status))
         .route("/tournaments/{id}/events", get(tournament_events))
+}
+
+/// Build the arena service's Axum router: every route at the root and under the
+/// edge's [`EDGE_PREFIX`], behind the identity layer. The trace middleware
+/// continues an inbound W3C trace; CORS is permissive so a browser console reaching
+/// the service is never blocked — the same posture as the backend and artifact
+/// services.
+pub fn router(state: AppState) -> Router {
+    Router::new()
+        .merge(routes())
+        .nest(EDGE_PREFIX, routes())
+        // Innermost, so the trace layer records a refused request, and inside CORS,
+        // so a browser's preflight (which carries no credential) is answered by it.
+        .layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            crate::auth::identify,
+        ))
         .layer(axum::middleware::from_fn(accept_trace))
         .layer(TraceLayer::new_for_http())
-        // `permissive()` sets `Access-Control-Allow-Headers: *`, but per the Fetch
-        // spec `*` does not cover `Authorization`, so a browser rejects a preflight
-        // for a request carrying our bearer token. Mirror the request's headers
-        // instead, which echoes `Authorization` back explicitly.
         .layer(CorsLayer::permissive().allow_headers(AllowHeaders::mirror_request()))
         .with_state(state)
 }

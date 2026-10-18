@@ -1,27 +1,180 @@
-//! Authentication for the artifact service's one *gated* caller, the uploading
-//! driver.
+//! Who is calling the artifact service, and the checks each kind of route makes.
 //!
-//! **Uploads** (a driver POSTing a finished run's tree) present the **per-job
-//! token**, which the *backend* minted and is the authority for. The service
-//! forwards it to the backend's internal `POST /jobs/{id}/verify-token` endpoint
-//! ([`verify_job_token`]); a `2xx` means the token is the one minted for that job.
-//! There is no extractor for it because the job id comes from the request path and
-//! the check is per-upload (see [`crate::api`]).
+//! Every request but the probes carries an identity (see [Identity] and the
+//! service's [Auth] section), resolved by [`identify`] in front of every route:
 //!
-//! **Reads** (a reviewer pulling a build/proof/asset through the console) are
-//! **not** token-gated. They cannot be: the console loads this media as
-//! `<img src>`, an `<iframe>` build, and the build's own relative sub-resource
-//! requests, none of which can carry an `Authorization` header, and the service's
-//! CORS is permissive (no credentials), so there is no cookie path either. This
-//! matches the backend, which already serves a run's record and its *published*
-//! media to a signed-out reader — the read posture across the system is the
-//! private-network boundary plus unguessable run ids, not a per-read token. (A
-//! future cookie-based session would be the way to restore a real read gate; until
-//! then a token here only made the media unloadable.)
+//! - An Access assertion in `Cf-Access-Jwt-Assertion`, which every request through
+//!   the edge carries and [`AccessVerifier`] checks exactly as the backend does. It
+//!   names a person by `email`, or an Access service token by `common_name`. This
+//!   is what a console's reads present: the browser holds the Access cookie and the
+//!   edge turns it into the assertion, so `<img src>`, a build `<iframe>` and an
+//!   archive link need no header of their own.
+//! - A token in `Authorization: Bearer <token>`, which the in-cluster callers
+//!   present and which never crosses the edge: the shared control-plane service
+//!   token (`TCAB_BACKEND_SERVICE_TOKEN`) the backend holds, a driver's per-job
+//!   token on an upload, or a publisher's per-publish-job token on a `tree.tar`
+//!   pull.
+//!
+//! A service configured with no Access application (both `TCAB_ACCESS_*` unset, the
+//! local overlay's shape) verifies no assertion and takes a person's identity from
+//! the `Cf-Access-Authenticated-User-Email` header as presented.
+//!
+//! [`identify`] answers `401` to a request with none of these. `/healthz` and
+//! `/readyz` are exempt, since a kubelet probe carries no credential. The routes
+//! split into two kinds:
+//!
+//! - **Token routes** take one specific in-cluster token and check it themselves:
+//!   the upload forwards its per-job token to the backend's
+//!   `POST /jobs/{id}/verify-token` ([`verify_job_token`]), the `tree.tar` pull its
+//!   per-publish-job token to `POST /publish-jobs/{id}/verify-token`
+//!   ([`verify_publish_job_token`]), and the tree delete and the `GET /runs`
+//!   listing compare the service token ([`verify_service_token`]). The backend is
+//!   the authority for the two job tokens, so [`identify`] lets a bearer it cannot
+//!   recognise through to these routes and the route decides.
+//! - **Reads** (a run's build, media, logs and archive) take a verified identity:
+//!   a person's or service token's assertion, the shared service token (the
+//!   backend's snapshot builder reads media with it), or, with no Access
+//!   application, the local identity header. [`require_reader`] refuses a bearer
+//!   that is none of these.
+//!
+//! [Identity]: https://docs.testcabinet.ai/components/auth/overview/
+//! [Auth]: https://docs.testcabinet.ai/components/artifacts/overview/#auth
 
+use std::sync::Arc;
+
+use axum::extract::{Request, State};
 use axum::http::HeaderMap;
+use axum::middleware::Next;
+use axum::response::{IntoResponse, Response};
 
+use crate::access::{ASSERTION_HEADER, AccessError, AccessVerifier, AssertedIdentity};
+use crate::api::AppState;
 use crate::error::ApiError;
+
+#[cfg(test)]
+#[path = "auth.test.rs"]
+mod tests;
+
+/// The header a service with no Access application reads a person's identity
+/// from: what the local console's proxy and a local `tcab` send.
+pub const LOCAL_IDENTITY_HEADER: &str = "cf-access-authenticated-user-email";
+
+/// The prefix the edge routes the artifact service under. Every route is served
+/// both under it and at the root.
+pub const EDGE_PREFIX: &str = "/artifacts";
+
+/// How the service establishes a person's identity: by verifying the Access
+/// assertion, or (with no Access application configured) by reading the local
+/// identity header.
+pub type AccessMode = Option<Arc<AccessVerifier>>;
+
+/// The caller a request was resolved to.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Identity {
+    /// A person, by the `email` of their assertion (or, with no Access application
+    /// configured, by the local identity header).
+    Person(String),
+    /// An Access service token, by the `common_name` its assertion carries.
+    ServiceAssertion(String),
+    /// The shared control-plane service token.
+    ServiceToken,
+    /// A bearer token that is not the service token: a driver's per-job token or a
+    /// publisher's per-publish-job token, which only the token route it is
+    /// presented to can check against the backend.
+    Token,
+}
+
+/// Middleware in front of every route: resolve the request's [`Identity`] into its
+/// extensions, or answer `401` when it carries none.
+pub async fn identify(State(state): State<AppState>, mut request: Request, next: Next) -> Response {
+    if is_exempt(request.uri().path()) {
+        return next.run(request).await;
+    }
+    match resolve(
+        &state.access,
+        state.service_token.as_deref().map(String::as_str),
+        request.headers(),
+    )
+    .await
+    {
+        Ok(identity) => {
+            request.extensions_mut().insert(identity);
+            next.run(request).await
+        }
+        Err(err) => err.into_response(),
+    }
+}
+
+/// Middleware in front of the read routes: refuse a request whose identity is an
+/// unrecognised bearer token, which none of the reads take.
+pub async fn require_reader(request: Request, next: Next) -> Response {
+    match request.extensions().get::<Identity>() {
+        Some(Identity::Person(_) | Identity::ServiceAssertion(_) | Identity::ServiceToken) => {
+            next.run(request).await
+        }
+        Some(Identity::Token) => ApiError::unauthorized(
+            "invalid bearer token: a read takes an Access assertion or the service token",
+        )
+        .into_response(),
+        None => ApiError::unauthorized("the request carries no identity").into_response(),
+    }
+}
+
+/// Whether `path` is served without an identity: the two probes, at the root or
+/// under [`EDGE_PREFIX`].
+pub fn is_exempt(path: &str) -> bool {
+    let path = path
+        .strip_prefix(EDGE_PREFIX)
+        .filter(|rest| rest.starts_with('/'))
+        .unwrap_or(path);
+    matches!(path, "/healthz" | "/readyz")
+}
+
+/// Resolve the caller of a request with `headers`.
+///
+/// A service with an Access application decides by the assertion whenever one is
+/// presented, and refuses one that fails to verify whatever else the request
+/// carries. A bearer token is resolved next. A service with no Access application
+/// then takes a person's identity from the local identity header.
+pub async fn resolve(
+    access: &AccessMode,
+    service_token: Option<&str>,
+    headers: &HeaderMap,
+) -> Result<Identity, ApiError> {
+    if let Some(verifier) = access
+        && let Some(assertion) = header(headers, ASSERTION_HEADER)
+    {
+        return match verifier.verify(&assertion).await {
+            Ok(AssertedIdentity::Person(email)) => Ok(Identity::Person(email)),
+            Ok(AssertedIdentity::ServiceToken(name)) => Ok(Identity::ServiceAssertion(name)),
+            Err(AccessError::Rejected(message)) => Err(ApiError::unauthorized(message)),
+            Err(AccessError::Unavailable(message)) => Err(ApiError::auth_unavailable(message)),
+        };
+    }
+    if let Some(token) = bearer(headers) {
+        return Ok(match service_token {
+            Some(expected) if token_matches(&token, expected) => Identity::ServiceToken,
+            _ => Identity::Token,
+        });
+    }
+    if access.is_none()
+        && let Some(email) = header(headers, LOCAL_IDENTITY_HEADER)
+    {
+        return Ok(Identity::Person(email));
+    }
+    Err(ApiError::unauthorized(if access.is_some() {
+        "the request carries no Access assertion and no service token"
+    } else {
+        "the request carries no identity: send Cf-Access-Authenticated-User-Email or a service \
+         token"
+    }))
+}
+
+/// A non-empty header value, trimmed.
+fn header(headers: &HeaderMap, name: &str) -> Option<String> {
+    let value = headers.get(name)?.to_str().ok()?.trim();
+    (!value.is_empty()).then(|| value.to_string())
+}
 
 /// Verify an upload's per-job token against the backend (the token authority) by
 /// forwarding it to `POST {backend_url}/jobs/{id}/verify-token`. The backend

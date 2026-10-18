@@ -33,6 +33,7 @@ async fn test_state_with_prices(
         None,
         None,
         None,
+        None,
         crate::publisher::PublisherTiming {
             coalesce: config.coalesce,
             snapshot_retention: config.snapshot_retention,

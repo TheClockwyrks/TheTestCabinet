@@ -5303,13 +5303,16 @@ name = "test-cabinet-arena"
 version = "0.0.0"
 dependencies = [
  "axum",
+ "base64",
  "bytes",
  "cuid2",
  "dotenvy",
  "foray-core",
  "futures-util",
  "http",
+ "jsonwebtoken",
  "opentelemetry",
+ "reqwest 0.12.28",
  "serde",
  "serde_json",
  "test-cabinet-core",
@@ -5327,11 +5330,13 @@ name = "test-cabinet-artifacts"
 version = "0.0.0"
 dependencies = [
  "axum",
+ "base64",
  "bytes",
  "dotenvy",
  "flate2",
  "futures-util",
  "http",
+ "jsonwebtoken",
  "opentelemetry",
  "reqwest 0.12.28",
  "serde",

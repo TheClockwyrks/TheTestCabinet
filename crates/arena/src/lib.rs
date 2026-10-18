@@ -29,13 +29,18 @@
 //!   progress channel. Per-pod, so the Deployment runs a single replica.
 //! - [`executor`] — the capacity guard: a semaphore bounding concurrent CPU-bound
 //!   work, rejecting with `503` (not queueing) at capacity.
+//! - [`auth`] — who is calling: the Access assertion every request through the edge
+//!   carries (checked by [`access`]), with no route reachable without an identity
+//!   but the health probe.
+//! - [`access`] — the verification of the Cloudflare Access assertion.
 //! - [`config`] — the environment-sourced configuration.
 //!
-//! The run endpoints are unauthenticated behind the private-network boundary,
-//! faithful to the deleted worker the console still posts them token-less to.
+//! Every route is served at the root and under the edge's `/arena` prefix.
 
+pub mod access;
 pub mod api;
 pub mod arena_resolve;
+pub mod auth;
 pub mod config;
 pub mod error;
 pub mod executor;
@@ -43,6 +48,7 @@ pub mod tournaments;
 
 use std::sync::Arc;
 
+use crate::access::AccessVerifier;
 use crate::api::AppState;
 use crate::config::Config;
 use crate::executor::MatchExecutor;
@@ -58,9 +64,9 @@ pub struct ArenaService {
 }
 
 /// Assemble the arena service from a configuration: an empty tournament registry, a
-/// capacity-bounded executor, and the backend URL the handlers resolve and publish
-/// against. It opens no store and reaches no disk — it is stateless — so this never
-/// fails.
+/// capacity-bounded executor, the backend URL the handlers resolve and publish
+/// against, and the Access verifier. It opens no store and reaches no disk — it is
+/// stateless — so this never fails.
 pub fn build(config: Config) -> ArenaService {
     let bind = config.bind.clone();
     let state = AppState {
@@ -68,6 +74,10 @@ pub fn build(config: Config) -> ArenaService {
         backend_service_token: config.backend_service_token.map(Arc::new),
         tournaments: TournamentRegistry::new(),
         executor: Arc::new(MatchExecutor::new(config.max_concurrent_matches)),
+        access: config
+            .access
+            .as_ref()
+            .map(|access| Arc::new(AccessVerifier::new(access, reqwest::Client::new()))),
     };
     ArenaService {
         router: api::router(state),

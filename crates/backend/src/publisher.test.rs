@@ -100,6 +100,7 @@ async fn dev_publisher() -> (TempDir, Publisher, Arc<Db>) {
         None,
         None,
         None,
+        None,
         PublisherTiming {
             coalesce: Duration::from_millis(10),
             // Retention is irrelevant to the dev publisher: with no R2 there is no

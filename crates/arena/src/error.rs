@@ -35,6 +35,20 @@ impl ApiError {
         Self::new(StatusCode::NOT_FOUND, "not_found", message)
     }
 
+    /// `401 Unauthorized` with code `unauthorized` — a request with no identity: no
+    /// valid Access assertion, no service token, and (with no Access application
+    /// configured) no local identity header.
+    pub fn unauthorized(message: impl Into<String>) -> Self {
+        Self::new(StatusCode::UNAUTHORIZED, "unauthorized", message)
+    }
+
+    /// `502 Bad Gateway` with code `auth_unavailable` — the Access team's signing
+    /// keys could not be fetched, so an assertion could not be checked at all,
+    /// distinct from a *rejected* assertion (a `401`).
+    pub fn auth_unavailable(message: impl Into<String>) -> Self {
+        Self::new(StatusCode::BAD_GATEWAY, "auth_unavailable", message)
+    }
+
     /// `400 Bad Request` with code `bad_request` — an unresolvable controller, a
     /// too-small field, or a controller kind that is not resolvable in the service
     /// topology (a run-local controller).

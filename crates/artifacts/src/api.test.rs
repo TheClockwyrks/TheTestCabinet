@@ -4,12 +4,13 @@
 //! - the upload → serve round-trip (store a fake build, fetch `/runs/{id}/build`
 //!   and assert the content plus the per-run base-href rewrite `serve_build_file`
 //!   applies);
-//! - ungated reads (a build request with no token still succeeds — browser media
-//!   cannot carry one);
+//! - reads by a reader's identity (a build request with no bearer succeeds on the
+//!   local identity header — browser media cannot carry a bearer — and is refused
+//!   with no identity at all; the identity layer itself is `auth.test.rs`'s);
 //! - upload auth (an upload without a valid job token is rejected);
 //! - the `tree.tar` source-tree download (round-trip, publish-job-token auth, and
 //!   a `404` for an unknown run);
-//! - the ungated `archive.tar.gz` run download (gzip framing, the `<run-id>/`
+//! - the `archive.tar.gz` run download (gzip framing, the `<run-id>/`
 //!   prefix, the `Content-Disposition` filename, and a `404` for an unknown run);
 //! - that both whole-tree downloads **stream** — no `Content-Length`, several body
 //!   frames — because a buffered one made this pod's peak allocation a function of
@@ -34,6 +35,7 @@ use tempfile::TempDir;
 use tower::ServiceExt;
 
 use super::*;
+use crate::auth::LOCAL_IDENTITY_HEADER;
 use crate::store::LocalFsStore;
 
 /// The per-job token the stub accepts at `/jobs/{id}/verify-token`.
@@ -53,8 +55,8 @@ const GOOD_PUBLISH_TOKEN: &str = "good-publish-token";
 const GOOD_PUBLISH_JOB_ID: &str = "publish-1";
 
 /// Spawn the stub backend server on an ephemeral port and return its base URL. It
-/// answers `/jobs/{id}/verify-token` (job token → `204` or `401`) — the only
-/// upstream the artifact service calls now that reads are ungated. It accepts the
+/// answers `/jobs/{id}/verify-token` (job token → `204` or `401`) and the
+/// publish-job analogue — the upstream the token routes call. It accepts the
 /// good token only for [`GOOD_JOB_ID`], so it also asserts the service forwards the
 /// header's job id rather than the upload path's run id.
 async fn spawn_stub() -> String {
@@ -124,6 +126,7 @@ async fn app_with_service_token(
         backend_url: Arc::new(stub_url.trim_end_matches('/').to_string()),
         http: reqwest::Client::new(),
         service_token: service_token.map(|t| Arc::new(t.to_string())),
+        access: None,
     };
     (router(state), store, dir)
 }
@@ -248,7 +251,7 @@ async fn seed_heavy_run(app: &Router, run_id: &str, payload: &[u8]) {
 
 #[tokio::test]
 async fn archive_streams_the_tree_instead_of_buffering_it() {
-    // The regression this guards is an exit 137. `archive` is ungated — the console
+    // The regression this guards is an exit 137. `archive` is any reviewer's — the console
     // links it as a plain download — so any reviewer could ask this long-lived pod to
     // hold a whole run tree in memory, and prod's largest trees are far past the
     // 1536Mi limit. The body arriving in several frames, with no `Content-Length`, is
@@ -264,6 +267,7 @@ async fn archive_streams_the_tree_instead_of_buffering_it() {
         .oneshot(
             Request::builder()
                 .uri("/runs/run-big/archive.tar.gz")
+                .header(LOCAL_IDENTITY_HEADER, "dev@local")
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -490,10 +494,11 @@ async fn upload_then_serve_build_round_trips_with_base_href_rewrite() {
     let response = app.clone().oneshot(upload).await.unwrap();
     assert_eq!(response.status(), StatusCode::CREATED);
 
-    // Serve the build root with no token — reads are ungated.
+    // Serve the build root with no bearer — a read takes the reader's identity.
     let get = Request::builder()
         .method("GET")
         .uri("/runs/run-1/build")
+        .header(LOCAL_IDENTITY_HEADER, "dev@local")
         .body(Body::empty())
         .unwrap();
     let response = app.clone().oneshot(get).await.unwrap();
@@ -539,6 +544,7 @@ async fn serving_the_trailing_slash_build_root_succeeds() {
     let get = Request::builder()
         .method("GET")
         .uri("/runs/run-slash/build/")
+        .header(LOCAL_IDENTITY_HEADER, "dev@local")
         .body(Body::empty())
         .unwrap();
     let response = app.clone().oneshot(get).await.unwrap();
@@ -554,7 +560,7 @@ async fn serving_the_trailing_slash_build_root_succeeds() {
 }
 
 #[tokio::test]
-async fn serving_a_build_without_a_token_succeeds() {
+async fn serving_a_build_to_a_reader_without_a_bearer_succeeds() {
     let stub = spawn_stub().await;
     let (app, _store, _dir) = app(&stub).await;
 
@@ -571,17 +577,30 @@ async fn serving_a_build_without_a_token_succeeds() {
         StatusCode::CREATED
     );
 
-    // No token → still served: the console loads build/media as browser requests
-    // (`<img>`/`<iframe>`/relative sub-resources) that carry no Authorization
-    // header, so reads are ungated and rely on the private-network boundary.
+    // No bearer → still served to a reader's identity: the console loads build/media
+    // as browser requests (`<img>`/`<iframe>`/relative sub-resources) that carry no
+    // Authorization header, which the edge authorizes by the Access cookie, or
+    // locally by the identity header the console's proxy adds.
     let get = Request::builder()
         .method("GET")
         .uri("/runs/run-2/build")
+        .header(LOCAL_IDENTITY_HEADER, "dev@local")
         .body(Body::empty())
         .unwrap();
     assert_eq!(
         app.clone().oneshot(get).await.unwrap().status(),
         StatusCode::OK
+    );
+
+    // With no identity at all, the same read is refused.
+    let anonymous = Request::builder()
+        .method("GET")
+        .uri("/runs/run-2/build")
+        .body(Body::empty())
+        .unwrap();
+    assert_eq!(
+        app.clone().oneshot(anonymous).await.unwrap().status(),
+        StatusCode::UNAUTHORIZED
     );
 }
 
@@ -783,7 +802,7 @@ async fn cors_preflight_covers_the_authorization_header() {
 }
 
 #[tokio::test]
-async fn archive_downloads_the_whole_run_tree_ungated() {
+async fn archive_downloads_the_whole_run_tree() {
     let stub = spawn_stub().await;
     let (app, _store, _dir) = app(&stub).await;
 
@@ -806,6 +825,7 @@ async fn archive_downloads_the_whole_run_tree_ungated() {
         .oneshot(
             Request::builder()
                 .uri("/runs/run-arc/archive.tar.gz")
+                .header(LOCAL_IDENTITY_HEADER, "dev@local")
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -854,6 +874,7 @@ async fn archive_for_an_unknown_run_is_not_found() {
         .oneshot(
             Request::builder()
                 .uri("/runs/no-such-run/archive.tar.gz")
+                .header(LOCAL_IDENTITY_HEADER, "dev@local")
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -886,6 +907,7 @@ async fn a_text_build_file_is_gzipped_for_a_client_that_accepts_it() {
         .oneshot(
             Request::builder()
                 .uri("/runs/run-gz/build")
+                .header(LOCAL_IDENTITY_HEADER, "dev@local")
                 .header("accept-encoding", "gzip")
                 .body(Body::empty())
                 .unwrap(),
@@ -930,6 +952,7 @@ async fn a_stored_recording_is_served_as_json_framed_in_gzip() {
         .oneshot(
             Request::builder()
                 .uri("/runs/run-replay/validation/no-tunnel__serve.json.gz")
+                .header(LOCAL_IDENTITY_HEADER, "dev@local")
                 .header("accept-encoding", "gzip")
                 .body(Body::empty())
                 .unwrap(),
@@ -976,6 +999,7 @@ async fn the_pre_compressed_archive_is_not_re_encoded() {
         .oneshot(
             Request::builder()
                 .uri("/runs/run-gz2/archive.tar.gz")
+                .header(LOCAL_IDENTITY_HEADER, "dev@local")
                 .header("accept-encoding", "gzip")
                 .body(Body::empty())
                 .unwrap(),

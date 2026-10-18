@@ -300,6 +300,7 @@ async fn build_with_prices(
         r2,
         config.deploy_hook_url.clone(),
         config.artifacts_internal_url.clone(),
+        config.service_token.clone(),
         crate::publisher::PublisherTiming {
             coalesce: config.coalesce,
             snapshot_retention: config.snapshot_retention,

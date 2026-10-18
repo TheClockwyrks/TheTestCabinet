@@ -50,6 +50,8 @@ tempfile = { workspace = true }
 # backend's internal verify endpoint. rustls (no system OpenSSL), `json` for the
 # body — see `crates/core`.
 reqwest = { workspace = true }
+# Verifies the Cloudflare Access assertion every edge request carries (`src/access.rs`).
+jsonwebtoken = { workspace = true }
 # `tar` (pure Rust, no system deps) unpacks the run-artifact tree the driver
 # streams up as a tarball — the same crate the worker/driver already depend on to
 # frame trees over the pod `exec` channel.
@@ -62,6 +64,8 @@ flate2 = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }
+# Decodes the fixed test keys the Access tests sign assertions with.
+base64 = { workspace = true }
 tokio = { workspace = true, features = ["full", "test-util"] }
 # `util` brings `ServiceExt::oneshot` so the router can be exercised end-to-end in
 # tests without binding a socket, exactly as the auth service's tests do.
