@@ -22,7 +22,7 @@ use serde_json::{Value, json};
 
 use super::compile;
 use super::substrate::{
-    evaluate, evaluate_closing_docviews, evaluate_with_api, logs, prepare, sandbox_error,
+    compiled, evaluate, evaluate_closing_docviews, evaluate_with_api, logs, prepare, sandbox_error,
 };
 use crate::ending::{Ending, EndingRole};
 use test_cabinet_contracts::gg::{
@@ -37,7 +37,7 @@ use crate::sandbox::fake::{
 use crate::sandbox::membrane::RunEnding;
 use crate::sandbox::operations::{DELEGATION_TRANSITION_STATE, OperationId, PROGRAMS_GET};
 use crate::sandbox::outcome::SandboxOutcome;
-use crate::sandbox::{CodeModule, PrepareContext, PrepareFailure};
+use crate::sandbox::{CodeModule, PrepareFailure};
 use crate::tools::{
     AgentStatusData, ApiData, ArchiveHitData, ArchiveSearchData, ReclaimData, SubagentResultData,
     ToolFailure, ToolOutcome,
@@ -1135,9 +1135,7 @@ fn the_generated_catalogue_describes_the_surface_the_sdk_offers() {
 /// reaches a guest.
 #[test]
 fn nothing_this_arm_offers_resolves_without_a_line_the_program_wrote() {
-    let compile = |source: &str| {
-        compile::compile_program(source, &[], &crate::sandbox::PrepareContext::detached())
-    };
+    let compile = |source: &str| compiled(source, &[]);
     let refusal = |source: &str, wanted: &str| {
         let failure =
             compile(source).expect_err("a gg name with no line above it does not compile");
@@ -1237,13 +1235,12 @@ fn the_file_view_program_gg_synthesizes_is_a_program_that_compiles() {
     };
     let program =
         arm.open_file_program(&[("src/main.swift", None), ("docs/spec.md", Some(window))]);
-    compile::compile_program(&program, &[], &crate::sandbox::PrepareContext::detached())
-        .unwrap_or_else(|failure| {
-            panic!(
-                "gg pushes a Swift program that does not compile into the transcript: \
+    compiled(&program, &[]).unwrap_or_else(|failure| {
+        panic!(
+            "gg pushes a Swift program that does not compile into the transcript: \
                  {failure}\n\n{program}"
-            )
-        });
+        )
+    });
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -3559,10 +3556,9 @@ fn a_broken_code_module_is_refused_before_a_swift_program_runs() {
         name: "broken".to_string(),
         source: "public func shout(_ who: String) -> String { return 42 }\n".to_string(),
     }];
-    let failure = compile::compile_program(
+    let failure = compiled(
         "import gg\nimport broken\n\ngg.log(shout(\"never\"))\n",
         &modules,
-        &PrepareContext::detached(),
     )
     .expect_err("a module that does not type-check is refused at prepare");
     assert!(

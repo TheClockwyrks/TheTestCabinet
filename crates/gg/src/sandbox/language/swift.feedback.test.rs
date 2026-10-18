@@ -11,10 +11,9 @@
 use crate::sandbox::fake::{all_operations, canned_outcome};
 use crate::sandbox::membrane::RunEnding;
 use crate::sandbox::membrane::capture::{MAX_LOG_BYTES, MAX_LOG_LINE_BYTES, MAX_LOG_LINES};
-use crate::sandbox::{CodeModule, PrepareContext, PrepareError, PrepareFailure};
+use crate::sandbox::{CodeModule, PrepareError, PrepareFailure};
 
-use super::compile::compile_program;
-use super::substrate::{evaluate, logs, prepare, run};
+use super::substrate::{compiled, evaluate, logs, prepare, run};
 
 /// **A whole Swift program**: the one line that puts gg's surface in scope, and then the top-level
 /// statements that are the program.
@@ -107,8 +106,7 @@ fn logging_past_the_byte_cap_evicts_from_the_front() {
 #[test]
 fn a_program_that_ends_with_a_value_hands_gg_nothing() {
     let source = whole("gg.log(\"before\")\nreturn 42\n");
-    let failure = compile_program(&source, &[], &PrepareContext::detached())
-        .expect_err("top-level statements carry no value");
+    let failure = compiled(&source, &[]).expect_err("top-level statements carry no value");
     let PrepareFailure::Program(PrepareError::Compile(rendered)) = &failure else {
         panic!("a program's own refusal is the model's compile error: {failure:?}");
     };
@@ -158,12 +156,8 @@ fn a_module_that_cannot_be_built_is_refused_at_its_own_line() {
         name: "broken".to_string(),
         source: "public func shout(_ who: String) -> String { return 42 }\n".to_string(),
     }];
-    let failure = compile_program(
-        &whole("gg.log(\"never\")\n"),
-        &modules,
-        &PrepareContext::detached(),
-    )
-    .expect_err("a module that does not build is refused");
+    let failure = compiled(&whole("gg.log(\"never\")\n"), &modules)
+        .expect_err("a module that does not build is refused");
     let PrepareFailure::Lowering(rendered) = &failure else {
         panic!("a module gg rebuilt beside a program is gg's own failure, not {failure:?}");
     };

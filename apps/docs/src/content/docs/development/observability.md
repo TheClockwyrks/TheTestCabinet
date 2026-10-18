@@ -352,9 +352,10 @@ a few minutes of padding on either side, because the run being investigated is
 frequently not a recent one. Retention still applies, so the link opens on an
 empty result for a run older than the environment's window.
 
-The console derives Grafana's address from its own hostname, `grafana.`
-prefixed to it: `grafana.console.testcabinet.ai` and its staging equivalent,
-served through the same [tunnel and Access policy](/deployment/kubernetes/edge/)
+The console derives Grafana's address from its own hostname, its leading
+`console.` label replaced by `grafana.`: `grafana.testcabinet.ai` for
+`console.testcabinet.ai` and `grafana.staging.testcabinet.ai` for the staging
+console, served through the same [tunnel and Access policy](/deployment/kubernetes/edge/)
 as the console. Nothing fetches from that URL; it is only opened in the reader's
 browser. The control renders only on a hostname behind the edge, so the public
 gallery, whose readers have no route to a Grafana behind Access, shows none.

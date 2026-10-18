@@ -28,7 +28,7 @@ to adapt.
 
 ```text
    browser / operator client / tcab
-        │  https://console.testcabinet.ai  (+ grafana.console.testcabinet.ai)
+        │  https://console.testcabinet.ai  (+ grafana.testcabinet.ai)
         ▼
    Cloudflare edge: TLS, WAF, Access (Entra ID sign-in, Cf-Access-Jwt-Assertion)
         │  Cloudflare Tunnel, held open from inside the namespace

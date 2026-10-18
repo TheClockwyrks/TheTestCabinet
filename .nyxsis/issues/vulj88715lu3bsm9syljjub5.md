@@ -6,8 +6,9 @@ zone: GGH
 number: 1
 title: Keep the JVM and Swift sandbox tests inside their bound under load
 type: generic
-state: open
+state: done
 created: 2026-10-13T21:12:15.98783677Z
+done: 2026-10-18T20:06:05.926063563Z
 ---
 
 In a full `cargo nextest run -p test-cabinet-gg` while another build runs on

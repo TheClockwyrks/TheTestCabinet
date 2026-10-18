@@ -17,10 +17,10 @@ up once per environment, below.
 
 ## Hostnames and paths
 
-| Environment | Origin                                   | Grafana                                          |
-| ----------- | ---------------------------------------- | ------------------------------------------------ |
-| Prod        | `https://console.testcabinet.ai`         | `https://grafana.console.testcabinet.ai`         |
-| Staging     | `https://console.staging.testcabinet.ai` | `https://grafana.console.staging.testcabinet.ai` |
+| Environment | Origin                                   | Grafana                                  |
+| ----------- | ---------------------------------------- | ---------------------------------------- |
+| Prod        | `https://console.testcabinet.ai`         | `https://grafana.testcabinet.ai`         |
+| Staging     | `https://console.staging.testcabinet.ai` | `https://grafana.staging.testcabinet.ai` |
 
 The tunnel's ingress rules route the origin by path and Grafana by hostname:
 
@@ -68,9 +68,10 @@ backend, with no Access in front of it.
 Cloudflare holds the `testcabinet.ai` zone. Each hostname is a proxied `CNAME`
 to the environment's tunnel, `<tunnel-id>.cfargotunnel.com`, which
 `cloudflared tunnel route dns` writes. The zone has Total TLS enabled, so the
-multi-level hostnames (`console.staging.…`, `grafana.console.…`) carry edge
-certificates of their own beyond the zone's universal wildcard. Cloudflare's WAF
-and rate limiting apply to the hostnames as to any proxied record.
+staging hostnames (`console.staging.…`, `grafana.staging.…`), which the zone's
+universal wildcard does not reach, carry edge certificates of their own.
+Cloudflare's WAF and rate limiting apply to the hostnames as to any proxied
+record.
 
 ## Identity provider
 
@@ -139,7 +140,7 @@ Once per environment, with `cloudflared` and `az` signed in to the account:
 
    ```sh
    cloudflared tunnel route dns tcab-prod console.testcabinet.ai
-   cloudflared tunnel route dns tcab-prod grafana.console.testcabinet.ai
+   cloudflared tunnel route dns tcab-prod grafana.testcabinet.ai
    ```
 
 3. In Zero Trust, add the Entra ID identity provider from the app registration

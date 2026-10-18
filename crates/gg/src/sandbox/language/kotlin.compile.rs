@@ -244,6 +244,76 @@ pub(super) fn discard_pooled_jvms() {
     POOL.evict_idle();
 }
 
+/// **What decides the output of a build on this arm**, as the test suite's
+/// [store of prepared programs](crate::sandbox::prepared_cache) keys an entry on it.
+///
+/// The pinned Kotlin release and the toolchain this process resolved — its JDK and every jar on the
+/// three classpaths, whose names carry their versions — and the content of everything gg itself puts
+/// into a build: the SDK jar, the assembled driver, the entry class, the pin, the heap, and the Rust
+/// sources that write a build's inputs and read its outputs (this file, the source scan, and the
+/// shared JVM road with its component encode). A change to any of them is a different key, so a
+/// test never reads a program another vintage of this arm built. A toolchain that could not be
+/// resolved is named by its own failure, which is a key no resolved toolchain shares.
+///
+/// The SDK and the sources are hashed once per process and handed on as their digests.
+#[cfg(test)]
+pub(super) fn identity() -> crate::sandbox::prepared_cache::Identity<'static> {
+    use sha2::{Digest, Sha256};
+    use std::sync::OnceLock;
+
+    static COMPILER: OnceLock<String> = OnceLock::new();
+    static DIGESTS: OnceLock<Vec<(&'static str, Vec<u8>)>> = OnceLock::new();
+    static INPUTS: OnceLock<Vec<(&'static str, &'static [u8])>> = OnceLock::new();
+
+    let compiler = COMPILER.get_or_init(|| {
+        let resolved = match toolchain() {
+            Ok(toolchain) => format!(
+                "java {}\nclasspath {}\ncompile path {}\nprogram path {}",
+                toolchain.java.display(),
+                toolchain.classpath,
+                toolchain.compile_path,
+                toolchain.program_path,
+            ),
+            Err(failure) => format!("no toolchain: {failure}"),
+        };
+        format!("kotlin {}\n{resolved}", compiler_version())
+    });
+    let inputs = INPUTS.get_or_init(|| {
+        DIGESTS
+            .get_or_init(|| {
+                let digest = |bytes: &[u8]| Sha256::digest(bytes).to_vec();
+                vec![
+                    ("sdk", digest(SDK)),
+                    ("driver", digest(jvm::driver(FRONT).as_bytes())),
+                    ("entry class", digest(entry_class().as_bytes())),
+                    ("manifest", digest(MANIFEST_JSON.as_bytes())),
+                    ("heap", digest(HEAP.as_bytes())),
+                    (
+                        "kotlin.compile.rs",
+                        digest(include_bytes!("kotlin.compile.rs")),
+                    ),
+                    (
+                        "kotlin.source.rs",
+                        digest(include_bytes!("kotlin.source.rs")),
+                    ),
+                    ("jvm.rs", digest(include_bytes!("jvm.rs"))),
+                    (
+                        "jvm.component.rs",
+                        digest(include_bytes!("jvm.component.rs")),
+                    ),
+                ]
+            })
+            .iter()
+            .map(|(name, digest)| (*name, digest.as_slice()))
+            .collect()
+    });
+    crate::sandbox::prepared_cache::Identity {
+        language: "kotlin",
+        compiler,
+        inputs,
+    }
+}
+
 /// Compile a **program** — a model's reply — into the component that runs it.
 ///
 /// [`source`](PreparedProgram::source) is empty: there is nothing left for a guest to evaluate,

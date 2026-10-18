@@ -45,15 +45,14 @@
 
 use test_cabinet_contracts::gg::GgProgramLanguage;
 
-use super::compile::compile_program;
+use super::substrate::compiled;
 use crate::prompts::{
     AssignedIssueView, AutoloadView, CodeHeadingView, EndingView, MemoriesView, ModuleView,
     ReadFileView, SkillView, SpawnableAgentView, SystemContext, TasksView,
     render_code_nothing_shown_for, render_system,
 };
 use crate::sandbox::{
-    PrepareContext, ProgramLanguage, SESSION_APPROVE, SESSION_FINISH, SESSION_REQUEST_CHANGES,
-    spell,
+    ProgramLanguage, SESSION_APPROVE, SESSION_FINISH, SESSION_REQUEST_CHANGES, spell,
 };
 
 /// This arm, resolved from the registry.
@@ -198,7 +197,7 @@ fn every_swift_example_a_model_is_shown_compiles() {
         ));
     }
 
-    if let Err(failure) = compile_program(&program, &[], &PrepareContext::detached()) {
+    if let Err(failure) = compiled(&program, &[]) {
         panic!(
             "gg shows a model Swift that does not compile. swiftc said:\n\n{failure:?}\n\nThe \
              program every example was gathered into, with a comment naming where each came \
