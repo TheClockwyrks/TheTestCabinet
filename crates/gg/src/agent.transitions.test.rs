@@ -24,7 +24,7 @@ use crate::client::{
 };
 use crate::ending::Ending;
 use crate::telemetry::{CollectingSink, Emitter};
-use test_cabinet_core::gg::{
+use test_cabinet_contracts::gg::{
     ALL_SUBAGENT_SCOPES, CAPABILITY_EXEC, CAPABILITY_FORK, CAPABILITY_FSM, CAPABILITY_MEMORIES,
     CAPABILITY_SUBAGENTS, CAPABILITY_TASKS, FSM_PARAM_STATES, GgCapabilityConfig, GgContextSource,
     GgModuleDisposition, GgPromptRef, GgRosterEntry, GgSubagentRef, GgTelemetryEvent,
@@ -414,7 +414,7 @@ fn exec_is_refused_for_an_agent_standing_in_a_machine() {
             name: "Process".to_string(),
             capabilities: vec![GgCapabilityConfig {
                 params: json!({ "states": [{ "name": "explore", "agentId": "before" }] }),
-                ..GgCapabilityConfig::enabled(test_cabinet_core::gg::CAPABILITY_FSM)
+                ..GgCapabilityConfig::enabled(test_cabinet_contracts::gg::CAPABILITY_FSM)
             }],
             ..GgAgentConfig::root()
         })
@@ -568,7 +568,7 @@ fn exec_on_a_profile_a_machine_runs_is_refused() {
             params: serde_json::json!({
                 "states": [{ "name": "only", "agentId": "worker" }],
             }),
-            ..GgCapabilityConfig::enabled(test_cabinet_core::gg::CAPABILITY_FSM)
+            ..GgCapabilityConfig::enabled(test_cabinet_contracts::gg::CAPABILITY_FSM)
         },
     );
     let mut worker = GgAgentConfig {
@@ -1044,7 +1044,7 @@ async fn an_exec_onto_a_smaller_window_compacts_before_the_successors_first_turn
     // The successor condenses out of band on its own model, which the mock answers off-script.
     crate::tools::grant(
         &mut set.agents[1],
-        test_cabinet_core::gg::CAPABILITY_COMPACTION,
+        test_cabinet_contracts::gg::CAPABILITY_COMPACTION,
     );
     // A window small enough that the thread the successor inherits is already past its
     // compaction trigger — and large enough that the summary it writes is not, since the trigger
@@ -1085,9 +1085,9 @@ async fn a_turn_that_compacts_and_execs_hands_over_the_compacted_window() {
         &mut set.agents[0],
         GgCapabilityConfig {
             implementation: Some(
-                test_cabinet_core::gg::COMPACTION_STRATEGY_SELF_COMPACTION.to_string(),
+                test_cabinet_contracts::gg::COMPACTION_STRATEGY_SELF_COMPACTION.to_string(),
             ),
-            ..GgCapabilityConfig::enabled(test_cabinet_core::gg::CAPABILITY_COMPACTION)
+            ..GgCapabilityConfig::enabled(test_cabinet_contracts::gg::CAPABILITY_COMPACTION)
         },
     );
     let events = run_exec(dir.path(), set, None).await;

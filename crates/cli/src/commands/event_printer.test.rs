@@ -1,7 +1,7 @@
 //! Tests for the event printer's line formatting helpers.
 
 use super::*;
-use test_cabinet_core::{SystemStage, SystemStatus};
+use test_cabinet_driver::{SystemStage, SystemStatus};
 
 #[test]
 fn one_line_collapses_whitespace() {

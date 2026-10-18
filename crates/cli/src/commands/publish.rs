@@ -9,7 +9,7 @@
 //!   produced run, attributed to the logged-in account. A run may carry many
 //!   reviews, one per account. The writeup's frontmatter carries the review's
 //!   `rating.<domain>` lines (functional, legacy runs) and/or the single run-wide
-//!   `aesthetic: <tier>` line (validator-rated runs; the core [`Writeup`] parser
+//!   `aesthetic: <tier>` line (validator-rated runs; the contracts' [`Writeup`] parser
 //!   still reads a legacy file's per-domain `aesthetic.<domain>` lines, collapsed
 //!   to their worst tier). `review.<id>` verdict lines ride along as the review's
 //!   checklist — on a validator-rated run they are the reviewer's **overrides** of
@@ -19,7 +19,7 @@
 //!   for an operator reviewing their own run. A **legacy** run cannot be published
 //!   without at least one review, so a missing writeup refuses the batch. A
 //!   **validator-rated** run (see
-//!   [`TestCaseVersion::validator_rated`](test_cabinet_core::test_case::TestCaseVersion::validator_rated))
+//!   [`TestCaseVersion::validator_rated`](test_cabinet_driver::test_case::TestCaseVersion::validator_rated))
 //!   stands on its validator-decided functional rating and score, so it publishes
 //!   without a self-review when no writeup is present — and with one, the
 //!   self-review (the run-wide aesthetic tier, plus any verdict overrides) is
@@ -30,9 +30,9 @@
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, bail};
-use test_cabinet_core::backend_client::PublishLiveItem;
-use test_cabinet_core::publish_job_api::{PublishResult, PublishState};
-use test_cabinet_core::{BackendClient, HttpBackendClient, Writeup, parse_writeup};
+use test_cabinet_backend_client::{BackendClient, HttpBackendClient, PublishLiveItem};
+use test_cabinet_driver::publish_job_api::{PublishResult, PublishState};
+use test_cabinet_driver::{Writeup, parse_writeup};
 
 use crate::cli::{PublishArgs, ReviewArgs};
 use crate::config;
@@ -157,7 +157,7 @@ pub enum PublishPlan {
     WithoutReview,
 }
 
-/// Whether a stored run is [validator-rated](test_cabinet_core::test_case::TestCaseVersion::validator_rated):
+/// Whether a stored run is [validator-rated](test_cabinet_driver::test_case::TestCaseVersion::validator_rated):
 /// the run's subject names its case version, which the backend resolves with its
 /// `engineFormat` flag.
 async fn run_is_validator_rated(client: &HttpBackendClient, run_id: &str) -> Result<bool> {

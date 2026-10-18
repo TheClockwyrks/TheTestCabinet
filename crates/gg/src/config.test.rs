@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use super::*;
-use test_cabinet_core::gg::GgCapabilitySet;
+use test_cabinet_contracts::gg::GgCapabilitySet;
 
 /// A fully-specified invocation file deserializes into the expected fields and its
 /// capability set round-trips.

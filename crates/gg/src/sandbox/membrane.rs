@@ -75,7 +75,7 @@
 use std::collections::VecDeque;
 use std::time::{Duration, Instant};
 
-use test_cabinet_core::gg::{GgCallFailure, GgUndocumentedCalls};
+use test_cabinet_contracts::gg::{GgCallFailure, GgUndocumentedCalls};
 use wasmtime::component::ResourceTable;
 use wasmtime_wasi::{DirPerms, FilePerms, WasiCtx, WasiCtxBuilder, WasiCtxView, WasiView};
 
@@ -1364,7 +1364,7 @@ pub(super) fn wire_failure(code: ErrorCode) -> GgCallFailure {
 }
 
 /// A tool's own failure classification as the membrane's `error-code`, which is also how the
-/// contract publishes it on an [`ApiResult`](test_cabinet_core::gg::GgTelemetryKind::ApiResult).
+/// contract publishes it on an [`ApiResult`](test_cabinet_contracts::gg::GgTelemetryKind::ApiResult).
 ///
 /// The two enums are one-to-one, and the conversion is written out by hand rather than derived: the
 /// WIT enum is the guest's vocabulary and the contract's is a published wire value, and a `From`

@@ -68,7 +68,7 @@ use std::sync::OnceLock;
 use std::time::Instant;
 
 use crate::sandbox::export_names;
-use test_cabinet_core::gg::GgProgramLanguage;
+use test_cabinet_contracts::gg::GgProgramLanguage;
 
 use super::super::g8::{self, Answered, Case, Located, Shape};
 use crate::limits::TurnErrorType;

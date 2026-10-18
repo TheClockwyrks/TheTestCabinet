@@ -19,7 +19,7 @@
 
 use serde_json::{Value, json};
 
-use test_cabinet_core::gg::{
+use test_cabinet_contracts::gg::{
     CAPABILITY_AGENT_MANAGED_CONTEXT, CAPABILITY_DOCVIEW_CLOSE, CAPABILITY_PROGRAM_LIBRARY,
     CAPABILITY_READ_FILE,
 };
@@ -609,7 +609,7 @@ fn the_member_functions_are_reached_on_the_values_that_carry_them() {
     // Exhaustive by construction, the way the crossing table is: a fifth member function added to
     // this arm's SDK fails here rather than shipping as a name nothing has ever called.
     let kotlin =
-        crate::sandbox::language::language(test_cabinet_core::gg::GgProgramLanguage::Kotlin);
+        crate::sandbox::language::language(test_cabinet_contracts::gg::GgProgramLanguage::Kotlin);
     let mut catalogued: Vec<&str> = crate::sandbox::catalogue_functions(kotlin)
         .iter()
         .filter(|function| function.receiver.is_some())
@@ -1075,7 +1075,7 @@ fn nothing_this_arm_offers_resolves_without_a_line_the_program_wrote() {
     assert_eq!(log.names(), ["read_file"]);
 
     let line = crate::sandbox::catalogue_modules(crate::sandbox::language::language(
-        test_cabinet_core::gg::GgProgramLanguage::Kotlin,
+        test_cabinet_contracts::gg::GgProgramLanguage::Kotlin,
     ))
     .into_iter()
     .find(|module| module.id == "files")
@@ -1212,7 +1212,7 @@ fun recalled(): String = seen.joinToString("+")
 
     // The access the reply that binds a module quotes back is the one that compiles.
     let kotlin =
-        crate::sandbox::language::language(test_cabinet_core::gg::GgProgramLanguage::Kotlin);
+        crate::sandbox::language::language(test_cabinet_contracts::gg::GgProgramLanguage::Kotlin);
     assert_eq!(kotlin.lib_access("helpers"), "lib.helpers.<name>");
     assert_eq!(
         kotlin.lib_import("helpers").as_deref(),
@@ -3812,7 +3812,7 @@ fn a_rejection_whose_every_change_is_blank_is_refused() {
 #[test]
 fn a_logged_line_is_the_only_value_a_program_shows_gg() {
     let kotlin =
-        crate::sandbox::language::language(test_cabinet_core::gg::GgProgramLanguage::Kotlin);
+        crate::sandbox::language::language(test_cabinet_contracts::gg::GgProgramLanguage::Kotlin);
     let catalogued = crate::sandbox::catalogue_functions(kotlin);
     assert!(
         !catalogued

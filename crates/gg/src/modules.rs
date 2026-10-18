@@ -39,7 +39,7 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use test_cabinet_core::gg::{
+use test_cabinet_contracts::gg::{
     CAPABILITY_AGENT_MANAGED_CONTEXT, CAPABILITY_MEMORIES, CAPABILITY_PROJECT_MANAGEMENT,
     CAPABILITY_SKILLS, CAPABILITY_TASKS, GgAgentConfig, GgAgentModule, GgCapabilitySet,
     GgContextSource, GgMemoryScope, GgModuleDisposition, GgModuleOrigin, GgProgramLanguage,
@@ -56,9 +56,9 @@ use crate::skills::SkillsRuntime;
 use crate::tasks::TasksRuntime;
 
 /// The closed set of module kinds, re-exported from the contract so gg and the configurations it
-/// reads name the same six things. See [`GgModuleKind`](test_cabinet_core::gg::GgModuleKind) for
+/// reads name the same six things. See [`GgModuleKind`](test_cabinet_contracts::gg::GgModuleKind) for
 /// what each one holds.
-pub use test_cabinet_core::gg::GgModuleKind as ModuleKind;
+pub use test_cabinet_contracts::gg::GgModuleKind as ModuleKind;
 
 // ---------------------------------------------------------------------------
 // Module instance identity
@@ -587,9 +587,9 @@ pub struct HistorySetup {
     pub estimator: Arc<dyn TokenEstimator>,
     /// The holder model's context-window limit in tokens, when known — the fullness denominator.
     pub window_limit: Option<u64>,
-    /// The [program language](test_cabinet_core::gg::GgProgramLanguage) the holder writes its
+    /// The [program language](test_cabinet_contracts::gg::GgProgramLanguage) the holder writes its
     /// programs in, or `None` when it is not in
-    /// [responses-as-code](test_cabinet_core::gg::CAPABILITY_RESPONSES_AS_CODE) mode at all.
+    /// [responses-as-code](test_cabinet_contracts::gg::CAPABILITY_RESPONSES_AS_CODE) mode at all.
     ///
     /// Its presence arms the per-message headings gg prefixes synthesized user messages with; its
     /// *value* is how every call a module names back at the holder is spelled, resolved from that

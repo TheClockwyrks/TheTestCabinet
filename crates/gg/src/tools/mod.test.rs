@@ -3,7 +3,7 @@ use std::sync::Arc;
 use super::*;
 use serde_json::json;
 use tempfile::TempDir;
-use test_cabinet_core::gg::{
+use test_cabinet_contracts::gg::{
     CAPABILITY_EDIT_FILE, CAPABILITY_LIST_DIR, CAPABILITY_READ_FILE, CAPABILITY_SEARCH,
     CAPABILITY_SHELL, CAPABILITY_SKILLS, CAPABILITY_WRITE_FILE, GgAgentConfig, GgCapabilityConfig,
     GgRosterEntry, ROOT_PROFILE_ID, SHELL_OUTPUT_OFFLOAD,
@@ -527,7 +527,7 @@ fn registry_gates_read_skill_on_capability_and_a_non_empty_library() {
 /// memory store is bound — capability off, or no store bound, offers none.
 #[test]
 fn registry_gates_memory_tools_on_capability_and_a_bound_store() {
-    use test_cabinet_core::gg::CAPABILITY_MEMORIES;
+    use test_cabinet_contracts::gg::CAPABILITY_MEMORIES;
 
     let modules = || {
         CapabilityModules::inert().with(ModuleHandle::Memories(MemoriesRuntime::new(
@@ -572,7 +572,7 @@ fn registry_gates_memory_tools_on_capability_and_a_bound_store() {
 /// it would then have to be refused for using.
 #[test]
 fn registry_offers_a_read_only_holder_the_read_calls_alone() {
-    use test_cabinet_core::gg::{CAPABILITY_MEMORIES, GgMemoryScope};
+    use test_cabinet_contracts::gg::{CAPABILITY_MEMORIES, GgMemoryScope};
 
     use crate::memories::MemoryAccess;
 
@@ -626,7 +626,7 @@ fn registry_offers_a_read_only_holder_the_read_calls_alone() {
 /// store is bound — capability off, or no store bound, offers none.
 #[test]
 fn registry_gates_task_tools_on_capability_and_a_bound_store() {
-    use test_cabinet_core::gg::CAPABILITY_TASKS;
+    use test_cabinet_contracts::gg::CAPABILITY_TASKS;
 
     let modules = || CapabilityModules::inert().with(ModuleHandle::Tasks(TasksRuntime::new(100)));
     let names = [
@@ -669,7 +669,7 @@ fn registry_gates_task_tools_on_capability_and_a_bound_store() {
 #[test]
 fn registry_gates_board_tools_on_capability_and_a_bound_store() {
     use crate::board::BoardCaps;
-    use test_cabinet_core::gg::CAPABILITY_PROJECT_MANAGEMENT;
+    use test_cabinet_contracts::gg::CAPABILITY_PROJECT_MANAGEMENT;
 
     let modules = || {
         CapabilityModules::inert().with(ModuleHandle::Board(BoardRuntime::new(
@@ -829,7 +829,7 @@ fn an_empty_allowlist_grants_nothing() {
 /// **The default profile grants exactly what its default capabilities offer**, on both surfaces.
 ///
 /// [`GgAgentConfig::root`] authors its two allowlists as literals, because the vocabularies belong
-/// to this crate and the contract belongs to `core`. That is the right split and it is the kind of
+/// to this crate and the contract belongs to the contracts. That is the right split and it is the kind of
 /// split that rots: a tool added to an existing capability, or an operation renamed, leaves the
 /// default profile a call short and nothing about it reads as wrong — a narrower allowlist is a
 /// legitimate configuration, so there is no shape to notice. This is the only thing that notices.
@@ -915,7 +915,7 @@ fn ungranted_tools_flags_only_names_no_tool_bears() {
 /// go — the one fact that makes the transition call offerable, and therefore what a *maximal*
 /// toolset needs beyond a maximal capability set.
 fn fsm_position() -> crate::fsm::FsmPosition {
-    use test_cabinet_core::gg::{CAPABILITY_FSM, FSM_PARAM_STATES};
+    use test_cabinet_contracts::gg::{CAPABILITY_FSM, FSM_PARAM_STATES};
     let shell = GgAgentConfig {
         capabilities: vec![GgCapabilityConfig {
             params: serde_json::json!({ FSM_PARAM_STATES: [
@@ -1000,8 +1000,8 @@ fn a_terminal_state_is_offered_no_transition_tool() {
     );
 }
 
-/// The [`exec`](test_cabinet_core::gg::CAPABILITY_EXEC) and
-/// [`fork`](test_cabinet_core::gg::CAPABILITY_FORK) calls are offered on **different**
+/// The [`exec`](test_cabinet_contracts::gg::CAPABILITY_EXEC) and
+/// [`fork`](test_cabinet_contracts::gg::CAPABILITY_FORK) calls are offered on **different**
 /// conditions, and each is withheld when the thing that would make it usable is missing.
 ///
 /// `exec` needs a roster (there has to be something to become) and is withheld inside a machine,
@@ -1014,7 +1014,7 @@ fn a_terminal_state_is_offered_no_transition_tool() {
 /// profile.
 #[test]
 fn the_agent_transition_tools_are_offered_on_their_own_terms() {
-    use test_cabinet_core::gg::{CAPABILITY_EXEC, CAPABILITY_FORK, CAPABILITY_SUBAGENTS};
+    use test_cabinet_contracts::gg::{CAPABILITY_EXEC, CAPABILITY_FORK, CAPABILITY_SUBAGENTS};
 
     let offered = |set: &GgAgentConfig,
                    spawnable: &[GgRosterEntry],
@@ -1183,7 +1183,7 @@ fn all_tool_names_matches_a_maximal_registry() {
 /// [`maximal_registries`] and [`dispatchable_registry`], so the two can never describe different
 /// runs.
 fn maximal_set() -> GgAgentConfig {
-    use test_cabinet_core::gg::{
+    use test_cabinet_contracts::gg::{
         CAPABILITY_AGENT_MANAGED_CONTEXT, CAPABILITY_COMPACTION, CAPABILITY_MEMORIES,
         CAPABILITY_PROJECT_MANAGEMENT, CAPABILITY_SUBAGENTS, CAPABILITY_TASKS,
         COMPACTION_STRATEGY_SELF_COMPACTION,
@@ -1379,7 +1379,7 @@ async fn every_self_contained_tool_answers_its_own_name() {
     use crate::memories::{MemoryCode, MemoryStrategy};
     use crate::model::Message;
     use crate::tasks::{StructuredFields, TaskStatus};
-    use test_cabinet_core::gg::GgContextSource;
+    use test_cabinet_contracts::gg::GgContextSource;
 
     let markdown = dispatchable_registry(MemoryStrategy::Markdown);
     let scratchpad = dispatchable_registry(MemoryStrategy::Scratchpad);
@@ -1919,7 +1919,7 @@ fn each_memory_strategy_offers_its_own_tools() {
     use std::collections::BTreeSet;
 
     use crate::memories::{MemoryCaps, MemoryStrategy};
-    use test_cabinet_core::gg::CAPABILITY_MEMORIES;
+    use test_cabinet_contracts::gg::CAPABILITY_MEMORIES;
 
     let on = set_with(vec![GgCapabilityConfig::enabled(CAPABILITY_MEMORIES)]);
 

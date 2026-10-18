@@ -64,7 +64,7 @@
 
 use super::{TEMPLATES, render_code_nothing_shown, render_system};
 use crate::sandbox::{ProgramLanguage, all_languages, catalogue_functions};
-use test_cabinet_core::gg::GgProgramLanguage;
+use test_cabinet_contracts::gg::GgProgramLanguage;
 
 /// Every language a template is judged against: **all of them**, plus the seam's fixture.
 ///

@@ -15,7 +15,7 @@
 //! # It returns only what this agent may call
 //!
 //! Every hit is filtered through [`DocsRuntime::bound`](super::DocsRuntime::bound), the same single
-//! predicate a lookup and the [agent surface](test_cabinet_core::gg::GgTelemetryKind::AgentSurface)
+//! predicate a lookup and the [agent surface](test_cabinet_contracts::gg::GgTelemetryKind::AgentSurface)
 //! answer from, and never through a second copy of it. That is not politeness: with the prompt no
 //! longer naming functions, search **is** how an agent learns what it has, so a search that returned
 //! a withheld function would teach a model a call that throws when it writes it — the exact failure
@@ -66,7 +66,7 @@
 use std::cmp::Ordering;
 use std::sync::OnceLock;
 
-use test_cabinet_core::gg::GgProgramLanguage;
+use test_cabinet_contracts::gg::GgProgramLanguage;
 
 use crate::search::{Relevance, breadth_then_frequency, normalize, relevance};
 use crate::tools::ToolFailure;

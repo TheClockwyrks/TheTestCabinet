@@ -3,7 +3,7 @@
 //! backstop — plus `compact`, how it performs that backstop *itself*.
 //!
 //! The first three are contributed only when the
-//! [`agent-managed-context`](test_cabinet_core::gg::CAPABILITY_AGENT_MANAGED_CONTEXT)
+//! [`agent-managed-context`](test_cabinet_contracts::gg::CAPABILITY_AGENT_MANAGED_CONTEXT)
 //! capability is enabled; `compact` only under the
 //! [self-compaction](crate::compaction::CompactionStrategy::SelfCompaction) compaction strategy.
 //!

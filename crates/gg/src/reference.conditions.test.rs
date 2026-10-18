@@ -5,7 +5,7 @@ use crate::memories::MemoryStrategy;
 use crate::reference::tools::MAXIMAL_CONFIGURATION;
 use crate::tasks::TaskMode;
 use crate::tools::{READ_MODE_DEFAULT_CAP, READ_MODE_UNLIMITED};
-use test_cabinet_core::gg::{SHELL_OUTPUT_INLINE, SHELL_OUTPUT_OFFLOAD};
+use test_cabinet_contracts::gg::{SHELL_OUTPUT_INLINE, SHELL_OUTPUT_OFFLOAD};
 
 /// **The derived conditions predict `from_run` exactly, in every configuration this test can
 /// build.**

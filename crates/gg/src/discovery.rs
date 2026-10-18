@@ -35,9 +35,9 @@
 //! **Nothing is refused.** This is a measurement: a refusal would change what a run *is*, and a run
 //! whose calls gg started rejecting is no longer a measurement of the model. It is not a turn error
 //! either — the program compiled, ran and did its work — so no [ceiling](crate::limits) observes it
-//! and it never reaches the [error rollup](test_cabinet_core::gg::GgErrorSummary). What it produces
-//! is a [count on the turn](test_cabinet_core::gg::GgTelemetryKind::CodeExecution), a
-//! [rollup on the run](test_cabinet_core::gg::GgSessionSummary::undocumented_calls), and one
+//! and it never reaches the [error rollup](test_cabinet_contracts::gg::GgErrorSummary). What it produces
+//! is a [count on the turn](test_cabinet_contracts::gg::GgTelemetryKind::CodeExecution), a
+//! [rollup on the run](test_cabinet_contracts::gg::GgSessionSummary::undocumented_calls), and one
 //! [warning](DiscoveryWarning) for the operator, written off that same count once per run.
 //!
 //! # The same turn does not count, and that is the interesting half

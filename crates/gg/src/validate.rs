@@ -24,7 +24,7 @@
 //!
 //!    The table's third classification,
 //!    [default when absent](Requirement::DefaultWhenAbsent), is the single exception to the rule,
-//!    and it is bounded by the [authoring catalog](test_cabinet_core::gg::gg_authoring_catalog)
+//!    and it is bounded by the [authoring catalog](test_cabinet_contracts::gg::gg_authoring_catalog)
 //!    writing the figure into every new document: the value a run was conducted under is in that
 //!    run's record whether or not the operator had an opinion about the key. The
 //!    [context-usage signal's threshold](PARAM_SIGNAL_THRESHOLD_PERCENT) is read that way.
@@ -112,7 +112,7 @@
 use std::fmt;
 
 use serde_json::Value;
-use test_cabinet_core::gg::{
+use test_cabinet_contracts::gg::{
     ALL_SUBAGENT_SCOPES, AUTOLOAD_LOCKED_IMPL, AUTOLOAD_PARAM_IMAGES,
     CAPABILITY_AGENT_MANAGED_CONTEXT, CAPABILITY_AGENT_PERSISTENCE, CAPABILITY_AUTOLOAD_SPECS,
     CAPABILITY_COMPACTION, CAPABILITY_CONTEXT_WINDOW_OVERRIDE, CAPABILITY_DOCVIEW_CLOSE,
@@ -654,7 +654,7 @@ pub enum Requirement {
     /// would put a number in front of every operator with no opinion about it.
     ///
     /// What keeps it honest is that the figure is **written into every new document** by the
-    /// [authoring catalog](test_cabinet_core::gg::gg_authoring_catalog), so the value a run was
+    /// [authoring catalog](test_cabinet_contracts::gg::gg_authoring_catalog), so the value a run was
     /// conducted under is in that run's record whether or not the operator touched the key. The
     /// figure itself lives beside the param constant it belongs to, so the resolver that reads the
     /// key and the catalog that writes it name one number.
@@ -1001,7 +1001,7 @@ fn arms_of(id: &str) -> Vec<&'static str> {
 ///
 /// Total and pure: it reads the invocation, touches nothing, and either accepts or returns the
 /// complete list of values gg could not honour. Called once, at the top of the session frame —
-/// after [`SessionStarted`](test_cabinet_core::gg::GgTelemetryKind::SessionStarted) is emitted, so a
+/// after [`SessionStarted`](test_cabinet_contracts::gg::GgTelemetryKind::SessionStarted) is emitted, so a
 /// console still shows what was attempted, and before any client is resolved, so a configuration
 /// typo is never masked by a credential error.
 ///
@@ -1189,7 +1189,7 @@ fn check_set(set: &GgCapabilitySet, report: &mut LaunchReport) {
 /// this is deliberately the *declared* answer: the capability is on, and the profile has not scoped
 /// itself [`read-only`](crate::memories::MemoryScope::ReadOnly). It is what
 /// [`check_memory_compaction`] judges a declared [memory
-/// compaction](test_cabinet_core::gg::COMPACTION_STRATEGY_MEMORY) against.
+/// compaction](test_cabinet_contracts::gg::COMPACTION_STRATEGY_MEMORY) against.
 fn memories_writable(agent: &GgAgentConfig) -> bool {
     agent.is_enabled(CAPABILITY_MEMORIES)
         && crate::memories::resolve_scope(agent, &mut LaunchReport::already_reported())
@@ -1197,7 +1197,7 @@ fn memories_writable(agent: &GgAgentConfig) -> bool {
 }
 
 /// **A memory compaction that could never be performed** — the statically decidable half of the
-/// prerequisite the [`memory-compaction`](test_cabinet_core::gg::COMPACTION_STRATEGY_MEMORY)
+/// prerequisite the [`memory-compaction`](test_cabinet_contracts::gg::COMPACTION_STRATEGY_MEMORY)
 /// strategy carries.
 ///
 /// That strategy asks the agent to write its working state into its memories instead of a summary.
@@ -1310,7 +1310,7 @@ fn check_slot_declarations(set: &GgCapabilitySet, report: &mut LaunchReport) {
 /// the earlier profile. A profile's [name](GgAgentConfig::name) is display text that nothing
 /// resolves, so a launch does not read one at all.
 ///
-/// The [shape](test_cabinet_core::gg::is_valid_agent_slug) is checked for the same reason the slug
+/// The [shape](test_cabinet_contracts::gg::is_valid_agent_slug) is checked for the same reason the slug
 /// is what the model is shown: a name the model has to decide how to spell is a name it will
 /// sometimes spell wrong, and the call that carries the misspelling is refused rather than
 /// delivered.
@@ -1329,7 +1329,7 @@ fn check_profile_ids(set: &GgCapabilitySet, report: &mut LaunchReport) {
             // checks resolve ids too — so report the cause and leave the consequences alone.
             continue;
         }
-        if !test_cabinet_core::gg::is_valid_agent_slug(id) {
+        if !test_cabinet_contracts::gg::is_valid_agent_slug(id) {
             report.report(LaunchDefect::run_level(
                 format!("agents[{index}].id"),
                 id,

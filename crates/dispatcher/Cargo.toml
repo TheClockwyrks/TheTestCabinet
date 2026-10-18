@@ -14,11 +14,13 @@ name = "test_cabinet_dispatcher"
 path = "src/lib.rs"
 
 [dependencies]
-test-cabinet-core = { path = "../core" }
+# The job API and publish-job API wire types the dispatcher claims jobs in, and the
+# run-image override variables it forwards into every driver Job.
+test-cabinet-contracts = { workspace = true }
 # The dispatcher is a binary: it owns telemetry init, so it pulls the heavy `otlp`
-# feature (the propagation-only default is for libraries like `core`), exactly as
-# the driver's and worker's mains do.
-test-cabinet-telemetry = { path = "../telemetry", features = ["otlp"] }
+# feature (the propagation-only default is for libraries), exactly as the driver's
+# and worker's mains do.
+test-cabinet-telemetry = { workspace = true, features = ["otlp"] }
 
 serde = { workspace = true }
 serde_json = { workspace = true }
@@ -29,7 +31,7 @@ time = { workspace = true }
 tracing = { workspace = true }
 # The HTTP client the dispatcher claims jobs from, and reports driver-pod deaths
 # back to, the backend with. rustls (no system OpenSSL), `json` for the bodies —
-# the same stack as `crates/core` and the driver.
+# the same stack as the driver.
 reqwest = { workspace = true }
 
 # Kubernetes client (`src/kubernetes.rs`): the dispatcher is the only component

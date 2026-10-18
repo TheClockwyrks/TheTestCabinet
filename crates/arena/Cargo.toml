@@ -14,18 +14,23 @@ name = "test_cabinet_arena"
 path = "src/lib.rs"
 
 [dependencies]
-# The shared adversarial engine lives in core: `match_play` (`run_quick_match`,
-# `run_tournament`) plus `HttpBackendClient`, which transitively brings in
-# `foray-host`/`wasmtime` (the CPU-bound wasm sandbox a match executes in). So
-# the arena reuses the engine, not reinvents it.
-test-cabinet-core = { path = "../core" }
+# The match runner, from the engines family: `run_quick_match` and
+# `run_tournament` over `foray-host`/`wasmtime` (the CPU-bound wasm sandbox a match
+# executes in), the same runner the driver's adversarial validator scores a run
+# through. So the arena reuses the runner, not reinvents it.
+test-cabinet-match-play = { path = "../match-play" }
+# The resolved test case a match is configured from.
+test-cabinet-contracts = { workspace = true }
+# The backend's HTTP client, from contracts: it resolves pushed controllers and
+# publishes tournaments through `HttpBackendClient`.
+test-cabinet-backend-client = { workspace = true }
 # A quick match's response carries a `foray-core` `Replay` (the browser-playable
 # recording); depend on it for that one type, as the worker did.
 foray-core = { path = "../foray-core" }
 # A binary: it owns telemetry init, so it pulls the heavy `otlp` feature (the
-# propagation-only default is for libraries like `core`), exactly as the other
+# propagation-only default is for the libraries), exactly as the other
 # services' mains do.
-test-cabinet-telemetry = { path = "../telemetry", features = ["otlp"] }
+test-cabinet-telemetry = { workspace = true, features = ["otlp"] }
 
 serde = { workspace = true }
 serde_json = { workspace = true }

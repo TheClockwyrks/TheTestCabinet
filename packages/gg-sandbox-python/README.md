@@ -84,7 +84,7 @@ reflection that produces it, the error reporting, the library set, end-to-end ex
 through gg's own linker, membrane and store, and — in
 `crates/gg/src/sandbox/language/python.rs` and its siblings — the `ProgramLanguage`
 implementation, this arm's gated language segment of the two shared prompt templates
-(`crates/gg/templates/system-code.hbs` and `crates/gg/templates/code-nothing-shown.hbs`,
+(`system-code.hbs`, in the contracts crate's `templates/gg/`, and `crates/gg/templates/code-nothing-shown.hbs`,
 which every language reaches its own paragraphs of through an `eq` on `language.id`), and
 the `bootstrap_program` that writes the program gg's opening turn runs. Its host half is
 small on purpose: preparing a Python program does **nothing** to it, because CPython is

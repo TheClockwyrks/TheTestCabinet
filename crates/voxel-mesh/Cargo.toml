@@ -30,7 +30,7 @@ path = "src/lib.rs"
 # `cli` pulls in `serde_json` (for the per-part `.glb` JSON chunk) and enables
 # `test-cabinet-model-core`'s `cli` feature (the `render::MeshView` a `Mesh` borrows
 # into for the preview renderer). It is on by default for the binaries; a library
-# consumer such as `crates/core` links this crate with `default-features = false` to
+# consumer such as `crates/driver` links this crate with `default-features = false` to
 # get only the pure domain types (field, ops, mesher trait + stub) without the
 # renderer stack.
 default = ["cli"]

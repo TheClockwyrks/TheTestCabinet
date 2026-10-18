@@ -5,7 +5,7 @@
 // crate**, not a copy vendored into this package. A copy would be worse than no fixture
 // at all: it would drift silently, keep passing, and still look like protection. Reading
 // the one file means a case added on either side is executed by both suites or neither,
-// and the Rust suite (`crates/core/src/gg_query.test.rs`) asserts the same expectations
+// and the Rust suite (`crates/backend/src/gg_query.test.rs`) asserts the same expectations
 // against the authoritative implementation.
 //
 // The two halves also agree on strictness. The Rust structs are `deny_unknown_fields`

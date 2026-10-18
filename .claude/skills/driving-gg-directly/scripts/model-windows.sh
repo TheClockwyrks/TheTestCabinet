@@ -4,7 +4,7 @@
 #
 # The window and the modalities come from OpenRouter's public models endpoint. The provider
 # candidate list comes from each model's endpoints listing, under the filters the backend
-# applies at enqueue (`provider_candidates` in crates/core/src/pricing.candidates.rs; the
+# applies at enqueue (`provider_candidates` in crates/backend/src/pricing.candidates.rs; the
 # candidate list in apps/docs/src/content/docs/gg/overview.md). An endpoint is kept when:
 #   - it serves the model's native quantization (the best level any endpoint declares, or
 #     --native); an `unknown` endpoint only when its provider is named by --unknown-ok;

@@ -119,7 +119,7 @@ function gg(kind: GgTelemetryKind): HarnessEvent {
 
 // One of the orchestrator's own setup/teardown events — the stream a gg run carries
 // BEFORE gg says anything. `message` is the orchestrator's wording for the stage at its
-// status, exactly as `SystemStage::describe` in crates/core produces it.
+// status, exactly as `SystemStage::describe` in crates/driver produces it.
 function system(
   stage: SystemStage,
   status: SystemStatus,

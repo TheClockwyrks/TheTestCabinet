@@ -25,7 +25,8 @@
 use reqwest::{Client, StatusCode};
 use serde::Deserialize;
 
-use test_cabinet_core::{ClaimedJob, DriverState, PublishClaim, StatusUpdate};
+use test_cabinet_contracts::job_api::{ClaimedJob, DriverState, StatusUpdate};
+use test_cabinet_contracts::publish_job_api::PublishClaim;
 
 /// A failure talking to the backend's job API.
 #[derive(Debug, thiserror::Error)]

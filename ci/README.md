@@ -155,9 +155,8 @@ This project's own gates, wired in the same way:
 | `workspace-test` | npm workspace tests (vitest) | web | no |
 | `validators-typecheck` | validator projects typecheck (tsc) | web | no |
 | `site-build` | gallery build (vite build) | web | no |
-| `contract-drift` | generated contract drift | rust | no |
 
-The four without a hook build the workspace packages, or the Rust workspace,
+The three without a hook build the workspace packages, or the Rust workspace,
 before they check anything, which is more than a commit waits on; `HOOKLESS`
 in `tests/test_wiring.py` names them, with `rust-test` and `rust-doctest`.
 `scripts-test` and `workspace-test` run tests, so their steps name an

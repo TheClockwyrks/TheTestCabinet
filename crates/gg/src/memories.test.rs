@@ -4,7 +4,7 @@
 //! `memories.files.test.rs`, and the keyword ranking in `memories.search.test.rs`.
 
 use serde_json::{Value, json};
-use test_cabinet_core::gg::GgTelemetryKind;
+use test_cabinet_contracts::gg::GgTelemetryKind;
 
 use super::*;
 

@@ -4,7 +4,7 @@
 //! it carries a stable [`id`](Agent::id), its spawner's id
 //! ([`parent_id`](Agent::parent_id)), its [`depth`](Agent::depth) in the tree, and the model
 //! [`profile`](Agent::profile_id) it runs on (its live lifecycle is streamed as
-//! [`AgentStatus`](test_cabinet_core::gg::GgTelemetryKind::AgentStatus) telemetry). Its
+//! [`AgentStatus`](test_cabinet_contracts::gg::GgTelemetryKind::AgentStatus) telemetry). Its
 //! [turn loop](Agent::drive) is gg's core — the one coarse-grained plug point of the design
 //! (all other modularity comes from [which tools](crate::tools) are offered). The loop drives
 //! one agent: build a model request from the conversation and the offered toolset, send it via
@@ -13,7 +13,7 @@
 //! [agent-tagged telemetry](crate::telemetry::Emitter::for_agent) throughout.
 //!
 //! Every run starts from the **root** agent (id [`ROOT_AGENT_ID`], depth `0`, running under the
-//! set's [root profile](test_cabinet_core::gg::GgCapabilitySet::root)), created from the
+//! set's [root profile](test_cabinet_contracts::gg::GgCapabilitySet::root)), created from the
 //! invocation, and grows a tree from there: an agent spawns a child **by profile id**, and the
 //! child is constructed, resourced and driven exactly as the root is. What is per-run rather than
 //! per-agent lives on the [`Orchestrator`] — the [scheduler](Scheduler) that decides which agents
@@ -104,7 +104,7 @@
 //! - `"error"` — a launch failure (no bound slot, or the client could not resolve).
 //!
 //! A launch failure (`"error"`) exits the process `1`, and so do three of the endings above,
-//! so that `core` records a retryable harness error rather than a tree to score. They are read
+//! so that the driver records a retryable harness error rather than a tree to score. They are read
 //! off different things:
 //!
 //! - a gg defect (`"internal_error"`) is read off the **whole tree**. The first agent to meet one
@@ -125,7 +125,7 @@
 //!   whose credential was refused is likewise a failed node in a run that can carry on.
 //!
 //! A **breached [ceiling](crate::limits)** exits on a third code
-//! ([`EXIT_LIMIT_EXCEEDED`](test_cabinet_core::gg::EXIT_LIMIT_EXCEEDED)), and is read off the whole
+//! ([`EXIT_LIMIT_EXCEEDED`](test_cabinet_contracts::gg::EXIT_LIMIT_EXCEEDED)), and is read off the whole
 //! tree as a defect is, through the run's [ceiling latch](crate::limits::CeilingLatch). A ceiling
 //! is a safeguard the run's own configuration armed and is not expected to be reached, so a run
 //! that reached one is recorded by the host apart from a session that ran to a natural end, and is
@@ -150,7 +150,7 @@ use std::time::{Duration, Instant};
 // [`teardown`].
 use futures_util::FutureExt;
 use serde_json::{Value, json};
-use test_cabinet_core::gg::{
+use test_cabinet_contracts::gg::{
     ALL_HOOK_EVENTS, AUTOLOAD_LOCKED_IMPL, AUTOLOAD_PARAM_IMAGES, CAPABILITY_AGENT_MANAGED_CONTEXT,
     CAPABILITY_AUTOLOAD_SPECS, CAPABILITY_COMPACTION, CAPABILITY_CONTEXT_WINDOW_OVERRIDE,
     CAPABILITY_PROJECT_MANAGEMENT, CAPABILITY_RESPONSES_AS_CODE, CAPABILITY_SKILLS,
@@ -163,11 +163,11 @@ use test_cabinet_core::gg::{
     PARAM_SIGNAL_THRESHOLD_PERCENT, PARAM_SKILLS_DIR, PARAM_TOP_FILE_VIEWS, PARAM_WINDOW_LIMIT,
     PROJECT_MANAGEMENT_PARAM_MERGE_AGENT,
 };
-use test_cabinet_core::gg_session_journal::GG_SESSION_JOURNAL_PATH;
-use test_cabinet_core::gg_session_record::{
+use test_cabinet_contracts::gg_session_journal::GG_SESSION_JOURNAL_PATH;
+use test_cabinet_contracts::gg_session_record::{
     GgSessionAgent, GgSessionAgentOrigin, GgSessionModalities,
 };
-use test_cabinet_core::metrics::{Cost, TokenCounts};
+use test_cabinet_contracts::metrics::{Cost, TokenCounts};
 use tokio::sync::{mpsc, oneshot};
 use tokio::task::JoinHandle;
 
@@ -393,7 +393,7 @@ const STATUS_COMPACTION_FAILED: &str = "compaction_failed";
 /// run was supposed to contain and does not, or work the rest of the tree then built around a hole;
 /// a reviewer that never rendered a verdict is an issue merged without the gate its filer asked
 /// for. The tree that comes back is not the tree that configuration produces, and nothing
-/// downstream — not `core`, not a reviewer, not a comparison against another arm — can tell it from
+/// downstream — not the driver, not a reviewer, not a comparison against another arm — can tell it from
 /// one that is. That is worse than losing the run: a missing run is visible, and a plausible wrong
 /// one is not.
 ///
@@ -445,7 +445,7 @@ pub enum SessionOutcome {
     Ran,
     /// **Any agent of the run** ended on a breached [ceiling](RunLimits) — its turn budget, the
     /// run's wall-clock budget, the run's spend, or either error ceiling. The process exits
-    /// [`EXIT_LIMIT_EXCEEDED`](test_cabinet_core::gg::EXIT_LIMIT_EXCEEDED), and `core` records a
+    /// [`EXIT_LIMIT_EXCEEDED`](test_cabinet_contracts::gg::EXIT_LIMIT_EXCEEDED), and the driver records a
     /// run state of its own that is published as a per-model statistic and never retried.
     ///
     /// It is read off the run's [ceiling latch](crate::limits::CeilingLatch) rather than off the
@@ -465,7 +465,7 @@ pub enum SessionOutcome {
     /// client's retry schedule was spent, or on a fatal status at the first attempt), the
     /// **root's** model calls were refused because the run's credential was rejected
     /// ([`STATUS_AUTH_ERROR`]), or **any agent of the run** walked into a gg defect mid-session
-    /// ([`STATUS_INTERNAL_ERROR`]). The process exits `1`, so `core` records a retryable harness
+    /// ([`STATUS_INTERNAL_ERROR`]). The process exits `1`, so the driver records a retryable harness
     /// error rather than a scoreable run: none of the four is the model's doing, and scoring any
     /// of them would blame a model for somebody else's failure.
     ///
@@ -529,9 +529,9 @@ pub struct Agent {
 
 impl Agent {
     /// The **root** agent for a run: [`ROOT_AGENT_ID`], no parent, depth `0`, running under
-    /// `profile` — the [id](test_cabinet_core::gg::GgAgentConfig::id) of the set's
+    /// `profile` — the [id](test_cabinet_contracts::gg::GgAgentConfig::id) of the set's
     /// [root profile](GgCapabilitySet::root), passed in rather than assumed to be
-    /// [`ROOT_PROFILE_ID`](test_cabinet_core::gg::ROOT_PROFILE_ID) so a set whose first profile is
+    /// [`ROOT_PROFILE_ID`](test_cabinet_contracts::gg::ROOT_PROFILE_ID) so a set whose first profile is
     /// some other one still resolves its own model, capabilities, and prompt.
     pub fn root(profile: &str) -> Self {
         Self {
@@ -1304,7 +1304,7 @@ pub(crate) async fn run_with_seams(
     // The case that is not covered by the root's status is precisely the one the ruling is about: a
     // subagent that broke *after* the root had already finished — a detached child, an issue agent
     // still working through the board — leaves the root's ending saying `completed`, and a session
-    // that reported it would hand `core` a tree to score that a gg defect had a hand in producing.
+    // that reported it would hand the driver a tree to score that a gg defect had a hand in producing.
     // Reading the latch here also makes the decision independent of when the fault landed, so the
     // race between a fault and the root's last turn cannot decide whether a run is scored.
     let fault = orch.fault.raised();
@@ -1349,12 +1349,12 @@ pub(crate) async fn run_with_seams(
     // field a study reads to find out why runs stop.
     root_emitter.record_limit_hit(end.limit.clone());
     // Close the session capture journal: write its mandatory terminating line and join the writer
-    // thread, so the journal `core` collects and folds into the served record is complete. Reported
+    // thread, so the journal the driver collects and folds into the served record is complete. Reported
     // on the stream (never fatal) — a capture that degraded is a fact about the recording, not a
     // run result.
     //
     // Ahead of the summary rather than after it, now that every run captures: the summary must stay
-    // the *last* event before `SessionEnded` — that adjacency is what lets `core` lift it without
+    // the *last* event before `SessionEnded` — that adjacency is what lets the driver lift it without
     // re-parsing the stream — and a line emitted between the two would break it on every run rather
     // than on the rare configured one. Nothing here feeds the summary: the tracker folds typed
     // events, and this emits a `Log`.
@@ -1398,7 +1398,7 @@ pub(crate) async fn run_with_seams(
 
     // Compute and emit the run's aggregatable session summary from the telemetry the run emitted
     // (the per-slot rollups above are now folded in), right before the terminal `SessionEnded`, so
-    // `core` can lift it onto the run record and result aggregation need not re-parse the stream.
+    // the driver can lift it onto the run record and result aggregation need not re-parse the stream.
     let summary = root_emitter.finalize_summary(status);
     root_emitter.emit(GgTelemetryKind::SessionSummary {
         summary: Box::new(summary),
@@ -1413,7 +1413,7 @@ pub(crate) async fn run_with_seams(
     // the model, and the host retries a harness error. A session gg's own defect ended is not one
     // either, for the stronger reason: whatever tree it left was produced by a run that stopped
     // on *our* mistake, and the model never got the chance the record would appear to be
-    // reporting on. Exit non-zero for all three so `core` records a harness error instead of
+    // reporting on. Exit non-zero for all three so the driver records a harness error instead of
     // collecting a tree and scoring it against the model.
     //
     // The three are read off different things, and deliberately so. The credential and the
@@ -1484,7 +1484,7 @@ async fn join_spawned_agents(orch: &Orchestrator) {
 }
 
 /// Start [session capture](crate::capture) for this run, opening the
-/// [journal](test_cabinet_core::gg_session_journal::GG_SESSION_JOURNAL_PATH) under the run workspace.
+/// [journal](test_cabinet_contracts::gg_session_journal::GG_SESSION_JOURNAL_PATH) under the run workspace.
 ///
 /// Called for **every** run: capture is not gated on a capability, because pooling made it cost
 /// well under a megabyte and an opt-in capture is never armed for the run that surprises you.
@@ -1516,7 +1516,7 @@ fn start_session_capture(
     }
 }
 
-/// Pin the run's [seed](test_cabinet_core::gg_session_record::GgSessionSeed) — the fixed identity the
+/// Pin the run's [seed](test_cabinet_contracts::gg_session_record::GgSessionSeed) — the fixed identity the
 /// session started from — into the [capture journal](crate::capture).
 ///
 /// A no-op for a run whose journal could not be opened. It happens once, at launch, before the
@@ -1704,7 +1704,7 @@ struct Orchestrator {
     /// The root's build prompt (a subagent is driven by its brief instead).
     prompt: String,
     /// The workspace-relative paths of every file the test case provided — its specs then its
-    /// reference images, as [`core` computed them](GgInvocation::provided_files) — that an agent
+    /// reference images, as [the driver computed them](GgInvocation::provided_files) — that an agent
     /// whose profile enables [autoload-specifications](CAPABILITY_AUTOLOAD_SPECS) reads into its
     /// opening context. Empty when nothing was seeded; consulted per agent, since autoload is a
     /// per-agent capability.
@@ -1929,7 +1929,7 @@ struct Orchestrator {
     /// agent around the session as a whole, never by anybody else.
     session_hooks: Arc<HookRuntime>,
     /// Each agent profile's own [hooks](crate::hooks), by profile
-    /// [id](test_cabinet_core::gg::GgAgentConfig::id), resolved once at launch.
+    /// [id](test_cabinet_contracts::gg::GgAgentConfig::id), resolved once at launch.
     ///
     /// Keyed rather than carried on the profile because an agent instance is dispatched
     /// with its profile and needs its runtime *shared*, not cloned: a profile running a dozen times
@@ -1954,8 +1954,8 @@ struct Orchestrator {
     /// launch warnings say out loud.
     ///
     /// Shared (`Arc`) so the root and every subagent stream into one globally-ordered
-    /// [journal](test_cabinet_core::gg_session_journal), which the host folds into the run tree's
-    /// [`replay.json.gz`](test_cabinet_core::gg_session_assembly::GG_SESSION_TREE_ARTIFACT) after the
+    /// [journal](test_cabinet_contracts::gg_session_journal), which the host folds into the run tree's
+    /// `replay.json.gz` (the driver's session assembly) after the
     /// container is gone.
     replay: Option<Arc<GgRecorder>>,
 }
@@ -1968,13 +1968,13 @@ impl Orchestrator {
     /// created for an issue before the agent that will work in it exists, and torn down after it
     /// is gone — so the attribution is to whichever agent's decision caused it, falling back to
     /// the [root](ROOT_AGENT_ID), which *is* the run. What actually places these entries in the
-    /// session is their [`seq`](test_cabinet_core::gg_session_record::GgSessionEntry::seq), which is minted
+    /// session is their [`seq`](test_cabinet_contracts::gg_session_record::GgSessionEntry::seq), which is minted
     /// from the same global counter as every other input.
     /// The [shell seam](ShellRunner) an agent rooted at `workspace` runs its commands through: the
     /// run's, wrapped in a [`RecordingShellRunner`](crate::capture::RecordingShellRunner) whenever
     /// the run is capturing, and always in an
     /// [`EmittingShellRunner`](crate::telemetry::EmittingShellRunner) so every command it runs is
-    /// reported as a [`Shell`](test_cabinet_core::gg::GgTelemetryKind::Shell) event on `emitter`'s
+    /// reported as a [`Shell`](test_cabinet_contracts::gg::GgTelemetryKind::Shell) event on `emitter`'s
     /// stream.
     ///
     /// **Per agent, not per run**, because the wrapper measures a command's working directory
@@ -3975,13 +3975,13 @@ async fn drive_agent(
                 .filter(|capability| capability.enabled)
                 .and_then(|capability| capability.implementation.as_deref())
                 .map(str::trim)
-                == Some(test_cabinet_core::gg::COMPACTION_STRATEGY_MEMORY)
+                == Some(test_cabinet_contracts::gg::COMPACTION_STRATEGY_MEMORY)
         {
             let detail = format!(
                 "agent `{}` compacts with the `{}` strategy but was spawned holding its memories \
                  read-only, so it has no call that could satisfy one",
                 agent.profile_id,
-                test_cabinet_core::gg::COMPACTION_STRATEGY_MEMORY,
+                test_cabinet_contracts::gg::COMPACTION_STRATEGY_MEMORY,
             );
             emitter.emit(log(
                 "error",
@@ -8848,7 +8848,7 @@ impl Agent {
     /// The event carries the agent's state **after** the fold — its consecutive-error run and its
     /// running turn count — because both are per-agent facts a run-wide stream cannot re-derive
     /// (turns from concurrently running agents interleave arbitrarily), and because the maximum of
-    /// the first is exactly [`GgErrorSummary::max_consecutive`](test_cabinet_core::gg::GgErrorSummary).
+    /// the first is exactly [`GgErrorSummary::max_consecutive`](test_cabinet_contracts::gg::GgErrorSummary).
     ///
     /// `loop_aborts` is what [loop detection](crate::loopguard) discarded before this turn produced
     /// a reply — how many attempts, and how much generated output went with them. Empty for every
@@ -9160,7 +9160,7 @@ impl Agent {
 ///
 /// Two of the five keep statuses that predate this vocabulary. That is not inconsistency but
 /// compatibility: `exhausted` and `timed_out` are recorded on every historical run and are what the
-/// console, the aggregation facet and `core`'s run-state mapping already read, so re-labelling them
+/// console, the aggregation facet and the driver's run-state mapping already read, so re-labelling them
 /// would rewrite the meaning of runs nobody re-ran. Which ceiling stopped a run is answered by the
 /// [breach](GgLimitBreach), which every one of the five now carries.
 fn status_for_breach(limit: GgLimitKind) -> &'static str {
@@ -9174,7 +9174,7 @@ fn status_for_breach(limit: GgLimitKind) -> &'static str {
 }
 
 /// The operator-facing `warn` line for one [breach](GgLimitBreach), and — through
-/// [`ExitReasons::quoted`](test_cabinet_core::gg_exec) — the figures the run's failure detail is
+/// the driver's `ExitReasons::quoted` (its gg launch) — the figures the run's failure detail is
 /// built from.
 ///
 /// **Figures only.** This is the innermost of four layers that compose the sentence a benchmark
@@ -10197,7 +10197,7 @@ struct DriveSetup {
     /// views between them.
     persistence: PersistenceSetup,
     /// How much of a file one `read_file` returns, or `None` when this agent has no
-    /// [read-file](test_cabinet_core::gg::CAPABILITY_READ_FILE) capability at all and so is offered
+    /// [read-file](test_cabinet_contracts::gg::CAPABILITY_READ_FILE) capability at all and so is offered
     /// no `read_file` to bind a policy to.
     read_policy: Option<ReadPolicy>,
     /// How much of a command's output one `shell` call returns.
@@ -10280,7 +10280,7 @@ struct LimitsSetup {
 }
 
 /// One read of the run's wall-clock deadline, as a
-/// [`Clock`](test_cabinet_core::gg_session_record::GgSessionEntryKind::Clock) entry carries it.
+/// [`Clock`](test_cabinet_contracts::gg_session_record::GgSessionEntryKind::Clock) entry carries it.
 struct ClockRead {
     /// How long the session had been running when the boundary read the clock.
     elapsed_ms: u64,
@@ -10790,7 +10790,7 @@ pub(crate) fn check_invocation(
     }
 }
 
-/// Create gg's own [dotdir](test_cabinet_core::gg::GG_WORKSPACE_DIR) and the
+/// Create gg's own [dotdir](test_cabinet_contracts::gg::GG_WORKSPACE_DIR) and the
 /// [skills library](GG_WORKSPACE_SKILLS_DIR) inside it, before anything reads the workspace.
 ///
 /// Everything under `.gg` is gg's — the capture journal it streams while the session runs, the
@@ -10936,7 +10936,7 @@ fn check_skill_languages(
 /// rather than producing a run whose context accounting is quietly wrong.
 ///
 /// This is the last of three lines of defence — the backend refuses to enqueue such a run and
-/// `core` refuses to launch one — and the one that also covers an invocation written by hand.
+/// the driver refuses to launch one — and the one that also covers an invocation written by hand.
 fn validate_model_windows(
     set: &GgCapabilitySet,
     windows: &BTreeMap<String, u64>,
@@ -11102,7 +11102,7 @@ fn resolve_skills_dir(
 }
 
 /// Build the run's [`MemoriesRuntime`] from the capability set: when the
-/// [`memories`](test_cabinet_core::gg::CAPABILITY_MEMORIES) capability is enabled, an enabled runtime with an empty store
+/// [`memories`](test_cabinet_contracts::gg::CAPABILITY_MEMORIES) capability is enabled, an enabled runtime with an empty store
 /// organized by the [strategy](MemoryStrategy::resolve) its `implementation` names and bounded by
 /// the [limits resolved](crate::memories::MemoryCaps::resolve) from the capability's params; otherwise a
 /// [disabled](MemoriesRuntime::disabled) runtime (a configuration with the capability off) that
@@ -11145,7 +11145,7 @@ fn memories_startup_note(memories: &MemoriesRuntime) -> String {
 }
 
 /// Build the run's [`TasksRuntime`] from the capability set: when the
-/// [`tasks`](test_cabinet_core::gg::CAPABILITY_TASKS) capability is enabled, an enabled runtime with an empty task
+/// [`tasks`](test_cabinet_contracts::gg::CAPABILITY_TASKS) capability is enabled, an enabled runtime with an empty task
 /// DAG holding at most the [count resolved](crate::tasks::resolve_max_tasks) from the capability's params;
 /// otherwise a [disabled](TasksRuntime::disabled) runtime (a configuration with the capability
 /// off) that
@@ -11230,7 +11230,7 @@ async fn resolve_worktrees(
     // Not captured: worktree isolation is resolved *before* the orchestrator exists, so there is
     // no journal open yet to record into. That is the honest boundary rather than an omission —
     // the baseline commit this returns is the one thing here worth a record, and it belongs on the
-    // replay [seed](test_cabinet_core::gg_session_record::GgSessionSeed::baseline_commit) rather than in
+    // replay [seed](test_cabinet_contracts::gg_session_record::GgSessionSeed::baseline_commit) rather than in
     // the input log, since it is fixed identity rather than something the session consumed.
     let baseline = match git::ensure_baseline(&git::GitCapture::disabled(), workspace_dir).await {
         Ok(sha) => sha,
@@ -11404,7 +11404,7 @@ pub(crate) fn grants_call(agent: &GgAgentConfig, tool: &str, operation: Operatio
 /// The ids of the capabilities `profile` has switched **on** — the capability half of what this
 /// agent was granted, in profile order.
 ///
-/// A capability the profile declares and [disables](test_cabinet_core::gg::GgCapabilityConfig::enabled) is absent, exactly
+/// A capability the profile declares and [disables](test_cabinet_contracts::gg::GgCapabilityConfig::enabled) is absent, exactly
 /// as one it never declared: a disabled capability records the configuration it *would* have used so
 /// two capability sets differing only in that switch stay comparable, and it buys nothing.
 fn enabled_capabilities(profile: &GgAgentConfig) -> Vec<String> {
@@ -11481,7 +11481,7 @@ fn check_allowlists(profile: &GgAgentConfig, report: &mut crate::validate::Launc
     }
 }
 
-/// The launch pass over a profile's [opening turn](test_cabinet_core::gg::GgOpeningTurn) — the
+/// The launch pass over a profile's [opening turn](test_cabinet_contracts::gg::GgOpeningTurn) — the
 /// vocabulary half of the rules the [bootstrap](crate::bootstrap) applies, on exactly the terms
 /// [`check_allowlists`] applies them to the two allowlists.
 ///
@@ -11605,14 +11605,14 @@ fn check_opening_turn(profile: &GgAgentConfig, report: &mut crate::validate::Lau
 ///
 /// # Every row is named twice, and the two names are for different readers
 ///
-/// A module carries gg's [id](test_cabinet_core::gg::GgAgentApi::module) for it and this arm's
-/// [spelling](test_cabinet_core::gg::GgAgentApi::path) of it, and each function carries gg's
+/// A module carries gg's [id](test_cabinet_contracts::gg::GgAgentApi::module) for it and this arm's
+/// [spelling](test_cabinet_contracts::gg::GgAgentApi::path) of it, and each function carries gg's
 /// [operation](crate::sandbox::signatures::CatalogueFunction::operation) beside the name the model
 /// writes. That is not redundancy: eleven arms spell one surface eleven ways *by design*, so a
 /// readout keyed on the spelling can be quoted back at the model but cannot be compared across arms,
 /// and one keyed on the operation can be compared but reads as nothing the model ever typed. The
 /// operation is what every call the program makes is
-/// [recorded](test_cabinet_core::gg::GgTelemetryKind::ApiCall) under, so a consumer joins a bound
+/// [recorded](test_cabinet_contracts::gg::GgTelemetryKind::ApiCall) under, so a consumer joins a bound
 /// function to its own count on that and on nothing else — whether or not a tool backs it, and a
 /// function offered and never called reports a real zero. What is reported is exactly the
 /// catalogue's own entries: nothing is appended that the catalogue does not carry.
@@ -12675,8 +12675,8 @@ fn usage_figure(
 /// [per-slot accounting](SlotAccounting) that feeds `slotCosts`, and out as a
 /// [`Usage`](GgTelemetryKind::Usage) delta marked [`total`](GgUsageFigure::Total). The price
 /// therefore lands in the run's
-/// [total cost](test_cabinet_core::gg::GgSessionSummary::cost) and never its
-/// [work cost](test_cabinet_core::gg::GgSessionSummary::work_cost), and summing every delta still
+/// [total cost](test_cabinet_contracts::gg::GgSessionSummary::cost) and never its
+/// [work cost](test_cabinet_contracts::gg::GgSessionSummary::work_cost), and summing every delta still
 /// reproduces the rollup.
 ///
 /// A reply whose lookup never answered — and one whose stream named no generation id at all —
@@ -12785,8 +12785,8 @@ fn record_usage_delta(
 /// reasoning, which is the figure a provider's output cap is measured against).
 ///
 /// Threaded into [`record_turn`](Agent::record_turn) so the turn's outcome event carries it and
-/// [`GgSessionSummary::max_response_chars`](test_cabinet_core::gg::GgSessionSummary) /
-/// [`max_response_output_tokens`](test_cabinet_core::gg::GgSessionSummary) can be folded as maxima
+/// [`GgSessionSummary::max_response_chars`](test_cabinet_contracts::gg::GgSessionSummary) /
+/// [`max_response_output_tokens`](test_cabinet_contracts::gg::GgSessionSummary) can be folded as maxima
 /// over every turn the provider did not cut off at its output cap, whatever gg made of the turn —
 /// the datum the owner reads before choosing an output ceiling, which must accommodate every reply
 /// the model generated whole.

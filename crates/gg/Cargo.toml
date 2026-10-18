@@ -2,12 +2,12 @@
 name = "test-cabinet-gg"
 edition.workspace = true
 # A REAL version, deliberately not `version.workspace = true` (which is `0.0.0`).
-# `gg --version` prints this, `core` reads it out of the run container, and it is
-# recorded as every gg run's `subject.harnessVersion` — the field that says which
+# `gg --version` prints this, the driver reads it out of the run container, and it
+# is recorded as every gg run's `subject.harnessVersion` — the field that says which
 # harness build produced a result. Left at the workspace `0.0.0` it is a constant,
 # and the whole recorded corpus claims to come from one indistinguishable build.
-# Kept in lockstep with `crates/core` (see the note there, and the
-# `the_default_release_version_matches_this_binary` test in `src/lib.test.rs`).
+# It is the version a `v*` tag releases; the release a deployment runs is pinned in
+# the driver, independently of it.
 version = "0.7.0"
 license.workspace = true
 publish.workspace = true
@@ -39,11 +39,11 @@ path = "src/main.rs"
 test = false
 
 [dependencies]
-# gg's data contract (the capability set and the schema-v1 telemetry types) is
-# owned by `core`, so the binary consumes those types from there rather than
-# redefining them. `core` is also where the integration workflow will construct
-# the invocation config that core hands this binary.
-test-cabinet-core = { path = "../core" }
+# gg's data contract (the capability set, the schema-v1 telemetry types, the
+# session record and journal, the metrics) is the contracts crate's, so the binary
+# consumes those types from there rather than redefining them; the driver builds
+# the invocation config this binary reads from the same types.
+test-cabinet-contracts = { workspace = true }
 
 # THE PROGRAM-LANGUAGE ARTIFACT CRATES. Not libraries — every one of them is an empty `lib.rs` — but
 # build steps: each runs one arm's `packages/gg-sandbox*/build.sh` into its own `OUT_DIR` and
@@ -99,9 +99,9 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 cuid2 = { workspace = true }
 # gg's model-facing prose (the system prompt, the pinned context blocks, the compaction
-# instructions) is authored as Handlebars templates under `templates/` and embedded at compile
-# time; see `src/prompts.rs`. Same engine, and the same strict-mode/no-escape configuration,
-# `core` renders a test case's `prompt.hbs` with, so there is one templating idiom in the
+# instructions) is authored as Handlebars templates under `templates/` (the two system prompts
+# under the contracts crate's `templates/gg/`) and embedded at compile time; see `src/prompts.rs`. Same engine, and the same strict-mode/no-escape configuration,
+# the suites crate renders a test case's `prompt.hbs` with, so there is one templating idiom in the
 # workspace.
 handlebars = { workspace = true }
 thiserror = { workspace = true }
@@ -113,11 +113,11 @@ tokio = { workspace = true }
 # Argument parsing: gg takes a single `--config <path>` flag (see the module
 # rustdoc in `src/main.rs`).
 clap = { workspace = true }
-# RFC 3339 timestamps for the telemetry stream, matching how `core` stamps its
+# RFC 3339 timestamps for the telemetry stream, matching how the driver stamps its
 # own event/record times (`OffsetDateTime::now_utc().format(&Rfc3339)`).
 time = { workspace = true }
 # The HTTP client the model client (`src/client.rs`) reaches OpenRouter with — the
-# workspace's rustls-backed `reqwest` (no system OpenSSL); see `crates/core`.
+# workspace's rustls-backed `reqwest` (no system OpenSSL); see `crates/driver`.
 reqwest = { workspace = true }
 # Draining `reqwest`'s `bytes_stream()` in the streaming model transport
 # (`src/client.rs`): `futures-util` supplies the `StreamExt::next` the chunk loop

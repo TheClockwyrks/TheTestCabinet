@@ -14,7 +14,7 @@
 
 use std::time::Duration;
 
-use test_cabinet_core::gg::GgUndocumentedCalls;
+use test_cabinet_contracts::gg::GgUndocumentedCalls;
 
 use super::invoker::{SandboxRefusal, SandboxToolCall, SandboxViewOpened};
 use super::language::{PrepareError, PrepareFailure};
@@ -64,7 +64,7 @@ pub struct SandboxOutcome {
     /// Everything the program wrote with `console.*`, in order, subject to the capture caps.
     ///
     /// These go to the **operator**: the loop puts them on the turn's own
-    /// [`CodeExecution`](test_cabinet_core::gg::GgTelemetryKind::CodeExecution) event, which is what
+    /// [`CodeExecution`](test_cabinet_contracts::gg::GgTelemetryKind::CodeExecution) event, which is what
     /// carries them onto the run's stream, into the run record and into any analysis over it. The
     /// tail of them is also the spawner's one-line report. They are deliberately *not* shown to the
     /// model **in any form** — not the lines, and not a count of them. Their channel into their own
@@ -125,7 +125,7 @@ pub struct SandboxOutcome {
     pub revoked_completion: Option<Ending>,
     /// The program this one handed gg to run in its place with
     /// [`programs.rerun`](crate::programs), when the
-    /// [library](test_cabinet_core::gg::CAPABILITY_PROGRAM_LIBRARY) is bound and the program used
+    /// [library](test_cabinet_contracts::gg::CAPABILITY_PROGRAM_LIBRARY) is bound and the program used
     /// it.
     ///
     /// It rides in the group populated on every path for the reason
@@ -332,10 +332,10 @@ impl ProgramErrorKind {
     /// what to say, and a class that decided the wording would be a second, quieter answer to a
     /// question the message already answers.
     ///
-    /// What the class does **not** carry is *which* [failure class](test_cabinet_core::gg::GgCallFailure)
+    /// What the class does **not** carry is *which* [failure class](test_cabinet_contracts::gg::GgCallFailure)
     /// the failed call had: the guest renders that into the message's prose, and recovering it here
     /// would mean matching on prose, which this codebase does not do. The class is on the call's own
-    /// [`ApiResult`](test_cabinet_core::gg::GgTelemetryKind::ApiResult) instead, where it was raised.
+    /// [`ApiResult`](test_cabinet_contracts::gg::GgTelemetryKind::ApiResult) instead, where it was raised.
     pub fn turn_error_type(self) -> TurnErrorType {
         match self {
             Self::ToolFailure => TurnErrorType::ProgramApiError,

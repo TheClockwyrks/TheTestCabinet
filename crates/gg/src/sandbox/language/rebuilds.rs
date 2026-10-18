@@ -28,7 +28,7 @@
 //! Each arm calls [`gate`] from beside the compiler it measures, the way every other real-toolchain
 //! cell in this crate is arranged.
 
-use test_cabinet_core::gg::GgProgramLanguage;
+use test_cabinet_contracts::gg::GgProgramLanguage;
 
 use super::{PrepareFailure, compile::AgentWorkspace};
 

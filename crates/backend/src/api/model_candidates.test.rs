@@ -1,7 +1,7 @@
 use super::*;
 
-use test_cabinet_core::gg::GgProviderStat;
-use test_cabinet_core::run_record::HarnessFamily;
+use test_cabinet_contracts::gg::GgProviderStat;
+use test_cabinet_contracts::run_record::HarnessFamily;
 use test_cabinet_entities::model;
 
 /// An endpoint at `quantization`, priced per token, supporting tools and reasoning, with a

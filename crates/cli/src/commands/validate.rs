@@ -4,9 +4,11 @@ use std::collections::BTreeMap;
 use std::process::ExitCode;
 
 use anyhow::Context;
-use test_cabinet_core::test_suite::{RequirementOutcome, RequirementStatus, SuiteRequirementKind};
-use test_cabinet_core::validation::Inconclusive;
-use test_cabinet_core::{
+use test_cabinet_driver::test_suite::{
+    RequirementOutcome, RequirementStatus, SuiteRequirementKind,
+};
+use test_cabinet_driver::validation::Inconclusive;
+use test_cabinet_driver::{
     AdversarialOutcome, AdversarialTeam, ArtifactCollection, BrowserRenderer, DebugScriptResult,
     DispatchValidator, ReferenceRenderer, StepResult, TestType, ValidationSummary, Validator,
 };
@@ -15,11 +17,11 @@ use crate::catalog;
 use crate::cli::ValidateArgs;
 use crate::commands::engines;
 
-/// Run the core validation pass (load check plus any declared checks) over an
+/// Run the engine's validation pass (load check plus any declared checks) over an
 /// already-produced implementation, summarizing the result and reporting whether
 /// everything the case declared actually held.
 ///
-/// The core's [`Validator`] owns the work; this command owns the *verdict*. An
+/// The engine's [`Validator`] owns the work; this command owns the *verdict*. An
 /// operator points `tcab validate` at a tree — most often a case's own reference
 /// implementation while authoring validators — and wants one question answered: did
 /// this tree satisfy everything the case declares? So the process status carries the
@@ -251,24 +253,24 @@ pub async fn execute(args: ValidateArgs) -> anyhow::Result<ExitCode> {
 ///   and render, which is the clearest negative signal validation produces.
 /// - A required build step failed or was never reached, for a `test_type` whose
 ///   validation runs them at all. Only the [build
-///   validator](test_cabinet_core::DispatchValidator) reports the install/build pair;
+///   validator](test_cabinet_driver::DispatchValidator) reports the install/build pair;
 ///   an adversarial or asset-generation case compiles or regenerates through its own
 ///   path and records both steps as `None`, so demanding them there would fail every
 ///   such pass.
 /// - A declared check that could not be reached. The similarity a reached check
 ///   records is deliberately not a criterion: a
-///   [`Check`](test_cabinet_core::test_case::Check) declares no threshold to compare it
+///   [`Check`](test_cabinet_driver::test_case::Check) declares no threshold to compare it
 ///   against, so any cutoff here would be one this command invented.
 /// - A declared proof-of-implementation artifact that is missing. A missing proof
 ///   never changes a *run's* recorded status, but this command answers a different
 ///   question — whether the tree in hand carries everything the case asked for — and a
 ///   proof the case declared and the tree does not have is exactly that gap.
 /// - Any verdict a gating debug script decided against the build. This mirrors
-///   [`automated_verdicts`](test_cabinet_core::comparison::automated_verdicts), the
+///   the backend's `comparison::automated_verdicts`, the
 ///   scoring rule the run itself is graded by.
 /// - A gating debug script that did not run, whatever the reason. Here the exit code
 ///   deliberately parts from the score. Scoring skips a script recorded
-///   [inconclusive](test_cabinet_core::DebugScriptResult::precondition_unmet) because
+///   [inconclusive](test_cabinet_driver::DebugScriptResult::precondition_unmet) because
 ///   it said nothing about the build, and a run must not lose points to a busy host
 ///   or a missing validator project. This command is not scoring a build: it is
 ///   answering whether the tree in hand satisfied everything the case declares, and a
@@ -279,7 +281,7 @@ pub async fn execute(args: ValidateArgs) -> anyhow::Result<ExitCode> {
 ///   a contract failure is listed by verdict id, and an inconclusive unit is grouped
 ///   with the others of its [kind](Inconclusive) and reason (see
 ///   [`inconclusive_fault`]). Only a script whose backing point an erratum excluded
-///   from scoring ([`gates`](test_cabinet_core::DebugScriptResult::gates) is false)
+///   from scoring ([`gates`](test_cabinet_driver::DebugScriptResult::gates) is false)
 ///   costs nothing, inconclusive or not.
 /// - An adversarial match the submission forfeited. A forfeit is the submission
 ///   failing to present a playable controller — it did not build, exported no contract
@@ -546,10 +548,10 @@ fn print_step(label: &str, step: Option<&StepResult>) {
 /// Resolve the case `tcab validate` names, authored or suite-defined, through
 /// `resolver`.
 fn resolve_case(
-    resolver: &test_cabinet_core::TestCaseResolver,
+    resolver: &test_cabinet_driver::TestCaseResolver,
     test_case: &str,
     version: &str,
-) -> anyhow::Result<test_cabinet_core::test_case::TestCaseVersion> {
+) -> anyhow::Result<test_cabinet_driver::test_case::TestCaseVersion> {
     resolver
         .resolve(test_case, version)
         .with_context(|| format!("resolving {test_case}@{version}"))

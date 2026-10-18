@@ -6,7 +6,7 @@
 use std::sync::Arc;
 
 use serde_json::json;
-use test_cabinet_core::gg::{
+use test_cabinet_contracts::gg::{
     CAPABILITY_COMPACTION, CAPABILITY_MEMORIES, COMPACTION_STRATEGY_MEMORY,
     COMPACTION_STRATEGY_SELF_SUMMARIZATION, GgCapabilityConfig, GgCapabilitySet,
     PARAM_SUMMARY_HEADROOM,
@@ -452,8 +452,9 @@ fn scratchpad_calls(code_mode: bool) -> MemoryCalls {
 
 /// The language a code-mode assertion below is rendered against, and `None` for a tool-calling one.
 fn code_language(code_mode: bool) -> Option<&'static dyn crate::sandbox::ProgramLanguage> {
-    code_mode
-        .then(|| crate::sandbox::language(test_cabinet_core::gg::GgProgramLanguage::TypeScript))
+    code_mode.then(|| {
+        crate::sandbox::language(test_cabinet_contracts::gg::GgProgramLanguage::TypeScript)
+    })
 }
 
 /// Each instruction names the call the model must actually make, in the vocabulary of the execution

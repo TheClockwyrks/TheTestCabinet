@@ -11,10 +11,9 @@
 use std::path::PathBuf;
 
 use anyhow::{Context, bail};
-use test_cabinet_core::backend_client::LiveItem;
-use test_cabinet_core::{
-    BackendClient, HarnessSlug, HttpBackendClient, JobState, JobStatusOut, LaunchBody, NONE_SLUG,
-    PublishedRun, RunRecord, runtime_hours_to_seconds,
+use test_cabinet_backend_client::{BackendClient, HttpBackendClient, LiveItem, PublishedRun};
+use test_cabinet_driver::{
+    HarnessSlug, JobState, JobStatusOut, LaunchBody, NONE_SLUG, RunRecord, runtime_hours_to_seconds,
 };
 
 use crate::cli::RunArgs;
@@ -46,7 +45,7 @@ pub async fn execute(args: RunArgs) -> anyhow::Result<()> {
     // The engine is omitted at its default for the same reason: `none` is what the
     // backend assumes when the field is absent, so an engineless launch says
     // nothing about an engine at all. The slug is not checked here —
-    // the core gates it (it must resolve, and the case must declare support) before
+    // the run engine gates it (it must resolve, and the case must declare support) before
     // the driver spends a container on it, and doing it twice would mean two
     // catalogues to keep in step.
     let engine = (args.engine != NONE_SLUG).then(|| args.engine.clone());
@@ -236,7 +235,7 @@ fn write_record(dir: &PathBuf, run: &PublishedRun) -> anyhow::Result<()> {
 
 /// Print the outcome of a required build step (install or build), or that it was
 /// never reached. The label is padded so the value lines up with the rows above.
-fn print_step(label: &str, step: Option<&test_cabinet_core::StepResult>) {
+fn print_step(label: &str, step: Option<&test_cabinet_driver::StepResult>) {
     let value = match step {
         Some(step) if step.succeeded => "ok".to_string(),
         Some(step) => format!("failed ({})", step.detail.as_deref().unwrap_or("failed")),
@@ -246,7 +245,7 @@ fn print_step(label: &str, step: Option<&test_cabinet_core::StepResult>) {
 }
 
 /// Print the per-check validation results, if the test case declared any.
-fn print_checks(validation: &test_cabinet_core::ValidationSummary) {
+fn print_checks(validation: &test_cabinet_driver::ValidationSummary) {
     if validation.checks.is_empty() {
         return;
     }
@@ -262,8 +261,8 @@ fn print_checks(validation: &test_cabinet_core::ValidationSummary) {
 }
 
 /// A short label for a run's terminal state.
-fn status_label(state: &test_cabinet_core::RunState) -> &'static str {
-    use test_cabinet_core::RunState::{
+fn status_label(state: &test_cabinet_driver::RunState) -> &'static str {
+    use test_cabinet_driver::RunState::{
         Canceled, Catastrophic, Completed, HarnessError, Hung, Infrastructure, LimitExceeded,
         TimedOut,
     };

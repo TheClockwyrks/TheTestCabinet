@@ -1,7 +1,7 @@
 use super::*;
 
-use test_cabinet_core::gg::GgErrorSummary;
-use test_cabinet_core::metrics::{Cost, TokenCounts};
+use test_cabinet_contracts::gg::GgErrorSummary;
+use test_cabinet_contracts::metrics::{Cost, TokenCounts};
 
 /// A new-format run: per-`(provider, model)` slices recorded.
 fn sliced_run(id: &str, model: &str, slices: Vec<GgProviderStat>) -> Arc<GgRunFacts> {

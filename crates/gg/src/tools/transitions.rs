@@ -24,17 +24,17 @@
 //! absent one.
 //!
 //! `exec` and `fork` each come from their own capability
-//! ([`exec`](test_cabinet_core::gg::CAPABILITY_EXEC) and
-//! [`fork`](test_cabinet_core::gg::CAPABILITY_FORK)) on the
+//! ([`exec`](test_cabinet_contracts::gg::CAPABILITY_EXEC) and
+//! [`fork`](test_cabinet_contracts::gg::CAPABILITY_FORK)) on the
 //! agent's own profile. `exec` additionally needs a non-empty
-//! [roster](test_cabinet_core::gg::GgAgentConfig::subagents) (there has to be something to become)
+//! [roster](test_cabinet_contracts::gg::GgAgentConfig::subagents) (there has to be something to become)
 //! and is withheld from an agent standing in a machine state, where the machine decides where the
 //! run goes next. `fork` additionally needs the delegation machinery, because a copy nobody can
 //! wait on or message is a leak rather than a feature.
 
 use async_trait::async_trait;
 use serde_json::{Value, json};
-use test_cabinet_core::gg::GgRosterEntry;
+use test_cabinet_contracts::gg::GgRosterEntry;
 
 use super::{Tool, ToolContext, ToolOutcome, handled_by_loop};
 use crate::fsm::FsmPosition;

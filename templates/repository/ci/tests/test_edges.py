@@ -28,14 +28,49 @@ def test_every_repository_the_design_names_is_in_the_table() -> None:
     assert set(edges.REPOSITORIES) == {
         "contracts",
         "engines",
+        "ui-common",
+        "tool-model-core",
+        "tool-sprite",
+        "tool-paint",
+        "tool-voxel",
+        "tool-mc",
+        "tool-sn",
+        "tool-dc",
+        "tool-particle",
+        "tool-audio-core",
+        "tool-sfx-synth",
+        "tool-sfx-sample",
+        "tool-music",
+        "microservice-backend",
+        "microservice-dispatcher",
+        "microservice-driver",
+        "microservice-artifacts",
+        "microservice-repos",
+        "microservice-publisher",
+        "microservice-arena",
         "gg",
-        "platform",
-        "web",
         "the-spec-cabinet",
+        "testcabinet.ai",
+        "console.testcabinet.ai",
         "gg.rocks",
+        "client-tauri",
         "test-suites",
     }
-    assert set(edges.KINDS) == {"library", "application", "site", "content"}
+    assert set(edges.KINDS) == {"library", "tool", "application", "shell", "site", "content"}
+
+
+def test_every_tool_image_is_a_tool() -> None:
+    assert all(edges.REPOSITORIES[tool] == "tool" for tool in edges.TOOL_IMAGES)
+    assert {"tool-model-core", "tool-audio-core"}.isdisjoint(edges.TOOL_IMAGES)
+
+
+def test_the_backend_api_package_comes_from_the_hub() -> None:
+    """The console takes the backend's API package from contracts, so no application depends on another."""
+    assert edges.PACKAGES["@clockwyrks/backend-api"] == "contracts"
+    applications = {repo for repo, kind in edges.REPOSITORIES.items() if kind in ("application", "site", "shell")}
+    assert not [
+        (repo, one.target) for repo, row in edges.BUILD_EDGES.items() for one in row if one.target in applications
+    ]
 
 
 @pytest.mark.parametrize(
@@ -43,19 +78,32 @@ def test_every_repository_the_design_names_is_in_the_table() -> None:
     [
         ("contracts", "engines", False),
         ("engines", "contracts", True),
-        ("engines", "platform", False),
+        ("engines", "microservice-driver", False),
         ("gg", "contracts", True),
-        ("gg", "platform", False),
-        ("platform", "contracts", True),
-        ("platform", "engines", True),
-        ("platform", "gg", False),
-        ("platform", "web", False),
-        ("web", "platform", False),
-        ("the-spec-cabinet", "platform", False),
+        ("gg", "microservice-driver", False),
+        ("microservice-driver", "contracts", True),
+        ("microservice-driver", "engines", True),
+        ("microservice-driver", "tool-sprite", True),
+        ("microservice-driver", "tool-voxel", True),
+        ("microservice-driver", "tool-model-core", True),
+        ("microservice-driver", "tool-audio-core", True),
+        ("microservice-driver", "tool-mc", False),
+        ("microservice-driver", "gg", False),
+        ("microservice-driver", "microservice-artifacts", False),
+        ("microservice-backend", "engines", True),
+        ("microservice-backend", "microservice-artifacts", False),
+        ("microservice-dispatcher", "engines", False),
+        ("microservice-arena", "engines", True),
+        ("tool-mc", "tool-model-core", True),
+        ("tool-sprite", "tool-model-core", False),
+        ("tool-music", "tool-audio-core", True),
+        ("console.testcabinet.ai", "microservice-backend", False),
+        ("the-spec-cabinet", "microservice-driver", False),
         ("the-spec-cabinet", "gg", False),
-        ("the-spec-cabinet", "web", False),
+        ("the-spec-cabinet", "ui-common", False),
         ("test-suites", "engines", False),
         ("gg.rocks", "contracts", False),
+        ("client-tauri", "console.testcabinet.ai", False),
     ],
 )
 def test_crates_follow_the_edges_the_design_draws(repo: str, target: str, expected: bool) -> None:
@@ -70,8 +118,16 @@ def test_no_repository_depends_on_gg_at_build_time() -> None:
 def test_the_closure_is_what_a_build_may_fetch() -> None:
     assert edges.closure("contracts") == []
     assert edges.closure("engines") == ["contracts"]
-    assert edges.closure("platform") == ["contracts", "engines"]
-    assert edges.closure("web") == ["contracts", "engines"]
+    assert edges.closure("microservice-arena") == ["contracts", "engines"]
+    assert edges.closure("microservice-driver") == [
+        "contracts",
+        "engines",
+        "tool-audio-core",
+        "tool-model-core",
+        "tool-sprite",
+        "tool-voxel",
+    ]
+    assert edges.closure("console.testcabinet.ai") == []
     assert edges.closure("test-suites") == []
 
 
@@ -82,7 +138,7 @@ def test_the_closure_is_what_a_build_may_fetch() -> None:
         ("https://github.com/TheClockwyrks/contracts.git", "contracts"),
         ("https://github.com/TheClockwyrks/TheTestCabinet", "the-test-cabinet"),
         ("https://dev.azure.com/genyume/the-test-cabinet/_git/engines", "engines"),
-        ("git@ssh.dev.azure.com:v3/genyume/the-test-cabinet/platform", "platform"),
+        ("git@ssh.dev.azure.com:v3/genyume/the-test-cabinet/microservice-driver", "microservice-driver"),
         ("https://github.com/rust-lang/regex", None),
         ("https://github.com/TheClockwyrks/SomeOtherProject", "SomeOtherProject"),
     ],
@@ -106,11 +162,11 @@ def test_a_git_source_off_the_edges_is_refused(tmp_path: Path) -> None:
         tmp_path,
         "crates/x/Cargo.toml",
         '[package]\nname = "x"\n[dependencies]\n'
-        'test-cabinet-core = { git = "https://github.com/TheClockwyrks/platform" }\n',
+        'test-cabinet-driver = { git = "https://github.com/TheClockwyrks/microservice-driver" }\n',
     )
     assert edges.violations(tmp_path, "the-spec-cabinet") == [
         (
-            "crates/x/Cargo.toml: [dependencies] test-cabinet-core comes from platform,"
+            "crates/x/Cargo.toml: [dependencies] test-cabinet-driver comes from microservice-driver,"
             " whose crates the-spec-cabinet may not name"
         )
     ]
@@ -123,8 +179,8 @@ def test_a_renamed_dependency_is_judged_by_its_source(tmp_path: Path) -> None:
         "[package]\nname = \"x\"\n[target.'cfg(unix)'.dev-dependencies]\n"
         'gg = { package = "test-cabinet-gg", git = "https://github.com/TheClockwyrks/gg" }\n',
     )
-    assert edges.violations(tmp_path, "platform") == [
-        "Cargo.toml: [dev-dependencies] test-cabinet-gg comes from gg, whose crates platform may not name"
+    assert edges.violations(tmp_path, "microservice-driver") == [
+        "Cargo.toml: [dev-dependencies] test-cabinet-gg comes from gg, whose crates microservice-driver may not name"
     ]
 
 
@@ -134,7 +190,7 @@ def test_a_crate_of_an_unknown_project_mirror_is_refused(tmp_path: Path) -> None
         "Cargo.toml",
         '[package]\nname = "x"\n[dependencies]\nv = { git = "https://github.com/TheClockwyrks/elsewhere" }\n',
     )
-    assert edges.violations(tmp_path, "platform") == [
+    assert edges.violations(tmp_path, "microservice-driver") == [
         (
             "Cargo.toml: [dependencies] v comes from https://github.com/TheClockwyrks/elsewhere,"
             " which is no repository of the project"
@@ -143,14 +199,14 @@ def test_a_crate_of_an_unknown_project_mirror_is_refused(tmp_path: Path) -> None
 
 
 def test_a_path_dependency_leaving_the_repository_is_refused(tmp_path: Path) -> None:
-    repo = tmp_path / "web"
+    repo = tmp_path / "microservice-backend"
     _write(
         repo,
         "crates/a/Cargo.toml",
-        '[package]\nname = "a"\n[dependencies]\nb = { path = "../b" }\nc = { path = "../../../platform/crates/c" }\n',
+        '[package]\nname = "a"\n[dependencies]\nb = { path = "../b" }\nc = { path = "../../../contracts/crates/c" }\n',
     )
     _write(repo, "crates/b/Cargo.toml", '[package]\nname = "b"\n')
-    assert edges.violations(repo, "web") == [
+    assert edges.violations(repo, "microservice-backend") == [
         "crates/a/Cargo.toml: [dependencies] c is a path dependency outside the repository"
     ]
 
@@ -160,14 +216,19 @@ def test_registry_crates_and_own_sources_pass(tmp_path: Path) -> None:
         tmp_path,
         "Cargo.toml",
         '[package]\nname = "x"\n[dependencies]\nserde = "1"\n'
-        'own = { git = "https://github.com/TheClockwyrks/platform" }\n',
+        'own = { git = "https://github.com/TheClockwyrks/microservice-driver" }\n',
     )
-    assert edges.violations(tmp_path, "platform") == []
+    assert edges.violations(tmp_path, "microservice-driver") == []
 
 
 def test_a_package_on_a_permitted_edge_passes(tmp_path: Path) -> None:
-    _package(tmp_path, "package.json", "root", dependencies={"@clockwyrks/run-record": "0.1.0", "react": "19.0.0"})
-    assert edges.violations(tmp_path, "web") == []
+    _package(
+        tmp_path,
+        "package.json",
+        "root",
+        dependencies={"@clockwyrks/run-record": "0.1.0", "@clockwyrks/backend-api": "0.1.0", "react": "19.0.0"},
+    )
+    assert edges.violations(tmp_path, "console.testcabinet.ai") == []
 
 
 def test_a_narrowed_edge_admits_its_package_alone(tmp_path: Path) -> None:
@@ -175,12 +236,22 @@ def test_a_narrowed_edge_admits_its_package_alone(tmp_path: Path) -> None:
         tmp_path,
         "packages/a/package.json",
         "@clockwyrks/a",
-        dependencies={"@clockwyrks/backend-api": "0.1.0", "@clockwyrks/browser-driver": "0.1.0"},
+        dependencies={"@clockwyrks/asset-contract": "0.1.0", "@clockwyrks/backend-api": "0.1.0"},
     )
-    assert edges.violations(tmp_path, "web") == [
+    assert edges.violations(tmp_path, "engines") == [
         (
-            "packages/a/package.json: [dependencies] @clockwyrks/browser-driver comes from platform,"
-            " which web may not depend on"
+            "packages/a/package.json: [dependencies] @clockwyrks/backend-api comes from contracts,"
+            " which engines may not depend on"
+        )
+    ]
+
+
+def test_an_application_package_is_refused_to_a_site(tmp_path: Path) -> None:
+    _package(tmp_path, "package.json", "root", dependencies={"@clockwyrks/gg-sandbox": "0.1.0"})
+    assert edges.violations(tmp_path, "console.testcabinet.ai") == [
+        (
+            "package.json: [dependencies] @clockwyrks/gg-sandbox comes from gg,"
+            " which console.testcabinet.ai may not depend on"
         )
     ]
 
@@ -203,7 +274,7 @@ def test_engines_never_takes_run_record(tmp_path: Path) -> None:
 
 def test_an_unknown_project_package_is_refused(tmp_path: Path) -> None:
     _package(tmp_path, "package.json", "root", peerDependencies={"@clockwyrks/nowhere": "1.0.0"})
-    assert edges.violations(tmp_path, "platform") == [
+    assert edges.violations(tmp_path, "microservice-driver") == [
         "package.json: [peerDependencies] @clockwyrks/nowhere is produced by no repository of the project"
     ]
 
@@ -215,12 +286,12 @@ def test_a_workspace_member_is_its_own_package(tmp_path: Path) -> None:
 
 
 def test_a_file_dependency_leaving_the_repository_is_refused(tmp_path: Path) -> None:
-    repo = tmp_path / "web"
+    repo = tmp_path / "ui-common"
     _package(
-        repo, "package.json", "root", dependencies={"@clockwyrks/ui": "file:packages/ui", "x": "file:../platform/x"}
+        repo, "package.json", "root", dependencies={"@clockwyrks/ui": "file:packages/ui", "x": "file:../contracts/x"}
     )
     _package(repo, "packages/ui/package.json", "@clockwyrks/ui")
-    assert edges.violations(repo, "web") == [
+    assert edges.violations(repo, "ui-common") == [
         "package.json: [dependencies] x is a path dependency outside the repository"
     ]
 
@@ -238,7 +309,6 @@ def test_an_unknown_repository_is_refused() -> None:
 
 def test_describe_names_each_edge() -> None:
     assert edges.describe("contracts") == "no other repository of the project"
-    assert edges.describe("web") == (
-        "contracts (crates and packages); engines (crates and packages); platform (@clockwyrks/backend-api)"
-    )
+    assert edges.describe("console.testcabinet.ai") == "contracts (packages); engines (packages); ui-common (packages)"
+    assert edges.describe("tool-voxel") == "contracts (crates and packages); tool-model-core (crates and packages)"
     assert edges.describe("engines") == "contracts (crates and @clockwyrks/asset-contract)"

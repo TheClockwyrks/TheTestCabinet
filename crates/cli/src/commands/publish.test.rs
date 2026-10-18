@@ -1,10 +1,10 @@
 use std::path::Path;
 
-use test_cabinet_core::{AestheticRating, VerdictStatus, parse_writeup};
+use test_cabinet_driver::{AestheticRating, VerdictStatus, parse_writeup};
 
 use super::{PublishPlan, WriteupLoadError, describe_ratings, load_writeup_at, plan_lines};
 
-fn writeup(text: &str) -> test_cabinet_core::Writeup {
+fn writeup(text: &str) -> test_cabinet_driver::Writeup {
     parse_writeup(text).expect("fixture writeup parses")
 }
 

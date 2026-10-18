@@ -10,7 +10,7 @@
 //!
 //! A **gg** run is [wound down](CancelDisposition::WindDown). gg checks an in-container
 //! sentinel at every turn boundary, so raising the run's
-//! [latch](test_cabinet_core::RunCancellation) is a request the session will actually
+//! [latch](crate::RunCancellation) is a request the session will actually
 //! act on: it stops at its next clean boundary, and the run then finishes through its
 //! ordinary post-session path — collecting the produced tree, folding the accumulated
 //! usage into metrics, writing the record. That record is the whole reason to wait: it
@@ -35,7 +35,7 @@
 //! image pull, the sandbox start or the seeding — is refused at the next seam rather than
 //! wound down: the driver declines to advance the job to `running`, and the engine
 //! declines to start a sandbox or launch a session against a raised latch
-//! ([`Error::CanceledBeforeSession`](test_cabinet_core::Error::CanceledBeforeSession)).
+//! ([`Error::CanceledBeforeSession`](crate::Error::CanceledBeforeSession)).
 //! The driver's `main` then treats the run as destroyed: nothing is recorded, no status
 //! is posted, the sandbox is torn down. The latch is raised all the same, because that is
 //! what the seams read; what differs from [`DestroyNow`](CancelDisposition::DestroyNow) is
@@ -83,7 +83,7 @@ mod tests;
 use std::future::Future;
 use std::time::Duration;
 
-use test_cabinet_core::{RunCancellation, RunRequest};
+use crate::{RunCancellation, RunRequest};
 
 /// What an observed cancellation means for the run in flight.
 ///

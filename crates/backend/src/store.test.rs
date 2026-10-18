@@ -1,6 +1,5 @@
 use super::*;
 use tempfile::TempDir;
-use test_cabinet_core::engine::EngineCatalogExt as _;
 
 /// Open a store rooted in a fresh temp directory.
 fn temp_store() -> (TempDir, DefinitionStore) {
@@ -35,9 +34,9 @@ fn sample_manifest(slug: &str, version: &str) -> StoredManifest {
         description: None,
         changelog: "Introduced.".to_string(),
         max_runtime_seconds: 1800,
-        test_type: test_cabinet_core::TestType::EndToEnd,
-        engines: vec![test_cabinet_core::EngineSupport::unbounded(
-            test_cabinet_core::engine::NONE_SLUG,
+        test_type: test_cabinet_suites::test_case::TestType::EndToEnd,
+        engines: vec![test_cabinet_suites::test_case::EngineSupport::unbounded(
+            test_cabinet_suites::engine::NONE_SLUG,
         )],
         experimental: false,
         build: Some(StoredBuild {
@@ -54,8 +53,8 @@ fn sample_manifest(slug: &str, version: &str) -> StoredManifest {
         simulation: None,
         r#match: None,
         replay: None,
-        asset_kind: test_cabinet_core::AssetKind::Sprite,
-        asset_dimension: test_cabinet_core::AssetDimension::TwoD,
+        asset_kind: test_cabinet_suites::test_case::AssetKind::Sprite,
+        asset_dimension: test_cabinet_suites::test_case::AssetDimension::TwoD,
         sheet: None,
         voxel: None,
         model: None,
@@ -111,7 +110,7 @@ fn sample_manifest(slug: &str, version: &str) -> StoredManifest {
         }],
         common_references: vec![StoredReference {
             view: "gameplay".to_string(),
-            kind: test_cabinet_core::ReferenceKind::Rendered,
+            kind: test_cabinet_suites::test_case::ReferenceKind::Rendered,
             extension: "png".to_string(),
         }],
         common_proofs: vec![],
@@ -139,7 +138,7 @@ fn sample_manifest(slug: &str, version: &str) -> StoredManifest {
                 outputs: vec![StoredReviewOutput {
                     id: "spin".to_string(),
                     name: "Spin".to_string(),
-                    kind: test_cabinet_core::MediaKind::Image,
+                    kind: test_cabinet_suites::test_case::MediaKind::Image,
                 }],
             }),
         }],
@@ -156,7 +155,7 @@ fn sample_manifest(slug: &str, version: &str) -> StoredManifest {
             id: "cue-clips-rail".to_string(),
             title: "Cue ball clips the rail".to_string(),
             date: Some("2026-07-17".to_string()),
-            severity: test_cabinet_core::test_case::ErratumSeverity::Major,
+            severity: test_cabinet_suites::test_case::ErratumSeverity::Major,
             affects_scoring: true,
             exclude_from_score: false,
             body: "Known tunnelling at high speed.".to_string(),
@@ -381,8 +380,8 @@ fn a_template_spec_renders_for_the_selected_engine() {
         template: true,
         kind: Default::default(),
     };
-    let simple_2d = test_cabinet_core::EngineCatalog::with_package_store("/nonexistent")
-        .resolve(&test_cabinet_core::engine::EngineSelection::new(
+    let simple_2d = test_cabinet_engines::built_in_catalog_in("/nonexistent")
+        .resolve(&test_cabinet_suites::engine::EngineSelection::new(
             "simple-2d",
         ))
         .unwrap();
@@ -433,7 +432,7 @@ fn validation_baseline_reads_committed_case_scoped_media() {
     // back.
     let baseline_dir = store
         .version_dir("pong", "v1.0.0")
-        .join(test_cabinet_core::VALIDATION_BASELINE_DIR)
+        .join(test_cabinet_contracts::layout::VALIDATION_BASELINE_DIR)
         .join("simple-2d")
         .join("base");
     std::fs::create_dir_all(&baseline_dir).unwrap();
@@ -499,7 +498,7 @@ fn case_showcase_serves_only_manifest_listed_media() {
         media: vec![StoredShowcaseMedia {
             file: "title.png".to_string(),
             name: "The title screen".to_string(),
-            kind: test_cabinet_core::MediaKind::Image,
+            kind: test_cabinet_suites::test_case::MediaKind::Image,
             key: "showcase/base/title.png".to_string(),
         }],
     });
@@ -578,7 +577,7 @@ fn validation_files_lists_the_whole_script_directory_recursively() {
     // any shared modules they import, which may be flat siblings or nested.
     let validation_dir = store
         .version_dir("pong", "v1.0.0")
-        .join(test_cabinet_core::VALIDATION_SCRIPT_DIR);
+        .join(test_cabinet_contracts::layout::VALIDATION_SCRIPT_DIR);
     std::fs::create_dir_all(validation_dir.join("lib")).unwrap();
     std::fs::write(validation_dir.join("ball-spin.mjs"), b"driver").unwrap();
     std::fs::write(validation_dir.join("_helpers.mjs"), b"shared").unwrap();
@@ -1045,7 +1044,7 @@ fn the_code_analysis_slot_is_the_generic_artifact_slot_named_code_analysis() {
     );
     // The route segment is the same string, and it is the stem of the run tree's file.
     assert_eq!(
-        test_cabinet_core::CODE_ANALYSIS_TREE_ARTIFACT,
+        test_cabinet_contracts::code_analysis::CODE_ANALYSIS_TREE_ARTIFACT,
         format!("{CODE_ANALYSIS_ARTIFACT}.json.gz"),
     );
 }

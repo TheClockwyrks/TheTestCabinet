@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
 
-use test_cabinet_core::match_play::TournamentRecord;
+use test_cabinet_contracts::match_play::TournamentRecord;
 
 use crate::db::StoredTournament;
 use crate::error::ApiError;

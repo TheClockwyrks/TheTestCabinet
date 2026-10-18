@@ -38,7 +38,7 @@ pub mod user {
         #[sea_orm(nullable)]
         pub picture_content_type: Option<String>,
         /// RFC 3339 of when the picture was last set, or `NULL` when unset. Surfaced
-        /// on the public [`Account`](test_cabinet_core::accounts::Account) as a
+        /// on the public [`Account`](test_cabinet_contracts::accounts::Account) as a
         /// "has picture" flag and cache-bust version.
         #[sea_orm(nullable)]
         pub picture_updated_at: Option<String>,

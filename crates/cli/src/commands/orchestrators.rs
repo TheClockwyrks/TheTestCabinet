@@ -1,6 +1,6 @@
 //! `tcab orchestrators` — list the built-in orchestrators and what each does.
 
-use test_cabinet_core::{BUILT_IN_SLUGS, OrchestratorCatalog, OrchestratorSelection};
+use test_cabinet_driver::{BUILT_IN_SLUGS, OrchestratorCatalog, OrchestratorSelection};
 
 use crate::cli::OrchestratorsArgs;
 

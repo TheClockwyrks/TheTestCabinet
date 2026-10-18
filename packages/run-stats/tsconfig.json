@@ -13,7 +13,7 @@
   },
   "references": [
     { "path": "../../contracts/packages/run-record" },
-    { "path": "../backend-api" }
+    { "path": "../../contracts/packages/backend-api" }
   ],
   "include": ["src"],
   "exclude": ["src/**/*.test.ts"]

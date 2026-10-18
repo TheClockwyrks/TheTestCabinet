@@ -46,7 +46,7 @@ const grade = (id: string, status: VerdictStatus): ReviewVerdict => ({
   status,
 });
 
-// These mirror the Rust core's review scoring tests (crates/core/src/review.test.rs);
+// These mirror the backend's review scoring tests (crates/backend/src/review.test.rs);
 // keeping the two in lockstep is what lets the site score runs the same way the
 // backend does.
 describe("scoreChecklist with sub-items", () => {
@@ -100,7 +100,7 @@ describe("scoreChecklist with sub-items", () => {
   });
 });
 
-// Mirror the Rust core's graded (game-jam) scoring and aggregation tests; the
+// Mirror the backend's graded (game-jam) scoring and aggregation tests; the
 // point values and worst-wins overall grade must match the backend.
 describe("graded (game-jam) scoring", () => {
   it("maps each graded tier to its point value", () => {
@@ -379,7 +379,7 @@ describe("score exclusions (errata excludeFromScore)", () => {
 });
 
 // --- the aesthetic channel and the validator-decided functional rating ---------
-// Mirror the Rust core's tests of the same names (crates/core/src/review.test.rs).
+// Mirror the backend's tests of the same names (crates/backend/src/review.test.rs).
 
 const aesthetic = (
   domain: string,
@@ -684,7 +684,7 @@ describe("validatorRating / validatorScore", () => {
 });
 
 // --- reviewer overrides on a validator-rated run --------------------------------
-// Mirror the Rust core's override tests (crates/core/src/review.overrides.test.rs):
+// Mirror the backend's override tests (crates/backend/src/review.overrides.test.rs):
 // the effective checklist, the per-review figures that fold a review's overrides
 // into the validators' verdicts, and the run-level aggregation across reviews.
 

@@ -12,11 +12,11 @@
 //! using the events the relay already accumulated from the streaming calls below,
 //! so the driver never re-sends them as part of the record.
 
+use crate::event::HarnessEvent;
+use crate::job_api::{DriverState, JobState, JobStatusOut, StatusUpdate};
+use crate::preview::AssetPreview;
+use crate::run_record::RunRecord;
 use reqwest::Client;
-use test_cabinet_core::event::HarnessEvent;
-use test_cabinet_core::job_api::{DriverState, JobState, JobStatusOut, StatusUpdate};
-use test_cabinet_core::preview::AssetPreview;
-use test_cabinet_core::run_record::RunRecord;
 
 /// A failure talking to the backend's job API.
 #[derive(Debug, thiserror::Error)]
@@ -221,7 +221,7 @@ impl JobClient {
     /// events the relay accumulated and attaches it to the job, so the killed run stays
     /// visible and inspectable in the run list.
     ///
-    /// Reached for a canceled [gg](test_cabinet_core::gg) run alone, the one harness with
+    /// Reached for a canceled [gg](crate::gg) run alone, the one harness with
     /// a wind-down to ask for. A canceled run of any other is destroyed by the driver,
     /// which posts nothing after the kill (see the [`cancel`](crate::cancel) module).
     pub async fn post_status_canceled(&self, record: RunRecord) -> Result<(), ClientError> {

@@ -1,7 +1,7 @@
 //! Unit tests for the `tcab test-case-groups` listing.
 //!
-//! The catalogue itself is `core`'s to test
-//! (`crates/core/src/test_case_group.test.rs`); what is pinned here is the part
+//! The catalogue itself is the suites crate's to test
+//! (`contracts/crates/suites/src/test_case_group.test.rs`); what is pinned here is the part
 //! this crate owns — the two renderings and the root resolution — plus a walk of
 //! a copy of the repository's catalogue under `testdata/definitions/`, the same way
 //! `engines`' test resolves a copied case.

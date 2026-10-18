@@ -7,7 +7,7 @@
 //! seeded assets, and the fresh git history — can be examined directly.
 
 use anyhow::Context;
-use test_cabinet_core::{
+use test_cabinet_driver::{
     BrowserRenderer, FsRepoSeeder, ReferenceRenderer, RepoSeeder, SeedRequest,
 };
 

@@ -35,7 +35,7 @@ use std::sync::{Arc, LazyLock};
 use std::time::Duration;
 
 use async_trait::async_trait;
-use test_cabinet_core::gg_session_record::GgShellOrigin;
+use test_cabinet_contracts::gg_session_record::GgShellOrigin;
 use tokio::io::AsyncReadExt;
 use tokio::process::Command;
 
@@ -64,7 +64,7 @@ pub struct ShellRequest {
     /// Carried because a recorded shell is keyed **per agent**: a runner given only a workspace
     /// path cannot say whose command it just ran, every shell divergence names an
     /// agent, and a [hook's](crate::hooks) commands in particular have to be attributed to the
-    /// agent it fired for — an [agent-stop](test_cabinet_core::gg::GgHookEvent::AgentStop) gate to
+    /// agent it fired for — an [agent-stop](test_cabinet_contracts::gg::GgHookEvent::AgentStop) gate to
     /// the agent whose ending it holds — or they land on an unattributed queue.
     /// [`RealShellRunner`] has no use for it — a real process is a real process — so the only
     /// reader is the [recording](crate::capture::RecordingShellRunner) runner, which stamps it on

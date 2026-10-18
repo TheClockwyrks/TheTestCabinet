@@ -2,9 +2,9 @@
 //!
 //! The worker recorded a run's live events onto an in-memory job and served them
 //! from there; the driver has no such registry — it streams them straight to the
-//! backend, which relays them to the console. But the core's sink traits are
-//! **synchronous** ([`EventSink::emit`](test_cabinet_core::EventSink::emit) takes
-//! `&mut self`, [`PreviewSink::preview`](test_cabinet_core::PreviewSink::preview)
+//! backend, which relays them to the console. But the engine's sink traits are
+//! **synchronous** ([`EventSink::emit`](crate::EventSink::emit) takes
+//! `&mut self`, [`PreviewSink::preview`](crate::PreviewSink::preview)
 //! takes `&self`), while sending over HTTP is async. So each sink does the only
 //! thing it can synchronously: push the item onto an unbounded channel. A single
 //! [`relay_task`] drains that channel and performs the async backend calls,
@@ -19,8 +19,8 @@
 
 use std::sync::Arc;
 
-use test_cabinet_core::event::HarnessEvent;
-use test_cabinet_core::preview::AssetPreview;
+use crate::event::HarnessEvent;
+use crate::preview::AssetPreview;
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender, unbounded_channel};
 
 use crate::client::JobClient;
@@ -42,7 +42,7 @@ pub fn channel() -> (UnboundedSender<Outbound>, UnboundedReceiver<Outbound>) {
     unbounded_channel()
 }
 
-/// An [`EventSink`](test_cabinet_core::EventSink) that forwards each event onto
+/// An [`EventSink`](crate::EventSink) that forwards each event onto
 /// the relay channel. The push is synchronous and non-blocking; the relay does
 /// the async send.
 pub struct BackendEventSink {
@@ -56,7 +56,7 @@ impl BackendEventSink {
     }
 }
 
-impl test_cabinet_core::EventSink for BackendEventSink {
+impl crate::EventSink for BackendEventSink {
     fn emit(&mut self, event: &HarnessEvent) {
         // A send error only means the relay has stopped (its receiver dropped),
         // which the driver only does after the run ends; an event arriving then is
@@ -65,7 +65,7 @@ impl test_cabinet_core::EventSink for BackendEventSink {
     }
 }
 
-/// A [`PreviewSink`](test_cabinet_core::PreviewSink) that forwards each live
+/// A [`PreviewSink`](crate::PreviewSink) that forwards each live
 /// preview frame onto the relay channel. Takes `&self` (the trait requires it) so
 /// the orchestrator can share it with the background listener task; it just
 /// pushes, like the event sink.
@@ -80,7 +80,7 @@ impl BackendPreviewSink {
     }
 }
 
-impl test_cabinet_core::PreviewSink for BackendPreviewSink {
+impl crate::PreviewSink for BackendPreviewSink {
     fn preview(&self, preview: AssetPreview) {
         let _ = self.tx.send(Outbound::Preview(preview));
     }

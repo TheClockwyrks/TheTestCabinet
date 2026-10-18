@@ -42,7 +42,7 @@ fn system_prompt(inputs: PromptInputs<'_>) -> String {
 use crate::tasks::TasksRuntime;
 use crate::telemetry::{CollectingSink, Emitter};
 use crate::tools::{ToolContext, ToolRegistry, VisionContext};
-use test_cabinet_core::gg::{
+use test_cabinet_contracts::gg::{
     ALL_SUBAGENT_SCOPES, CAPABILITY_AGENT_MANAGED_CONTEXT, CAPABILITY_COMPACTION,
     CAPABILITY_CONTEXT_WINDOW_OVERRIDE, CAPABILITY_FSM, CAPABILITY_MEMORIES,
     CAPABILITY_PROJECT_MANAGEMENT, CAPABILITY_READ_FILE, CAPABILITY_RESPONSES_AS_CODE,
@@ -53,12 +53,12 @@ use test_cabinet_core::gg::{
     GgSubagentRef, GgSubagentScope, GgTelemetryEvent, GgTelemetryKind, GgTurnErrorType,
     PROJECT_MANAGEMENT_PARAM_MERGE_AGENT, ROOT_AGENT, ROOT_PROFILE_ID,
 };
-use test_cabinet_core::gg_session_journal::{GG_SESSION_JOURNAL_PATH, GgJournalLine};
-use test_cabinet_core::gg_session_record::{
+use test_cabinet_contracts::gg_session_journal::{GG_SESSION_JOURNAL_PATH, GgJournalLine};
+use test_cabinet_contracts::gg_session_record::{
     GgClientRole, GgSessionAgent, GgSessionAgentOrigin, GgSessionEntry, GgSessionEntryKind,
     GgSessionModelErrorKind, GgSessionPromptSlot, GgSessionRetention, GgSessionSeed,
 };
-use test_cabinet_core::metrics::{Cost, TokenCounts};
+use test_cabinet_contracts::metrics::{Cost, TokenCounts};
 
 /// Rendered prose with every run of whitespace collapsed to one space.
 ///
@@ -104,14 +104,14 @@ fn invocation(dir: &Path, set: GgCapabilitySet) -> GgInvocation {
 /// segment at the model's own quantization.
 fn test_providers(
     set: &GgCapabilitySet,
-) -> BTreeMap<String, Vec<test_cabinet_core::gg::GgProviderCandidate>> {
+) -> BTreeMap<String, Vec<test_cabinet_contracts::gg::GgProviderCandidate>> {
     set.bound_model_ids()
         .into_iter()
         .map(|id| {
             let provider = id.split(['/', ':']).next().unwrap_or(id).to_string();
             (
                 id.to_string(),
-                vec![test_cabinet_core::gg::GgProviderCandidate {
+                vec![test_cabinet_contracts::gg::GgProviderCandidate {
                     provider,
                     quantization: "fp8".to_string(),
                 }],
@@ -1115,7 +1115,7 @@ async fn run_drives_the_mock_end_to_end_and_writes_the_file() {
     );
     assert_eq!(
         scaffold.status,
-        test_cabinet_core::gg::GgTaskStatus::Done,
+        test_cabinet_contracts::gg::GgTaskStatus::Done,
         "the scaffold task was completed"
     );
     // The pinned task list is accounted to the TaskList source.
@@ -2827,7 +2827,7 @@ fn validate_model_providers_requires_every_bound_model() {
         &set,
         &BTreeMap::from([(
             "anthropic/claude-opus-4.8".to_string(),
-            vec![test_cabinet_core::gg::GgProviderCandidate {
+            vec![test_cabinet_contracts::gg::GgProviderCandidate {
                 provider: "anthropic".to_string(),
                 quantization: "fp8".to_string(),
             }],
@@ -2846,14 +2846,14 @@ fn validate_model_providers_requires_every_bound_model() {
     let blank = BTreeMap::from([
         (
             "anthropic/claude-opus-4.8".to_string(),
-            vec![test_cabinet_core::gg::GgProviderCandidate {
+            vec![test_cabinet_contracts::gg::GgProviderCandidate {
                 provider: "  ".to_string(),
                 quantization: "fp8".to_string(),
             }],
         ),
         (
             "openai/gpt-5.4-mini".to_string(),
-            vec![test_cabinet_core::gg::GgProviderCandidate {
+            vec![test_cabinet_contracts::gg::GgProviderCandidate {
                 provider: "openai".to_string(),
                 quantization: "fp8".to_string(),
             }],
@@ -3476,7 +3476,7 @@ async fn drive_pins_a_read_skill_once_across_repeat_reads() {
 fn minimal_without_memories(model: &str) -> GgCapabilitySet {
     let mut set = GgCapabilitySet::minimal(model);
     for cap in &mut set.agents[0].capabilities {
-        if cap.id == test_cabinet_core::gg::CAPABILITY_MEMORIES {
+        if cap.id == test_cabinet_contracts::gg::CAPABILITY_MEMORIES {
             cap.enabled = false;
         }
     }
@@ -4127,7 +4127,7 @@ async fn drive_builds_a_dag_and_rejects_a_cycle_end_to_end() {
     let b = last_tasks.iter().find(|t| t.id == "b").unwrap();
     assert!(a.blocked_by.is_empty(), "the cycle edge never applied to a");
     assert_eq!(b.blocked_by, vec!["a".to_string()]);
-    assert_eq!(a.status, test_cabinet_core::gg::GgTaskStatus::Done);
+    assert_eq!(a.status, test_cabinet_contracts::gg::GgTaskStatus::Done);
 
     // The pinned task list, once a is done, shows b as ready rather than blocked.
     let last_task_breakdown = events
@@ -4772,12 +4772,12 @@ fn amc_setup_reads_the_agents_own_toolset_and_configuration() {
     // length the authoring catalog puts in the document. Nothing here is a figure gg stood in for
     // an absent one — `GgCapabilityConfig::enabled` wrote it down, and the resolver read what was
     // written.
-    let authored = test_cabinet_core::gg::authored_capability(CAPABILITY_AGENT_MANAGED_CONTEXT)
+    let authored = test_cabinet_contracts::gg::authored_capability(CAPABILITY_AGENT_MANAGED_CONTEXT)
         .and_then(|entry| entry.params.get(PARAM_TOP_FILE_VIEWS))
         .and_then(serde_json::Value::as_u64)
         .expect("the authoring catalog writes a top-file-views figure") as usize;
     let authored_threshold =
-        test_cabinet_core::gg::authored_capability(CAPABILITY_AGENT_MANAGED_CONTEXT)
+        test_cabinet_contracts::gg::authored_capability(CAPABILITY_AGENT_MANAGED_CONTEXT)
             .and_then(|entry| entry.params.get(PARAM_SIGNAL_THRESHOLD_PERCENT))
             .and_then(serde_json::Value::as_u64)
             .expect("the authoring catalog writes a signal threshold");
@@ -4870,7 +4870,7 @@ fn amc_setup_reads_the_agents_own_toolset_and_configuration() {
 }
 
 /// The FileView token band of every emitted `ContextBreakdown`, in order.
-fn file_view_bands(events: &[test_cabinet_core::gg::GgTelemetryEvent]) -> Vec<u64> {
+fn file_view_bands(events: &[test_cabinet_contracts::gg::GgTelemetryEvent]) -> Vec<u64> {
     events
         .iter()
         .filter_map(|e| match &e.kind {
@@ -5042,7 +5042,9 @@ async fn drive_manages_context_end_to_end() {
 }
 
 /// Every pooled context message the stream carried, as `(role, content)`.
-fn logged_messages(events: &[test_cabinet_core::gg::GgTelemetryEvent]) -> Vec<(String, String)> {
+fn logged_messages(
+    events: &[test_cabinet_contracts::gg::GgTelemetryEvent],
+) -> Vec<(String, String)> {
     events
         .iter()
         .filter_map(|e| match &e.kind {
@@ -5058,7 +5060,7 @@ fn logged_messages(events: &[test_cabinet_core::gg::GgTelemetryEvent]) -> Vec<(S
 
 /// Each `Prompt` event's message bodies, in the order they were sent — resolved through the
 /// message pool the references point into.
-fn prompt_contents(events: &[test_cabinet_core::gg::GgTelemetryEvent]) -> Vec<Vec<String>> {
+fn prompt_contents(events: &[test_cabinet_contracts::gg::GgTelemetryEvent]) -> Vec<Vec<String>> {
     let mut pool: std::collections::HashMap<String, String> = std::collections::HashMap::new();
     let mut prompts = Vec::new();
     for event in events {
@@ -5320,7 +5322,7 @@ async fn run_tags_events_as_root_and_emits_agent_spawned_and_slot_usage() {
 }
 
 /// A session whose credential is refused mid-flight is a **launch failure**, exactly as a
-/// missing credential is: the process exits non-zero so `core` records a harness error
+/// missing credential is: the process exits non-zero so the driver records a harness error
 /// instead of collecting an empty tree and scoring it against a model that never ran.
 #[tokio::test]
 async fn run_reports_a_refused_credential_as_a_launch_failure() {
@@ -6115,13 +6117,13 @@ fn subagent_set(max_parallel: u64, max_depth: u64, extra_agents: &[&str]) -> GgC
     }
     GgCapabilitySet {
         agents,
-        limits: test_cabinet_core::gg::GgRunLimits {
+        limits: test_cabinet_contracts::gg::GgRunLimits {
             max_parallel: Some(max_parallel),
             // Declared, because gg arms no error ceiling nobody wrote: several of these fixtures
             // script a child that answers without ever ending its session, and what stops such an
             // agent is this ceiling and nothing else.
             max_consecutive_errors: Some(SPAWNED_ERROR_CEILING),
-            ..test_cabinet_core::gg::GgRunLimits::authored()
+            ..test_cabinet_contracts::gg::GgRunLimits::authored()
         },
         ..GgCapabilitySet::default()
     }
@@ -6129,7 +6131,7 @@ fn subagent_set(max_parallel: u64, max_depth: u64, extra_agents: &[&str]) -> GgC
 
 /// Every `AgentSpawned` in the stream, as `(agentId, parentId, slot, depth, brief)`.
 type Spawn = (Option<String>, Option<String>, String, u64, Option<String>);
-fn agent_spawns(events: &[test_cabinet_core::gg::GgTelemetryEvent]) -> Vec<Spawn> {
+fn agent_spawns(events: &[test_cabinet_contracts::gg::GgTelemetryEvent]) -> Vec<Spawn> {
     events
         .iter()
         .filter_map(|e| match &e.kind {
@@ -6229,7 +6231,7 @@ fn memory_scope_set(scope: &str) -> GgCapabilitySet {
 /// The memory names each agent's **last** `MemoryState` reports, keyed by agent id — what each
 /// agent was holding when it stopped, which is the whole observable of a memory scope.
 fn memories_by_agent(
-    events: &[test_cabinet_core::gg::GgTelemetryEvent],
+    events: &[test_cabinet_contracts::gg::GgTelemetryEvent],
 ) -> HashMap<String, Vec<String>> {
     let mut held: HashMap<String, Vec<String>> = HashMap::new();
     for event in events {
@@ -6244,7 +6246,9 @@ fn memories_by_agent(
 }
 
 /// The scope each agent's last `MemoryState` reports, keyed by agent id.
-fn scopes_by_agent(events: &[test_cabinet_core::gg::GgTelemetryEvent]) -> HashMap<String, String> {
+fn scopes_by_agent(
+    events: &[test_cabinet_contracts::gg::GgTelemetryEvent],
+) -> HashMap<String, String> {
     let mut scopes = HashMap::new();
     for event in events {
         if let GgTelemetryKind::MemoryState { scope, .. } = &event.kind {
@@ -7088,7 +7092,7 @@ fn one_call_script(name: &str, args: serde_json::Value) -> Vec<ModelResponse> {
 fn tool_refusals(
     events: &[GgTelemetryEvent],
     name: &str,
-) -> Vec<(String, Option<test_cabinet_core::gg::GgCallFailure>)> {
+) -> Vec<(String, Option<test_cabinet_contracts::gg::GgCallFailure>)> {
     events
         .iter()
         .filter_map(|e| match &e.kind {
@@ -7108,7 +7112,7 @@ fn tool_refusals(
 fn only_refusal(
     events: &[GgTelemetryEvent],
     name: &str,
-) -> (String, Option<test_cabinet_core::gg::GgCallFailure>) {
+) -> (String, Option<test_cabinet_contracts::gg::GgCallFailure>) {
     let refusals = tool_refusals(events, name);
     assert_eq!(
         refusals.len(),
@@ -7130,7 +7134,7 @@ fn spawned_agent_count(events: &[GgTelemetryEvent]) -> usize {
 fn recorded_outcome(
     dir: &Path,
     name: &str,
-) -> test_cabinet_core::gg_session_record::GgSessionToolOutcome {
+) -> test_cabinet_contracts::gg_session_record::GgSessionToolOutcome {
     let lines = read_session_journal(dir);
     let entries = journal_entries(&lines);
     let mut found: Vec<_> = entries
@@ -7167,7 +7171,7 @@ async fn a_spawn_with_no_prompt_is_refused() {
     );
     assert_eq!(
         failure,
-        Some(test_cabinet_core::gg::GgCallFailure::InvalidArgument)
+        Some(test_cabinet_contracts::gg::GgCallFailure::InvalidArgument)
     );
     assert_eq!(spawned_agent_count(&events), 1, "only the root exists");
 }
@@ -7194,7 +7198,7 @@ async fn a_spawn_with_a_blank_prompt_is_refused() {
     );
     assert_eq!(
         failure,
-        Some(test_cabinet_core::gg::GgCallFailure::InvalidArgument)
+        Some(test_cabinet_contracts::gg::GgCallFailure::InvalidArgument)
     );
     assert_eq!(spawned_agent_count(&events), 1, "only the root exists");
 }
@@ -7223,7 +7227,7 @@ async fn a_spawn_with_no_agent_is_refused_with_the_alternatives() {
     );
     assert_eq!(
         failure,
-        Some(test_cabinet_core::gg::GgCallFailure::InvalidArgument)
+        Some(test_cabinet_contracts::gg::GgCallFailure::InvalidArgument)
     );
     assert_eq!(spawned_agent_count(&events), 1, "only the root exists");
 }
@@ -7254,7 +7258,7 @@ async fn a_spawn_naming_an_agent_outside_the_roster_is_refused_with_the_alternat
     );
     assert_eq!(
         failure,
-        Some(test_cabinet_core::gg::GgCallFailure::InvalidArgument)
+        Some(test_cabinet_contracts::gg::GgCallFailure::InvalidArgument)
     );
     assert_eq!(spawned_agent_count(&events), 1, "only the root exists");
 }
@@ -7288,7 +7292,7 @@ async fn a_wait_naming_an_agent_this_agent_did_not_spawn_is_not_found() {
     );
     assert_eq!(
         failure,
-        Some(test_cabinet_core::gg::GgCallFailure::NotFound)
+        Some(test_cabinet_contracts::gg::GgCallFailure::NotFound)
     );
     assert_eq!(
         spawned_agent_count(&events),
@@ -7316,7 +7320,7 @@ async fn a_wait_whose_ids_hold_a_non_string_is_refused() {
     );
     assert_eq!(
         failure,
-        Some(test_cabinet_core::gg::GgCallFailure::InvalidArgument)
+        Some(test_cabinet_contracts::gg::GgCallFailure::InvalidArgument)
     );
 }
 
@@ -7343,7 +7347,7 @@ async fn a_wait_whose_ids_are_not_a_list_is_refused() {
     );
     assert_eq!(
         failure,
-        Some(test_cabinet_core::gg::GgCallFailure::InvalidArgument)
+        Some(test_cabinet_contracts::gg::GgCallFailure::InvalidArgument)
     );
 }
 
@@ -7469,7 +7473,7 @@ async fn a_message_with_no_agent_id_is_refused() {
     );
     assert_eq!(
         failure,
-        Some(test_cabinet_core::gg::GgCallFailure::InvalidArgument)
+        Some(test_cabinet_contracts::gg::GgCallFailure::InvalidArgument)
     );
 }
 
@@ -7494,7 +7498,7 @@ async fn a_message_with_a_blank_agent_id_is_refused() {
     );
     assert_eq!(
         failure,
-        Some(test_cabinet_core::gg::GgCallFailure::InvalidArgument)
+        Some(test_cabinet_contracts::gg::GgCallFailure::InvalidArgument)
     );
 }
 
@@ -7516,7 +7520,7 @@ async fn a_message_with_no_message_is_refused() {
     );
     assert_eq!(
         failure,
-        Some(test_cabinet_core::gg::GgCallFailure::InvalidArgument)
+        Some(test_cabinet_contracts::gg::GgCallFailure::InvalidArgument)
     );
 }
 
@@ -7541,7 +7545,7 @@ async fn a_message_with_a_blank_message_is_refused() {
     );
     assert_eq!(
         failure,
-        Some(test_cabinet_core::gg::GgCallFailure::InvalidArgument)
+        Some(test_cabinet_contracts::gg::GgCallFailure::InvalidArgument)
     );
 }
 
@@ -7689,7 +7693,7 @@ type Review = (
     Option<Vec<String>>,
     Option<String>,
 );
-fn issue_reviews(events: &[test_cabinet_core::gg::GgTelemetryEvent]) -> Vec<Review> {
+fn issue_reviews(events: &[test_cabinet_contracts::gg::GgTelemetryEvent]) -> Vec<Review> {
     events
         .iter()
         .filter_map(|e| match &e.kind {
@@ -7708,8 +7712,9 @@ fn issue_reviews(events: &[test_cabinet_core::gg::GgTelemetryEvent]) -> Vec<Revi
 /// reviewer rendered `agentId/profileId` — the reviewer *instance* and the profile it ran, which
 /// together are the attribution a console reduction joins on.
 type Verdicts = (GgIssueReviewPhase, Option<String>, Vec<String>);
-fn review_verdicts(events: &[test_cabinet_core::gg::GgTelemetryEvent]) -> Vec<Verdicts> {
-    let render = |r: &test_cabinet_core::gg::GgReviewer| format!("{}/{}", r.agent_id, r.profile_id);
+fn review_verdicts(events: &[test_cabinet_contracts::gg::GgTelemetryEvent]) -> Vec<Verdicts> {
+    let render =
+        |r: &test_cabinet_contracts::gg::GgReviewer| format!("{}/{}", r.agent_id, r.profile_id);
     events
         .iter()
         .filter_map(|e| match &e.kind {
@@ -7730,7 +7735,7 @@ fn review_verdicts(events: &[test_cabinet_core::gg::GgTelemetryEvent]) -> Vec<Ve
 
 /// Every `WorktreeMerged` in the stream, as `(issueId, branch, merged, conflicts)`.
 type Reconcile = (Option<String>, String, bool, bool);
-fn worktree_merges(events: &[test_cabinet_core::gg::GgTelemetryEvent]) -> Vec<Reconcile> {
+fn worktree_merges(events: &[test_cabinet_contracts::gg::GgTelemetryEvent]) -> Vec<Reconcile> {
     events
         .iter()
         .filter_map(|e| match &e.kind {
@@ -7746,7 +7751,7 @@ fn worktree_merges(events: &[test_cabinet_core::gg::GgTelemetryEvent]) -> Vec<Re
 
 /// The most recent status reported for `issue_id` on any `BoardState`.
 fn last_issue_status(
-    events: &[test_cabinet_core::gg::GgTelemetryEvent],
+    events: &[test_cabinet_contracts::gg::GgTelemetryEvent],
     issue_id: &str,
 ) -> Option<GgIssueStatus> {
     events.iter().rev().find_map(|e| match &e.kind {
@@ -9697,7 +9702,7 @@ async fn session_capture_records_model_io_and_tool_results_in_order() {
     assert_eq!(run(&inv, &emitter).await, SessionOutcome::Ran);
 
     let lines = read_session_journal(dir.path());
-    // The header identifies the session (what `core` stamps as the run id) and the configuration.
+    // The header identifies the session (what the driver stamps as the run id) and the configuration.
     let GgJournalLine::Header {
         session_id,
         capability_set,
@@ -9889,7 +9894,7 @@ async fn session_capture_records_a_prompt_frame_for_every_model_turn() {
 /// The capture close-out sits **before** the session summary, so the summary stays the last
 /// event before the terminal `SessionEnded`.
 ///
-/// That adjacency is what lets `core` lift the summary onto the run record without re-parsing the
+/// That adjacency is what lets the driver lift the summary onto the run record without re-parsing the
 /// stream, and it is the one thing always-on capture could have quietly broken: a close-out line
 /// emitted after the summary would have separated the pair on *every* run instead of on the rare
 /// configured one.
@@ -10228,7 +10233,7 @@ async fn a_provider_refusing_images_does_not_fail_the_run() {
 /// **The native tool-calling path still attaches pictures, and is deliberately uncapped.**
 ///
 /// The one-channel rule — a picture enters the window through a `view.openFile` or not at all —
-/// belongs to [responses as code](test_cabinet_core::gg::CAPABILITY_RESPONSES_AS_CODE) alone. On the
+/// belongs to [responses as code](test_cabinet_contracts::gg::CAPABILITY_RESPONSES_AS_CODE) alone. On the
 /// native path every `read_file` result is already an attributable, evictable message, so an image
 /// rides on it exactly as it always has and no budget bounds how many. That asymmetry is the point:
 /// this arm is the **control** of the A/B the code capability exists to measure, and moving it to
@@ -10576,11 +10581,11 @@ async fn a_handoff_compactions_summarizer_call_reaches_the_record() {
         &mut set.agents[0],
         GgCapabilityConfig {
             implementation: Some(
-                test_cabinet_core::gg::COMPACTION_STRATEGY_HANDOFF_COMPACTION.to_string(),
+                test_cabinet_contracts::gg::COMPACTION_STRATEGY_HANDOFF_COMPACTION.to_string(),
             ),
             ..crate::tools::configured(
                 CAPABILITY_COMPACTION,
-                json!({ test_cabinet_core::gg::COMPACTION_PARAM_MODEL: "mock/compactor" }),
+                json!({ test_cabinet_contracts::gg::COMPACTION_PARAM_MODEL: "mock/compactor" }),
             )
         },
     );
@@ -10607,7 +10612,7 @@ async fn a_handoff_compactions_summarizer_call_reaches_the_record() {
     assert!(
         sink.events().iter().any(
             |event| matches!(&event.kind, GgTelemetryKind::Compaction { strategy, .. }
-                if strategy == test_cabinet_core::gg::COMPACTION_STRATEGY_HANDOFF_COMPACTION)
+                if strategy == test_cabinet_contracts::gg::COMPACTION_STRATEGY_HANDOFF_COMPACTION)
         ),
         "the run crossed a handoff-compaction boundary"
     );
@@ -10771,7 +10776,7 @@ async fn every_agent_binds_its_client_under_its_provenance() {
     let mut compaction =
         crate::tools::configured(CAPABILITY_COMPACTION, json!({ "model": "mock/condenser" }));
     compaction.implementation =
-        Some(test_cabinet_core::gg::COMPACTION_STRATEGY_HANDOFF_SUMMARIZATION.to_string());
+        Some(test_cabinet_contracts::gg::COMPACTION_STRATEGY_HANDOFF_SUMMARIZATION.to_string());
     crate::tools::grant_configured(&mut set.agents[0], compaction);
     let mut inv = invocation(dir.path(), set);
     inv.model_windows
@@ -10881,7 +10886,7 @@ async fn session_started_and_the_journal_record_the_minted_routing_key() {
 /// per profile rather than as one figure for the run.
 #[tokio::test]
 async fn session_started_records_each_profile_s_reasoning_setting() {
-    use test_cabinet_core::gg::{GgReasoning, GgReasoningEffort};
+    use test_cabinet_contracts::gg::{GgReasoning, GgReasoningEffort};
     let dir = TempDir::new().unwrap();
     let sink = CollectingSink::new();
     let emitter = Emitter::with_sink(Some("gg-reasoning".to_string()), Box::new(sink.clone()));

@@ -8,7 +8,7 @@
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use test_cabinet_core::gg::{GgProviderCandidate, GgProviderFault, GgTelemetryKind};
+use test_cabinet_contracts::gg::{GgProviderCandidate, GgProviderFault, GgTelemetryKind};
 
 use super::*;
 use crate::model::{Message, ModelClient, ModelError};

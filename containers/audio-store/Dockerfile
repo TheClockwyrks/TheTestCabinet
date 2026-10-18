@@ -18,7 +18,7 @@
 # resolves, and this is not one), and fused from its two arch tags BY NAME by the Azure
 # pipeline (`scripts/ci/audio-store-image.sh`, then `scripts/ci/manifest.sh`).
 #
-# The tree is what `crates/core`'s `audio_stage` reads (see that module and
+# The tree is what `crates/driver`'s `audio_stage` reads (see that module and
 # `apps/docs/src/content/docs/components/core/execution.md`):
 #
 #   /opt/tcab-audio/

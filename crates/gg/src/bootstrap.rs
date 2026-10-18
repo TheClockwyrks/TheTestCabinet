@@ -30,7 +30,7 @@
 //! # What it carries: the agent's own two lists
 //!
 //! **gg decides neither list.** What a window opens on is per-agent configuration —
-//! [`GgAgentConfig::opening_turn`](test_cabinet_core::gg::GgAgentConfig::opening_turn) — and the
+//! [`GgAgentConfig::opening_turn`](test_cabinet_contracts::gg::GgAgentConfig::opening_turn) — and the
 //! bootstrap reads it and nothing else. The `modules` are gg's cross-arm module ids, searched
 //! **together in one search** — a directory listing, ordered alphabetically by key — and left
 //! as one listing view keyed by the paths [`module_paths`](crate::agent::module_paths) publishes
@@ -38,8 +38,8 @@
 //! operation ids, each opened as a documentation view in the order written. The two lists are
 //! independent: a function's documentation is opened whether or not its module is listed. The only
 //! defaults gg holds are the ones a *fresh* profile is authored with
-//! ([`DEFAULT_OPENING_MODULES`](test_cabinet_core::gg::DEFAULT_OPENING_MODULES),
-//! [`DEFAULT_OPENING_FUNCTIONS`](test_cabinet_core::gg::DEFAULT_OPENING_FUNCTIONS)), and those are
+//! ([`DEFAULT_OPENING_MODULES`](test_cabinet_contracts::gg::DEFAULT_OPENING_MODULES),
+//! [`DEFAULT_OPENING_FUNCTIONS`](test_cabinet_contracts::gg::DEFAULT_OPENING_FUNCTIONS)), and those are
 //! read by the console seeding a document, never by this module.
 //!
 //! **Held is the whole test.** A function is held exactly when [`DocsRuntime::bound`] says so for
@@ -120,7 +120,7 @@ use std::hash::{Hash, Hasher};
 use std::sync::{LazyLock, Mutex};
 use std::time::Duration;
 
-use test_cabinet_core::gg::{GgCallFailure, GgOpeningTurn, GgProgramLanguage};
+use test_cabinet_contracts::gg::{GgCallFailure, GgOpeningTurn, GgProgramLanguage};
 
 use crate::board::IssueStatus;
 use crate::context::{ContextModel, DocviewOpen, SEARCH_RESULTS_VIEW, TurnRange, ViewKind};
@@ -414,7 +414,7 @@ pub(crate) async fn seed_bootstrap(
         )],
     );
     context.push_tool_result(
-        test_cabinet_core::gg::GgContextSource::ToolOutput,
+        test_cabinet_contracts::gg::GgContextSource::ToolOutput,
         BOOTSTRAP_CALL_ID,
         crate::completion::submit_program_ack(id.as_deref()),
     );
@@ -737,7 +737,7 @@ macro_rules! unimplemented_calls {
 
 impl OperationApi for BootstrapApi {
     /// A no-op, on both halves of the bracket. This is gg standing the agent up, not the agent
-    /// making a call, and an [`ApiCall`](test_cabinet_core::gg::GgTelemetryKind::ApiCall) recorded
+    /// making a call, and an [`ApiCall`](test_cabinet_contracts::gg::GgTelemetryKind::ApiCall) recorded
     /// here would put two searches and an open into a model's own surface record before it had taken
     /// a turn — which is exactly the figure a comparison of two configurations reads.
     fn begin_api_call(&mut self, _call: ApiIdentity<'_>) {}

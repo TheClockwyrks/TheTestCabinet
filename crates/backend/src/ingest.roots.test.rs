@@ -118,7 +118,7 @@ fn the_default_roots_are_the_checkout_s_own_trees() {
     // nextest runs each test in its own process, so clearing the override here
     // touches no other test.
     // SAFETY: as above.
-    unsafe { std::env::remove_var(test_cabinet_core::COLD_STORAGE_DIR_ENV) };
+    unsafe { std::env::remove_var(test_cabinet_contracts::cold_storage::COLD_STORAGE_DIR_ENV) };
     let checkout = Path::new("/srv/checkout");
     let roots = IngestRoots::for_checkout(checkout);
     assert_eq!(roots.definitions, checkout);
@@ -135,7 +135,12 @@ fn the_default_roots_are_the_checkout_s_own_trees() {
 #[test]
 fn the_default_cold_storage_root_honours_the_capture_commands_override() {
     // SAFETY: this process is this test's alone under nextest, the repo's runner.
-    unsafe { std::env::set_var(test_cabinet_core::COLD_STORAGE_DIR_ENV, "/mnt/media") };
+    unsafe {
+        std::env::set_var(
+            test_cabinet_contracts::cold_storage::COLD_STORAGE_DIR_ENV,
+            "/mnt/media",
+        )
+    };
     let roots = IngestRoots::for_checkout(Path::new("/srv/checkout"));
     assert_eq!(roots.cold_storage, Path::new("/mnt/media"));
 }
@@ -153,7 +158,7 @@ fn a_scan_reads_each_tree_from_its_own_root() {
         &cold
             .path()
             .join("test-cases/end-to-end/easy/alpha/v1.0.0")
-            .join(test_cabinet_core::VALIDATION_BASELINE_DIR)
+            .join(test_cabinet_contracts::layout::VALIDATION_BASELINE_DIR)
             .join("none/base/spin__still.png"),
         "png:still",
     );

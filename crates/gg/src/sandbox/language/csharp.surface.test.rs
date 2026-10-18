@@ -38,7 +38,7 @@
 //! libraries this arm names are ones a program can reach.
 
 use serde_json::{Value, json};
-use test_cabinet_core::gg::{
+use test_cabinet_contracts::gg::{
     CAPABILITY_AGENT_MANAGED_CONTEXT, CAPABILITY_DOCVIEW_CLOSE, CAPABILITY_PROGRAM_LIBRARY,
     CAPABILITY_PROJECT_MANAGEMENT, CAPABILITY_READ_FILE, GgProgramLanguage,
 };

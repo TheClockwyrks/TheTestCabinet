@@ -22,8 +22,8 @@
 //! signed-in host home); the request's [`LaunchBody::auth_mode`] can lock the mode
 //! per run, which the driver applies by setting `TCAB_AUTH_MODE` before resolving.
 //!
-//! [`resolve_auth_with`]: test_cabinet_core::resolve_auth_with
-//! [`LaunchBody::auth_mode`]: test_cabinet_core::LaunchBody::auth_mode
+//! [`resolve_auth_with`]: crate::resolve_auth_with
+//! [`LaunchBody::auth_mode`]: crate::LaunchBody::auth_mode
 //!
 //! When `TCAB_DRIVER_RUNTIME=kubernetes`, the sandbox-pod settings (`TCAB_K8S_*`,
 //! documented on [`KubernetesConfig`]) are
@@ -35,7 +35,7 @@
 use std::path::PathBuf;
 use std::time::Duration;
 
-use test_cabinet_core::{
+use crate::{
     EngineSelection, LaunchBody, NONE_SLUG, ONE_SHOT_SLUG, OrchestratorSelection, RunRequest,
 };
 
@@ -95,7 +95,7 @@ pub struct Config {
     /// The directory the operator-provided subscription Secret is mounted into
     /// (`TCAB_DRIVER_SUBSCRIPTION_DIR`), one file per credential keyed by basename.
     /// `None` (no Secret configured) leaves the run API-key-only, unchanged; when
-    /// set, the driver builds a [`MapCreds`](test_cabinet_core::MapCreds) from it
+    /// set, the driver builds a [`MapCreds`](crate::MapCreds) from it
     /// so a subscription harness can authenticate without a host home.
     pub subscription_dir: Option<PathBuf>,
     /// Sandbox-pod settings used when [`runtime`](Self::runtime) is

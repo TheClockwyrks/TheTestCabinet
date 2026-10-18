@@ -112,7 +112,7 @@ async fn post_result_hits_result_with_the_links() {
     let client = PublishJobClient::new(base, "pub-job-2", "pub-tok");
 
     let result = PublishResult {
-        state: test_cabinet_core::PublishState::Succeeded,
+        state: test_cabinet_contracts::publish_job_api::PublishState::Succeeded,
         source_repo: Some("https://github.com/TheClockwyrks/tcab-pong".to_string()),
         playable_build: Some("https://abc.test-cabinet-runs.pages.dev".to_string()),
         detail: None,

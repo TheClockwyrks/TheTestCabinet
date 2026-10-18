@@ -7,7 +7,7 @@
 //! [`purescript.compile.test.rs`](super::compile::tests). The split is the reason these cases run in
 //! microseconds.
 
-use test_cabinet_core::gg::GgProgramLanguage;
+use test_cabinet_contracts::gg::GgProgramLanguage;
 
 use crate::sandbox::FileWindow;
 

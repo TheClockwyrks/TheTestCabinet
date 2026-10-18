@@ -17,8 +17,13 @@
 //!   [`LocalFsStore`] impl (a directory on a PVC), keyed per
 //!   run id. An R2 impl is a deferrable internal detail (see the trait's docs).
 //! - [`api`] — the HTTP surface: the driver's upload (per-job-token) and the
-//!   reviewer's ungated build/media reads, the reads built on the **shared core
-//!   resolvers** so serving logic is reused, not reinvented.
+//!   reviewer's ungated build/media reads, the reads built on the [`playable`]
+//!   resolvers.
+//! - [`playable`] — resolving a run's build, proof, validation, showcase and
+//!   asset files for serving.
+//! - [`r2`] — the R2 object-store client. The backend's snapshot writes and the
+//!   CLI's `tcab publish-asset-reference` still call it directly, an interim edge
+//!   until those writes go through this service.
 //! - [`auth`] — upload auth (per-job token forwarded to the backend's verify
 //!   endpoint); reads are ungated because the console loads them as browser media.
 //! - [`config`] — the environment-sourced configuration.
@@ -32,6 +37,8 @@ pub mod api;
 pub mod auth;
 pub mod config;
 pub mod error;
+pub mod playable;
+pub mod r2;
 pub mod store;
 
 use std::sync::Arc;

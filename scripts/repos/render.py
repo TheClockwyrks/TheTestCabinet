@@ -132,7 +132,7 @@ PLAYWRIGHT_GATE = "playwright-image"
 # byte, or that the shipped CLI runs on Windows, is held there. The job runs no
 # gate (the runner and its tools are the Linux images'), only the suite under
 # nextest, which `scripts/ci/install-nextest.sh` installs.
-WINDOWS_TESTS = frozenset({"contracts"})
+WINDOWS_TESTS = frozenset({"contracts", "microservice-driver"})
 WINDOWS_IMAGE = "windows-2022"
 NEXTEST_SCRIPT = "scripts/ci/install-nextest.sh"
 
@@ -143,6 +143,7 @@ NEXTEST_SCRIPT = "scripts/ci/install-nextest.sh"
 # hookless, since a gate a repository adds builds or generates something.
 EXTRA_GATES: dict[str, dict[str, tuple[str, ...]]] = {
     "contracts": {"rust": ("contract-drift",)},
+    "engines": {"checks": ("seeded-contract",)},
 }
 # The jobs of the gates stage an extra gate may name.
 GATE_JOBS = ("rust", "checks")
@@ -150,14 +151,35 @@ GATE_JOBS = ("rust", "checks")
 # The crate a render scaffolds in each repository carrying one: its directory
 # under crates/ and its package name. The monorepo's crates keep their
 # directories when a repository is extracted, so the scaffold is named as the
-# crate it becomes: the CLI is `crates/cli`, gg `crates/gg`.
+# crate it becomes: the driver is `crates/driver`, gg `crates/gg`. A
+# repository whose crate the monorepo does not hold yet is scaffolded under its
+# own name.
 CRATES: dict[str, tuple[str, str]] = {
     "contracts": ("contracts", "test-cabinet-contracts"),
     "engines": ("engines", "test-cabinet-engines"),
+    "ui-common": ("ui-common", "test-cabinet-ui-common"),
+    "tool-model-core": ("model-core", "test-cabinet-model-core"),
+    "tool-sprite": ("draw", "test-cabinet-draw"),
+    "tool-paint": ("paint", "test-cabinet-paint"),
+    "tool-voxel": ("voxel", "test-cabinet-voxel"),
+    "tool-mc": ("mc", "test-cabinet-mc"),
+    "tool-sn": ("sn", "test-cabinet-sn"),
+    "tool-dc": ("dc", "test-cabinet-dc"),
+    "tool-particle": ("particle-core", "test-cabinet-particle-core"),
+    "tool-audio-core": ("audio-core", "test-cabinet-audio-core"),
+    "tool-sfx-synth": ("sfx-synth", "test-cabinet-sfx-synth"),
+    "tool-sfx-sample": ("sfx-sample", "test-cabinet-sfx-sample"),
+    "tool-music": ("music", "test-cabinet-music"),
+    "microservice-backend": ("backend", "test-cabinet-backend"),
+    "microservice-dispatcher": ("dispatcher", "test-cabinet-dispatcher"),
+    "microservice-driver": ("driver", "test-cabinet-driver"),
+    "microservice-artifacts": ("artifacts", "test-cabinet-artifacts"),
+    "microservice-repos": ("repos", "test-cabinet-repos"),
+    "microservice-publisher": ("publisher", "tcab-publisher"),
+    "microservice-arena": ("arena", "test-cabinet-arena"),
     "gg": ("gg", "test-cabinet-gg"),
-    "platform": ("cli", "test-cabinet-cli"),
-    "web": ("console-app", "test-cabinet-console-app"),
     "the-spec-cabinet": ("spec-cabinet", "test-cabinet-spec-cabinet"),
+    "client-tauri": ("client-tauri", "test-cabinet-client-tauri"),
 }
 
 # The release tag each repository's dependents pin, for the repositories that

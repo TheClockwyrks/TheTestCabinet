@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use tempfile::TempDir;
-use test_cabinet_core::gg::{
+use test_cabinet_contracts::gg::{
     CAPABILITY_AGENT_PERSISTENCE, GgCapabilityConfig, GgCapabilitySet, GgContextSource,
     GgSubagentRef,
 };
@@ -16,7 +16,7 @@ use crate::telemetry::CollectingSink;
 /// A documentation runtime for an agent granted the read-file capability and every call it offers —
 /// enough to bind `readFile` and the type it hands back, and nothing else.
 fn reader() -> DocsRuntime {
-    let capability = test_cabinet_core::gg::CAPABILITY_READ_FILE;
+    let capability = test_cabinet_contracts::gg::CAPABILITY_READ_FILE;
     DocsRuntime::new(
         vec![capability.to_string()],
         crate::ending::EndingRole::Standard,
@@ -752,7 +752,7 @@ fn the_restore_note_says_which_mechanism_brought_what_back() {
 // ---------------------------------------------------------------------------
 
 /// **The claim the handoff asked to be verified rather than asserted:** persistence now works for a
-/// [responses-as-code](test_cabinet_core::gg::CAPABILITY_RESPONSES_AS_CODE) agent, and the file half
+/// [responses-as-code](test_cabinet_contracts::gg::CAPABILITY_RESPONSES_AS_CODE) agent, and the file half
 /// of it needed no change to this module at all.
 ///
 /// It used to record nothing because a program's reads were consumed inside the program and never

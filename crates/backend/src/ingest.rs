@@ -49,16 +49,19 @@
 //! the same token is forced.
 //!
 //! Every record ingest writes carries an [`IngestStamp`] naming the content digest
-//! it was built from (see [`test_cabinet_core::content_digest`]), so a
+//! it was built from (see [`test_cabinet_suites::content_digest`]), so a
 //! [`IngestMode::Changed`] scan rewrites exactly the versions whose checkout content
 //! differs from the store.
 
 use std::path::{Path, PathBuf};
 
-use test_cabinet_core::test_case::{TestCaseCatalog, TestCaseVersion, TestType, is_seeded_dotfile};
-use test_cabinet_core::test_case_group::TestCaseGroupCatalog;
-use test_cabinet_core::test_suite::{PREVIEWS_DIR, TEST_SUITES_DIR, TestSuiteCatalog};
-use test_cabinet_core::{ColdStorage, IngestMode};
+use test_cabinet_contracts::cold_storage::ColdStorage;
+use test_cabinet_contracts::ingest::IngestMode;
+use test_cabinet_suites::test_case::{
+    TestCaseCatalog, TestCaseVersion, TestType, is_seeded_dotfile,
+};
+use test_cabinet_suites::test_case_group::TestCaseGroupCatalog;
+use test_cabinet_suites::test_suite::{PREVIEWS_DIR, TEST_SUITES_DIR, TestSuiteCatalog};
 
 use crate::error::{BackendError, Result};
 use crate::render;
@@ -74,7 +77,7 @@ use crate::store::{
 
 /// The content digests a stored version records, shared with every client that
 /// compares a checkout against the store.
-use test_cabinet_core::content_digest as digest;
+use test_cabinet_suites::content_digest as digest;
 #[path = "ingest.suites.rs"]
 mod suites;
 
@@ -131,7 +134,7 @@ impl IngestRoots {
     /// `<definitions>/test-cases/reference-builds.lock.json`.
     pub fn reference_lock(&self) -> PathBuf {
         self.test_cases()
-            .join(test_cabinet_core::reference_lock::REFERENCE_LOCK_FILENAME)
+            .join(test_cabinet_contracts::reference_lock::REFERENCE_LOCK_FILENAME)
     }
 
     /// The cold storage baselines are read from, resolved against the definitions
@@ -392,7 +395,7 @@ pub struct IngestReport {
     /// keyed beside the definitions it offers rather than among them.
     pub suite_versions: Vec<IngestedSuite>,
     /// Whether the scan changed the store's [test-case
-    /// group](test_cabinet_core::TestCaseGroup) set. Only a whole-catalog scan
+    /// group](test_cabinet_suites::test_case_group::TestCaseGroup) set. Only a whole-catalog scan
     /// reconciles the set (a partial scan leaves it untouched and reports
     /// `false`), and the flag is what lets a group-only edit trigger the public
     /// snapshot refresh even though no version was re-ingested.
@@ -556,7 +559,7 @@ impl<'a> Ingestor<'a> {
             let declared = self
                 .case_catalog()
                 .declared_trees()
-                .map_err(BackendError::Core)?;
+                .map_err(BackendError::from)?;
             KeepKinds {
                 test_cases: !declared.test_cases,
                 game_jams: !declared.game_jams,
@@ -754,7 +757,7 @@ impl<'a> Ingestor<'a> {
         Ok(kept)
     }
 
-    /// Reconcile the store's global [test-case group](test_cabinet_core::TestCaseGroup)
+    /// Reconcile the store's global [test-case group](test_cabinet_suites::test_case_group::TestCaseGroup)
     /// set to the checkout's `test-case-groups/` catalogue, returning whether the
     /// stored set changed. Called only by a whole-catalog scan (see
     /// [`scan_with_progress`](Self::scan_with_progress)).
@@ -776,14 +779,14 @@ impl<'a> Ingestor<'a> {
         let declared = if root.is_dir() {
             TestCaseGroupCatalog::new(&root)
                 .list()
-                .map_err(BackendError::Core)?
+                .map_err(BackendError::from)?
         } else {
             Vec::new()
         };
         let known: std::collections::HashSet<String> = self
             .case_catalog()
             .list()
-            .map_err(BackendError::Core)?
+            .map_err(BackendError::from)?
             .into_iter()
             .map(|case| case.slug)
             .collect();
@@ -863,18 +866,15 @@ impl<'a> Ingestor<'a> {
         let Some(entries) = &request.test_cases else {
             // A whole-catalog scan enumerates both trees, so its prune sees every
             // declared version of either kind.
-            for case in catalog.list().map_err(BackendError::Core)? {
-                for version in catalog.versions(&case.slug).map_err(BackendError::Core)? {
+            for case in catalog.list().map_err(BackendError::from)? {
+                for version in catalog.versions(&case.slug).map_err(BackendError::from)? {
                     targets.versions.push(Target::Case {
                         id: case.slug.clone(),
                         version,
                     });
                 }
             }
-            for suite in suites
-                .list()
-                .map_err(|err| BackendError::Core(err.into()))?
-            {
+            for suite in suites.list().map_err(BackendError::from)? {
                 for version in suite.versions {
                     self.expand_suite_version(&suites, &suite.slug, &version, &mut targets)?;
                 }
@@ -907,7 +907,7 @@ impl<'a> Ingestor<'a> {
                         }
                         continue;
                     }
-                    for version in known.map_err(BackendError::Core)? {
+                    for version in known.map_err(BackendError::from)? {
                         targets.versions.push(Target::Case {
                             id: entry.clone(),
                             version,
@@ -947,7 +947,10 @@ impl<'a> Ingestor<'a> {
 
     /// The authored test-case catalog under the definitions root.
     fn case_catalog(&self) -> TestCaseCatalog {
-        TestCaseCatalog::new(self.roots.test_cases())
+        TestCaseCatalog::new(
+            self.roots.test_cases(),
+            test_cabinet_engines::built_in_catalog(),
+        )
     }
 
     /// The suite catalog over the suites root. Its rendered specifications are
@@ -1015,7 +1018,7 @@ impl<'a> Ingestor<'a> {
         // unchanged-skip check and every store key below use the true identity rather
         // than the lookup key, keeping the store directory and the manifest it holds
         // in agreement.
-        let slug = catalog.slug_of(id, version).map_err(BackendError::Core)?;
+        let slug = catalog.slug_of(id, version).map_err(BackendError::from)?;
 
         let has_record = self.store.has_version(&slug, version);
         let skipped = |slug: String, reason| IngestedVersion {
@@ -1031,7 +1034,7 @@ impl<'a> Ingestor<'a> {
         }
         let root = catalog
             .version_root(id, version)
-            .map_err(BackendError::Core)?;
+            .map_err(BackendError::from)?;
         let digest = digest::authored_version_digest(&root, &self.roots.definitions)?;
         let decision = decider.decide(
             has_record,
@@ -1042,7 +1045,7 @@ impl<'a> Ingestor<'a> {
             return Ok(skipped(slug, reason));
         }
 
-        let resolved = catalog.resolve(id, version).map_err(BackendError::Core)?;
+        let resolved = catalog.resolve(id, version).map_err(BackendError::from)?;
 
         let staged = self.store.new_staging_dir(&slug, version)?;
         let built = self
@@ -1111,7 +1114,10 @@ impl<'a> Ingestor<'a> {
             return Ok(());
         };
         if src.is_dir() {
-            copy_tree(&src, &dest.join(test_cabinet_core::VALIDATION_BASELINE_DIR))?;
+            copy_tree(
+                &src,
+                &dest.join(test_cabinet_contracts::layout::VALIDATION_BASELINE_DIR),
+            )?;
         }
         Ok(())
     }
@@ -1147,7 +1153,7 @@ impl<'a> Ingestor<'a> {
         &self,
         dest: &Path,
         scope: &str,
-        reference: &test_cabinet_core::ReferenceView,
+        reference: &test_cabinet_suites::test_case::ReferenceView,
     ) -> Result<()> {
         let file = format!("{}.{}", reference.view, reference.extension());
         let out = reference_in(dest, scope, &file);
@@ -1384,8 +1390,8 @@ fn build_stored_manifest(
 }
 
 /// Build a [`StoredErratum`] from a resolved known-issue entry (the stored shape
-/// matches the core [`test_cabinet_core::test_case::Erratum`] field for field).
-fn stored_erratum(erratum: &test_cabinet_core::test_case::Erratum) -> StoredErratum {
+/// matches the core [`test_cabinet_suites::test_case::Erratum`] field for field).
+fn stored_erratum(erratum: &test_cabinet_suites::test_case::Erratum) -> StoredErratum {
     StoredErratum {
         id: erratum.id.clone(),
         title: erratum.title.clone(),
@@ -1402,7 +1408,7 @@ fn stored_erratum(erratum: &test_cabinet_core::test_case::Erratum) -> StoredErra
 
 /// Build a [`StoredDomain`] from a resolved scoring domain (the wire shape matches
 /// field for field). Shared by the case's common domains and each variant's own.
-fn stored_domain(domain: &test_cabinet_core::Domain) -> StoredDomain {
+fn stored_domain(domain: &test_cabinet_suites::test_case::Domain) -> StoredDomain {
     StoredDomain {
         id: domain.id.clone(),
         name: domain.name.clone(),
@@ -1411,7 +1417,7 @@ fn stored_domain(domain: &test_cabinet_core::Domain) -> StoredDomain {
 }
 
 /// Build a [`StoredReviewItem`] from a resolved reviewer checklist item.
-fn stored_review_item(item: &test_cabinet_core::ReviewItem) -> StoredReviewItem {
+fn stored_review_item(item: &test_cabinet_suites::test_case::ReviewItem) -> StoredReviewItem {
     StoredReviewItem {
         id: item.id.clone(),
         title: item.title.clone(),
@@ -1454,7 +1460,9 @@ fn stored_review_item(item: &test_cabinet_core::ReviewItem) -> StoredReviewItem 
 /// outputs. The script file itself rides along in the copied version tree; this records
 /// only the metadata the served definition needs so the driver can locate and run it.
 /// Shared by the item-level and per-sub-item drivers.
-fn stored_validation(validation: &test_cabinet_core::ReviewValidation) -> StoredReviewValidation {
+fn stored_validation(
+    validation: &test_cabinet_suites::test_case::ReviewValidation,
+) -> StoredReviewValidation {
     StoredReviewValidation {
         script: validation.script_rel.clone(),
         per_engine: validation.script.is_none(),
@@ -1473,7 +1481,7 @@ fn stored_validation(validation: &test_cabinet_core::ReviewValidation) -> Stored
 
 /// Build a [`StoredReference`] from a resolved reference view, recording its kind
 /// and the extension its media is served under.
-fn stored_reference(reference: &test_cabinet_core::ReferenceView) -> StoredReference {
+fn stored_reference(reference: &test_cabinet_suites::test_case::ReferenceView) -> StoredReference {
     StoredReference {
         view: reference.view.clone(),
         kind: reference.kind,
@@ -1482,7 +1490,7 @@ fn stored_reference(reference: &test_cabinet_core::ReferenceView) -> StoredRefer
 }
 
 /// Build a [`StoredProof`] from a resolved proof-of-implementation declaration.
-fn stored_proof(proof: &test_cabinet_core::ProofFile) -> StoredProof {
+fn stored_proof(proof: &test_cabinet_suites::test_case::ProofFile) -> StoredProof {
     StoredProof {
         id: proof.id.clone(),
         name: proof.name.clone(),
@@ -1491,9 +1499,12 @@ fn stored_proof(proof: &test_cabinet_core::ProofFile) -> StoredProof {
     }
 }
 
-/// Build a `StoredSpec` from a resolved [`SpecFile`](test_cabinet_core::SpecFile), deriving the store-relative
+/// Build a `StoredSpec` from a resolved [`SpecFile`](test_cabinet_suites::test_case::SpecFile), deriving the store-relative
 /// `source` key and the `template` flag (a `.hbs` source) and carrying its `kind`.
-fn stored_spec(keys: &Keys<'_>, spec: &test_cabinet_core::SpecFile) -> Result<StoredSpec> {
+fn stored_spec(
+    keys: &Keys<'_>,
+    spec: &test_cabinet_suites::test_case::SpecFile,
+) -> Result<StoredSpec> {
     let source = keys.of(&spec.source_path)?;
     let template = spec
         .source_path
@@ -1514,7 +1525,7 @@ fn stored_spec(keys: &Keys<'_>, spec: &test_cabinet_core::SpecFile) -> Result<St
 /// resolution as the file's path within the workspace directory).
 fn stored_workspace(
     keys: &Keys<'_>,
-    file: &test_cabinet_core::WorkspaceFile,
+    file: &test_cabinet_suites::test_case::WorkspaceFile,
 ) -> Result<StoredWorkspaceFile> {
     Ok(StoredWorkspaceFile {
         source: keys.of(&file.source_path)?,
@@ -1523,13 +1534,13 @@ fn stored_workspace(
 }
 
 /// Build a [`StoredShowcase`] from a variant's resolved
-/// [showcase](test_cabinet_core::test_case::CaseShowcase): the description is
+/// [showcase](test_cabinet_suites::test_case::CaseShowcase): the description is
 /// inlined, and each media entry is keyed by its **store-relative** path exactly
 /// as a spec or a workspace file is — the bytes themselves ride the copied
 /// version tree (`copy_tree`), so keying is all the upload there is.
 fn stored_showcase(
     keys: &Keys<'_>,
-    showcase: &test_cabinet_core::test_case::CaseShowcase,
+    showcase: &test_cabinet_suites::test_case::CaseShowcase,
 ) -> Result<StoredShowcase> {
     let media = showcase
         .media
@@ -1550,11 +1561,11 @@ fn stored_showcase(
 }
 
 /// Build a [`StoredWorkspace`] from a resolved per-engine starter project: one
-/// entry per [engine](test_cabinet_core::engine) the case ships a project for, each
+/// entry per [engine](test_cabinet_suites::engine) the case ships a project for, each
 /// keyed by its store-relative source exactly as a spec or an asset is.
 fn stored_workspaces(
     keys: &Keys<'_>,
-    workspaces: &test_cabinet_core::test_case::EngineWorkspaces,
+    workspaces: &test_cabinet_suites::test_case::EngineWorkspaces,
 ) -> Result<StoredWorkspace> {
     let mut by_engine = std::collections::BTreeMap::new();
     for engine in workspaces.engines() {
@@ -1571,13 +1582,13 @@ fn stored_workspaces(
 /// Build a [`StoredCase`] from a resolved performance case: the held-out `input`
 /// scenario and `expected` oracle state, each keyed by its **store-relative** path
 /// exactly as specs, workspace files, and assets are. The runner fetches both like
-/// any other definition file and the [`PerformanceValidator`](test_cabinet_core::PerformanceValidator) scores against them;
+/// any other definition file and the performance validator scores against them;
 /// they are never seeded into a run. Keying them absolutely (as this once did)
-/// leaves the driver's [`materialize_version`](test_cabinet_core::backend_client::materialize_version) unable to fetch or locate them, so
+/// leaves the driver's `materialize_version` unable to fetch or locate them, so
 /// every backend-driven performance run resolves an empty scored set and aborts.
 fn stored_case(
     keys: &Keys<'_>,
-    case: &test_cabinet_core::test_case::PerformanceCase,
+    case: &test_cabinet_suites::test_case::PerformanceCase,
 ) -> Result<StoredCase> {
     Ok(StoredCase {
         input: keys.of(&case.input)?,
@@ -1668,7 +1679,7 @@ pub(crate) fn to_forward_slash(path: &Path) -> String {
 ///
 /// The exceptions are the dotfiles a case legitimately ships (`.gitignore`,
 /// `.cargo`): they are preserved so a backend-driven run seeds the same set a
-/// local run does. The allowlist is shared with `core`'s `collect_workspace_files`
+/// local run does. The allowlist is shared with the suites crate's `collect_workspace_files`
 /// via [`is_seeded_dotfile`], which keeps the two in lockstep.
 pub(crate) fn copy_tree(src: &Path, dst: &Path) -> Result<()> {
     std::fs::create_dir_all(dst)?;
@@ -1702,7 +1713,7 @@ pub(crate) fn copy_tree(src: &Path, dst: &Path) -> Result<()> {
 /// Recreate the symlink at `from` at the new location `to`, preserving its target
 /// verbatim. The target is kept as-is (typically relative to the link's own
 /// directory) so the recreated link resolves the same way the original did. Mirrors
-/// `core`'s `copy_symlink`.
+/// the suites crate's `copy_symlink`.
 fn copy_symlink(from: &Path, to: &Path) -> Result<()> {
     let target = std::fs::read_link(from)?;
     #[cfg(unix)]

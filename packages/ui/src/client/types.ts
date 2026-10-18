@@ -613,8 +613,8 @@ export interface VariantInfo {
   // the frame indices whose rendered image and action log were uploaded to the
   // public snapshot bucket by `tcab publish-reference`. An asset reference is data,
   // not a deployed page, so it carries indices rather than a URL — the objects
-  // themselves are addressed by the deterministic keys in
-  // `crates/core/src/asset_reference.rs`. Null when no reference is published for
+  // themselves are addressed by the deterministic keys in the contracts crate's
+  // `asset_reference` module. Null when no reference is published for
   // the variant, and absent on a backend that predates the field. Mutually
   // exclusive with `referenceBuilds` in practice: a case is one test type.
   referenceSheet?: ReferenceSheet | null;
@@ -1280,13 +1280,13 @@ export interface PublishEnqueued {
 // A human-readable progress line streamed while a publish runs, surfaced so a
 // console can show "Publishing…" advance (creating repo → pushing → deploying)
 // rather than a frozen spinner. Mirrors the Rust `PublishProgress`
-// (crates/core/src/publish_job_api.rs).
+// (contracts/crates/contracts/src/publish_job_api.rs).
 export interface PublishProgress {
   message: string;
 }
 
 // A live asset-generation preview frame, streamed as the model draws (mirrors the
-// Rust `AssetPreview`, crates/core/src/preview.rs). It travels out of band from
+// Rust `AssetPreview`, contracts/crates/contracts/src/preview.rs). It travels out of band from
 // the recorded event feed — as the `asset_preview` line on the live event
 // stream — and is never persisted;
 // a viewer renders `image` to watch the sprite take shape. Not part of the
@@ -1329,7 +1329,7 @@ export interface AssetPreview {
 }
 
 // One line of raw harness output, as recorded in a run's `raw.jsonl`. Mirrors
-// the Rust `RawOutputLine` (crates/core/src/execution.rs). This is UI-only — it
+// the Rust `RawOutputLine` (crates/driver/src/execution.rs). This is UI-only — it
 // is not part of the run-record contract — and feeds the Events tab's raw view.
 export interface RawOutputLine {
   stream: "stdout" | "stderr";

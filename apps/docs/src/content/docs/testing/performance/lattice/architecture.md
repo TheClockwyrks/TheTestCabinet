@@ -43,7 +43,7 @@ exported, so the schemas and the engine can never disagree.
 the submission module, calls its [`simulate`](#the-submission-contract) entry once
 per scenario under fuel metering, enforces the memory cap, and reads back the
 canonical state the submission produced. It is a separate crate because
-`lattice-core` must stay wasm-compilable and because core's
+`lattice-core` must stay wasm-compilable and because the driver's
 `PerformanceValidator` reuses this exact host to score a submission, so the CLI
 and the validator can never diverge on what a fuel number means.
 

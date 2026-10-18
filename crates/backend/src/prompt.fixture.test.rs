@@ -10,13 +10,9 @@
 use std::path::{Path, PathBuf};
 
 use tempfile::TempDir;
-use test_cabinet_core::TestCaseVersion;
-use test_cabinet_core::engine::{
-    EngineCatalog, EngineCatalogExt as _, EngineSelection, ResolvedEngine,
-};
-use test_cabinet_core::test_suite::{
-    PREVIEWS_DIR, TEST_SUITES_DIR, TestSuiteCatalog, TestSuiteCatalogExt as _,
-};
+use test_cabinet_suites::engine::{EngineSelection, ResolvedEngine};
+use test_cabinet_suites::test_case::TestCaseVersion;
+use test_cabinet_suites::test_suite::{PREVIEWS_DIR, TEST_SUITES_DIR, TestSuiteCatalog};
 
 use crate::ingest::{IngestRequest, Ingestor, copy_tree};
 use crate::store::DefinitionStore;
@@ -92,14 +88,19 @@ impl IngestedSuite {
         let materials = self.dir.path().join(format!("materials-{version}"));
         TestSuiteCatalog::with_materials(&suites, materials)
             .with_previews(suites.join(PREVIEWS_DIR))
-            .resolve(SUITE, version, "end-to-end")
+            .resolve_with(
+                SUITE,
+                version,
+                "end-to-end",
+                &test_cabinet_engines::built_in_catalog(),
+            )
             .unwrap_or_else(|err| panic!("{CASE}@{version} should resolve: {err}"))
     }
 }
 
 /// The engine a run selected.
 pub fn engine(slug: &str) -> ResolvedEngine {
-    EngineCatalog::new()
+    test_cabinet_engines::built_in_catalog()
         .resolve(&EngineSelection::new(slug))
         .unwrap_or_else(|err| panic!("the {slug} engine resolves: {err}"))
 }

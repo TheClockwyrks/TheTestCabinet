@@ -1,9 +1,7 @@
 [workspace]
 resolver = "3"
 members = [
-	"crates/core",
 	"crates/engines",
-	"crates/code-analysis",
 	"crates/cli",
 	"crates/gg",
 	# The shared build-script body behind every gg program-language ARTIFACT crate, and the arm
@@ -31,7 +29,6 @@ members = [
 	"crates/gg-sandbox-artifacts/swift",
 	"crates/gg-sandbox-artifacts/cpp",
 	"crates/gg-sandbox-artifacts/csharp",
-	"crates/api-codegen",
 	"crates/draw",
 	"crates/model-core",
 	"crates/voxel",
@@ -69,6 +66,7 @@ members = [
 	"crates/lattice-sdk",
 	"crates/lattice-ref-naive",
 	"crates/lattice-ref-transport",
+	"crates/match-play",
 	"crates/backend",
 	"crates/driver",
 	"crates/dispatcher",
@@ -77,13 +75,12 @@ members = [
 	"crates/arena",
 	"crates/auth-service",
 	"crates/db-auth",
-	"crates/telemetry",
 	"crates/entities",
 	"crates/migration",
 ]
-# The contracts repository, a submodule, is a workspace of its own: its crates are
-# path dependencies of this one, built from the checkout at the commit the
-# superrepo pins.
+# The contracts repository, a submodule, is a workspace of its own. Its crates are
+# named under `[workspace.dependencies]` by their public source, and the patch table
+# of `.cargo/config.toml` builds them from the checkout.
 exclude = ["contracts"]
 
 [workspace.package]
@@ -224,6 +221,17 @@ opt-level = 3
 opt-level = 3
 
 [workspace.dependencies]
+# The crates of the contracts repository, named by its public source, the GitHub
+# mirror, at the tag its dependents pin (`TAGS` in `scripts/repos/render.py`), as
+# the Repositories page's "How a dependency is named" states. No manifest names a
+# path into `contracts/`: inside the superrepo the patch table of
+# `.cargo/config.toml` sends this source to the sibling checkout, which may hold
+# crates and changes the tag does not yet carry.
+test-cabinet-contracts = { git = "https://github.com/TheClockwyrks/contracts", tag = "v0.1.0" }
+test-cabinet-suites = { git = "https://github.com/TheClockwyrks/contracts", tag = "v0.1.0" }
+test-cabinet-telemetry = { git = "https://github.com/TheClockwyrks/contracts", tag = "v0.1.0" }
+test-cabinet-redact = { git = "https://github.com/TheClockwyrks/contracts", tag = "v0.1.0" }
+test-cabinet-backend-client = { git = "https://github.com/TheClockwyrks/contracts", tag = "v0.1.0" }
 # Shared runtime dependencies inherited by member crates via { workspace = true }.
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -250,7 +258,7 @@ dotenvy = "0.15"
 time = { version = "0.3", features = ["serde", "formatting", "parsing", "macros"] }
 toml = "0.8"
 # Format-preserving TOML *writing*, for the test suite model's canonical emitter
-# (`crates/core`'s `test_suite`). A suite's write model is a whole-file rewrite of
+# (contracts' `test_suite`). A suite's write model is a whole-file rewrite of
 # canonically formatted TOML, so the emitter has to control table order, array
 # layout and string quoting directly rather than accept whatever a plain
 # serializer produces — which means building a `DocumentMut` and rewriting its
@@ -311,42 +319,12 @@ pollster = "0.4"
 # receives the rendered PNG bytes from the drawing binary and base64-encodes them
 # so the frame travels in the same JSON transport as every other live update.
 base64 = "0.22"
-# JSON Schema generation. Two uses, both feature-gated so normal/CLI/wasm
-# builds never compile it: the `schema` feature of `foray-core`/`lattice-core`
-# emits the per-tick contract schemas each adversarial/performance test case seeds
-# verbatim (a drift test asserts the on-disk copies never diverge from the engine
-# types), and the `contract` feature of `contracts`/`core`/`backend` (driven by the
-# `contract-codegen` and `api-codegen` generators) emits the published API/run-record
-# JSON Schemas.
+# JSON Schema generation, feature-gated so normal/CLI/wasm builds never compile
+# it: the `schema` feature of `foray-core`/`lattice-core` emits the per-tick
+# contract schemas each adversarial/performance test case seeds verbatim (a drift
+# test asserts the on-disk copies never diverge from the engine types). The
+# published API and run-record schemas are the contracts repository's.
 schemars = "1"
-# TypeScript binding generation from Rust types. Pulled in only behind the
-# `contract` feature of `contracts`/`core`/`backend` (and the `contract-codegen`
-# and `api-codegen` generators that drive them), so normal/CLI/wasm builds never
-# compile it.
-# Paired with `schemars` on the same types so the TS bindings and the JSON Schemas
-# are generated from one source of truth and can never drift apart.
-#
-# `no-serde-warnings` silences a notice the derive prints for every `#[serde(..)]`
-# key it does not itself understand. Its `serde-compat` parser deliberately knows
-# only the keys that can change the emitted TypeScript (`rename`, `rename_all`,
-# `tag`, `content`, `untagged`, `skip`, `flatten`, `default`,
-# `skip_serializing_if`, ...); anything else it ignores, and then says so. Two
-# attribute shapes in `contracts/crates/contracts/src/gg.rs` trip it: field-level
-# `deserialize_with` (the `count::option_u64` leniency on `GgLoopDetection` and
-# `GgRunLimits`) and container-level `deny_unknown_fields` on an *enum*
-# (`GgHookAction`) — ts-rs has an arm for the latter on structs but not on enums.
-# Ignoring both is the correct outcome rather than a silent defect: a custom
-# deserializer still produces the field's declared Rust type, and
-# `deny_unknown_fields` is a deserializer-side rejection with no expression in a
-# TypeScript type, so neither can move the generated bindings. The notices are
-# printed straight to stderr by the proc macro rather than raised as rustc
-# diagnostics, which is why `[workspace.lints.rust]` never turned them into errors
-# and the rustdoc gate stayed green while emitting 24 of them per `cargo doc` —
-# noise that trains readers to skim the gate's output. The cost of the flag is
-# that a future serde key ts-rs cannot parse *and* which would have changed the
-# output is now silent too; the generated bindings are checked in and diffed, so
-# that change surfaces as a contract diff instead of a build notice.
-ts-rs = { version = "12", features = ["no-serde-warnings"] }
 # Cross-platform PATH lookup for the container runtime binary. A hand-rolled
 # search misses the `.exe`/`PATHEXT` resolution Windows needs; `which` handles
 # that and the Unix case behind one API.
@@ -513,10 +491,10 @@ tokio-util = { version = "0.7", features = ["io"] }
 
 # OpenTelemetry. These crates move in lockstep across the `opentelemetry`
 # ecosystem and are pinned together here so the whole workspace shares one
-# mutually-compatible set; bumping one means bumping all. They are consumed
-# through `crates/telemetry` (`test-cabinet-telemetry`), which splits the light
-# propagation deps (default features) from the heavy exporter/init deps (the
-# `otlp` feature). Transport is OTLP over HTTP/protobuf (collector port 4318),
+# mutually-compatible set; bumping one means bumping all, here and in the
+# contracts repository's workspace. They are consumed through its telemetry
+# crate (`test-cabinet-telemetry`), which splits the light propagation deps
+# (default features) from the heavy exporter/init deps (the `otlp` feature). Transport is OTLP over HTTP/protobuf (collector port 4318),
 # using a non-blocking `reqwest` client with rustls so we inherit the same TLS
 # stack as the rest of the workspace and need no system OpenSSL or `protoc`.
 #
@@ -554,7 +532,7 @@ tracing-opentelemetry = "0.33"
 # workspace's minimal-host stance. Only `crates/gg` pulls it in.
 tiktoken-rs = "0.7"
 
-# The TypeScript/JSX front end `crates/code-analysis` parses a produced source tree with.
+# The TypeScript/JSX front end `crates/driver`'s analyzer parses a produced source tree with.
 # Pinned to the 0.141 line that crate is written against: oxc's parser and AST move between
 # minor releases, and a silent bump would change what the analyzer reports.
 oxc = { version = "0.141" }

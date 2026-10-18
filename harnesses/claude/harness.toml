@@ -5,7 +5,7 @@
 # the harness's most recently published version. See `harnesses/README.md`.
 
 # Stable slug, used throughout run records and the site. Must match the folder
-# name and one of the slugs the agent harness layer in `crates/core` knows.
+# name and one of the slugs the agent harness layer in `crates/driver` knows.
 slug = "claude"
 
 # Human-readable name, shown by `tcab harnesses`.

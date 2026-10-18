@@ -48,7 +48,7 @@ use std::path::{Path, PathBuf};
 
 use serde::Serialize;
 use serde_json::json;
-use test_cabinet_core::gg::{
+use test_cabinet_contracts::gg::{
     CAPABILITY_EDIT_FILE, CAPABILITY_LIST_DIR, CAPABILITY_READ_FILE, CAPABILITY_RESPONSES_AS_CODE,
     CAPABILITY_SHELL, CAPABILITY_WRITE_FILE, GgContextSource, GgOpeningTree, GgOpeningTurn,
     GgProgramLanguage,

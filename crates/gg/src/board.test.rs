@@ -5,7 +5,7 @@ use serde_json::json;
 
 use super::*;
 use crate::validate::{LaunchDefect, LaunchReport};
-use test_cabinet_core::gg::{GgCapabilityConfig, GgIssueStatus, GgTelemetryKind};
+use test_cabinet_contracts::gg::{GgCapabilityConfig, GgIssueStatus, GgTelemetryKind};
 
 /// A **fully specified** project-management params object with `overrides` written over it.
 ///
@@ -81,7 +81,7 @@ fn add_epic(store: &mut BoardStore, prefix: &str) -> String {
         .expect("create epic")
 }
 
-/// The [profile slug](test_cabinet_core::gg::GgAgentConfig::slug) the board tests assign every issue
+/// The [profile slug](test_cabinet_contracts::gg::GgAgentConfig::slug) the board tests assign every issue
 /// to. The store only requires an assignee to be *named* — whether the filing agent may assign to
 /// that id is the tool's check, not the store's — so one stand-in id serves every case here.
 const ASSIGNEE: &str = "worker";

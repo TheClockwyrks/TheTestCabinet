@@ -31,10 +31,10 @@ use tower_http::trace::TraceLayer;
 use tracing::Instrument as _;
 
 use foray_core::replay::Replay;
-use test_cabinet_core::match_play::{
+use test_cabinet_backend_client::{BackendClient, HttpBackendClient};
+use test_cabinet_match_play::{
     ControllerRef, MatchSummary, ResolvedController, run_quick_match, run_tournament,
 };
-use test_cabinet_core::{BackendClient, HttpBackendClient};
 
 use crate::arena_resolve::{list_controllers, resolve_controller, with_pushed_controllers};
 use crate::error::ApiError;
@@ -255,7 +255,7 @@ async fn submit_tournament(
 async fn drive_tournament(
     client: HttpBackendClient,
     job: TournamentJob,
-    test_case: test_cabinet_core::TestCaseVersion,
+    test_case: test_cabinet_contracts::test_case::TestCaseVersion,
     variant: String,
     participants: Vec<ResolvedController>,
     permit: tokio::sync::OwnedSemaphorePermit,

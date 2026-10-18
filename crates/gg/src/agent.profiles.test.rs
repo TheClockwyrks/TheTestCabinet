@@ -25,7 +25,7 @@
 //! epilogue, and that is where the run stops being scored. Two of the three are the succession's,
 //! either way round; the third is the **board's** dispatch, which is the site with nothing else
 //! watching it — no spawner holds a handle to an issue's agent, so a latch the epilogue stopped
-//! reading would leave every other test here green and still hand `core` a tree to score with an
+//! reading would leave every other test here green and still hand the driver a tree to score with an
 //! issue's whole work missing from it.
 //!
 //! What they guard is that gg then says so. The tempting alternative is to substitute the
@@ -45,7 +45,7 @@ use super::*;
 use crate::board::{IssueStatus, NewIssue};
 use crate::client::MockClient;
 use crate::telemetry::{CollectingSink, Emitter};
-use test_cabinet_core::gg::{
+use test_cabinet_contracts::gg::{
     ALL_SUBAGENT_SCOPES, CAPABILITY_EXEC, CAPABILITY_PROJECT_MANAGEMENT, CAPABILITY_SUBAGENTS,
     CAPABILITY_TASKS, GgCapabilityConfig, GgCapabilitySet, GgSubagentRef, GgTelemetryEvent,
     ROOT_AGENT, ROOT_PROFILE_ID,
@@ -218,7 +218,7 @@ fn undeclared_entry_state_set() -> GgCapabilitySet {
         model_id: String::new(),
         capabilities: vec![GgCapabilityConfig {
             params: json!({ "states": [{ "name": "only", "agentId": "ghost" }] }),
-            ..GgCapabilityConfig::enabled(test_cabinet_core::gg::CAPABILITY_FSM)
+            ..GgCapabilityConfig::enabled(test_cabinet_contracts::gg::CAPABILITY_FSM)
         }],
         ..GgAgentConfig::root()
     });
@@ -415,7 +415,7 @@ impl ClientFactory for RefusingFactory {
 }
 
 /// The status of the session's terminal [`SessionEnded`](GgTelemetryKind::SessionEnded) — what
-/// `core` reads to decide whether the run is a result or a harness error.
+/// the driver reads to decide whether the run is a result or a harness error.
 fn terminal_status(events: &[GgTelemetryEvent]) -> Option<String> {
     events.iter().rev().find_map(|event| match &event.kind {
         GgTelemetryKind::SessionEnded { status } => Some(status.clone()),
@@ -454,7 +454,7 @@ async fn a_session_whose_succession_cannot_be_built_ends_as_gg_s_defect() {
     assert_eq!(
         outcome,
         SessionOutcome::HarnessError,
-        "a run gg broke exits non-zero so `core` records a harness error instead of scoring it"
+        "a run gg broke exits non-zero so the driver records a harness error instead of scoring it"
     );
     let events = sink.events();
     assert_eq!(
@@ -1080,7 +1080,7 @@ impl ClientFactory for RefusingBelowRoot {
 /// test of it reads the [latch](crate::fault) directly, which proves the fault was *raised* and
 /// nothing about what the fault is **for** — and what it is for is spent in the session epilogue,
 /// hundreds of lines away, on a value read once. A raised latch that the epilogue stopped reading
-/// would leave every one of those tests green while gg handed `core` a tree to score with an issue's
+/// would leave every one of those tests green while gg handed the driver a tree to score with an issue's
 /// whole work missing from it.
 ///
 /// So this drives the real entry point: the root files the issue, gg cannot build a provider for the
@@ -1107,7 +1107,7 @@ async fn a_session_whose_issue_agent_cannot_be_built_ends_as_gg_s_defect() {
     assert_eq!(
         outcome,
         SessionOutcome::HarnessError,
-        "a run gg broke exits non-zero so `core` records a harness error instead of scoring it"
+        "a run gg broke exits non-zero so the driver records a harness error instead of scoring it"
     );
     let events = sink.events();
     assert_eq!(

@@ -62,7 +62,7 @@
 use std::borrow::Cow;
 
 use serde::Deserialize;
-use test_cabinet_core::gg::GgProgramLanguage;
+use test_cabinet_contracts::gg::GgProgramLanguage;
 
 use super::language::ProgramLanguage;
 use super::operations::{Binding, OperationId, operation_by_id};
@@ -1165,7 +1165,7 @@ fn view_of(module: &'static ModuleDoc) -> ModuleView {
 pub struct ModuleView {
     /// gg's cross-arm id for the module.
     ///
-    /// The cross-arm join key: it is what the [surface event](test_cabinet_core::gg::GgAgentApi)
+    /// The cross-arm join key: it is what the [surface event](test_cabinet_contracts::gg::GgAgentApi)
     /// and the [reference](crate::reference) group by, and the namespace half of every
     /// [operation](super::operations::OperationId) the module's calls are recorded under. The
     /// [path](Self::path) beside it is what a model reads, and the two are separate because one arm

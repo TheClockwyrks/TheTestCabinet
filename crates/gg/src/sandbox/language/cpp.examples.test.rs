@@ -62,7 +62,7 @@
 //!
 //! Nothing calls either: this gate compiles examples rather than running them.
 
-use test_cabinet_core::gg::GgProgramLanguage;
+use test_cabinet_contracts::gg::GgProgramLanguage;
 
 use super::compile::compile_program;
 use crate::prompts::{

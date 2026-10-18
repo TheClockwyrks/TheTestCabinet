@@ -14,14 +14,15 @@ name = "test_cabinet_artifacts"
 path = "src/lib.rs"
 
 [dependencies]
-# The shared playable/proof/asset resolvers (`find_build_output`,
-# `serve_build_file`, `serve_proof_file`, `serve_asset_file`) live in core, so
-# serving logic is reused, not reinvented.
-test-cabinet-core = { path = "../core" }
+# The run record and the run-tree layout the playable resolvers read
+# (`find_build_output`, `serve_build_file`, the proof naming rules).
+test-cabinet-contracts = { workspace = true }
+# The content labels a served file is sent under (`content_labels`).
+test-cabinet-suites = { workspace = true }
 # A binary: it owns telemetry init, so it pulls the heavy `otlp` feature (the
-# propagation-only default is for libraries like `core`), exactly as the other
+# propagation-only default is for libraries), exactly as the other
 # services' mains do.
-test-cabinet-telemetry = { path = "../telemetry", features = ["otlp"] }
+test-cabinet-telemetry = { workspace = true, features = ["otlp"] }
 
 serde = { workspace = true }
 serde_json = { workspace = true }
@@ -48,8 +49,15 @@ futures-util = { workspace = true }
 tempfile = { workspace = true }
 # The HTTP client the service verifies a driver's per-job token with against the
 # backend's internal verify endpoint. rustls (no system OpenSSL), `json` for the
-# body — see `crates/core`.
+# body. The R2 client (`r2`) sends its signed requests with it too.
 reqwest = { workspace = true }
+# SigV4 signing for the R2 client (`r2`): signing the handful of requests directly
+# is far cheaper than vendoring the AWS SDK for three verbs.
+sha2 = { workspace = true }
+hmac = { workspace = true }
+hex = { workspace = true }
+md-5 = { workspace = true }
+base64 = { workspace = true }
 # `tar` (pure Rust, no system deps) unpacks the run-artifact tree the driver
 # streams up as a tarball — the same crate the worker/driver already depend on to
 # frame trees over the pod `exec` channel.

@@ -26,7 +26,7 @@ use std::sync::{Arc, Mutex};
 
 use serde_json::{Value, json};
 
-use test_cabinet_core::gg::{CAPABILITY_AGENT_MANAGED_CONTEXT, CAPABILITY_DOCVIEW_CLOSE};
+use test_cabinet_contracts::gg::{CAPABILITY_AGENT_MANAGED_CONTEXT, CAPABILITY_DOCVIEW_CLOSE};
 
 use super::substrate::{
     caught, evaluate_js, logging_program_of, logs, prepare, purescript, run_as, trapped,

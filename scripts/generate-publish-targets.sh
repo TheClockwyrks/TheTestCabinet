@@ -1,21 +1,21 @@
 #!/usr/bin/env bash
-# Generate crates/core/publish-targets.toml, the remote publish targets The Spec Cabinet
+# Generate crates/driver/publish-targets.toml, the remote publish targets The Spec Cabinet
 # and `tcab ingest --env` read, from the per-environment values in scripts/lib/env.sh.
 #
 # env.sh is the one place a deployed environment's resource group, cluster, namespace,
 # and ingest branch are written. The Rust tools cannot source a shell file, so they read
-# the committed TOML this script renders from it, and a test in crates/core runs this
+# the committed TOML this script renders from it, and a test in crates/driver runs this
 # script and fails when its output differs from the committed file. Re-run it after
 # editing env.sh:
 #
-#   scripts/generate-publish-targets.sh            # rewrite crates/core/publish-targets.toml
+#   scripts/generate-publish-targets.sh            # rewrite crates/driver/publish-targets.toml
 #   scripts/generate-publish-targets.sh --stdout   # print what it would write
 #   scripts/generate-publish-targets.sh --check    # exit 1 when the committed file differs
 set -euo pipefail
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd "${script_dir}/.." && pwd)"
-output="${repo_root}/crates/core/publish-targets.toml"
+output="${repo_root}/crates/driver/publish-targets.toml"
 # shellcheck source=scripts/lib/env.sh
 source "${script_dir}/lib/env.sh"
 

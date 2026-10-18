@@ -14,7 +14,7 @@
 
 use super::*;
 use crate::context::{FileRegion, OpenFileView, OpenTextView};
-use test_cabinet_core::gg::{
+use test_cabinet_contracts::gg::{
     CAPABILITY_AGENT_PERSISTENCE, CAPABILITY_RESPONSES_AS_CODE, GgProgramLanguage,
 };
 

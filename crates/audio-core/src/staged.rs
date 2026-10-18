@@ -5,7 +5,7 @@
 //! the run container when the container starts, recording what it wrote in a
 //! `packs.json` beside them. This module is the single definition of that tree: its
 //! root, its file names, its contract version, the manifest's shape, and the selection
-//! rule the audio binaries resolve a pack through. The writer (`crates/core`) and the
+//! rule the audio binaries resolve a pack through. The writer (`crates/driver`) and the
 //! reader (`sfx-sample` and `music`) share it, so the two cannot disagree about what a
 //! run was given.
 //!

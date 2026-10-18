@@ -3,8 +3,12 @@ title: "Prompts"
 ---
 
 Everything gg says to a model is authored as a Handlebars template rather than
-as a string literal in Rust. The templates live in `crates/gg/templates/` and
-are embedded into the binary at compile time, so the binary carries its own
+as a string literal in Rust. The templates live in `crates/gg/templates/`,
+except the two system prompts, which live in the contracts repository's
+`crates/contracts/templates/gg/` because the backend API package that mirrors
+them for the console is [generated
+there](/development/building/#generating-the-data-contract). All of them are
+embedded into the binary at compile time, so the binary carries its own
 prompts. They render through the same strict-mode, no-escaping engine that
 renders a test case's [`prompt.hbs`](/testing/end-to-end/overview/#prompt-template).
 

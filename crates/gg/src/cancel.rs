@@ -7,7 +7,7 @@
 //! handle on that process — it holds the *container*, and reads gg's telemetry off an
 //! exec stream. What the host can always do is put a file inside the container. So the
 //! cancellation channel is exactly that: the host names a
-//! [sentinel path](test_cabinet_core::gg::GgInvocation::cancel_file) in the invocation
+//! [sentinel path](test_cabinet_contracts::gg::GgInvocation::cancel_file) in the invocation
 //! document, and creates that file when an operator kills the run.
 //!
 //! Killing the process instead would be worse in the way that matters: gg's result is

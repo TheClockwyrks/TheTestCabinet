@@ -9,7 +9,7 @@
 //! the consumer is a language model reading prose, and prose is the richest thing it can be handed.
 //!
 //! It is exactly wrong for a consumer that is a **program**. Under the
-//! [responses-as-code](test_cabinet_core::gg::CAPABILITY_RESPONSES_AS_CODE) capability the model
+//! [responses-as-code](test_cabinet_contracts::gg::CAPABILITY_RESPONSES_AS_CODE) capability the model
 //! writes code over the tools, and code wants to branch on `exitCode !== 0` and filter on
 //! `entry.kind === "file"` — not to re-parse the sentence gg just wrote. A typed membrane over
 //! prose payloads would be a typed API over untyped data, which is the one thing worth avoiding
@@ -57,7 +57,7 @@
 //! lines) saturates rather than wrapping into a small, plausible, wrong number.
 
 use serde::{Deserialize, Serialize};
-use test_cabinet_core::gg::GgCallFailure;
+use test_cabinet_contracts::gg::GgCallFailure;
 
 use crate::model::Role;
 
@@ -403,7 +403,7 @@ pub struct ArchiveSearchData {
 pub struct SubagentHandleData {
     /// The child's id — what a later wait or message names it by.
     pub id: String,
-    /// The [id](test_cabinet_core::gg::GgAgentConfig::id) of the agent profile it
+    /// The [id](test_cabinet_contracts::gg::GgAgentConfig::id) of the agent profile it
     /// runs under — the same label the spawner named to ask for it. Display text, and the field a
     /// program reads as `slot`: a handle names its agent for a brief to talk about, and the
     /// profile it resolved to is the run's business rather than the program's.

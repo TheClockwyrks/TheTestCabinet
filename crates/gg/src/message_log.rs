@@ -13,10 +13,10 @@
 //! Instead each message is fingerprinted by its content ([`fingerprint`]). The
 //! [`MessagePool`] tracks which fingerprints have already been emitted on an agent's
 //! stream; a message's full body is streamed **once** (as a
-//! [`ContextMessage`](test_cabinet_core::gg::GgTelemetryKind::ContextMessage)) the first
+//! [`ContextMessage`](test_cabinet_contracts::gg::GgTelemetryKind::ContextMessage)) the first
 //! time it appears, and every turn that includes it thereafter references it by id alone
-//! (a [`GgPromptRef`](test_cabinet_core::gg::GgPromptRef) in that turn's
-//! [`Prompt`](test_cabinet_core::gg::GgTelemetryKind::Prompt)).
+//! (a [`GgPromptRef`](test_cabinet_contracts::gg::GgPromptRef) in that turn's
+//! [`Prompt`](test_cabinet_contracts::gg::GgTelemetryKind::Prompt)).
 //!
 //! The pool is **per agent**: each agent scopes its own emitter (see
 //! [`Emitter::for_agent`](crate::telemetry::Emitter::for_agent)) with a fresh pool, so an
@@ -31,7 +31,7 @@ use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use std::sync::Mutex;
 
-use test_cabinet_core::gg::{GgLoggedImage, GgLoggedToolCall, GgTelemetryKind};
+use test_cabinet_contracts::gg::{GgLoggedImage, GgLoggedToolCall, GgTelemetryKind};
 
 use crate::model::{FinishReason, Message, Role};
 
@@ -94,7 +94,7 @@ pub fn finish_reason_token(reason: &FinishReason) -> String {
 /// workspace path or a text view's label, and `None` for an ordinary message.
 ///
 /// The label rides on the pooled definition rather than on each turn's
-/// [reference](test_cabinet_core::gg::GgPromptRef) because it is a property of the
+/// [reference](test_cabinet_contracts::gg::GgPromptRef) because it is a property of the
 /// *material*, not of the turn: a view shows the same material every turn it survives, so
 /// carrying its selector once with the body is both cheaper and the thing a reader wants
 /// alongside the content.

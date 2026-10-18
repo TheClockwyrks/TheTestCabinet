@@ -5,13 +5,12 @@
 //! `tcab prompt` each take an `--engine`, and each has to answer the same two
 //! questions before it does anything — is the slug one this build carries, and is
 //! it one the case declares support for. `tcab run` asks neither, because a
-//! backend-driven run is gated by the core the driver executes; a local command
+//! backend-driven run is gated by the run engine the driver executes; a local command
 //! has no such gate and must do it itself.
 
 use anyhow::Result;
-use test_cabinet_core::{
-    EngineCatalog, EngineCatalogExt as _, EngineManifest, EngineSelection, ResolvedEngine,
-    TestCaseVersion, ensure_engine_supported,
+use test_cabinet_driver::{
+    EngineManifest, EngineSelection, ResolvedEngine, TestCaseVersion, ensure_engine_supported,
 };
 
 use crate::cli::EnginesArgs;
@@ -26,7 +25,7 @@ use crate::cli::EnginesArgs;
 /// listing is the complete set of values `--engine` accepts. The manifests are
 /// embedded at build time, so nothing here touches the filesystem.
 pub async fn execute(args: EnginesArgs) -> Result<()> {
-    let listing = EngineCatalog::new().all();
+    let listing = test_cabinet_driver::engine::built_in_catalog().all();
 
     if args.json {
         print_json(&listing);
@@ -40,21 +39,22 @@ pub async fn execute(args: EnginesArgs) -> Result<()> {
 /// Resolve an `--engine` slug for a specific test case version, refusing an
 /// engine the case does not support.
 ///
-/// The two failures are reported in this order deliberately, matching the core's
+/// The two failures are reported in this order deliberately, matching the engine's
 /// own gate: an unresolvable slug is a typo on the flag and is reported as the
 /// unknown engine it is — naming every engine that would have worked — rather
 /// than as an engine this case happens not to support, which would send the user
 /// looking in the wrong place. Only a slug that *is* an engine is then held
 /// against the case's declared set.
 ///
-/// The case-side half is the core's own
+/// The case-side half is the engine's own
 /// [`ensure_engine_supported`] rather than a re-statement of it, so a local
 /// `tcab seed` and a backend-driven run refuse the same pairing with the same
 /// words — and so the *version* half of the gate (a case's declared
 /// `[[engine]]` range against the version the host package store holds) applies
 /// here too, without this module having to know it exists.
 pub fn resolve_for_case(slug: &str, test_case: &TestCaseVersion) -> Result<ResolvedEngine> {
-    let engine = EngineCatalog::new().resolve(&EngineSelection::new(slug))?;
+    let engine =
+        test_cabinet_driver::engine::built_in_catalog().resolve(&EngineSelection::new(slug))?;
     ensure_engine_supported(test_case, &engine)?;
     Ok(engine)
 }

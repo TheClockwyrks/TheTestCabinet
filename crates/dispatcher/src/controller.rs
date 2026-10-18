@@ -39,7 +39,8 @@ use std::collections::HashMap;
 
 use tokio::time::sleep;
 
-use test_cabinet_core::{ClaimedJob, PublishClaim};
+use test_cabinet_contracts::job_api::ClaimedJob;
+use test_cabinet_contracts::publish_job_api::PublishClaim;
 
 use crate::client::BackendClient;
 use crate::config::Config;

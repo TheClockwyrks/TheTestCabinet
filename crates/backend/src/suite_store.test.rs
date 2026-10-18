@@ -1,4 +1,5 @@
 use super::*;
+use test_cabinet_contracts::test_suite::{SuiteManifest, VersionManifest};
 
 use tempfile::TempDir;
 

@@ -18,7 +18,7 @@
 //! session-start sandbox warm-up; every other one calls [`Agent::drive`] directly and pays nothing.
 
 use super::*;
-use test_cabinet_core::gg::{
+use test_cabinet_contracts::gg::{
     AUTHORED_MAX_PARALLEL, GgLoopDetection, GgProgramLanguage, GgTurnErrorKind, GgTurnErrorType,
     GgTurnOutcome, SHELL_OUTPUT_MODES,
 };
@@ -2105,7 +2105,7 @@ fn a_profiles_loop_detection_travels_on_its_binding() {
 
 /// **Every ceiling reports in one grammar, and the end-to-end sentence is pinned here.**
 ///
-/// `core`'s `gg_exec` tests assert the sentence a benchmark reader sees — `run failed: gg execution
+/// the driver's `gg_exec` tests assert the sentence a benchmark reader sees — `run failed: gg execution
 /// ceiling hit (5 consecutive turns failed)` — against a literal of their own, with nothing tying
 /// that literal to the code that renders it. This is that tie: the consecutive-errors line below is
 /// the exact string those tests quote, so a change to this grammar that would silently break the
@@ -2131,7 +2131,7 @@ fn the_five_ceilings_report_in_one_grammar() {
     assert_eq!(
         breach_message(&breach(GgLimitKind::ConsecutiveErrors, 5.0, 5.0, 12, None)),
         "5 consecutive turns failed",
-        "the figures `core`'s gg_exec tests quote in the run's failure detail"
+        "the figures the driver's gg_exec tests quote in the run's failure detail"
     );
 
     // The other three are crossed by a margin nothing bounds, so each names the ceiling beside the

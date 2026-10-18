@@ -69,7 +69,7 @@ fn a_succeeded_report_whose_record_is_an_infrastructure_failure_lands_as_a_faile
     // failure (a dependency install that never succeeded) lands the way every other
     // infrastructure failure does, failed with the record's reason.
     let mut record = crate::db::tests::record("run-1");
-    record.status = test_cabinet_core::run_record::RunStatus {
+    record.status = test_cabinet_contracts::run_record::RunStatus {
         state: RunState::Infrastructure,
         detail: Some("dependency install failed: `npm ci` exited 1 after 3 attempts".to_string()),
     };
@@ -82,7 +82,7 @@ fn a_succeeded_report_whose_record_is_an_infrastructure_failure_lands_as_a_faile
     );
 
     for state in [RunState::Completed, RunState::Catastrophic] {
-        record.status = test_cabinet_core::run_record::RunStatus {
+        record.status = test_cabinet_contracts::run_record::RunStatus {
             state,
             detail: None,
         };
@@ -111,11 +111,11 @@ fn launch_models_covers_the_run_model_and_every_bound_agent_model() {
     // A gg run's catalog set is the run's own model plus each model its capability
     // set binds to an agent, de-duplicated — so a subagent on a different model is
     // priced (and window-resolved) too, and a shared model is asked about once.
-    let mut set = test_cabinet_core::gg::GgCapabilitySet::minimal("anthropic/claude-opus-4.8");
-    set.agents.push(test_cabinet_core::gg::GgAgentConfig {
+    let mut set = test_cabinet_contracts::gg::GgCapabilitySet::minimal("anthropic/claude-opus-4.8");
+    set.agents.push(test_cabinet_contracts::gg::GgAgentConfig {
         name: "subagent".to_string(),
         model_id: "openai/gpt-5.4-mini".to_string(),
-        ..test_cabinet_core::gg::GgAgentConfig::root()
+        ..test_cabinet_contracts::gg::GgAgentConfig::root()
     });
     let body = LaunchBody {
         test_case: "pong".to_string(),
@@ -199,8 +199,8 @@ fn launch_body_for(harness: HarnessSlug, model: &str) -> LaunchBody {
 
 /// An OpenRouter endpoint nothing listens on, so a resolution that must not fill from
 /// OpenRouter fails loudly if it tries.
-fn unreachable_prices() -> test_cabinet_core::OpenRouterPrices {
-    test_cabinet_core::OpenRouterPrices::with_endpoint("http://127.0.0.1:0/models")
+fn unreachable_prices() -> crate::pricing::OpenRouterPrices {
+    crate::pricing::OpenRouterPrices::with_endpoint("http://127.0.0.1:0/models")
 }
 
 #[tokio::test]
@@ -375,7 +375,7 @@ fn job_summary_carries_when_the_run_started() {
 
 /// A signed-in account to attribute a launch to.
 fn account(id: &str) -> AuthUser {
-    AuthUser(test_cabinet_core::Account {
+    AuthUser(crate::accounts::Account {
         id: id.to_string(),
         username: "reviewer".to_string(),
         display_name: "Reviewer".to_string(),

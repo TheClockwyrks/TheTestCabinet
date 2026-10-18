@@ -58,7 +58,7 @@
 
 use std::fmt;
 
-use test_cabinet_core::gg::GgProgramLanguage;
+use test_cabinet_contracts::gg::GgProgramLanguage;
 
 use crate::sandbox::operations::operation_by_id;
 use crate::sandbox::signatures::{Parameter, Prose, SignatureCatalogue};

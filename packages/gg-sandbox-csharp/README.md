@@ -159,7 +159,7 @@ reflection that produces it, `csc` on the turn path with the two failures it tel
 code modules, and end-to-end execution through gg's own linker, membrane and store. So is
 the registration this section used to list as outstanding — the enum variant, the registry
 arm, this arm's gated language segment of the two shared prompt templates
-(`crates/gg/templates/system-code.hbs` and `crates/gg/templates/code-nothing-shown.hbs`,
+(`system-code.hbs`, in the contracts crate's `templates/gg/`, and `crates/gg/templates/code-nothing-shown.hbs`,
 which every language reaches its own paragraphs of through an `eq` on `language.id`), the
 `bootstrap_program` that writes the program gg's opening turn runs, and the console's
 rows. See `crates/gg/src/sandbox/language/csharp.rs` and its siblings for what each of

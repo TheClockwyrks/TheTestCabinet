@@ -14,7 +14,7 @@
 //! `NO_COLOR` and `CLICOLOR`), so color appears only when attached to a TTY.
 
 use anstyle::{AnsiColor, Color, Style};
-use test_cabinet_core::{EventKind, HarnessEvent, OrchestrationAction};
+use test_cabinet_driver::{EventKind, HarnessEvent, OrchestrationAction};
 
 /// Maximum width of a rendered message before it is truncated.
 const MAX_WIDTH: usize = 200;
@@ -151,7 +151,7 @@ fn path_with_range(path: &str, start: Option<u32>, end: Option<u32>) -> String {
 /// Summarize a per-turn usage event as a compact one-liner, naming only the token
 /// classes the harness reported (an unreported class is omitted rather than shown
 /// as zero) and the per-turn cost when one is reported.
-fn usage_text(tokens: &test_cabinet_core::metrics::TokenCounts, cost: Option<f64>) -> String {
+fn usage_text(tokens: &test_cabinet_driver::metrics::TokenCounts, cost: Option<f64>) -> String {
     let mut parts = Vec::new();
     if let Some(input) = tokens.uncached_input {
         parts.push(format!("in {input}"));

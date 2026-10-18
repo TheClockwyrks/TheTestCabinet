@@ -3,7 +3,7 @@
 use super::*;
 use crate::model::{Message, ToolCall};
 use serde_json::json;
-use test_cabinet_core::gg::GgContextSource;
+use test_cabinet_contracts::gg::GgContextSource;
 
 #[test]
 fn archives_and_finds_by_case_insensitive_substring() {

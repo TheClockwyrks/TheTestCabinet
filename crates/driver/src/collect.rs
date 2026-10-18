@@ -24,7 +24,7 @@ use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader, BufWrit
 use tokio::net::{TcpListener, TcpStream};
 use tokio::time::timeout;
 
-use test_cabinet_core::{Error, Result};
+use crate::{Error, Result};
 
 /// The sandbox end of the channel, run in the pod with `node`. See
 /// [`uploader_command`].

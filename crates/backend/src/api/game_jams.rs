@@ -9,7 +9,7 @@ use axum::Json;
 use axum::extract::{Path, Query, State};
 use serde::Deserialize;
 
-use test_cabinet_core::run_record::PriorGameJamEntry;
+use test_cabinet_contracts::run_record::PriorGameJamEntry;
 
 use super::AppState;
 use crate::error::ApiError;

@@ -58,8 +58,9 @@ mod test_cases;
 mod test_suites;
 mod tournaments;
 
-// Re-export the HTTP response contract types so the `api-codegen` generator can
-// name them (the handler modules themselves stay private).
+// Re-export the HTTP response contract types, which are the contracts crate's
+// (`test_cabinet_contracts::backend_api`), so the rest of the backend names them
+// here (the handler modules themselves stay private).
 pub use comparisons::ComparisonInput;
 // Reused by the snapshot publisher so a published comparison is folded into the
 // public snapshot with the exact computation the internal `/comparisons` API uses.
@@ -105,7 +106,7 @@ pub use models::{
     ModelConfigInput, ModelListingOut, ModelOut, ModelPricesOut, ModelSeedOut, compose_catalog,
 };
 pub use suite_reference_builds::ReferenceBuildOut;
-pub use test_case_groups::{TestCaseGroupOut, TestCaseGroupsResponse};
+pub use test_case_groups::{TestCaseGroupOut, TestCaseGroupsResponse, test_case_group_out};
 pub use test_cases::{
     CatalogCase, CatalogResponse, CatalogShowcaseOut, ShowcaseMediaOut, VersionResponse,
     VersionsResponse,
@@ -121,6 +122,8 @@ pub use crate::stats::{
     ToolCallingAccuracyOut,
 };
 
+pub use test_cabinet_contracts::backend_api::config::ClientConfig;
+
 /// Shared application state handed to every handler.
 #[derive(Clone)]
 pub struct AppState {
@@ -135,7 +138,7 @@ pub struct AppState {
     pub publisher: Publisher,
     /// Verifies bearer tokens against the standalone auth service. The mutating
     /// run endpoints require a valid token (see [`crate::auth::AuthUser`]).
-    pub auth: Arc<test_cabinet_core::AccountsClient>,
+    pub auth: Arc<crate::accounts::AccountsClient>,
     /// The live event/preview fan-out for in-flight runs (the `/jobs/{id}/live`
     /// and `/notifications` streams), fed by the drivers' progress ingestion.
     pub relay: Relay,
@@ -152,7 +155,7 @@ pub struct AppState {
     pub http: reqwest::Client,
     /// The OpenRouter reads: a model's list price, and the catalog facts observed
     /// when a run completes and on the periodic refresh.
-    pub prices: test_cabinet_core::OpenRouterPrices,
+    pub prices: crate::pricing::OpenRouterPrices,
     /// The in-memory gg [document index](crate::gg_docs::GgDocIndex) the analysis
     /// query endpoints run over. Loaded lazily on the first query and reconciled per
     /// id thereafter, so a deployment that never opens Discover never pays for it.
@@ -853,34 +856,4 @@ async fn client_config(
         grafana_url: state.config.grafana_url.clone(),
         snapshot_url: state.config.snapshot_url.clone(),
     })
-}
-
-/// The body of `GET /config`: the console's client-side configuration.
-#[derive(Debug, serde::Serialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub struct ClientConfig {
-    /// The artifact service's public base URL, or `null` when artifacts are not
-    /// served separately. The console resolves a pre-publish run's build and media
-    /// links against it.
-    #[cfg_attr(feature = "contract", ts(optional))]
-    pub artifacts_url: Option<String>,
-    /// The arena service's public base URL, or `null` when adversarial execution is
-    /// not served separately. The console POSTs matches/tournaments and streams live
-    /// tournament progress against it; the adversarial run UI degrades when absent.
-    #[cfg_attr(feature = "contract", ts(optional))]
-    pub arena_url: Option<String>,
-    /// Grafana's base URL, or `null` when the deployment runs no observability
-    /// stack. The console uses it to link a run to the traces it emitted; absent,
-    /// that link is simply not rendered.
-    #[cfg_attr(feature = "contract", ts(optional))]
-    pub grafana_url: Option<String>,
-    /// The public snapshot bucket's **read** base URL, or `null` when the deployment
-    /// publishes no public snapshot. The client joins it with the deterministic keys
-    /// it derives — today an asset-generation variant's published reference frames,
-    /// `media/references/<slug>/<version>/<variant>/frames/<index>.png`. This is never
-    /// the S3 write endpoint (`TCAB_R2_ENDPOINT`), which is credentialed and stays
-    /// server-side.
-    #[cfg_attr(feature = "contract", ts(optional))]
-    pub snapshot_url: Option<String>,
 }

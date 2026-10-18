@@ -12,8 +12,8 @@ publish.workspace = true
 # returns the published `Replay`.
 #
 # This crate exists so the host lives in exactly ONE place: the `foray` CLI is a
-# thin clap wrapper over `run_match`, and the core `AdversarialValidator` (a later
-# phase) depends on this crate to score a submission. `foray-core` must stay
+# thin clap wrapper over `run_match`, and the match runner (`test-cabinet-match-play`)
+# plays the validator's and the arena's matches through it. `foray-core` must stay
 # wasm-compilable, so the wasmtime dependency lives here — never in core.
 [lib]
 name = "foray_host"

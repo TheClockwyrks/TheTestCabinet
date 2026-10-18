@@ -47,7 +47,7 @@ pub struct Model {
     /// evidence than the rest.
     pub runs_per_cell: i32,
     /// The gate's quality floor as a `Rating` token (`flawless`, `great`,
-    /// `passable`, `scuffed`, `broken`) — see `test_cabinet_core::review::Rating`.
+    /// `passable`, `scuffed`, `broken`) — see `test_cabinet_contracts::review::Rating`.
     ///
     /// The gate is a single parameterised rule, not a menu of modes: **pass when
     /// `count(runs on this rung rated <gate_floor> or better) >= <threshold>`**.

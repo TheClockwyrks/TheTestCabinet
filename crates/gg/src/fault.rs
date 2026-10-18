@@ -12,7 +12,7 @@
 //! a missing run is visible, and a wrong one that looks fine is not.
 //!
 //! So the first gg defect **anywhere** in the tree ends the run, whichever agent met it, and the
-//! session's terminal status is `internal_error` so `core` records a harness error instead of
+//! session's terminal status is `internal_error` so the driver records a harness error instead of
 //! collecting a tree to score. Recording a defect below the root as nothing more than a failed node
 //! in a session that carries on is exactly the shape ruled out above: the failed node is the part
 //! that is visible, and the tree around it is the part that gets scored.

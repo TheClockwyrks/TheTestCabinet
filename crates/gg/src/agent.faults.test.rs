@@ -34,7 +34,7 @@ use std::any::Any;
 
 use super::*;
 use crate::board;
-use test_cabinet_core::gg::{CAPABILITY_AGENT_PERSISTENCE, GgTurnErrorType, GgTurnOutcome};
+use test_cabinet_contracts::gg::{CAPABILITY_AGENT_PERSISTENCE, GgTurnErrorType, GgTurnOutcome};
 
 /// Responses-as-code on, over the [tool-calling default](no_code): these tests need a turn that
 /// reaches the sandbox, and nothing else about the mode.
@@ -223,7 +223,7 @@ async fn a_lowering_defect_records_no_error_type_against_the_model() {
 
     assert_eq!(
         outcomes,
-        vec![(test_cabinet_core::gg::GgTurnOutcome::Fatal, None, None)],
+        vec![(test_cabinet_contracts::gg::GgTurnOutcome::Fatal, None, None)],
         "the turn is published as gg's fault, with no error and no type under it: {outcomes:?}"
     );
 }
@@ -278,7 +278,7 @@ fn code_mode(set: &mut GgCapabilitySet, profile_id: &str) {
 ///
 /// The root here is a working agent in the middle of a working run: it delegates, waits, and has a
 /// finishing turn scripted after the wait. Before this rule it would have taken that turn, the
-/// session would have ended `completed` and exited 0, and `core` would have collected a tree with
+/// session would have ended `completed` and exited 0, and the driver would have collected a tree with
 /// the child's work missing from it and no way to know. There is no reading of that tree that says
 /// anything true about the model.
 #[tokio::test]
@@ -309,7 +309,7 @@ async fn a_spawned_childs_host_fault_ends_the_run() {
     assert_eq!(
         run_with_factory(&inv, &emitter, Arc::new(factory)).await,
         SessionOutcome::HarnessError,
-        "a run gg broke exits non-zero so `core` records a harness error instead of scoring it"
+        "a run gg broke exits non-zero so the driver records a harness error instead of scoring it"
     );
 
     let events = sink.events();
@@ -1098,7 +1098,7 @@ async fn a_task_that_panicked_outside_its_loop_is_caught_by_the_join() {
     );
 }
 
-/// The [slug](test_cabinet_core::gg::GgAgentConfig::slug) of the profile the slot case below runs as:
+/// The [slug](test_cabinet_contracts::gg::GgAgentConfig::slug) of the profile the slot case below runs as:
 /// [persistent](CAPABILITY_AGENT_PERSISTENCE), so its instances hold their running slot under an
 /// [exclusivity key](crate::subagents::ExclusiveKey) keyed on that id, and a release of one
 /// instance's slot is visible as a release of the *profile*.

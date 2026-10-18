@@ -1,13 +1,13 @@
 //! gg **session capture**: streaming the non-deterministic inputs of a run into an on-disk
-//! [journal](test_cabinet_core::gg_session_journal) so the session can be
+//! [journal](test_cabinet_contracts::gg_session_journal) so the session can be
 //! [recorded](https://docs.testcabinet.ai/gg/session-record/) afterward.
 //!
 //! The [telemetry stream](crate::telemetry) is already most of the capture, but it carries
 //! *summaries*: what a turn cost, not what it said. So gg additionally pins each agent's
 //! **model I/O** and every **tool result** into a [`GgRecorder`], which appends them to
-//! [`.gg/replay.ndjson`](test_cabinet_core::gg_session_journal::GG_SESSION_JOURNAL_PATH) as the run
+//! [`.gg/replay.ndjson`](test_cabinet_contracts::gg_session_journal::GG_SESSION_JOURNAL_PATH) as the run
 //! proceeds. The host folds that journal into the served
-//! [record](test_cabinet_core::gg_session_record::GgSessionRecord) after it collects the run tree — gg
+//! [record](test_cabinet_contracts::gg_session_record::GgSessionRecord) after it collects the run tree — gg
 //! assembles nothing.
 //!
 //! # Why a journal and a writer thread
@@ -59,7 +59,7 @@
 //!   ordinary registry dispatch.
 //! - **The prompt frame** is captured at the one place the loop holds the turn's
 //!   [`PromptItem`] stream — the same call site that emits the telemetry
-//!   [`Prompt`](test_cabinet_core::gg::GgTelemetryKind::Prompt) event — by calling
+//!   [`Prompt`](test_cabinet_contracts::gg::GgTelemetryKind::Prompt) event — by calling
 //!   [`GgRecorder::record_prompt_frame`]. The recorder deliberately does **not** thread through
 //!   the [telemetry emitter](crate::telemetry) to get there: telemetry is a summary stream and
 //!   stays unaware of capture.
@@ -81,10 +81,10 @@
 //!
 //! Capture is always on and is not gated on any capability, so what it keeps has to be affordable
 //! on every run. Two payload classes are therefore bounded: a text payload past
-//! [its ceiling](test_cabinet_core::gg_session_record::GG_SESSION_STREAM_MAX_BYTES) is stored as
-//! its kept tail with a [clip row](test_cabinet_core::gg_session_record::GgSessionTextClip) saying what was
+//! [its ceiling](test_cabinet_contracts::gg_session_record::GG_SESSION_STREAM_MAX_BYTES) is stored as
+//! its kept tail with a [clip row](test_cabinet_contracts::gg_session_record::GgSessionTextClip) saying what was
 //! dropped, and an image is stored as its
-//! [descriptor](test_cabinet_core::gg_session_record::GgSessionImage) and never as its bytes. Everything
+//! [descriptor](test_cabinet_contracts::gg_session_record::GgSessionImage) and never as its bytes. Everything
 //! that changes control flow is recorded whole.
 //!
 //! Every entry is stamped with the recording agent's id and a **globally monotonic** sequence minted
@@ -100,9 +100,9 @@ use std::sync::mpsc::{SyncSender, TrySendError, sync_channel};
 use std::thread::JoinHandle;
 
 use serde_json::Value;
-use test_cabinet_core::gg::GgCapabilitySet;
-use test_cabinet_core::gg_session_journal::{GgJournalInterner, GgJournalLine};
-use test_cabinet_core::gg_session_record::{
+use test_cabinet_contracts::gg::GgCapabilitySet;
+use test_cabinet_contracts::gg_session_journal::{GgJournalInterner, GgJournalLine};
+use test_cabinet_contracts::gg_session_record::{
     GG_SESSION_FORMAT_VERSION, GG_SESSION_STREAM_MAX_BYTES, GG_SESSION_TOOL_MAX_BYTES,
     GgClientRole, GgSessionAgent, GgSessionCommand, GgSessionEntry, GgSessionEntryKind,
     GgSessionFileRegion, GgSessionImage, GgSessionInterner, GgSessionModalities,
@@ -165,7 +165,7 @@ pub struct GgCaptureReport {
     /// How many [entries](GgSessionEntry) reached the journal.
     pub entries: u64,
     /// How many bytes of pinned input reached the journal — what the
-    /// [ceiling](test_cabinet_core::gg::GgRunLimits::replay_max_bytes) is measured against, so it
+    /// [ceiling](test_cabinet_contracts::gg::GgRunLimits::replay_max_bytes) is measured against, so it
     /// excludes the terminating line, which is written whatever the ceiling says.
     pub bytes: u64,
     /// Why capture stopped short of the session, when it did.
@@ -211,7 +211,7 @@ pub struct RecordedSeed<'a> {
     /// number the fullness signal and the compaction trigger actually use.
     pub model_windows: BTreeMap<String, u64>,
     /// The ordered candidate list each bound model may run on.
-    pub model_providers: BTreeMap<String, Vec<test_cabinet_core::gg::GgProviderCandidate>>,
+    pub model_providers: BTreeMap<String, Vec<test_cabinet_contracts::gg::GgProviderCandidate>>,
     /// The modality state of each bound model **as it stands now**. Recorded again at the end of
     /// the run if it has moved, so the record carries the resolved state rather than the
     /// declared one.
@@ -555,8 +555,8 @@ impl GgRecorder {
                 routing_key: Some(routing_key.to_string()),
                 capability_set: Box::new(capability_set.clone()),
                 recorder: GgSessionRecorder {
-                    // This binary's own version, not the release version `core` resolves a
-                    // download from: the record's question is "which build wrote this?".
+                    // This binary's own version, not the release version the driver pins
+                    // and downloads: the record's question is "which build wrote this?".
                     gg_version: Some(env!("CARGO_PKG_VERSION").to_string()),
                     commit: None,
                 },
@@ -737,7 +737,7 @@ impl GgRecorder {
     /// A [hook's](crate::hooks) commands are the reason this exists as a seam of its own: they run
     /// `sh -c` through the same code path a `shell` tool call does but never reach tool dispatch,
     /// so nothing below dispatch would see them — and an
-    /// [agent-stop](test_cabinet_core::gg::GgHookEvent::AgentStop) gate decides whether the session
+    /// [agent-stop](test_cabinet_contracts::gg::GgHookEvent::AgentStop) gate decides whether the session
     /// is allowed to end, which is as control-flow-changing as an input gets.
     pub fn record_shell(
         &self,
@@ -1323,7 +1323,7 @@ impl ModelClient for RecordingClient {
 /// [hook's](crate::hooks) commands — and only one of them, the hook, runs at a call site that
 /// holds the recorder. Capturing at the call sites would therefore leave a session that used the
 /// shell tool with no answer for a single one of its commands, and anything reading the
-/// [record](test_cabinet_core::gg_session_record::GgSessionRecord) back would find a hole where
+/// [record](test_cabinet_contracts::gg_session_record::GgSessionRecord) back would find a hole where
 /// every one of them should have been.
 ///
 /// The seam is where all three meet, so the capture belongs here: one decorator, and the

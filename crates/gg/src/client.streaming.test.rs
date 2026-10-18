@@ -15,7 +15,7 @@ use super::*;
 use crate::loopguard::LoopGuardConfig;
 use crate::model::{FinishReason, Message, ToolDefinition};
 use serde_json::json;
-use test_cabinet_core::gg::{GgSlotBinding, PRIMARY_SLOT};
+use test_cabinet_contracts::gg::{GgSlotBinding, PRIMARY_SLOT};
 
 /// The detector an [`armed_declaration`] resolves to. An armed declaration writes all five knobs,
 /// so a test about the binding has to state them; the figures are arbitrary and no assertion here

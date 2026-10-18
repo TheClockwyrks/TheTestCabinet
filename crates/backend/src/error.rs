@@ -9,7 +9,8 @@
 use axum::Json;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
-use serde::Serialize;
+
+pub use test_cabinet_contracts::backend_api::error::{ErrorBody, ErrorEnvelope};
 
 /// An error rendered to the contract's HTTP envelope.
 #[derive(Debug)]
@@ -80,22 +81,6 @@ impl ApiError {
     }
 }
 
-/// The JSON body of an error response: `{ "error": { "code", "message" } }`.
-#[derive(Debug, Serialize)]
-#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub struct ErrorEnvelope {
-    pub error: ErrorBody,
-}
-
-/// The `error` member of an [`ErrorEnvelope`]: a stable machine-readable code and
-/// a human-readable message.
-#[derive(Debug, Serialize)]
-#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub struct ErrorBody {
-    pub code: String,
-    pub message: String,
-}
-
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
         let body = ErrorEnvelope {
@@ -144,9 +129,24 @@ pub enum BackendError {
     #[error("serialization error: {0}")]
     Serde(#[from] serde_json::Error),
 
-    /// A core operation (manifest resolution, reference render) failed.
+    /// Loading or resolving a test case, suite or group, or rendering its prompt,
+    /// failed.
     #[error("{0}")]
-    Core(#[from] test_cabinet_core::Error),
+    Suites(#[from] test_cabinet_suites::Error),
+
+    /// The OpenRouter catalog could not be fetched, read or parsed for a price or
+    /// a model's listing (see [`crate::pricing`]).
+    #[error("{0}")]
+    Pricing(String),
+
+    /// An account operation against the auth service failed: the service could
+    /// not be reached or answered with an error (see [`crate::accounts`]).
+    #[error("the auth service: {0}")]
+    Auth(String),
+
+    /// A request to the R2 object store failed.
+    #[error("{0}")]
+    R2(#[from] test_cabinet_artifacts::r2::R2Error),
 
     /// A snapshot upload or deploy-hook fire failed.
     #[error("{0}")]

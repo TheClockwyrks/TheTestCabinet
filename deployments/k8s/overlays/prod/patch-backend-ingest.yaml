@@ -41,7 +41,7 @@
 # BRANCH: ingest the `master` branch TIP, the branch the pipeline deploys to prod.
 # Keep BRANCH == TCAB_INGEST_BRANCH in scripts/lib/env.sh.
 #
-# The refresh commands below are the ones crates/core/src/remote_backend.rs
+# The refresh commands below are the ones crates/driver/src/remote_backend.rs
 # (`refresh_commands`) runs on demand; keep the two in step. Both let the test suites
 # update fail with the same message; on demand, every other step is fatal.
 #

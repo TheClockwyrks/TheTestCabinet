@@ -4,7 +4,7 @@
 //!
 //! # Why it is load-bearing
 //!
-//! The [responses-as-code](test_cabinet_core::gg::CAPABILITY_RESPONSES_AS_CODE) capability exists to
+//! The [responses-as-code](test_cabinet_contracts::gg::CAPABILITY_RESPONSES_AS_CODE) capability exists to
 //! **measure**. The question that made the program language a variable at all — *does the language a
 //! model writes in change how well it works?* — is answered by running two arms and comparing them,
 //! and that comparison is only a measurement of the language if both arms let the model do the same
@@ -169,14 +169,14 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 
-use test_cabinet_core::gg::{
+use test_cabinet_contracts::gg::GG_CAPABILITY_CATALOG;
+use test_cabinet_contracts::gg::{
     CAPABILITY_AGENT_MANAGED_CONTEXT, CAPABILITY_COMPACTION, CAPABILITY_DOCVIEW_CLOSE,
     CAPABILITY_EDIT_FILE, CAPABILITY_EXEC, CAPABILITY_FORK, CAPABILITY_LIST_DIR,
     CAPABILITY_MEMORIES, CAPABILITY_PROGRAM_LIBRARY, CAPABILITY_PROJECT_MANAGEMENT,
     CAPABILITY_READ_FILE, CAPABILITY_SEARCH, CAPABILITY_SHELL, CAPABILITY_SKILLS,
     CAPABILITY_SUBAGENTS, CAPABILITY_TASKS, CAPABILITY_WRITE_FILE, GgProgramLanguage,
 };
-use test_cabinet_core::gg_query::GG_CAPABILITY_CATALOG;
 
 use super::{ProgramLanguage, all_languages};
 use crate::ending::EndingRole;
@@ -247,7 +247,7 @@ const SEARCH: &str = "search";
 /// siblings are bought, so a rule requiring the whole family would be wrong. Which of a family's
 /// operations the capability reaches is the family's own rule ([`programs`], [`documentation`]).
 ///
-/// [`fsm`](test_cabinet_core::gg::CAPABILITY_FSM) is deliberately **absent**, and its absence is the
+/// [`fsm`](test_cabinet_contracts::gg::CAPABILITY_FSM) is deliberately **absent**, and its absence is the
 /// substance of the delegation family's one positional row. That capability is what makes a profile
 /// the *shell* driving a machine, and a shell takes no turns; the agent running a state is an
 /// ordinary profile that never declares it. So `delegation.transition_state` is bound by
@@ -571,7 +571,7 @@ fn programs(operations: &'static [Operation], complain: &mut impl FnMut(String))
 /// nothing a capability was buying.
 ///
 /// Closing is the exception and is bought by
-/// [`docview-close`](test_cabinet_core::gg::CAPABILITY_DOCVIEW_CLOSE): an open only ever appends to
+/// [`docview-close`](test_cabinet_contracts::gg::CAPABILITY_DOCVIEW_CLOSE): an open only ever appends to
 /// the prompt, where a close rewrites its middle and costs the run every cached token after it.
 /// Whether that trade pays is a measurement, so it is a toggle.
 fn documentation(operations: &'static [Operation], complain: &mut impl FnMut(String)) {

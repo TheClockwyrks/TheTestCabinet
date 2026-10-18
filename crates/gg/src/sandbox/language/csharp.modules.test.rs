@@ -217,7 +217,7 @@ fn nothing_a_code_skill_offers_resolves_without_a_line_the_program_wrote() {
         "public static string Slugify(string text) => text.ToLowerInvariant();\n",
     )];
     let compile = |program: &str| compile_program(program, &modules, &PrepareContext::detached());
-    let arm = crate::sandbox::language(test_cabinet_core::gg::GgProgramLanguage::CSharp);
+    let arm = crate::sandbox::language(test_cabinet_contracts::gg::GgProgramLanguage::CSharp);
 
     let bare = compile("var slug = CsvTools.Slugify(\"Release Notes\");\n")
         .expect_err("a module's class with no line above it does not compile");

@@ -1,6 +1,6 @@
 use super::*;
 use serde_json::json;
-use test_cabinet_core::gg::{
+use test_cabinet_contracts::gg::{
     CAPABILITY_PROJECT_MANAGEMENT, CAPABILITY_TASKS, GgAgentConfig, GgCapabilityConfig,
     GgCapabilitySet, GgDispatchError, GgHook, GgHookAction, GgHookEvent, GgLoopDetection,
     GgSubagentRef, GgSubagentScope, ROOT_PROFILE_ID,

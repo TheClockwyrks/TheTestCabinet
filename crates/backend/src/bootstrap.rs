@@ -5,7 +5,7 @@
 //!
 //! A model has one price: the **list price** on its catalog entry, which a run's
 //! comparable cost is computed from. A list price read from OpenRouter is resolved
-//! by one flow ([`ModelLaunchFacts::list_price`](test_cabinet_core::ModelLaunchFacts::list_price)):
+//! by one flow ([`ModelLaunchFacts::list_price`](crate::pricing::ModelLaunchFacts::list_price)):
 //! the standard endpoint of the developer provider set by hand on the entry, else
 //! of the provider the model id's author segment names, else the model's own
 //! price in OpenRouter's models listing (the `pricing` field of its `/models`
@@ -31,10 +31,10 @@ use std::time::Duration;
 use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
 
-use test_cabinet_core::metrics::TokenPrices;
-use test_cabinet_core::model_id::{canonical_model_id, openrouter_price_id};
-use test_cabinet_core::pricing::{ListRate, ModelDetails, OpenRouterPrices};
-use test_cabinet_core::run_record::{HarnessFamily, HarnessSlug};
+use crate::model_id::{canonical_model_id, openrouter_price_id};
+use crate::pricing::{ListRate, ModelDetails, OpenRouterPrices};
+use test_cabinet_contracts::metrics::TokenPrices;
+use test_cabinet_contracts::run_record::{HarnessFamily, HarnessSlug};
 
 use crate::db::{AliasEntry, Db, ListPriceWrite, ModelConfigWrite, PriceWrite};
 use crate::error::Result;
@@ -54,7 +54,7 @@ pub const LIST_PRICE_SOURCE_OPENROUTER: &str = "openrouter";
 ///
 /// The catalog answers first ([`Db::list_price_for_run_model`]). A curated entry with no
 /// list price gets one now, resolved by the
-/// [list-price flow](test_cabinet_core::ModelLaunchFacts::list_price) with the entry's
+/// [list-price flow](crate::pricing::ModelLaunchFacts::list_price) with the entry's
 /// hand-set developer provider, and written onto the entry dated today and sourced
 /// [`LIST_PRICE_SOURCE_OPENROUTER`]. The launch is stamped with the same figures. The
 /// entry is looked up by its OpenRouter slug, else by the launch's model id mapped onto
@@ -673,7 +673,7 @@ const STARTUP_REFRESH_DELAY: Duration = Duration::from_secs(5);
 /// refresh changed a list price, one that failed part-way included: the public snapshot
 /// shows the catalog. A failure is logged and retried on the next tick. Every read of
 /// OpenRouter is bounded by its
-/// [read timeout](test_cabinet_core::pricing::READ_TIMEOUT), so a connection that
+/// [read timeout](crate::pricing::READ_TIMEOUT), so a connection that
 /// stalls delays a tick and never stops the ones after it.
 pub fn spawn_price_refresher(
     db: Arc<Db>,

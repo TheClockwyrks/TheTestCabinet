@@ -35,7 +35,7 @@
 //! provider, a container or a disk.
 
 use serde_json::{Value, json};
-use test_cabinet_core::gg::GgProgramLanguage;
+use test_cabinet_contracts::gg::GgProgramLanguage;
 
 use crate::ending::EndingRole;
 use crate::sandbox::fake::{

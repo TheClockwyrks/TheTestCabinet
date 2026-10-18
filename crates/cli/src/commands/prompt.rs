@@ -7,7 +7,7 @@
 //! into the repository, so it is printed to stdout for inspection instead.
 
 use anyhow::Context;
-use test_cabinet_core::render_case_prompt;
+use test_cabinet_driver::render_case_prompt;
 
 use crate::catalog;
 use crate::cli::PromptArgs;

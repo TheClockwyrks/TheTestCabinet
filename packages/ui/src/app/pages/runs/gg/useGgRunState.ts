@@ -74,7 +74,7 @@ export type GgMonitorStatus =
 // "the test case's init command is nine minutes into installing a browser". Both look
 // like an empty gg stream, and only the second is worth waiting through. `message` is the
 // orchestrator's own wording for the stage at its status (`SystemStage::describe` in
-// crates/core), carried verbatim so the phrasing has one source rather than a copy here
+// crates/driver), carried verbatim so the phrasing has one source rather than a copy here
 // that drifts from it.
 //
 // Teardown is deliberately NOT folded in: it is the one system stage that follows the

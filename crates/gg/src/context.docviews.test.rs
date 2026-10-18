@@ -17,10 +17,10 @@ use std::sync::Arc;
 
 use super::*;
 use crate::model::Role;
-use test_cabinet_core::gg::GgContextSource;
+use test_cabinet_contracts::gg::GgContextSource;
 
 /// A model measuring with the deterministic heuristic estimator (chars/4 + framing), in
-/// [code mode](test_cabinet_core::gg::CAPABILITY_RESPONSES_AS_CODE) — the only mode that opens
+/// [code mode](test_cabinet_contracts::gg::CAPABILITY_RESPONSES_AS_CODE) — the only mode that opens
 /// views, and the one whose headings the bodies carry.
 fn code_model() -> ContextModel {
     ContextModel::new(Arc::new(HeuristicTokenEstimator::new()), Some(10_000), true)

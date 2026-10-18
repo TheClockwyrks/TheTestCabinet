@@ -23,8 +23,7 @@ use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
 
-use test_cabinet_core::run_record::HarnessSlug;
-use test_cabinet_core::{DefaultHarnessRegistry, HarnessRegistry};
+use test_cabinet_contracts::run_record::HarnessSlug;
 
 use crate::auth::AuthUser;
 use crate::error::ApiError;
@@ -66,16 +65,12 @@ pub async fn list(State(state): State<AppState>) -> Result<Json<Vec<HarnessConfi
         .list_harness_configs()
         .await
         .map_err(ApiError::from)?;
-    let registry = DefaultHarnessRegistry::new();
     let out = HarnessSlug::RUNNABLE
         .into_iter()
         .map(|slug| {
-            // The registry is the CLI catalog, so it answers for the eight harnesses that
-            // ship a manifest and not for gg, whose slug is its own name.
-            let name = registry
-                .get(slug)
-                .map(|harness| harness.name().to_string())
-                .unwrap_or_else(|| slug.as_str().to_string());
+            // The display name every harness listing shows, the name each checked-in
+            // `harnesses/<slug>/harness.toml` declares (gg's is its own slug).
+            let name = slug.display_name().to_string();
             let max_parallelism = stored
                 .iter()
                 .find(|row| row.harness_slug == slug.as_str())

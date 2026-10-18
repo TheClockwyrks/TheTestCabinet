@@ -1,4 +1,5 @@
 use super::*;
+use crate::suite_store::StoredSuite;
 
 use crate::suite_store::tests::sample_suite;
 

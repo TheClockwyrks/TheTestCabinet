@@ -14,7 +14,7 @@
 //!
 //! Searching is bound into every program's scope whatever a run enables, because a model must
 //! always be able to discover the functions it *does* have. **Closing** a documentation view is not:
-//! it is gated on [`docview-close`](test_cabinet_core::gg::CAPABILITY_DOCVIEW_CLOSE) — refused at
+//! it is gated on [`docview-close`](test_cabinet_contracts::gg::CAPABILITY_DOCVIEW_CLOSE) — refused at
 //! this boundary, like every other capability now that no guest withholds a name — and the
 //! asymmetry between opening and closing is the point. Opening a
 //! documentation view only ever appends to the prompt, so a provider's cached prefix survives every

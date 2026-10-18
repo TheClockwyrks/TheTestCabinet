@@ -14,8 +14,9 @@
 //! - The [`foray` CLI](../../../crates/foray-cli) is a thin clap wrapper that
 //!   reads files, builds a [`Match`], and calls
 //!   [`run_match`].
-//! - The core `AdversarialValidator` (a later phase) depends on this crate to
-//!   score a submission, rather than re-implementing the host.
+//! - The match runner (`test-cabinet-match-play`) plays every match through it:
+//!   the driver's `AdversarialValidator` scoring a submission and the arena's
+//!   matches and tournaments, rather than re-implementing the host.
 //!
 //! `foray-core` must stay wasm-compilable for browser playback, so the wasmtime
 //! dependency lives **here** and never in core. This crate marshals JSON across

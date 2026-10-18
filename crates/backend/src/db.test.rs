@@ -1,13 +1,13 @@
 use super::*;
 use std::collections::BTreeMap;
 
+use crate::review::{AestheticRating, DomainRating, Rating};
 use crate::store::CaseNames;
-use test_cabinet_core::metrics::RunMetrics;
-use test_cabinet_core::review::{AestheticRating, DomainRating, Rating};
-use test_cabinet_core::run_record::{
+use test_cabinet_contracts::metrics::RunMetrics;
+use test_cabinet_contracts::run_record::{
     HarnessFamily, HarnessSlug, RunEnvironment, RunState, RunStatus, RunSubject, RunTooling,
 };
-use test_cabinet_core::validation::ValidationSummary;
+use test_cabinet_contracts::validation::ValidationSummary;
 
 /// A run publishes itself only when it completed and its validators rated it:
 /// every other state stays a person's decision, rated or not.
@@ -158,7 +158,7 @@ pub(crate) fn record(id: &str) -> RunRecord {
         subject: RunSubject {
             test_case_slug: "pong".to_string(),
             test_case_version: "v1.0.0".to_string(),
-            test_type: test_cabinet_core::TestType::EndToEnd,
+            test_type: test_cabinet_suites::test_case::TestType::EndToEnd,
             variant: "base".to_string(),
             harness_slug: HarnessSlug::Claude,
             harness_version: Some("1.2.3".to_string()),
@@ -174,7 +174,7 @@ pub(crate) fn record(id: &str) -> RunRecord {
             os: "Debian".to_string(),
             container_image: "test-cabinet/claude:abcd".to_string(),
             node_version: Some("v22.11.0".to_string()),
-            auth_mode: test_cabinet_core::AuthMode::ApiKey,
+            auth_mode: test_cabinet_contracts::run_record::AuthMode::ApiKey,
         },
         metrics: RunMetrics::default(),
         validation: ValidationSummary {
@@ -201,10 +201,10 @@ pub(crate) fn record(id: &str) -> RunRecord {
 /// A gg run record: the base record reconfigured as a gg run carrying a capability set and the
 /// aggregatable session summary the gg binary computed, so a test can assert both round-trip.
 fn gg_record(id: &str) -> RunRecord {
-    use test_cabinet_core::gg::{
+    use test_cabinet_contracts::gg::{
         GgCapabilitySet, GgSessionSummary, GgSlotCost, GgUndocumentedCalls,
     };
-    use test_cabinet_core::metrics::{Cost, TokenCounts};
+    use test_cabinet_contracts::metrics::{Cost, TokenCounts};
 
     let mut record = record(id);
     record.subject.harness_slug = HarnessSlug::Gg;
@@ -317,7 +317,7 @@ fn review() -> StoredReview {
 
 /// A review from `account` giving `rating` to the `gameplay` domain.
 pub(crate) fn review_by(account: &str, rating: Rating) -> StoredReview {
-    use test_cabinet_core::review::VerdictStatus;
+    use crate::review::VerdictStatus;
     StoredReview {
         reviewer: reviewer(account),
         ratings: vec![DomainRating {
@@ -988,8 +988,10 @@ async fn delete_run_for_an_unknown_run_is_not_found() {
 }
 
 fn tournament_record(id: &str) -> TournamentRecord {
-    use test_cabinet_core::match_play::{ControllerKind, ControllerRef, MatchSummary, Standing};
-    use test_cabinet_core::validation::AdversarialOutcome;
+    use test_cabinet_contracts::match_play::{
+        ControllerKind, ControllerRef, MatchSummary, Standing,
+    };
+    use test_cabinet_contracts::validation::AdversarialOutcome;
 
     let participant = |pid: &str| ControllerRef {
         id: pid.to_string(),
@@ -2489,7 +2491,7 @@ async fn referenced_cases_returns_distinct_pairs_including_pending_runs() {
 // --- Model catalog store ---
 
 use std::collections::HashMap;
-use test_cabinet_core::metrics::{Cost, TokenCounts, TokenPrices};
+use test_cabinet_contracts::metrics::{Cost, TokenCounts, TokenPrices};
 
 /// Tag a test alias with a plausible family (OpenRouter for a `provider/model`
 /// id, Claude for a bare native id — enough for the CRUD tests here).
@@ -3109,7 +3111,7 @@ async fn normalize_free_model_ids_without_a_list_price_marks_the_cost_unknown() 
 /// Total tokens sum to 175; comparable cost is `$1.50`; run time is 42s.
 fn record_with_metrics(id: &str) -> RunRecord {
     let mut r = record(id);
-    r.subject.test_type = test_cabinet_core::TestType::AssetGeneration;
+    r.subject.test_type = test_cabinet_suites::test_case::TestType::AssetGeneration;
     r.metrics = RunMetrics {
         run_time_seconds: 42.0,
         tokens: TokenCounts {
@@ -3247,7 +3249,7 @@ async fn repush_refreshes_the_lifted_gg_configuration_name() {
 /// A gg run of `preset` whose capability set binds one agent per entry in `models` —
 /// the shape a configuration with several launch slots produces once they are bound.
 fn gg_record_binding(id: &str, preset: Option<&str>, models: &[&str]) -> RunRecord {
-    use test_cabinet_core::gg::GgAgentConfig;
+    use test_cabinet_contracts::gg::GgAgentConfig;
 
     let mut record = gg_record(id);
     let set = record.subject.gg_capability_set.as_mut().unwrap();
@@ -5565,7 +5567,7 @@ async fn a_claimed_job_no_longer_counts_toward_a_cell() {
 /// `coverage` handler relies on by using [`launch_model_id`] the same way it does.
 #[tokio::test]
 async fn coverage_counts_provider_routed_runs_by_their_launched_model_id() {
-    use test_cabinet_core::model_id::launch_model_id;
+    use crate::model_id::launch_model_id;
 
     let db = Db::connect_in_memory().await.unwrap();
     // The canonical model the reviewer pins in their plan, and the prefixed id an
@@ -5663,7 +5665,7 @@ async fn unreviewed_excludes_the_auto_graded_performance_type() {
     let db = Db::connect_in_memory().await.unwrap();
 
     let mut perf = record("perf");
-    perf.subject.test_type = test_cabinet_core::TestType::Performance;
+    perf.subject.test_type = test_cabinet_suites::test_case::TestType::Performance;
     perf.subject.test_case_slug = "lattice".to_string();
     db.push(&perf, &links(), None, None).await.unwrap();
     db.push(&record("e2e"), &links(), None, None).await.unwrap();
@@ -5709,7 +5711,7 @@ fn game_jam_record(
     finished_at: &str,
 ) -> RunRecord {
     let mut r = record(id);
-    r.subject.test_type = test_cabinet_core::TestType::GameJam;
+    r.subject.test_type = test_cabinet_suites::test_case::TestType::GameJam;
     r.subject.test_case_slug = "comfort-zone".to_string();
     r.subject.harness_slug = harness;
     r.subject.model_id = model.to_string();
@@ -5804,7 +5806,7 @@ async fn game_jam_prior_readmes_matches_jam_and_model_across_harnesses_oldest_fi
 fn sample_stored_comparison(id: &str) -> StoredComparison {
     use std::collections::BTreeMap;
 
-    use test_cabinet_core::comparison::{ComparisonArm, ComparisonConfig, ComparisonControls};
+    use crate::comparison::{ComparisonArm, ComparisonConfig, ComparisonControls};
     StoredComparison {
         id: id.to_string(),
         user_id: "user-1".to_string(),
@@ -5899,7 +5901,7 @@ async fn comparison_crud_round_trips_and_scopes_to_the_owner() {
 /// A completed run carrying one automated validation verdict — an auto-validated
 /// run, the kind a comparison publishes without a human review.
 fn auto_validated_record(id: &str) -> RunRecord {
-    use test_cabinet_core::validation::{AutoVerdict, DebugScriptResult};
+    use test_cabinet_contracts::validation::{AutoVerdict, DebugScriptResult};
     let mut rec = record(id);
     rec.validation.debug_scripts = vec![DebugScriptResult {
         item_id: "a".to_string(),
@@ -5944,28 +5946,17 @@ async fn the_comparison_publish_gate_waives_review_only_for_an_auto_validated_ru
     assert!(db.ensure_publishable_comparison_run("bare").await.is_err());
 }
 
-/// A record carrying a **real** code analysis, produced by pointing the real analyzer at a
-/// two-file tree. A ninety-five-field literal would drift from the contract on the next
-/// metric added; this cannot.
+/// A record carrying a **real** code analysis: the contract fixture the driver's
+/// analyzer produced over a two-file tree, and is held to by the driver's own test. A
+/// ninety-five-field literal would drift from the contract on the next metric added;
+/// this cannot.
 fn record_with_code_analysis(id: &str) -> RunRecord {
     let mut record = record_with_metrics(id);
-    let tree = tempfile::TempDir::new().expect("temp dir");
-    std::fs::create_dir_all(tree.path().join("src")).expect("a source directory");
-    std::fs::write(
-        tree.path().join("src/main.ts"),
-        "export function boot(): number {\n  return 1;\n}\n",
-    )
-    .expect("a source file");
     record.code_analysis = Some(
-        test_cabinet_code_analysis::analyze(&test_cabinet_code_analysis::AnalysisRequest {
-            root: tree.path(),
-            seed_commit: None,
-            tree_basis: test_cabinet_core::CodeTreeBasis::PreValidation,
-            // A hand-built fixture tree with no run behind it, so nothing is known to
-            // have been seeded into its root.
-            root_seeding: test_cabinet_code_analysis::walk::RootSeeding::default(),
-        })
-        .summary,
+        serde_json::from_str(include_str!(
+            "../../../contracts/crates/contracts/fixtures/code-analysis/summary.json"
+        ))
+        .expect("the code-analysis summary fixture deserializes"),
     );
     record
 }
@@ -5982,7 +5973,7 @@ async fn push_lifts_the_code_analyzer_version_and_leaves_it_null_without_an_anal
 
     assert_eq!(
         lifted(&db, "analysed").await.code_analyzer_version,
-        Some(test_cabinet_core::CODE_ANALYZER_VERSION as i32),
+        Some(test_cabinet_contracts::code_analysis::CODE_ANALYZER_VERSION as i32),
     );
     // NULL means *never analysed*, not "analysed by an unknown generation": there is no
     // backfill of the analysis itself, so absence is a durable, meaningful state.
@@ -5996,7 +5987,7 @@ async fn the_lifted_analyzer_version_describes_the_stored_result_not_the_server(
     // say the corpus is homogeneous when it is not, which is the exact failure it exists
     // to prevent. So the lift reads the record's own stamp, never the server's constant.
     let db = Db::connect_in_memory().await.unwrap();
-    let other_generation = test_cabinet_core::CODE_ANALYZER_VERSION + 1;
+    let other_generation = test_cabinet_contracts::code_analysis::CODE_ANALYZER_VERSION + 1;
     let mut record = record_with_code_analysis("other");
     record.code_analysis.as_mut().unwrap().analyzer_version = other_generation;
     db.push(&record, &links(), None, None).await.unwrap();
@@ -6054,7 +6045,7 @@ async fn backfill_code_analyzer_version_lifts_the_column_but_analyses_nothing() 
     assert_eq!(db.backfill_code_analyzer_version().await.unwrap(), 1);
     assert_eq!(
         lifted(&db, "analysed").await.code_analyzer_version,
-        Some(test_cabinet_core::CODE_ANALYZER_VERSION as i32),
+        Some(test_cabinet_contracts::code_analysis::CODE_ANALYZER_VERSION as i32),
     );
     // The run with no analysis stays NULL. The backfill lifts a number the record blob
     // already holds; it never *analyses* a tree, because a historical run's tree can only
@@ -6270,7 +6261,7 @@ async fn gg_dashboards_round_trip_and_scope_to_account() {
 
 #[tokio::test]
 async fn gg_agents_round_trip_and_scope_to_account() {
-    use test_cabinet_core::gg::{GgAgentConfig, GgModelSlot};
+    use test_cabinet_contracts::gg::{GgAgentConfig, GgModelSlot};
 
     let db = Db::connect_in_memory().await.unwrap();
     assert!(db.list_gg_agents("u1").await.unwrap().is_empty());
@@ -6332,7 +6323,7 @@ async fn gg_agents_round_trip_and_scope_to_account() {
 
 #[tokio::test]
 async fn gg_configs_round_trip_their_agent_sources() {
-    use test_cabinet_core::gg::GgCapabilitySet;
+    use test_cabinet_contracts::gg::GgCapabilitySet;
 
     let db = Db::connect_in_memory().await.unwrap();
     let config = crate::api::GgConfig {
@@ -6386,7 +6377,7 @@ async fn unreviewed_cell_counts_skip_the_automatically_graded_types() {
 
 #[tokio::test]
 async fn a_slots_runs_carry_the_validators_rating_and_never_a_review() {
-    use test_cabinet_core::review::AestheticRating;
+    use crate::review::AestheticRating;
     let db = Db::connect_in_memory().await.unwrap();
     let manifest = validator_manifest();
     // The cosmetic point fails, so the validators rate the run `great`.
@@ -7941,7 +7932,7 @@ async fn unreviewed_gg_cell_counts_split_on_the_configuration_too() {
 /// Save a gg configuration for `user_id` under `id`/`name` — what the backfill matches a
 /// historical run's recorded configuration name against.
 async fn save_gg_config(db: &Db, user_id: &str, id: &str, name: &str) {
-    use test_cabinet_core::gg::GgCapabilitySet;
+    use test_cabinet_contracts::gg::GgCapabilitySet;
 
     db.insert_gg_config(
         user_id,
@@ -8123,7 +8114,7 @@ async fn the_gg_configuration_backfill_leaves_an_ambiguous_name_null() {
 
 #[tokio::test]
 async fn the_in_flight_gg_configuration_backfill_reads_the_set_then_the_account() {
-    use test_cabinet_core::gg::GgCapabilitySet;
+    use test_cabinet_contracts::gg::GgCapabilitySet;
 
     let db = Db::connect_in_memory().await.unwrap();
     save_gg_config(&db, "u1", "cfg-a", "planning-A").await;
@@ -8173,7 +8164,7 @@ async fn the_in_flight_gg_configuration_backfill_reads_the_set_then_the_account(
     // A name-resolved job has the id written into its stored capability set as well, because
     // that set is what the driver hands the run: the column alone would count the job toward
     // a cell and then produce a run recording no configuration at all.
-    let stored: test_cabinet_core::gg::GgCapabilitySet = serde_json::from_str(
+    let stored: test_cabinet_contracts::gg::GgCapabilitySet = serde_json::from_str(
         &db.get_job("j-named")
             .await
             .unwrap()
@@ -8190,7 +8181,7 @@ async fn the_in_flight_gg_configuration_backfill_reads_the_set_then_the_account(
 
 #[tokio::test]
 async fn the_in_flight_gg_configuration_backfill_runs_once() {
-    use test_cabinet_core::gg::GgCapabilitySet;
+    use test_cabinet_contracts::gg::GgCapabilitySet;
 
     let db = Db::connect_in_memory().await.unwrap();
     let mut set = GgCapabilitySet::minimal("mock/echo");
@@ -8411,10 +8402,10 @@ async fn the_probe_provider_projection_joins_slug_and_reads_errored_as_missing_l
 /// and `hud` (cosmetic, cap `great`, both domains). Two domains: `single-player`
 /// (common) and `versus` (the base variant's own).
 pub(crate) fn validator_manifest() -> crate::store::StoredManifest {
+    use crate::review::FailureCap;
     use crate::store::{
         StoredDomain, StoredManifest, StoredReviewItem, StoredReviewValidation, StoredVariant,
     };
-    use test_cabinet_core::review::FailureCap;
     let point = |id: &str, cap: FailureCap, domains: &[&str]| StoredReviewItem {
         id: id.to_string(),
         title: id.to_string(),
@@ -8453,8 +8444,10 @@ pub(crate) fn validator_manifest() -> crate::store::StoredManifest {
         description: None,
         changelog: "Introduced.".to_string(),
         max_runtime_seconds: 1800,
-        test_type: test_cabinet_core::TestType::EndToEnd,
-        engines: vec![test_cabinet_core::EngineSupport::unbounded("simple-2d")],
+        test_type: test_cabinet_suites::test_case::TestType::EndToEnd,
+        engines: vec![test_cabinet_suites::test_case::EngineSupport::unbounded(
+            "simple-2d",
+        )],
         experimental: false,
         build: None,
         canvas: None,
@@ -8466,8 +8459,8 @@ pub(crate) fn validator_manifest() -> crate::store::StoredManifest {
         simulation: None,
         r#match: None,
         replay: None,
-        asset_kind: test_cabinet_core::AssetKind::Sprite,
-        asset_dimension: test_cabinet_core::AssetDimension::TwoD,
+        asset_kind: test_cabinet_suites::test_case::AssetKind::Sprite,
+        asset_dimension: test_cabinet_suites::test_case::AssetDimension::TwoD,
         sheet: None,
         voxel: None,
         model: None,
@@ -8511,7 +8504,7 @@ pub(crate) fn validator_manifest() -> crate::store::StoredManifest {
 
 /// [`record`] with one decided validator verdict per `(point, pass)` pair.
 pub(crate) fn validator_record(id: &str, verdicts: &[(&str, bool)]) -> RunRecord {
-    use test_cabinet_core::validation::{AutoVerdict, DebugScriptResult};
+    use test_cabinet_contracts::validation::{AutoVerdict, DebugScriptResult};
     let mut record = record(id);
     record.validation.debug_scripts = verdicts
         .iter()
@@ -8539,10 +8532,7 @@ pub(crate) fn validator_record(id: &str, verdicts: &[(&str, bool)]) -> RunRecord
 
 /// A review from `account` carrying the run-wide aesthetic `rating` and nothing
 /// else — the minimal shape a validator-rated run accepts.
-fn aesthetic_review(
-    account: &str,
-    rating: test_cabinet_core::review::AestheticRating,
-) -> StoredReview {
+fn aesthetic_review(account: &str, rating: crate::review::AestheticRating) -> StoredReview {
     override_review(account, rating, &[])
 }
 
@@ -8550,10 +8540,10 @@ fn aesthetic_review(
 /// pass/fail per `(verdict id, pass)` pair.
 pub(crate) fn override_review(
     account: &str,
-    rating: test_cabinet_core::review::AestheticRating,
+    rating: crate::review::AestheticRating,
     overrides: &[(&str, bool)],
 ) -> StoredReview {
-    use test_cabinet_core::review::VerdictStatus;
+    use crate::review::VerdictStatus;
     StoredReview {
         reviewer: reviewer(account),
         ratings: vec![],
@@ -8656,7 +8646,7 @@ fn functional_rating_takes_the_lowest_cap_among_failing_points() {
 
 #[test]
 fn a_run_that_did_not_complete_has_no_functional_rating() {
-    use test_cabinet_core::RunState;
+    use test_cabinet_contracts::run_record::RunState;
     let manifest = validator_manifest();
     // A catastrophic build never loaded, so no validator ran: the empty verdict
     // set must not read as a flawless run.
@@ -8730,7 +8720,8 @@ async fn a_validator_rated_run_is_rated_at_push_from_its_validators() {
     assert!(stored.reviews.is_empty());
 
     // The summary card reads the lifted rating without a catalog.
-    let card = crate::snapshot::RunSummary::from_stored(&stored);
+    let card =
+        <crate::snapshot::RunSummary as crate::snapshot::RunSummaryExt>::from_stored(&stored);
     assert_eq!(card.rating, Some(Rating::Great));
     assert!(card.validator_rated);
     assert_eq!(card.aesthetic, None);
@@ -8738,7 +8729,7 @@ async fn a_validator_rated_run_is_rated_at_push_from_its_validators() {
 
 #[tokio::test]
 async fn a_re_push_recomputes_a_validator_rated_runs_rating_but_keeps_its_aesthetic() {
-    use test_cabinet_core::review::AestheticRating;
+    use crate::review::AestheticRating;
     let db = Db::connect_in_memory().await.unwrap();
     let manifest = validator_manifest();
 
@@ -8783,7 +8774,7 @@ async fn a_re_push_recomputes_a_validator_rated_runs_rating_but_keeps_its_aesthe
 
 #[tokio::test]
 async fn a_review_of_a_validator_rated_run_supplies_the_run_wide_aesthetic() {
-    use test_cabinet_core::review::AestheticRating;
+    use crate::review::AestheticRating;
     let db = Db::connect_in_memory().await.unwrap();
     let manifest = validator_manifest();
     db.push(
@@ -8842,7 +8833,7 @@ async fn a_review_of_a_validator_rated_run_supplies_the_run_wide_aesthetic() {
 
 #[tokio::test]
 async fn a_pre_migration_per_domain_review_row_collapses_to_its_worst_tier() {
-    use test_cabinet_core::review::{AestheticRating, DomainAesthetic};
+    use crate::review::{AestheticRating, DomainAesthetic};
     let db = Db::connect_in_memory().await.unwrap();
     let manifest = validator_manifest();
     db.push(
@@ -8887,7 +8878,7 @@ async fn a_pre_migration_per_domain_review_row_collapses_to_its_worst_tier() {
 
 #[tokio::test]
 async fn a_reviewer_override_recomputes_the_lifted_rating() {
-    use test_cabinet_core::review::AestheticRating;
+    use crate::review::AestheticRating;
     let db = Db::connect_in_memory().await.unwrap();
     let manifest = validator_manifest();
     // The cosmetic point fails: the validators' own rating caps at great.
@@ -8936,13 +8927,14 @@ async fn a_reviewer_override_recomputes_the_lifted_rating() {
     assert_eq!(stored.rating, Some(Rating::Broken));
 
     // The summary card reads the recomputed lifted rating without a catalog.
-    let card = crate::snapshot::RunSummary::from_stored(&stored);
+    let card =
+        <crate::snapshot::RunSummary as crate::snapshot::RunSummaryExt>::from_stored(&stored);
     assert_eq!(card.rating, Some(Rating::Broken));
 }
 
 #[tokio::test]
 async fn editing_a_reviews_aesthetics_records_the_change_in_its_revision() {
-    use test_cabinet_core::review::AestheticRating;
+    use crate::review::AestheticRating;
     let db = Db::connect_in_memory().await.unwrap();
     let manifest = validator_manifest();
     db.push(
@@ -9048,7 +9040,8 @@ async fn a_legacy_run_never_carries_an_aesthetic_and_is_rated_by_its_reviews() {
         assert_eq!(stored.rating, Some(Rating::Passable));
         assert_eq!(stored.aesthetic, None);
         assert!(stored.reviews[0].aesthetics.is_empty());
-        let card = crate::snapshot::RunSummary::from_stored(&stored);
+        let card =
+            <crate::snapshot::RunSummary as crate::snapshot::RunSummaryExt>::from_stored(&stored);
         assert_eq!(card.rating, Some(Rating::Passable));
         assert!(!card.validator_rated);
         assert_eq!(card.aesthetic, None);
@@ -9059,7 +9052,7 @@ async fn a_legacy_run_never_carries_an_aesthetic_and_is_rated_by_its_reviews() {
 async fn a_validator_rated_run_stays_in_the_unreviewed_worklist_until_reviewed() {
     // Decision: a validator-rated run with no review can still receive an aesthetic
     // review, so it belongs in the reviewer worklist exactly like a legacy run.
-    use test_cabinet_core::review::AestheticRating;
+    use crate::review::AestheticRating;
     let db = Db::connect_in_memory().await.unwrap();
     let manifest = validator_manifest();
     db.push(

@@ -7,8 +7,8 @@
 # `gg-x86_64-unknown-linux-musl`, `gg-aarch64-unknown-linux-musl` and
 # `gg-reference.tar.gz`. Each is uploaded to `v<version>/<name>`, where <version> is
 # what the x86_64 binary reports, so a download URL is built from a version and a
-# target alone. That layout is the contract with core's download path
-# (`core::gg_exec::release_asset_url`).
+# target alone. That layout is the contract with the driver's download path
+# (`gg_exec::release_asset_url`).
 #
 # <ref> is the full ref the pipeline built. On a tag build the version gate runs
 # first, so a gg that does not report the tag's version uploads nothing.

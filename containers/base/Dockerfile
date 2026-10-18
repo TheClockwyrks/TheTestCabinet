@@ -129,6 +129,6 @@ USER node
 WORKDIR /work
 
 # Run containers are long-lived: the testing harness starts the container and
-# then execs the agent harness inside it (see crates/core ContainerRuntime).
+# then execs the agent harness inside it (see crates/driver ContainerRuntime).
 # Keep the container alive until it is explicitly stopped.
 CMD ["sleep", "infinity"]

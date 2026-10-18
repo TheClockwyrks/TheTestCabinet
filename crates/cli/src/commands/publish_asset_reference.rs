@@ -11,7 +11,7 @@
 //!
 //! - **There is nothing to build.** The case declares no `[build]` table. The
 //!   reference is a `draw.sh` of drawing-binary calls, run against a workspace
-//!   seeded from the manifest (see [`test_cabinet_core::asset_reference`]).
+//!   seeded from the manifest (see [`test_cabinet_driver::asset_reference`]).
 //! - **The artifact is data, not a page.** Frames and action logs are objects, so
 //!   they go to the public snapshot bucket the site already reads, and the UI
 //!   renders them natively instead of embedding an iframe.
@@ -27,13 +27,13 @@
 //! path: run this command again and the objects are overwritten in place.
 
 use anyhow::{Context, Result, bail};
-use test_cabinet_core::{
+use test_cabinet_artifacts::r2::{R2Client, R2Config};
+use test_cabinet_driver::{
     SystemCommandRunner, TestCaseVersion, Variant,
     asset_reference::{
         ASSET_REFERENCE_SCRIPT, build_asset_reference, reference_actions_key, reference_image_key,
         reference_prefix,
     },
-    r2::{R2Client, R2Config},
 };
 
 use super::capture_baselines::Target;

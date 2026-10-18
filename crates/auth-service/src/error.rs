@@ -1,7 +1,7 @@
 //! The auth service's HTTP error envelope.
 //!
 //! Mirrors the backend's envelope — `{ "error": { "code", "message" } }` with an
-//! appropriate status — so [`test_cabinet_core::AccountsClient`] parses failures
+//! appropriate status — so the backend's accounts client parses failures
 //! from either service the same way.
 
 use axum::Json;

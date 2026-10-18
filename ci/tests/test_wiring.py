@@ -61,9 +61,6 @@ CALLERS = [CONFIG.name, PIPELINE.name]
 # and a commit never waits on them. Each has no hook in
 # `.pre-commit-config.yaml`, and a template update carries both edits.
 HOOKLESS: set[str] = {
-    # Regenerates the contract bindings and schemas from the Rust types, which
-    # is a cargo build of the workspace before the comparison starts.
-    "contract-drift",
     # rustdoc's harness compiles every crate and each doc example in it.
     "rust-doctest",
     # Compiles every crate's test binary and runs the whole suite.

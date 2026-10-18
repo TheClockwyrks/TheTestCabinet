@@ -2,9 +2,9 @@ use super::*;
 
 use std::collections::BTreeMap;
 
+use crate::comparison::{ComparisonArm, ComparisonControls};
 use tempfile::TempDir;
-use test_cabinet_core::comparison::{ComparisonArm, ComparisonControls};
-use test_cabinet_core::test_case::{AssetDimension, AssetKind, TestType};
+use test_cabinet_suites::test_case::{AssetDimension, AssetKind, TestType};
 
 use crate::store::{DefinitionStore, StoredBuild, StoredManifest, StoredVariant};
 
@@ -53,8 +53,8 @@ fn carom_manifest() -> StoredManifest {
         changelog: "Introduced.".to_string(),
         max_runtime_seconds: 1800,
         test_type: TestType::EndToEnd,
-        engines: vec![test_cabinet_core::EngineSupport::unbounded(
-            test_cabinet_core::engine::NONE_SLUG,
+        engines: vec![test_cabinet_suites::test_case::EngineSupport::unbounded(
+            test_cabinet_suites::engine::NONE_SLUG,
         )],
         experimental: false,
         build: Some(StoredBuild {
@@ -346,7 +346,7 @@ fn store_supporting(engines: &[&str]) -> (TempDir, DefinitionStore) {
     let manifest = StoredManifest {
         engines: engines
             .iter()
-            .map(|slug| test_cabinet_core::EngineSupport::unbounded(*slug))
+            .map(|slug| test_cabinet_suites::test_case::EngineSupport::unbounded(*slug))
             .collect(),
         ..carom_manifest()
     };
@@ -420,7 +420,7 @@ fn an_unresolvable_case_version_leaves_the_engine_control_unchecked() {
 #[tokio::test]
 async fn an_arm_observes_the_runs_its_recorded_jobs_stored() {
     use crate::db::tests::{links, new_job, record};
-    use test_cabinet_core::run_record::RunState;
+    use test_cabinet_contracts::run_record::RunState;
 
     let db = crate::db::Db::connect_in_memory().await.unwrap();
     let (_dir, store) = store_supporting(&["none"]);

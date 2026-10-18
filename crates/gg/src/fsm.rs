@@ -70,7 +70,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
 use serde_json::Value;
-use test_cabinet_core::gg::{
+use test_cabinet_contracts::gg::{
     CAPABILITY_FSM, FSM_PARAM_STATES, GgAgentConfig, GgCapabilitySet, GgFsmState, GgFsmTransition,
 };
 

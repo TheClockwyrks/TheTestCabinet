@@ -43,7 +43,7 @@
 # asset-generation binaries, this toolchain is on `PATH` only while the run is live;
 # it is NOT present when a build is re-run to validate it or when the published
 # source is rebuilt (that rebuild is a bare Node-only `npm ci && npm run build` off
-# the run container — see `crates/core/src/validator.rs`). A case's build must
+# the run container — see `crates/driver/src/validator.rs`). A case's build must
 # therefore commit the compiled `.wasm` (and any generated JS glue) and consume it
 # directly; `npm run build` must NOT invoke `cargo`/`wasm-pack`, exactly as it must
 # not shell out to `draw`. The case's specification is where that contract is stated.

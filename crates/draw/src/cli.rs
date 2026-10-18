@@ -40,7 +40,7 @@ pub use ops_command::OpCommand;
 pub const DEFAULT_LAYER_DOCUMENT: &str = "layers.json";
 
 /// The shared `render` subcommand: regenerate an image from a run's recorded
-/// artifacts without modifying them — the same rendering `crates/core` performs to
+/// artifacts without modifying them — the same rendering `crates/driver` performs to
 /// produce the scored image. Identical for both binaries; it needs no canvas
 /// config, so authors can render any log (including a per-frame target log) at an
 /// explicit size.

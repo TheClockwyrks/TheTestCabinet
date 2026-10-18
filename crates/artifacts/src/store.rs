@@ -6,13 +6,13 @@
 //! here. The store is keyed per run id: each run's tree lives under a single
 //! `<root>/<id>/` directory whose layout mirrors what the driver produced
 //! (`run-record.json`, the `implementation/` tree, and optionally the
-//! `events.jsonl`/`raw.jsonl` logs), so the shared [core resolvers]
+//! `events.jsonl`/`raw.jsonl` logs), so the shared [playable resolvers]
 //! (`find_build_output`/`serve_build_file`/`serve_proof_file`/`serve_asset_file`,
 //! which take a `&Path`) read it unchanged.
 //!
 //! The store is an [`ArtifactStore`] trait with one impl today, [`LocalFsStore`],
 //! a plain directory on a PVC. It is deliberately small — write one run's tree
-//! from an uploaded tarball, and resolve a run's on-disk root path for the core
+//! from an uploaded tarball, and resolve a run's on-disk root path for the playable
 //! resolvers to serve from — so an **R2** (object-storage) impl is an obvious
 //! later addition: it would download-and-cache (or stream) the same per-run tree
 //! and expose the same root path. Because the store is internal to this service,
@@ -20,7 +20,7 @@
 //! it, local disk is the zero-config choice (a plain directory on k3d, a PVC in a
 //! cluster).
 //!
-//! [core resolvers]: test_cabinet_core::serve_build_file
+//! [playable resolvers]: crate::playable
 
 use std::io::Read;
 use std::path::{Path, PathBuf};
@@ -67,7 +67,7 @@ pub trait ArtifactStore: Send + Sync {
     /// id is unique, so this only matters for an idempotent re-upload).
     fn store_run(&self, id: &str, tar: &mut dyn Read) -> Result<(), StoreError>;
 
-    /// The on-disk root directory for run `id` (`<root>/<id>/`), the path the core
+    /// The on-disk root directory for run `id` (`<root>/<id>/`), the path the playable
     /// resolvers read a run's `run-record.json`, `implementation/`, and logs from.
     /// Returns the path whether or not the run has been uploaded; the resolvers map
     /// a missing tree to a `404`.
@@ -254,7 +254,7 @@ impl ArtifactStore for LocalFsStore {
 
     fn delete_run(&self, id: &str) -> Result<(), StoreError> {
         // `delete_run` removes a whole directory, so — unlike the read paths, which
-        // hand `run_dir` to the canonicalizing core resolvers — guard the id here:
+        // hand `run_dir` to the canonicalizing playable resolvers — guard the id here:
         // an id that is not a single safe path segment (`.`, `..`, or one carrying a
         // separator) could escape the store root and delete an unrelated tree.
         if !is_safe_id(id) {
@@ -298,7 +298,7 @@ impl ArtifactStore for LocalFsStore {
     fn ensure_run_tree(&self, id: &str) -> Result<(), StoreError> {
         // Guard the id here rather than only in the archive walk: both writers reach
         // the filesystem by joining the id onto the store root instead of going
-        // through the canonicalizing core resolvers, so an id that is not a single
+        // through the canonicalizing playable resolvers, so an id that is not a single
         // safe path segment must be refused before either of them starts.
         if !is_safe_id(id) {
             return Err(StoreError::Traversal(id.to_string()));

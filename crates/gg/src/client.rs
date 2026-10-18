@@ -51,7 +51,7 @@
 //! the whole spawn → wait → return path and its issue-review variant are exercised through
 //! [`mock_client_for`], not around it.
 //! It is **not** a model anyone can run a real test case on: the launch path resolves
-//! every bound model's [context window](test_cabinet_core::gg::GgInvocation::model_windows)
+//! every bound model's [context window](test_cabinet_contracts::gg::GgInvocation::model_windows)
 //! from the model catalog and refuses a run it cannot resolve one for, and no catalog
 //! or provider lists a `mock/…` id. A mock binding therefore reaches gg only from a
 //! test that constructs the invocation itself (supplying the windows a launch would
@@ -65,12 +65,12 @@ use std::time::Duration;
 use futures_util::StreamExt;
 use serde::Deserialize;
 use serde_json::{Value, json};
-use test_cabinet_core::gg::{
+use test_cabinet_contracts::gg::{
     GgLoopDetection, GgPromptCacheTtl, GgProviderFault, GgReasoning, GgSlotBinding,
     GgTelemetryKind, ROOT_PROFILE_ID,
 };
-use test_cabinet_core::gg_session_record::{GgClientRole, GgSessionAgentOrigin};
-use test_cabinet_core::metrics::{Cost, TokenCounts};
+use test_cabinet_contracts::gg_session_record::{GgClientRole, GgSessionAgentOrigin};
+use test_cabinet_contracts::metrics::{Cost, TokenCounts};
 
 use crate::context::{BpeTokenEstimator, TokenEstimator};
 use crate::loopguard::{LoopGuard, LoopGuardConfig, LoopVerdict, resolve_loop_guard};
@@ -103,7 +103,7 @@ const SESSION_ID_HEADER: &str = "x-session-id";
 const ERROR_BODY_CAP: usize = 2000;
 
 /// The **per-model-call ceiling** a run takes when its
-/// [limits](test_cabinet_core::gg::GgRunLimits) write no `modelCallTimeoutSecs`: fifteen minutes.
+/// [limits](test_cabinet_contracts::gg::GgRunLimits) write no `modelCallTimeoutSecs`: fifteen minutes.
 ///
 /// The ceiling caps one **attempt's whole duration**, from sending the request to the last chunk
 /// of its reply. The backoff between attempts sits outside it, so the run's retry schedule is
@@ -123,7 +123,7 @@ const ERROR_BODY_CAP: usize = 2000;
 pub const DEFAULT_MODEL_CALL_TIMEOUT: Duration = Duration::from_secs(900);
 
 /// The **stream-idle bound** a run takes when its
-/// [limits](test_cabinet_core::gg::GgRunLimits) write no `modelStreamIdleSecs`: **sixty
+/// [limits](test_cabinet_contracts::gg::GgRunLimits) write no `modelStreamIdleSecs`: **sixty
 /// seconds**.
 ///
 /// This is the bound that answers a provider which stops answering mid-reply. Every reply is read
@@ -309,7 +309,7 @@ pub const MOCK_COMPACTION_SUMMARY: &str = "Building a minimal HTML5 canvas game 
 // ---------------------------------------------------------------------------
 
 /// The retries after the first attempt a run takes when its
-/// [limits](test_cabinet_core::gg::GgRunLimits) write no `maxModelRetries`: **ten**.
+/// [limits](test_cabinet_contracts::gg::GgRunLimits) write no `maxModelRetries`: **ten**.
 ///
 /// Against the default [delay ceiling](DEFAULT_MODEL_RETRY_MAX_DELAY) the [schedule](backoff_delay)
 /// waits about five minutes across the ten, long enough to outlast a pinned provider's brief
@@ -317,7 +317,7 @@ pub const MOCK_COMPACTION_SUMMARY: &str = "Building a minimal HTML5 canvas game 
 pub const DEFAULT_MAX_MODEL_RETRIES: u32 = 10;
 
 /// The ceiling on one retry's backoff delay a run takes when its
-/// [limits](test_cabinet_core::gg::GgRunLimits) write no `modelRetryMaxDelaySecs`: sixty seconds.
+/// [limits](test_cabinet_contracts::gg::GgRunLimits) write no `modelRetryMaxDelaySecs`: sixty seconds.
 /// Against it the default ten retries wait about five minutes in all, and thirty retries at the
 /// same ceiling wait about half an hour.
 pub const DEFAULT_MODEL_RETRY_MAX_DELAY: Duration = Duration::from_secs(60);
@@ -325,7 +325,7 @@ pub const DEFAULT_MODEL_RETRY_MAX_DELAY: Duration = Duration::from_secs(60);
 /// Bounded exponential-backoff policy for [`OpenRouterClient`].
 ///
 /// The schedule the run configures through its
-/// [limits](test_cabinet_core::gg::GgRunLimits): `maxModelRetries` retries after the first
+/// [limits](test_cabinet_contracts::gg::GgRunLimits): `maxModelRetries` retries after the first
 /// attempt ([`max_attempts`](Self::max_attempts) is that count plus one), the first retry
 /// waiting one second and each next twice the last, capped at the `modelRetryMaxDelaySecs`
 /// ceiling. The [defaults](Self::default) are the absent-key figures, so a client built without
@@ -809,7 +809,7 @@ impl OpenRouterClient {
     }
 
     /// The candidate this client's model is on, which a request body is built naming.
-    fn candidate(&self) -> Option<test_cabinet_core::gg::GgProviderCandidate> {
+    fn candidate(&self) -> Option<test_cabinet_contracts::gg::GgProviderCandidate> {
         self.roster
             .as_ref()
             .and_then(|roster| roster.in_force(&self.model_id))
@@ -822,7 +822,7 @@ impl OpenRouterClient {
     /// records it. A response from any other provider ends the call as
     /// [`ProviderMismatch`](ModelError::ProviderMismatch): the cost recorded from that point
     /// would be on a price basis the candidate list does not name. The two are compared as
-    /// [the same provider](test_cabinet_core::pricing::same_provider), since a response and the
+    /// [the same provider](test_cabinet_contracts::pricing::same_provider), since a response and the
     /// listing may spell one provider differently. A reply that names no provider has nothing to
     /// disagree with and passes, as does any reply to a request that named none.
     fn served_by(
@@ -832,7 +832,7 @@ impl OpenRouterClient {
     ) -> Result<ModelResponse, ModelError> {
         match (named, response.provider.as_deref()) {
             (Some(named), Some(served))
-                if !test_cabinet_core::pricing::same_provider(served, named) =>
+                if !test_cabinet_contracts::pricing::same_provider(served, named) =>
             {
                 Err(ModelError::ProviderMismatch {
                     pinned: named.to_string(),
@@ -1762,7 +1762,7 @@ pub fn build_request_body(
     messages: &[Message],
     tools: &[ToolDefinition],
     routing_key: Option<&RoutingKey>,
-    candidate: Option<&test_cabinet_core::gg::GgProviderCandidate>,
+    candidate: Option<&test_cabinet_contracts::gg::GgProviderCandidate>,
     stable_ttl: CacheTtl,
     reasoning: Option<GgReasoning>,
 ) -> Value {
@@ -1874,7 +1874,7 @@ pub fn build_required_tool_request_body(
     messages: &[Message],
     tool: &ToolDefinition,
     routing_key: Option<&RoutingKey>,
-    candidate: Option<&test_cabinet_core::gg::GgProviderCandidate>,
+    candidate: Option<&test_cabinet_contracts::gg::GgProviderCandidate>,
     stable_ttl: CacheTtl,
     reasoning: Option<GgReasoning>,
 ) -> Value {
@@ -2298,10 +2298,10 @@ fn map_finish_reason(reason: Option<&str>) -> FinishReason {
 /// output/reasoning split (see [`split_completion`]): a provider's `reasoning_tokens` is
 /// kept only while it leaves the reply that much room under `completion_tokens`, and a
 /// split gg bounded is reported as
-/// [`reconciled`](test_cabinet_core::gg::GgTelemetryKind::Usage).
+/// [`reconciled`](test_cabinet_contracts::gg::GgTelemetryKind::Usage).
 ///
 /// The return also carries the provider's usage object verbatim (as JSON) so the
-/// [`Usage`](test_cabinet_core::gg::GgTelemetryKind::Usage) event can publish it beside
+/// [`Usage`](test_cabinet_contracts::gg::GgTelemetryKind::Usage) event can publish it beside
 /// the mapped counts: a published per-turn output figure is checkable against what the
 /// provider actually said only if the record holds what it said.
 fn map_usage(
@@ -2643,7 +2643,7 @@ impl<'de> Deserialize<'de> for WireUsage {
 
 impl WireUsage {
     /// The provider's usage object, verbatim: exactly the JSON it arrived as, beside the
-    /// mapped counts on the [`Usage`](test_cabinet_core::gg::GgTelemetryKind::Usage) event.
+    /// mapped counts on the [`Usage`](test_cabinet_contracts::gg::GgTelemetryKind::Usage) event.
     fn to_wire(&self) -> Value {
         self.raw.clone()
     }
@@ -3619,7 +3619,7 @@ impl MockClient {
     /// A script exercising [agent-managed context](crate::tools) offline end to end:
     ///
     /// 1. `write_file` creates a chunky `level.json` (working material to reclaim);
-    /// 2. `read_file` reads it back — a [`FileView`](test_cabinet_core::gg::GgContextSource::FileView)
+    /// 2. `read_file` reads it back — a [`FileView`](test_cabinet_contracts::gg::GgContextSource::FileView)
     ///    enters the window;
     /// 3. `archive_thread { ranges: [[1, 2]] }` moves those two turns out of the live window into
     ///    the searchable archive, naming them by the turn numbers on their results;
@@ -3631,7 +3631,7 @@ impl MockClient {
     /// 7. a final tool-free turn stops.
     ///
     /// Used by the offline agent-managed-context e2e; requires a run with the
-    /// [`agent-managed-context`](test_cabinet_core::gg::CAPABILITY_AGENT_MANAGED_CONTEXT) and
+    /// [`agent-managed-context`](test_cabinet_contracts::gg::CAPABILITY_AGENT_MANAGED_CONTEXT) and
     /// filesystem capabilities enabled so every call resolves to a real tool.
     #[cfg(test)]
     pub fn with_agent_managed_context_script(model_id: impl Into<String>) -> Self {
@@ -3872,7 +3872,7 @@ impl MockClient {
     ///
     /// Pairs with [`with_memory_child_script`](Self::with_memory_child_script) on the `subagent`
     /// slot. Between them the two scripts write one memory each, so what each agent's
-    /// [`MemoryState`](test_cabinet_core::gg::GgTelemetryKind::MemoryState) reports is exactly the
+    /// [`MemoryState`](test_cabinet_contracts::gg::GgTelemetryKind::MemoryState) reports is exactly the
     /// question the scope decides. Selected in production by a mock `model_id` naming
     /// `memory-parent` (see [`mock_client_for`]), so a scope is drivable **offline through the real
     /// binary**: bind the primary slot to a `mock/…-memory-parent` model, a `subagent` slot to a
@@ -3947,7 +3947,7 @@ impl MockClient {
     /// script that records one memory of its own and finishes.
     ///
     /// Pairs with [`with_memory_parent_script`](Self::with_memory_parent_script). Its
-    /// [`MemoryState`](test_cabinet_core::gg::GgTelemetryKind::MemoryState) is the assertion
+    /// [`MemoryState`](test_cabinet_contracts::gg::GgTelemetryKind::MemoryState) is the assertion
     /// target: two memories when it inherited its spawner's store, one when it got its own.
     /// Selected in production by a mock `model_id` naming `memory-child` (see
     /// [`mock_client_for`]).
@@ -4338,7 +4338,7 @@ impl MockClient {
     /// calls, exercising the code path end to end offline.
     ///
     /// The programs below are **TypeScript**, the one [program
-    /// language](test_cabinet_core::gg::GgProgramLanguage) this mock is written against. A second language's offline script would be a second set of programs beside these,
+    /// language](test_cabinet_contracts::gg::GgProgramLanguage) this mock is written against. A second language's offline script would be a second set of programs beside these,
     /// which is what makes the language the axis rather than a fact of the mock.
     ///
     /// 1. a first turn submitting a program — it calls `listDir`, then **loops** over
@@ -5150,7 +5150,7 @@ pub trait ClientFactory: Send + Sync {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AgentIdentity {
     /// How the agent came to exist — the same value recorded on its
-    /// [session-record row](test_cabinet_core::gg_session_record::GgSessionAgent::origin), so a
+    /// [session-record row](test_cabinet_contracts::gg_session_record::GgSessionAgent::origin), so a
     /// live resolution and a recorded one name an agent the same way.
     pub origin: GgSessionAgentOrigin,
     /// Which of gg's two model clients is being resolved. A
@@ -5224,7 +5224,7 @@ impl DefaultClientFactory {
         model_call_timeout: Duration,
         model_stream_idle: Duration,
         retry_policy: RetryPolicy,
-        model_providers: BTreeMap<String, Vec<test_cabinet_core::gg::GgProviderCandidate>>,
+        model_providers: BTreeMap<String, Vec<test_cabinet_contracts::gg::GgProviderCandidate>>,
         cache_miss_limit: u64,
     ) -> Self {
         Self {
@@ -5240,7 +5240,10 @@ impl DefaultClientFactory {
 
     /// The candidate `model_id` is on now, which every live client built for it names.
     #[cfg(test)]
-    fn candidate_for(&self, model_id: &str) -> Option<test_cabinet_core::gg::GgProviderCandidate> {
+    fn candidate_for(
+        &self,
+        model_id: &str,
+    ) -> Option<test_cabinet_contracts::gg::GgProviderCandidate> {
         self.roster
             .in_force(model_id)
             .map(|in_force| in_force.candidate)

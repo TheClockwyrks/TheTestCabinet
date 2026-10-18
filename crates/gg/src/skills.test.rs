@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use tempfile::TempDir;
-use test_cabinet_core::gg::{GgProgramLanguage, GgTelemetryKind};
+use test_cabinet_contracts::gg::{GgProgramLanguage, GgTelemetryKind};
 
 use super::*;
 

@@ -15,7 +15,7 @@ import styles from "./ReferenceSheetView.module.scss";
 // The two files published per reference frame, relative to the variant's prefix in
 // the snapshot bucket. These MIRROR the Rust helpers that write them —
 // `reference_image_key` and `reference_actions_key` in
-// `crates/core/src/asset_reference.rs` — and must change with them. The host's
+// `contracts/crates/contracts/src/asset_reference.rs` — and must change with them. The host's
 // `referenceMediaUrl` prepends the `media/references/<slug>/<version>/<variant>/`
 // prefix (see `referenceMediaKey` in packages/ui/src/transport/httpBackend.ts and
 // the same reconstruction in apps/site/vite-plugin-snapshot.ts).
