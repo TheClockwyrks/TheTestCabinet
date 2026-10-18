@@ -2,7 +2,6 @@ import type { SuiteOut, SuiteVersionResponse } from "@clockwyrks/backend-api";
 import type { RunSummary } from "@clockwyrks/backend-api/snapshot";
 import type { ReactNode } from "react";
 
-import { AuthProvider } from "../../client/auth";
 import type { BackendClient, WorkerClient } from "../../client/clients";
 import {
   BackendProvider,
@@ -737,9 +736,7 @@ export function HostProviders({
   if (!data.canExecute) return inner;
   return (
     <BackendProvider value={backendContext()}>
-      <WorkersProvider value={workersContext()}>
-        <AuthProvider>{inner}</AuthProvider>
-      </WorkersProvider>
+      <WorkersProvider value={workersContext()}>{inner}</WorkersProvider>
     </BackendProvider>
   );
 }

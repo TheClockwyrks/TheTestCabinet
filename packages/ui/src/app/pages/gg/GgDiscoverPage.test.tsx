@@ -40,7 +40,6 @@ vi.mock("../../components/PromptHeader", () => ({
     </>
   ),
 }));
-vi.mock("../../../client/auth", () => ({ useAuth: () => ({ token: "t0" }) }));
 
 const runGgQuery = vi.fn();
 const getGgFields = vi.fn();

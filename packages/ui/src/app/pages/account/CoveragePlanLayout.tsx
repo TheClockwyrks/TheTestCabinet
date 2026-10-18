@@ -22,7 +22,6 @@ import { BackChevron } from "../../components/BackChevron";
 import { useConfirm } from "../../components/ConfirmDialog";
 import { SubmitNotice } from "../../components/SubmitNotice";
 import { useRecordSectionIndex } from "../../components/backReturn";
-import { useAuth } from "../../../client/auth";
 import { useBackend, useWorkers } from "../../../client/context";
 import { useTestCaseName } from "../../data/useTestCaseName";
 import { useRunsRuntime } from "../../runtime/runsRuntime";
@@ -194,7 +193,6 @@ export function CoveragePlanLayout() {
   const { planId = "" } = useParams();
   const { pathname } = useLocation();
   const tab = planTabOf(pathname);
-  const { token } = useAuth();
   const { client: backend } = useBackend();
   const { confirm } = useConfirm();
   const { active: worker } = useWorkers();
@@ -235,24 +233,24 @@ export function CoveragePlanLayout() {
   // of them is built from. They are kept apart because only the first is worth its own
   // standing notice — the second resolves on its own within a moment of the page
   // opening.
-  const hasWorker = Boolean(worker && token);
+  const hasWorker = Boolean(worker);
   const ggTrigger = ggTriggerReadiness(ggLoading, ggError);
   const canTrigger = hasWorker && ggTrigger.ready;
 
   // Re-read everything the controls can move: the matrix's counts, and the review
   // queue.
   const refresh = useCallback(async () => {
-    if (!backend || !token) return;
+    if (!backend) return;
     const [cov, q] = await Promise.all([
-      backend.getCoveragePlanCoverage?.(planId, token) ?? Promise.resolve(null),
-      backend.getCoveragePlanQueue?.(planId, token) ?? Promise.resolve(null),
+      backend.getCoveragePlanCoverage?.(planId) ?? Promise.resolve(null),
+      backend.getCoveragePlanQueue?.(planId) ?? Promise.resolve(null),
     ]);
     setCoverage(cov);
     setQueue(q);
-  }, [backend, token, planId]);
+  }, [backend, planId]);
 
   useEffect(() => {
-    if (!backend || !token) {
+    if (!backend) {
       setLoading(false);
       return;
     }
@@ -260,9 +258,9 @@ export function CoveragePlanLayout() {
     setLoading(true);
     setError(null);
     Promise.all([
-      backend.getCoveragePlanCoverage?.(planId, token) ?? Promise.resolve(null),
-      backend.listCoveragePlans?.(token) ?? Promise.resolve([]),
-      backend.getCoveragePlanQueue?.(planId, token) ?? Promise.resolve(null),
+      backend.getCoveragePlanCoverage?.(planId) ?? Promise.resolve(null),
+      backend.listCoveragePlans?.() ?? Promise.resolve([]),
+      backend.getCoveragePlanQueue?.(planId) ?? Promise.resolve(null),
     ])
       .then(([cov, plans, q]) => {
         if (!active) return;
@@ -279,7 +277,7 @@ export function CoveragePlanLayout() {
     return () => {
       active = false;
     };
-  }, [backend, token, planId]);
+  }, [backend, planId]);
 
   // A run finishing moves the board without anyone touching it (a cell gains a counted
   // run), and while the plan is filling the backend launches the next runs a moment
@@ -309,11 +307,11 @@ export function CoveragePlanLayout() {
   // in the plan's order, up to its runs-in-flight limit — and launches the rest itself
   // as the plan's runs finish. Always answers, even to say nothing was launched.
   const fill = useCallback(async () => {
-    if (!backend?.fillCoveragePlan || !token) return;
+    if (!backend?.fillCoveragePlan) return;
     setBusy(true);
     setError(null);
     try {
-      const result = await backend.fillCoveragePlan(planId, token);
+      const result = await backend.fillCoveragePlan(planId);
       setNote(describeFill(result));
       await refresh();
     } catch (e) {
@@ -321,36 +319,32 @@ export function CoveragePlanLayout() {
     } finally {
       setBusy(false);
     }
-  }, [backend, token, planId, refresh]);
+  }, [backend, planId, refresh]);
 
   // Retry a cell blocked on a run that used up its automatic retries, once its owner
   // has fixed the cause: the backend forgets that failure and launches the cell's
   // shortfall (under the limit while filling, at once otherwise).
   const retryCell = useCallback(
     async (cell: CoverageCell) => {
-      if (!backend?.retryCoveragePlanCell || !token) return;
+      if (!backend?.retryCoveragePlanCell) return;
       setBusy(true);
       setError(null);
       try {
-        await backend.retryCoveragePlanCell(
-          planId,
-          {
-            case: {
-              slug: cell.slug,
-              version: cell.version,
-              variant: cell.variant,
-              engine: cell.engine === "none" ? undefined : cell.engine,
-            },
-            combination: {
-              harness: cell.harness,
-              model: cell.model,
-              provider: cell.provider,
-              ggConfigId: cell.ggConfigId,
-              ggSlotModels: cell.ggSlotModels,
-            },
+        await backend.retryCoveragePlanCell(planId, {
+          case: {
+            slug: cell.slug,
+            version: cell.version,
+            variant: cell.variant,
+            engine: cell.engine === "none" ? undefined : cell.engine,
           },
-          token,
-        );
+          combination: {
+            harness: cell.harness,
+            model: cell.model,
+            provider: cell.provider,
+            ggConfigId: cell.ggConfigId,
+            ggSlotModels: cell.ggSlotModels,
+          },
+        });
         setNote(`Retrying ${comboLabel(cell)}: its runs are launching again.`);
         await refresh();
       } catch (e) {
@@ -359,7 +353,7 @@ export function CoveragePlanLayout() {
         setBusy(false);
       }
     },
-    [backend, token, planId, refresh],
+    [backend, planId, refresh],
   );
 
   // Launch a set of cells by hand. The two shapes a combination takes go out on two
@@ -388,14 +382,13 @@ export function CoveragePlanLayout() {
         // Halt would reach them — a plan that visibly refuses to stop.
         const batch =
           items.length > 0
-            ? await launchBatch(worker, token, runtime.track, items, {
+            ? await launchBatch(worker, runtime.track, items, {
                 kind: "plan",
                 id: planId,
               })
             : [];
         const failed = await launchGgCells(
           worker,
-          token,
           runtime.track,
           launches,
           retryCount,
@@ -430,7 +423,6 @@ export function CoveragePlanLayout() {
     [
       worker,
       canTrigger,
-      token,
       runtime.track,
       refresh,
       planId,
@@ -445,7 +437,7 @@ export function CoveragePlanLayout() {
   // never the control the reviewer reaches by accident.
   const halt = useCallback(
     async (all: boolean) => {
-      if (!backend || !token) return;
+      if (!backend) return;
       // Resolved (not called) through the client so the transport keeps its own
       // receiver; a transport that does not implement halting simply has no control.
       const supported = all
@@ -469,8 +461,8 @@ export function CoveragePlanLayout() {
       setError(null);
       try {
         const result: HaltResult | undefined = all
-          ? await backend.haltAllCoveragePlan?.(planId, token)
-          : await backend.haltCoveragePlan?.(planId, token);
+          ? await backend.haltAllCoveragePlan?.(planId)
+          : await backend.haltCoveragePlan?.(planId);
         if (result) setNote(describeHalt(result));
         // A halt always ends filling, whatever it found to cancel.
         setPlan((p) => (p ? { ...p, filling: false } : p));
@@ -481,7 +473,7 @@ export function CoveragePlanLayout() {
         setBusy(false);
       }
     },
-    [backend, token, planId, refresh, confirm],
+    [backend, planId, refresh, confirm],
   );
 
   // The matrix grouped on the plan's own ordering axis, in the plan's own order.
@@ -548,22 +540,6 @@ export function CoveragePlanLayout() {
       halt,
     ],
   );
-
-  if (!token) {
-    return (
-      <PageLayout>
-        <header className={styles.detailHeader}>
-          <div className={styles.detailTitleRow}>
-            <BackChevron to={routes.accountCoverage()} label="All plans" />
-            <h1 className={styles.detailTitle}>Coverage plan</h1>
-          </div>
-        </header>
-        <p className={`${exec.notice} ${exec.warn}`}>
-          Sign in to view a coverage plan. Plans are saved to your account.
-        </p>
-      </PageLayout>
-    );
-  }
 
   return (
     <PageLayout>

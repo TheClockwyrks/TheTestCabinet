@@ -1,5 +1,4 @@
 import { useMemo } from "react";
-import { useAuth } from "../../client/auth";
 import { useOptionalBackend } from "../../client/context";
 import type {
   ListPriceRefresh,
@@ -10,11 +9,11 @@ import type {
 } from "../../client/types";
 import { useGalleryData } from "./galleryContext";
 
-// The model-configuration capability, bound to the active backend client and the
-// signed-in token. Present only where curating models is actually possible — a
-// console that can execute (`canExecute`), a backend whose transport exposes the
-// config mutations (the static site's snapshot transport omits them), and a
-// signed-in account whose token authorizes them. When any of those is missing the
+// The model-configuration capability, bound to the active backend client. Present
+// only where curating models is actually possible — a console that can execute
+// (`canExecute`) and a backend whose transport exposes the config mutations (the
+// static site's snapshot transport omits them). The backend decides who may curate
+// from the identity the edge asserts. When either is missing the
 // hook returns `null`, and the caller hides the affordance entirely rather than
 // showing a disabled, unexplained control — the same conjunction
 // `RunDeleteControl` uses for run deletion.
@@ -37,15 +36,13 @@ export interface ModelConfigApi {
   ): Promise<ModelListing>;
   /** Re-read every curated entry's list price from OpenRouter. */
   refreshListPrices(): Promise<ListPriceRefresh>;
-  /** The bearer token the mutations are authorized with. */
-  token: string;
 }
 
 /**
  * The model-configuration capability, or `null` when configuring models is not
- * possible here (a read-only host, a transport without the mutations, or a
- * logged-out session). Bind the returned methods to the backend client + token so
- * callers never juggle the token or the optional-method checks themselves.
+ * possible here (a read-only host or a transport without the mutations).
+ * Bind the returned methods to the backend client so callers never juggle the
+ * optional-method checks themselves.
  */
 export function useModelConfig(): ModelConfigApi | null {
   const { canExecute } = useGalleryData();
@@ -53,7 +50,6 @@ export function useModelConfig(): ModelConfigApi | null {
   // unconfigured backend so the model-config affordance simply hides there
   // rather than crashing the page.
   const client = useOptionalBackend()?.client ?? null;
-  const { token } = useAuth();
 
   return useMemo<ModelConfigApi | null>(() => {
     // Every condition curating a model needs; any one missing hides the
@@ -61,7 +57,6 @@ export function useModelConfig(): ModelConfigApi | null {
     // transport that exposes one exposes them all (they share the mutation gate).
     if (
       !canExecute ||
-      !token ||
       !client?.createModel ||
       !client.updateModel ||
       !client.deleteModel ||
@@ -83,15 +78,14 @@ export function useModelConfig(): ModelConfigApi | null {
     } = client;
     const refreshListPrices = client.refreshListPrices.bind(client);
     return {
-      createModel: (input) => createModel(input, token),
-      updateModel: (slug, input) => updateModel(slug, input, token),
-      deleteModel: (slug) => deleteModel(slug, token),
-      fetchLogo: async (url) => (await fetchModelLogo(url, token)).logoSvg,
+      createModel: (input) => createModel(input),
+      updateModel: (slug, input) => updateModel(slug, input),
+      deleteModel: (slug) => deleteModel(slug),
+      fetchLogo: async (url) => (await fetchModelLogo(url)).logoSvg,
       seedFromRun: (runId) => seedModelFromRun(runId),
       lookupOpenrouter: (slug, providerPin) =>
-        lookupOpenrouterModel(slug, token, providerPin),
-      refreshListPrices: () => refreshListPrices(token),
-      token,
+        lookupOpenrouterModel(slug, providerPin),
+      refreshListPrices: () => refreshListPrices(),
     };
-  }, [canExecute, client, token]);
+  }, [canExecute, client]);
 }

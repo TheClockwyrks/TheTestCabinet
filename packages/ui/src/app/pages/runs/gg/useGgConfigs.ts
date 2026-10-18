@@ -1,7 +1,6 @@
 import type { GgConfig } from "@clockwyrks/backend-api/gg";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { GgCapabilitySet } from "@clockwyrks/run-record/gg";
-import { useAuth } from "../../../../client/auth";
 import { useOptionalBackend } from "../../../../client/context";
 import { attachAgentSources, resolveCapabilitySet } from "./ggAgentLibrary";
 import { type GgConfigDraft, draftFromCapabilitySet } from "./ggConfigDraft";
@@ -68,7 +67,6 @@ export function findGgConfig(
  * belongs to an account.
  */
 export function useGgConfigs() {
-  const { token } = useAuth();
   // An agent a configuration imported is resolved here rather than stored resolved, so
   // a configuration follows the saved agent as it stands now in every field it does not
   // override. gg still sees a set whose agents are whole: the resolution happens before
@@ -87,9 +85,9 @@ export function useGgConfigs() {
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async (): Promise<GgConfig[]> => {
-    if (!backend?.listGgConfigs || !token) return [];
-    return backend.listGgConfigs(token);
-  }, [backend, token]);
+    if (!backend?.listGgConfigs) return [];
+    return backend.listGgConfigs();
+  }, [backend]);
 
   useEffect(() => {
     let active = true;

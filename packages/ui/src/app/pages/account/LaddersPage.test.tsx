@@ -26,9 +26,6 @@ vi.mock("../../components/PromptHeader", () => ({
 vi.mock("../../components/ConfirmDialog", () => ({
   useConfirm: () => ({ confirm: async () => true, alert: async () => {} }),
 }));
-vi.mock("../../../client/auth", () => ({
-  useAuth: () => ({ token: "t0" }),
-}));
 
 function slots(over: Partial<SlotCounts> = {}): SlotCounts {
   return {

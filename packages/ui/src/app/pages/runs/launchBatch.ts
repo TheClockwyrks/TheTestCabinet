@@ -40,7 +40,6 @@ export interface LaunchItemResult {
 // `null` and stays outside any plan's halt, which is the correct default.
 export async function launchBatch(
   worker: { client: WorkerClient },
-  token: string | null,
   track: (run: InProgressRun) => void,
   items: LaunchItem[],
   origin?: LaunchOrigin | null,
@@ -50,7 +49,6 @@ export async function launchBatch(
   try {
     acks = await worker.client.launchRunBatch(
       items.map((item) => item.config),
-      token,
       origin,
     );
   } catch (e) {

@@ -1,7 +1,7 @@
 import { render, screen, within } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { MemoryRouter, Route, Routes } from "react-router";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   BackendProvider,
   type BackendContextValue,
@@ -26,15 +26,6 @@ import { ModelStatsPage } from "./ModelStatsPage";
 vi.mock("../../../components/PageLayout", () => ({
   PageLayout: ({ children }: { children: ReactNode }) => <div>{children}</div>,
 }));
-const authState = vi.hoisted(() => ({ token: null as string | null }));
-vi.mock("../../../../client/auth", () => ({
-  useAuth: () => ({ token: authState.token }),
-}));
-
-beforeEach(() => {
-  authState.token = null;
-});
-
 const MODEL = {
   slug: "claude-x",
   name: "Claude X",
@@ -233,12 +224,11 @@ const CANDIDATES: ModelCandidates = {
 
 describe("the Stats tab's Provider candidates section", () => {
   it("lists the candidates in order, marking the developer's endpoint", async () => {
-    authState.token = "t";
     const getModelCandidates = vi.fn().mockResolvedValue(CANDIDATES);
     renderStats({ getModelCandidates });
 
     expect(await screen.findByText("Bedrock")).toBeTruthy();
-    expect(getModelCandidates).toHaveBeenCalledWith("claude-x", "t");
+    expect(getModelCandidates).toHaveBeenCalledWith("claude-x");
     const rows = screen.getAllByRole("row");
     // The header, then the developer first.
     expect(rows[1]!.textContent).toContain("Anthropic");
@@ -253,7 +243,6 @@ describe("the Stats tab's Provider candidates section", () => {
   });
 
   it("says the quantization filter is off in place of a native level", async () => {
-    authState.token = "t";
     renderStats(
       {
         getModelCandidates: vi.fn().mockResolvedValue({
@@ -276,7 +265,6 @@ describe("the Stats tab's Provider candidates section", () => {
   });
 
   it("names the filter that emptied the list", async () => {
-    authState.token = "t";
     renderStats({
       getModelCandidates: vi.fn().mockResolvedValue({
         ...CANDIDATES,
@@ -290,15 +278,6 @@ describe("the Stats tab's Provider candidates section", () => {
       "every endpoint left is on its catalog entry's ban list",
     );
     expect(screen.queryByRole("table")).toBeNull();
-  });
-
-  it("asks a signed-out viewer to sign in rather than reading", async () => {
-    const getModelCandidates = vi.fn();
-    renderStats({ getModelCandidates });
-
-    expect(await screen.findByText("Provider candidates")).toBeTruthy();
-    expect(screen.getByText(/Sign in to see the providers/)).toBeTruthy();
-    expect(getModelCandidates).not.toHaveBeenCalled();
   });
 
   it("is absent where the read isn't served", async () => {

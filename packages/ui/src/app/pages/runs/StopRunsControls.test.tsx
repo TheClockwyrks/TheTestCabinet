@@ -8,7 +8,6 @@ import {
   within,
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { AuthProvider } from "../../../client/auth";
 import type { WorkerClient } from "../../../client/clients";
 import {
   WorkersProvider,
@@ -61,10 +60,6 @@ function Harness({ runs }: { runs: InProgressRun[] }) {
 }
 
 function mount(runs: InProgressRun[], landAfter: number) {
-  localStorage.setItem(
-    "tcab.auth",
-    JSON.stringify({ token: "tok", account: { username: "zach" } }),
-  );
   let reads = 0;
   const getRun = vi.fn(async (runId: string) => {
     reads += 1;
@@ -112,15 +107,11 @@ function mount(runs: InProgressRun[], landAfter: number) {
   } as unknown as GalleryDataInput;
   const wrapper = (children: ReactNode) => (
     <WorkersProvider value={workers}>
-      <AuthProvider>
-        <ConfirmDialogProvider>
-          <RunsRuntimeProvider>
-            <GalleryDataProvider value={gallery}>
-              {children}
-            </GalleryDataProvider>
-          </RunsRuntimeProvider>
-        </ConfirmDialogProvider>
-      </AuthProvider>
+      <ConfirmDialogProvider>
+        <RunsRuntimeProvider>
+          <GalleryDataProvider value={gallery}>{children}</GalleryDataProvider>
+        </RunsRuntimeProvider>
+      </ConfirmDialogProvider>
     </WorkersProvider>
   );
   render(wrapper(<Harness runs={runs} />));

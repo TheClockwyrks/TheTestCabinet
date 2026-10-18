@@ -9,7 +9,6 @@ import { useGalleryData } from "../../data/galleryContext";
 import { describeRunState } from "../../data/runState";
 import { HelpTip } from "../../components/HelpTip";
 import { useWorkers } from "../../../client/context";
-import { useAuth } from "../../../client/auth";
 import { useRunsRuntime } from "../../runtime/runsRuntime";
 import { RunsTabs } from "./RunsTabs";
 import { StopRunsControls, useCanStopRuns } from "./StopRunsControls";
@@ -37,7 +36,6 @@ export function RunFailuresPage() {
   const { active: worker } = useWorkers();
   const { refreshToken, requestRefresh } = useRunsRuntime();
   const canStop = useCanStopRuns();
-  const { token } = useAuth();
   const client = worker?.client ?? null;
 
   // The worker's publishable-failures worklist (`listFailures`), which carries
@@ -106,10 +104,9 @@ export function RunFailuresPage() {
                 key={run.id}
                 run={run}
                 published={published}
-                token={token}
                 onPublish={
                   client
-                    ? (onProgress) => client.publish(run.id, token!, onProgress)
+                    ? (onProgress) => client.publish(run.id, onProgress)
                     : null
                 }
                 onPublished={requestRefresh}
@@ -123,20 +120,16 @@ export function RunFailuresPage() {
 }
 
 // One failure row: the run's case / variant / model / harness identity, its
-// failure-tier chip and recorded detail, and the Publish control. Publishing
-// needs a signed-in account (the backend authorizes the call with its token);
-// when signed out the row links to sign-in instead. After a successful publish
-// it nudges the data source to re-read so the row reflects its published state.
+// failure-tier chip and recorded detail, and the Publish control. After a
+// successful publish it nudges the data source to re-read so the row reflects its published state.
 function FailureRow({
   run,
   published,
-  token,
   onPublish,
   onPublished,
 }: {
   run: RunRecord;
   published: boolean;
-  token: string | null;
   onPublish:
     | ((onProgress: (progress: PublishProgress) => void) => Promise<unknown>)
     | null;
@@ -154,7 +147,7 @@ function FailureRow({
   // stream, surfacing each progress line, and only let the row settle into
   // "Published" (via the parent re-read) once the stream reports success.
   const publish = useCallback(async () => {
-    if (!onPublish || !token) return;
+    if (!onPublish) return;
     setBusy(true);
     setError(null);
     setStatus("Publishing…");
@@ -169,7 +162,7 @@ function FailureRow({
       setBusy(false);
       setStatus(null);
     }
-  }, [onPublish, token, onPublished]);
+  }, [onPublish, onPublished]);
 
   return (
     <li className={styles.row}>
@@ -202,7 +195,7 @@ function FailureRow({
         </span>
         {published ? (
           <span className={styles.publishedTag}>Published</span>
-        ) : token ? (
+        ) : (
           <button
             type="button"
             className={exec.primary}
@@ -216,13 +209,6 @@ function FailureRow({
           >
             Publish
           </button>
-        ) : (
-          <Link
-            className={exec.secondary}
-            to={routes.login(routes.runFailures())}
-          >
-            Sign in to publish
-          </Link>
         )}
       </div>
     </li>

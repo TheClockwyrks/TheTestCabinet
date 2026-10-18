@@ -1,30 +1,25 @@
 import { useEffect, useState } from "react";
-import { useAuth } from "../../client/auth";
 import { useOptionalBackend } from "../../client/context";
 import type { ModelCandidates } from "../../client/types";
 import { useGalleryData } from "./galleryContext";
 
 // The async state of a model's provider candidate list. `unavailable` covers a
-// host whose transport cannot read it (the static site); `signedOut` a console
-// with no token, since the read reaches OpenRouter on the caller's behalf and is
-// Bearer-gated like the probe provider enumeration.
+// host whose transport cannot read it (the static site).
 export type ModelCandidatesState =
   | { status: "unavailable" }
-  | { status: "signedOut" }
   | { status: "loading" }
   | { status: "error"; message: string }
   | { status: "ready"; candidates: ModelCandidates };
 
 /**
  * The candidate list the next gg enqueue of the model would build
- * (`GET /models/{slug}/candidates`), read once per model and sign-in. The
+ * (`GET /models/{slug}/candidates`), read once per model. The
  * backend reads OpenRouter's endpoints listing live, so the list reflects the
  * providers as they stand now, filtered by the model's catalog entry.
  */
 export function useModelCandidates(slug: string): ModelCandidatesState {
   const { canExecute } = useGalleryData();
   const client = useOptionalBackend()?.client ?? null;
-  const { token } = useAuth();
   const read =
     canExecute && client?.getModelCandidates
       ? client.getModelCandidates.bind(client)
@@ -38,13 +33,9 @@ export function useModelCandidates(slug: string): ModelCandidatesState {
       setState({ status: "unavailable" });
       return;
     }
-    if (!token) {
-      setState({ status: "signedOut" });
-      return;
-    }
     let active = true;
     setState({ status: "loading" });
-    read(slug, token)
+    read(slug)
       .then((candidates) => {
         if (active) setState({ status: "ready", candidates });
       })
@@ -57,7 +48,7 @@ export function useModelCandidates(slug: string): ModelCandidatesState {
     // The bound method is a new function every render; the client identity is
     // what changes when a different backend connects.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [client, canExecute, slug, token]);
+  }, [client, canExecute, slug]);
 
   return state;
 }

@@ -5,7 +5,6 @@ import { Link } from "react-router";
 import { AccountTabs } from "./AccountTabs";
 import styles from "./Coverage.module.scss";
 import { PLAN_ATTENTION_LABEL, PLAN_ATTENTION_TITLE } from "./coveragePlan";
-import { useAuth } from "../../../client/auth";
 import { useBackend } from "../../../client/context";
 import { useConfirm } from "../../components/ConfirmDialog";
 import { LoadingState } from "../../components/LoadingState";
@@ -53,7 +52,6 @@ export function planProgress(plan: CoveragePlanSummary): PlanProgress {
 // model space across several smaller plans keeps each dashboard manageable.
 // Console-only and gated on a signed-in account (plans are per-account).
 export function CoveragePlansPage() {
-  const { token } = useAuth();
   const { client: backend } = useBackend();
   const { confirm } = useConfirm();
 
@@ -63,19 +61,19 @@ export function CoveragePlansPage() {
   const [error, setError] = useState<string | null>(null);
 
   const reload = useCallback(async () => {
-    if (!backend?.getCoveragePlansSummary || !token) return;
-    setPlans(await backend.getCoveragePlansSummary(token));
-  }, [backend, token]);
+    if (!backend?.getCoveragePlansSummary) return;
+    setPlans(await backend.getCoveragePlansSummary());
+  }, [backend]);
 
   useEffect(() => {
-    if (!backend || !token) {
+    if (!backend) {
       setLoading(false);
       return;
     }
     let active = true;
     setLoading(true);
     setError(null);
-    (backend.getCoveragePlansSummary?.(token) ?? Promise.resolve([]))
+    (backend.getCoveragePlansSummary?.() ?? Promise.resolve([]))
       .then((p) => {
         if (!active) return;
         setPlans(p);
@@ -89,11 +87,11 @@ export function CoveragePlansPage() {
     return () => {
       active = false;
     };
-  }, [backend, token]);
+  }, [backend]);
 
   const deletePlan = useCallback(
     async (id: string, name: string) => {
-      if (!backend?.deleteCoveragePlan || !token) return;
+      if (!backend?.deleteCoveragePlan) return;
       if (
         !(await confirm({
           title: "Delete plan",
@@ -108,7 +106,7 @@ export function CoveragePlansPage() {
       setBusy(true);
       setError(null);
       try {
-        await backend.deleteCoveragePlan(id, token);
+        await backend.deleteCoveragePlan(id);
         await reload();
       } catch (e) {
         setError(String(e));
@@ -116,24 +114,8 @@ export function CoveragePlansPage() {
         setBusy(false);
       }
     },
-    [backend, token, reload, confirm],
+    [backend, reload, confirm],
   );
-
-  if (!token) {
-    return (
-      <PageLayout>
-        <PromptHeader
-          command="--coverage"
-          comment={<>// your coverage plans</>}
-        />
-        <AccountTabs active="coverage" />
-        <p className={`${exec.notice} ${exec.warn}`}>
-          Sign in to use coverage plans. They are saved to your account. Use the
-          account control in the top bar to register or log in.
-        </p>
-      </PageLayout>
-    );
-  }
 
   return (
     <PageLayout>

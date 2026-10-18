@@ -2,7 +2,7 @@ import { Link, useParams } from "react-router";
 import type { RunRecord } from "@clockwyrks/run-record";
 import type { StoredReview } from "../../../../client/types";
 import { Markdown, Panel } from "@clockwyrks/ui";
-import { useAuth } from "../../../../client/auth";
+import { useIdentity } from "../../../../client/identity";
 import { useGalleryData } from "../../../data/galleryContext";
 import { useReviewModel } from "../../../data/useRunVariant";
 import {
@@ -76,7 +76,7 @@ function SingleReview({
 }) {
   const { reviewerId } = useParams<{ reviewerId: string }>();
   const gallery = useGalleryData();
-  const { account } = useAuth();
+  const { email } = useIdentity();
   const review = reviews.find((r) => r.reviewerId === reviewerId);
   const model = useReviewModel(run.subject);
 
@@ -115,11 +115,11 @@ function SingleReview({
         : scoreChecklist(model.items, review.checklist)
       : null;
 
-  // The Edit control belongs only on the signed-in account's own review, wherever a
+  // The Edit control belongs only on the signed-in identity's own review, wherever a
   // console that can execute can submit it — the reviewer can correct their own
   // review even on a run this worker did not produce locally (the same gate the
   // Verdict tab uses). It returns to the Verdict tab with the form reopened.
-  const isOwn = !!account && review?.reviewerId === account.id;
+  const isOwn = email !== null && review?.reviewerId === email;
   const canEdit = isOwn && gallery.canExecute;
 
   return (
@@ -144,7 +144,6 @@ function SingleReview({
           <div className={styles.reviewTop}>
             <ReviewHeader
               reviewer={review.reviewer}
-              reviewerPictureUrl={review.reviewerPictureUrl}
               rating={overall}
               aesthetic={aesthetic}
               grade={grade}

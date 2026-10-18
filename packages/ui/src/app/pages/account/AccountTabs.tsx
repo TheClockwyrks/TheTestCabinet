@@ -5,7 +5,7 @@ import styles from "./AccountTabs.module.scss";
 
 // Which account surface the rendering page represents, so its tab reads as active.
 export type AccountTab =
-  | "profile"
+  | "activity"
   | "reviews"
   | "coverage"
   | "ladders"
@@ -19,9 +19,8 @@ const EDGE_VISIBLE = 0.98;
 
 // The shared tab navigation across the account section. Each tab is its own route
 // (so a surface is linkable), mirroring the runs section's tab bar. The whole
-// section is console-only reviewer tooling gated on a signed-in account, so the
-// caller only ever renders this for a signed-in reviewer — there is no public
-// variant to drop tabs for.
+// section is console-only reviewer tooling scoped to the identity the edge asserts,
+// so there is no public variant to drop tabs for.
 //
 // `aria-current` follows the caller's `active` rather than the URL, so the
 // announced tab is always the one drawn as selected. A route-matched flag would
@@ -30,7 +29,7 @@ const EDGE_VISIBLE = 0.98;
 // points at.
 export function AccountTabs({ active }: { active: AccountTab }) {
   const tabs: { key: AccountTab; label: string; to: string }[] = [
-    { key: "profile", label: "Profile", to: routes.account() },
+    { key: "activity", label: "Activity", to: routes.account() },
     { key: "reviews", label: "Reviews", to: routes.accountReviews() },
     { key: "coverage", label: "Coverage", to: routes.accountCoverage() },
     // Ladders sit beside Coverage because they are the same tool asked a different

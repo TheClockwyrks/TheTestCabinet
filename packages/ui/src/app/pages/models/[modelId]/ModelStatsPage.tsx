@@ -274,21 +274,14 @@ function StatsContent({ model }: { model: ModelSummary }) {
 
 // Provider candidates: the list the next gg enqueue of the model would build
 // from OpenRouter's endpoints listing, in the order a run tries them, or the
-// reason it would refuse. Read live and Bearer-gated, so it is absent where the
-// transport cannot read it (the static site) and asks a signed-out viewer to
-// sign in.
+// reason it would refuse. Read live, so it is absent where the transport cannot
+// read it (the static site).
 function ProviderCandidates({ model }: { model: ModelSummary }) {
   const state = useModelCandidates(model.slug);
   if (state.status === "unavailable") return null;
   return (
     <section className={styles.section}>
       <h2 className={styles.sectionTitle}>Provider candidates</h2>
-      {state.status === "signedOut" && (
-        <p className={styles.accuracyNote}>
-          Sign in to see the providers a gg run of this model would use, using
-          the account control in the top bar.
-        </p>
-      )}
       {state.status === "loading" && (
         <Spinner variant="flap" label="Reading OpenRouter's endpoints…" />
       )}

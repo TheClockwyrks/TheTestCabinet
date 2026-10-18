@@ -35,7 +35,6 @@ function worker(spy: (...args: unknown[]) => void) {
     client: {
       launchRunBatch: async (
         configs: LaunchConfig[],
-        _token?: string | null,
         origin?: LaunchOrigin | null,
       ): Promise<BatchLaunchResult[]> => {
         spy(origin);
@@ -51,7 +50,7 @@ describe("launchBatch", () => {
   // them — a plan that visibly refuses to stop.
   it("attributes the whole batch to the plan that asked for it", async () => {
     const spy = vi.fn();
-    const results = await launchBatch(worker(spy), "t", vi.fn(), [item("a")], {
+    const results = await launchBatch(worker(spy), vi.fn(), [item("a")], {
       kind: "plan",
       id: "p1",
     });
@@ -64,7 +63,7 @@ describe("launchBatch", () => {
   // every scoped halt.
   it("leaves a hand-launched batch unattributed", async () => {
     const spy = vi.fn();
-    await launchBatch(worker(spy), "t", vi.fn(), [item("a"), item("b")]);
+    await launchBatch(worker(spy), vi.fn(), [item("a"), item("b")]);
     expect(spy).toHaveBeenCalledWith(undefined);
   });
 });

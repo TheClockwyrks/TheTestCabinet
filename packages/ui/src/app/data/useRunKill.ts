@@ -1,6 +1,5 @@
 import { useCallback } from "react";
 import { useOptionalWorkers } from "../../client/context";
-import { useAuth } from "../../client/auth";
 import { useGalleryData } from "./galleryContext";
 import { useRunsRuntime } from "../runtime/runsRuntime";
 import type { ConfirmOptions } from "../components/ConfirmDialog";
@@ -27,9 +26,6 @@ export interface RunKillGate {
   reason: string | null;
 }
 
-const SIGNED_OUT_REASON =
-  "Sign in to cancel runs, using the account control in the top bar.";
-
 /**
  * The shared gate and action for killing an in-flight run, used by both the
  * live monitor's {@link KillRunControl} and the runs-list right-click menu so the
@@ -37,15 +33,13 @@ const SIGNED_OUT_REASON =
  *
  * Cancellation is possible only on a host that can execute runs (the web console;
  * the static public site cannot), with a worker whose transport supports
- * it (`killRun`) and a signed-in account whose token authorizes it — mirroring
- * the backend, which is the real gate (it refuses a run that already finished).
+ * it (`killRun`). The backend is the real gate: it decides from the identity the
+ * edge asserts, and refuses a run that already finished.
  * Unlike deletion this carries no per-run condition: any run the console can
  * still see running is a candidate, and the caller decides which of a selection
  * are still in flight.
  *
- * A host that could never cancel hides the affordance; a console that simply has
- * nobody signed in shows it disabled and says so, because that is a state the
- * operator can fix from the page they are already on.
+ * A host that could never cancel hides the affordance.
  *
  * `killRun` issues the cancel, nudges the runs runtime to re-read, and then
  * watches for the partial record the driver hands back (see
@@ -77,16 +71,15 @@ export function useRunKill(): {
   // Optional: the static site mounts no <WorkersProvider>, and this hook renders
   // there inside the runs list's right-click menu. No worker ⇒ nothing killable.
   const worker = useOptionalWorkers()?.active ?? null;
-  const { token } = useAuth();
   const runtime = useRunsRuntime();
   const client = worker?.client ?? null;
 
   const hostCanKill = canExecute && Boolean(client?.killRun);
-  const killGate: RunKillGate = !hostCanKill
-    ? { offered: false, allowed: false, reason: null }
-    : token
-      ? { offered: true, allowed: true, reason: null }
-      : { offered: true, allowed: false, reason: SIGNED_OUT_REASON };
+  const killGate: RunKillGate = {
+    offered: hostCanKill,
+    allowed: hostCanKill,
+    reason: null,
+  };
   const canKill = killGate.allowed;
 
   const watchCanceledRuns = useCallback(
@@ -104,10 +97,7 @@ export function useRunKill(): {
       if (!client?.killRun) {
         throw new Error(`cancel ${runId} refused: worker cannot cancel runs`);
       }
-      if (!token) {
-        throw new Error(`cancel ${runId} refused: not signed in`);
-      }
-      await client.killRun(runId, token);
+      await client.killRun(runId);
       // The run is moving to canceled: refresh so it drops out of the active band.
       runtime.requestRefresh();
       // That refresh is always premature for the RECORD. The backend marks the job
@@ -116,7 +106,7 @@ export function useRunKill(): {
       // Watch for it and refresh again when it arrives.
       watchCanceledRuns([runId]);
     },
-    [client, token, runtime, watchCanceledRuns],
+    [client, runtime, watchCanceledRuns],
   );
 
   return { killGate, canKill, killRun, watchCanceledRuns };

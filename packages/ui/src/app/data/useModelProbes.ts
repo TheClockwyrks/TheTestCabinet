@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useAuth } from "../../client/auth";
 import { useOptionalBackend } from "../../client/context";
 import type {
   ModelProbe,
@@ -155,8 +154,7 @@ export function useModelProbeDetail(id: string | null): ModelProbeDetailState {
   return state;
 }
 
-// The probe-trigger capability, bound to the active backend client and the
-// signed-in token — the shape `useModelConfig` established, kept as its own
+// The probe-trigger capability, bound to the active backend client — the shape `useModelConfig` established, kept as its own
 // hook so the probe surface never widens the model-config gate.
 export interface ModelProbeActions {
   /** Trigger a probe of the model; resolves to the row, already running. */
@@ -167,18 +165,15 @@ export interface ModelProbeActions {
 
 /**
  * The probe-trigger capability, or `null` when triggering probes is not
- * possible here (a read-only host, a transport without the trigger, or a
- * logged-out session — the caller shows a sign-in notice for that last case).
+ * possible here (a read-only host or a transport without the trigger).
  */
 export function useModelProbeActions(): ModelProbeActions | null {
   const { canExecute } = useGalleryData();
   const client = useOptionalBackend()?.client ?? null;
-  const { token } = useAuth();
 
   return useMemo<ModelProbeActions | null>(() => {
     if (
       !canExecute ||
-      !token ||
       !client?.triggerModelProbe ||
       !client.listModelProbeProviders
     ) {
@@ -186,10 +181,10 @@ export function useModelProbeActions(): ModelProbeActions | null {
     }
     const { triggerModelProbe, listModelProbeProviders } = client;
     return {
-      trigger: (slug, input) => triggerModelProbe(slug, input, token),
-      listProviders: (slug) => listModelProbeProviders(slug, token),
+      trigger: (slug, input) => triggerModelProbe(slug, input),
+      listProviders: (slug) => listModelProbeProviders(slug),
     };
-  }, [canExecute, client, token]);
+  }, [canExecute, client]);
 }
 
 // A thrown fetch failure as display text: the Error's message (the transport

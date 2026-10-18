@@ -9,10 +9,6 @@ import type { BackendClient } from "../../../client/clients";
 import { BackendProvider } from "../../../client/context";
 import { RunsPage } from "./RunsPage";
 
-vi.mock("../../../client/auth", () => ({
-  useAuth: () => ({ token: "t0" }),
-}));
-
 vi.mock("../../layouts/settings/SettingsLayout", () => ({
   SettingsLayout: ({ children }: { children: React.ReactNode }) => (
     <div>{children}</div>

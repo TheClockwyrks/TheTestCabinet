@@ -1,9 +1,8 @@
 import { useEffect, useId, useState, type ReactNode } from "react";
 import { Link, NavLink, useLocation } from "react-router";
-import { Avatar } from "@clockwyrks/ui";
 import { routes } from "../routes";
 import { useGalleryData } from "../data/galleryContext";
-import { useAuth } from "../../client/auth";
+import { useIdentity } from "../../client/identity";
 import { selectUnreadCount, useNotifications } from "../runtime/notifications";
 import { BellIcon } from "./BellIcon";
 import { CabinetIcon } from "./CabinetIcon";
@@ -107,8 +106,7 @@ function BackArrowIcon({ className }: { className?: string }) {
   );
 }
 
-// A small person glyph for the account control: the signed-in account (or a
-// sign-in prompt when logged out).
+// A small person glyph for the account control.
 function PersonIcon() {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
@@ -254,10 +252,9 @@ export function PageLayout({
                 <GearIcon />
               </NavLink>
             </div>
-            {/* The account control: view the signed-in account, or sign in. Like
-                the bell it is console-only — the read-only static site has no
-                accounts and never mounts the auth provider. Sits to the right of
-                the Settings gear. */}
+            {/* The account control: the signed-in identity's account section.
+                Like the bell it is console-only — the read-only static site has
+                no identity. Sits to the right of the Settings gear. */}
             {canExecute && <AccountMenu />}
             {/* Mobile-only: collapses the section nav behind a hamburger. Hidden
                 above $bp-md so exactly one nav presentation shows at any width. */}
@@ -318,39 +315,20 @@ function NotificationsBell() {
   );
 }
 
-// The topbar account control: when signed in it links to the account page and
-// shows the display name; when signed out it links to the sign-in page. The
-// account/login/register pages own the actual sign-in, sign-out, and registration
-// flows — this is just the entry point to them. Rendered only on the consoles
-// (the auth provider is mounted there); the static site never shows it.
+// The topbar account control: links to the account section, named by the
+// identity the console is acting as once it is known. Signing in and out happen at
+// the edge, so there is no sign-in prompt here. Rendered only on the consoles;
+// the static site has no identity and never shows it.
 function AccountMenu() {
-  const { account } = useAuth();
-  if (account) {
-    return (
-      <NavLink
-        to={routes.account()}
-        className={styles.account}
-        title={`Signed in as ${account.displayName} (@${account.username})`}
-      >
-        {/* Show the account's profile picture when one is set; otherwise the
-            generic person glyph, as before. */}
-        {account.pictureUrl ? (
-          <Avatar
-            name={account.displayName}
-            pictureUrl={account.pictureUrl}
-            size={24}
-          />
-        ) : (
-          <PersonIcon />
-        )}
-        <span className={styles.accountName}>{account.displayName}</span>
-      </NavLink>
-    );
-  }
+  const { email } = useIdentity();
   return (
-    <NavLink to={routes.login()} className={styles.account} title="Sign in">
+    <NavLink
+      to={routes.account()}
+      className={styles.account}
+      title={email ? `Signed in as ${email}` : "Account"}
+    >
       <PersonIcon />
-      <span className={styles.accountName}>Sign in</span>
+      <span className={styles.accountName}>{email ?? "Account"}</span>
     </NavLink>
   );
 }

@@ -36,7 +36,6 @@ vi.mock("../../components/PromptHeader", () => ({
     </>
   ),
 }));
-vi.mock("../../../client/auth", () => ({ useAuth: () => ({ token: "t0" }) }));
 
 const listGgSavedQueries = vi.fn();
 const createGgSavedQuery = vi.fn();
@@ -142,10 +141,11 @@ describe("GgSavedQueriesPage", () => {
     expect(createGgSavedQuery).not.toHaveBeenCalled();
   });
 
-  it("lists only what the account owns, by asking with the account's token", async () => {
-    // The corpus is deployment-wide and the view over it is not; the token is an owner
-    // filter here, unlike on the query endpoints where it is only a gate.
+  it("lists what the signed-in identity owns", async () => {
+    // The corpus is deployment-wide and the view over it is not; the backend filters
+    // the saved queries by the identity the edge asserts, so the console asks for
+    // them with nothing of its own.
     renderAt("/gg/saved");
-    await waitFor(() => expect(listGgSavedQueries).toHaveBeenCalledWith("t0"));
+    await waitFor(() => expect(listGgSavedQueries).toHaveBeenCalledWith());
   });
 });

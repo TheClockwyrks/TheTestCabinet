@@ -131,14 +131,9 @@ export const routes = {
   settingsHarnesses: (): string => "/settings/harnesses",
   settingsRuns: (): string => "/settings/runs",
   // Account routes (consoles only; the static site is read-only and never links
-  // to them). The account view shows the signed-in user and a sign-out control;
-  // login/register are their own pages. `login`/`register` take an optional
-  // `next` path to return to after authenticating (defaults to the account view).
+  // to them). The account view is the signed-in identity's review activity;
+  // signing in and out happen at the edge, not on a page of the console.
   account: (): string => "/account",
-  login: (next?: string): string =>
-    next ? `/login?next=${encodeURIComponent(next)}` : "/login",
-  register: (next?: string): string =>
-    next ? `/register?next=${encodeURIComponent(next)}` : "/register",
   // The account section's Reviews tab (consoles only): a paginated table of the
   // signed-in account's own submitted reviews, each row linking to that review.
   accountReviews: (): string => "/account/reviews",
@@ -463,8 +458,6 @@ export const routePatterns = {
   // The Runs tab's former address, kept as a redirect.
   settingsReviewing: "/settings/reviewing",
   account: "/account",
-  login: "/login",
-  register: "/register",
   accountReviews: "/account/reviews",
   // The account section's reviewer-coverage surfaces. A plan's tabs
   // (`:planId/reviews`, `:planId/tests`) and its editor are more specific than

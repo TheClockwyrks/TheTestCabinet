@@ -10,7 +10,6 @@ import { useEffect } from "react";
 import { MemoryRouter } from "react-router";
 import { ToastContainer } from "react-toastify";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { AuthProvider } from "../../../client/auth";
 import type { WorkerClient } from "../../../client/clients";
 import { WorkersProvider } from "../../../client/context";
 import type { WorkersContextValue } from "../../../client/context";
@@ -423,28 +422,22 @@ function stopWorkers() {
   return { value, cancelWaitingRuns, cancelActiveRuns, cancelAllRuns };
 }
 
-// The console as the controls require it: a cancel-capable worker, a signed-in
-// account (seeded the way a reload restores one), a seeded in-flight list, and the
+// The console as the controls require it: a cancel-capable worker, a seeded
+// in-flight list, and the
 // toast container the console mounts once for the whole app, which is where a
 // sweep's report lands.
 function renderConsole(runs: InProgressRun[]) {
-  localStorage.setItem(
-    "tcab.auth",
-    JSON.stringify({ token: "tok", account: { username: "zach" } }),
-  );
   const workers = stopWorkers();
   render(
     <MemoryRouter>
       <WorkersProvider value={workers.value}>
-        <AuthProvider>
-          <RunsRuntimeProvider>
-            <SeedActive runs={runs} />
-            <GalleryDataProvider value={galleryValue([])}>
-              <RunsPage />
-              <ToastContainer />
-            </GalleryDataProvider>
-          </RunsRuntimeProvider>
-        </AuthProvider>
+        <RunsRuntimeProvider>
+          <SeedActive runs={runs} />
+          <GalleryDataProvider value={galleryValue([])}>
+            <RunsPage />
+            <ToastContainer />
+          </GalleryDataProvider>
+        </RunsRuntimeProvider>
       </WorkersProvider>
     </MemoryRouter>,
   );
@@ -512,7 +505,7 @@ describe("RunsPage global stop controls", () => {
 
     // Cheap enough to need no confirmation — it discards no work — and the count
     // comes back as a toast rather than the press simply succeeding quietly.
-    await waitFor(() => expect(cancelWaitingRuns).toHaveBeenCalledWith("tok"));
+    await waitFor(() => expect(cancelWaitingRuns).toHaveBeenCalledWith());
     await screen.findByText("Canceled 2 waiting runs.");
   });
 
@@ -534,7 +527,7 @@ describe("RunsPage global stop controls", () => {
     confirm.mockReturnValue(true);
     fireEvent.click(kill);
 
-    await waitFor(() => expect(cancelActiveRuns).toHaveBeenCalledWith("tok"));
+    await waitFor(() => expect(cancelActiveRuns).toHaveBeenCalledWith());
     await screen.findByText("Canceled 1 executing run.");
   });
 });

@@ -45,9 +45,6 @@ vi.mock("../../../client/context", () => ({
   useOptionalWorkers: () => workers,
   useOptionalBackend: () => null,
 }));
-vi.mock("../../../client/auth", () => ({
-  useAuth: () => ({ token: "tok" }),
-}));
 vi.mock("../../runtime/runsRuntime", () => ({
   useRunsRuntime: () => ({ refreshToken: 0, requestRefresh: () => {} }),
 }));

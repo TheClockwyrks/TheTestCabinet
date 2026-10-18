@@ -28,9 +28,6 @@ import {
 vi.mock("../../components/PageLayout", () => ({
   PageLayout: ({ children }: { children: ReactNode }) => <div>{children}</div>,
 }));
-vi.mock("../../../client/auth", () => ({
-  useAuth: () => ({ token: "t0" }),
-}));
 // The one-off combination picker asks the account for its gg configurations; this
 // page's settings are what these tests are about, so it has none.
 vi.mock("../runs/gg/useGgConfigs", async (importOriginal) => {

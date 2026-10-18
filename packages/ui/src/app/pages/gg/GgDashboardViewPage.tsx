@@ -22,7 +22,6 @@ import type { GgDashboard } from "@clockwyrks/backend-api/gg-query";
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useSearchParams } from "react-router";
 import type { GgQueryResponse } from "@clockwyrks/run-record/gg-query";
-import { useAuth } from "../../../client/auth";
 import { useBackend } from "../../../client/context";
 import { PageLayout } from "../../components/PageLayout";
 import { PromptHeader } from "../../components/PromptHeader";
@@ -44,7 +43,6 @@ import discover from "./discover/GgDiscover.module.scss";
 export function GgDashboardViewPage() {
   const { dashboardId = "" } = useParams();
   const [params, setParams] = useSearchParams();
-  const { token } = useAuth();
   const { client: backend } = useBackend();
 
   const [board, setBoard] = useState<GgDashboard | null>(
@@ -67,10 +65,10 @@ export function GgDashboardViewPage() {
       setBoard(OVERVIEW_DASHBOARD);
       return;
     }
-    if (!fetchBoard || !token) return;
+    if (!fetchBoard) return;
     let active = true;
     setLoadError(null);
-    fetchBoard(dashboardId, token)
+    fetchBoard(dashboardId)
       .then((loaded) => {
         if (active) setBoard(loaded);
       })
@@ -82,7 +80,7 @@ export function GgDashboardViewPage() {
     return () => {
       active = false;
     };
-  }, [fetchBoard, token, dashboardId]);
+  }, [fetchBoard, dashboardId]);
 
   // Compiled once per (board, range) — not per panel and not per render — so all eight
   // panels resolve their range against **one** instant. Eight `Date.now()` calls would
@@ -94,11 +92,11 @@ export function GgDashboardViewPage() {
 
   const runBatch = backend?.runGgQueryBatch;
   useEffect(() => {
-    if (!runBatch || !token || compiled.length === 0) return;
+    if (!runBatch || compiled.length === 0) return;
     let active = true;
     setBusy(true);
     setError(null);
-    runBatch({ queries: compiled.map((entry) => entry.query) }, token)
+    runBatch({ queries: compiled.map((entry) => entry.query) })
       .then((response) => {
         if (!active) return;
         setResults(response.results);
@@ -112,7 +110,7 @@ export function GgDashboardViewPage() {
     return () => {
       active = false;
     };
-  }, [runBatch, token, compiled]);
+  }, [runBatch, compiled]);
 
   const setRange = (id: string) => {
     const next = new URLSearchParams(params);

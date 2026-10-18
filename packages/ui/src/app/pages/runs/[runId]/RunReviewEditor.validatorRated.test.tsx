@@ -70,11 +70,8 @@ vi.mock("../../../../client/context", () => ({
     },
   }),
 }));
-vi.mock("../../../../client/auth", () => ({
-  useAuth: () => ({
-    account: { id: "acct-1", displayName: "Reviewer", pictureUrl: null },
-    token: "token",
-  }),
+vi.mock("../../../../client/identity", () => ({
+  useIdentity: () => ({ email: "acct-1" }),
 }));
 vi.mock("../../../data/galleryContext", () => ({
   useGalleryData: () => fixture.gallery,

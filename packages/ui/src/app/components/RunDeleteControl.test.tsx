@@ -2,7 +2,6 @@ import { render, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { MemoryRouter } from "react-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { AuthProvider } from "../../client/auth";
 import type { WorkerClient } from "../../client/clients";
 import {
   WorkersProvider,
@@ -20,10 +19,6 @@ function mount(
   props: { runId: string; published?: boolean },
   opts: { localIds?: string[]; canExecute?: boolean } = {},
 ) {
-  localStorage.setItem(
-    "tcab.auth",
-    JSON.stringify({ token: "tok", account: { username: "zach" } }),
-  );
   const client = {
     deleteRun: vi.fn(async () => {}),
   } as unknown as WorkerClient;
@@ -51,15 +46,13 @@ function mount(
   const tree: ReactNode = (
     <MemoryRouter>
       <WorkersProvider value={workers}>
-        <AuthProvider>
-          <ConfirmDialogProvider>
-            <RunsRuntimeProvider>
-              <GalleryDataProvider value={gallery}>
-                <RunDeleteControl {...props} />
-              </GalleryDataProvider>
-            </RunsRuntimeProvider>
-          </ConfirmDialogProvider>
-        </AuthProvider>
+        <ConfirmDialogProvider>
+          <RunsRuntimeProvider>
+            <GalleryDataProvider value={gallery}>
+              <RunDeleteControl {...props} />
+            </GalleryDataProvider>
+          </RunsRuntimeProvider>
+        </ConfirmDialogProvider>
       </WorkersProvider>
     </MemoryRouter>
   );

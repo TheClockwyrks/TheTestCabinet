@@ -9,9 +9,10 @@ import {
 import { useBackend, useWorkers } from "../../client/context";
 import { isAbsence } from "../../client/absence";
 import {
-  fetchGrafanaUrl,
-  fetchSnapshotUrl,
+  currentHostname,
+  grafanaUrlForHost,
   referenceMediaKey,
+  snapshotUrlForHost,
 } from "../../transport";
 import type {
   ProgressCallback,
@@ -420,42 +421,16 @@ export function useLiveGallery(arena?: ArenaApi): GalleryDataInput {
   const { active: worker } = useWorkers();
   const { refreshToken } = useRunsRuntime();
 
-  // Grafana's base URL, reported by the backend's `GET /config`. Resolved here
-  // rather than in the app shell so the console picks it up without wiring its
-  // own fetch. Best-effort by construction: a backend that
-  // is unreachable, or one whose deployment runs no observability stack, leaves
-  // this null and the run view simply omits its link to the run's traces.
-  const [grafanaUrl, setGrafanaUrl] = useState<string | null>(null);
-  useEffect(() => {
-    setGrafanaUrl(null);
-    if (!backendUrl) return;
-    let active = true;
-    fetchGrafanaUrl(backendUrl)
-      .then((url) => active && setGrafanaUrl(url))
-      .catch(() => {});
-    return () => {
-      active = false;
-    };
-  }, [backendUrl]);
-
-  // The public snapshot bucket's read base URL, reported by the same
-  // `GET /config`. Resolved here for the same reason Grafana's is — the console
-  // picks it up without wiring its own fetch — and kept separate from the artifact
-  // service's base because a case's published asset-reference frames live in the
-  // bucket, not in any run tree. Best-effort: an unreachable backend (or one with no
-  // bucket) leaves this null and the asset Reference tab degrades to a placeholder.
-  const [snapshotUrl, setSnapshotUrl] = useState<string | null>(null);
-  useEffect(() => {
-    setSnapshotUrl(null);
-    if (!backendUrl) return;
-    let active = true;
-    fetchSnapshotUrl(backendUrl)
-      .then((url) => active && setSnapshotUrl(url))
-      .catch(() => {});
-    return () => {
-      active = false;
-    };
-  }, [backendUrl]);
+  // Grafana's base URL and the public snapshot bucket's read base, both sibling
+  // hostnames of the console's own (`console.` -> `grafana.` / `snapshot.`). Null
+  // on any host that is not a console behind the edge — the local dev server
+  // among them — where the run view omits its link to the run's traces and the
+  // asset Reference tab degrades to a placeholder. The bucket base is kept apart
+  // from the artifacts service's because a case's published asset-reference
+  // frames live in the bucket, not in any run tree.
+  const hostname = currentHostname();
+  const grafanaUrl = grafanaUrlForHost(hostname);
+  const snapshotUrl = snapshotUrlForHost(hostname);
 
   const [producedSummaries, setProducedSummaries] = useState<RunSummary[]>([]);
   const [localIds, setLocalIds] = useState<ReadonlySet<string>>(new Set());
@@ -664,9 +639,8 @@ export function useLiveGallery(arena?: ArenaApi): GalleryDataInput {
   // the validation baseline above, but resolved against the public snapshot BUCKET
   // rather than the backend: `tcab publish-reference` uploads the frames straight to
   // R2 under a deterministic layout, so the console reconstructs the key and points
-  // at the bucket's public read base. Null until the config fetch lands (the page
-  // re-renders when it does) and null when the deployment configures no bucket, in
-  // which case the tab shows a placeholder instead of broken images.
+  // at the bucket's public read base. Null on a host with no bucket, in which case
+  // the tab shows a placeholder instead of broken images.
   const referenceMediaUrl = useCallback(
     (
       slug: string,

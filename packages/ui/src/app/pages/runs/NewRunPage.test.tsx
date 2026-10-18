@@ -44,9 +44,6 @@ vi.mock("../../components/PromptHeader", () => ({
 // Signed in, so auth never gates the launch here — the gating stays on the row's
 // configuration + model. The token also reads the account's *saved* gg
 // configurations (the built-ins need none).
-vi.mock("../../../client/auth", () => ({
-  useAuth: () => ({ token: "t" }),
-}));
 // The catalog + case-name hooks pull from the backend/gallery data source; stub
 // them with a single already-selected case so the only remaining launch gate is
 // the row itself.

@@ -233,8 +233,8 @@
   }
 }
 
-// The account control: a person glyph plus the signed-in display name (or a
-// "Sign in" prompt). Mirrors the bell/gear height and hover so the controls read
+// The account control: a person glyph plus the identity the edge asserts (or
+// "Account" while it is unknown). Mirrors the bell/gear height and hover so the controls read
 // as a set, but is pill-shaped to seat the name label beside the glyph. The name
 // collapses on narrow viewports so the bar's controls stay on one row.
 .account {

@@ -3,9 +3,7 @@
 // `fetch` against the backend REST API. The console never imports a transport; it
 // only depends on these interfaces and reads them from context (see context.tsx).
 import type {
-  Account,
   AssetPreview,
-  AuthResult,
   BackendIdentity,
   AestheticRating,
   DomainRating,
@@ -197,33 +195,32 @@ export interface BackendClient {
   // static site) omits them and the console hides the affordance — the same
   // pattern `deleteRun?`/`killRun?` use.
   listModels(): Promise<Model[]>;
-  /** Create a curated model config (`POST /models`, Bearer). */
-  createModel?(input: ModelInput, token: string): Promise<Model>;
-  /** Update a curated model config (`PUT /models/{slug}`, Bearer). */
-  updateModel?(slug: string, input: ModelInput, token: string): Promise<Model>;
-  /** Delete a curated model config (`DELETE /models/{slug}`, Bearer). */
-  deleteModel?(slug: string, token: string): Promise<void>;
-  /** Fetch + sanitize a provider logo from an svgl.app URL (`POST /models/logo`, Bearer). */
-  fetchModelLogo?(url: string, token: string): Promise<LogoFetchResult>;
+  /** Create a curated model config (`POST /models`). */
+  createModel?(input: ModelInput): Promise<Model>;
+  /** Update a curated model config (`PUT /models/{slug}`). */
+  updateModel?(slug: string, input: ModelInput): Promise<Model>;
+  /** Delete a curated model config (`DELETE /models/{slug}`). */
+  deleteModel?(slug: string): Promise<void>;
+  /** Fetch + sanitize a provider logo from an svgl.app URL (`POST /models/logo`). */
+  fetchModelLogo?(url: string): Promise<LogoFetchResult>;
   /** A blank-form seed derived from a run of an unknown model (`GET /models/seed`). */
   seedModelFromRun?(runId: string): Promise<ModelSeed>;
   /** What OpenRouter publishes about a model, so the config form can fill itself
-   * in rather than have the operator retype it (`GET /models/openrouter`, Bearer).
+   * in rather than have the operator retype it (`GET /models/openrouter`).
    * `providerPin` is the form's current developer provider: when set, its rate
    * is the one the listing's prices carry while it lists a complete one. */
   lookupOpenrouterModel?(
     slug: string,
-    token: string,
     providerPin?: string | null,
   ): Promise<ModelListing>;
   /** Re-read every curated entry's list price from OpenRouter and report what
-   * changed (`POST /models/list-prices/refresh`, Bearer). */
-  refreshListPrices?(token: string): Promise<ListPriceRefresh>;
+   * changed (`POST /models/list-prices/refresh`). */
+  refreshListPrices?(): Promise<ListPriceRefresh>;
 
   // Model probes — responses-as-code readiness checks of a catalog model. The
   // reads are open (probe results are console-only catalog context, like the
   // rest of the model detail); the trigger and the provider enumeration are
-  // Bearer-gated mutations/third-party reaches and optional, so a transport
+  // person-only mutations/third-party reaches and optional, so a transport
   // without them (the static site) hides the affordance — the `createModel?`
   // pattern.
   /** The model's probe history, newest first (`GET /models/{slug}/probes`). */
@@ -232,23 +229,19 @@ export interface BackendClient {
    * (`GET /model-probes/{id}`). */
   getModelProbe(id: string): Promise<ModelProbeDetail>;
   /** Trigger a probe; resolves to the row, already `running`
-   * (`POST /models/{slug}/probes`, Bearer). */
+   * (`POST /models/{slug}/probes`). */
   triggerModelProbe?(
     slug: string,
     input: ModelProbeTriggerInput,
-    token: string,
   ): Promise<ModelProbe>;
   /** The providers OpenRouter lists for the model, so a probe can be pinned to
-   * one (`GET /models/{slug}/probe-providers`, Bearer). */
-  listModelProbeProviders?(
-    slug: string,
-    token: string,
-  ): Promise<ModelProbeProviders>;
+   * one (`GET /models/{slug}/probe-providers`). */
+  listModelProbeProviders?(slug: string): Promise<ModelProbeProviders>;
   /** The provider candidate list the next gg enqueue of the model would build,
    * read from OpenRouter's endpoints listing now, for an agent that sets no
-   * reasoning (`GET /models/{slug}/candidates`, Bearer). Optional like the
+   * reasoning (`GET /models/{slug}/candidates`). Optional like the
    * provider enumeration: a third-party reach the static site cannot make. */
-  getModelCandidates?(slug: string, token: string): Promise<ModelCandidates>;
+  getModelCandidates?(slug: string): Promise<ModelCandidates>;
 
   // Provider & accuracy statistics — deployment-wide folds over stored gg runs
   // (and, for providers, the probe corpus). Open reads, but optional: the static
@@ -270,18 +263,17 @@ export interface BackendClient {
    */
   getCabinetStats(): Promise<CabinetStatsResponse>;
 
-  // Per-harness configuration (`GET /harness-config` open; the setter Bearer). The
+  // Per-harness configuration (`GET /harness-config` a read; the setter a mutation). The
   // list enumerates every harness with its current knobs (today: max parallelism);
   // the setter upserts one harness's config and returns the refreshed list. Optional
   // so a transport without them (the static site) hides the affordance.
   /** Every harness with its current configuration (`GET /harness-config`). */
   listHarnessConfigs?(): Promise<HarnessConfigEntry[]>;
   /** Set a harness's maximum parallelism (`null` = no limit); resolves to the
-   * refreshed list (`POST /harness-config/{slug}`, Bearer). */
+   * refreshed list (`POST /harness-config/{slug}`). */
   setHarnessMaxParallelism?(
     slug: string,
     maxParallelism: number | null,
-    token: string,
   ): Promise<HarnessConfigEntry[]>;
 
   listTestCases(): Promise<TestCase[]>;
@@ -442,37 +434,30 @@ export interface BackendClient {
     variant: string,
   ): Promise<ReviewItem[]>;
 
-  // Reviewer coverage groups + plans (console-only, Bearer). Everything is
-  // per-account, so every call carries the reviewer's token. These are optional so
-  // the static site's read-only transport omits them; the console gates the
-  // reviewer surfaces on `canExecute` and a signed-in account, and never calls them
+  // Reviewer coverage groups + plans (console-only). Everything is per-identity:
+  // the backend scopes each call to the identity the edge asserts on the request.
+  // These are optional so the static site's read-only transport omits them; the
+  // console gates the reviewer surfaces on `canExecute` and never calls them
   // otherwise.
   /** The reviewer's reusable groups, both kinds (`GET /coverage-groups`). */
-  listCoverageGroups?(token: string): Promise<CoverageGroup[]>;
+  listCoverageGroups?(): Promise<CoverageGroup[]>;
   /** Create a group (`POST /coverage-groups`), returning it with its new id. */
-  createCoverageGroup?(
-    input: CoverageGroupInput,
-    token: string,
-  ): Promise<CoverageGroup>;
+  createCoverageGroup?(input: CoverageGroupInput): Promise<CoverageGroup>;
   /** Update a group in place (`PUT /coverage-groups/{id}`). */
   updateCoverageGroup?(
     id: string,
     input: CoverageGroupInput,
-    token: string,
   ): Promise<CoverageGroup>;
   /** Delete a group (`DELETE /coverage-groups/{id}`). */
-  deleteCoverageGroup?(id: string, token: string): Promise<void>;
+  deleteCoverageGroup?(id: string): Promise<void>;
   /**
    * The reviewer's coverage plans (`GET /coverage-plans`), each returned as a
    * {@link CoveragePlanOut} — the declaration (`outerAxis` and the `inFlightLimit`
    * override included) plus whether the plan is filling right now.
    */
-  listCoveragePlans?(token: string): Promise<CoveragePlanOut[]>;
+  listCoveragePlans?(): Promise<CoveragePlanOut[]>;
   /** Create a plan (`POST /coverage-plans`), returning it with its new id. */
-  createCoveragePlan?(
-    input: CoveragePlanInput,
-    token: string,
-  ): Promise<CoveragePlanOut>;
+  createCoveragePlan?(input: CoveragePlanInput): Promise<CoveragePlanOut>;
   /**
    * Update a plan in place (`PUT /coverage-plans/{id}`). A plan is a standing
    * matrix, so an edit applies at once: a plan that is filling runs a launch pass and
@@ -481,120 +466,111 @@ export interface BackendClient {
   updateCoveragePlan?(
     id: string,
     input: CoveragePlanInput,
-    token: string,
   ): Promise<CoveragePlanOut>;
   /** Delete a plan (`DELETE /coverage-plans/{id}`). */
-  deleteCoveragePlan?(id: string, token: string): Promise<void>;
+  deleteCoveragePlan?(id: string): Promise<void>;
   /**
    * Per-plan coverage roll-ups for the plans list and the Home widget
    * (`GET /coverage-plans/summary`).
    */
-  getCoveragePlansSummary?(token: string): Promise<CoveragePlanSummary[]>;
+  getCoveragePlansSummary?(): Promise<CoveragePlanSummary[]>;
   /**
    * The coverage matrix computed from one plan
    * (`GET /coverage-plans/{id}/coverage`): every `case × combination` cell with its
    * counted/in-flight/remaining counts, whether it is filled or blocked, and its
    * version-staleness flag.
    */
-  getCoveragePlanCoverage?(id: string, token: string): Promise<CoverageMatrix>;
+  getCoveragePlanCoverage?(id: string): Promise<CoverageMatrix>;
 
-  // The account-wide runs-in-flight limit (`GET`/`PUT /coverage-settings`, Bearer):
+  // The account-wide runs-in-flight limit (`GET`/`PUT /coverage-settings`):
   // how many of one plan's or one ladder dispatch's runs may be queued or running at
   // once, so no one of them takes over the shared queue. A plan or ladder overrides it
   // in its own configuration. Completed runs never count against it.
   /** The account's runs-in-flight limit, and whether it has ever been chosen. */
-  getCoverageSettings?(token: string): Promise<CoverageSettings>;
+  getCoverageSettings?(): Promise<CoverageSettings>;
   /** Store the account's runs-in-flight limit; resolves the stored value. */
-  setCoverageSettings?(
-    input: CoverageSettingsInput,
-    token: string,
-  ): Promise<CoverageSettings>;
+  setCoverageSettings?(input: CoverageSettingsInput): Promise<CoverageSettings>;
 
   /**
-   * Start filling a plan (`POST /coverage-plans/{id}/fill`, Bearer) and run one launch
+   * Start filling a plan (`POST /coverage-plans/{id}/fill`) and run one launch
    * pass: whole missing cells in the plan's order, up to its runs-in-flight limit. The
    * backend then launches the rest itself as the plan's runs finish, until every
    * launchable cell is at target or blocked; filling survives a backend restart.
    * Idempotent and serialized server-side, so a double-click reports
    * {@link LaunchPassResult.skipped} `"busy"` rather than double-enqueuing.
    */
-  fillCoveragePlan?(id: string, token: string): Promise<LaunchPassResult>;
+  fillCoveragePlan?(id: string): Promise<LaunchPassResult>;
 
   /**
    * Retry one cell blocked on a launch that used up its automatic retries
-   * (`POST /coverage-plans/{id}/cells/retry`, Bearer): forgets that failure and
+   * (`POST /coverage-plans/{id}/cells/retry`): forgets that failure and
    * launches its shortfall (under the limit when the plan is filling, at
    * once otherwise). Resolves on `204`; rejects `404` for a cell not in the plan and
    * `409` for a cell that is not blocked.
    */
-  retryCoveragePlanCell?(
-    id: string,
-    input: PlanCellRetryInput,
-    token: string,
-  ): Promise<void>;
+  retryCoveragePlanCell?(id: string, input: PlanCellRetryInput): Promise<void>;
 
   /**
    * A plan's unreviewed-by-me runs **in the plan's own order**
-   * (`GET /coverage-plans/{id}/queue`, Bearer) — not newest-first like the global
+   * (`GET /coverage-plans/{id}/queue`) — not newest-first like the global
    * Unreviewed page, so a cell's repeats can be judged against each other.
    * Information only: reviews never launch or hold back runs.
    */
-  getCoveragePlanQueue?(id: string, token: string): Promise<CoverageQueue>;
+  getCoveragePlanQueue?(id: string): Promise<CoverageQueue>;
 
   /**
    * The run summary cards of every run a plan's cells hold
-   * (`GET /coverage-plans/{id}/runs`, Bearer): each cell's `runIds`, the first runs to
+   * (`GET /coverage-plans/{id}/runs`): each cell's `runIds`, the first runs to
    * land up to its target, in the matrix's order. A run beyond a cell's target is not
    * among them. What the dashboard's breakdowns are computed from.
    */
-  getCoveragePlanRuns?(id: string, token: string): Promise<CoveragePlanRuns>;
+  getCoveragePlanRuns?(id: string): Promise<CoveragePlanRuns>;
 
   /**
    * Stop filling a plan **and** cancel the jobs it launched that have not started
-   * (`POST /coverage-plans/{id}/halt`, Bearer) — the `queued` and `pending` ones,
+   * (`POST /coverage-plans/{id}/halt`) — the `queued` and `pending` ones,
    * which have no driver and have spent nothing. Resolves {@link HaltResult}, whose
    * count the console must report: "the queue was already empty" and "nothing of mine
    * was found" call for opposite next moves and are otherwise indistinguishable.
    */
-  haltCoveragePlan?(id: string, token: string): Promise<HaltResult>;
+  haltCoveragePlan?(id: string): Promise<HaltResult>;
 
   /**
    * Stop filling a plan and cancel **every** job it launched, including the ones
-   * already dispatched, starting, or running (`POST /coverage-plans/{id}/halt-all`,
-   * Bearer). These are partly or wholly paid for, so the console must confirm first.
+   * already dispatched, starting, or running (`POST /coverage-plans/{id}/halt-all`). These are partly or wholly paid for, so the console must confirm first.
    */
-  haltAllCoveragePlan?(id: string, token: string): Promise<HaltResult>;
+  haltAllCoveragePlan?(id: string): Promise<HaltResult>;
 
-  // Ladders (console-only, Bearer). A ladder is a configuration — an ordered climb of
+  // Ladders (console-only). A ladder is a configuration — an ordered climb of
   // validator-rated pinned cases, its climbers and its gate — that does nothing by
   // itself: Run starts a dispatch of it, which owns its runs and its standing until the
   // next Run replaces it. Optional for the same reason the plan calls are.
   /** The reviewer's ladder configurations (`GET /ladders`). */
-  listLadders?(token: string): Promise<Ladder[]>;
+  listLadders?(): Promise<Ladder[]>;
   /**
    * Every ladder's headline and its latest dispatch's totals in one request
    * (`GET /ladders/summary`), for the ladders list.
    */
-  getLaddersSummary?(token: string): Promise<LadderSummary[]>;
+  getLaddersSummary?(): Promise<LadderSummary[]>;
   /** One ladder's configuration (`GET /ladders/{id}`). */
-  getLadder?(id: string, token: string): Promise<Ladder>;
+  getLadder?(id: string): Promise<Ladder>;
   /**
    * Create a ladder (`POST /ladders`), returning it with its new id and every rung's
    * minted id. Rejects a rung holding an automatically graded or graded-scale test
    * type, whose gate could never resolve.
    */
-  createLadder?(input: LadderInput, token: string): Promise<Ladder>;
+  createLadder?(input: LadderInput): Promise<Ladder>;
   /**
    * Update a ladder's configuration in place (`PUT /ladders/{id}`). Never touches a
    * running dispatch: the edit applies to the next Run.
    */
-  updateLadder?(id: string, input: LadderInput, token: string): Promise<Ladder>;
+  updateLadder?(id: string, input: LadderInput): Promise<Ladder>;
   /**
    * Delete a ladder, its rungs and its latest dispatch's standing
    * (`DELETE /ladders/{id}`). Jobs it launched are deliberately left running, so stop
    * it first if that is what was meant.
    */
-  deleteLadder?(id: string, token: string): Promise<void>;
+  deleteLadder?(id: string): Promise<void>;
   /**
    * Reorder the climb without editing it (`POST /ladders/{id}/rungs/order`), by
    * sending every rung id in its new order. Resolves the rungs in their new order.
@@ -602,99 +578,79 @@ export interface BackendClient {
   reorderLadderRungs?(
     id: string,
     input: LadderRungOrderInput,
-    token: string,
   ): Promise<LadderRung[]>;
 
   /**
    * Start a dispatch of the ladder's configuration as it stands now
-   * (`POST /ladders/{id}/run`, Bearer), replacing the previous dispatch's standing, and
+   * (`POST /ladders/{id}/run`), replacing the previous dispatch's standing, and
    * launch rung 1 for every climber up to the runs-in-flight limit. The backend climbs
    * from there as runs finish. Resolves the new board; rejects `409` while a dispatch
    * is already running and `400` for a ladder with no rungs or no climbers.
    */
-  runLadder?(id: string, token: string): Promise<LadderProgress>;
+  runLadder?(id: string): Promise<LadderProgress>;
   /**
-   * End the running dispatch (`POST /ladders/{id}/stop`, Bearer) and cancel its jobs
+   * End the running dispatch (`POST /ladders/{id}/stop`) and cancel its jobs
    * that have not started — and, with `cancelRunning`, the executing ones too (confirm
    * first: those are paid for). Rejects `409` when nothing is running.
    */
-  stopLadder?(
-    id: string,
-    input: LadderStopInput,
-    token: string,
-  ): Promise<HaltResult>;
+  stopLadder?(id: string, input: LadderStopInput): Promise<HaltResult>;
 
   /**
-   * The ladder's board (`GET /ladders/{id}/progress`, Bearer): the latest dispatch,
+   * The ladder's board (`GET /ladders/{id}/progress`): the latest dispatch,
    * every climber's status and each rung slot's status and tally. A pure read.
    */
-  getLadderProgress?(id: string, token: string): Promise<LadderProgress>;
+  getLadderProgress?(id: string): Promise<LadderProgress>;
 
   /**
    * The latest dispatch's unreviewed-by-me runs in its own order
-   * (`GET /ladders/{id}/queue`, Bearer), for labelling after the fact. Information
+   * (`GET /ladders/{id}/queue`), for labelling after the fact. Information
    * only — the gate reads validator ratings, so nothing here blocks or feeds the climb.
    */
-  getLadderQueue?(id: string, token: string): Promise<CoverageQueue>;
+  getLadderQueue?(id: string): Promise<CoverageQueue>;
 
   /**
    * Retry a climber of the running dispatch that is blocked on a launch that used up
-   * its automatic retries or on an unlaunchable combination (`POST /ladders/{id}/climbers/retry`, Bearer), once
+   * its automatic retries or on an unlaunchable combination (`POST /ladders/{id}/climbers/retry`), once
    * its owner has fixed the cause. Resolves on `204`; rejects with `404` for a
    * combination that is not a climber of the dispatch and `409` for one that is not
    * blocked that way or when no dispatch is running.
    */
-  retryLadderClimber?(
-    id: string,
-    input: LadderRetryInput,
-    token: string,
-  ): Promise<void>;
+  retryLadderClimber?(id: string, input: LadderRetryInput): Promise<void>;
 
-  // The operator's saved gg configurations (console-only, Bearer). gg is its own
+  // The operator's saved gg configurations (console-only). gg is its own
   // run mode — a named capability set stands where a third-party run's harness
   // does — so these back the account section's gg tab and the new-run form's
   // configuration picker. Optional for the same reason the coverage calls are: the
   // static site's read-only transport omits them.
   /** The operator's saved gg configurations (`GET /gg/configs`). */
-  listGgConfigs?(token: string): Promise<GgConfig[]>;
+  listGgConfigs?(): Promise<GgConfig[]>;
   /**
    * Register a configuration (`POST /gg/configs`), returning it with its new id.
    */
-  createGgConfig?(input: GgConfigInput, token: string): Promise<GgConfig>;
+  createGgConfig?(input: GgConfigInput): Promise<GgConfig>;
   /** Update a configuration in place (`PUT /gg/configs/{id}`). */
-  updateGgConfig?(
-    id: string,
-    input: GgConfigInput,
-    token: string,
-  ): Promise<GgConfig>;
+  updateGgConfig?(id: string, input: GgConfigInput): Promise<GgConfig>;
   /** Delete a configuration (`DELETE /gg/configs/{id}`). */
-  deleteGgConfig?(id: string, token: string): Promise<void>;
+  deleteGgConfig?(id: string): Promise<void>;
 
-  // The operator's saved gg **agents** (console-only, Bearer): agent profiles
+  // The operator's saved gg **agents** (console-only): agent profiles
   // authored on their own, which a configuration imports and may override locally.
   // Data only, and gg never sees them — the console resolves an import into the
   // configuration's own agent list before anything is stored or launched. Optional
   // for the same reason the configuration calls are.
   /** The operator's saved gg agents (`GET /gg/agents`). */
-  listGgAgents?(token: string): Promise<GgSavedAgent[]>;
+  listGgAgents?(): Promise<GgSavedAgent[]>;
   /** Save an agent (`POST /gg/agents`), returning it with its new id. */
-  createGgAgent?(
-    input: GgSavedAgentInput,
-    token: string,
-  ): Promise<GgSavedAgent>;
+  createGgAgent?(input: GgSavedAgentInput): Promise<GgSavedAgent>;
   /** Update a saved agent in place (`PUT /gg/agents/{id}`). */
-  updateGgAgent?(
-    id: string,
-    input: GgSavedAgentInput,
-    token: string,
-  ): Promise<GgSavedAgent>;
+  updateGgAgent?(id: string, input: GgSavedAgentInput): Promise<GgSavedAgent>;
   /** Delete a saved agent (`DELETE /gg/agents/{id}`). */
-  deleteGgAgent?(id: string, token: string): Promise<void>;
+  deleteGgAgent?(id: string): Promise<void>;
 
-  // The gg **analysis** query surface (console-only, Bearer). The corpus is *not*
-  // account-scoped — a gg run belongs to the deployment, exactly as the run listings
-  // and the coverage matrix already treat runs — so the token gates reaching the
-  // surface rather than filtering what it returns. Optional like the calls above:
+  // The gg **analysis** query surface (console-only). The corpus is *not*
+  // identity-scoped — a gg run belongs to the deployment, exactly as the run
+  // listings and the coverage matrix already treat runs — so the identity gates
+  // reaching the surface rather than filtering what it returns. Optional like the calls above:
   // the static site's read-only transport omits them and will answer the same two
   // questions from a shipped snapshot with the mirrored browser evaluator instead.
   /**
@@ -704,7 +660,7 @@ export interface BackendClient {
    * source text, so the server needs neither a parser nor a clock (a relative
    * `now-30d` is already absolute milliseconds by the time it is sent).
    */
-  runGgQuery?(query: GgQuery, token: string): Promise<GgQueryResponse>;
+  runGgQuery?(query: GgQuery): Promise<GgQueryResponse>;
   /**
    * Evaluate a whole dashboard's worth of queries against **one** read of the
    * document index (`POST /gg/query/batch`), results in request order.
@@ -715,10 +671,7 @@ export interface BackendClient {
    * a timer, two panels of the same board can come back from two different corpora,
    * which reads as a data bug rather than as a stale cache.
    */
-  runGgQueryBatch?(
-    batch: GgQueryBatch,
-    token: string,
-  ): Promise<GgQueryBatchResponse>;
+  runGgQueryBatch?(batch: GgQueryBatch): Promise<GgQueryBatchResponse>;
   /**
    * The corpus's field catalog (`GET /gg/fields`): every dotted field, its kind, its
    * **document count** and its top values.
@@ -727,49 +680,38 @@ export interface BackendClient {
    * read it, and the document count is what makes a deliberately sparse `tool.*`
    * field visible *before* a query returns nothing rather than after.
    */
-  getGgFields?(token: string): Promise<GgFieldCatalog>;
+  getGgFields?(): Promise<GgFieldCatalog>;
 
-  // The operator's saved **views** over that corpus (console-only, Bearer). The
+  // The operator's saved **views** over that corpus (console-only). The
   // asymmetry is the model: the corpus is deployment-wide, a view over it is
-  // personal — so these carry the token as an owner filter while the query calls
-  // above carry it only as a gate. Both store query **source text**, so a relative
+  // personal — so the caller's identity is an owner filter here while the query
+  // calls above take it only as a gate. Both store query **source text**, so a relative
   // `now-30d` re-resolves on every run and a later grammar addition never
   // invalidates something already saved.
   /** The operator's saved queries (`GET /gg/saved-queries`). */
-  listGgSavedQueries?(token: string): Promise<GgSavedQuery[]>;
+  listGgSavedQueries?(): Promise<GgSavedQuery[]>;
   /** Save a query (`POST /gg/saved-queries`), returning it with its new id. */
-  createGgSavedQuery?(
-    input: GgSavedQueryInput,
-    token: string,
-  ): Promise<GgSavedQuery>;
+  createGgSavedQuery?(input: GgSavedQueryInput): Promise<GgSavedQuery>;
   /** Update a saved query in place (`PUT /gg/saved-queries/{id}`). */
   updateGgSavedQuery?(
     id: string,
     input: GgSavedQueryInput,
-    token: string,
   ): Promise<GgSavedQuery>;
   /** Delete a saved query (`DELETE /gg/saved-queries/{id}`). */
-  deleteGgSavedQuery?(id: string, token: string): Promise<void>;
+  deleteGgSavedQuery?(id: string): Promise<void>;
   /** The operator's dashboards (`GET /gg/dashboards`). */
-  listGgDashboards?(token: string): Promise<GgDashboard[]>;
+  listGgDashboards?(): Promise<GgDashboard[]>;
   /**
    * One dashboard by id (`GET /gg/dashboards/{id}`), so a board is deep-linkable
    * without loading every board the account owns.
    */
-  getGgDashboard?(id: string, token: string): Promise<GgDashboard>;
+  getGgDashboard?(id: string): Promise<GgDashboard>;
   /** Create a dashboard (`POST /gg/dashboards`), returning it with its new id. */
-  createGgDashboard?(
-    input: GgDashboardInput,
-    token: string,
-  ): Promise<GgDashboard>;
+  createGgDashboard?(input: GgDashboardInput): Promise<GgDashboard>;
   /** Update a dashboard in place (`PUT /gg/dashboards/{id}`). */
-  updateGgDashboard?(
-    id: string,
-    input: GgDashboardInput,
-    token: string,
-  ): Promise<GgDashboard>;
+  updateGgDashboard?(id: string, input: GgDashboardInput): Promise<GgDashboard>;
   /** Delete a dashboard (`DELETE /gg/dashboards/{id}`). */
-  deleteGgDashboard?(id: string, token: string): Promise<void>;
+  deleteGgDashboard?(id: string): Promise<void>;
 
   /**
    * The **index** of gg's model-facing reference (`GET /gg/reference`): every tool's
@@ -781,8 +723,8 @@ export interface BackendClient {
    * arms are deliberately idiomatic rather than transliterations of one another — so
    * they are a document per arm rather than eleven copies of the tools.
    *
-   * The one `/gg` read that takes **no token** — the document is static, identical
-   * for every caller and carries no account or run data, so it is documentation of
+   * The one `/gg` read that is the same for every identity — the document is
+   * static and carries no owner or run data, so it is documentation of
    * the harness rather than anything of the operator's. Optional like the calls
    * above only because the static site's read-only transport has no backend behind
    * it at all; where a backend exists this always resolves.
@@ -804,27 +746,22 @@ export interface BackendClient {
    */
   ggReferenceApi?(language: GgProgramLanguage): Promise<GgReferenceApi>;
 
-  // The operator's saved harness/gg-config/model comparisons (console-only,
-  // Bearer) — the A/B-testing capability that fixes every controlled variable and
+  // The operator's saved harness/gg-config/model comparisons (console-only) — the A/B-testing capability that fixes every controlled variable and
   // varies exactly one dimension (the harness, a gg configuration, or the model)
-  // across a set of arms (docs/comparisons/experiments.md). Per-account, like the
+  // across a set of arms (docs/comparisons/experiments.md). Per-identity, like the
   // coverage plans and gg configurations above, and optional for the same reason:
   // the static site's read-only transport omits them (a published comparison is
   // read there off the snapshot, never this live endpoint).
   /** The operator's saved comparisons, each fully aggregated (`GET /comparisons`). */
-  listComparisons?(token: string): Promise<Comparison[]>;
+  listComparisons?(): Promise<Comparison[]>;
   /** One comparison by id, fully aggregated (`GET /comparisons/{id}`). */
-  getComparison?(id: string, token: string): Promise<Comparison>;
+  getComparison?(id: string): Promise<Comparison>;
   /** Create a comparison (`POST /comparisons`), returning it with its new id. */
-  createComparison?(input: ComparisonInput, token: string): Promise<Comparison>;
+  createComparison?(input: ComparisonInput): Promise<Comparison>;
   /** Update a comparison's controls/arms/`N` in place (`PUT /comparisons/{id}`). */
-  updateComparison?(
-    id: string,
-    input: ComparisonInput,
-    token: string,
-  ): Promise<Comparison>;
+  updateComparison?(id: string, input: ComparisonInput): Promise<Comparison>;
   /** Delete a comparison (`DELETE /comparisons/{id}`). */
-  deleteComparison?(id: string, token: string): Promise<void>;
+  deleteComparison?(id: string): Promise<void>;
   /**
    * Publish a comparison to the public site (`POST /comparisons/{id}/publish`,
    * `crates/backend/src/api/comparisons.rs::publish_comparison`). Marks the
@@ -840,10 +777,7 @@ export interface BackendClient {
    * same reason. The comparison itself is *not* returned; re-fetch (or
    * optimistically flip `published`) to see the updated record.
    */
-  publishComparison?(
-    id: string,
-    token: string,
-  ): Promise<ComparisonPublishOutcome>;
+  publishComparison?(id: string): Promise<ComparisonPublishOutcome>;
 
   /**
    * The signed-in account's own submitted reviews, newest-first, with a numbered
@@ -852,15 +786,14 @@ export interface BackendClient {
    */
   listMyReviews?(
     opts: { limit?: number; offset?: number } | undefined,
-    token: string,
   ): Promise<MyReviewsPage>;
 
   /**
    * Aggregate breakdowns of the signed-in account's recent reviews
    * (`GET /account/review-stats`): reviews per test case, per model, and per rating
-   * given. Backs the account page's Profile-tab charts.
+   * given. Backs the account page's Activity-tab charts.
    */
-  getReviewStats?(token: string): Promise<ReviewStats>;
+  getReviewStats?(): Promise<ReviewStats>;
 }
 
 // Handlers for a live run subscription.
@@ -915,9 +848,8 @@ export interface WorkerClient {
   identity(): Promise<WorkerIdentity>;
 
   /**
-   * Submit a run; resolves to the job id (`POST /jobs`, Bearer). The backend
-   * attributes the enqueued run to the launching account, so a signed-in
-   * account's `token` is required. A missing/invalid token is rejected `401`.
+   * Submit a run; resolves to the job id (`POST /jobs`). The backend
+   * attributes the enqueued run to the identity the edge asserts on the request.
    *
    * `origin` names the coverage plan this run is being launched *on behalf of*
    * ({@link LaunchOrigin}). It is what puts the run inside that plan's halt scope, so
@@ -929,16 +861,15 @@ export interface WorkerClient {
    */
   launchRun(
     config: LaunchConfig,
-    token?: string | null,
     origin?: LaunchOrigin | null,
   ): Promise<string>;
 
   /**
-   * Submit many runs in one request (`POST /jobs/batch`, Bearer) — the batch
+   * Submit many runs in one request (`POST /jobs/batch`) — the batch
    * analogue of {@link WorkerClient.launchRun}. Resolves to one result per config,
    * aligned by index: `{ runId }` for an accepted run or `{ error }` for a rejected
-   * one, so a single bad config never fails the whole batch. Same account gate as
-   * `launchRun`. This is how a fan-out of runs (the coverage matrix's still-missing
+   * one, so a single bad config never fails the whole batch. Same identity gate
+   * as `launchRun`. This is how a fan-out of runs (the coverage matrix's still-missing
    * runs, the new-run form's combinations) is enqueued in a single round-trip
    * instead of one request per run.
    *
@@ -950,22 +881,21 @@ export interface WorkerClient {
    */
   launchRunBatch(
     configs: LaunchConfig[],
-    token?: string | null,
     origin?: LaunchOrigin | null,
   ): Promise<BatchLaunchResult[]>;
 
   /**
-   * Launch a **gg** run; resolves to the enqueue ack (`POST /gg/runs`, Bearer).
+   * Launch a **gg** run; resolves to the enqueue ack (`POST /gg/runs`).
    * gg is its own run mode — configured by a {@link GgRunRequest.capabilitySet}
    * (which capabilities are on, their implementations/params, and the model-slot
    * bindings) rather than a `(harness, model, orchestrator)` tuple — so it does
-   * not go through {@link launchRun}. The backend gates it on the same signed-in
-   * account as `POST /jobs` (a missing/invalid `token` is rejected `401`) and
-   * requires the capability set to bind a model to the `primary` slot. The ack's
+   * not go through {@link launchRun}. The backend gates it on the same identity as
+   * `POST /jobs` and requires the capability set to bind a model to the `primary`
+   * slot. The ack's
    * `jobId` is what the console tracks the in-flight run under and streams live
    * from the existing `GET /jobs/{id}/live` relay — gg needs no new live route.
    */
-  launchGgRun(req: GgRunRequest, token: string): Promise<LaunchAck>;
+  launchGgRun(req: GgRunRequest): Promise<LaunchAck>;
 
   /** The current state of a submitted job (`GET /runs/{job}`). */
   getRun(runId: string): Promise<RunJob>;
@@ -1046,41 +976,6 @@ export interface WorkerClient {
     onProgress?: ProgressCallback,
   ): Promise<RunEventStreams>;
 
-  // --- Accounts (the worker proxies the standalone auth service) ---
-
-  /**
-   * Register a new account (`POST /auth/register`) and resolve a bearer token
-   * plus the created account. The token authorizes the mutating run-lifecycle
-   * calls below.
-   */
-  register(
-    username: string,
-    password: string,
-    displayName: string,
-  ): Promise<AuthResult>;
-
-  /**
-   * Log in (`POST /auth/login`) and resolve a bearer token plus the account it
-   * belongs to.
-   */
-  login(username: string, password: string): Promise<AuthResult>;
-
-  /**
-   * Set or replace the signed-in account's profile picture (`PUT
-   * /auth/profile/picture`, Bearer): `picture` is the already-downscaled image blob
-   * and its `type` names the content type. Resolves the updated account (with a
-   * fresh avatar URL). Optional: a transport that cannot set a picture omits it, and
-   * the profile page hides the control.
-   */
-  setProfilePicture?(picture: Blob, token: string): Promise<Account>;
-
-  /**
-   * Clear the signed-in account's profile picture (`DELETE /auth/profile/picture`,
-   * Bearer). Resolves the updated (picture-less) account. Optional, like
-   * {@link setProfilePicture}.
-   */
-  removeProfilePicture?(token: string): Promise<Account>;
-
   // --- Run lifecycle: review -> publish ---
   //
   // A produced run's record is pushed to the backend by the driver when the run
@@ -1088,18 +983,14 @@ export interface WorkerClient {
   // it; there is no console-driven push step.
 
   /**
-   * Submit a review against a run (`POST /review`, Bearer), attributed to the
-   * token's account. Multiple reviews are allowed — one per account; submitting
-   * again from the same account replaces that account's review.
+   * Submit a review against a run (`POST /review`), attributed to the
+   * caller's identity. Multiple reviews are allowed — one per identity; submitting
+   * again under the same identity replaces that identity's review.
    */
-  submitReview(
-    id: string,
-    review: ReviewDocumentInput,
-    token: string,
-  ): Promise<void>;
+  submitReview(id: string, review: ReviewDocumentInput): Promise<void>;
 
   /**
-   * Publish a run (`POST /publish`, Bearer): **enqueue** the release and observe it
+   * Publish a run (`POST /publish`): **enqueue** the release and observe it
    * to completion. Publishing is asynchronous — the backend gates the run (it
    * refuses one carrying zero reviews, or an infrastructure failure), enqueues a
    * per-publish job, and the gh/wrangler release runs in a `tcab-publisher` Job. The
@@ -1110,12 +1001,11 @@ export interface WorkerClient {
    */
   publish(
     id: string,
-    token: string,
     onProgress?: (progress: PublishProgress) => void,
   ): Promise<PublishResult>;
 
   /**
-   * Enqueue a publish (`POST /runs/{id}/publish`, Bearer) and resolve as soon as
+   * Enqueue a publish (`POST /runs/{id}/publish`) and resolve as soon as
    * the backend has accepted it — the gate half of {@link publish} without the
    * wait for the release. It rejects on a refused gate (a run with no reviews, an
    * infrastructure failure) exactly as {@link publish} does, so a caller still
@@ -1127,17 +1017,17 @@ export interface WorkerClient {
    * point of the batch is to hand the work off and move on — the backend's
    * `publish-failed` notification is what reports a release that did not land.
    */
-  enqueuePublish(id: string, token: string): Promise<PublishEnqueued>;
+  enqueuePublish(id: string): Promise<PublishEnqueued>;
 
   /**
-   * Permanently delete a produced run (`DELETE /runs/{id}`, Bearer): remove its
+   * Permanently delete a produced run (`DELETE /runs/{id}`): remove its
    * record, its reviews, and its stored media. The backend **refuses a published
    * run** (`422`) — a public run is in the gallery and snapshot and cannot be
    * deleted — so this only applies to a run that has not been published. Optional:
    * a transport that cannot delete simply omits it, and the console hides the
    * delete affordance where it is absent.
    */
-  deleteRun?(id: string, token: string): Promise<void>;
+  deleteRun?(id: string): Promise<void>;
 
   /**
    * One page of the stored runs whose records the backend cannot decode (`GET
@@ -1155,14 +1045,14 @@ export interface WorkerClient {
   }): Promise<UnreadableRunPage>;
 
   /**
-   * Kill an in-flight run (`POST /jobs/{id}/cancel`, Bearer): the backend moves it
+   * Kill an in-flight run (`POST /jobs/{id}/cancel`): the backend moves it
    * to the terminal `canceled` state and closes its live stream, and the driver
    * tears its sandbox down and exits. The backend **refuses a run that already
    * finished** (`409`), so this only applies to a run still queued, dispatched, or
    * running. Optional: a transport that cannot cancel simply omits it, and the
    * console hides the kill affordance where it is absent.
    */
-  killRun?(id: string, token: string): Promise<void>;
+  killRun?(id: string): Promise<void>;
 
   // The Runs page's three global stop controls. They are **global** — every job in
   // the named states, whoever launched it and whatever launched it — which is exactly
@@ -1174,25 +1064,24 @@ export interface WorkerClient {
   // hidden rather than failing when pressed.
   /**
    * "Clear pending": cancel every run that has not started — `queued` and `pending`
-   * (`POST /jobs/cancel-waiting`, Bearer). These have no driver and have spent
+   * (`POST /jobs/cancel-waiting`). These have no driver and have spent
    * nothing, so this discards no work and needs no confirmation.
    */
-  cancelWaitingRuns?(token: string): Promise<BulkCancelOut>;
+  cancelWaitingRuns?(): Promise<BulkCancelOut>;
   /**
    * "Kill active": cancel every run that is already executing — `dispatched`,
-   * `starting`, `running` (`POST /jobs/cancel-active`, Bearer). This throws away work
+   * `starting`, `running` (`POST /jobs/cancel-active`). This throws away work
    * that is being paid for, so confirm first. It leaves the waiting queue alone, so
    * the dispatcher immediately starts claiming from it again — pair it with
    * {@link cancelWaitingRuns}, or use {@link cancelAllRuns}, to actually stop
    * everything.
    */
-  cancelActiveRuns?(token: string): Promise<BulkCancelOut>;
+  cancelActiveRuns?(): Promise<BulkCancelOut>;
   /**
-   * "Stop all": both of the above in one atomic sweep (`POST /jobs/cancel-all`,
-   * Bearer), so nothing queued can be claimed into execution between two separate
+   * "Stop all": both of the above in one atomic sweep (`POST /jobs/cancel-all`), so nothing queued can be claimed into execution between two separate
    * calls. Destructive; confirm first.
    */
-  cancelAllRuns?(token: string): Promise<BulkCancelOut>;
+  cancelAllRuns?(): Promise<BulkCancelOut>;
 
   /**
    * The URL to load one of a produced run's proof-of-implementation media files

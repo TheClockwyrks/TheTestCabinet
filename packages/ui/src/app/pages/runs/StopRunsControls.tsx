@@ -1,6 +1,5 @@
 import type { BulkCancelOut } from "@clockwyrks/backend-api/jobs-api";
 import { useState } from "react";
-import { useAuth } from "../../../client/auth";
 import { useOptionalWorkers } from "../../../client/context";
 import {
   useConfirm,
@@ -29,9 +28,8 @@ const WAITING_STATES: InProgressRun["state"][] = ["queued", "pending"];
 const ACTIVE_STATES: InProgressRun["state"][] = ["starting", "running"];
 
 /**
- * The transport and token a sweep needs, or null where the cabinet cannot be stopped from
- * here at all: a worker whose transport implements the sweeps, and a signed-in account
- * whose token authorizes them.
+ * The transport a sweep needs, or null where the cabinet cannot be stopped from here at
+ * all: a worker whose transport implements the sweeps.
  *
  * Bound up front as plain consts so the narrowing survives into the click handlers'
  * closures, which narrowing on the optional methods themselves would not.
@@ -40,12 +38,11 @@ function useSweeps() {
   // Optional: the static site mounts no <WorkersProvider>, so the hook must not throw
   // where the public gallery renders a runs-section header.
   const client = useOptionalWorkers()?.active?.client ?? null;
-  const { token } = useAuth();
   const cancelWaiting = client?.cancelWaitingRuns?.bind(client);
   const cancelActive = client?.cancelActiveRuns?.bind(client);
   const cancelAll = client?.cancelAllRuns?.bind(client);
-  if (!cancelWaiting || !cancelActive || !cancelAll || !token) return null;
-  return { token, cancelWaiting, cancelActive, cancelAll };
+  if (!cancelWaiting || !cancelActive || !cancelAll) return null;
+  return { cancelWaiting, cancelActive, cancelAll };
 }
 
 /**
@@ -73,10 +70,9 @@ export function useCanStopRuns(): boolean {
  * of those pages, so the cluster costs no vertical space at all there.
  *
  * Rendered only where cancellation is actually possible — a worker whose transport
- * implements the sweeps, and a signed-in account whose token authorizes them. Either
- * one missing hides the cluster rather than showing three buttons that fail when
- * pressed, mirroring `KillRunControl` / `useRunKill`; the static site has neither,
- * so the public gallery's headers carry their comment alone.
+ * implements the sweeps. Without one the cluster is hidden rather than showing three
+ * buttons that fail when pressed, mirroring `KillRunControl` / `useRunKill`; the static
+ * site has none, so the public gallery's headers carry their comment alone.
  */
 export function StopRunsControls() {
   const sweeps = useSweeps();
@@ -91,7 +87,7 @@ export function StopRunsControls() {
   const { watchCanceledRuns } = useRunKill();
   const [busy, setBusy] = useState<StopScope | null>(null);
   if (!sweeps) return null;
-  const { token, cancelWaiting, cancelActive, cancelAll } = sweeps;
+  const { cancelWaiting, cancelActive, cancelAll } = sweeps;
 
   // What there is to cancel, from the reconciled in-flight list the runs runtime
   // holds. That list is every worker's authoritative active set (`GET /jobs/active`),
@@ -137,7 +133,7 @@ export function StopRunsControls() {
       // the control discards no work and a prompt would only be noise.
       confirm: null,
       disabled: waiting === 0,
-      sweep: () => cancelWaiting(token),
+      sweep: () => cancelWaiting(),
       watched: [],
     },
     {
@@ -156,7 +152,7 @@ export function StopRunsControls() {
         confirmLabel: "Kill active",
       },
       disabled: running === 0,
-      sweep: () => cancelActive(token),
+      sweep: () => cancelActive(),
       watched: runningRuns.map((run) => run.runId),
     },
     {
@@ -172,7 +168,7 @@ export function StopRunsControls() {
         confirmLabel: "Stop all",
       },
       disabled: waiting + running === 0,
-      sweep: () => cancelAll(token),
+      sweep: () => cancelAll(),
       watched: runningRuns.map((run) => run.runId),
     },
   ];

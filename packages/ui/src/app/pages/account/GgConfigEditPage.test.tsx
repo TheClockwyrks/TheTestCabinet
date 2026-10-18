@@ -47,9 +47,6 @@ vi.mock("../../components/PromptHeader", () => ({
 }));
 // A signed-in operator: saving a configuration is account-scoped, so the token is
 // what unlocks the form.
-vi.mock("../../../client/auth", () => ({
-  useAuth: () => ({ token: "t0" }),
-}));
 
 const createGgConfig = vi.fn().mockResolvedValue({ id: "c1" });
 const updateGgConfig = vi.fn().mockResolvedValue({ id: "cfg-1" });

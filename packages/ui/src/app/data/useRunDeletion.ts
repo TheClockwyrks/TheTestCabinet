@@ -1,6 +1,5 @@
 import { useCallback } from "react";
 import { useOptionalWorkers } from "../../client/context";
-import { useAuth } from "../../client/auth";
 import { useGalleryData } from "./galleryContext";
 import { useRunsRuntime } from "../runtime/runsRuntime";
 import type { ConfirmOptions } from "../components/ConfirmDialog";
@@ -36,10 +35,7 @@ export interface RunDeletionGate {
   /**
    * Whether to render the control. False only where this host can delete NO run
    * whatsoever — the static gallery, a worker whose transport cannot delete — so
-   * the affordance never appears somewhere it could not work at all. A console
-   * with nobody signed in is NOT that: it could delete, and signing in is a step
-   * the operator takes from the page they are already on, so it is offered
-   * disabled with that reason (mirroring {@link useRunKill}).
+   * the affordance never appears somewhere it could not work at all.
    */
   offered: boolean;
   /** Whether the control may be pressed. */
@@ -51,11 +47,6 @@ export interface RunDeletionGate {
 /** A published run is gone from the console's hands for good; the backend refuses
  * it too (`delete_run` in `crates/backend/src/db.rs`). */
 const PUBLISHED_REASON = "A published run cannot be deleted.";
-
-/** Signed out of a console that can otherwise delete. Fixable from the top bar,
- * so the control stays visible and says this — exactly as cancelling does. */
-const SIGNED_OUT_REASON =
-  "Sign in to delete runs, using the account control in the top bar.";
 
 /** The one genuinely transient state: the run's record has not reached the
  * produced worklist yet, and the caller had nothing better to go on. */
@@ -71,11 +62,7 @@ const UNRESOLVED_REASON =
  *
  * - **Can this host delete anything?** `canExecute` (the static public site
  *   cannot) and a worker whose transport implements deletion. Failing this hides
- *   the affordance. Being signed out does NOT: a console with nobody signed in
- *   could delete, so the control is shown disabled with that reason rather than
- *   withdrawn — vanishing for a state the operator can fix from the page they
- *   are on tells them nothing, which is the rule {@link useRunKill} already
- *   follows and the UI overview's "Deleting a run" states.
+ *   the affordance.
  * - **Is this particular run deletable?** Only an **unpublished** one. The
  *   backend is the real gate and enforces exactly that rule and no other.
  *
@@ -109,8 +96,7 @@ export function useRunDeletion(): {
    * page. Publication does not gate these: an unreadable run is already absent from
    * the snapshot and the gallery, so the backend deletes it published or not, and
    * this page is the only place it can be got rid of. What is left is the host
-   * gate and the signed-in one, split the same way as everywhere else: hidden
-   * where the host can delete nothing, disabled with its reason when signed out.
+   * gate: hidden where the host can delete nothing.
    */
   unreadableGate: () => RunDeletionGate;
   /** Permanently delete the run, then refresh the worklist. Rejects on failure. */
@@ -120,15 +106,11 @@ export function useRunDeletion(): {
   // Optional: the static site mounts no <WorkersProvider>, and this hook renders
   // there inside the runs list's right-click menu. No worker ⇒ nothing deletable.
   const worker = useOptionalWorkers()?.active ?? null;
-  const { token } = useAuth();
   const runtime = useRunsRuntime();
   const client = worker?.client ?? null;
 
-  // Whether this HOST can delete any run at all. The signed-in check is
-  // deliberately not folded in here: it decides whether the control is enabled,
-  // not whether it exists.
+  // Whether this HOST can delete any run at all.
   const hostCanDelete = canExecute && Boolean(client?.deleteRun);
-  const signedIn = Boolean(token);
 
   const deletionGate = useCallback(
     (run: RunDeletionSubject): RunDeletionGate => {
@@ -137,15 +119,9 @@ export function useRunDeletion(): {
       const id = typeof run === "string" ? run : run.id;
       // The run's own publish state, where the caller resolved it. It answers the
       // question outright, in both directions, and never consults the worklist.
-      // Published comes first because it is the one permanent refusal: signing in
-      // would not change it, so that is the reason worth showing.
+      // Published is the one permanent refusal.
       if (typeof run !== "string" && run.published) {
         return { offered: true, allowed: false, reason: PUBLISHED_REASON };
-      }
-      // Every remaining refusal is one the operator can act on, signing in first:
-      // without a token the request would be rejected whatever the run's state.
-      if (!signedIn) {
-        return { offered: true, allowed: false, reason: SIGNED_OUT_REASON };
       }
       if (typeof run !== "string")
         return { offered: true, allowed: true, reason: null };
@@ -155,7 +131,7 @@ export function useRunDeletion(): {
         ? { offered: true, allowed: true, reason: null }
         : { offered: true, allowed: false, reason: UNRESOLVED_REASON };
     },
-    [hostCanDelete, signedIn, localIds],
+    [hostCanDelete, localIds],
   );
 
   const canDelete = useCallback(
@@ -165,12 +141,10 @@ export function useRunDeletion(): {
 
   const unreadableGate = useCallback(
     (): RunDeletionGate =>
-      !hostCanDelete
-        ? { offered: false, allowed: false, reason: null }
-        : signedIn
-          ? { offered: true, allowed: true, reason: null }
-          : { offered: true, allowed: false, reason: SIGNED_OUT_REASON },
-    [hostCanDelete, signedIn],
+      hostCanDelete
+        ? { offered: true, allowed: true, reason: null }
+        : { offered: false, allowed: false, reason: null },
+    [hostCanDelete],
   );
 
   const deleteRun = useCallback(
@@ -178,14 +152,11 @@ export function useRunDeletion(): {
       if (!client?.deleteRun) {
         throw new Error(`delete ${runId} refused: worker cannot delete runs`);
       }
-      if (!token) {
-        throw new Error(`delete ${runId} refused: not signed in`);
-      }
-      await client.deleteRun(runId, token);
+      await client.deleteRun(runId);
       // The run is gone: refresh the worklist so it drops out of the list.
       runtime.requestRefresh();
     },
-    [client, token, runtime],
+    [client, runtime],
   );
 
   return { deletionGate, canDelete, unreadableGate, deleteRun };

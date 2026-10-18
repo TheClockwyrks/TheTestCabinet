@@ -6,7 +6,6 @@ import type {
 } from "@clockwyrks/backend-api/coverage";
 import { Fragment, useEffect, useId, useMemo, useRef, useState } from "react";
 import { Link } from "react-router";
-import { useAuth } from "../../../client/auth";
 import type { Model } from "../../../client/types";
 import { harnesses, recordedHarnesses } from "../../data/harnesses";
 import { familyOf, modelForHarness } from "../../data/families";
@@ -520,7 +519,6 @@ export function ComboPicker({
    */
   membersLabel?: string;
 }) {
-  const { token } = useAuth();
   const {
     options: ggOptions,
     loading: ggLoading,
@@ -740,18 +738,16 @@ export function ComboPicker({
   }
 
   // Why the gg mode has nothing to offer, or null when it does. Each reason is its own
-  // answer, because they are not the same fact about the account: signed out there is
-  // nothing to list, a failed read knows nothing either way, and "you have none" is a
-  // claim about the operator's own data that only a successful read can make.
-  const ggUnavailable = !token
-    ? "Sign in to plan runs for a gg configuration — a configuration belongs to your account."
-    : ggLoading
-      ? "Loading your gg configurations…"
-      : ggError
-        ? `Your gg configurations could not be loaded, so none can be offered: ${ggError}`
-        : ggOptions.length === 0
-          ? "You have no saved gg configurations yet."
-          : null;
+  // answer, because they are not the same fact: a failed read knows nothing either
+  // way, and "you have none" is a claim about the operator's own data that only a
+  // successful read can make.
+  const ggUnavailable = ggLoading
+    ? "Loading your gg configurations…"
+    : ggError
+      ? `Your gg configurations could not be loaded, so none can be offered: ${ggError}`
+      : ggOptions.length === 0
+        ? "You have no saved gg configurations yet."
+        : null;
 
   return (
     <>
@@ -835,7 +831,7 @@ export function ComboPicker({
           {ggUnavailable}{" "}
           {/* Offered only where authoring one is the answer. A read that failed says
               nothing about whether the account already has twenty. */}
-          {token && !ggLoading && !ggError && (
+          {!ggLoading && !ggError && (
             <Link to={routes.accountGgConfigs()}>Save one</Link>
           )}
         </p>

@@ -8,7 +8,6 @@ import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router";
 import { SegmentedControl, type SegmentedOption } from "@clockwyrks/ui";
 import { LoadingState } from "../../components/LoadingState";
-import { useAuth } from "../../../client/auth";
 import { useBackend } from "../../../client/context";
 import type { Model } from "../../../client/types";
 import { PageLayout } from "../../components/PageLayout";
@@ -31,7 +30,6 @@ const KIND_OPTIONS: ReadonlyArray<SegmentedOption<CoverageGroupKind>> = [
 export function GroupEditPage() {
   const { groupId } = useParams();
   const editing = Boolean(groupId);
-  const { token } = useAuth();
   const { client: backend } = useBackend();
   const navigate = useNavigate();
 
@@ -46,14 +44,14 @@ export function GroupEditPage() {
   const [cases, setCases] = useState<ReviewPlanCase[]>([]);
 
   useEffect(() => {
-    if (!backend || !token) {
+    if (!backend) {
       setLoading(false);
       return;
     }
     let active = true;
     setLoading(true);
     setError(null);
-    Promise.resolve(editing ? (backend.listCoverageGroups?.(token) ?? []) : [])
+    Promise.resolve(editing ? (backend.listCoverageGroups?.() ?? []) : [])
       .then((groups) => {
         if (!active) return;
         if (editing) {
@@ -83,7 +81,7 @@ export function GroupEditPage() {
     return () => {
       active = false;
     };
-  }, [backend, token, editing, groupId]);
+  }, [backend, editing, groupId]);
 
   // A group needs a name and at least one member of its kind.
   const savable =
@@ -91,7 +89,7 @@ export function GroupEditPage() {
     (kind === "combo" ? combos.length > 0 : cases.length > 0);
 
   async function onSave() {
-    if (!token || !savable) return;
+    if (!savable) return;
     const input: CoverageGroupInput = {
       name: name.trim(),
       kind,
@@ -103,33 +101,15 @@ export function GroupEditPage() {
     setError(null);
     try {
       if (editing && groupId && backend?.updateCoverageGroup) {
-        await backend.updateCoverageGroup(groupId, input, token);
+        await backend.updateCoverageGroup(groupId, input);
       } else if (backend?.createCoverageGroup) {
-        await backend.createCoverageGroup(input, token);
+        await backend.createCoverageGroup(input);
       }
       navigate(routes.accountGroups());
     } catch (e) {
       setError(String(e));
       setBusy(false);
     }
-  }
-
-  if (!token) {
-    return (
-      <PageLayout>
-        <header className={styles.detailHeader}>
-          <div className={styles.detailTitleRow}>
-            <BackChevron to={routes.accountGroups()} label="All groups" />
-            <h1 className={styles.detailTitle}>
-              {editing ? "Group" : "New group"}
-            </h1>
-          </div>
-        </header>
-        <p className={`${exec.notice} ${exec.warn}`}>
-          Sign in to edit coverage groups. They are saved to your account.
-        </p>
-      </PageLayout>
-    );
   }
 
   return (

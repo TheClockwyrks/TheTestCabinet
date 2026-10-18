@@ -46,7 +46,6 @@ vi.mock("../../components/PromptHeader", () => ({
     </>
   ),
 }));
-vi.mock("../../../client/auth", () => ({ useAuth: () => ({ token: "t0" }) }));
 
 const listGgDashboards = vi.fn();
 const createGgDashboard = vi.fn();
@@ -102,7 +101,7 @@ describe("GgDashboardsPage", () => {
 
   it("lists the built-in overview with a link to it, storing nothing", async () => {
     renderPage();
-    await waitFor(() => expect(listGgDashboards).toHaveBeenCalledWith("t0"));
+    await waitFor(() => expect(listGgDashboards).toHaveBeenCalledWith());
     expect(
       screen.getByRole("link", { name: OVERVIEW_DASHBOARD.name }),
     ).toHaveAttribute("href", "/gg/dashboards/overview");

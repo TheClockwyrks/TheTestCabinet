@@ -62,9 +62,6 @@ vi.mock("../../components/PageLayout", () => ({
 }));
 // A signed-in operator: a coverage plan and the gg configurations behind its cells
 // both belong to an account.
-vi.mock("../../../client/auth", () => ({
-  useAuth: () => ({ token: "t0" }),
-}));
 // The account's gg configurations and, crucially, whether they have arrived — the
 // distinction between "you have none", "not yet" and "the request failed", which the
 // page has to keep apart because the three resolve a gg cell identically.
@@ -829,12 +826,7 @@ describe("launchGgCells", () => {
       [ggCell({ remaining: 2 })],
       [ggOption()],
     );
-    const failed = await launchGgCells(
-      worker(launchGgRun),
-      "token",
-      track,
-      launches,
-    );
+    const failed = await launchGgCells(worker(launchGgRun), track, launches);
     expect(failed).toEqual([]);
     expect(launchGgRun).toHaveBeenCalledTimes(2);
     const request = launchGgRun.mock.calls[0]![0];
@@ -865,7 +857,7 @@ describe("launchGgCells", () => {
       [ggCell({ remaining: 1, engine: "structured-2d" })],
       [ggOption()],
     );
-    await launchGgCells(worker(launchGgRun), "token", vi.fn(), launches);
+    await launchGgCells(worker(launchGgRun), vi.fn(), launches);
     expect(launchGgRun.mock.calls[0]![0].engine).toBe("structured-2d");
   });
 
@@ -877,9 +869,9 @@ describe("launchGgCells", () => {
       [ggCell({ remaining: 1 })],
       [ggOption()],
     );
-    await launchGgCells(worker(sent), "token", vi.fn(), launches, 0);
+    await launchGgCells(worker(sent), vi.fn(), launches, 0);
     expect(sent.mock.calls[0]?.[0].retryCount).toBe(0);
-    await launchGgCells(worker(sent), "token", vi.fn(), launches);
+    await launchGgCells(worker(sent), vi.fn(), launches);
     expect(sent.mock.calls[1]?.[0]).not.toHaveProperty("retryCount");
   });
 
@@ -893,12 +885,7 @@ describe("launchGgCells", () => {
       [ggCell({ remaining: 2 })],
       [ggOption()],
     );
-    const failed = await launchGgCells(
-      worker(launchGgRun),
-      "token",
-      track,
-      launches,
-    );
+    const failed = await launchGgCells(worker(launchGgRun), track, launches);
     expect(failed).toHaveLength(1);
     expect(failed[0]!.error).toBe("nope");
     expect(track).toHaveBeenCalledTimes(1);
@@ -1495,7 +1482,7 @@ describe("CoveragePlanTestsPage hand launches", () => {
       await waitFor(() => {
         expect(launchRunBatch).toHaveBeenCalledTimes(1);
       });
-      const [configs, , origin] = launchRunBatch.mock.calls[0] ?? [];
+      const [configs, origin] = launchRunBatch.mock.calls[0] ?? [];
       expect(configs).toHaveLength(1);
       expect(configs?.[0]?.retryCount).toBe(3);
       // Still attributed to the plan, so its Halt reaches the run.
