@@ -627,7 +627,7 @@ compiled guest component. The test build keeps compiled components on disk in
 `component-cache` under the crate's `OUT_DIR`, so a guest is compiled a handful
 of times per build rather than once per test. An entry is keyed on the
 component's bytes and wasmtime's compatibility hash, is stored only once its
-bytes have been compiled twice, and is evicted least recently used past 4 GiB.
+bytes have been compiled twice, and is evicted least recently used past 16 GiB.
 `cargo clean` removes it. Production builds have no such cache.
 
 A compiled language arm's tests each need a program built by that arm's real
@@ -641,7 +641,7 @@ compiles against, the program's source and each code module's key and source.
 It holds the component the arm built, or the model-facing failure the arm
 answered with; a toolchain failure is never stored. One process builds each
 key, under an exclusive lock the others wait on; entries are written whole by
-a rename, evicted least recently used past 2 GiB, and any failure of the store
+a rename, evicted least recently used past 4 GiB, and any failure of the store
 falls back to building. `cargo clean` removes it. The store serves only the
 tests that ask it for a program: no language arm, no turn and not the isolation
 gate can reach it, since a build cache inside an arm is the breach that gate

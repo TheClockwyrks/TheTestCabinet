@@ -55,9 +55,10 @@ use super::CodeModule;
 use super::language::{PrepareError, PrepareFailure};
 
 /// How many bytes of entries the directory may hold before the least recently used are removed. A
-/// Swift program is ~7 MB and a Kotlin one well under that; the ceiling holds every fixture of a
-/// build several times over.
-const MAX_STORED_BYTES: u64 = 2 << 30;
+/// Swift program is ~7 MB and a Kotlin one well under that, and a build's Swift fixtures alone are
+/// ~1.4 GB; the ceiling holds every fixture of a build with room for the previous vintage of an arm
+/// whose identity an edit just changed.
+const MAX_STORED_BYTES: u64 = 4 << 30;
 
 /// How long a staged file is kept before a prune removes it. A staged file outlives its call only
 /// when the process writing it died, so anything this old is a crash's leftover.

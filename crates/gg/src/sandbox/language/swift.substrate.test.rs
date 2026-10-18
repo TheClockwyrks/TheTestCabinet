@@ -49,12 +49,19 @@
 //!
 //! # How these tests are grouped
 //!
-//! Each `#[test]` is its own process under `cargo nextest`, and every program in it costs a
-//! real `swiftc` and a Cranelift compile of the component it produced — a Swift artifact is not
-//! byte-for-byte reproducible, so the test-only component cache cannot serve it. A function
-//! groups the programs that exercise one behaviour, so they share that cost; one that grows
-//! into the slow end of the suite is split rather than extended.
+//! Each `#[test]` is its own process under `cargo nextest`, so a program built in one is not in
+//! the next one's memory. The helpers here — [`prepare`], [`compiled`], [`compiled_module`] — take a
+//! program from the test suite's [store of prepared programs](crate::sandbox::prepared_cache), and
+//! only the first process to ask for one unpacks the arm's archives and runs `swiftc`. Two
+//! preparations of one program are not byte-for-byte alike on this arm (the debug information
+//! records each preparation's own module-cache hashes), but the store hands every process the
+//! **same** bytes, so the test-only component cache serves the Cranelift compile of a stored
+//! program too, and that compile is most of what a Swift program costs. A test that reads what a
+//! real preparation wrote, or that drives the turn path, calls the production step itself and pays
+//! for both. A function groups the programs that exercise one behaviour; one that grows into the
+//! slow end of the suite is split rather than extended.
 
+use std::sync::OnceLock;
 use std::time::Instant;
 
 use crate::sandbox::export_names;
@@ -63,32 +70,101 @@ use test_cabinet_core::gg::GgProgramLanguage;
 use super::super::g8::{self, Answered, Case, Located, Shape};
 use crate::limits::TurnErrorType;
 
-use super::compile::{self, compile_program};
+use super::compile::{self, compile_program, identity, warm};
 use crate::sandbox::fake::{
     CallLog, FakeOperationApi, all_capabilities, all_operations, canned_outcome, granted_operations,
 };
+use crate::sandbox::language::PreparedModule;
 use crate::sandbox::membrane::{MembraneState, RunEnding, Sandbox};
 use crate::sandbox::outcome::{SandboxError, SandboxOutcome};
+use crate::sandbox::prepared_cache::{self, Identity, Obtained};
 use crate::sandbox::{
     CodeModule, PrepareContext, PrepareFailure, ProgramScope, SandboxLimits, bounded_store, engine,
     keep_reported_error, linker, reclaim,
 };
 use crate::tools::ToolOutcome;
 
+/// Warm this arm once per process — both embedded archives unpacked — before the first program
+/// this process builds, which is a program the [store](crate::sandbox::prepared_cache) did not
+/// hold.
+fn warmed() {
+    static WARMED: OnceLock<()> = OnceLock::new();
+    WARMED.get_or_init(warm);
+}
+
+/// **`source` compiled with `modules` in scope by the production prepare step**, or the
+/// model-facing failure it earned — with how it came to be in hand.
+///
+/// Through the test suite's [store of prepared programs](crate::sandbox::prepared_cache), keyed on
+/// this arm's [identity](super::compile::identity): `cargo nextest` runs each test in its own
+/// process, and a program another process already built is read back rather than built again. A
+/// miss warms the arm once and builds through [`compile_program`] in a fresh [`PrepareContext`],
+/// the way a turn does. A test that reads what a real preparation wrote calls [`compile_program`]
+/// itself.
+pub(super) fn stored(
+    source: &str,
+    modules: &[CodeModule],
+) -> (Result<Vec<u8>, PrepareFailure>, Obtained) {
+    prepared_cache::load_or_build(
+        prepared_cache::directory(),
+        &identity(),
+        source,
+        modules,
+        || {
+            warmed();
+            compile_program(source, modules, &PrepareContext::detached()).map(|prepared| {
+                assert!(
+                    prepared.source.is_empty(),
+                    "a compiled arm hands back a component, not source for one"
+                );
+                prepared.component.expect(
+                    "the Swift prepare step compiles the component its program is evaluated by",
+                )
+            })
+        },
+    )
+}
+
+/// [`stored`], without saying how: the component, or the failure a model would read.
+pub(super) fn compiled(source: &str, modules: &[CodeModule]) -> Result<Vec<u8>, PrepareFailure> {
+    stored(source, modules).0
+}
+
+/// **A code module bound at `key`, built by the production module step**, or the model-facing
+/// failure it earned — through the same [store](crate::sandbox::prepared_cache) as [`stored`].
+///
+/// What is stored is whether `swiftc` built the module. The names it offers are this arm's own
+/// [scan](super::source::exports) of the source, which is what
+/// [`compile_module`](compile::compile_module) reports too, so a module read back from the store
+/// reports the same exports.
+pub(super) fn compiled_module(key: &str, source: &str) -> Result<PreparedModule, PrepareFailure> {
+    let language = format!("swift code module `{key}`");
+    let identity = Identity {
+        language: &language,
+        ..identity()
+    };
+    prepared_cache::load_or_build(prepared_cache::directory(), &identity, source, &[], || {
+        warmed();
+        compile::compile_module(key, source, &PrepareContext::detached()).map(|_| Vec::new())
+    })
+    .0
+    .map(|_| PreparedModule {
+        source: source.to_string(),
+        exports: super::source::exports(source),
+    })
+}
+
 /// Compile `source` with the production prepare step, or panic with what the toolchain said.
 pub(super) fn prepare(source: &str) -> Vec<u8> {
-    match compile_program(source, &[], &PrepareContext::detached()) {
-        Ok(prepared) => {
-            assert!(
-                prepared.source.is_empty(),
-                "a compiled arm hands back a component, not source for one"
-            );
-            prepared
-                .component
-                .expect("the Swift prepare step compiles the component its program is evaluated by")
-        }
-        Err(failure) => panic!("the Swift toolchain did not compile this program: {failure}"),
-    }
+    prepare_with(source, &[])
+}
+
+/// [`prepare`], with the agent's loaded code modules — which on a compiled arm are inputs to the
+/// compile rather than something the guest is handed.
+pub(super) fn prepare_with(source: &str, modules: &[CodeModule]) -> Vec<u8> {
+    compiled(source, modules).unwrap_or_else(|failure| {
+        panic!("the Swift toolchain did not compile this program: {failure}")
+    })
 }
 
 /// Evaluate an already-compiled component through the real membrane, with `operations`
@@ -485,11 +561,7 @@ fn the_compiler_tells_a_rejected_program_from_a_toolchain_that_could_not_run() {
     // A program `swiftc` rejected. One band, because Swift has no parse-only phase a program passes
     // before meaning is considered: an unclosed brace and a type error are both an `error:` from
     // one invocation.
-    let syntax = compile_program(
-        "import gg\n\nlet x = (1 + 2\ngg.log(\"\\(x)\")\n",
-        &[],
-        &PrepareContext::detached(),
-    );
+    let syntax = compiled("import gg\n\nlet x = (1 + 2\ngg.log(\"\\(x)\")\n", &[]);
     match syntax {
         Err(PrepareFailure::Program(error)) => {
             let rendered = error.to_string();
@@ -505,11 +577,7 @@ fn the_compiler_tells_a_rejected_program_from_a_toolchain_that_could_not_run() {
         other => panic!("an unclosed parenthesis is a program failure, not {other:?}"),
     }
 
-    let typed = compile_program(
-        "let total: Int = \"twelve\"\n",
-        &[],
-        &PrepareContext::detached(),
-    );
+    let typed = compiled("let total: Int = \"twelve\"\n", &[]);
     match typed {
         Err(PrepareFailure::Program(error)) => {
             let rendered = error.to_string();
@@ -552,7 +620,7 @@ fn a_swift_program_is_compiled_verbatim() {
     // out, and gg would have to subtract it everywhere — so this asserts the offset is zero by
     // making the error's line arbitrary rather than first.
     let program = "let a = 1\nlet b = 2\nlet c = 3\nlet d = 4\nlet e: Int = missingName\n";
-    match compile_program(program, &[], &PrepareContext::detached()) {
+    match compiled(program, &[]) {
         Err(PrepareFailure::Program(error)) => {
             let rendered = error.to_string();
             assert!(
@@ -604,14 +672,11 @@ public func parse(_ text: String, delimiter: Character = \",\") -> Row {
 "
         .to_string(),
     };
-    let component = match compile_program(
+    let component = match compiled(
         "import gg\nimport csvTools\n\ngg.log(csvTools.parse(\"a,b\", delimiter: \",\").cells.joined(separator: \"|\"))\n",
         std::slice::from_ref(&module),
-        &PrepareContext::detached(),
     ) {
-        Ok(prepared) => prepared
-            .component
-            .expect("a compiled arm hands back the component it built"),
+        Ok(component) => component,
         Err(failure) => panic!("a program that reads a code module did not compile: {failure}"),
     };
     let outcome = evaluate(&component, &[], RunEnding::None, false, canned_outcome).0;
@@ -620,10 +685,9 @@ public func parse(_ text: String, delimiter: Character = \",\") -> Row {
     // And the same program without the line that reaches it, which is the compiler saying that
     // supplying a module declares no name — at the model's own line, since nothing gg wrote stands
     // above it.
-    match compile_program(
+    match compiled(
         "import gg\n\ngg.log(csvTools.parse(\"a,b\").cells.joined(separator: \"|\"))\n",
         std::slice::from_ref(&module),
-        &PrepareContext::detached(),
     ) {
         Err(PrepareFailure::Program(error)) => {
             let rendered = error.to_string();
@@ -650,7 +714,7 @@ fn a_program_with_a_module_in_scope_is_still_compiled_verbatim() {
     };
     let program = "import gg\nimport notes\n\ngg.log(notes.title())\n";
     let context = PrepareContext::detached();
-    let prepared = compile_program(program, std::slice::from_ref(&module), &context)
+    compile_program(program, std::slice::from_ref(&module), &context)
         .expect("a program that reads a code module compiles");
 
     let root = context
@@ -674,10 +738,11 @@ fn a_program_with_a_module_in_scope_is_still_compiled_verbatim() {
         "the bytes compiled are the bytes the model sent"
     );
 
+    // What it built runs. The artifact evaluated is the same program's from the store: two
+    // preparations of one program differ only in their debug information on this arm, and the
+    // stored one is the artifact the component cache already holds.
     let outcome = evaluate(
-        &prepared
-            .component
-            .expect("a compiled arm hands back the component it built"),
+        &prepare_with(program, std::slice::from_ref(&module)),
         &[],
         RunEnding::None,
         false,
@@ -707,14 +772,11 @@ public func show(_ path: String) throws {
 "
         .to_string(),
     };
-    let component = match compile_program(
+    let component = match compiled(
         "import gg\nimport notes\n\ntry notes.show(\"notes.md\")\n",
         std::slice::from_ref(&module),
-        &PrepareContext::detached(),
     ) {
-        Ok(prepared) => prepared
-            .component
-            .expect("a compiled arm hands back the component it built"),
+        Ok(component) => component,
         Err(failure) => panic!("a module that writes its own import did not compile: {failure}"),
     };
     let outcome = evaluate(
@@ -741,7 +803,7 @@ public func show(_ path: String) throws {
     // meets it.
     let bare =
         "public func show(_ path: String) throws {\n    try views.openText(path, body: \"\")\n}\n";
-    match compile::compile_module("notes", bare, &PrepareContext::detached()) {
+    match compiled_module("notes", bare) {
         Err(PrepareFailure::Program(error)) => {
             let rendered = error.to_string();
             assert!(
@@ -756,13 +818,12 @@ public func show(_ path: String) throws {
     // And the same bytes reaching a program's compile with no build recorded for them is gg's own
     // failure rather than the model's: the program compiles, and the file the diagnostic names is
     // one that program's author never wrote.
-    match compile_program(
+    match compiled(
         "import gg\nimport notes\n\ntry notes.show(\"notes.md\")\n",
         &[CodeModule {
             name: "notes".to_string(),
             source: bare.to_string(),
         }],
-        &PrepareContext::detached(),
     ) {
         Err(PrepareFailure::Lowering(rendered)) => assert!(
             rendered.contains("`notes`") && rendered.contains("module_notes.swift:2:"),
@@ -777,18 +838,16 @@ fn a_code_module_is_checked_on_its_own_and_reports_its_names() {
     // The first of a module's two compiles, which is what buys the LOCATION: without it a module
     // that does not build would take down every program the agent wrote from then on, with the
     // diagnostic landing against a turn's own program in a file the model never saw.
-    let prepared = compile::compile_module(
+    let prepared = compiled_module(
         "helpers",
         "public func parse(_ text: String) -> [String] {\n    text.split(separator: \",\").map(String.init)\n}\n\nprivate func unused() {}\n",
-        &PrepareContext::detached(),
     )
     .expect("that module checks");
     assert_eq!(export_names(&prepared.exports), ["parse"]);
 
-    match compile::compile_module(
+    match compiled_module(
         "helpers",
         "public func parse() -> Int {\n    \"twelve\"\n}\n",
-        &PrepareContext::detached(),
     ) {
         Err(PrepareFailure::Program(error)) => {
             let rendered = error.to_string();
@@ -810,9 +869,20 @@ fn what_a_compiled_swift_program_weighs_is_the_arms_dominant_per_turn_cost() {
     // The band is wide and low-sided on purpose. What would fail it is a jump, and a jump would
     // mean the link stopped dead-stripping or the debug information stopped being the only thing
     // between 5.5 MB and 7 MB.
+    //
+    // The weight is asserted on the real artifact. The compile time is printed only when this
+    // process built it: a program another test process already built is read back from the
+    // [store](crate::sandbox::prepared_cache), and the time that took is not a turn's.
     let started = Instant::now();
-    let component = prepare("import gg\n\ngg.log(\"weighed\")\n");
+    let (component, obtained) = stored("import gg\n\ngg.log(\"weighed\")\n", &[]);
     let compiled = started.elapsed();
+    let component = component.unwrap_or_else(|failure| {
+        panic!("the Swift toolchain did not compile this program: {failure}")
+    });
+    let compiled = match obtained {
+        Obtained::Built => format!("swiftc and the component encode {compiled:?}"),
+        Obtained::Loaded => "compiled by an earlier test process".to_string(),
+    };
 
     assert!(
         (2 * 1024 * 1024..=24 * 1024 * 1024).contains(&component.len()),
@@ -829,8 +899,7 @@ fn what_a_compiled_swift_program_weighs_is_the_arms_dominant_per_turn_cost() {
     let started = Instant::now();
     let (outcome, _log) = evaluate(&component, &[], RunEnding::None, false, canned_outcome);
     println!(
-        "swiftc and the component encode {compiled:?}; wasmtime compiling and running it {:?}; \
-         {} bytes",
+        "{compiled}; wasmtime compiling and running it {:?}; {} bytes",
         started.elapsed(),
         component.len()
     );

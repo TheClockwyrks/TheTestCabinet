@@ -357,6 +357,75 @@ pub(super) fn library_modules() -> impl Iterator<Item = &'static str> {
     manifest().modules.iter().map(String::as_str)
 }
 
+/// **What decides the output of a build on this arm**, as the test suite's
+/// [store of prepared programs](crate::sandbox::prepared_cache) keys an entry on it.
+///
+/// The pinned Swift release and the toolchain tree [`swift_home`] resolves *now* — read on every
+/// call rather than once per process, because a test points [`SWIFT_HOME_ENV`] somewhere else
+/// mid-process to prove a missing toolchain is gg's failure, and that call must miss — and the
+/// content of everything gg itself puts into a build: the guest archive, the library archive, the
+/// adapter, the manifest that names their releases, and the Rust sources that write a build's
+/// inputs and read its outputs (this file, the module source scan, and the diagnostic cap). A change
+/// to any of them is a different key, so a test never reads a program another vintage of this arm
+/// built.
+///
+/// The archives and the sources are hashed once per process and handed on as their digests; each
+/// distinct compiler line is kept for the rest of the process, which is a handful of short strings.
+#[cfg(test)]
+pub(super) fn identity() -> crate::sandbox::prepared_cache::Identity<'static> {
+    use sha2::{Digest, Sha256};
+    use std::sync::{Mutex, OnceLock};
+
+    static COMPILERS: Mutex<Vec<&'static str>> = Mutex::new(Vec::new());
+    static DIGESTS: OnceLock<Vec<(&'static str, Vec<u8>)>> = OnceLock::new();
+    static INPUTS: OnceLock<Vec<(&'static str, &'static [u8])>> = OnceLock::new();
+
+    let home = match swift_home() {
+        Ok(home) => format!("toolchain {}", home.display()),
+        Err(failure) => format!("no toolchain: {failure}"),
+    };
+    let line = format!("swift {}\ntarget {}\n{home}", compiler_version(), target());
+    let compiler = {
+        let mut compilers = COMPILERS
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        match compilers.iter().find(|known| **known == line) {
+            Some(known) => *known,
+            None => {
+                let kept: &'static str = Box::leak(line.into_boxed_str());
+                compilers.push(kept);
+                kept
+            }
+        }
+    };
+    let inputs = INPUTS.get_or_init(|| {
+        DIGESTS
+            .get_or_init(|| {
+                let digest = |bytes: &[u8]| Sha256::digest(bytes).to_vec();
+                vec![
+                    ("guest", digest(GUEST_TAR_GZ)),
+                    ("libraries", digest(LIBRARIES_TAR_GZ)),
+                    ("adapter", digest(ADAPTER)),
+                    ("manifest", digest(MANIFEST_JSON.as_bytes())),
+                    (
+                        "swift.compile.rs",
+                        digest(include_bytes!("swift.compile.rs")),
+                    ),
+                    ("swift.source.rs", digest(include_bytes!("swift.source.rs"))),
+                    ("diagnostics.rs", digest(include_bytes!("diagnostics.rs"))),
+                ]
+            })
+            .iter()
+            .map(|(name, digest)| (*name, digest.as_slice()))
+            .collect()
+    });
+    crate::sandbox::prepared_cache::Identity {
+        language: "swift",
+        compiler,
+        inputs,
+    }
+}
+
 /// Unpack both embedded archives now, so the first compile does not.
 ///
 /// The whole of this language's warm-up: 185 KB and 3.4 MB decompressed, once per machine. The
