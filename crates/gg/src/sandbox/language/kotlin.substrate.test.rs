@@ -35,11 +35,15 @@
 //!
 //! # How these tests are grouped
 //!
-//! Each `#[test]` is its own process under `cargo nextest`, so each starts a JVM that loads the
-//! Kotlin compiler and TeaVM, and every program in it costs a build through that JVM. A
-//! function groups the programs that exercise one behaviour, so they share that cost; one that
-//! grows into the slow end of the suite is split rather than extended.
+//! Each `#[test]` is its own process under `cargo nextest`, so a program built in one is not in
+//! the next one's memory. The helpers here — [`prepare`], [`compiled`], [`compiled_module`] — take a
+//! program from the test suite's [store of prepared programs](crate::sandbox::prepared_cache), and
+//! only the first process to ask for one warms the arm and builds it through the production pool.
+//! A test that reads what a real preparation wrote, counts the JVMs one starts, or drives the turn
+//! path calls the production step itself. A function groups the programs that exercise one
+//! behaviour; one that grows into the slow end of the suite is split rather than extended.
 
+use std::sync::OnceLock;
 use std::time::Instant;
 
 use serde_json::Value;
@@ -48,14 +52,16 @@ use test_cabinet_core::gg::{CAPABILITY_DOCVIEW_CLOSE, GgProgramLanguage};
 use super::super::g8::{self, Answered, Case, Located, Shape};
 use crate::limits::TurnErrorType;
 
-use super::compile::{compile_module, compile_program, warm};
+use super::compile::{compile_module, compile_program, identity, warm};
 use crate::ending::{Ending, EndingRole};
 use crate::sandbox::export_names;
 use crate::sandbox::fake::{
     CallLog, FakeOperationApi, all_capabilities, all_operations, canned_outcome, granted_operations,
 };
+use crate::sandbox::language::PreparedModule;
 use crate::sandbox::membrane::{MembraneState, RunEnding, Sandbox};
 use crate::sandbox::outcome::{SandboxError, SandboxOutcome};
+use crate::sandbox::prepared_cache::{self, Identity, Obtained};
 use crate::sandbox::{
     CodeModule, PrepareContext, PrepareError, PrepareFailure, ProgramScope, SandboxLimits,
     bounded_store, capability_operations, engine, keep_reported_error, linker, reclaim,
@@ -89,6 +95,78 @@ pub(super) fn kotlin_language() -> &'static dyn crate::sandbox::ProgramLanguage 
 // Driving one
 // ---------------------------------------------------------------------------------------------
 
+/// Warm this arm once per process — one JVM started and gg's driver placed — before the first
+/// program this process builds, which is a program the [store](crate::sandbox::prepared_cache) did
+/// not hold.
+fn warmed() {
+    static WARMED: OnceLock<()> = OnceLock::new();
+    WARMED.get_or_init(warm);
+}
+
+/// **`source` compiled with `modules` in scope by the production prepare step**, or the
+/// model-facing failure it earned — with how it came to be in hand.
+///
+/// Through the test suite's [store of prepared programs](crate::sandbox::prepared_cache), keyed on
+/// this arm's [identity](super::compile::identity): `cargo nextest` runs each test in its own
+/// process, and a program another process already built is read back rather than built again. A
+/// miss warms the arm once and builds through [`compile_program`] in a fresh
+/// [`PrepareContext`], the way a turn does. A test that reads what a real preparation wrote, or that
+/// counts the JVMs one starts, calls [`compile_program`] itself.
+pub(super) fn stored(
+    source: &str,
+    modules: &[CodeModule],
+) -> (Result<Vec<u8>, PrepareFailure>, Obtained) {
+    prepared_cache::load_or_build(
+        prepared_cache::directory(),
+        &identity(),
+        source,
+        modules,
+        || {
+            warmed();
+            compile_program(source, modules, &PrepareContext::detached()).map(|prepared| {
+                assert!(
+                    prepared.source.is_empty(),
+                    "a compiled arm hands back a component, not source for one"
+                );
+                prepared.component.expect(
+                    "the Kotlin prepare step compiles the component its program is evaluated by",
+                )
+            })
+        },
+    )
+}
+
+/// [`stored`], without saying how: the component, or the failure a model would read.
+pub(super) fn compiled(source: &str, modules: &[CodeModule]) -> Result<Vec<u8>, PrepareFailure> {
+    stored(source, modules).0
+}
+
+/// **A code module bound at `key`, compiled by the production module step**, or the model-facing
+/// failure it earned — through the same [store](crate::sandbox::prepared_cache) as [`stored`].
+///
+/// What is stored is whether `kotlinc` accepted the module. The namespace it offers is this arm's
+/// own [scan](super::source::wrap_module) of the source, which is what
+/// [`compile_module`] reports too, so a module read back from the store reports the same exports.
+pub(super) fn compiled_module(key: &str, source: &str) -> Result<PreparedModule, PrepareFailure> {
+    let language = format!("kotlin code module `{key}`");
+    let identity = Identity {
+        language: &language,
+        ..identity()
+    };
+    prepared_cache::load_or_build(prepared_cache::directory(), &identity, source, &[], || {
+        warmed();
+        compile_module(key, source, &PrepareContext::detached()).map(|_| Vec::new())
+    })
+    .0
+    .and_then(|_| {
+        let wrapped = super::source::wrap_module(source, &super::source::module_package(key))?;
+        Ok(PreparedModule {
+            source: source.to_string(),
+            exports: wrapped.exports,
+        })
+    })
+}
+
 /// Compile `source` with the production prepare step, or panic with what the toolchain said.
 pub(super) fn prepare(source: &str) -> Vec<u8> {
     prepare_with(source, &[])
@@ -97,18 +175,9 @@ pub(super) fn prepare(source: &str) -> Vec<u8> {
 /// [`prepare`], with the agent's loaded code modules — which on a compiled arm are inputs to the
 /// compile rather than something the guest is handed.
 pub(super) fn prepare_with(source: &str, modules: &[CodeModule]) -> Vec<u8> {
-    match compile_program(source, modules, &PrepareContext::detached()) {
-        Ok(prepared) => {
-            assert!(
-                prepared.source.is_empty(),
-                "a compiled arm hands back a component, not source for one"
-            );
-            prepared.component.expect(
-                "the Kotlin prepare step compiles the component its program is evaluated by",
-            )
-        }
-        Err(failure) => panic!("the Kotlin toolchain did not compile this program: {failure}"),
-    }
+    compiled(source, modules).unwrap_or_else(|failure| {
+        panic!("the Kotlin toolchain did not compile this program: {failure}")
+    })
 }
 
 /// Evaluate an already-compiled component through the real membrane, with `operations` offered.
@@ -643,7 +712,7 @@ fn an_uncaught_failure_reaches_the_model_in_its_runtimes_own_words() {
 /// The `helpers` module both code-module tests load: two public top-level functions beside a
 /// private and an internal one.
 fn helpers_module() -> Vec<CodeModule> {
-    let prepared = compile_module(
+    let prepared = compiled_module(
         "helpers",
         "import kotlin.math.abs\n\
          \n\
@@ -655,7 +724,6 @@ fn helpers_module() -> Vec<CodeModule> {
          private fun hidden(): String = \"not offered\"\n\
          \n\
          internal fun alsoHidden(): String = \"not offered either\"\n",
-        &PrepareContext::detached(),
     )
     .expect("a module of public top-level functions compiles");
     assert_eq!(
@@ -740,10 +808,9 @@ fn a_code_module_is_reached_only_through_a_line_the_program_wrote() {
     // THE LINE IS THE ONLY ROUTE IN. A module is a classpath entry and a classpath entry declares no
     // name, so a program that writes neither the import nor the qualified name earns the compiler's
     // own diagnostic — the same one it would earn for any library it did not ask for.
-    let failure = compile_program(
+    let failure = compiled(
         &whole("", "    gg.log(slugify(\"Some Title Here\"))\n"),
         &modules,
-        &PrepareContext::detached(),
     )
     .expect_err("a name nothing brought into scope does not resolve");
     let PrepareFailure::Program(PrepareError::Compile(rendered)) = &failure else {
@@ -763,10 +830,9 @@ fn a_code_module_is_reached_only_through_a_line_the_program_wrote() {
 /// the reply byte for byte.
 #[test]
 fn a_module_in_scope_adds_nothing_to_the_program_the_compiler_reads() {
-    let prepared = compile_module(
+    let prepared = compiled_module(
         "helpers",
         "fun slugify(title: String): String = title.lowercase()\n",
-        &PrepareContext::detached(),
     )
     .expect("a module of public top-level functions compiles");
     let modules = vec![CodeModule {
@@ -810,25 +876,20 @@ fn a_module_in_scope_adds_nothing_to_the_program_the_compiler_reads() {
 /// the author's own line and nothing subtracted from it.
 #[test]
 fn a_module_is_refused_at_the_read_in_the_authors_own_coordinates() {
-    let failure = compile_module(
-        "helpers",
-        "private fun helper(): Int = 1\nval limit = 3\n",
-        &PrepareContext::detached(),
-    )
-    .expect_err("a module that offers nothing is refused");
+    let failure = compiled_module("helpers", "private fun helper(): Int = 1\nval limit = 3\n")
+        .expect_err("a module that offers nothing is refused");
     assert!(
         failure.to_string().contains("public top-level functions"),
         "the author is told what a module has to offer: {failure}",
     );
 
-    let failure = compile_module(
+    let failure = compiled_module(
         "helpers",
         "fun one(): Int = 1\n\
          \n\
          fun two(): Int {\n\
          \x20   return notAThing()\n\
          }\n",
-        &PrepareContext::detached(),
     )
     .expect_err("a module that does not compile is refused");
     let PrepareFailure::Program(PrepareError::Compile(rendered)) = &failure else {
@@ -844,9 +905,7 @@ fn a_module_is_refused_at_the_read_in_the_authors_own_coordinates() {
 /// read is told apart from one they read and disagreed with.
 #[test]
 fn the_compilers_produce_four_model_facing_bands() {
-    let refusal = |program: &str| {
-        compile_program(program, &[], &PrepareContext::detached()).expect_err("refused")
-    };
+    let refusal = |program: &str| compiled(program, &[]).expect_err("refused");
 
     // 1. THE PARSER COULD NOT READ IT. Kotlin reports every parse failure under one diagnostic name
     //    (`SYNTAX`), which is the compiler's own grouping and exactly the distinction gg bands on.
@@ -935,8 +994,7 @@ fn the_compilers_produce_four_model_facing_bands() {
 #[test]
 fn a_program_that_declares_no_main_is_told_so() {
     let refused = |program: &str| {
-        let failure =
-            compile_program(program, &[], &PrepareContext::detached()).expect_err("refused");
+        let failure = compiled(program, &[]).expect_err("refused");
         let PrepareFailure::Program(PrepareError::Unsupported(rendered)) = failure else {
             panic!("a program with no entry point is a shape refusal: {failure:?}");
         };
@@ -971,7 +1029,7 @@ fn a_program_that_declares_no_main_is_told_so() {
 
     // A model's own class taking the name gg's generated entry class has is told at the read too,
     // rather than arriving as `Method GgEntry.… was not found` about a method it plainly declared.
-    let failure = compile_program(
+    let failure = compiled(
         "class GgEntry {\n\
          \x20   fun hello(): String = \"mine\"\n\
          }\n\
@@ -980,7 +1038,6 @@ fn a_program_that_declares_no_main_is_told_so() {
          \x20   gg.log(GgEntry().hello())\n\
          }\n",
         &[],
-        &PrepareContext::detached(),
     )
     .expect_err("the name gg's entry class has is refused");
     let rendered = failure.to_string();
@@ -1057,13 +1114,12 @@ fn integer_division_by_zero_is_a_trap_or_a_diagnostic_rather_than_an_exception()
     // It is a diagnostic on the program, in the JVM's own words, at the model's own file with no
     // line, because the fold discards the expression's location. A toolchain failure would be gg's
     // own defect and end the run over one line of legal Kotlin.
-    let failure = compile_program(
+    let failure = compiled(
         &whole(
             "",
             "    val broken = 7 / 0\n\x20   gg.log(broken.toString())\n",
         ),
         &[],
-        &PrepareContext::detached(),
     )
     .expect_err("refused");
     let PrepareFailure::Program(PrepareError::Compile(rendered)) = &failure else {
@@ -1113,13 +1169,12 @@ fn use_is_refused_and_try_finally_is_what_a_program_writes() {
     // this same route — so this is a difference between two arms of one road and exactly the kind of
     // thing a study has to have written down. What a Kotlin program writes instead is `try`/`finally`
     // with its own `close()`, or the reader's own `readText()`, which needs no closing at all.
-    let failure = compile_program(
+    let failure = compiled(
         &whole(
             "",
             "    gg.log(java.io.StringReader(\"x\").use { it.readText() })\n",
         ),
         &[],
-        &PrepareContext::detached(),
     )
     .expect_err("`use` reaches a classlib the wasm backend does not carry");
     assert!(
@@ -1146,21 +1201,32 @@ fn use_is_refused_and_try_finally_is_what_a_program_writes() {
 /// table will want to re-check. It is paid **per turn** and cannot be otherwise: TeaVM does not
 /// produce a Kotlin interpreter that later runs a program, it produces the program, so there is no
 /// guest for two turns to share.
+///
+/// The weight is asserted on the real artifact. The compile time is printed only when this process
+/// built it: a program another test process already built is read back from the
+/// [store](crate::sandbox::prepared_cache), and the time that took is not a turn's.
 #[test]
 fn what_a_program_costs_and_what_it_weighs() {
     let source = whole("", "    gg.log(\"measured\")\n");
 
     let compiled = Instant::now();
-    let component = prepare(&source);
+    let (component, obtained) = stored(&source, &[]);
     let compiled = compiled.elapsed();
+    let component = component.unwrap_or_else(|failure| {
+        panic!("the Kotlin toolchain did not compile this program: {failure}")
+    });
 
     let instantiated = Instant::now();
     let handed = engine::compile_bytes(&component).expect("it is a component");
     let instantiated = instantiated.elapsed();
     drop(handed);
 
+    let compiled = match obtained {
+        Obtained::Built => format!("compile {compiled:?}"),
+        Obtained::Loaded => "compiled by an earlier test process".to_string(),
+    };
     println!(
-        "kotlin: {} bytes, compile {compiled:?}, Component::new {instantiated:?}",
+        "kotlin: {} bytes, {compiled}, Component::new {instantiated:?}",
         component.len()
     );
     assert!(
@@ -1174,33 +1240,56 @@ fn what_a_program_costs_and_what_it_weighs() {
 ///
 /// `kotlinc` has no daemon of its own, and a compiler started per compile would make this arm ten
 /// times dearer than every other one — which is a difference in the harness rather than in the
-/// language. So the arm keeps warm JVMs in a pool, and this asserts the reuse as counts: a build
-/// after warming goes through the JVM warming started, and emptying the pool makes the next build
-/// start exactly one more and the build after it reuse that.
+/// language. So the arm keeps warm JVMs in a pool, and this asserts the reuse as counts, each the
+/// change from a pool this test emptied itself: warming starts one JVM and the build after it goes
+/// through that one, and emptying the pool makes the next build start exactly one more and the build
+/// after it reuse that.
+///
+/// Every build here goes to the pool through the production module step, never through the
+/// [store](crate::sandbox::prepared_cache), so each one really asks the pool for a JVM. A module is
+/// what is built because its compile is `kotlinc` alone: the pool lends a JVM for it exactly as it
+/// does for a program, and a JVM's first build is the cheaper one.
 #[test]
 fn a_pooled_jvm_is_reused() {
     use super::compile::{discard_pooled_jvms, jvms_started, live_jvms};
 
+    let build = |name: &str| {
+        compile_module(
+            "pooled",
+            &format!("fun {name}(): Int = 1\n"),
+            &PrepareContext::detached(),
+        )
+        .expect("a module of one public function compiles");
+    };
+
+    discard_pooled_jvms();
+    assert_eq!(live_jvms(), 0, "the emptied pool holds no JVM");
+    let before = jvms_started();
+
     warm();
-    assert_eq!(jvms_started(), 1, "warming the arm starts one JVM");
-    let _ = prepare(&whole("", "    gg.log(\"warm\")\n"));
     assert_eq!(
-        (jvms_started(), live_jvms()),
+        (jvms_started() - before, live_jvms()),
+        (1, 1),
+        "warming the arm starts one JVM"
+    );
+    build("warm");
+    assert_eq!(
+        (jvms_started() - before, live_jvms()),
         (1, 1),
         "a compilation after warming must go through the JVM warming started"
     );
 
     discard_pooled_jvms();
     assert_eq!(live_jvms(), 0, "the emptied pool holds no JVM");
-    let _ = prepare(&whole("", "    gg.log(\"cold again\")\n"));
+    build("coldAgain");
     assert_eq!(
-        (jvms_started(), live_jvms()),
+        (jvms_started() - before, live_jvms()),
         (2, 1),
         "the build after the pool was emptied starts exactly one JVM"
     );
-    let _ = prepare(&whole("", "    gg.log(\"warm again\")\n"));
+    build("warmAgain");
     assert_eq!(
-        (jvms_started(), live_jvms()),
+        (jvms_started() - before, live_jvms()),
         (2, 1),
         "and the build after that reuses it"
     );
