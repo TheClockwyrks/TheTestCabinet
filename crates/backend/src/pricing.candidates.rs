@@ -3,7 +3,7 @@
 //!
 //! See the candidate list in `apps/docs/src/content/docs/gg/overview.md`. The backend builds a
 //! list per bound model at enqueue and pushes it onto the launch as
-//! [`GgInvocation::model_providers`](crate::gg::GgInvocation::model_providers); gg sends every
+//! [`GgInvocation::model_providers`](test_cabinet_contracts::gg::GgInvocation::model_providers); gg sends every
 //! request to the one candidate in force and moves down the list on the faults it sees.
 
 use std::collections::BTreeMap;
@@ -122,8 +122,8 @@ pub struct ProviderCandidate {
 
 impl ProviderCandidate {
     /// The candidate as the launch carries it.
-    pub fn to_invocation(&self) -> crate::gg::GgProviderCandidate {
-        crate::gg::GgProviderCandidate::new(&self.provider, &self.quantization)
+    pub fn to_invocation(&self) -> test_cabinet_contracts::gg::GgProviderCandidate {
+        test_cabinet_contracts::gg::GgProviderCandidate::new(&self.provider, &self.quantization)
     }
 }
 

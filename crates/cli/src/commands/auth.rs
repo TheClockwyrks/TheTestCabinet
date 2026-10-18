@@ -7,8 +7,8 @@
 //! variable, so the commands stay scriptable.
 
 use anyhow::{Result, bail};
-use test_cabinet_core::{AccountsClient, LoginRequest, RegisterRequest};
 
+use crate::accounts::{AccountsClient, LoginRequest, RegisterRequest};
 use crate::cli::{LoginArgs, RegisterArgs};
 use crate::config::{self, Credentials};
 

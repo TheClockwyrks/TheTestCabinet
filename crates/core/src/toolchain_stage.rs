@@ -75,8 +75,8 @@ use std::path::Path;
 use std::time::Duration;
 
 use crate::error::Result;
+use crate::find_build_output;
 use crate::install::{INSTALL_RETRY_DELAY, install_with_retry, run_command};
-use crate::playable::find_build_output;
 use crate::post_run::{PostRunContext, PostRunReport, PostRunStage};
 use crate::toolchain::{
     ToolchainCommandResult, ToolchainSmokeResult, ToolchainSummary, ToolchainTestRun,
@@ -104,7 +104,7 @@ const MAX_CONSOLE_ERROR_LEN: usize = 500;
 /// **It judges nothing itself.** It records what each command did — including, for
 /// the typecheck, whether it ran and what it exited with — and the *gate* built on
 /// that record is applied where a run's overall rating and score are aggregated
-/// (see [`crate::review::gated_rating`]). Keeping the measurement and the verdict
+/// (see the backend's `review::gated_rating`). Keeping the measurement and the verdict
 /// apart is what lets a reviewer's own marks survive the gate untouched.
 #[derive(Debug, Clone, Copy)]
 pub struct ToolchainStage {

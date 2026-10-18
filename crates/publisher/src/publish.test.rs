@@ -3,7 +3,7 @@
 //!
 //! The orchestration itself (commit-before-push, the `gh repo view` idempotency
 //! gate, wrangler URL capture, secret scrubbing) is exhaustively covered by
-//! `BackendPublisher`'s own tests in core; these assert the *publisher's* wiring: it
+//! `BackendPublisher`'s own tests in [`crate::release`]; these assert the *publisher's* wiring: it
 //! loads the record from the downloaded tree, finds the build, runs both release
 //! steps in order, and returns the produced links — and that a missing record fails
 //! cleanly.
@@ -13,17 +13,20 @@ use super::*;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
-use test_cabinet_core::{
-    AuthMode, CommandOutput, CommandRunner, Cost, HarnessSlug, RunEnvironment, RunLinks,
-    RunMetrics, RunRecord, RunState, RunStatus, RunSubject, RunTooling, TestType, TokenCounts,
-    ValidationSummary,
+use test_cabinet_contracts::metrics::{Cost, RunMetrics, TokenCounts};
+use test_cabinet_contracts::run_record::{
+    AuthMode, HarnessSlug, RunEnvironment, RunLinks, RunState, RunStatus, RunSubject, RunTooling,
 };
+use test_cabinet_contracts::test_case::TestType;
+use test_cabinet_contracts::validation::ValidationSummary;
+
+use crate::release::{CommandOutput, CommandRunner};
 
 /// A [`CommandRunner`] standing in for `gh`/`git`/`wrangler`: it records every call
 /// and answers each tool the way the release path expects — `gh repo view` reports
 /// the repo absent (so the create path runs), `git status` reports a dirty tree (so
 /// the commit runs), `wrangler pages deploy` prints a deployment URL, and everything
-/// else simply succeeds. Mirrors core's `MockRunner`. The call log lives behind a
+/// else simply succeeds. Mirrors the release tests' `MockRunner`. The call log lives behind a
 /// shared handle so a [`Clone`] of the runner can be moved into the release while the
 /// test keeps a clone to read the recorded calls.
 #[derive(Clone, Default)]
@@ -44,7 +47,7 @@ impl CommandRunner for StubRunner {
         program: &str,
         args: &[&str],
         _cwd: Option<&std::path::Path>,
-    ) -> test_cabinet_core::Result<CommandOutput> {
+    ) -> crate::Result<CommandOutput> {
         self.calls
             .lock()
             .expect("lock")

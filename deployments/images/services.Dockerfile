@@ -581,8 +581,8 @@ ENTRYPOINT ["tcab-driver"]
 # The dispatcher creates one publisher Job per *publish* (a parallel queue to the
 # run path); each publisher pod runs THIS image, resolves its publish job from the
 # environment the dispatcher set, downloads the reviewed run's source tree from the
-# artifact service, performs the GitHub-repo + Cloudflare Pages release (the same
-# two steps a local `tcab publish` drives, via test_cabinet_core::BackendPublisher)
+# artifact service, performs the GitHub-repo + Cloudflare Pages release (the
+# publisher's own BackendPublisher, `crates/publisher/src/release.rs`)
 # while streaming progress to the backend, reports the terminal result, and exits.
 #
 # Unlike the driver stage (which renders builds to screenshot them and therefore
@@ -590,19 +590,19 @@ ENTRYPOINT ["tcab-driver"]
 # NOTHING — it only releases. So it DROPS the entire browser layer and instead
 # carries the three tools the release path shells out to:
 #   - `git`, to commit the model's working tree into each run's seeded repository
-#     and push it to the run's public repo (crates/core publish.rs
+#     and push it to the run's public repo (crates/publisher release.rs
 #     `commit_implementation` sets a per-repo `user.name`/`user.email`, so no
 #     global git identity is needed here; the push authenticates through `gh`'s
 #     credential helper — see below — so no git credential helper is configured).
 #   - `gh`, the GitHub CLI, for the idempotent `gh repo view` gate, `gh repo
 #     create --public` (the empty repo), and — via `gh auth git-credential` — the
-#     credential helper the implementation push authenticates through (crates/core
-#     publish.rs `release_code`/`push_implementation`; create and push are kept
+#     credential helper the implementation push authenticates through
+#     (crates/publisher release.rs `release_code`/`push_implementation`; create and push are kept
 #     separate so the push can retry through GitHub's post-create permission lag).
 #     Installed from GitHub's official apt repository so it is a current, supported
 #     build rather than Debian's older packaged one.
 #   - `wrangler`, Cloudflare's CLI, for `wrangler pages deploy <dir> --project-name
-#     <p> --branch=<run>` (crates/core publish.rs `release_playable_build`). It is
+#     <p> --branch=<run>` (crates/publisher release.rs `release_playable_build`). It is
 #     an npm package and the base is already Node, so it is installed globally and
 #     PINNED below; the release invokes the bare `wrangler` on PATH.
 # `gh`/`wrangler` authenticate from the Job's env (GH_TOKEN / CLOUDFLARE_API_TOKEN,

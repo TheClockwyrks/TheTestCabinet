@@ -57,7 +57,7 @@ fn the_list_keeps_native_priced_caching_endpoints_developer_first() {
     assert!(list.candidates[0].developer);
     assert_eq!(
         list.candidates[1].to_invocation(),
-        crate::gg::GgProviderCandidate::new("Novita", "fp8")
+        test_cabinet_contracts::gg::GgProviderCandidate::new("Novita", "fp8")
     );
 }
 
@@ -288,7 +288,7 @@ fn the_filter_off_keeps_every_level_and_needs_no_native_one() {
     assert_eq!(list.candidates[0].quantization, "unknown");
     assert_eq!(
         list.candidates[0].to_invocation(),
-        crate::gg::GgProviderCandidate::new("OpenAI", "unknown")
+        test_cabinet_contracts::gg::GgProviderCandidate::new("OpenAI", "unknown")
     );
 
     // A model with declared levels: every level passes, and the best one is still reported.

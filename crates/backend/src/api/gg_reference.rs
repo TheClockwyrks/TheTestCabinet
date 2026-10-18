@@ -74,8 +74,8 @@ use axum::Json;
 use axum::extract::{Path as UrlPath, State};
 use axum::http::StatusCode;
 
-use test_cabinet_core::gg::GgProgramLanguage;
-use test_cabinet_core::gg_reference::{
+use test_cabinet_contracts::gg::GgProgramLanguage;
+use test_cabinet_contracts::gg_reference::{
     GgReference, GgReferenceApi, GgReferenceEntryKind, GgReferenceLanguage, document_file,
     index_file,
 };

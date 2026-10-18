@@ -543,7 +543,7 @@ fn write_state_debug(repo: &std::path::Path, case: &PerformanceCase, snapshots: 
 /// run's `replay.json` / `replay-1.json`: assets are served through a one-segment
 /// `/runs/{id}/asset/{file}` route, so a name carrying a directory could not be
 /// requested. The index is the case's position in the manifest, which is what
-/// [`crate::playable::serve_asset_file`] resolves back.
+/// the artifacts service's `playable::serve_asset_file` resolves back.
 ///
 /// The scored scenario is deliberately not seeded into the run's workspace — the
 /// engine must never see it — so it does not otherwise exist in the produced tree;

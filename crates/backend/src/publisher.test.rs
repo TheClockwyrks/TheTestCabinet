@@ -1,12 +1,12 @@
 use super::*;
 use tempfile::TempDir;
 
-use test_cabinet_core::metrics::RunMetrics;
-use test_cabinet_core::review::{DomainRating, Rating};
-use test_cabinet_core::run_record::{
+use crate::review::{DomainRating, Rating};
+use test_cabinet_contracts::metrics::RunMetrics;
+use test_cabinet_contracts::run_record::{
     HarnessSlug, RunEnvironment, RunLinks, RunRecord, RunState, RunStatus, RunSubject, RunTooling,
 };
-use test_cabinet_core::validation::ValidationSummary;
+use test_cabinet_contracts::validation::ValidationSummary;
 
 use crate::db::StoredReview;
 
@@ -18,7 +18,7 @@ fn record(id: &str) -> RunRecord {
         subject: RunSubject {
             test_case_slug: "pong".to_string(),
             test_case_version: "v1.0.0".to_string(),
-            test_type: test_cabinet_core::TestType::EndToEnd,
+            test_type: test_cabinet_suites::test_case::TestType::EndToEnd,
             variant: "base".to_string(),
             harness_slug: HarnessSlug::Claude,
             harness_version: None,
@@ -34,7 +34,7 @@ fn record(id: &str) -> RunRecord {
             os: "Debian".to_string(),
             container_image: "img".to_string(),
             node_version: None,
-            auth_mode: test_cabinet_core::AuthMode::ApiKey,
+            auth_mode: test_cabinet_contracts::run_record::AuthMode::ApiKey,
         },
         metrics: RunMetrics::default(),
         validation: ValidationSummary::default(),
@@ -100,9 +100,7 @@ async fn dev_publisher() -> (TempDir, Publisher, Arc<Db>) {
         None,
         None,
         None,
-        Arc::new(test_cabinet_core::AccountsClient::new(
-            "http://auth.invalid",
-        )),
+        Arc::new(crate::accounts::AccountsClient::new("http://auth.invalid")),
         PublisherTiming {
             coalesce: Duration::from_millis(10),
             // Retention is irrelevant to the dev publisher: with no R2 there is no

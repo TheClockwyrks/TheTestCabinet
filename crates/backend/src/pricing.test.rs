@@ -1077,7 +1077,7 @@ async fn an_unreadable_models_listing_fails_only_the_last_step() {
             prices
                 .list_price_sharing("moonshotai/kimi-k2", None, &listing)
                 .await,
-            Err(Error::Validation(_))
+            Err(BackendError::Pricing(_))
         ));
     }
     assert_eq!(server.listing_reads(), 1);
@@ -1147,7 +1147,7 @@ async fn list_price_errs_for_a_listing_that_cannot_be_read() {
     let prices = OpenRouterPrices::with_endpoint("http://127.0.0.1:1");
     assert!(matches!(
         prices.list_price("openai/gpt-5.6-sol", None).await,
-        Err(Error::Validation(_))
+        Err(BackendError::Pricing(_))
     ));
 }
 
@@ -1182,21 +1182,21 @@ async fn a_read_that_stalls_fails_at_the_read_timeout() {
 
     assert!(matches!(
         prices.list_price("openai/gpt-5.6-sol", None).await,
-        Err(Error::Validation(_))
+        Err(BackendError::Pricing(_))
     ));
     assert!(matches!(
         prices.model_launch_facts("openai/gpt-5.6-sol").await,
-        Err(Error::Validation(_))
+        Err(BackendError::Pricing(_))
     ));
     assert!(matches!(
         prices.all_model_details().await,
-        Err(Error::Validation(_))
+        Err(BackendError::Pricing(_))
     ));
     assert!(matches!(
         ModelsListingPrices::new()
             .price_of(&prices, "openai/gpt-5.6-sol")
             .await,
-        Err(Error::Validation(_))
+        Err(BackendError::Pricing(_))
     ));
 }
 

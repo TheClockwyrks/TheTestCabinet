@@ -2,7 +2,7 @@
 //!
 //! Open self-registration on the private network — anyone who can reach the
 //! service may create an account. The wire shapes are
-//! [`test_cabinet_core::accounts`] types, so the backend and every client speak
+//! [`test_cabinet_contracts::accounts`] types, so the backend and every client speak
 //! the same contract. There is no app-level auth *guarding* these endpoints; the
 //! bearer tokens they mint are what the **backend** then requires on its mutating
 //! endpoints.
@@ -21,7 +21,7 @@ use base64::engine::general_purpose::STANDARD as BASE64;
 use tower_http::cors::{AllowHeaders, CorsLayer};
 use tower_http::trace::TraceLayer;
 
-use test_cabinet_core::accounts::{Account, AuthnResponse, LoginRequest, RegisterRequest};
+use test_cabinet_contracts::accounts::{Account, AuthnResponse, LoginRequest, RegisterRequest};
 
 use crate::db::Db;
 use crate::entity::{token, user};

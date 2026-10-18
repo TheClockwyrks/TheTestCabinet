@@ -29,7 +29,9 @@ use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
-use test_cabinet_core::{AssetPreview, HarnessEvent};
+use test_cabinet_contracts::preview::AssetPreview;
+
+use test_cabinet_contracts::event::HarnessEvent;
 use tokio::sync::broadcast;
 
 /// The capacity of each job's live broadcast channel. A slow streaming client
@@ -230,9 +232,12 @@ impl Default for Relay {
 // the run's display identity (`JobSummary`) are shared with the queue's Rust
 // clients, so they live in the contracts crate's `job_api`; re-export them here so
 // the rest of the backend keeps referring to them as `relay::…`.
-pub use test_cabinet_core::{
-    JobSummary, Notification, NotificationKind, NotificationOutcome, RunEvent, RunEventKind,
-};
+pub use test_cabinet_contracts::job_api::JobSummary;
+pub use test_cabinet_contracts::job_api::Notification;
+pub use test_cabinet_contracts::job_api::NotificationKind;
+pub use test_cabinet_contracts::job_api::NotificationOutcome;
+pub use test_cabinet_contracts::job_api::RunEvent;
+pub use test_cabinet_contracts::job_api::RunEventKind;
 
 /// One message on the console stream, tagged with the topic that gates it.
 ///

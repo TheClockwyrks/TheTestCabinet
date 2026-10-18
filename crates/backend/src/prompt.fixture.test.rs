@@ -10,9 +10,9 @@
 use std::path::{Path, PathBuf};
 
 use tempfile::TempDir;
-use test_cabinet_core::TestCaseVersion;
-use test_cabinet_core::engine::{EngineSelection, ResolvedEngine};
-use test_cabinet_core::test_suite::{PREVIEWS_DIR, TEST_SUITES_DIR, TestSuiteCatalog};
+use test_cabinet_suites::engine::{EngineSelection, ResolvedEngine};
+use test_cabinet_suites::test_case::TestCaseVersion;
+use test_cabinet_suites::test_suite::{PREVIEWS_DIR, TEST_SUITES_DIR, TestSuiteCatalog};
 
 use crate::ingest::{IngestRequest, Ingestor, copy_tree};
 use crate::store::DefinitionStore;
@@ -92,7 +92,7 @@ impl IngestedSuite {
                 SUITE,
                 version,
                 "end-to-end",
-                &test_cabinet_core::engine::built_in_catalog(),
+                &test_cabinet_engines::built_in_catalog(),
             )
             .unwrap_or_else(|err| panic!("{CASE}@{version} should resolve: {err}"))
     }
@@ -100,7 +100,7 @@ impl IngestedSuite {
 
 /// The engine a run selected.
 pub fn engine(slug: &str) -> ResolvedEngine {
-    test_cabinet_core::engine::built_in_catalog()
+    test_cabinet_engines::built_in_catalog()
         .resolve(&EngineSelection::new(slug))
         .unwrap_or_else(|err| panic!("the {slug} engine resolves: {err}"))
 }

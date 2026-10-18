@@ -1,16 +1,16 @@
-//! The vitest runner's results, held to core's scoring rule.
+//! The vitest runner's results, held to the backend's scoring rule.
 //!
 //! The runner is `test_cabinet_suites::vitest_validator`, and its own tests are
-//! there; the score its results add up to is core's
+//! there; the score its results add up to is the backend's
 //! ([`automated_only_score`](crate::comparison::automated_only_score)), so the one
 //! check that needs both is here.
 
 use std::path::PathBuf;
 
-use crate::test_case::{ReviewItem, ReviewValidation};
-use crate::validation::Inconclusive;
-use crate::validator::drive_units;
-use crate::vitest_validator::Suite;
+use test_cabinet_contracts::validation::Inconclusive;
+use test_cabinet_suites::test_case::{ReviewItem, ReviewValidation};
+use test_cabinet_suites::validator::drive_units;
+use test_cabinet_suites::vitest_validator::Suite;
 
 /// A review item decided by the validator at `script_rel`.
 fn item(id: &str, script_rel: &str) -> ReviewItem {

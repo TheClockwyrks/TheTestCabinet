@@ -1,13 +1,13 @@
 //! The saved **gg configuration** endpoints (`/gg/configs`).
 //!
 //! A gg run is configured by a declarative
-//! [capability set](test_cabinet_core::gg::GgCapabilitySet) rather than the flat
+//! [capability set](test_cabinet_contracts::gg::GgCapabilitySet) rather than the flat
 //! `(harness, model, orchestrator)` tuple a third-party-harness run carries — so
 //! the configuration, not the harness, is the thing worth naming and reusing. An
 //! operator registers configurations here (the account section's gg tab), and the
 //! new-run form offers them in the harness slot once `gg` is picked as the
 //! orchestrator: the picked configuration supplies the capability set and the row's
-//! model binds its [primary slot](test_cabinet_core::gg::PRIMARY_SLOT).
+//! model binds its [primary slot](test_cabinet_contracts::gg::PRIMARY_SLOT).
 //!
 //! Everything is per-account (attributed to the token's account via [`AuthUser`])
 //! and private to that operator, exactly like the reviewer's
@@ -30,7 +30,7 @@ use axum::http::StatusCode;
 use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
 
-use test_cabinet_core::gg::{GgCapabilitySet, is_valid_agent_slug};
+use test_cabinet_contracts::gg::{GgCapabilitySet, is_valid_agent_slug};
 
 use crate::auth::AuthUser;
 use crate::error::ApiError;
@@ -126,8 +126,8 @@ pub(crate) fn now() -> Result<String, ApiError> {
 }
 
 /// Build a stored configuration from a create/update body, validating the name, the
-/// description, each profile's [slug](test_cabinet_core::gg::GgAgentConfig::id) and the
-/// [slot mapping](test_cabinet_core::gg::GgCapabilitySet::slot_defects). Unlike a launch,
+/// description, each profile's [slug](test_cabinet_contracts::gg::GgAgentConfig::id) and the
+/// [slot mapping](test_cabinet_contracts::gg::GgCapabilitySet::slot_defects). Unlike a launch,
 /// an *unbound* slot is fine here: a saved configuration is a reusable capability set, and
 /// the new-run form supplies a model for each of its launch inputs.
 ///
@@ -171,8 +171,8 @@ pub(crate) fn config_from_input(
 /// profiles and slots are sound.
 ///
 /// Authored, because it reads the two halves of a profile's identity that only an authored
-/// document carries: the internal [id](test_cabinet_core::gg::GgAgentConfig::id) every reference
-/// in it points at, and the [slug](test_cabinet_core::gg::GgAgentConfig::slug) the operator wrote.
+/// document carries: the internal [id](test_cabinet_contracts::gg::GgAgentConfig::id) every reference
+/// in it points at, and the [slug](test_cabinet_contracts::gg::GgAgentConfig::slug) the operator wrote.
 /// A launch reads [`launched_capability_set_defect`] instead.
 pub(crate) fn authored_capability_set_defect(set: &GgCapabilitySet) -> Option<String> {
     if let Some(defect) = slug_defect(set) {

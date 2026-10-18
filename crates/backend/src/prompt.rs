@@ -11,9 +11,9 @@
 //! the one place that decision is made for every reader of the store: the version
 //! detail the consoles fetch and the case documents the gallery snapshot bakes.
 
-use test_cabinet_core::engine::ResolvedEngine;
-use test_cabinet_core::error::{Error, Result};
-use test_cabinet_core::test_suite::{SpecificationManifest, render_suite_definition_prompt};
+use test_cabinet_suites::engine::ResolvedEngine;
+use test_cabinet_suites::test_suite::{SpecificationManifest, render_suite_definition_prompt};
+use test_cabinet_suites::{Error, Result};
 
 use crate::store::{StoredManifest, StoredVariant};
 use crate::suite_store::StoredSuite;
@@ -78,7 +78,6 @@ pub fn render_stored_prompt(
                 &manifest.prompt_template,
                 engine,
             )
-            .map_err(Error::from)
         }
         None => render_authored_prompt(manifest, variant, engine),
     }
@@ -98,7 +97,7 @@ fn render_authored_prompt(
         .chain(variant.specs.iter())
         .map(|spec| spec.dest.clone())
         .collect();
-    test_cabinet_core::render_prompt_from_template(
+    test_cabinet_suites::prompt::render_prompt_from_template(
         &manifest.slug,
         &manifest.version,
         &manifest.prompt_template,
@@ -117,7 +116,6 @@ fn render_authored_prompt(
         0,
         engine,
     )
-    .map_err(Error::from)
 }
 
 #[cfg(test)]

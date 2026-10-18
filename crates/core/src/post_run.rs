@@ -231,7 +231,7 @@ impl PostRunReport {
 /// [gates](crate::toolchain::ToolchainSummary::gates) the run — code that does not
 /// compile is not reviewable. Even there the stage renders no verdict of its own:
 /// it records the exit status, and the gate is applied where the aggregate rating
-/// and score are computed ([`crate::review::gated_rating`]), so no reviewer's
+/// and score are computed (the backend's `review::gated_rating`), so no reviewer's
 /// stored marks are ever rewritten by it. Any *new* stage that wants to influence
 /// a run's score needs the same treatment — a documented manifest declaration and
 /// an explicit gate at the aggregation seam — rather than a figure quietly folded

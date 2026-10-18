@@ -40,8 +40,8 @@ use axum::http::StatusCode;
 use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
 
-use test_cabinet_core::gg::GgCapabilitySet;
-use test_cabinet_core::run_record::HarnessSlug;
+use test_cabinet_contracts::gg::GgCapabilitySet;
+use test_cabinet_contracts::run_record::HarnessSlug;
 
 use crate::auth::AuthUser;
 use crate::coverage::schedule::{CellDemand, HarnessCapacity, InFlightLimit, launch_pass};
@@ -1134,7 +1134,7 @@ pub(super) struct PlanMember {
     pub combo: ReviewPlanCombo,
     /// The model id a run of this member is **launched** with, and therefore the model
     /// segment of its [cell key](CellKey): the
-    /// [launch model](test_cabinet_core::model_id::launch_model_id) for a harness member,
+    /// [launch model](crate::model_id::launch_model_id) for a harness member,
     /// and the model the bound set's root agent runs for a gg member. Empty when the member
     /// could not be resolved at all, which is the identity no run can ever carry.
     pub launch_model: String,
@@ -1396,7 +1396,7 @@ pub(super) fn unstorable_member(
 pub(super) fn resolve_member(combo: &ReviewPlanCombo, library: &GgLibrary) -> PlanMember {
     let Some(id) = combo.gg_config_ref() else {
         return PlanMember {
-            launch_model: test_cabinet_core::model_id::launch_model_id(
+            launch_model: crate::model_id::launch_model_id(
                 &combo.model,
                 combo.harness,
                 combo.provider.as_deref(),
@@ -2143,7 +2143,7 @@ pub(super) fn job_cell(job: &test_cabinet_entities::job::Model) -> CellKey {
         job.variant.clone(),
         job.engine_slug
             .clone()
-            .unwrap_or_else(|| test_cabinet_core::engine::NONE_SLUG.to_string()),
+            .unwrap_or_else(|| test_cabinet_suites::engine::NONE_SLUG.to_string()),
         job.harness_slug.clone(),
         job.model_id.clone(),
         job.gg_config_id.clone().unwrap_or_default(),
@@ -2191,7 +2191,7 @@ async fn queue_snapshot(state: &AppState) -> Result<QueueSnapshot, ApiError> {
                 job.test_case_version,
                 job.variant,
                 job.engine_slug
-                    .unwrap_or_else(|| test_cabinet_core::engine::NONE_SLUG.to_string()),
+                    .unwrap_or_else(|| test_cabinet_suites::engine::NONE_SLUG.to_string()),
                 job.harness_slug,
                 job.model_id,
                 job.gg_config_id.unwrap_or_default(),
@@ -2329,7 +2329,7 @@ pub(super) fn blocked_cell(
 /// [retry limit](https://docs.testcabinet.ai/components/backend/coverage/#the-retry-limit).
 /// A plan pins no orchestrator, runtime ceiling, or auth mode, so everything else is the
 /// default a hand-launched run takes.
-fn launch_body(cell: &LaunchCell<'_>) -> test_cabinet_core::LaunchBody {
+fn launch_body(cell: &LaunchCell<'_>) -> test_cabinet_contracts::job_api::LaunchBody {
     match &cell.member.gg {
         Some(gg) => super::gg::gg_launch_body(
             super::gg::GgLaunchSubject {
@@ -2345,7 +2345,7 @@ fn launch_body(cell: &LaunchCell<'_>) -> test_cabinet_core::LaunchBody {
                 model: cell.member.launch_model.clone(),
             },
         ),
-        None => test_cabinet_core::LaunchBody {
+        None => test_cabinet_contracts::job_api::LaunchBody {
             test_case: cell.case.slug.clone(),
             version: cell.case.version.clone(),
             variant: cell.case.variant.clone(),

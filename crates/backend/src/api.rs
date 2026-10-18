@@ -138,7 +138,7 @@ pub struct AppState {
     pub publisher: Publisher,
     /// Verifies bearer tokens against the standalone auth service. The mutating
     /// run endpoints require a valid token (see [`crate::auth::AuthUser`]).
-    pub auth: Arc<test_cabinet_core::AccountsClient>,
+    pub auth: Arc<crate::accounts::AccountsClient>,
     /// The live event/preview fan-out for in-flight runs (the `/jobs/{id}/live`
     /// and `/notifications` streams), fed by the drivers' progress ingestion.
     pub relay: Relay,
@@ -155,7 +155,7 @@ pub struct AppState {
     pub http: reqwest::Client,
     /// The OpenRouter reads: a model's list price, and the catalog facts observed
     /// when a run completes and on the periodic refresh.
-    pub prices: test_cabinet_core::OpenRouterPrices,
+    pub prices: crate::pricing::OpenRouterPrices,
     /// The in-memory gg [document index](crate::gg_docs::GgDocIndex) the analysis
     /// query endpoints run over. Loaded lazily on the first query and reconciled per
     /// id thereafter, so a deployment that never opens Discover never pays for it.

@@ -5,7 +5,7 @@
 //! orchestrator)` tuple submitted through [`POST /jobs`](super::jobs::launch) — a gg
 //! run is configured by a declarative [capability set](GgCapabilitySet) (which
 //! capabilities are on, their implementations/params, and how models bind to
-//! [slots](test_cabinet_core::gg::GgSlotBinding)). This endpoint gives that run mode
+//! [slots](test_cabinet_contracts::gg::GgSlotBinding)). This endpoint gives that run mode
 //! its own gg-native request shape rather than overloading the flat launch body.
 //!
 //! It reuses the whole downstream substrate unchanged: the handler maps a
@@ -13,11 +13,10 @@
 //! [`HarnessSlug::Gg`] and the capability set carried in
 //! [`LaunchBody::gg_capability_set`], then enqueues it through the same
 //! [`build_new_job`] path every run takes. The
-//! dispatcher claims it, the driver rebuilds the gg [`RunRequest`] from the stored
+//! dispatcher claims it, the driver rebuilds the gg `RunRequest` from the stored
 //! launch body, and core takes its gg branch — so a gg run is observed through the
 //! very same live monitor (`GET /jobs/{id}/live`), status, and active-run list.
 //!
-//! [`RunRequest`]: test_cabinet_core::RunRequest
 
 #[cfg(test)]
 #[path = "gg.test.rs"]
@@ -30,9 +29,9 @@ use axum::extract::{Query, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 
-use test_cabinet_core::LaunchBody;
-use test_cabinet_core::gg::GgCapabilitySet;
-use test_cabinet_core::run_record::HarnessSlug;
+use test_cabinet_contracts::gg::GgCapabilitySet;
+use test_cabinet_contracts::job_api::LaunchBody;
+use test_cabinet_contracts::run_record::HarnessSlug;
 
 use crate::auth::AuthUser;
 use crate::error::ApiError;
@@ -107,7 +106,7 @@ pub(super) struct GgLaunchSubject {
     pub version: String,
     /// The resolved variant — never the request's `Option`, because a launch runs one.
     pub variant: String,
-    /// The [engine](test_cabinet_core::engine) slug the produced build is written
+    /// The [engine](test_cabinet_suites::engine) slug the produced build is written
     /// against, or `None` for the `none` default.
     pub engine: Option<String>,
     /// Override for the maximum harness runtime, in seconds.
@@ -233,7 +232,7 @@ pub(super) fn gg_launch_identity(set: &GgCapabilitySet) -> Result<GgLaunchIdenti
             "the gg capability set cannot be launched: {defect}"
         ));
     }
-    // Every [model slot](test_cabinet_core::gg::GgModelSlot) a configuration declares
+    // Every [model slot](test_cabinet_contracts::gg::GgModelSlot) a configuration declares
     // is filled in by the launch form, so a set arriving here with an agent still
     // deferred was launched incompletely — reject it now, by name, rather than letting
     // the run reach a container and fail its check there.

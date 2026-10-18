@@ -3,7 +3,7 @@
 use super::fixture::{CASE, EXPORTED, IngestedSuite, PREVIEW, engine};
 use super::*;
 
-use test_cabinet_core::test_suite::SUITE_VARIANT_SLUG;
+use test_cabinet_suites::test_suite::SUITE_VARIANT_SLUG;
 
 /// The prompt a run of `version` on `engine` is handed, rendered through the run
 /// path off the resolved checkout.
@@ -12,7 +12,7 @@ fn run_prompt(suite: &IngestedSuite, version: &str, engine: Option<&ResolvedEngi
     let variant = resolved
         .variant(SUITE_VARIANT_SLUG)
         .expect("the implicit variant");
-    test_cabinet_core::render_case_prompt(&resolved, variant, &[], engine)
+    test_cabinet_suites::prompt::render_case_prompt(&resolved, variant, &[], engine)
         .expect("the run renders the prompt")
 }
 
@@ -110,12 +110,12 @@ fn an_authored_version_renders_against_the_authored_context() {
     // The same manifest without a suite coordinate is an authored case: its template
     // sees the variant, and a full-stack one opens with the standing directive.
     manifest.suite = None;
-    manifest.test_type = test_cabinet_core::TestType::FullStack;
+    manifest.test_type = test_cabinet_suites::test_case::TestType::FullStack;
     manifest.prompt_template = "Variant {{variant.slug}} in {{workspace}}.".to_string();
     let variant = &manifest.variants[0];
     let rendered =
         render_stored_prompt(&manifest, variant, None, None).expect("the authored prompt renders");
-    let expected = test_cabinet_core::render_prompt_from_template(
+    let expected = test_cabinet_suites::prompt::render_prompt_from_template(
         &manifest.slug,
         &manifest.version,
         &manifest.prompt_template,

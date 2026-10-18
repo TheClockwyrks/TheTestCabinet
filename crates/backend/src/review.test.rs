@@ -2,7 +2,7 @@
 //! rendering the canonical file back out, and scoring a run.
 
 use super::*;
-use crate::test_case::{Domain, ReviewItem, SubReviewItem};
+use test_cabinet_contracts::test_case::{Domain, ReviewItem, SubReviewItem};
 
 /// A review item with the given id and weight, in no domain — the common shape
 /// for these tests.
@@ -266,7 +266,7 @@ fn an_item_excluded_from_scoring_drops_out_of_both_earned_and_total() {
     // the reviewer passed it — so a run collected before the exclusion re-scores as if
     // the point were never declared.
     let mut items = vec![item("a", 2), item("b", 3), item("c", 1)];
-    crate::test_case::apply_score_exclusions(
+    test_cabinet_contracts::test_case::apply_score_exclusions(
         &mut items,
         &std::collections::HashSet::from(["b".to_string()]),
     );
@@ -281,7 +281,7 @@ fn a_sub_item_excluded_from_scoring_drops_out_while_the_rest_of_the_category_sco
     // Excluding one sub-item of a category by its composite `<item>.<sub>` id removes
     // only that point; the category's other sub-items still score normally.
     let mut items = vec![item_with_sub_items("cat", &["x", "y", "z"])];
-    crate::test_case::apply_score_exclusions(
+    test_cabinet_contracts::test_case::apply_score_exclusions(
         &mut items,
         &std::collections::HashSet::from(["cat.y".to_string()]),
     );
@@ -296,7 +296,7 @@ fn excluding_a_whole_category_by_its_item_id_drops_every_sub_item() {
     // An exclusion naming the category's own id removes the entire category — all its
     // sub-items — from the score, not just a single point.
     let mut items = vec![item("plain", 2), item_with_sub_items("cat", &["x", "y"])];
-    crate::test_case::apply_score_exclusions(
+    test_cabinet_contracts::test_case::apply_score_exclusions(
         &mut items,
         &std::collections::HashSet::from(["cat".to_string()]),
     );
@@ -541,7 +541,7 @@ fn aggregate_overall_grade_is_the_worst_across_reviews() {
 
 // --- the aesthetic channel and the validator-decided functional rating ---------
 
-use crate::validation::{AutoVerdict, DebugScriptResult, Inconclusive};
+use test_cabinet_contracts::validation::{AutoVerdict, DebugScriptResult, Inconclusive};
 
 /// A scoring domain with the given id.
 fn domain(id: &str) -> Domain {

@@ -129,9 +129,24 @@ pub enum BackendError {
     #[error("serialization error: {0}")]
     Serde(#[from] serde_json::Error),
 
-    /// A core operation (manifest resolution, reference render) failed.
+    /// Loading or resolving a test case, suite or group, or rendering its prompt,
+    /// failed.
     #[error("{0}")]
-    Core(#[from] test_cabinet_core::Error),
+    Suites(#[from] test_cabinet_suites::Error),
+
+    /// The OpenRouter catalog could not be fetched, read or parsed for a price or
+    /// a model's listing (see [`crate::pricing`]).
+    #[error("{0}")]
+    Pricing(String),
+
+    /// An account operation against the auth service failed: the service could
+    /// not be reached or answered with an error (see [`crate::accounts`]).
+    #[error("the auth service: {0}")]
+    Auth(String),
+
+    /// A request to the R2 object store failed.
+    #[error("{0}")]
+    R2(#[from] test_cabinet_artifacts::r2::R2Error),
 
     /// A snapshot upload or deploy-hook fire failed.
     #[error("{0}")]
@@ -163,9 +178,3 @@ impl From<BackendError> for ApiError {
 
 /// Result alias for the backend's internal layers.
 pub type Result<T, E = BackendError> = std::result::Result<T, E>;
-
-impl From<test_cabinet_suites::Error> for BackendError {
-    fn from(err: test_cabinet_suites::Error) -> Self {
-        Self::Core(err.into())
-    }
-}

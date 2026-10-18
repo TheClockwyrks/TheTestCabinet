@@ -2,7 +2,7 @@
 // per-run values a chart is already holding.
 //
 // The comparisons surface takes its statistics from the backend
-// (`crates/core/src/comparison_stats.rs`) because a published comparison is a
+// (`crates/backend/src/comparison_stats.rs`) because a published comparison is a
 // document and must render identically every time it is read. A per-test-case
 // metric chart has no such document: it folds whatever runs the reader has
 // scoped, live, in the browser. The spread behind one of its mean bars therefore

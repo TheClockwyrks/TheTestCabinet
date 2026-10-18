@@ -27,13 +27,13 @@
 //! path: run this command again and the objects are overwritten in place.
 
 use anyhow::{Context, Result, bail};
+use test_cabinet_artifacts::r2::{R2Client, R2Config};
 use test_cabinet_core::{
     SystemCommandRunner, TestCaseVersion, Variant,
     asset_reference::{
         ASSET_REFERENCE_SCRIPT, build_asset_reference, reference_actions_key, reference_image_key,
         reference_prefix,
     },
-    r2::{R2Client, R2Config},
 };
 
 use super::capture_baselines::Target;

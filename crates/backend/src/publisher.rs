@@ -32,7 +32,7 @@ use crate::db::Db;
 use crate::error::{BackendError, Result};
 use crate::snapshot::SnapshotBuilder;
 use crate::store::DefinitionStore;
-use test_cabinet_core::r2::R2Client;
+use test_cabinet_artifacts::r2::R2Client;
 
 /// The outcome of a forced refresh (`POST /snapshot/refresh`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -57,7 +57,7 @@ struct PublisherInner {
     deploy_hook_url: Option<String>,
     /// The auth service client, used to fetch each reviewer's profile picture so it
     /// can be embedded in the public snapshot.
-    auth: Arc<test_cabinet_core::AccountsClient>,
+    auth: Arc<crate::accounts::AccountsClient>,
     http: reqwest::Client,
     /// The artifact service's **in-cluster** base URL
     /// ([`Config::artifacts_internal_url`](crate::config::Config::artifacts_internal_url)),
@@ -104,7 +104,7 @@ impl Publisher {
         r2: Option<R2Client>,
         deploy_hook_url: Option<String>,
         artifacts_url: Option<String>,
-        auth: Arc<test_cabinet_core::AccountsClient>,
+        auth: Arc<crate::accounts::AccountsClient>,
         timing: PublisherTiming,
     ) -> Self {
         // Publishing is enabled (R2 is configured) but no site deploy hook is set:

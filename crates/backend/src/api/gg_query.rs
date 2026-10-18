@@ -1,5 +1,5 @@
 //! The **gg analysis query** endpoints (`/gg/query`, `/gg/query/batch`,
-//! `/gg/fields`) — the backend half of [TCQ](test_cabinet_core::gg_query).
+//! `/gg/fields`) — the backend half of [TCQ](crate::gg_query).
 //!
 //! The division of labour is deliberate and total: **core owns the language**
 //! (the document model, the evaluator, the field catalog) and this module owns
@@ -25,7 +25,7 @@ use std::sync::Arc;
 use axum::Json;
 use axum::extract::State;
 
-use test_cabinet_core::gg_query::{
+use crate::gg_query::{
     GgFieldCatalog, GgQuery, GgQueryResponse, GgRunDoc, evaluate, field_catalog,
 };
 

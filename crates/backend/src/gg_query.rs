@@ -5,7 +5,7 @@
 //! The query language itself (its shapes, and the semantic and determinism rules both
 //! implementations of the evaluator hold to) is
 //! [`test_cabinet_contracts::gg_query`], whose types this module re-exports, so
-//! `test_cabinet_core::gg_query::GgQuery` and the rest name the same items they
+//! `crate::gg_query::GgQuery` and the rest name the same items they
 //! always did. The checked-in conformance fixture,
 //! `contracts/crates/contracts/fixtures/gg_query.conformance.json`, is executed by this module's
 //! tests and by the TypeScript evaluator's.

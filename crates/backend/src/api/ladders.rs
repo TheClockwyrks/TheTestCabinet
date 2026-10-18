@@ -53,7 +53,7 @@ use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use serde::{Deserialize, Serialize};
 
-use test_cabinet_core::test_case::TestType;
+use test_cabinet_suites::test_case::TestType;
 
 use crate::auth::AuthUser;
 use crate::coverage::gate::{self, Gate, GateTally, GateThreshold, RungRun};
@@ -98,7 +98,7 @@ const MAX_LADDER_RUNGS: usize = 50;
 ///   rating, so its runs would stay unrated permanently and the gate undecided.
 /// - [`TestType::GameJam`] is reviewed on a graded category scale (💩→💎) and records
 ///   no domain ratings at all, so a jam run never yields a
-///   [`Rating`](test_cabinet_core::Rating) for the gate to compare against its floor.
+///   [`Rating`](test_cabinet_contracts::review::Rating) for the gate to compare against its floor.
 ///
 /// Both are rejected when a ladder is saved and again when it is run, with an explicit
 /// message rather than a silent stall later. A **legacy** case version is refused on the

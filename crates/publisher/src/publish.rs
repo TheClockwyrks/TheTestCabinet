@@ -3,9 +3,9 @@
 //! Given a run directory untarred from the artifact service
 //! (`run-record.json` + `implementation/` + `events.jsonl`), this builds the
 //! [`ReleaseRequest`] and drives the two release steps [`BackendPublisher`]
-//! exposes — [`release_code`](test_cabinet_core::Publisher::release_code)
+//! exposes — [`release_code`](crate::release::Publisher::release_code)
 //! (gh/git → a public per-run repo) and
-//! [`release_playable_build`](test_cabinet_core::Publisher::release_playable_build)
+//! [`release_playable_build`](crate::release::Publisher::release_playable_build)
 //! (wrangler → a Pages deploy). It releases only: the link-attach + publish-flip are
 //! the backend's job once it receives the terminal result, and the run record was
 //! already stored by the driver when the run finished.
@@ -17,9 +17,12 @@
 use std::path::Path;
 
 use test_cabinet_backend_client::HttpBackendClient;
-use test_cabinet_core::{
-    ArtifactCollection, BackendPublisher, CommandRunner, PublishConfig, Publisher, ReleaseRequest,
-    RunRecord, SystemCommandRunner, find_build_output,
+use test_cabinet_contracts::layout::find_build_output;
+use test_cabinet_contracts::run_record::RunRecord;
+use test_cabinet_suites::execution::ArtifactCollection;
+
+use crate::release::{
+    BackendPublisher, CommandRunner, PublishConfig, Publisher, ReleaseRequest, SystemCommandRunner,
 };
 
 /// The links a successful release produced.
@@ -45,7 +48,7 @@ pub enum ReleaseError {
     },
     /// A release step (gh/git or wrangler) failed.
     #[error("releasing the run: {0}")]
-    Publish(#[source] test_cabinet_core::Error),
+    Publish(#[source] crate::Error),
 }
 
 /// Read and parse a run record from `run_dir/run-record.json`.

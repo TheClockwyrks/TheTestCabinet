@@ -18,8 +18,8 @@ use serde::Deserialize;
 use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
 
-use crate::error::{Error, Result};
-use crate::metrics::TokenPrices;
+use crate::error::{BackendError, Result};
+use test_cabinet_contracts::metrics::TokenPrices;
 
 // The provider-spelling comparison is part of the contract: gg and the run record
 // agree on it, so it lives in `test-cabinet-contracts` and is re-exported here.
@@ -59,7 +59,7 @@ pub struct ModelDetails {
     pub provider_pin: Option<String>,
 }
 
-/// The launch-time facts a [gg](crate::gg) run needs about one model, resolved in a
+/// The launch-time facts a [gg](test_cabinet_contracts::gg) run needs about one model, resolved in a
 /// single per-model fetch: the context window its accounting is measured against and
 /// the input modalities that decide whether it can be shown an image.
 ///
@@ -308,7 +308,7 @@ impl ModelsListingPrices {
             .await;
         match read {
             Ok(listed) => Ok(listed.get(model_id).copied()),
-            Err(why) => Err(Error::Validation(format!(
+            Err(why) => Err(BackendError::Pricing(format!(
                 "OpenRouter's models listing could not be read: {why}"
             ))),
         }
@@ -509,18 +509,18 @@ impl OpenRouterPrices {
     async fn fetch_endpoints(&self, model_id: &str) -> Result<ModelEndpoints> {
         let url = format!("{}/{model_id}/endpoints", self.endpoint);
         let response = self.get(&url).send().await.map_err(|err| {
-            Error::Validation(format!(
+            BackendError::Pricing(format!(
                 "fetching the OpenRouter catalog facts for `{model_id}`: {err}"
             ))
         })?;
         if !response.status().is_success() {
-            return Err(Error::Validation(format!(
+            return Err(BackendError::Pricing(format!(
                 "model `{model_id}` not found in OpenRouter catalog (HTTP {})",
                 response.status().as_u16()
             )));
         }
         let body: ModelEndpointsResponse = response.json().await.map_err(|err| {
-            Error::Validation(format!(
+            BackendError::Pricing(format!(
                 "parsing the OpenRouter catalog facts for `{model_id}`: {err}"
             ))
         })?;
@@ -530,14 +530,12 @@ impl OpenRouterPrices {
     /// Fetch OpenRouter's full model catalog. A read that outlasts the read timeout is
     /// an `Err`.
     async fn fetch_catalog(&self) -> Result<Vec<Model>> {
-        let response =
-            self.get(&self.endpoint).send().await.map_err(|err| {
-                Error::Validation(format!("fetching the OpenRouter catalog: {err}"))
-            })?;
-        let catalog: ModelsResponse = response
-            .json()
-            .await
-            .map_err(|err| Error::Validation(format!("parsing the OpenRouter catalog: {err}")))?;
+        let response = self.get(&self.endpoint).send().await.map_err(|err| {
+            BackendError::Pricing(format!("fetching the OpenRouter catalog: {err}"))
+        })?;
+        let catalog: ModelsResponse = response.json().await.map_err(|err| {
+            BackendError::Pricing(format!("parsing the OpenRouter catalog: {err}"))
+        })?;
         Ok(catalog.data)
     }
 
@@ -549,7 +547,7 @@ impl OpenRouterPrices {
             .into_iter()
             .find(|model| model.id == model_id)
             .ok_or_else(|| {
-                Error::Validation(format!(
+                BackendError::Pricing(format!(
                     "model `{model_id}` not found in OpenRouter catalog"
                 ))
             })

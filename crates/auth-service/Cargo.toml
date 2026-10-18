@@ -15,10 +15,9 @@ path = "src/lib.rs"
 
 [dependencies]
 # The shared account contract (Account/RegisterRequest/LoginRequest/AuthnResponse)
-# lives in core, the data-contracts crate, so the service serializes exactly what
-# every client deserializes. The auth service does not depend on the rest of core
-# at runtime — only these wire types.
-test-cabinet-core = { path = "../core" }
+# lives in contracts, so the service serializes exactly what every client
+# deserializes.
+test-cabinet-contracts = { path = "../../contracts/crates/contracts" }
 # Passwordless (Microsoft Entra managed-identity) auth for the managed-PostgreSQL
 # deployment — mints a token as the Postgres password and rotates the pool.
 # Engaged only when `TCAB_AUTH_DB_AZURE_AD` is truthy; the default password /

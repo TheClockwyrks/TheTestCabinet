@@ -54,12 +54,13 @@ const DEFAULT_ARTIFACT_SWEEP_GRACE_HOURS: u64 = 24;
 /// The R2 (S3-compatible) credentials and bucket the public snapshot is uploaded
 /// to.
 ///
-/// Defined in `core` because `tcab publish-reference` writes the same bucket
-/// (an asset-generation reference sheet is regenerated and uploaded rather than
+/// Defined with the R2 client in the artifacts service's crate, the object-store
+/// writer, which `tcab publish-asset-reference` also writes the bucket through (an
+/// asset-generation reference sheet is regenerated and uploaded rather than
 /// committed, so it cannot travel through the backend's git checkout). Re-exported
 /// here so `Config`'s field type reads naturally alongside the rest of the
 /// backend's configuration.
-pub use test_cabinet_core::r2::R2Config;
+pub use test_cabinet_artifacts::r2::R2Config;
 
 /// The fully resolved backend configuration.
 #[derive(Debug, Clone)]
@@ -231,7 +232,7 @@ pub struct Config {
     /// serves no public snapshot (a single-box dev setup), in which case a client
     /// simply cannot resolve snapshot-hosted media.
     ///
-    /// Do not confuse this with [`R2Config::endpoint`](test_cabinet_core::r2::R2Config)
+    /// Do not confuse this with [`R2Config::endpoint`](test_cabinet_artifacts::r2::R2Config)
     /// (`TCAB_R2_ENDPOINT`): that is the S3-compatible **write** endpoint the backend
     /// authenticates against with SigV4 to upload a snapshot, and it is a credentialed
     /// control-plane URL that must never reach a browser. This one is the anonymous
@@ -240,7 +241,7 @@ pub struct Config {
     ///
     /// The console needs it because some snapshot objects are addressed by a
     /// *derivable* key rather than a stored URL — an asset-generation variant's
-    /// published reference frames (see `test_cabinet_core::asset_reference`), whose
+    /// published reference frames (see `test_cabinet_contracts::asset_reference`), whose
     /// keys the client builds itself from the case triple and a frame index. Joining
     /// them onto a base is the client's job; the backend only advertises the base,
     /// exactly as it does for `artifacts_public_url` and `arena_url`.

@@ -28,8 +28,8 @@ mod tests;
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
-use test_cabinet_core::gg::{GgProviderStat, GgTurnErrorKind, GgTurnErrorType};
-use test_cabinet_core::run_record::RunRecord;
+use test_cabinet_contracts::gg::{GgProviderStat, GgTurnErrorKind, GgTurnErrorType};
+use test_cabinet_contracts::run_record::RunRecord;
 
 pub use test_cabinet_contracts::backend_api::stats::{
     CabinetCostOut, CabinetStatsResponse, CabinetTokensOut, CabinetWeekOut, ModelAccuracyOut,
@@ -55,7 +55,7 @@ pub struct GgRunFacts {
     pub execution_mode: String,
     /// The summary's error rollup, kept whole: the run-level fallback for a
     /// record that predates per-provider slices.
-    pub errors: test_cabinet_core::gg::GgErrorSummary,
+    pub errors: test_cabinet_contracts::gg::GgErrorSummary,
     /// The summary's dispatched-tool-call total, or `0` for a record that
     /// predates it — which the accuracy fold treats as *unrecorded*, never as
     /// "no calls".
@@ -213,7 +213,7 @@ const PROVIDER_FAULT_ERRORS: [GgTurnErrorType; 3] = [
 ];
 
 /// Each provider's recorded fault rate for one model, across every recorded gg run of it, keyed by
-/// the [provider key](test_cabinet_core::pricing::provider_key) the candidate order reads.
+/// the [provider key](crate::pricing::provider_key) the candidate order reads.
 ///
 /// `model_ids` is every id the model is recorded under (its OpenRouter id and, for a curated
 /// model, its aliases). A slice counts toward the model when its own model id is one of them, or
@@ -238,7 +238,7 @@ pub fn provider_fault_rates(
                 continue;
             }
             let (faults, calls) = cells
-                .entry(test_cabinet_core::pricing::provider_key(provider))
+                .entry(crate::pricing::provider_key(provider))
                 .or_default();
             let errors: u64 = PROVIDER_FAULT_ERRORS
                 .iter()
@@ -462,7 +462,7 @@ pub fn fold_model_accuracy(facts: &[Arc<GgRunFacts>]) -> ModelAccuracyResponse {
 /// mapped through the enum's own [`kind`](GgTurnErrorType::kind) — so a type
 /// added to the contract regroups here without a hand-kept list. A wire id the
 /// enum does not know (a record written by a newer gg) reaches only the
-/// passthrough map, exactly as [`GgErrorSummary`](test_cabinet_core::gg::GgErrorSummary)'s `by_type` treats it.
+/// passthrough map, exactly as [`GgErrorSummary`](test_cabinet_contracts::gg::GgErrorSummary)'s `by_type` treats it.
 fn fold_error_groups(acc: &mut RacAccuracyOut, by_type: &BTreeMap<String, u64>) {
     for (wire_id, count) in by_type {
         *acc.by_type.entry(wire_id.clone()).or_default() += count;
@@ -503,7 +503,7 @@ const CABINET_WEEKS: i64 = 52;
 ///
 /// * The lifted `total_tokens` column stores `0` for a run whose metrics
 ///   reported no tokens at all (the record's total is `None` — see
-///   [`TokenCounts::total`](test_cabinet_core::metrics::TokenCounts::total)),
+///   [`TokenCounts::total`](test_cabinet_contracts::metrics::TokenCounts::total)),
 ///   which the projection cannot tell apart from a genuine zero. A `0` is
 ///   therefore counted as **unreported** — a run that truly consumed zero
 ///   tokens reported nothing worth summing, so the approximation costs the

@@ -232,8 +232,8 @@ fn serve(
         )));
     }
     let base_href = reference_build_url(slug, version, engine);
-    let file =
-        test_cabinet_core::playable::serve_build_file(&dir, path, &base_href).ok_or_else(|| {
+    let file = test_cabinet_contracts::layout::serve_build_file(&dir, path, &base_href)
+        .ok_or_else(|| {
             ApiError::not_found(format!(
                 "no file `{path}` in the `{engine}` reference build of test suite \
                  `{slug}@{version}`"

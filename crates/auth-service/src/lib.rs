@@ -4,7 +4,7 @@
 //! is a small, separately-deployed HTTP service — the only holder of user
 //! accounts. It offers open self-registration and password login, minting opaque
 //! bearer tokens (Argon2id password hashing, SHA-256 token-at-rest hashing). The
-//! backend does not store accounts; it [verifies](test_cabinet_core::AccountsClient::verify)
+//! backend does not store accounts; it verifies
 //! each request's token against this service and attributes the resolved account
 //! to the review.
 //!

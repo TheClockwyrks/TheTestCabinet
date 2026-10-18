@@ -1,6 +1,5 @@
 use super::*;
-use crate::harness::HarnessRegistry;
-use crate::harness_registry::DefaultHarnessRegistry;
+use test_cabinet_contracts::harness::api_key_env;
 
 #[test]
 fn strips_openrouter_prefix_for_every_harness() {
@@ -136,10 +135,8 @@ fn launch_id_defaults_absent_provider_to_openrouter() {
 /// with `OPENROUTER_API_KEY`. Asserting it here keeps the two from drifting.
 #[test]
 fn routes_through_openrouter_matches_api_key_env() {
-    let registry = DefaultHarnessRegistry::new();
     for harness in HarnessSlug::ALL {
-        let uses_openrouter_key =
-            registry.get(harness).and_then(|h| h.api_key_env()) == Some("OPENROUTER_API_KEY");
+        let uses_openrouter_key = api_key_env(harness) == Some("OPENROUTER_API_KEY");
         assert_eq!(
             harness.routes_through_openrouter(),
             uses_openrouter_key,

@@ -17,11 +17,11 @@ use crate::comparison::{
 use crate::comparison_stats::{
     MetricSummary, MetricSummaryExt, PassRate, PassRateExt, seed_from_run_ids,
 };
-use crate::metrics::TokenCounts;
 use crate::model_id::canonical_model_id;
 use crate::review::Score;
-use crate::run_record::{AuthMode, RunRecord};
-use crate::test_case::ReviewItem;
+use test_cabinet_contracts::metrics::TokenCounts;
+use test_cabinet_contracts::run_record::{AuthMode, RunRecord};
+use test_cabinet_contracts::test_case::ReviewItem;
 
 /// A run counts as passing only when it earned every auto-covered point; this is
 /// the float tolerance for that all-or-nothing check.

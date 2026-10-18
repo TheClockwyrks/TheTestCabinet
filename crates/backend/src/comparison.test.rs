@@ -3,8 +3,8 @@
 //! treats a contract failure as a fail, and leaves an unmet precondition to a human.
 
 use super::*;
-use crate::test_case::{ReviewItem, SubReviewItem};
-use crate::validation::{AutoVerdict, DebugScriptResult, Inconclusive};
+use test_cabinet_contracts::test_case::{ReviewItem, SubReviewItem};
+use test_cabinet_contracts::validation::{AutoVerdict, DebugScriptResult, Inconclusive};
 
 /// A binary review item worth `weight`, scored, no sub-items.
 fn item(id: &str, weight: u32) -> ReviewItem {

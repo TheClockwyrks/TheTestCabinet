@@ -8,7 +8,7 @@
 
 use super::*;
 
-use test_cabinet_core::gg::{
+use test_cabinet_contracts::gg::{
     GgAgentConfig, GgCapabilitySet, GgConfigSlot, GgModelSlot, GgSlotTarget,
 };
 
@@ -594,7 +594,7 @@ fn a_hand_launched_run_and_a_scheduled_run_of_one_configuration_share_a_cell() {
     );
     let job = crate::api::jobs::build_new_job(
         &body,
-        test_cabinet_core::test_case::TestType::EndToEnd,
+        test_cabinet_suites::test_case::TestType::EndToEnd,
         "2026-09-01T00:00:00Z",
         // The attribution is not part of a cell — a run counts toward it whoever asked for
         // one — so the by-hand and scheduled forms are interchangeable here.

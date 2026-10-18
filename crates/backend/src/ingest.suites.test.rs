@@ -545,9 +545,9 @@ fn a_lowered_version_holds_the_suite_it_was_lowered_from() {
     }
     // And the rebuilt folder reads back as the suite version it came from.
     let root = store.version_dir("carom-end-to-end", "v1.0.0");
-    let suite = test_cabinet_core::test_suite::load_suite_manifest_of(&root)
+    let suite = test_cabinet_suites::test_suite::load_suite_manifest_of(&root)
         .expect("the stored tree carries its suite manifest");
-    let loaded = test_cabinet_core::test_suite::SuiteVersion::load(&suite, &root)
+    let loaded = test_cabinet_suites::test_suite::SuiteVersion::load(&suite, &root)
         .expect("the stored suite loads");
     assert_eq!(loaded.suite.slug, "carom");
     assert_eq!(loaded.manifest.version.as_deref(), Some("1.0.0"));

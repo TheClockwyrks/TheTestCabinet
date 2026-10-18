@@ -1,6 +1,6 @@
 use super::*;
 
-use test_cabinet_core::TestCaseGroup;
+use test_cabinet_suites::test_case_group::TestCaseGroup;
 
 // The wire shape drops `rank` (applied at ingest, server-side) and keeps
 // everything else, `summary`'s null included.

@@ -17,7 +17,7 @@
 //! never calls `POST /runs` (which needs an account token) — it reports via the
 //! per-publish-job token instead. On a terminal **failure** it records the reason on
 //! the publish job and pushes a `publish-failed`
-//! [notification](test_cabinet_core::NotificationKind::PublishFailed) onto the
+//! [notification](test_cabinet_contracts::job_api::NotificationKind::PublishFailed) onto the
 //! console's worker-wide feed, because a console that enqueued the publish and
 //! navigated away is no longer watching the live stream.
 
@@ -36,13 +36,16 @@ use tokio::sync::broadcast::error::RecvError;
 
 // The notification shapes this module raises a failed publish on; they live in
 // `core` alongside the run-queue's, and are re-exported by `crate::relay`.
-use test_cabinet_core::{JobSummary, Notification};
+use test_cabinet_contracts::job_api::JobSummary;
+use test_cabinet_contracts::job_api::Notification;
 // The publish-queue wire shapes the dispatcher and publisher speak live in `core`
 // (so neither must depend on this crate); re-export them so this module refers to
 // them unqualified, mirroring `jobs`'s re-export of the run-queue shapes.
-pub use test_cabinet_core::{
-    PublishClaim, PublishJobState, PublishProgress, PublishResult, PublishState,
-};
+pub use test_cabinet_contracts::publish_job_api::PublishClaim;
+pub use test_cabinet_contracts::publish_job_api::PublishJobState;
+pub use test_cabinet_contracts::publish_job_api::PublishProgress;
+pub use test_cabinet_contracts::publish_job_api::PublishResult;
+pub use test_cabinet_contracts::publish_job_api::PublishState;
 use test_cabinet_entities::{publish_job, run};
 
 use crate::auth::{ServiceAuth, bearer_token, token_matches};

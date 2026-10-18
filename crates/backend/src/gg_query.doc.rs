@@ -1,4 +1,4 @@
-//! The **document builder**: one gg run's [record](crate::run_record::RunRecord) plus
+//! The **document builder**: one gg run's [record](test_cabinet_contracts::run_record::RunRecord) plus
 //! the store's lifecycle columns, reduced to the flat [`GgRunDoc`] every
 //! [query](super::GgQuery) runs over.
 //!
@@ -17,18 +17,18 @@ use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
 
 use super::GgRunDoc;
-use crate::code_analysis::{CodeAnalysisSummary, CodeLanguage};
-use crate::gg::{GgCapabilitySet, GgSessionSummary};
 use crate::review::Rating;
-use crate::run_record::RunRecord;
+use test_cabinet_contracts::code_analysis::{CodeAnalysisSummary, CodeLanguage};
+use test_cabinet_contracts::gg::{GgCapabilitySet, GgSessionSummary};
+use test_cabinet_contracts::run_record::RunRecord;
 
 /// The capability-id vocabulary the `cap.*` namespace is made total over, re-exported from
-/// [`crate::gg`] where it is declared.
+/// [`test_cabinet_contracts::gg`] where it is declared.
 ///
 /// One list, in one place: the launch check reads it to refuse an id gg does not have, and the
 /// builder reads it to emit a field per id. A second copy here is exactly the drift that would let
 /// a run be configured with a capability no document could report on.
-pub use crate::gg::GG_CAPABILITY_CATALOG;
+pub use test_cabinet_contracts::gg::GG_CAPABILITY_CATALOG;
 
 /// The fields that are epoch-millisecond timestamps rather than plain numbers.
 ///
@@ -39,7 +39,7 @@ pub use crate::gg::GG_CAPABILITY_CATALOG;
 /// editor offers a date picker and a histogram interval instead of a raw number box.
 pub const GG_DATE_FIELDS: &[&str] = &["started", "finished"];
 
-/// The bucket a run that breached no [execution ceiling](crate::gg::GgLimitKind) falls
+/// The bucket a run that breached no [execution ceiling](test_cabinet_contracts::gg::GgLimitKind) falls
 /// into on the `limit` field. Deliberately a value rather than an absence: "ran to its
 /// own conclusion" is the arm every ceiling comparison is measured against, so it must
 /// be groupable.
@@ -73,7 +73,7 @@ pub const CODE_LANGUAGE_NONE: &str = "none";
 /// current builder: `statusDetail` is the run status's free-text failure detail, which
 /// is a stack trace, a container error or an assertion message — the console's most
 /// useful triage field and precisely the class of string that has no business on a
-/// public site even after [scrubbing](crate::redact::SecretScrubber). The builder does
+/// public site even after [scrubbing](test_cabinet_redact::SecretScrubber). The builder does
 /// not emit it today; the deny-list is here so that the day it does, the export already
 /// refuses it rather than shipping it in the first snapshot after the change.
 ///
@@ -171,7 +171,7 @@ pub fn flatten_json(prefix: &str, value: &Value, out: &mut GgRunDoc) {
 /// | `summary.<path>` | the **whole** session summary, flattened |
 /// | `model.<id>.tokens`, `model.<id>.cost` | the per-`(slot, model)` spend rollup |
 /// | `metric.*` | run time, tokens and cost — **absent, never zero**, on a run that produced nothing |
-/// | `code.<path>`, `code.language` | the [code analysis](crate::code_analysis) summary, flattened, plus one derived scalar |
+/// | `code.<path>`, `code.language` | the [code analysis](test_cabinet_contracts::code_analysis) summary, flattened, plus one derived scalar |
 /// | `has.<block>` | presence markers, so a rate's denominator is expressible |
 ///
 /// Two of those rows carry most of the design. `summary.<path>` **subsumes the entire
@@ -186,7 +186,7 @@ pub fn flatten_json(prefix: &str, value: &Value, out: &mut GgRunDoc) {
 /// X", and `avg(cap.compaction)` is only an honest enablement rate if it is. Reading
 /// the root alone would report `false` for a run that enabled a capability on the one
 /// subagent under study, which is the same defect
-/// [`GgCapabilitySet::any_agent_enabled`](crate::gg::GgCapabilitySet::any_agent_enabled)
+/// [`GgCapabilitySet::any_agent_enabled`](test_cabinet_contracts::gg::GgCapabilitySet::any_agent_enabled)
 /// was introduced to fix. Per-agent detail is not lost either: each
 /// agent's own enablements are written **sparsely** as `agent.<profileId>.cap.<id>`, so
 /// a per-agent difference is expressible without making every document carry the catalog
@@ -224,7 +224,7 @@ pub fn build_run_doc(record: &RunRecord, lifecycle: &GgDocLifecycle) -> GgRunDoc
     // --- how it was configured ---------------------------------------------------
     doc.insert("model", subject.model_id.clone());
     doc.insert("orchestrator", subject.orchestrator_slug.clone());
-    // Configuration, not identity: the [engine](crate::engine) is chosen per run
+    // Configuration, not identity: the [engine](test_cabinet_contracts::engine) is chosen per run
     // beside the harness and the orchestrator, so two documents that agree on
     // `case`/`caseVersion`/`variant` may still describe builds written against
     // different runtimes — and grouping by `engine` is how that shows.
@@ -265,8 +265,8 @@ pub fn build_run_doc(record: &RunRecord, lifecycle: &GgDocLifecycle) -> GgRunDoc
 /// Write the `preset` / `agents` / `agent.<profileId>.model` / `cap.*` /
 /// `agent.<profileId>.cap.<id>` namespaces.
 ///
-/// The per-agent fields are keyed by the profile's [id](crate::gg::GgAgentConfig::id), not its display
-/// [name](crate::gg::GgAgentConfig::name): the id is unique within a set by construction, where two profiles
+/// The per-agent fields are keyed by the profile's [id](test_cabinet_contracts::gg::GgAgentConfig::id), not its display
+/// [name](test_cabinet_contracts::gg::GgAgentConfig::name): the id is unique within a set by construction, where two profiles
 /// may share a name — and two profiles sharing a field key would silently merge into one, so a
 /// query would read one profile's configuration as the other's. The id is minted readable
 /// (`reviewer`, `reviewer-2`), so a query written by hand still says what it means.
@@ -528,7 +528,7 @@ fn insert_code_analysis(doc: &mut GgRunDoc, code: &CodeAnalysisSummary) {
 ///
 /// What this is **not**: it is not secret scrubbing. A leaked API key is short and
 /// deliberately shaped, and it is caught downstream by
-/// [`SecretScrubber::scrub_json`](crate::redact::SecretScrubber::scrub_json) over the
+/// [`SecretScrubber::scrub_json`](test_cabinet_redact::SecretScrubber::scrub_json) over the
 /// serialized export object. The two run in sequence and neither subsumes the other.
 ///
 /// Nor does it decide *which* runs are exported: dropping an unreleased case's

@@ -8,13 +8,11 @@
 //! creates one publisher Job per claimed publish job; everything it needs
 //! arrives through `TCAB_*` env (see [`config`]).
 //!
-//! It re-implements **none** of the release behavior: the GitHub-repo + Pages work
-//! is exactly [`release_code`](test_cabinet_core::Publisher::release_code) +
-//! [`release_playable_build`](test_cabinet_core::Publisher::release_playable_build),
-//! the same two steps a local `tcab publish` drives — only the inputs are downloaded
-//! from the artifact service (see [`download`]) instead of read off a local checkout,
-//! and the outcome is reported over the publish-job token (see [`client`]) rather
-//! than printed.
+//! The GitHub-repo and Pages work is [`release_code`](release::Publisher::release_code)
+//! and [`release_playable_build`](release::Publisher::release_playable_build) (see
+//! [`release`]); the inputs are downloaded from the artifact service (see
+//! [`download`]), and the outcome is reported over the publish-job token (see
+//! [`client`]).
 //!
 //! There is no app-level auth on the publisher itself — it is a client, not a
 //! server. Its calls authenticate to the backend with the per-publish-job token the
@@ -25,4 +23,8 @@
 pub mod client;
 pub mod config;
 pub mod download;
+pub mod error;
 pub mod publish;
+pub mod release;
+
+pub use error::{Error, Result};

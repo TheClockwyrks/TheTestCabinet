@@ -1,11 +1,11 @@
 // The shared scoring goldens, executed against the TypeScript mirror.
 //
 // Every file under `contracts/crates/contracts/fixtures/scoring/` holds the cases one function
-// pair must agree on: a Rust function (crates/core/src/review.rs,
-// crates/core/src/comparison.rs or contracts/crates/contracts/src/test_case.rs) and its mirror
+// pair must agree on: a Rust function (crates/backend/src/review.rs,
+// crates/backend/src/comparison.rs or contracts/crates/contracts/src/test_case.rs) and its mirror
 // in `./scoring`. The files are read **directly off the crate**, never copied into this
 // package, so a case added on either side is executed by both suites; the Rust half is
-// `crates/core/src/review.goldens.test.rs`, and the expectations are its output.
+// `crates/backend/src/review.goldens.test.rs`, and the expectations are its output.
 //
 // The two halves agree on strictness. The Rust structs are `deny_unknown_fields`, and
 // this file rejects unknown keys for the same reason: a misspelled key would fall back

@@ -4,7 +4,7 @@
 //! including the static build output the validator produced (`dist`/`build`/`out`).
 //! A *published* run deploys that build to its own Cloudflare Pages host, where it
 //! lives at the host root and its absolute asset references (`/assets/…`) resolve
-//! (see [`crate::publish`]). But a reviewer must be able to play an *unpublished*
+//! (the publisher's release). But a reviewer must be able to play an *unpublished*
 //! run too — that is the entire point of reviewing before publishing — so the
 //! artifact service serves the same on-disk build over HTTP, discovering and
 //! serving it through the helpers here.
@@ -21,54 +21,25 @@
 //! build's base: it injects a `<base href>` and de-absolutizes root-relative
 //! `src`/`href` references so the injected base applies (a `<base href>` does not
 //! affect already-absolute `/…` URLs). Non-HTML assets are served byte-for-byte.
+//! That rule is [`serve_build_file`], from `test_cabinet_contracts::layout`, because
+//! the backend serves a suite's reference builds under a sub-path by the same rule.
 
-use crate::content_labels::{self, ContentLabels};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
-// The build-output names, the rule that finds a run's build among them, and the
-// rules a proof is named and labelled by are run-tree layout every side agrees on
-// (the validator, the code analyzer, the snapshot builder, the gallery), so they
-// live in `test_cabinet_contracts::layout` and are re-exported here beside the
+use test_cabinet_contracts::RunRecord;
+use test_cabinet_contracts::test_case::{MATERIAL_JSON_DEST, UI_JSON_DEST};
+use test_cabinet_suites::content_labels::{self, ContentLabels};
+
+// The build-output names, the rule that finds a run's build among them, the rule a
+// build file is served under a sub-path by, and the rules a proof is named and
+// labelled by are run-tree layout every side agrees on (the validator, the code
+// analyzer, the snapshot builder, the gallery, the backend's reference builds), so
+// they live in `test_cabinet_contracts::layout` and are re-exported here beside the
 // serving that uses them.
 pub use test_cabinet_contracts::layout::{
-    BUILD_OUTPUTS, find_build_output, proof_labelled_name, proof_published_extension,
-    proof_served_extension,
+    BUILD_OUTPUTS, ServedBuildFile, find_build_output, proof_labelled_name,
+    proof_published_extension, proof_served_extension, serve_build_file,
 };
-
-/// A file resolved from a build, ready to write to an HTTP or IPC response.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ServedBuildFile {
-    /// The `Content-Type` to send, derived from the file extension.
-    pub content_type: &'static str,
-    /// The file body, with HTML relocated under the build base (see module docs).
-    pub body: Vec<u8>,
-}
-
-/// Resolve and read one file from a run's build directory for serving under
-/// `base_href` — the per-run URL path the build is mounted at (with a trailing
-/// slash), e.g. `/runs/<id>/build/`.
-///
-/// `rel_path` is the request path *within* the build, without a leading slash; an
-/// empty path or one naming a directory resolves to that directory's
-/// `index.html`. HTML responses are relocated under `base_href`; every other
-/// asset is returned verbatim. Returns `None` when the file does not exist or the
-/// path escapes the build directory (a traversal attempt) — the caller maps that
-/// to a 404.
-pub fn serve_build_file(
-    build_dir: &Path,
-    rel_path: &str,
-    base_href: &str,
-) -> Option<ServedBuildFile> {
-    let target = resolve_within(build_dir, rel_path)?;
-    let bytes = std::fs::read(&target).ok()?;
-    let content_type = content_type_for(&target);
-    let body = if content_type.starts_with("text/html") {
-        rewrite_html_base(&bytes, base_href)
-    } else {
-        bytes
-    };
-    Some(ServedBuildFile { content_type, body })
-}
 
 /// A proof-of-implementation media file resolved from a run, ready to write to an
 /// HTTP or IPC response.
@@ -77,7 +48,7 @@ pub struct ServedProofFile {
     /// The `Content-Type` to send, derived from the file name.
     pub content_type: &'static str,
     /// The `Content-Encoding` to send, `None` unless the bytes are a framed
-    /// document (see [`crate::content_labels`]).
+    /// document (see [`content_labels`]).
     pub content_encoding: Option<&'static str>,
     /// The proof media bytes, served verbatim.
     pub body: Vec<u8>,
@@ -99,7 +70,7 @@ pub fn serve_proof_file(run_dir: &Path, file: &str) -> Option<ServedProofFile> {
     let proof_id = file.rsplit_once('.').map(|(stem, _)| stem).unwrap_or(file);
 
     let record_bytes = std::fs::read(run_dir.join("run-record.json")).ok()?;
-    let record: crate::RunRecord = serde_json::from_slice(&record_bytes).ok()?;
+    let record: RunRecord = serde_json::from_slice(&record_bytes).ok()?;
     let proof = record.validation.proofs.iter().find(|p| p.id == proof_id)?;
 
     let body = std::fs::read(run_dir.join("implementation").join(&proof.dest)).ok()?;
@@ -118,7 +89,7 @@ pub struct ServedValidationFile {
     /// The `Content-Type` to send, derived from the file name.
     pub content_type: &'static str,
     /// The `Content-Encoding` to send, `None` unless the bytes are a framed
-    /// document (see [`crate::content_labels`]).
+    /// document (see [`content_labels`]).
     pub content_encoding: Option<&'static str>,
     /// The media bytes, served verbatim.
     pub body: Vec<u8>,
@@ -137,7 +108,7 @@ const LEGACY_VENDOR_DIR: &str = ".tcab";
 /// `run-record.json` and its collected `implementation/` tree. `file` is the flat,
 /// addressable media name a debug script's output is stored under —
 /// `<item>__<output>.<ext>` for the model's build, `<item>__<output>.baseline.<ext>`
-/// for the reference implementation (see `crate::validator::validation_media_name`).
+/// for the reference implementation (see `test_cabinet_contracts::layout::validation_media_name`).
 /// The bytes live in the collected tree under `.vendor/validation/`, so this reads
 /// straight from `implementation/.vendor/validation/<file>`. Returns `None` when the
 /// file is missing or the name would escape the directory — the caller maps that to
@@ -146,7 +117,7 @@ const LEGACY_VENDOR_DIR: &str = ".tcab";
 /// The same directory also holds a recording's **shared image store** —
 /// `img.<id>.png` and `img.<id>.bin`, the deduplicated bitmaps and pixel buffers a
 /// recording's entries name rather than carry (see
-/// [`crate::VALIDATION_IMAGE_PREFIX`]). Those names are flat single segments like
+/// [`VALIDATION_IMAGE_PREFIX`](test_cabinet_contracts::layout::VALIDATION_IMAGE_PREFIX)). Those names are flat single segments like
 /// every other one here, so they are served by this function and its route with no
 /// change: that a store file resolves through exactly the lookup the recording it
 /// belongs to resolved through is the whole reason the reference on an entry is a
@@ -180,13 +151,13 @@ pub struct ServedShowcaseFile {
     /// The `Content-Type` to send, derived from the file name.
     pub content_type: &'static str,
     /// The `Content-Encoding` to send, `None` unless the bytes are a framed
-    /// document (see [`crate::content_labels`]).
+    /// document (see [`content_labels`]).
     pub content_encoding: Option<&'static str>,
     /// The media bytes, served verbatim.
     pub body: Vec<u8>,
 }
 
-/// Resolve and read one of a run's [showcase](crate::RunShowcase) files from a
+/// Resolve and read one of a run's [showcase](test_cabinet_contracts::RunShowcase) files from a
 /// produced run's output directory, for serving to a reviewer the same way
 /// [`serve_validation_file`] serves validation media.
 ///
@@ -228,7 +199,7 @@ pub struct ServedAssetFile {
     /// The `Content-Type` to send, derived from the file name.
     pub content_type: &'static str,
     /// The `Content-Encoding` to send, `None` unless the bytes are a framed
-    /// document (see [`crate::content_labels`]).
+    /// document (see [`content_labels`]).
     pub content_encoding: Option<&'static str>,
     /// The media bytes, served verbatim.
     pub body: Vec<u8>,
@@ -262,7 +233,7 @@ pub fn serve_asset_file(run_dir: &Path, file: &str) -> Option<ServedAssetFile> {
     let (kind, frame) = parse_asset_request(file)?;
 
     let record_bytes = std::fs::read(run_dir.join("run-record.json")).ok()?;
-    let record: crate::RunRecord = serde_json::from_slice(&record_bytes).ok()?;
+    let record: RunRecord = serde_json::from_slice(&record_bytes).ok()?;
 
     // The replay of an adversarial run is served as an ordinary run asset too: the
     // browser replay player fetches `replay.json` over the same `/asset/{file}`
@@ -304,7 +275,7 @@ pub fn serve_asset_file(run_dir: &Path, file: &str) -> Option<ServedAssetFile> {
         // `-<index>` in declared order — plus the `ui.json` manifest. Matches the
         // snapshot and driver enumerators.
         match (kind, frame) {
-            ("ui", None) => crate::test_case::UI_JSON_DEST,
+            ("ui", None) => UI_JSON_DEST,
             ("element", Some(index)) => &ui.elements.get(index as usize)?.image,
             ("element", None) => &ui.elements.first()?.image,
             _ => return None,
@@ -313,7 +284,7 @@ pub fn serve_asset_file(run_dir: &Path, file: &str) -> Option<ServedAssetFile> {
         // A material run serves each map by its declared index (`map-<index>.png`,
         // always suffixed) and the `material.json` manifest.
         match (kind, frame) {
-            ("material", None) => crate::test_case::MATERIAL_JSON_DEST,
+            ("material", None) => MATERIAL_JSON_DEST,
             ("map", Some(index)) => &material.maps.get(index as usize)?.image,
             _ => return None,
         }
@@ -419,7 +390,7 @@ fn asset_labels(file: &str) -> ContentLabels {
 
 /// The labels for a proof media file, by file name — the image, video, and
 /// recording formats a proof's `dest` (or a validation output) may name (see
-/// [`MediaKind`](crate::test_case::MediaKind)). Anything unrecognized falls back to
+/// [`MediaKind`](test_cabinet_contracts::test_case::MediaKind)). Anything unrecognized falls back to
 /// a binary stream.
 fn proof_labels(file: &str) -> ContentLabels {
     let ext = Path::new(file)
@@ -434,7 +405,7 @@ fn proof_labels(file: &str) -> ContentLabels {
         Some("webm") => ContentLabels::plain("video/webm"),
         Some("mp4") => ContentLabels::plain("video/mp4"),
         // The raw RGBA bytes of a `pixels` entry a recording keeps beside itself
-        // (`img.<id>.bin` — see [`crate::VALIDATION_IMAGE_PREFIX`]): four bytes per
+        // (`img.<id>.bin` — see [`VALIDATION_IMAGE_PREFIX`](test_cabinet_contracts::layout::VALIDATION_IMAGE_PREFIX)): four bytes per
         // pixel in row order and no header of its own, because the entry that names
         // it carries the dimensions. The fallback arm below would already label it
         // this way; it is named explicitly so a reader of this match knows the store
@@ -461,143 +432,6 @@ fn showcase_labels(file: &str) -> ContentLabels {
     match ext.as_deref() {
         Some("md") => ContentLabels::plain("text/markdown; charset=utf-8"),
         _ => proof_labels(file),
-    }
-}
-
-/// Resolve a request path to a real file inside `build_dir`, refusing anything
-/// that would escape it. An empty path or a directory resolves to `index.html`.
-fn resolve_within(build_dir: &Path, rel_path: &str) -> Option<PathBuf> {
-    let mut path = build_dir.to_path_buf();
-    for segment in rel_path.split('/') {
-        // Skip empties (leading/trailing/`//`) and `.`; refuse `..` outright
-        // rather than relying on canonicalization alone to catch traversal.
-        if segment.is_empty() || segment == "." {
-            continue;
-        }
-        if segment == ".." {
-            return None;
-        }
-        path.push(segment);
-    }
-    // A directory request (including the build root) serves its index.html.
-    if path.is_dir() {
-        path.push("index.html");
-    }
-    // Defense in depth: the resolved real path must stay within the build dir, so
-    // a symlink inside the build cannot point the response outside it.
-    let base = build_dir.canonicalize().ok()?;
-    let resolved = path.canonicalize().ok()?;
-    resolved.starts_with(&base).then_some(resolved)
-}
-
-/// The `Content-Type` for a built asset, by file extension. Covers what a Vite
-/// game build emits (the entry HTML and JS, plus any bundled CSS, wasm, images,
-/// fonts and audio); anything unrecognized falls back to a binary stream.
-fn content_type_for(path: &Path) -> &'static str {
-    let ext = path
-        .extension()
-        .and_then(|e| e.to_str())
-        .map(str::to_ascii_lowercase);
-    match ext.as_deref() {
-        Some("html" | "htm") => "text/html; charset=utf-8",
-        Some("js" | "mjs") => "text/javascript; charset=utf-8",
-        Some("css") => "text/css; charset=utf-8",
-        Some("json" | "map") => "application/json; charset=utf-8",
-        Some("wasm") => "application/wasm",
-        Some("svg") => "image/svg+xml",
-        Some("png") => "image/png",
-        Some("jpg" | "jpeg") => "image/jpeg",
-        Some("gif") => "image/gif",
-        Some("webp") => "image/webp",
-        Some("ico") => "image/x-icon",
-        Some("woff2") => "font/woff2",
-        Some("woff") => "font/woff",
-        Some("ttf") => "font/ttf",
-        Some("otf") => "font/otf",
-        Some("mp3") => "audio/mpeg",
-        Some("ogg") => "audio/ogg",
-        Some("wav") => "audio/wav",
-        Some("txt") => "text/plain; charset=utf-8",
-        _ => "application/octet-stream",
-    }
-}
-
-/// Relocate an HTML document under `base_href`: inject a `<base href>` at the
-/// start of `<head>` and de-absolutize root-relative `src`/`href` references so
-/// the base applies to them. Non-UTF-8 input is returned unchanged.
-fn rewrite_html_base(bytes: &[u8], base_href: &str) -> Vec<u8> {
-    let Ok(html) = std::str::from_utf8(bytes) else {
-        return bytes.to_vec();
-    };
-    // De-absolutize the document's own references first, then inject the base —
-    // injecting first would let de-absolutization strip the leading slash off the
-    // base tag's own (intentionally absolute) `href`.
-    let deabsolutized = deabsolutize(html);
-    let base_tag = format!("<base href=\"{base_href}\">");
-    match head_insert_index(&deabsolutized) {
-        Some(idx) => {
-            let mut out = String::with_capacity(deabsolutized.len() + base_tag.len());
-            out.push_str(&deabsolutized[..idx]);
-            out.push_str(&base_tag);
-            out.push_str(&deabsolutized[idx..]);
-            out.into_bytes()
-        }
-        // No <head> to anchor to: prepend the base so relative refs still resolve.
-        None => format!("{base_tag}{deabsolutized}").into_bytes(),
-    }
-}
-
-/// The byte offset just after the opening `<head …>` tag, or `None` when the
-/// document has no head.
-fn head_insert_index(html: &str) -> Option<usize> {
-    let lower = html.to_ascii_lowercase();
-    let head = lower.find("<head")?;
-    let close = lower[head..].find('>')?;
-    Some(head + close + 1)
-}
-
-/// Strip the leading slash from root-relative `src`/`href` attribute values so a
-/// `<base href>` resolves them under the build path. Protocol-relative `//host`
-/// references and absolute URLs with a scheme are left untouched.
-fn deabsolutize(html: &str) -> String {
-    const PREFIXES: [&str; 4] = ["src=\"/", "src='/", "href=\"/", "href='/"];
-    let bytes = html.as_bytes();
-    let mut out = String::with_capacity(html.len());
-    let mut i = 0;
-    'scan: while i < bytes.len() {
-        for prefix in PREFIXES {
-            let pat = prefix.as_bytes();
-            if bytes[i..].starts_with(pat) {
-                // Leave protocol-relative `//` alone — only a single leading
-                // slash is a root-relative path to de-absolutize.
-                let after = i + pat.len();
-                if bytes.get(after) != Some(&b'/') {
-                    // Emit the attribute prefix without its trailing slash, then
-                    // resume just past the slash we dropped.
-                    out.push_str(&prefix[..prefix.len() - 1]);
-                    i = after;
-                    continue 'scan;
-                }
-            }
-        }
-        // Copy one whole UTF-8 character so multibyte content survives intact.
-        let len = utf8_len(bytes[i]);
-        out.push_str(&html[i..i + len]);
-        i += len;
-    }
-    out
-}
-
-/// The byte length of a UTF-8 character from its leading byte.
-fn utf8_len(lead: u8) -> usize {
-    match lead {
-        b if b < 0x80 => 1,
-        b if b >> 5 == 0b110 => 2,
-        b if b >> 4 == 0b1110 => 3,
-        b if b >> 3 == 0b11110 => 4,
-        // A stray continuation byte is copied alone rather than panicking; the
-        // input came from `from_utf8` so this is unreachable in practice.
-        _ => 1,
     }
 }
 

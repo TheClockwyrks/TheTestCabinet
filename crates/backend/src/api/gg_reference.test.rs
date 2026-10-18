@@ -1,4 +1,6 @@
-use test_cabinet_core::gg_reference::{GgReferenceEntry, GgReferenceLanguage, GgReferenceModule};
+use test_cabinet_contracts::gg_reference::{
+    GgReferenceEntry, GgReferenceLanguage, GgReferenceModule,
+};
 
 use super::*;
 

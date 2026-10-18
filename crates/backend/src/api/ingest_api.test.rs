@@ -6,8 +6,8 @@ use super::{
 use crate::ingest::{
     IngestEvent, IngestReport, IngestRequest, IngestedSuite, IngestedVersion, SkipReason,
 };
-use test_cabinet_core::IngestMode;
-use test_cabinet_core::backend_client::{IngestBody, IngestBodyMode};
+use test_cabinet_contracts::ingest::IngestMode;
+use test_cabinet_contracts::ingest::{IngestBody, IngestBodyMode};
 
 fn version(slug: &str, ingested: bool) -> IngestedVersion {
     IngestedVersion {

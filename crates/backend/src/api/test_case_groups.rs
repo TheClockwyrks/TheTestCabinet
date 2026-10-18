@@ -1,6 +1,6 @@
 //! The test-case-group listing (`GET /test-case-groups`).
 //!
-//! Serves the [test-case group](test_cabinet_core::TestCaseGroup) set the last
+//! Serves the [test-case group](test_cabinet_suites::test_case_group::TestCaseGroup) set the last
 //! whole-catalog ingest wrote into the definition store (see
 //! [`crate::ingest`]), already in display order — the ordering `rank` is applied
 //! before the set is stored and does not ride the wire. An open read, like the
@@ -13,7 +13,7 @@ mod tests;
 
 use axum::Json;
 use axum::extract::State;
-use test_cabinet_core::TestCaseGroup;
+use test_cabinet_suites::test_case_group::TestCaseGroup;
 
 use crate::error::ApiError;
 

@@ -1,7 +1,9 @@
 //! R2 access over the S3-compatible API with AWS SigV4 signing.
 //!
-//! Two callers share this client, which is why it lives in `core` rather than in
-//! either of them:
+//! The artifacts service is the object-store writer, so the client is its own. Two
+//! callers outside the service still write R2 directly through it, an interim edge
+//! that ends once the backend's dataset writes and the CLI's reference uploads go
+//! through the service's API:
 //!
 //! - The **backend** writes the public snapshot bucket on every refresh, and
 //!   lists it to skip re-uploading content-stable media.
@@ -23,7 +25,15 @@ use time::OffsetDateTime;
 use time::format_description::FormatItem;
 use time::macros::format_description;
 
-use crate::error::{Error, Result};
+/// An R2 request failed: the object store could not be reached, or it rejected a
+/// signed `PutObject`/`ListObjectsV2`/`DeleteObjects`. Carries the key or prefix
+/// and the store's own explanation.
+#[derive(Debug, thiserror::Error)]
+#[error("the R2 object store: {0}")]
+pub struct R2Error(pub String);
+
+/// The result of an R2 request.
+pub type Result<T, E = R2Error> = std::result::Result<T, E>;
 
 type HmacSha256 = Hmac<Sha256>;
 
@@ -115,7 +125,7 @@ impl R2Client {
     }
 
     /// Upload one object: `PUT {endpoint}/{bucket}/{key}` with `body` under the given
-    /// [labels](crate::content_labels::ContentLabels), signed with SigV4. Returns an
+    /// [labels](test_cabinet_suites::content_labels::ContentLabels), signed with SigV4. Returns an
     /// error when the request cannot be sent or R2 responds with a non-2xx status.
     ///
     /// The labels are stored on the object and returned on every read of it, so an
@@ -137,10 +147,10 @@ impl R2Client {
         let now = OffsetDateTime::now_utc();
         let amz_date = now
             .format(AMZ_DATE)
-            .map_err(|e| Error::R2(format!("formatting amz-date: {e}")))?;
+            .map_err(|e| R2Error(format!("formatting amz-date: {e}")))?;
         let scope_date = now
             .format(SCOPE_DATE)
-            .map_err(|e| Error::R2(format!("formatting scope-date: {e}")))?;
+            .map_err(|e| R2Error(format!("formatting scope-date: {e}")))?;
 
         // The canonical URI is `/{bucket}/{key}`, each path segment URI-encoded
         // (S3 does not encode the `/` separators). The host comes from the
@@ -201,14 +211,12 @@ impl R2Client {
             .body(body)
             .send()
             .await
-            .map_err(|e| Error::R2(format!("PUT `{key}` failed: {e}")))?;
+            .map_err(|e| R2Error(format!("PUT `{key}` failed: {e}")))?;
 
         if !response.status().is_success() {
             let status = response.status();
             let detail = response.text().await.unwrap_or_default();
-            return Err(Error::R2(format!(
-                "PUT `{key}` returned {status}: {detail}"
-            )));
+            return Err(R2Error(format!("PUT `{key}` returned {status}: {detail}")));
         }
         Ok(())
     }
@@ -219,7 +227,7 @@ impl R2Client {
     /// Two callers rely on it. The backend's snapshot refresh learns which
     /// content-stable media objects (`media/runs/<id>/…`) are already uploaded, so it
     /// references them without re-reading or re-uploading their bytes. Ingest lists
-    /// [`crate::asset_reference::REFERENCE_MEDIA_PREFIX`] to discover which
+    /// [`REFERENCE_MEDIA_PREFIX`](test_cabinet_contracts::asset_reference::REFERENCE_MEDIA_PREFIX) to discover which
     /// asset-generation references have been published, which is why those need no
     /// committed lockfile.
     ///
@@ -306,10 +314,10 @@ impl R2Client {
         let now = OffsetDateTime::now_utc();
         let amz_date = now
             .format(AMZ_DATE)
-            .map_err(|e| Error::R2(format!("formatting amz-date: {e}")))?;
+            .map_err(|e| R2Error(format!("formatting amz-date: {e}")))?;
         let scope_date = now
             .format(SCOPE_DATE)
-            .map_err(|e| Error::R2(format!("formatting scope-date: {e}")))?;
+            .map_err(|e| R2Error(format!("formatting scope-date: {e}")))?;
 
         let endpoint = url::trim_scheme(&self.config.endpoint);
         let host = endpoint.host.clone();
@@ -355,20 +363,18 @@ impl R2Client {
             .body(body)
             .send()
             .await
-            .map_err(|e| Error::R2(format!("DELETE batch failed: {e}")))?;
+            .map_err(|e| R2Error(format!("DELETE batch failed: {e}")))?;
 
         if !response.status().is_success() {
             let status = response.status();
             let detail = response.text().await.unwrap_or_default();
-            return Err(Error::R2(format!(
-                "DELETE batch returned {status}: {detail}"
-            )));
+            return Err(R2Error(format!("DELETE batch returned {status}: {detail}")));
         }
         // A quiet-mode success body carries no elements; anything reported is a
         // per-key failure the caller must not mistake for a completed prune.
         let detail = response.text().await.unwrap_or_default();
         if let Some(failures) = parse_delete_errors(&detail) {
-            return Err(Error::R2(format!(
+            return Err(R2Error(format!(
                 "DELETE batch reported {failures} per-key error(s): {detail}"
             )));
         }
@@ -381,10 +387,10 @@ impl R2Client {
         let now = OffsetDateTime::now_utc();
         let amz_date = now
             .format(AMZ_DATE)
-            .map_err(|e| Error::R2(format!("formatting amz-date: {e}")))?;
+            .map_err(|e| R2Error(format!("formatting amz-date: {e}")))?;
         let scope_date = now
             .format(SCOPE_DATE)
-            .map_err(|e| Error::R2(format!("formatting scope-date: {e}")))?;
+            .map_err(|e| R2Error(format!("formatting scope-date: {e}")))?;
 
         let endpoint = url::trim_scheme(&self.config.endpoint);
         let host = endpoint.host.clone();
@@ -423,16 +429,16 @@ impl R2Client {
             .header("Authorization", authorization)
             .send()
             .await
-            .map_err(|e| Error::R2(format!("LIST failed: {e}")))?;
+            .map_err(|e| R2Error(format!("LIST failed: {e}")))?;
         if !response.status().is_success() {
             let status = response.status();
             let detail = response.text().await.unwrap_or_default();
-            return Err(Error::R2(format!("LIST returned {status}: {detail}")));
+            return Err(R2Error(format!("LIST returned {status}: {detail}")));
         }
         response
             .text()
             .await
-            .map_err(|e| Error::R2(format!("reading the LIST body: {e}")))
+            .map_err(|e| R2Error(format!("reading the LIST body: {e}")))
     }
 
     /// Compute the SigV4 signing key chain and sign the string-to-sign.
@@ -509,8 +515,7 @@ fn xml_unescape(text: &str) -> String {
 
 /// Compute one HMAC-SHA256 in the signing chain.
 fn hmac(key: &[u8], data: &[u8]) -> Result<Vec<u8>> {
-    let mut mac =
-        HmacSha256::new_from_slice(key).map_err(|e| Error::R2(format!("hmac key: {e}")))?;
+    let mut mac = HmacSha256::new_from_slice(key).map_err(|e| R2Error(format!("hmac key: {e}")))?;
     mac.update(data);
     Ok(mac.finalize().into_bytes().to_vec())
 }

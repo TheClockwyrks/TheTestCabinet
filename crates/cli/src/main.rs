@@ -11,6 +11,7 @@
 //! and routes to a handler that calls into the core where the surface already
 //! exists and otherwise reports that the behavior is not implemented yet.
 
+mod accounts;
 mod catalog;
 mod cli;
 mod commands;

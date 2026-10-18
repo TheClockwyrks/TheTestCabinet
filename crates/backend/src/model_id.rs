@@ -20,7 +20,7 @@
 //! this module is the single source of truth for that logic (mirrored, for
 //! display-time grouping only, by `packages/ui/src/modelId.ts`).
 
-use crate::run_record::HarnessSlug;
+use test_cabinet_contracts::run_record::HarnessSlug;
 
 /// The provider-routing prefix OpenCode / Kilo Code prepend to OpenRouter ids.
 const OPENROUTER_PREFIX: &str = "openrouter/";

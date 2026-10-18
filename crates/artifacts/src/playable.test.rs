@@ -4,86 +4,15 @@ use super::*;
 use std::fs;
 use tempfile::TempDir;
 
-use crate::metrics::{Cost, RunMetrics, TokenCounts};
-use crate::run_record::{
+use test_cabinet_contracts::metrics::{Cost, RunMetrics, TokenCounts};
+use test_cabinet_contracts::run_record::{
     HarnessSlug, RunEnvironment, RunLinks, RunRecord, RunState, RunStatus, RunSubject, RunTooling,
 };
-use crate::test_case::MediaKind;
-use crate::validation::{
+use test_cabinet_contracts::test_case::MediaKind;
+use test_cabinet_contracts::validation::{
     AudioGenResult, MaterialGenResult, MaterialMapResult, ParticleGenResult, ProofResult,
     UiElementResult, UiGenResult, ValidationSummary, VoxelGenResult, VoxelPartResult,
 };
-
-/// Build a fake implementation directory containing one named build output with
-/// the given files (path within the build → contents).
-fn impl_with_build(output: &str, files: &[(&str, &str)]) -> TempDir {
-    let dir = TempDir::new().expect("temp dir");
-    let build = dir.path().join("implementation").join(output);
-    for (rel, contents) in files {
-        let target = build.join(rel);
-        fs::create_dir_all(target.parent().unwrap()).expect("create dirs");
-        fs::write(target, contents).expect("write file");
-    }
-    dir
-}
-
-#[test]
-fn empty_path_serves_index_html() {
-    let dir = impl_with_build("dist", &[("index.html", "<html><head></head></html>")]);
-    let build = dir.path().join("implementation").join("dist");
-    let served = serve_build_file(&build, "", "/runs/abc/build/").expect("index served");
-    assert!(served.content_type.starts_with("text/html"));
-    assert!(String::from_utf8(served.body).unwrap().contains("<base"));
-}
-
-#[test]
-fn html_is_relocated_under_the_base() {
-    let html = "<html><head>\n<script type=\"module\" src=\"/assets/index-AAA.js\"></script>\
-        </head><body></body></html>";
-    let dir = impl_with_build("dist", &[("index.html", html)]);
-    let build = dir.path().join("implementation").join("dist");
-    let served = serve_build_file(&build, "index.html", "/runs/abc/build/").unwrap();
-    let body = String::from_utf8(served.body).unwrap();
-    // The base is injected and the absolute asset reference is de-absolutized so
-    // the base applies to it.
-    assert!(body.contains("<base href=\"/runs/abc/build/\">"));
-    assert!(body.contains("src=\"assets/index-AAA.js\""));
-    assert!(!body.contains("src=\"/assets/index-AAA.js\""));
-}
-
-#[test]
-fn protocol_relative_and_scheme_urls_are_left_alone() {
-    let html = "<head></head><body>\
-        <img src=\"//cdn.example/x.png\"><a href=\"https://example.com\">x</a></body>";
-    let dir = impl_with_build("dist", &[("index.html", html)]);
-    let build = dir.path().join("implementation").join("dist");
-    let body = serve_build_file(&build, "", "/b/").unwrap().body;
-    let body = String::from_utf8(body).unwrap();
-    assert!(body.contains("src=\"//cdn.example/x.png\""));
-    assert!(body.contains("href=\"https://example.com\""));
-}
-
-#[test]
-fn non_html_assets_are_served_verbatim_with_a_mime_type() {
-    let dir = impl_with_build(
-        "dist",
-        &[("assets/index-AAA.js", "console.log('/not/rewritten')")],
-    );
-    let build = dir.path().join("implementation").join("dist");
-    let served = serve_build_file(&build, "assets/index-AAA.js", "/b/").unwrap();
-    assert!(served.content_type.starts_with("text/javascript"));
-    // JS is byte-for-byte: an absolute path in a string literal is not touched.
-    assert_eq!(served.body, b"console.log('/not/rewritten')");
-}
-
-#[test]
-fn traversal_outside_the_build_is_refused() {
-    let dir = impl_with_build("dist", &[("index.html", "<html></html>")]);
-    // A secret beside (not inside) the build.
-    fs::write(dir.path().join("implementation").join("secret"), "nope").unwrap();
-    let build = dir.path().join("implementation").join("dist");
-    assert_eq!(serve_build_file(&build, "../secret", "/b/"), None);
-}
 
 #[test]
 fn asset_request_parses_bare_names_and_per_frame_names() {
@@ -121,7 +50,7 @@ fn serve_asset_file_resolves_voxel_parts_by_flat_index() {
     let voxel = VoxelGenResult {
         parts: vec![part("chassis"), part("turret")],
         // A present `model` marks this an animated run (parts addressed by `-<index>`).
-        model: Some(crate::test_case::ModelSpec {
+        model: Some(test_cabinet_contracts::test_case::ModelSpec {
             parts: vec![],
             joints: vec![],
             animations: vec![],
@@ -166,19 +95,21 @@ fn serve_asset_file_resolves_performance_scenarios_by_case_index() {
     // Browser playback fetches a run's scored scenario over the same
     // `/asset/{file}` path everything else uses, addressed by case index:
     // `scenario.json` is case 0, `scenario-<i>.json` selects case `i`.
-    let case = |input: &str, scenario: Option<&str>| crate::validation::PerformanceCaseResult {
-        input: input.to_string(),
-        kind: crate::validation::PerformanceCaseKind::Stress,
-        correct: scenario.is_some(),
-        over_ceiling: false,
-        skipped: false,
-        fuel: Some(10),
-        first_mismatch_tick: None,
-        detail: None,
-        snapshots: Vec::new(),
-        scenario_json: scenario.map(|s| s.to_string()),
+    let case = |input: &str, scenario: Option<&str>| {
+        test_cabinet_contracts::validation::PerformanceCaseResult {
+            input: input.to_string(),
+            kind: test_cabinet_contracts::validation::PerformanceCaseKind::Stress,
+            correct: scenario.is_some(),
+            over_ceiling: false,
+            skipped: false,
+            fuel: Some(10),
+            first_mismatch_tick: None,
+            detail: None,
+            snapshots: Vec::new(),
+            scenario_json: scenario.map(|s| s.to_string()),
+        }
     };
-    let performance = crate::validation::PerformanceResult {
+    let performance = test_cabinet_contracts::validation::PerformanceResult {
         correct: false,
         total_fuel: None,
         fuel_limit: Some(5_000_000_000),
@@ -406,13 +337,6 @@ fn serve_asset_file_resolves_the_new_asset_families() {
     );
 }
 
-#[test]
-fn missing_file_is_none() {
-    let dir = impl_with_build("dist", &[("index.html", "<html></html>")]);
-    let build = dir.path().join("implementation").join("dist");
-    assert_eq!(serve_build_file(&build, "does-not-exist.js", "/b/"), None);
-}
-
 /// Build a run output directory holding a `run-record.json` whose validation
 /// declares the given proofs (id, dest), plus the named media files under
 /// `implementation/`.
@@ -446,7 +370,7 @@ fn run_dir_with_validation(validation: ValidationSummary, media: &[(&str, &[u8])
         subject: RunSubject {
             test_case_slug: "pong".to_string(),
             test_case_version: "v1.0.0".to_string(),
-            test_type: crate::test_case::TestType::EndToEnd,
+            test_type: test_cabinet_contracts::test_case::TestType::EndToEnd,
             variant: "base".to_string(),
             harness_slug: HarnessSlug::Claude,
             harness_version: None,
@@ -464,7 +388,7 @@ fn run_dir_with_validation(validation: ValidationSummary, media: &[(&str, &[u8])
             os: "linux".to_string(),
             container_image: "img:latest".to_string(),
             node_version: None,
-            auth_mode: crate::run_record::AuthMode::ApiKey,
+            auth_mode: test_cabinet_contracts::run_record::AuthMode::ApiKey,
         },
         metrics: RunMetrics {
             run_time_seconds: 1.0,

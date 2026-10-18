@@ -1,7 +1,7 @@
 //! The **harness comparison** (A/B) data contract and its automated-only scorer.
 //!
 //! A comparison runs the same benchmark under several **configurations** — a
-//! third-party harness on a model, or a [gg](crate::gg) capability set with a model
+//! third-party harness on a model, or a [gg](test_cabinet_contracts::gg) capability set with a model
 //! per slot — holds the case and every other variable constant, and presents the
 //! cost, token, session-duration, and score data side by side so a reader can
 //! judge for themselves. This module defines the stored [`ComparisonConfig`] (its controls and arms) and
@@ -22,8 +22,8 @@ use std::collections::BTreeSet;
 pub use test_cabinet_contracts::comparison::*;
 
 use crate::review::{ReviewVerdict, Score, VerdictStatus, score_checklist};
-use crate::test_case::ReviewItem;
-use crate::validation::DebugScriptResult;
+use test_cabinet_contracts::test_case::ReviewItem;
+use test_cabinet_contracts::validation::DebugScriptResult;
 
 /// Whether a comparison is **complete**: it has arms, and every one holds at least `n`
 /// counted runs that have landed and none still in flight. A comparison whose case
@@ -80,14 +80,14 @@ pub fn carry_run_ids(
 /// the record.
 ///
 /// Coverage rules, mirroring the reviewer UI's `autoVerdictMap` plus the
-/// [`gates`](crate::validation::DebugScriptResult::gates)/[`ran`](crate::validation::DebugScriptResult::ran)
+/// [`gates`](test_cabinet_contracts::validation::DebugScriptResult::gates)/[`ran`](test_cabinet_contracts::validation::DebugScriptResult::ran)
 /// semantics:
-/// - A script with decided [verdicts](crate::validation::AutoVerdict) contributes each
+/// - A script with decided [verdicts](test_cabinet_contracts::validation::AutoVerdict) contributes each
 ///   as a synthetic [`ReviewVerdict`] (`pass` → `Pass`, else `Fail`) and covers its id.
-/// - A script that suffered a contract failure ([`ran`](crate::validation::DebugScriptResult::ran)
+/// - A script that suffered a contract failure ([`ran`](test_cabinet_contracts::validation::DebugScriptResult::ran)
 ///   `== false`) with no decided verdict still **fails** its backing point, so a `Fail`
 ///   is synthesized for its verdict id and the point is covered.
-/// - A script recorded [inconclusive](crate::validation::DebugScriptResult::precondition_unmet)
+/// - A script recorded [inconclusive](test_cabinet_contracts::validation::DebugScriptResult::precondition_unmet)
 ///   — an unmet precondition, or a check the host could not execute — is skipped
 ///   entirely and contributes to neither the numerator nor the denominator (the point
 ///   is left for a human).
@@ -114,7 +114,7 @@ pub fn covered_score(items: &[ReviewItem], verdicts: &[ReviewVerdict]) -> Score 
 /// The verdicts a run's validators decided, synthesized as [`ReviewVerdict`]s —
 /// the **failure semantics** shared by [`automated_only_score`] and the
 /// [validator-decided functional rating](crate::review::validator_domain_ratings):
-/// - A script with decided [verdicts](crate::validation::AutoVerdict) contributes
+/// - A script with decided [verdicts](test_cabinet_contracts::validation::AutoVerdict) contributes
 ///   each (`pass` → [`Pass`](VerdictStatus::Pass), else [`Fail`](VerdictStatus::Fail)).
 /// - A script that suffered a contract failure ([`ran`](DebugScriptResult::ran)
 ///   `== false`) with no decided verdict **fails** the point it backs.
@@ -208,3 +208,7 @@ mod tests;
 #[cfg(test)]
 #[path = "comparison.editing.test.rs"]
 mod editing_tests;
+
+#[cfg(test)]
+#[path = "comparison.vitest.test.rs"]
+mod vitest_tests;

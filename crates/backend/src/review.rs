@@ -3,10 +3,10 @@
 //!
 //! See `docs/results.md` and `docs/site.md`. A review is curatorial — authored
 //! by a person after playing a finished build, not emitted by the run — so it is
-//! deliberately **not** part of the [run record](crate::run_record) contract. It
+//! deliberately **not** part of the [run record](test_cabinet_contracts::run_record) contract. It
 //! lives beside a run as `writeup.md`, a Markdown file whose YAML frontmatter
 //! carries the [`Rating`] and whose body is the prose shown before the playable
-//! build. Publishing requires one (see [`crate::publish`]).
+//! build. Publishing requires one (see [`crate::publisher`]).
 //!
 //! The rating tiers here are mirrored as a TypeScript union in
 //! `packages/ui/src/ratings.ts`; keep the two in lockstep.
@@ -14,7 +14,7 @@
 //! A run carries up to **two rating channels**. The **functional rating** is the
 //! [`Rating`] scale (Flawless → Broken). On a **legacy** case version it is the
 //! reviewers' aggregate ([`aggregate_rating`]); on a
-//! [validator-rated](crate::test_case::TestCaseVersion::validator_rated) version
+//! [validator-rated](test_cabinet_contracts::test_case::TestCaseVersion::validator_rated) version
 //! it is decided by the validators — every failing point lowers the domains it
 //! declares to its [`FailureCap`], and the run's rating is the lowest cap among
 //! its failures (see [`validator_domain_ratings`]) — **subject to reviewer
@@ -27,20 +27,20 @@
 //! scale (Legendary → Slop) a reviewer supplies **run-wide** — one tier for the
 //! whole build — on a validator-rated run only; a legacy run has none.
 //!
-//! Most case types declare one or more scoring [`crate::test_case::Domain`]s; the
+//! Most case types declare one or more scoring [`test_cabinet_contracts::test_case::Domain`]s; the
 //! reviewer rates each independently and the run's **overall** rating is the
 //! worst across them (see [`Writeup::overall_rating`]). Each review item carries
 //! a point weight, and the run's **score** is the weight earned by passed items
 //! over the total declared weight (see [`score`]).
 //!
-//! A [game jam](crate::test_case::TestType::GameJam) reviews differently: it has
+//! A [game jam](test_cabinet_contracts::test_case::TestType::GameJam) reviews differently: it has
 //! no domains, its review items are graded on a five-level scale
 //! ([`VerdictStatus::GRADES`], worth 0/2/5/8/10 points) rather than pass/fail, and
 //! the reviewer supplies a single whole-game **overall** grade directly (the
 //! reserved [`OVERALL_VERDICT_ID`] verdict; see [`aggregate_overall_grade`]) that
 //! becomes the run's rating badge in place of a domain rating.
 
-use crate::test_case::{Domain, ReviewItem};
+use test_cabinet_contracts::test_case::{Domain, ReviewItem};
 
 // The rating scales, verdicts and review diff are the shapes a review is stored,
 // served and published in, so they live in `test_cabinet_contracts::review` and are
@@ -217,7 +217,7 @@ pub fn missing_ratings(domains: &[Domain], writeup: &Writeup) -> Vec<String> {
 /// check since the channel carries one tier for the whole build.
 ///
 /// `false` means the review carries its tier: the completeness condition for a
-/// review of a [validator-rated](crate::test_case::TestCaseVersion::validator_rated)
+/// review of a [validator-rated](test_cabinet_contracts::test_case::TestCaseVersion::validator_rated)
 /// run, whose functional verdicts the validators decide (subject to reviewer
 /// overrides) and whose reviewer must rate the build's aesthetics as a whole.
 pub fn needs_aesthetic(writeup: &Writeup) -> bool {
@@ -247,7 +247,7 @@ pub struct Score {
 /// weight each reviewer awarded. `earned` is therefore fractional, sitting between
 /// the harshest and most generous review.
 ///
-/// On a [validator-rated](crate::test_case::TestCaseVersion::validator_rated) run
+/// On a [validator-rated](test_cabinet_contracts::test_case::TestCaseVersion::validator_rated) run
 /// the score is decided by the validators ([`validator_score`]) the moment the
 /// run completes, so [`reviews`](Self::reviews) is `0` before anyone reviews it.
 /// Once reviews exist, each review's overrides yield an effective score and the
@@ -317,24 +317,24 @@ pub fn aggregate_aesthetic(
 
 /// **The validator-decided functional rating, per domain.**
 ///
-/// On a [validator-rated](crate::test_case::TestCaseVersion::validator_rated) run
+/// On a [validator-rated](test_cabinet_contracts::test_case::TestCaseVersion::validator_rated) run
 /// every domain starts [`Flawless`](Rating::Flawless). For each **scored**
 /// validated point that **failed** — the same failure semantics as
 /// [`crate::comparison::automated_only_score`]: a decided verdict with
 /// `pass == false`, or a script that suffered a contract failure (`ran == false`)
 /// without being recorded inconclusive — each of the point's declared
-/// [`domains`](crate::test_case::SubReviewItem::domains) is lowered to
+/// [`domains`](test_cabinet_contracts::test_case::SubReviewItem::domains) is lowered to
 /// `min(current, cap.rating())`, where `cap` is the point's
-/// [`failure_cap`](crate::test_case::SubReviewItem::failure_cap). So a domain ends
+/// [`failure_cap`](test_cabinet_contracts::test_case::SubReviewItem::failure_cap). So a domain ends
 /// at the lowest cap among its failures. An inconclusive (`precondition_unmet`)
 /// point, a point with no script result at all, and a point excluded from scoring
 /// (`scored == false`, an erratum) never lower anything, and a point whose
 /// verdict id names no declared point is ignored.
 ///
 /// `items` must be the run's **effective** checklist
-/// ([`TestCaseVersion::review_items_for`](crate::test_case::TestCaseVersion::review_items_for))
+/// ([`TestCaseVersion::review_items_for`](test_cabinet_contracts::test_case::TestCaseVersion::review_items_for))
 /// and `domains` its effective domain set
-/// ([`domains_for`](crate::test_case::TestCaseVersion::domains_for)); the result
+/// ([`domains_for`](test_cabinet_contracts::test_case::TestCaseVersion::domains_for)); the result
 /// carries one [`DomainRating`] per domain, in `domains` order. A thin wrapper
 /// over [`verdict_domain_ratings`], which applies the same failure-cap rule to a
 /// verdict slice a caller already holds (a review's [effective
@@ -343,7 +343,7 @@ pub fn aggregate_aesthetic(
 pub fn validator_domain_ratings(
     domains: &[Domain],
     items: &[ReviewItem],
-    debug_scripts: &[crate::validation::DebugScriptResult],
+    debug_scripts: &[test_cabinet_contracts::validation::DebugScriptResult],
 ) -> Vec<DomainRating> {
     verdict_domain_ratings(
         domains,
@@ -359,9 +359,9 @@ pub fn validator_domain_ratings(
 ///
 /// Every domain starts [`Flawless`](Rating::Flawless); each **failing** verdict
 /// on a **scored** point lowers each of the point's declared
-/// [`domains`](crate::test_case::SubReviewItem::domains) to `min(current,
+/// [`domains`](test_cabinet_contracts::test_case::SubReviewItem::domains) to `min(current,
 /// cap.rating())`, where `cap` is the point's
-/// [`failure_cap`](crate::test_case::SubReviewItem::failure_cap). A point with no
+/// [`failure_cap`](test_cabinet_contracts::test_case::SubReviewItem::failure_cap). A point with no
 /// verdict, a point excluded from scoring (`scored == false`, an erratum), and a
 /// verdict naming no declared point never lower anything.
 pub fn verdict_domain_ratings(
@@ -445,7 +445,7 @@ pub fn validator_rating(gated: bool, domain_ratings: &[DomainRating]) -> Option<
 pub fn validator_score(
     gated: bool,
     items: &[ReviewItem],
-    debug_scripts: &[crate::validation::DebugScriptResult],
+    debug_scripts: &[test_cabinet_contracts::validation::DebugScriptResult],
 ) -> AggregateScore {
     verdicts_own_score(
         gated,
@@ -609,7 +609,7 @@ pub fn validator_aggregate_score<'a>(
 /// item's weight, so the score is `earned / total` points.
 ///
 /// `items` should be the effective checklist for the run's variant (common plus
-/// the variant's own; see [`crate::test_case::TestCaseVersion::review_items_for`]).
+/// the variant's own; see [`test_cabinet_contracts::test_case::TestCaseVersion::review_items_for`]).
 ///
 /// A thin wrapper over [`score_checklist`], which does the same over the
 /// verdicts directly — use that when you hold the verdicts without a parsed
@@ -701,10 +701,10 @@ pub fn aggregate_overall_grade<'a>(
 
 /// **The automated gate, applied to a run's aggregate rating.**
 ///
-/// A run whose case declares a gating [`typecheck`](crate::toolchain::ToolchainCommands)
+/// A run whose case declares a gating [`typecheck`](test_cabinet_contracts::toolchain::ToolchainCommands)
 /// and whose typecheck ran and exited non-zero is `broken`, whatever its reviewers
 /// said, because code that does not compile is not reviewable. `gated` is
-/// [`RunRecord::gated_broken`](crate::run_record::RunRecord::gated_broken); `reviewed`
+/// [`RunRecord::gated_broken`](test_cabinet_contracts::run_record::RunRecord::gated_broken); `reviewed`
 /// is the aggregate the reviews produced ([`aggregate_rating`]).
 ///
 /// # Why the gate lives *here*, and not in the reviews

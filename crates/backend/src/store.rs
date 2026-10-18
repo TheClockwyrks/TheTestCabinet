@@ -29,17 +29,21 @@
 use std::collections::BTreeMap;
 use std::path::{Component, Path, PathBuf};
 
+use crate::review::FailureCap;
 use serde::{Deserialize, Serialize};
-use test_cabinet_core::review::FailureCap;
-use test_cabinet_core::test_case::{
+use test_cabinet_suites::test_case::AssetDimension;
+use test_cabinet_suites::test_case::AssetKind;
+use test_cabinet_suites::test_case::ModelSpec;
+use test_cabinet_suites::test_case::SheetSpec;
+use test_cabinet_suites::test_case::TestType;
+use test_cabinet_suites::test_case::VoxelSpec;
+use test_cabinet_suites::test_case::{
     AudioSpec, EngineSupport, ErratumSeverity, MaterialSpec, ParticleSpec, UiSpec, version_key,
 };
-use test_cabinet_core::test_suite::{
+use test_cabinet_suites::test_case_group::TestCaseGroup;
+use test_cabinet_suites::test_suite::{
     DEBUG_API_DIR, DEBUG_API_FILE, SPECIFICATIONS_DIR, SUITE_MANIFEST_FILE,
     TEST_CASES_DIR as SUITE_TEST_CASES_DIR, VALIDATORS_DIR, VERSION_MANIFEST_FILE,
-};
-use test_cabinet_core::{
-    AssetDimension, AssetKind, ModelSpec, SheetSpec, TestCaseGroup, TestType, VoxelSpec,
 };
 
 use crate::error::{BackendError, Result};
@@ -103,7 +107,7 @@ pub const REPLAY_ARTIFACT: &str = "replay";
 /// `code-analysis.json.gz` into the run tree from another crate entirely, and the driver
 /// mirrors it in from a third, so the name has to sit somewhere all three already depend
 /// on. Aliased here so the store's two artifact slots read alike at their use sites.
-pub use test_cabinet_core::CODE_ANALYSIS_ARTIFACT;
+pub use test_cabinet_contracts::code_analysis::CODE_ANALYSIS_ARTIFACT;
 
 pub use test_cabinet_contracts::backend_api::store::{
     StoredContract, StoredMatch, StoredReplay, StoredSandbox, StoredSimulation,
@@ -192,7 +196,7 @@ pub struct StoredManifest {
     pub experimental: bool,
     /// Whether the version is on the **engine manifest format** (the per-engine
     /// spelling: `[workspaces]` / `engines` / `[[engine]]`), mirroring
-    /// [`test_cabinet_core::test_case::TestCaseVersion::engine_format`]. Together
+    /// [`test_cabinet_suites::test_case::TestCaseVersion::engine_format`]. Together
     /// with the test type this decides whether the version is
     /// [validator-rated](Self::validator_rated). Defaulted to `false` for manifests
     /// stored before the field existed — every one of which is on the legacy
@@ -294,7 +298,7 @@ pub struct StoredManifest {
     pub audio: Option<AudioSpec>,
     /// The audio packs a run of this version is staged with, in declaration order.
     /// Carried verbatim from
-    /// [`TestCaseVersion::audio_packs`](test_cabinet_core::TestCaseVersion::audio_packs),
+    /// [`TestCaseVersion::audio_packs`](test_cabinet_suites::test_case::TestCaseVersion::audio_packs),
     /// because the driver stages a run out of the **stored** record rather than the
     /// manifest — a version served without it would stage no audio at all. Empty for
     /// a version that declares none.
@@ -303,7 +307,7 @@ pub struct StoredManifest {
     /// parses — and reads as declaring none. That is exactly why adding it bumps
     /// [`STORE_FORMAT`]: only the bump makes [`DefinitionStore::needs_reingest`] fire
     /// and re-resolve the catalog, which is what fills this in (and applies
-    /// [`DEFAULT_AUDIO_PACKS`](test_cabinet_core::test_case::DEFAULT_AUDIO_PACKS) to
+    /// [`DEFAULT_AUDIO_PACKS`](test_cabinet_suites::test_case::DEFAULT_AUDIO_PACKS) to
     /// the frozen full-stack versions that declare no `[audio]` table).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub audio_packs: Vec<String>,
@@ -312,7 +316,7 @@ pub struct StoredManifest {
     /// Common specs (`source` is a store-relative artifact key, `dest` the
     /// workspace destination, `template` whether it is a `.hbs` the runner renders).
     pub common_specs: Vec<StoredSpec>,
-    /// The [engines](test_cabinet_core::engine) a run of this version may select,
+    /// The [engines](test_cabinet_suites::engine) a run of this version may select,
     /// each with the version range it accepts. This is the gate the driver holds a
     /// run's engine selection against, so it has to survive the trip through the
     /// store: a version served without it would resolve as supporting the
@@ -320,7 +324,7 @@ pub struct StoredManifest {
     /// Ingest always writes it, so a stored record always carries it.
     pub engines: Vec<EngineSupport>,
     /// Common starter workspace files (directory already expanded to individual
-    /// files), per [engine](test_cabinet_core::engine), seeded into the run root for
+    /// files), per [engine](test_cabinet_suites::engine), seeded into the run root for
     /// every variant that does not override the workspace. Defaulted for manifests
     /// stored before the field existed.
     #[serde(default)]
@@ -385,14 +389,14 @@ impl StoredManifest {
     /// declared `failure_cap`), its score stands the moment it completes, and its
     /// reviewers rate only the aesthetic channel. True iff the version is on the
     /// [engine format](Self::engine_format) and is not a game jam — the stored
-    /// mirror of [`test_cabinet_core::test_case::TestCaseVersion::validator_rated`].
+    /// mirror of [`test_cabinet_suites::test_case::TestCaseVersion::validator_rated`].
     pub fn validator_rated(&self) -> bool {
         self.engine_format && self.test_type != TestType::GameJam
     }
 }
 
 /// A known-issue erratum persisted in a [`StoredManifest`] (see
-/// [`test_cabinet_core::test_case::Erratum`]). Its serialized shape carries the
+/// [`test_cabinet_suites::test_case::Erratum`]). Its serialized shape carries the
 /// full entry so the API can map it to the wire response and the snapshot can inline
 /// it, without re-reading the version's `errata.toml`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -490,7 +494,7 @@ pub struct StoredCase {
     /// scored `stress` case. Defaults to `stress` for manifests stored before smoke
     /// tests existed.
     #[serde(default)]
-    pub kind: test_cabinet_core::validation::PerformanceCaseKind,
+    pub kind: test_cabinet_contracts::validation::PerformanceCaseKind,
 }
 
 /// The canvas of an asset-generation case persisted in a [`StoredManifest`].
@@ -539,7 +543,7 @@ pub struct StoredSpec {
     /// can tag it. Presentation only; defaults to `spec` for stores ingested
     /// before the field existed.
     #[serde(default)]
-    pub kind: test_cabinet_core::SpecKind,
+    pub kind: test_cabinet_suites::test_case::SpecKind,
 }
 
 /// An asset mapping persisted in a [`StoredManifest`].
@@ -564,7 +568,7 @@ pub struct StoredWorkspaceFile {
 }
 
 /// The starter project a [`StoredManifest`] carries, keyed by
-/// [engine](test_cabinet_core::engine) slug.
+/// [engine](test_cabinet_suites::engine) slug.
 ///
 /// A case ships one project per engine, because a project is written against a
 /// runtime: its `package.json` declares the engine's dependency and its case-owned
@@ -599,7 +603,7 @@ pub struct StoredVariant {
     /// Additive specs.
     pub specs: Vec<StoredSpec>,
     /// The variant's workspace override (directory expanded to files, per
-    /// [engine](test_cabinet_core::engine)), when it replaces the common workspace
+    /// [engine](test_cabinet_suites::engine)), when it replaces the common workspace
     /// for this variant. `None` inherits the common workspace. Defaulted for
     /// manifests stored before the field existed.
     #[serde(default)]
@@ -632,7 +636,7 @@ pub struct StoredVariant {
     pub showcase: Option<StoredShowcase>,
 }
 
-/// A variant's authored [showcase](test_cabinet_core::test_case::CaseShowcase)
+/// A variant's authored [showcase](test_cabinet_suites::test_case::CaseShowcase)
 /// persisted in a [`StoredManifest`]: the description (inlined — it is bounded
 /// text, like a variant's own description) plus the ordered media carousel. The
 /// media bytes themselves ride the copied version tree; each entry names its
@@ -655,7 +659,7 @@ pub struct StoredShowcaseMedia {
     /// The short caption for the entry.
     pub name: String,
     /// The kind of media the file holds, inferred from its name at resolution.
-    pub kind: test_cabinet_core::MediaKind,
+    pub kind: test_cabinet_suites::test_case::MediaKind,
     /// Store-relative artifact key of the media bytes.
     pub key: String,
 }
@@ -671,7 +675,7 @@ pub struct StoredReference {
     /// video). Defaulted to `rendered` for manifests stored before the field
     /// existed (every reference was an HTML mockup then).
     #[serde(default = "default_reference_kind")]
-    pub kind: test_cabinet_core::ReferenceKind,
+    pub kind: test_cabinet_suites::test_case::ReferenceKind,
     /// The file extension the media is stored and served under (`png` for a
     /// rendered mockup; the static source's own extension otherwise). Defaulted to
     /// `png` for manifests stored before the field existed.
@@ -681,8 +685,8 @@ pub struct StoredReference {
 
 /// The default reference kind for manifests stored before `kind` was recorded:
 /// every reference used to be an HTML mockup rendered to a screenshot.
-fn default_reference_kind() -> test_cabinet_core::ReferenceKind {
-    test_cabinet_core::ReferenceKind::Rendered
+fn default_reference_kind() -> test_cabinet_suites::test_case::ReferenceKind {
+    test_cabinet_suites::test_case::ReferenceKind::Rendered
 }
 
 /// The default reference extension for manifests stored before it was recorded.
@@ -700,7 +704,7 @@ pub struct StoredProof {
     /// Human-readable display name.
     pub name: String,
     /// Whether the proof media is an image or a video.
-    pub kind: test_cabinet_core::MediaKind,
+    pub kind: test_cabinet_suites::test_case::MediaKind,
     /// The run-root-relative path the agent must write the proof to.
     pub dest: String,
 }
@@ -804,7 +808,7 @@ pub struct StoredReviewOutput {
     /// Human-readable display name (resolved at ingest, defaulted from `id`).
     pub name: String,
     /// Whether the output is an image or a video clip.
-    pub kind: test_cabinet_core::MediaKind,
+    pub kind: test_cabinet_suites::test_case::MediaKind,
 }
 
 /// A sub-item of a [`StoredReviewItem`], persisted in a [`StoredManifest`]: one
@@ -840,7 +844,7 @@ pub struct StoredSubReviewItem {
     pub validation: Option<StoredReviewValidation>,
     /// This point's **failure cap** on a validator-rated version: the highest
     /// functional rating its [`domains`](Self::domains) may reach while its
-    /// validator fails (see [`test_cabinet_core::review::FailureCap`]). `None` on
+    /// validator fails (see [`crate::review::FailureCap`]). `None` on
     /// a legacy version, which never declares one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub failure_cap: Option<FailureCap>,
@@ -877,7 +881,7 @@ pub struct StoredCheck {
     /// Reference view that is the comparison baseline.
     pub reference_view: String,
     /// Actions driving the implementation into the view before capture.
-    pub actions: Vec<test_cabinet_core::test_case::CheckAction>,
+    pub actions: Vec<test_cabinet_suites::test_case::CheckAction>,
 }
 
 impl DefinitionStore {
@@ -1369,7 +1373,7 @@ impl DefinitionStore {
         variant_name: &str,
         variant_description: Option<&str>,
         voxel: Option<&VoxelSpec>,
-        engine: Option<&test_cabinet_core::engine::ResolvedEngine>,
+        engine: Option<&test_cabinet_suites::engine::ResolvedEngine>,
     ) -> Result<String> {
         let bytes = self.read_artifact(slug, version, &spec.source)?;
         let text = String::from_utf8(bytes).map_err(|err| {
@@ -1381,7 +1385,7 @@ impl DefinitionStore {
         if !spec.template {
             return Ok(text);
         }
-        Ok(test_cabinet_core::render_spec_from_template(
+        Ok(test_cabinet_suites::prompt::render_spec_from_template(
             slug,
             version,
             &spec.source,
@@ -1486,7 +1490,7 @@ impl DefinitionStore {
         }
         let path = self
             .version_dir(slug, version)
-            .join(test_cabinet_core::VALIDATION_BASELINE_DIR)
+            .join(test_cabinet_contracts::layout::VALIDATION_BASELINE_DIR)
             .join(engine)
             .join(variant)
             .join(file);
@@ -1518,7 +1522,7 @@ impl DefinitionStore {
         }
         let dir = self
             .version_dir(slug, version)
-            .join(test_cabinet_core::VALIDATION_BASELINE_DIR)
+            .join(test_cabinet_contracts::layout::VALIDATION_BASELINE_DIR)
             .join(engine)
             .join(variant);
         let read = match std::fs::read_dir(&dir) {
@@ -1548,11 +1552,11 @@ impl DefinitionStore {
     /// scripted items) yields an empty list.
     ///
     /// A backend-driven run fetches this whole set into its definition store (see
-    /// `test_cabinet_core::materialize_version`) so a debug script's sibling `import`s
+    /// the driver's `materialize_version`) so a debug script's sibling `import`s
     /// resolve when the validator runs it — the named scripts alone are not enough.
     pub fn list_validation_files(&self, slug: &str, version: &str) -> Result<Vec<String>> {
         let base = self.version_dir(slug, version);
-        let dir = base.join(test_cabinet_core::VALIDATION_SCRIPT_DIR);
+        let dir = base.join(test_cabinet_contracts::layout::VALIDATION_SCRIPT_DIR);
         let mut keys = Vec::new();
         collect_files_relative(&base, &dir, &mut keys)?;
         keys.sort();
@@ -1570,7 +1574,7 @@ impl DefinitionStore {
     /// with the suite's `validators/` project deciding the functional ones. None of
     /// that is reachable from the lowered manifest's keys, so a backend-driven run
     /// fetches this whole set into its definition store (see
-    /// `test_cabinet_core::materialize_version`), which rebuilds the version folder
+    /// the driver's `materialize_version`), which rebuilds the version folder
     /// there and reads the suite model back out of it.
     ///
     /// An authored version yields an empty list: it was lowered from no suite, which
@@ -1711,7 +1715,7 @@ impl DefinitionStore {
     /// The declared outputs are on the run record, so the snapshot builder does not
     /// need this to find them. What it needs it for is the recordings' **shared
     /// image store** (`img.<id>.png` / `img.<id>.bin` — see
-    /// [`VALIDATION_IMAGE_PREFIX`](test_cabinet_core::VALIDATION_IMAGE_PREFIX)),
+    /// [`VALIDATION_IMAGE_PREFIX`](test_cabinet_contracts::layout::VALIDATION_IMAGE_PREFIX)),
     /// whose files back no verdict and are named by their own bytes, so they appear
     /// on no declaration and can only be found by asking the directory. Sorted, so
     /// the set a refresh publishes is stable.
@@ -1754,7 +1758,7 @@ impl DefinitionStore {
     /// Where one of a run's **run-tree artifacts** is stored: `runs/<run_id>/<name>.json`.
     ///
     /// A run-tree artifact is a whole-run analysis document produced *about* a run rather
-    /// than *by* it — today the gg [session record](test_cabinet_core::gg_session_record)
+    /// than *by* it — today the gg [session record](test_cabinet_contracts::gg_session_record)
     /// ([`REPLAY_ARTIFACT`]), with code analysis to follow. Each is written to the produced
     /// run tree's root as `<name>.json.gz` and mirrored here by the driver, keyed by run id,
     /// so it survives the collected tree and can be served per run.
@@ -1799,7 +1803,7 @@ impl DefinitionStore {
             .map_err(|_| BackendError::NotFound(format!("{name} for run `{run_id}` not stored")))
     }
 
-    /// Where a gg run's [session record](test_cabinet_core::gg_session_record) is stored:
+    /// Where a gg run's [session record](test_cabinet_contracts::gg_session_record) is stored:
     /// `runs/<run_id>/replay.json` — an address the record keeps, not a name. A capture of
     /// each agent's model I/O and every tool result, mirrored here by the driver from the run
     /// tree so a reader can fetch a run's session without its tree.
@@ -1819,7 +1823,7 @@ impl DefinitionStore {
         self.read_run_artifact(run_id, REPLAY_ARTIFACT)
     }
 
-    /// Where a run's [code-analysis](test_cabinet_core::code_analysis) document is stored:
+    /// Where a run's [code-analysis](test_cabinet_contracts::code_analysis) document is stored:
     /// `runs/<run_id>/code-analysis.json`. The unbounded tier — every file, symbol, import
     /// edge, cycle and clone group — mirrored here by the driver from the run tree so the
     /// per-run Code tab can fetch it without the run archive. Its bounded sibling rides on
@@ -1880,7 +1884,7 @@ impl DefinitionStore {
 
     // --- Per-run showcase files ----------------------------------------------
 
-    /// The directory a published run's [showcase](test_cabinet_core::RunShowcase)
+    /// The directory a published run's [showcase](test_cabinet_contracts::run_record::RunShowcase)
     /// files are stored under (`runs/<run_id>/showcase/`) — the carousel media plus
     /// any image the description references, mirrored here by the driver so the
     /// public snapshot can read them. The description text itself rides the run
@@ -2133,7 +2137,7 @@ pub fn manifest_in(version_dir: &Path) -> PathBuf {
 /// What a stored version record was ingested from, kept in the record's sidecar
 /// beside it and published in the same atomic swap.
 ///
-/// A [`changed`](test_cabinet_core::IngestMode::Changed) scan compares it against the
+/// A [`changed`](test_cabinet_contracts::ingest::IngestMode::Changed) scan compares it against the
 /// checkout: the record is rewritten when its content digest, the record format it
 /// was written in, or the catalog version the store was at differs.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

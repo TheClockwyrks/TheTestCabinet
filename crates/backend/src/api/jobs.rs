@@ -33,20 +33,28 @@ use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
 use tokio::sync::broadcast::error::RecvError;
 
-use test_cabinet_core::event::HarnessEvent;
-use test_cabinet_core::gg::GgCapabilitySet;
-use test_cabinet_core::preview::AssetPreview;
-use test_cabinet_core::run_record::{HarnessSlug, RunRecord, RunState};
-use test_cabinet_core::test_case::TestType;
+use test_cabinet_contracts::event::HarnessEvent;
+use test_cabinet_contracts::gg::GgCapabilitySet;
+use test_cabinet_contracts::preview::AssetPreview;
+use test_cabinet_contracts::run_record::{HarnessSlug, RunRecord, RunState};
+use test_cabinet_suites::test_case::TestType;
 // The job-API wire shapes shared with the dispatcher, driver, and the queue's
 // Rust clients live in the contracts crate (so neither must depend on this crate) —
 // both the request shapes the driver/dispatcher speak and the server **output**
 // shapes a client deserializes. Re-export them so this module — and `api.rs`'s
 // public re-export — keep referring to them as `jobs::{LaunchBody, …}`.
-pub use test_cabinet_core::{
-    ActiveJobOut, ClaimedJob, DriverState, JobState, JobStatusOut, LaunchAck, LaunchBatchAck,
-    LaunchBatchBody, LaunchBatchItem, LaunchBody, StatusUpdate, StreamTopicsBody,
-};
+pub use test_cabinet_contracts::job_api::ActiveJobOut;
+pub use test_cabinet_contracts::job_api::ClaimedJob;
+pub use test_cabinet_contracts::job_api::DriverState;
+pub use test_cabinet_contracts::job_api::JobState;
+pub use test_cabinet_contracts::job_api::JobStatusOut;
+pub use test_cabinet_contracts::job_api::LaunchAck;
+pub use test_cabinet_contracts::job_api::LaunchBatchAck;
+pub use test_cabinet_contracts::job_api::LaunchBatchBody;
+pub use test_cabinet_contracts::job_api::LaunchBatchItem;
+pub use test_cabinet_contracts::job_api::LaunchBody;
+pub use test_cabinet_contracts::job_api::StatusUpdate;
+pub use test_cabinet_contracts::job_api::StreamTopicsBody;
 use test_cabinet_entities::job;
 
 use crate::auth::{AuthUser, ServiceAuth, bearer_token, token_matches};
@@ -342,7 +350,7 @@ pub(super) fn launch_models(body: &LaunchBody) -> Vec<(String, HarnessSlug)> {
 ///
 /// Per model, the window and the modalities come from the
 /// [catalog](super::models::launch_facts_for) — the observations the backend already holds —
-/// and from a live [per-model fetch](test_cabinet_core::OpenRouterPrices::model_launch_facts)
+/// and from a live [per-model fetch](crate::pricing::OpenRouterPrices::model_launch_facts)
 /// only when the catalog has not observed the window yet (the first run against a
 /// just-released model). The candidate list is always built from the model's endpoints listing
 /// read live at this moment, filtered by the model's catalog entry and ordered by each
@@ -372,7 +380,7 @@ pub(super) fn launch_models(body: &LaunchBody) -> Vec<(String, HarnessSlug)> {
 /// snapshot it feeds.
 pub(super) async fn resolve_gg_model_facts(
     db: &crate::db::Db,
-    prices: &test_cabinet_core::OpenRouterPrices,
+    prices: &crate::pricing::OpenRouterPrices,
     record: &[Arc<crate::stats::GgRunFacts>],
     body: &mut LaunchBody,
     on_fill: &(dyn Fn() + Sync),
@@ -421,14 +429,15 @@ pub(super) struct GgModelFacts {
     /// The context window every bound model is measured against.
     windows: std::collections::BTreeMap<String, u64>,
     /// The ordered provider candidates every bound model's requests are served by.
-    providers: std::collections::BTreeMap<String, Vec<test_cabinet_core::gg::GgProviderCandidate>>,
+    providers:
+        std::collections::BTreeMap<String, Vec<test_cabinet_contracts::gg::GgProviderCandidate>>,
     /// The input modalities of the bound models the catalog (or OpenRouter) lists them for.
     /// A model with none is simply absent: unknown modalities are not a launch failure.
     modalities: std::collections::BTreeMap<String, Vec<String>>,
     /// The curated list price (USD per token) every bound model is scored at. A
     /// model the catalog cannot price refuses the launch, so every bound model is
     /// present.
-    prices: std::collections::BTreeMap<String, test_cabinet_core::TokenPrices>,
+    prices: std::collections::BTreeMap<String, test_cabinet_contracts::metrics::TokenPrices>,
 }
 
 impl GgModelFacts {
@@ -447,9 +456,9 @@ impl GgModelFacts {
 /// `on_fill` is as documented there.
 pub(super) async fn gg_model_facts(
     db: &crate::db::Db,
-    prices: &test_cabinet_core::OpenRouterPrices,
+    prices: &crate::pricing::OpenRouterPrices,
     record: &[Arc<crate::stats::GgRunFacts>],
-    set: &test_cabinet_core::gg::GgCapabilitySet,
+    set: &test_cabinet_contracts::gg::GgCapabilitySet,
     launch_model: &str,
     harness: HarnessSlug,
     on_fill: &(dyn Fn() + Sync),
@@ -482,11 +491,11 @@ pub(super) async fn gg_model_facts(
 }
 
 /// Whether a request of `model_id` in a run of `set` may carry `reasoning`: whether any agent
-/// whose own model it is sets a [reasoning setting](test_cabinet_core::gg::GgAgentConfig::reasoning).
+/// whose own model it is sets a [reasoning setting](test_cabinet_contracts::gg::GgAgentConfig::reasoning).
 ///
 /// A handoff compaction's model is not counted: gg sends the summary request with the provider's
 /// default reasoning whatever the agent chose, so a model bound only as a handoff sends none.
-fn binds_reasoning(set: &test_cabinet_core::gg::GgCapabilitySet, model_id: &str) -> bool {
+fn binds_reasoning(set: &test_cabinet_contracts::gg::GgCapabilitySet, model_id: &str) -> bool {
     set.agents
         .iter()
         .any(|agent| agent.reasoning.is_some() && agent.resolved_model_id() == Some(model_id))
@@ -504,10 +513,10 @@ fn binds_reasoning(set: &test_cabinet_core::gg::GgCapabilitySet, model_id: &str)
 /// from OpenRouter just now, so the caller can refresh the public snapshot.
 pub(super) async fn resolve_model_price(
     db: &crate::db::Db,
-    prices: &test_cabinet_core::OpenRouterPrices,
+    prices: &crate::pricing::OpenRouterPrices,
     body: &LaunchBody,
     on_fill: &(dyn Fn() + Sync),
-) -> Result<Option<test_cabinet_core::TokenPrices>, String> {
+) -> Result<Option<test_cabinet_contracts::metrics::TokenPrices>, String> {
     if body.harness == HarnessSlug::Gg {
         return Ok(None);
     }
@@ -528,10 +537,10 @@ pub(super) async fn resolve_model_price(
 /// legitimately be unknown).
 struct ResolvedModelFacts {
     window: u64,
-    candidates: Vec<test_cabinet_core::gg::GgProviderCandidate>,
+    candidates: Vec<test_cabinet_contracts::gg::GgProviderCandidate>,
     input_modalities: Vec<String>,
     /// The catalog's curated list price for the model — what the run is scored at.
-    prices: test_cabinet_core::TokenPrices,
+    prices: test_cabinet_contracts::metrics::TokenPrices,
 }
 
 /// One model's launch facts, or the reason this run cannot start.
@@ -542,7 +551,7 @@ struct ResolvedModelFacts {
 /// which also asks each candidate to support `reasoning`.
 async fn resolve_one_model_facts(
     db: &crate::db::Db,
-    prices: &test_cabinet_core::OpenRouterPrices,
+    prices: &crate::pricing::OpenRouterPrices,
     record: &[Arc<crate::stats::GgRunFacts>],
     model_id: &str,
     harness: HarnessSlug,
@@ -568,7 +577,7 @@ async fn resolve_one_model_facts(
             .map_err(|err| {
                 format!("could not resolve the model catalog's list price for `{model_id}`: {err}")
             })?;
-    let canonical = test_cabinet_core::model_id::canonical_model_id(model_id, harness);
+    let canonical = crate::model_id::canonical_model_id(model_id, harness);
     let entry = db.model_config_for_alias(&canonical).await.map_err(|err| {
         format!("could not read the catalog entry's provider policy for `{model_id}`: {err}")
     })?;
@@ -576,7 +585,7 @@ async fn resolve_one_model_facts(
     // resolves through its configured slug.
     let lookup = crate::bootstrap::openrouter_lookup_id(db, model_id, harness)
         .await
-        .unwrap_or_else(|_| test_cabinet_core::model_id::openrouter_price_id(model_id, harness));
+        .unwrap_or_else(|_| crate::model_id::openrouter_price_id(model_id, harness));
 
     // The window first: a model the catalog has not observed is looked up for this one model,
     // and a run with no window is refused before its providers are asked about.
@@ -621,7 +630,7 @@ async fn resolve_one_model_facts(
         candidates: list
             .candidates
             .iter()
-            .map(test_cabinet_core::pricing::ProviderCandidate::to_invocation)
+            .map(crate::pricing::ProviderCandidate::to_invocation)
             .collect(),
         input_modalities,
         prices: list_prices?,

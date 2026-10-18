@@ -264,7 +264,7 @@ pub async fn execute(args: ValidateArgs) -> anyhow::Result<ExitCode> {
 ///   question — whether the tree in hand carries everything the case asked for — and a
 ///   proof the case declared and the tree does not have is exactly that gap.
 /// - Any verdict a gating debug script decided against the build. This mirrors
-///   [`automated_verdicts`](test_cabinet_core::comparison::automated_verdicts), the
+///   the backend's `comparison::automated_verdicts`, the
 ///   scoring rule the run itself is graded by.
 /// - A gating debug script that did not run, whatever the reason. Here the exit code
 ///   deliberately parts from the score. Scoring skips a script recorded

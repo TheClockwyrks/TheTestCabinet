@@ -1,7 +1,7 @@
 //! The `model_alias` table: the canonical model ids a curated [`model`](super::model)
 //! claims.
 //!
-//! Each row binds one canonical model id (see `test_cabinet_core::model_id`) to a
+//! Each row binds one canonical model id (see `test_cabinet_backend::model_id`) to a
 //! curated model. The `alias` column is globally unique — an id belongs to at
 //! most one curated model — which is how the catalog merges a model's runs onto
 //! its config and rejects two configs fighting over the same id.

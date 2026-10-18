@@ -2,7 +2,7 @@
 //!
 //! The backend holds no accounts. On each mutating request it pulls the
 //! `Authorization: Bearer <token>` header and resolves it to an account by
-//! asking the standalone auth service ([`test_cabinet_core::AccountsClient`]).
+//! asking the standalone auth service ([`crate::accounts::AccountsClient`]).
 //! GET endpoints stay open — the private network is still the outer boundary, so
 //! reads need no token; writes (push, review, publish, media upload) require a
 //! valid one, and reviews are attributed to the resolved [`Account`].
@@ -14,7 +14,7 @@ use axum::extract::FromRequestParts;
 use axum::http::HeaderMap;
 use axum::http::request::Parts;
 
-use test_cabinet_core::Account;
+use crate::accounts::Account;
 
 use crate::api::AppState;
 use crate::error::ApiError;

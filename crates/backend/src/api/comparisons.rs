@@ -1,11 +1,11 @@
 //! The saved **harness comparison** (A/B) endpoints (`/comparisons`).
 //!
 //! A comparison holds every run variable constant and varies one — the harness, a
-//! [gg configuration](test_cabinet_core::gg::GgCapabilitySet), or the model — into
+//! [gg configuration](test_cabinet_contracts::gg::GgCapabilitySet), or the model — into
 //! `N`-run arms, then presents the cost/token/score distributions side by side. Only
-//! the [configuration](test_cabinet_core::comparison::ComparisonConfig) is stored;
+//! the [configuration](crate::comparison::ComparisonConfig) is stored;
 //! the per-arm statistics and diagnostics are **computed on read** from the arms'
-//! runs (see [`test_cabinet_core::comparison_aggregate`]), so a comparison always
+//! runs (see [`crate::comparison_aggregate`]), so a comparison always
 //! reflects whatever runs have since landed.
 //!
 //! Everything is per-account (attributed to the token's account via [`AuthUser`])
@@ -27,9 +27,9 @@ use serde::Serialize;
 use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
 
-use test_cabinet_core::comparison::{Comparison, ComparisonConfig, carry_run_ids, is_complete};
-use test_cabinet_core::comparison_aggregate::aggregate_comparison;
-use test_cabinet_core::run_record::{HarnessSlug, RunRecord};
+use crate::comparison::{Comparison, ComparisonConfig, carry_run_ids, is_complete};
+use crate::comparison_aggregate::aggregate_comparison;
+use test_cabinet_contracts::run_record::{HarnessSlug, RunRecord};
 
 use crate::auth::AuthUser;
 use crate::db::{ArmRunStatus, PublishEnqueue, StoredComparison};
@@ -427,10 +427,10 @@ fn now() -> Result<String, ApiError> {
         .map_err(|e| ApiError::internal(format!("formatting timestamp: {e}")))
 }
 
-/// Hold the comparison's [engine](test_cabinet_core::engine) control against the
+/// Hold the comparison's [engine](test_cabinet_suites::engine) control against the
 /// engines its anchored case version declares support for, the same gate a run is
 /// held to before any container starts
-/// ([`test_cabinet_core::ensure_engine_supported`]) and worded the same way.
+/// (the driver's `ensure_engine_supported`) and worded the same way.
 ///
 /// The engine is a control, so every arm's runs launch under it and the review
 /// checklist `assemble_comparison` resolves is the one that engine carries. A

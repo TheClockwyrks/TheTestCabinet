@@ -3,7 +3,7 @@
 //!
 //! Everything in this module is deliberately free of the database, the HTTP
 //! layer, and the wire types in [`crate::api`] — it takes plain counts
-//! and [`Rating`](test_cabinet_core::review::Rating)s and returns a decision. Both
+//! and [`Rating`](crate::review::Rating)s and returns a decision. Both
 //! decisions **spend money** (one enqueues runs, the other decides whether a
 //! climber keeps burning tokens on the next rung), so they are the two pieces that
 //! must be exercised exhaustively without standing up a store; the transports that

@@ -288,9 +288,9 @@ fn stored_manifest_carries_adversarial_specs() {
     // (regression: these fields were dropped, so a quick match 500'd with
     // "an adversarial match requires [contract], [sandbox], and [simulation]").
     let test_cases = fixture_test_cases();
-    let catalog = test_cabinet_core::test_case::TestCaseCatalog::new(
+    let catalog = test_cabinet_suites::test_case::TestCaseCatalog::new(
         test_cases,
-        test_cabinet_core::engine::built_in_catalog(),
+        test_cabinet_engines::built_in_catalog(),
     );
     let resolved = catalog.resolve("foray", "v1.0.0").unwrap();
 
@@ -327,9 +327,9 @@ fn stored_manifest_carries_instrumentation_and_item_validation() {
     // copied version tree (`copy_tree`) and are served by the artifact endpoint; they
     // must never appear in the seed sets (specs/assets/workspace).
     let test_cases = fixture_test_cases();
-    let catalog = test_cabinet_core::test_case::TestCaseCatalog::new(
+    let catalog = test_cabinet_suites::test_case::TestCaseCatalog::new(
         test_cases,
-        test_cabinet_core::engine::built_in_catalog(),
+        test_cabinet_engines::built_in_catalog(),
     );
     let resolved = catalog.resolve("carom", "v2.0.0").unwrap();
 
@@ -425,9 +425,9 @@ fn ingest_tolerates_a_variant_reference_implementation_key() {
         "slug = \"base\"\nreference_implementation = \"reference-impl/base\"\n",
     );
 
-    let catalog = test_cabinet_core::test_case::TestCaseCatalog::new(
+    let catalog = test_cabinet_suites::test_case::TestCaseCatalog::new(
         dir.path(),
-        test_cabinet_core::engine::built_in_catalog(),
+        test_cabinet_engines::built_in_catalog(),
     );
     let resolved = catalog
         .resolve("demo", "v1.0.0")
@@ -435,7 +435,10 @@ fn ingest_tolerates_a_variant_reference_implementation_key() {
     // Resolution recognized and resolved the key onto the variant.
     assert!(
         resolved
-            .reference_impl_for(&resolved.variants[0], test_cabinet_core::NONE_SLUG)
+            .reference_impl_for(
+                &resolved.variants[0],
+                test_cabinet_contracts::engine::NONE_SLUG
+            )
             .is_some(),
         "resolution resolves the reference implementation onto the variant",
     );
@@ -483,9 +486,9 @@ fn a_variant_showcase_survives_ingest_and_its_media_is_served_from_the_store() {
     write(&version.join("showcase/base/title.png"), "png:title");
     write(&version.join("showcase/base/rally.json.gz"), "gz:rally");
 
-    let catalog = test_cabinet_core::test_case::TestCaseCatalog::new(
+    let catalog = test_cabinet_suites::test_case::TestCaseCatalog::new(
         dir.path().join("test-cases"),
-        test_cabinet_core::engine::built_in_catalog(),
+        test_cabinet_engines::built_in_catalog(),
     );
     let resolved = catalog.resolve("demo", "v1.0.0").expect("resolve");
     let manifest = build_stored_manifest(&resolved, &Keys::rooted(&resolved.root), None)
@@ -501,9 +504,15 @@ fn a_variant_showcase_survives_ingest_and_its_media_is_served_from_the_store() {
     assert_eq!(showcase.media.len(), 2);
     assert_eq!(showcase.media[0].file, "title.png");
     assert_eq!(showcase.media[0].name, "The title screen");
-    assert_eq!(showcase.media[0].kind, test_cabinet_core::MediaKind::Image);
+    assert_eq!(
+        showcase.media[0].kind,
+        test_cabinet_suites::test_case::MediaKind::Image
+    );
     assert_eq!(showcase.media[0].key, "showcase/base/title.png");
-    assert_eq!(showcase.media[1].kind, test_cabinet_core::MediaKind::Replay);
+    assert_eq!(
+        showcase.media[1].kind,
+        test_cabinet_suites::test_case::MediaKind::Replay
+    );
     assert_eq!(showcase.media[1].key, "showcase/base/rally.json.gz");
 
     // The full scan copies the tree and writes the manifest; the store then serves
@@ -530,9 +539,9 @@ fn stored_manifest_carries_performance_specs() {
     // manifest guards the generalized contract/sandbox shape and the new cases
     // field, mirroring the adversarial regression guard above.
     let test_cases = fixture_test_cases();
-    let catalog = test_cabinet_core::test_case::TestCaseCatalog::new(
+    let catalog = test_cabinet_suites::test_case::TestCaseCatalog::new(
         test_cases,
-        test_cabinet_core::engine::built_in_catalog(),
+        test_cabinet_engines::built_in_catalog(),
     );
     let resolved = catalog.resolve("lattice", "v1.0.0").unwrap();
 
@@ -553,7 +562,7 @@ fn stored_manifest_carries_performance_specs() {
     // absolutely (the prior bug) left the driver's `materialize_version` unable to
     // fetch or locate them, so every backend-driven performance run resolved an empty
     // scored set and aborted with "requires at least one [[case]]" before scoring.
-    use test_cabinet_core::validation::PerformanceCaseKind;
+    use test_cabinet_contracts::validation::PerformanceCaseKind;
     let smoke = manifest
         .cases
         .iter()
@@ -609,9 +618,9 @@ fn stored_manifest_carries_voxel_specs() {
     // the real static Skyshard and rigged Ironward cases guards the ingest path for
     // both voxel kinds, mirroring the adversarial/performance guards above.
     let test_cases = fixture_test_cases();
-    let catalog = test_cabinet_core::test_case::TestCaseCatalog::new(
+    let catalog = test_cabinet_suites::test_case::TestCaseCatalog::new(
         test_cases,
-        test_cabinet_core::engine::built_in_catalog(),
+        test_cabinet_engines::built_in_catalog(),
     );
 
     // A static voxel-model case: the volume survives; there is no rig.
@@ -647,9 +656,9 @@ fn stored_manifest_carries_the_engines_the_case_declares() {
     // supports the engineless run alone, so an engine-backed run is refused whatever
     // the case declares. Carom declares both spellings.
     let test_cases = fixture_test_cases();
-    let catalog = test_cabinet_core::test_case::TestCaseCatalog::new(
+    let catalog = test_cabinet_suites::test_case::TestCaseCatalog::new(
         test_cases,
-        test_cabinet_core::engine::built_in_catalog(),
+        test_cabinet_engines::built_in_catalog(),
     );
 
     let carom = catalog.resolve("carom", "v3.0.0").unwrap();
@@ -688,11 +697,11 @@ fn every_stored_manifest_preserves_its_asset_shape() {
     // (a) the tables its `asset_kind` requires are present, and (b) the manifest
     // survives a JSON round-trip unchanged (the on-disk sidecar and the wire
     // encoding the runner deserializes are lossless).
-    use test_cabinet_core::AssetKind;
+    use test_cabinet_suites::test_case::AssetKind;
     let test_cases = committed_test_cases();
-    let catalog = test_cabinet_core::test_case::TestCaseCatalog::new(
+    let catalog = test_cabinet_suites::test_case::TestCaseCatalog::new(
         test_cases,
-        test_cabinet_core::engine::built_in_catalog(),
+        test_cabinet_engines::built_in_catalog(),
     );
     let cases = catalog.list().expect("list catalog");
     assert!(!cases.is_empty(), "catalog should not be empty");
@@ -1110,7 +1119,7 @@ fn a_scoped_validator_carries_its_engines_into_the_stored_manifest() {
     // The engines a validator decides its point on are resolved from the case
     // manifest and must reach the store, since the backend resolves a run's effective
     // checklist from the stored definition rather than from the checkout.
-    let resolved = test_cabinet_core::ReviewValidation {
+    let resolved = test_cabinet_suites::test_case::ReviewValidation {
         script: None,
         script_rel: "hud/debug-overlay.test.ts".to_string(),
         engines: vec!["none".to_string()],
@@ -1126,7 +1135,7 @@ fn a_scoped_validator_carries_its_engines_into_the_stored_manifest() {
 
 #[test]
 fn an_unscoped_validator_stores_no_engine_restriction() {
-    let resolved = test_cabinet_core::ReviewValidation {
+    let resolved = test_cabinet_suites::test_case::ReviewValidation {
         script: Some(std::path::PathBuf::from("/host/validation/ball-spin.mjs")),
         script_rel: "validation/ball-spin.mjs".to_string(),
         engines: vec![],
@@ -1146,14 +1155,16 @@ fn cold_baseline_dir(root: &std::path::Path, folder: &str) -> std::path::PathBuf
     root.join("test-cases/end-to-end/easy")
         .join(folder)
         .join("v1.0.0")
-        .join(test_cabinet_core::VALIDATION_BASELINE_DIR)
+        .join(test_cabinet_contracts::layout::VALIDATION_BASELINE_DIR)
 }
 
 #[test]
 fn ingest_copies_a_version_s_baselines_from_cold_storage_into_the_store() {
     let checkout = TempDir::new().unwrap();
     write_e2e_case(checkout.path(), "demo", "demo");
-    let cold_root = checkout.path().join(test_cabinet_core::COLD_STORAGE_DIR);
+    let cold_root = checkout
+        .path()
+        .join(test_cabinet_contracts::cold_storage::COLD_STORAGE_DIR);
     let baselines = cold_baseline_dir(&cold_root, "demo").join("none/base");
     write(&baselines.join("spin__still.png"), "png:still");
     write(&baselines.join("img.9f2c1ab4.png"), "png:store");
@@ -1187,14 +1198,21 @@ fn ingest_without_cold_storage_succeeds_with_empty_baselines() {
     let checkout = TempDir::new().unwrap();
     write_e2e_case(checkout.path(), "demo", "demo");
     // The empty directory git leaves for an uninitialized submodule.
-    std::fs::create_dir_all(checkout.path().join(test_cabinet_core::COLD_STORAGE_DIR)).unwrap();
+    std::fs::create_dir_all(
+        checkout
+            .path()
+            .join(test_cabinet_contracts::cold_storage::COLD_STORAGE_DIR),
+    )
+    .unwrap();
 
     let store_dir = TempDir::new().unwrap();
     let store = DefinitionStore::open(store_dir.path()).unwrap();
     let report = Ingestor::new(checkout.path(), &store)
         .with_cold_storage(ColdStorage::at(
             checkout.path(),
-            checkout.path().join(test_cabinet_core::COLD_STORAGE_DIR),
+            checkout
+                .path()
+                .join(test_cabinet_contracts::cold_storage::COLD_STORAGE_DIR),
         ))
         .scan(&IngestRequest::default())
         .expect("a checkout without the submodule still ingests");
@@ -1210,7 +1228,7 @@ fn ingest_without_cold_storage_succeeds_with_empty_baselines() {
     assert!(
         !store
             .version_dir("demo", "v1.0.0")
-            .join(test_cabinet_core::VALIDATION_BASELINE_DIR)
+            .join(test_cabinet_contracts::layout::VALIDATION_BASELINE_DIR)
             .exists()
     );
 }
@@ -1244,7 +1262,7 @@ fn ingest_reads_baselines_from_an_overridden_cold_storage_root() {
 fn ingest_defaults_to_the_checkout_s_cold_storage_submodule() {
     // nextest runs each test in its own process, so clearing the override here
     // touches no other test.
-    unsafe { std::env::remove_var(test_cabinet_core::COLD_STORAGE_DIR_ENV) };
+    unsafe { std::env::remove_var(test_cabinet_contracts::cold_storage::COLD_STORAGE_DIR_ENV) };
     let checkout = TempDir::new().unwrap();
     write_e2e_case(checkout.path(), "demo", "demo");
     write(

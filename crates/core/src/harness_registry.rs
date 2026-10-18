@@ -124,7 +124,7 @@ struct HarnessManifest {
 /// manifest configuration. Merged with a [`HarnessManifest`] by [`descriptor`].
 ///
 /// The OpenRouter price-lookup id mapping is **not** declared here: it is derived
-/// from the harness slug by [`crate::model_id::openrouter_price_id`], the single
+/// from the harness slug by the backend's `model_id::openrouter_price_id`, the single
 /// source of truth for that logic.
 struct AdapterSpec {
     /// The variable the key is injected into inside the container, when it

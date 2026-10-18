@@ -31,7 +31,7 @@
 
 use std::collections::{BTreeMap, HashSet};
 
-use test_cabinet_core::test_suite::{
+use test_cabinet_suites::test_suite::{
     ASSETS_DIR, AssetFolder, DEBUG_API_DIR, DEBUG_API_FILE, DemoFolder, PROMPTS_DIR, SHOWCASE_DIR,
     SPECIFICATIONS_DIR, SUITE_MANIFEST_FILE, SpecificationFolder, SuiteVersion,
     TEST_CASES_DIR as SUITE_TEST_CASES_DIR, VALIDATORS_DIR, VERSION_MANIFEST_FILE, WORKSPACES_DIR,
@@ -118,7 +118,7 @@ impl Ingestor<'_> {
         let (loaded, diagnostics) = match load_and_validate_with(
             &identity.suite,
             &root,
-            &test_cabinet_core::engine::built_in_catalog(),
+            &test_cabinet_engines::built_in_catalog(),
         ) {
             Ok(loaded) => loaded,
             Err(error) => return refuse(format!("`{location}` does not read back: {error}")),
@@ -379,7 +379,7 @@ impl Ingestor<'_> {
 /// copied `suite.toml` sits beside `version.toml`, so the stored tree names its
 /// suite without the suite folder it was read from. The driver rebuilds the tree out
 /// of these files in its per-job definition store (see
-/// `test_cabinet_core::materialize_version`), and the prompt it renders and the
+/// the driver's `materialize_version`), and the prompt it renders and the
 /// requirement outcomes it records are read from that model. Everything the suite
 /// holds that no run reads — the demonstrations, the reference implementations, the
 /// showcase — stays out, so a driver job fetches the suite rather than the whole

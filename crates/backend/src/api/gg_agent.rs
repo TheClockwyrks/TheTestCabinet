@@ -33,7 +33,7 @@ use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 
-use test_cabinet_core::gg::is_valid_agent_slug;
+use test_cabinet_contracts::gg::is_valid_agent_slug;
 
 use crate::auth::AuthUser;
 use crate::error::ApiError;

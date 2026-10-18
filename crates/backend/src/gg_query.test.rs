@@ -13,23 +13,23 @@ use std::collections::BTreeMap;
 use serde::Deserialize;
 
 use super::*;
-use crate::code_analysis::{
+use test_cabinet_contracts::code_analysis::{
     CodeAnalysisNotes, CodeAnalysisSummary, CodeApiSummary, CodeAuthoredBasis,
     CodeComplexitySummary, CodeDuplicationSummary, CodeGraphSummary, CodeLanguage, CodeSizeSummary,
     CodeTestSummary, CodeTreeBasis,
 };
-use crate::gg::{
+use test_cabinet_contracts::gg::{
     CAPABILITY_COMPACTION, CAPABILITY_FSM, CAPABILITY_MEMORIES, CAPABILITY_SHELL,
     CAPABILITY_SKILLS, GgAgentConfig, GgCapabilityConfig, GgCapabilitySet, GgErrorSummary,
     GgRunLimits, GgSessionSummary, GgSlotCost, GgUndocumentedCalls, ROOT_PROFILE_ID,
 };
-use crate::metrics::{Cost, RunMetrics, TokenCounts};
-use crate::run_record::{
+use test_cabinet_contracts::metrics::{Cost, RunMetrics, TokenCounts};
+use test_cabinet_contracts::run_record::{
     AuthMode, HarnessSlug, RunEnvironment, RunLinks, RunRecord, RunState, RunStatus, RunSubject,
     RunTooling,
 };
-use crate::test_case::TestType;
-use crate::validation::ValidationSummary;
+use test_cabinet_contracts::test_case::TestType;
+use test_cabinet_contracts::validation::ValidationSummary;
 
 // --- the shared conformance fixture -------------------------------------------
 
@@ -525,7 +525,7 @@ fn gg_record() -> RunRecord {
     }
 }
 
-/// The [engine](crate::engine) reaches the document as `engine`, for every run,
+/// The [engine](test_cabinet_contracts::engine) reaches the document as `engine`, for every run,
 /// and is therefore filterable and groupable.
 ///
 /// It belongs with `model` and `orchestrator` rather than with `case` and `variant`:
@@ -544,7 +544,7 @@ fn the_engine_reaches_the_document_and_is_filterable() {
 
     let mut record = gg_record();
     record.id = "run-2".to_string();
-    record.subject.engine_slug = crate::engine::NONE_SLUG.to_string();
+    record.subject.engine_slug = test_cabinet_contracts::engine::NONE_SLUG.to_string();
     record.subject.engine_version = None;
     let engineless = build_run_doc(&record, &GgDocLifecycle::default());
     assert_eq!(

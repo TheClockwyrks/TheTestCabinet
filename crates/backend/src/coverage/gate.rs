@@ -62,7 +62,7 @@
 //! come back as, and the caller cancels the slot's runs that have not started yet
 //! (`queued` and `pending`).
 
-use test_cabinet_core::review::Rating;
+use crate::review::Rating;
 
 pub use test_cabinet_contracts::backend_api::coverage::{Gate, GateOutcome, GateThreshold};
 

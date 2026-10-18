@@ -9,13 +9,13 @@ use axum::http::{HeaderMap, header};
 use axum::response::{IntoResponse, Response};
 use bytes::Bytes;
 use futures_util::stream;
-use test_cabinet_core::asset_reference::{REFERENCE_MEDIA_PREFIX, parse_reference_image_key};
-use test_cabinet_core::backend_client::{
+use test_cabinet_artifacts::r2::R2Client;
+use test_cabinet_contracts::asset_reference::{REFERENCE_MEDIA_PREFIX, parse_reference_image_key};
+use test_cabinet_contracts::ingest::{
     IngestBody, IngestBodyMode, IngestProgress, IngestResponse, IngestResponseSuite,
     IngestResponseVersion,
 };
-use test_cabinet_core::r2::R2Client;
-use test_cabinet_core::reference_lock::ReferenceLock;
+use test_cabinet_contracts::reference_lock::ReferenceLock;
 use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
 
@@ -25,7 +25,7 @@ use crate::ingest::{IngestEvent, IngestReport, IngestRequest, IngestRoots, Inges
 use crate::publisher::Publisher;
 use crate::readiness::Readiness;
 use crate::store::DefinitionStore;
-use test_cabinet_core::IngestMode;
+use test_cabinet_contracts::ingest::IngestMode;
 
 use super::AppState;
 
@@ -204,7 +204,7 @@ async fn reconcile_reference_builds(state: &AppState) -> Result<(), ApiError> {
 /// opaque URL only Cloudflare knows, so it must be committed into a lockfile for the
 /// backend to learn it. A published reference *sheet* has no such secret: every
 /// frame's key is derived from `(slug, version, variant, index)` by
-/// [`test_cabinet_core::asset_reference`], so the bucket itself is the register of
+/// [`test_cabinet_contracts::asset_reference`], so the bucket itself is the register of
 /// what exists, and listing it is both simpler and more truthful than a lockfile —
 /// it cannot claim a frame that was never uploaded or has since been deleted.
 ///
@@ -408,7 +408,7 @@ fn encode_event(event: &IngestProgress) -> Bytes {
 // --- Wire shapes (§1.1) -----------------------------------------------------
 //
 // The request body, the report and the feed lines are the ingest API's contract,
-// `test_cabinet_contracts::ingest` (re-exported by `test_cabinet_core::backend_client`),
+// `test_cabinet_contracts::ingest` (re-exported by `test_cabinet_contracts::ingest`),
 // which the client writes and reads with too. What the scan's own report comes to on
 // the wire is decided here.
 

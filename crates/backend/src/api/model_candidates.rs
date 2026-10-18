@@ -1,7 +1,7 @@
 //! A model's provider candidate list: the catalog half of building it, shared by the gg enqueue
 //! and the `GET /models/{slug}/candidates` read the console shows on the model's page.
 //!
-//! The filter and the order are [`test_cabinet_core::pricing::provider_candidates`]; this module
+//! The filter and the order are [`crate::pricing::provider_candidates`]; this module
 //! supplies what it reads from the backend's own stores: the catalog entry's
 //! [policy](CandidatePolicy) and hand-set developer provider, and each provider's recorded fault
 //! rate across the stored gg runs of the model. See the candidate list in
@@ -13,7 +13,7 @@ use std::sync::Arc;
 use axum::Json;
 use axum::extract::{Path, State};
 
-use test_cabinet_core::pricing::{
+use crate::pricing::{
     CandidateList, CandidatePolicy, CandidateRefusal, EndpointOffer, native_quantization,
     official_provider, provider_candidates, run_parameters,
 };

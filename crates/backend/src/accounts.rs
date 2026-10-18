@@ -1,6 +1,5 @@
-//! User accounts: the wire contract for the standalone auth service plus the
-//! HTTP client every component uses to register, log in, and verify bearer
-//! tokens against it.
+//! User accounts: the backend's client of the standalone auth service, which
+//! verifies a request's bearer token and fetches a reviewer's picture.
 //!
 //! See `apps/docs/src/content/docs/components/auth/overview.md`. The auth service
 //! (`crates/auth-service`, the `tcab-auth-service` binary) is the only holder of
@@ -9,20 +8,18 @@
 //! each request's token against the auth service and attributes the resolved
 //! [`Account`] to the review.
 //!
-//! Note the name: this is *user* authentication, distinct from
-//! [`crate::auth`], which is *harness* authentication (an API key vs. a
-//! subscription handed to the agent inside the run container).
+//! The wire shapes are `test_cabinet_contracts::accounts`; the CLI registers and
+//! logs in through its own client of the same service.
 //!
 //! Both run behind the same private network — auth is a layer on top of that
 //! reachability boundary, not a replacement for it.
 
-use serde::de::DeserializeOwned;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use tracing::instrument;
 
-pub use test_cabinet_contracts::accounts::{Account, AuthnResponse, LoginRequest, RegisterRequest};
+pub use test_cabinet_contracts::accounts::Account;
 
-use crate::error::{Error, Result};
+use crate::error::{BackendError as Error, Result};
 
 /// An account's profile picture as the auth service serves it: the raw image
 /// bytes and their content type. Not a wire-contract shape — it is the decoded
@@ -39,8 +36,8 @@ pub struct ReviewerPicture {
 /// An HTTP client for the standalone auth service.
 ///
 /// The base URL is the auth service's address (for example
-/// `http://127.0.0.1:8789`). Used by the CLI to register and log in, and by the
-/// backend to [verify](Self::verify) the bearer token on each mutating request.
+/// `http://127.0.0.1:8789`). The backend [verifies](Self::verify) the bearer token on
+/// each mutating request through it.
 #[derive(Debug, Clone)]
 pub struct AccountsClient {
     /// The auth service base URL, without a trailing slash.
@@ -67,21 +64,6 @@ impl AccountsClient {
     /// Join a path onto the base URL.
     fn url(&self, path: &str) -> String {
         format!("{}/{}", self.base_url, path.trim_start_matches('/'))
-    }
-
-    /// Register a new account, returning the minted token and the account.
-    /// A rejected username (taken, invalid) or weak password is surfaced as
-    /// [`Error::Auth`] carrying the service's explanation.
-    #[instrument(skip(self, request), fields(otel.kind = "client", http.request.method = "POST", url.path = "/auth/register", username = %request.username), err)]
-    pub async fn register(&self, request: &RegisterRequest) -> Result<AuthnResponse> {
-        self.post_json("/auth/register", request).await
-    }
-
-    /// Exchange a username and password for a bearer token. Bad credentials are
-    /// surfaced as [`Error::Auth`].
-    #[instrument(skip(self, request), fields(otel.kind = "client", http.request.method = "POST", url.path = "/auth/login", username = %request.username), err)]
-    pub async fn login(&self, request: &LoginRequest) -> Result<AuthnResponse> {
-        self.post_json("/auth/login", request).await
     }
 
     /// Resolve the account a bearer `token` authenticates as
@@ -145,50 +127,6 @@ impl AccountsClient {
             bytes,
             content_type,
         }))
-    }
-
-    /// Revoke a bearer `token` (`POST /auth/logout`). A token already unknown to
-    /// the service is treated as success — the goal state (the token no longer
-    /// works) already holds.
-    #[instrument(skip(self, token), fields(otel.kind = "client", http.request.method = "POST", url.path = "/auth/logout"), err)]
-    pub async fn logout(&self, token: &str) -> Result<()> {
-        let url = self.url("/auth/logout");
-        let response = self
-            .http
-            .post(&url)
-            .headers(traced_headers())
-            .bearer_auth(token)
-            .send()
-            .await
-            .map_err(|err| auth_err(&url, err))?;
-        if response.status() == reqwest::StatusCode::UNAUTHORIZED {
-            return Ok(());
-        }
-        error_for_status(&url, response).await?;
-        Ok(())
-    }
-
-    /// POST `body` as JSON to `path` and deserialize the JSON response, mapping
-    /// transport and non-2xx failures into [`Error::Auth`].
-    async fn post_json<B: Serialize, T: DeserializeOwned>(
-        &self,
-        path: &str,
-        body: &B,
-    ) -> Result<T> {
-        let url = self.url(path);
-        let response = self
-            .http
-            .post(&url)
-            .headers(traced_headers())
-            .json(body)
-            .send()
-            .await
-            .map_err(|err| auth_err(&url, err))?;
-        let response = error_for_status(&url, response).await?;
-        response
-            .json::<T>()
-            .await
-            .map_err(|err| auth_err(&url, err))
     }
 }
 

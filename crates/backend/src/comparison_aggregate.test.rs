@@ -6,13 +6,13 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use super::*;
 use crate::comparison::{ComparisonArm, ComparisonConfig, ComparisonControls};
-use crate::engine::NONE_SLUG;
-use crate::metrics::{Cost, RunMetrics, TokenCounts};
-use crate::run_record::{
+use test_cabinet_contracts::engine::NONE_SLUG;
+use test_cabinet_contracts::metrics::{Cost, RunMetrics, TokenCounts};
+use test_cabinet_contracts::run_record::{
     AuthMode, HarnessSlug, RunEnvironment, RunLinks, RunState, RunStatus, RunSubject, RunTooling,
 };
-use crate::test_case::{ReviewItem, TestType};
-use crate::validation::{AutoVerdict, DebugScriptResult, ValidationSummary};
+use test_cabinet_contracts::test_case::{ReviewItem, TestType};
+use test_cabinet_contracts::validation::{AutoVerdict, DebugScriptResult, ValidationSummary};
 
 /// Every id the config's arms record: the liveness set of a store where nothing has
 /// been deleted, which is what most of these tests are about.

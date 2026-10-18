@@ -4,7 +4,7 @@
 // `crates/gg/src/tools/mod.rs`), not guesses.
 //
 // Its analysis-side counterpart is `GG_CAPABILITY_CATALOG` in
-// `crates/core/src/gg_query.doc.rs`, which is what makes the query language's
+// `crates/backend/src/gg_query.doc.rs`, which is what makes the query language's
 // `cap.<id>` namespace total. The two lists describe the same capabilities from
 // different ends — this one says what an operator may configure, that one says what
 // every run document must carry a value for — so a capability added to gg belongs in

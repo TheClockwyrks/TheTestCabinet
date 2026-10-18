@@ -1,16 +1,14 @@
 use super::*;
 
+use crate::gg_query::{GgAgg, GgAggFunc, GgGroupKey, GgQuery, GgStatsStage, GgValue, evaluate};
+use crate::review::{DomainRating, Rating, ReviewVerdict, VerdictStatus};
 use tempfile::TempDir;
-use test_cabinet_core::gg::{GgCapabilitySet, GgSessionSummary, GgUndocumentedCalls};
-use test_cabinet_core::gg_query::{
-    GgAgg, GgAggFunc, GgGroupKey, GgQuery, GgStatsStage, GgValue, evaluate,
-};
-use test_cabinet_core::metrics::RunMetrics;
-use test_cabinet_core::review::{DomainRating, Rating, ReviewVerdict, VerdictStatus};
-use test_cabinet_core::run_record::{
+use test_cabinet_contracts::gg::{GgCapabilitySet, GgSessionSummary, GgUndocumentedCalls};
+use test_cabinet_contracts::metrics::RunMetrics;
+use test_cabinet_contracts::run_record::{
     HarnessSlug, RunEnvironment, RunLinks, RunRecord, RunState, RunStatus, RunSubject, RunTooling,
 };
-use test_cabinet_core::validation::ValidationSummary;
+use test_cabinet_contracts::validation::ValidationSummary;
 
 use crate::db::{Db, Reviewer, StoredReview};
 use crate::store::{
@@ -29,7 +27,7 @@ fn gg_record(id: &str, model: &str) -> RunRecord {
         subject: RunSubject {
             test_case_slug: "pong".to_string(),
             test_case_version: "v1.0.0".to_string(),
-            test_type: test_cabinet_core::TestType::EndToEnd,
+            test_type: test_cabinet_suites::test_case::TestType::EndToEnd,
             variant: "base".to_string(),
             harness_slug: HarnessSlug::Gg,
             harness_version: Some("0.7.0".to_string()),
@@ -77,7 +75,7 @@ fn gg_record(id: &str, model: &str) -> RunRecord {
             os: "Debian".to_string(),
             container_image: "test-cabinet/gg:abcd".to_string(),
             node_version: Some("v22.11.0".to_string()),
-            auth_mode: test_cabinet_core::AuthMode::ApiKey,
+            auth_mode: test_cabinet_contracts::run_record::AuthMode::ApiKey,
         },
         metrics: RunMetrics::default(),
         validation: ValidationSummary {
@@ -171,9 +169,9 @@ fn manifest() -> StoredManifest {
         description: None,
         changelog: "Introduced.".to_string(),
         max_runtime_seconds: 1800,
-        test_type: test_cabinet_core::TestType::EndToEnd,
-        engines: vec![test_cabinet_core::EngineSupport::unbounded(
-            test_cabinet_core::engine::NONE_SLUG,
+        test_type: test_cabinet_suites::test_case::TestType::EndToEnd,
+        engines: vec![test_cabinet_suites::test_case::EngineSupport::unbounded(
+            test_cabinet_suites::engine::NONE_SLUG,
         )],
         experimental: false,
         build: Some(StoredBuild {
@@ -190,8 +188,8 @@ fn manifest() -> StoredManifest {
         simulation: None,
         r#match: None,
         replay: None,
-        asset_kind: test_cabinet_core::AssetKind::Sprite,
-        asset_dimension: test_cabinet_core::AssetDimension::TwoD,
+        asset_kind: test_cabinet_suites::test_case::AssetKind::Sprite,
+        asset_dimension: test_cabinet_suites::test_case::AssetDimension::TwoD,
         sheet: None,
         voxel: None,
         model: None,
@@ -232,7 +230,7 @@ fn manifest() -> StoredManifest {
         }],
         common_references: vec![StoredReference {
             view: "gameplay".to_string(),
-            kind: test_cabinet_core::ReferenceKind::Rendered,
+            kind: test_cabinet_suites::test_case::ReferenceKind::Rendered,
             extension: "png".to_string(),
         }],
         common_proofs: vec![],
@@ -897,11 +895,11 @@ async fn every_exported_document_is_redacted() {
         let agent = &mut set.agents[0];
         agent
             .capabilities
-            .retain(|cfg| cfg.id != test_cabinet_core::gg::CAPABILITY_SKILLS);
+            .retain(|cfg| cfg.id != test_cabinet_contracts::gg::CAPABILITY_SKILLS);
         agent
             .capabilities
-            .push(test_cabinet_core::gg::GgCapabilityConfig {
-                id: test_cabinet_core::gg::CAPABILITY_SKILLS.to_string(),
+            .push(test_cabinet_contracts::gg::GgCapabilityConfig {
+                id: test_cabinet_contracts::gg::CAPABILITY_SKILLS.to_string(),
                 enabled: true,
                 implementation: None,
                 params: serde_json::json!({ "brief": pasted, "budget": 3 }),
@@ -1004,7 +1002,7 @@ async fn the_reconcile_builds_stats_facts_beside_the_documents() {
     // provider slices and dispatch total arrive intact, and that an old-format
     // run is present with neither — absent, not defaulted — so the `/stats`
     // folds can tell the two apart end to end.
-    use test_cabinet_core::gg::GgProviderStat;
+    use test_cabinet_contracts::gg::GgProviderStat;
 
     use crate::stats::{fold_model_accuracy, fold_provider_stats};
 

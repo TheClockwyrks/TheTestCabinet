@@ -11,9 +11,9 @@ use axum::extract::{Path, Query, State};
 use axum::http::{HeaderMap, StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use serde::Deserialize;
-use test_cabinet_core::content_labels::{self, ContentLabels};
-use test_cabinet_core::engine::{EngineSelection, ResolvedEngine};
-use test_cabinet_core::shippable_package_description;
+use test_cabinet_suites::content_labels::{self, ContentLabels};
+use test_cabinet_suites::engine::{EngineSelection, ResolvedEngine};
+use test_cabinet_suites::test_case::shippable_package_description;
 
 use crate::error::ApiError;
 use crate::store::StoredManifest;
@@ -142,7 +142,7 @@ pub async fn versions(
     Ok(Json(VersionsResponse { slug, versions }))
 }
 
-/// The [engine](test_cabinet_core::engine) a version's templated text is rendered
+/// The [engine](test_cabinet_suites::engine) a version's templated text is rendered
 /// for: `?engine=<slug>` on [`resolve_version`] and [`variant_specs`].
 ///
 /// A case version's `prompt.hbs` and its `.hbs` specs branch on the selected
@@ -169,14 +169,14 @@ impl EngineQuery {
     /// Resolve the requested slug against the built-in engine catalogue.
     ///
     /// `None` (the parameter was omitted) renders engineless. An explicit
-    /// [`NONE_SLUG`](test_cabinet_core::engine::NONE_SLUG) resolves to the built-in
+    /// [`NONE_SLUG`](test_cabinet_suites::engine::NONE_SLUG) resolves to the built-in
     /// engineless engine, which renders identically — a run that named `none` and a
     /// surface that named nothing see the same text.
     fn resolve(&self) -> Result<Option<ResolvedEngine>, ApiError> {
         let Some(slug) = self.engine.as_deref() else {
             return Ok(None);
         };
-        test_cabinet_core::engine::built_in_catalog()
+        test_cabinet_engines::built_in_catalog()
             .resolve(&EngineSelection::new(slug))
             .map(Some)
             .map_err(|err| ApiError::bad_request(err.to_string()))
@@ -514,7 +514,7 @@ pub async fn put_run_asset(
 }
 
 /// `GET /runs/{id}/showcase/{file}` — one of a published run's
-/// [showcase](test_cabinet_core::RunShowcase) files (`{file}` is the plain file
+/// [showcase](test_cabinet_contracts::run_record::RunShowcase) files (`{file}` is the plain file
 /// name in the produced tree's `showcase/` — a carousel media file, or an image
 /// the description references), mirrored into the backend store by the driver so
 /// it reaches the public snapshot. The content type follows the extension; a
@@ -573,7 +573,7 @@ pub async fn put_run_controller(
 }
 
 /// `GET /runs/{id}/replay` — a gg run's stored
-/// [session record](test_cabinet_core::gg_session_record), the capture of its non-deterministic
+/// [session record](test_cabinet_contracts::gg_session_record), the capture of its non-deterministic
 /// inputs, served as JSON so a replay driver can re-run the session.
 ///
 /// The stored bytes are gzipped, so this is served through [`run_artifact_response`]: a browser
@@ -607,7 +607,7 @@ pub async fn put_run_replay(
 }
 
 /// `GET /runs/{id}/code-analysis` — a run's stored
-/// [code-analysis](test_cabinet_core::code_analysis) document: the unbounded tier of the
+/// [code-analysis](test_cabinet_contracts::code_analysis) document: the unbounded tier of the
 /// static read of the code its model wrote, with every file, symbol, import edge, cycle and
 /// clone group.
 ///
@@ -1014,7 +1014,7 @@ fn workspace_out(file: &crate::store::StoredWorkspaceFile) -> WorkspaceOut {
 }
 
 /// Map a stored starter project to the wire shape: one file list per
-/// [engine](test_cabinet_core::engine) slug.
+/// [engine](test_cabinet_suites::engine) slug.
 fn workspaces_out(
     workspace: &crate::store::StoredWorkspace,
 ) -> std::collections::BTreeMap<String, Vec<WorkspaceOut>> {

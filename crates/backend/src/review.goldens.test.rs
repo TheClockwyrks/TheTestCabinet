@@ -2,7 +2,7 @@
 //!
 //! Every file under `contracts/crates/contracts/fixtures/scoring/` holds the cases one function
 //! pair must agree on: a function here (or in [`crate::comparison`] and
-//! [`crate::test_case`]) and its mirror in `packages/run-stats/src/scoring.ts`. The
+//! [`test_cabinet_contracts::test_case`]) and its mirror in `packages/run-stats/src/scoring.ts`. The
 //! TypeScript half, `packages/run-stats/src/scoring.goldens.test.ts`, reads the same
 //! files off the crate, so a case added on either side is executed by both suites.
 //!
@@ -19,10 +19,10 @@ use serde_json::json;
 
 use super::*;
 use crate::comparison::{automated_only_score, automated_verdicts, covered_score};
-use crate::test_case::{
+use test_cabinet_contracts::test_case::{
     Domain, ReviewItem, SubReviewItem, apply_score_exclusions, merge_review_items,
 };
-use crate::validation::DebugScriptResult;
+use test_cabinet_contracts::validation::DebugScriptResult;
 
 /// One golden file: a comment saying what it covers, and its cases.
 #[derive(Deserialize)]
@@ -548,7 +548,7 @@ fn every_golden_file_is_executed() {
         })
         .collect();
     let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join(crate::test_support::CONTRACT_FIXTURES)
+        .join(crate::test_paths::CONTRACT_FIXTURES)
         .join("scoring");
     let present: std::collections::BTreeSet<String> = std::fs::read_dir(&dir)
         .expect("the goldens directory")

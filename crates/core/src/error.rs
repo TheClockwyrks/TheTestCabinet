@@ -304,22 +304,10 @@ pub enum Error {
     #[error("ingesting the checkout: {0}")]
     Ingest(String),
 
-    /// An R2 request failed: the object store could not be reached, or it
-    /// rejected a signed `PutObject`/`ListObjectsV2`. Carries the key or prefix
-    /// and the store's own explanation.
-    #[error("the R2 object store: {0}")]
-    R2(String),
-
     /// A run's hand-written review (its writeup and rating) was missing or
     /// malformed.
     #[error("reading the run's review: {0}")]
     Review(String),
-
-    /// An account operation against the auth service failed: a registration or
-    /// login was rejected (bad credentials, a taken username), or the service
-    /// could not be reached. The detail carries the service's explanation.
-    #[error("the auth service: {0}")]
-    Auth(String),
 
     /// An orchestrator could not be resolved (an unknown built-in slug, or an
     /// external `--orchestrator-dir` whose manifest or runner could not be read

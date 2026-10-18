@@ -24,8 +24,8 @@ use serde::Deserialize;
 use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
 
-use test_cabinet_core::model_id::canonical_model_id;
-use test_cabinet_core::run_record::{HarnessFamily, HarnessSlug};
+use crate::model_id::canonical_model_id;
+use test_cabinet_contracts::run_record::{HarnessFamily, HarnessSlug};
 use test_cabinet_entities::model_price;
 
 use crate::auth::AuthUser;
@@ -430,7 +430,7 @@ pub struct OpenRouterLookupQuery {
 /// operator retyping what OpenRouter already knows. Requires a bearer token.
 ///
 /// The list-price figures are resolved by the
-/// [list-price flow](test_cabinet_core::ModelLaunchFacts::list_price) with
+/// [list-price flow](crate::pricing::ModelLaunchFacts::list_price) with
 /// `providerPin` as the hand-set developer provider, so the form is seeded with the
 /// rate a refresh would write for the entry as the form holds it. The flow's last
 /// step, the model's own price in OpenRouter's models listing, is what reads that
@@ -560,7 +560,7 @@ pub(crate) fn normalize_provider_policy(
         .map(|level| level.trim().to_ascii_lowercase())
         .filter(|level| !level.is_empty());
     if let Some(level) = &native_quantization
-        && test_cabinet_core::pricing::quantization_rank(level).is_none()
+        && crate::pricing::quantization_rank(level).is_none()
     {
         return Err(format!(
             "model.nativeQuantization `{level}` is not a quantization level OpenRouter declares \
@@ -606,7 +606,7 @@ fn normalize_providers(providers: &[String]) -> Vec<String> {
         if !name.is_empty()
             && !out
                 .iter()
-                .any(|kept| test_cabinet_core::pricing::same_provider(kept, name))
+                .any(|kept| crate::pricing::same_provider(kept, name))
         {
             out.push(name.to_string());
         }
@@ -614,12 +614,12 @@ fn normalize_providers(providers: &[String]) -> Vec<String> {
     out
 }
 
-/// The catalog's [launch facts](test_cabinet_core::ModelLaunchFacts) for the model a
+/// The catalog's [launch facts](crate::pricing::ModelLaunchFacts) for the model a
 /// run names — the latest observed context window and input modalities for it — or
 /// empty fields where the catalog has recorded nothing.
 ///
 /// The catalog is the **single store of model facts**, so this is the one place they
-/// are looked up: a run that needs them (a [gg](test_cabinet_core::gg) run, whose
+/// are looked up: a run that needs them (a [gg](test_cabinet_contracts::gg) run, whose
 /// fullness accounting and compaction trigger are measured against the window, and
 /// whose reference-image reads are gated on the modalities) is told the answers at
 /// launch rather than keeping a table of its own.
@@ -636,13 +636,13 @@ pub async fn launch_facts_for(
     db: &crate::db::Db,
     model_id: &str,
     harness: HarnessSlug,
-) -> crate::error::Result<test_cabinet_core::ModelLaunchFacts> {
+) -> crate::error::Result<crate::pricing::ModelLaunchFacts> {
     let canonical = canonical_model_id(model_id, harness);
     if let Some(facts) = latest_launch_facts(db, &canonical).await? {
         return Ok(facts);
     }
     let Some(slug) = db.openrouter_slug_for_alias(&canonical).await? else {
-        return Ok(test_cabinet_core::ModelLaunchFacts::default());
+        return Ok(crate::pricing::ModelLaunchFacts::default());
     };
     Ok(latest_launch_facts(db, &slug).await?.unwrap_or_default())
 }
@@ -653,11 +653,11 @@ pub async fn launch_facts_for(
 async fn latest_launch_facts(
     db: &crate::db::Db,
     key: &str,
-) -> crate::error::Result<Option<test_cabinet_core::ModelLaunchFacts>> {
+) -> crate::error::Result<Option<crate::pricing::ModelLaunchFacts>> {
     Ok(db
         .latest_price(key)
         .await?
-        .map(|row| test_cabinet_core::ModelLaunchFacts {
+        .map(|row| crate::pricing::ModelLaunchFacts {
             context_window: row
                 .context_length
                 .and_then(|length| u64::try_from(length).ok()),

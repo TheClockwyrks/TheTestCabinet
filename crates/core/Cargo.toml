@@ -11,10 +11,10 @@ path = "src/lib.rs"
 
 [dependencies]
 # The shapes: the contract modules this crate re-exports at their old paths
-# (`gg`, `metrics`, `toolchain`, `code_analysis`, ...) and the contract halves of the
-# ones it splits (`run_record`, `event`, `review`, `validation`, `test_case`,
-# `test_suite`, `gg_query`, `engine`, `pricing`, `orchestrator`, `execution`, the
-# ingest feed and the layout constants).
+# (`gg`, `metrics`, `toolchain`, `code_analysis`, `review`, ...) and the contract
+# halves of the ones it splits (`run_record`, `event`, `validation`, `test_case`,
+# `test_suite`, `engine`, `orchestrator`, `execution`, the ingest feed and the
+# layout constants).
 test-cabinet-contracts = { path = "../../contracts/crates/contracts" }
 # The test-suite runtime and the manifest loaders: the `test_case`,
 # `test_case_group` and `test_suite` catalogs, the resolver, `prompt`, the validator
@@ -49,17 +49,12 @@ tempfile = { workspace = true }
 # backend store's reader and the archive service use, so one encoder decides the
 # framing for the whole path.
 flate2 = { workspace = true }
-reqwest = { workspace = true }
 png = { workspace = true }
 which = { workspace = true }
 base64 = { workspace = true }
-# SigV4 signing for the shared R2 client (`crate::r2`), which the backend's
-# snapshot refresh and `tcab publish-reference` both use. Signing the handful of
-# requests directly is far cheaper than vendoring the AWS SDK for two verbs.
+# The audio stage's pack digests (`audio_stage`).
 sha2 = { workspace = true }
-hmac = { workspace = true }
 hex = { workspace = true }
-md-5 = { workspace = true }
 # The audio staging contract: the staged-audio root, its `packs.json` shape, and the
 # rule that selects one pack out of a run's palette. Core writes that tree and the
 # in-container audio binaries read it, so both link the one definition and cannot
@@ -103,7 +98,6 @@ foray-host = { path = "../foray-host" }
 # the wasmtime dependency lives entirely in `lattice-host`.
 lattice-core = { path = "../lattice-core", default-features = false }
 lattice-host = { path = "../lattice-host" }
-http = { workspace = true }
 tracing = { workspace = true }
 # Propagation only — the library never pulls in the OTLP exporters/SDK (those
 # live behind the `otlp` feature the binaries enable). This keeps `crates/core`

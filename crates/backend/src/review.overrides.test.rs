@@ -5,8 +5,8 @@
 //! no overrides — reproduces the validators' own figures exactly).
 
 use super::*;
-use crate::test_case::{Domain, ReviewItem, SubReviewItem};
-use crate::validation::{AutoVerdict, DebugScriptResult, Inconclusive};
+use test_cabinet_contracts::test_case::{Domain, ReviewItem, SubReviewItem};
+use test_cabinet_contracts::validation::{AutoVerdict, DebugScriptResult, Inconclusive};
 
 /// A scoring domain with the given id.
 fn domain(id: &str) -> Domain {

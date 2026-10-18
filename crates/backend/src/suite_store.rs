@@ -17,7 +17,7 @@
 
 use std::path::{Path, PathBuf};
 
-use test_cabinet_core::test_case::version_key;
+use test_cabinet_suites::test_case::version_key;
 
 use crate::error::{BackendError, Result};
 use crate::store::{

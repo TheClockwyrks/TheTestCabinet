@@ -3,13 +3,12 @@
 //! The headless orchestration library for The Test Cabinet. It owns the full run
 //! lifecycle: resolving a test case version, seeding a run's repository,
 //! executing the run in a container, invoking the agent harness, collecting
-//! metrics, running validation, writing the run record, and publishing.
+//! metrics, running validation, and writing the run record.
 //!
 //! See `docs/application.md`. The command line interface and the services are
 //! thin layers on top of this core; keeping orchestration here is what makes batch
 //! runs and unattended sweeps possible.
 
-pub mod accounts;
 pub mod adversarial_validator;
 pub mod asset_reference;
 pub mod audio_stage;
@@ -18,9 +17,6 @@ pub mod backend_client;
 pub mod browser;
 pub mod cancel;
 pub mod clock;
-pub mod comparison;
-pub mod comparison_aggregate;
-pub mod comparison_stats;
 pub mod container;
 // The file is not `engine.rs`: `crates/core/src/engine.rs` is an earlier path of the
 // suites crate's engine module, and a new file there would carry core's history into
@@ -32,7 +28,6 @@ pub mod event;
 pub mod exec_stream;
 pub mod execution;
 pub mod gg_exec;
-pub mod gg_query;
 pub mod gg_session_assembly;
 pub mod harness;
 pub mod harness_registry;
@@ -40,18 +35,13 @@ pub mod harness_telemetry;
 pub mod install;
 pub mod lockfile_check;
 pub mod match_play;
-pub mod model_id;
 pub mod orchestrator;
 pub mod performance_validator;
-pub mod playable;
 pub mod post_run;
 pub mod preview;
-pub mod pricing;
 pub mod publish;
-pub mod r2;
 pub mod reference;
 pub mod remote_backend;
-pub mod review;
 pub mod run_record;
 pub mod salvage;
 pub mod seeding;
@@ -65,7 +55,7 @@ pub mod validator;
 // items they always did.
 pub use test_cabinet_contracts::{
     code_analysis, cold_storage, gg, gg_reference, gg_session_journal, gg_session_record, job_api,
-    metrics, publish_job_api, reference_lock, showcase, toolchain,
+    metrics, publish_job_api, reference_lock, review, showcase, toolchain,
 };
 
 // The suite runtime's modules that moved whole into `test-cabinet-suites`, re-exported
@@ -94,10 +84,6 @@ mod test_support;
 #[cfg(test)]
 pub(crate) use test_cabinet_suites::test_browser;
 
-#[cfg(test)]
-#[path = "vitest_validator.core.test.rs"]
-mod vitest_validator_tests;
-
 /// The Test Cabinet commit this build was produced from, stamped at compile time
 /// by `build.rs` into the `TEST_CABINET_COMMIT` environment variable and suffixed
 /// with `-dirty` when the working tree was modified. `None` when the build could
@@ -117,7 +103,6 @@ use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
 use tracing::instrument;
 
-pub use accounts::{Account, AccountsClient, AuthnResponse, LoginRequest, RegisterRequest};
 pub use adversarial_validator::AdversarialValidator;
 pub use auth::{
     AuthPlan, CredBytesSource, CredFile, CredSource, HostCreds, MapCreds, RequestedAuthMode,
@@ -175,24 +160,13 @@ pub use orchestrator::{
     OrchestratorSelection,
 };
 pub use performance_validator::PerformanceValidator;
-pub use playable::{
-    BUILD_OUTPUTS, ServedAssetFile, ServedBuildFile, ServedProofFile, ServedShowcaseFile,
-    ServedValidationFile, find_build_output, proof_labelled_name, proof_published_extension,
-    proof_served_extension, serve_asset_file, serve_build_file, serve_proof_file,
-    serve_showcase_file, serve_validation_file,
-};
 pub use post_run::{PostRunContext, PostRunReport, PostRunStage};
 pub use preview::{AssetPreview, LivePreview, LivePreviewEndpoint, PreviewSink};
-pub use pricing::{
-    ListPriceResolution, ListPriceStep, ListRate, MODALITY_IMAGE, ModelDetails, ModelLaunchFacts,
-    ModelListing, ModelsListingPrices, OpenRouterPrices, ProviderRoute,
-};
 pub use prompt::{
     render_case_prompt, render_prompt, render_prompt_from_template, render_spec_from_template,
 };
 pub use publish::{
-    BackendPublisher, CommandOutput, CommandRunner, PublishConfig, Publisher, ReleaseRequest,
-    SystemCommandRunner, deploy_pages_build, implementation_dir, parse_wrangler_url, run_slug,
+    CommandOutput, CommandRunner, SystemCommandRunner, deploy_pages_build, parse_wrangler_url,
 };
 pub use publish_job_api::{
     PublishClaim, PublishJobState, PublishProgress, PublishResult, PublishState,
@@ -200,10 +174,7 @@ pub use publish_job_api::{
 pub use reference::{BrowserRenderer, ReferenceRenderer, RenderedReference};
 pub use resolver::{SuiteDefinitionRef, TestCaseResolver};
 pub use review::{
-    AestheticRating, DomainRating, Rating, ReviewVerdict, Score, VerdictStatus, Writeup,
-    effective_verdicts, missing_ratings, missing_verdicts, needs_aesthetic, parse_writeup, score,
-    validator_aggregate_rating, validator_aggregate_score, validator_review_rating,
-    validator_review_score,
+    AestheticRating, DomainRating, Rating, ReviewVerdict, VerdictStatus, Writeup, parse_writeup,
 };
 pub use run_record::{
     AuthMode, HarnessSlug, PriorGameJamEntry, RunEnvironment, RunLinks, RunRecord, RunShowcase,
@@ -211,8 +182,13 @@ pub use run_record::{
 };
 pub use seeding::FsRepoSeeder;
 pub use test_cabinet_contracts::layout::{
+    BUILD_OUTPUTS, find_build_output, proof_labelled_name, proof_published_extension,
+    proof_served_extension,
+};
+pub use test_cabinet_contracts::layout::{
     MAX_SHOWCASE_DESCRIPTION_BYTES, MAX_SHOWCASE_MEDIA_ENTRIES, MAX_SHOWCASE_MEDIA_FILE_BYTES,
 };
+pub use test_cabinet_contracts::pricing::MODALITY_IMAGE;
 pub use test_case::{
     AssetDimension, AssetKind, CanvasSpec, Check, CheckAction, ContractSpec, DeclaredTrees, Domain,
     EngineSupport, EngineWorkspaces, Instrumentation, MatchSpec, MediaKind, ModelSpec, OutputSpec,
@@ -2262,7 +2238,7 @@ fn read_showcase(repo_path: &Path) -> Option<RunShowcase> {
         // An entry names a plain file in `showcase/` itself — no subdirectories —
         // which is also the invariant that keeps the served
         // `/runs/<id>/showcase/<file>` route a flat namespace. The `..` check
-        // matches the serve side (`playable::serve_showcase_file` refuses any name
+        // matches the serve side (the artifacts service's `playable::serve_showcase_file` refuses any name
         // *containing* `..`), so a name capture records is a name every route
         // serves.
         if entry.file.is_empty() || entry.file.contains(['/', '\\']) || entry.file.contains("..") {

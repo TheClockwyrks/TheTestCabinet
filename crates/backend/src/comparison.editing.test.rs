@@ -4,9 +4,9 @@
 
 use super::*;
 use crate::comparison_aggregate::aggregate_comparison;
-use crate::engine::NONE_SLUG;
-use crate::run_record::HarnessSlug;
 use std::collections::{BTreeMap, BTreeSet};
+use test_cabinet_contracts::engine::NONE_SLUG;
+use test_cabinet_contracts::run_record::HarnessSlug;
 
 fn harness_arm(id: &str, harness: HarnessSlug, runs: &[&str]) -> ComparisonArm {
     ComparisonArm {
