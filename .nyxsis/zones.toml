@@ -15,3 +15,6 @@ name = "Repository extractions"
 
 [zone.GGH]
 name = "gg, the harness"
+
+[zone.CASE]
+name = "Test cases and their seeding"
