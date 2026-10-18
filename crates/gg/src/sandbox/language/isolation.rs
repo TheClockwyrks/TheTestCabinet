@@ -152,6 +152,16 @@ pub(super) trait Preparation: Sync {
     /// Prepare it, in `context`, and hand back the artifact as text.
     fn prepare(&self, source: &str, context: &PrepareContext) -> Result<String, String>;
 
+    /// Do the one-off work a run does before its first preparation, once, before [`breaches`]
+    /// starts either phase.
+    ///
+    /// A registered language answers with its own [`warm_prepare`](ProgramLanguage::warm_prepare),
+    /// which a run fires once per distinct language before any agent compiles. Without it the
+    /// gate's first preparation pays what no preparation of a run pays — on the
+    /// [Kotlin](super::kotlin) arm, starting the pool's first JVM — inside the session it drives.
+    /// Nothing for a stand-in, whose every call is a [`prepare`](Self::prepare) the gate counts.
+    fn warm(&self) {}
+
     /// What this preparation's language keeps under the working directory across a reset — see
     /// [`persistent_work`](ProgramLanguage::persistent_work).
     ///
@@ -303,9 +313,17 @@ impl std::fmt::Display for Breach {
 ///
 /// A preparation that cannot keep one agent's own turns apart is not asked whether it can keep two
 /// agents apart, so anything the first phase reports is returned as it stands.
+///
+/// **Warmed once before either**, as a run warms each language before its first agent compiles —
+/// see [`Preparation::warm`]. The warm-up is not a preparation: it carries no marker, nothing it
+/// leaves behind is an input's artifact, and what the phases assert is unchanged by it. What it
+/// leaves warm is shared state of exactly the kind a run's agents share, so a preparation that the
+/// warm-up could corrupt is one a run's first agent corrupts too.
 pub(super) fn breaches(preparation: &dyn Preparation) -> Vec<Breach> {
     let markers: Vec<String> = (0..WIDTH).map(marker).collect();
     let sources: Vec<String> = markers.iter().map(|m| preparation.source(m)).collect();
+
+    preparation.warm();
 
     let sequential = one_agents_session(preparation, &markers, &sources);
     if !sequential.is_empty() {
@@ -622,6 +640,11 @@ impl Preparation for LanguagePreparation {
                 .map(|prepared| prepared.source),
         }
         .map_err(|failure| failure.to_string())
+    }
+
+    /// The language's own warm-up, the one a run fires once per distinct language.
+    fn warm(&self) {
+        self.language.warm_prepare();
     }
 
     fn persistent_work(&self) -> &'static [&'static str] {
