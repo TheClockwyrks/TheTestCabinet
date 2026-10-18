@@ -94,6 +94,25 @@ interface SnapshotIndex {
   // before the gg export existed still loads (the site then mounts no analysis
   // surface at all).
   ggRunsKey?: string;
+  // Where the case showcases live (`<prefix>/case-showcases.json`): the showcases
+  // of every non-experimental version of each case with a published run, whichever
+  // version that run built. Optional so a snapshot published before the file
+  // existed still loads; the catalog then previews each case from its case files.
+  caseShowcasesKey?: string;
+}
+
+// `case-showcases.json` (`CaseShowcasesFile`): one entry per case version that
+// declares a showcase, each with its showcased variants in manifest order.
+interface SnapshotCaseShowcasesFile {
+  schemaVersion: number;
+  showcases: Array<{
+    slug: string;
+    version: string;
+    variants: Array<{
+      variant: string;
+      showcase: NonNullable<SnapshotCaseFile["variants"][number]["showcase"]>;
+    }>;
+  }>;
 }
 
 interface SnapshotModelsFile {
@@ -521,8 +540,9 @@ interface AssembledSnapshot {
   // The media each case's catalog card previews (its `showcase`), resolved to
   // absolute URLs and keyed by the previewed `<slug>/<version>/<variant>` subject
   // then by the authored file name. The catalog is a listing, so this one slice
-  // of a case version's showcase media is index data; the same addresses are in
-  // the version's own file with the rest of its media.
+  // of a case version's showcase media is index data. The previewed version may
+  // have no file of its own (no published run built it), so these addresses are
+  // the only ones the site holds for it.
   catalogShowcaseMediaUrls: Record<string, Record<string, string>>;
 }
 
@@ -897,8 +917,8 @@ interface MappedCaseVersion {
   sheet: AssetSheet | null;
   // This version's catalog showcase preview: its first variant (manifest order)
   // that declares a showcase with media to show, or null. The catalog previews
-  // the LATEST version's — the same first-variant-with-a-showcase rule the
-  // backend's catalog applies.
+  // from `case-showcases.json` when the snapshot has one, which reaches versions
+  // no published run built, and falls back to the newest version's preview here.
   showcase: AssembledCaseSummary["showcase"];
   media: AssembledCaseVersionMedia;
 }
@@ -1405,6 +1425,37 @@ export interface SnapshotEmitter {
   caseVersion(slug: string, version: string, json: string): void;
 }
 
+// The showcase a case's catalog card previews: the first variant (manifest order)
+// with media to show, of the case's newest version that has one. Null when no
+// version of the case carries a showcase.
+function newestCaseShowcase(
+  file: SnapshotCaseShowcasesFile,
+  slug: string,
+): {
+  version: string;
+  variant: string;
+  media: NonNullable<SnapshotCaseFile["variants"][number]["showcase"]>["media"];
+} | null {
+  const versions = file.showcases
+    .filter((entry) => entry.slug === slug)
+    .sort((a, b) =>
+      b.version.localeCompare(a.version, undefined, { numeric: true }),
+    );
+  for (const entry of versions) {
+    const variant = entry.variants.find(
+      (candidate) => candidate.showcase.media.length > 0,
+    );
+    if (variant) {
+      return {
+        version: entry.version,
+        variant: variant.variant,
+        media: variant.showcase.media,
+      };
+    }
+  }
+  return null;
+}
+
 // Fetch and assemble the published snapshot. Follows the atomic pointer
 // `index.json` -> versioned prefix -> `runs.json` -> per-run + per-case files.
 // It returns the INDEX, which the plugin inlines, and hands everything that
@@ -1544,6 +1595,22 @@ export async function loadSnapshot(
     },
   );
 
+  // The case showcases, which a case's catalog preview is taken from: its newest
+  // version's, whether or not a run of that version is published. Absent from a
+  // snapshot published before the file existed, and unreadable is treated the
+  // same way — the preview then falls back to the newest case file's showcase.
+  let caseShowcases: SnapshotCaseShowcasesFile | null = null;
+  if (index.caseShowcasesKey) {
+    try {
+      caseShowcases = await fetcher.json<SnapshotCaseShowcasesFile>(
+        joinUrl(base, index.caseShowcasesKey),
+      );
+    } catch {
+      // Missing/unreadable: preview from the case files rather than failing the
+      // whole build.
+    }
+  }
+
   // One detail file per case and one file per version of it; the listing card
   // and the media its catalog preview shows are all the index keeps of a case.
   const testCases: AssembledCaseSummary[] = [];
@@ -1555,7 +1622,29 @@ export async function loadSnapshot(
     for (const { version, file } of assembled.versions) {
       emit.caseVersion(summary.slug, version, JSON.stringify(file));
     }
-    if (summary.showcase) {
+    if (caseShowcases) {
+      const preview = newestCaseShowcase(caseShowcases, summary.slug);
+      summary.showcase = preview
+        ? {
+            version: preview.version,
+            variant: preview.variant,
+            media: preview.media.map(({ file, name, kind }) => ({
+              file,
+              name,
+              kind,
+            })),
+          }
+        : null;
+      if (preview) {
+        const byFile: Record<string, string> = {};
+        for (const entry of preview.media) {
+          byFile[entry.file] = joinUrl(base, entry.key);
+        }
+        catalogShowcaseMediaUrls[
+          `${summary.slug}/${preview.version}/${preview.variant}`
+        ] = byFile;
+      }
+    } else if (summary.showcase) {
       const { version, variant } = summary.showcase;
       const previewed = assembled.versions.find(
         (entry) => entry.version === version,

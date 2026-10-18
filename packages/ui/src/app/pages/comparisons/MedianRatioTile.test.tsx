@@ -10,7 +10,8 @@ function arm(id: string, label: string, median: number): ComparisonArmResult {
     arm: { id, label },
     nDesired: 3,
     nObserved: 3,
-    liveRunIds: [],
+    runIds: [],
+    inFlight: 0,
     cost: {
       n: 3,
       median,

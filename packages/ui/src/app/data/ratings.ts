@@ -31,6 +31,8 @@ export {
   automatedVerdicts,
   automatedOnlyScore,
   coveredScore,
+  decidesAScoredPoint,
+  validatorCoveredScore,
   effectiveVerdicts,
   validatorDomainRatings,
   verdictDomainRatings,

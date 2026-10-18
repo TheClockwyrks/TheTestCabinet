@@ -107,6 +107,13 @@ returns discarding them, and the back chevron beside the title does the same as
 Cancel but asks first if there is anything to lose. The configuration itself is
 written to the account only by the Save button on the configuration view.
 
+Leaving the editor with unsaved changes asks first, whichever way the operator
+leaves: the back chevron, any link in the console, or the browser's own back and
+forward. The question offers to save and go, to discard and go, or to keep
+editing, and an open agent's edits count among the configuration's changes.
+Closing or reloading the tab falls back to the browser's own prompt, which can
+offer only the last two.
+
 Each profile carries:
 
 - an [agent type](#agent-type), chosen above everything else because it decides

@@ -1,5 +1,5 @@
 import { act, cleanup, render, screen } from "@testing-library/react";
-import { MemoryRouter } from "react-router";
+import { RouterProvider, createMemoryRouter } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { GalleryApp } from "../GalleryApp";
 import type { GalleryDataInput } from "../data/galleryContext";
@@ -87,12 +87,17 @@ function pathFor(name: string, pattern: string, runId: string): string {
  */
 async function visit(path: string, data: GalleryDataInput): Promise<void> {
   await act(async () => {
+    // A data router, as the hosts mount the app under.
+    const router = createMemoryRouter(
+      [{ path: "*", element: <GalleryApp /> }],
+      {
+        initialEntries: [path],
+      },
+    );
     render(
-      <MemoryRouter initialEntries={[path]}>
-        <HostProviders data={data}>
-          <GalleryApp />
-        </HostProviders>
-      </MemoryRouter>,
+      <HostProviders data={data}>
+        <RouterProvider router={router} />
+      </HostProviders>,
     );
   });
 }

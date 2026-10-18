@@ -6,7 +6,9 @@
 //! the [configuration](test_cabinet_core::comparison::ComparisonConfig) is stored;
 //! the per-arm statistics and diagnostics are **computed on read** from the arms'
 //! runs (see [`test_cabinet_core::comparison_aggregate`]), so a comparison always
-//! reflects whatever runs have since landed.
+//! reflects whatever runs have since landed. An arm holds the runs of its
+//! [coverage cell](super::coverage), whoever launched them, exactly as a coverage plan's
+//! cell and a ladder's rung slot do.
 //!
 //! Everything is per-account (attributed to the token's account via [`AuthUser`])
 //! and private to that operator, exactly like the reviewer's
@@ -27,15 +29,19 @@ use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
 
-use test_cabinet_core::comparison::{Comparison, ComparisonConfig, carry_run_ids, is_complete};
-use test_cabinet_core::comparison_aggregate::aggregate_comparison;
+use test_cabinet_core::comparison::{Comparison, ComparisonArm, ComparisonConfig, is_complete};
+use test_cabinet_core::comparison_aggregate::{ArmHolding, aggregate_comparison};
 use test_cabinet_core::run_record::{HarnessSlug, RunRecord};
 
 use crate::auth::AuthUser;
-use crate::db::{ArmRunStatus, PublishEnqueue, StoredComparison};
+use crate::db::{CellKey, PublishEnqueue, StoredComparison};
 use crate::error::ApiError;
 
 use super::AppState;
+use super::ReviewPlanCombo;
+use super::coverage::{
+    GgLibrary, cell_in_flight, cell_key_of, cell_runs, member_cell_identity, resolve_member,
+};
 use super::publish_gate::{
     GatedEnqueue, artifacts_unavailable_message, no_stored_tree_message, reclaimed_message,
 };
@@ -105,6 +111,7 @@ pub async fn create_comparison(
     let now = now()?;
     ensure_engine_control_supported(&state.store, &input.config)?;
     let stored = stored_from_input(new_id(), &user.0.id, input, &now, &now)?;
+    ensure_distinct_cells(state.db.as_ref(), &user.0.id, &stored.config).await?;
     state
         .db
         .insert_comparison(&user.0.id, &stored)
@@ -158,18 +165,10 @@ pub async fn update_comparison(
         return Err(ApiError::not_found("comparison not found"));
     };
     ensure_engine_control_supported(&state.store, &input.config)?;
-    // Which recorded runs each arm keeps is the backend's call, made against the
-    // comparison as it stands (docs/comparisons/experiments.md, "Editing a
-    // comparison").
-    let existing_config = existing.config.clone();
-    let created_at = existing.created_at.clone();
-    let existing_complete = assemble_comparison(state.db.as_ref(), &state.store, existing)
-        .await
-        .map_err(ApiError::from)?
-        .complete;
-    let mut input = input;
-    carry_run_ids(&existing_config, existing_complete, &mut input.config);
-    let stored = stored_from_input(id, &user.0.id, input, &created_at, &now()?)?;
+    // An arm's runs follow from its cell, so the configuration is stored as sent
+    // (docs/comparisons/experiments.md, "Editing a comparison").
+    let stored = stored_from_input(id, &user.0.id, input, &existing.created_at, &now()?)?;
+    ensure_distinct_cells(state.db.as_ref(), &user.0.id, &stored.config).await?;
     let updated = state
         .db
         .update_comparison(&user.0.id, &stored)
@@ -248,24 +247,21 @@ pub async fn publish_comparison(
         return Err(ApiError::not_found("comparison not found"));
     };
 
-    // Every counted arm run, resolved from the id the arm recorded to the run it
-    // stored and deduplicated, in arm/launch order. Each publishable one is enqueued
-    // through the ordinary publish queue (one pod/repo/deploy per run — publishing is
-    // expensive, so it is a real job, not a flag flip); an un-publishable one is
-    // recorded rather than aborting the batch.
-    let resolved = state
-        .db
-        .resolve_arm_runs(&arm_run_ids(&stored.config))
+    // Every run the arms hold, deduplicated, in arm order and the order each arm's runs
+    // finished. Each publishable one is enqueued through the ordinary publish queue (one
+    // pod/repo/deploy per run — publishing is expensive, so it is a real job, not a flag
+    // flip); an un-publishable one is recorded rather than aborting the batch.
+    let holdings = arm_holdings(state.db.as_ref(), &stored)
         .await
         .map_err(ApiError::from)?;
     let mut seen = BTreeSet::new();
     let mut enqueued = Vec::new();
     let mut skipped = Vec::new();
     for arm in &stored.config.arms {
-        for recorded in &arm.run_ids {
-            let Some(ArmRunStatus::Counted(run_id)) = resolved.get(recorded) else {
-                continue;
-            };
+        let Some(holding) = holdings.get(&arm.id) else {
+            continue;
+        };
+        for run_id in &holding.run_ids {
             if !seen.insert(run_id.clone()) {
                 continue;
             }
@@ -332,10 +328,10 @@ pub async fn publish_comparison(
     Ok(Json(ComparisonPublishOutcome { enqueued, skipped }))
 }
 
-/// Assemble the read model: load every arm's runs, resolve the case's effective
-/// review items, and aggregate. A comparison whose case can no longer be resolved
-/// (removed, or an unreadable manifest) still lists — it comes back with empty arm
-/// results rather than a 500, so a stale comparison stays inspectable.
+/// Assemble the read model: read the runs every arm's coverage cell holds, resolve the
+/// case's effective review items, and aggregate. A comparison whose case can no longer be
+/// resolved (removed, or an unreadable manifest) still lists — it comes back with empty
+/// arm results rather than a 500, so a stale comparison stays inspectable.
 ///
 /// `pub(crate)` and taking the `Db` + `DefinitionStore` directly (not `AppState`) so
 /// the snapshot publisher reuses the exact same computation when it folds a published
@@ -348,24 +344,25 @@ pub(crate) async fn assemble_comparison(
     store: &crate::store::DefinitionStore,
     stored: StoredComparison,
 ) -> crate::error::Result<Comparison> {
-    let run_ids = arm_run_ids(&stored.config);
-    // What each recorded id stands for: in flight, a counted run, or nothing the arm
-    // holds. The console tops each arm up against the ids it holds rather than against
-    // the ids it once recorded, and the statistics read the counted runs alone.
-    let resolved = db.resolve_arm_runs(&run_ids).await?;
-    let runs = load_arm_runs(db, &resolved).await?;
-    // Held: in flight, or a counted run whose record loaded. A counted run whose
-    // record this build cannot decode is left out of both figures alike, so it can
-    // never read as a run forever in flight.
-    let live: BTreeSet<String> = resolved
-        .iter()
-        .filter(|(id, status)| match status {
-            ArmRunStatus::InFlight => true,
-            ArmRunStatus::Counted(_) => runs.contains_key(*id),
-            ArmRunStatus::NotCounted => false,
-        })
-        .map(|(id, _)| id.clone())
+    let holdings = arm_holdings(db, &stored).await?;
+    let held: Vec<String> = holdings
+        .values()
+        .flat_map(|holding| holding.run_ids.iter().cloned())
+        .collect::<BTreeSet<String>>()
+        .into_iter()
         .collect();
+    // A held run whose record this build cannot decode is absent here, and keeps its
+    // place in the arm's `run_ids` without contributing a figure. The runs are read
+    // without their event streams, which only a run still to be counted needs.
+    let mut runs: BTreeMap<String, RunRecord> = db
+        .get_runs_without_events(&held)
+        .await?
+        .into_iter()
+        .map(|stored| (stored.record.id.clone(), stored.record))
+        .collect();
+    // A Codex or gg run stored before its harness was counted is counted now, once
+    // (docs/comparisons/diagnostics.md, "Counting an earlier run").
+    db.count_uncounted_tool_calls(&mut runs).await?;
     let arms = match store.read_manifest(
         &stored.config.controls.case_slug,
         &stored.config.controls.version,
@@ -380,7 +377,13 @@ pub(crate) async fn assemble_comparison(
                 &stored.config.controls.variant,
                 &stored.config.controls.engine_slug,
             );
-            aggregate_comparison(&stored.config, &items, &runs, &live)
+            aggregate_comparison(
+                &stored.config,
+                &items,
+                manifest.validator_rated(),
+                &holdings,
+                &runs,
+            )
         }
         Err(_) => Vec::new(),
     };
@@ -400,53 +403,151 @@ pub(crate) async fn assemble_comparison(
     })
 }
 
-/// Every run id the config's arms record, deduplicated, in arm and launch order.
-/// Two arms never share a run in practice, but nothing enforces it, so the one list
-/// both the record load and the liveness query read is built once.
-fn arm_run_ids(config: &ComparisonConfig) -> Vec<String> {
-    let mut seen = BTreeSet::new();
-    let mut ids = Vec::new();
-    for arm in &config.arms {
-        for id in &arm.run_ids {
-            if seen.insert(id.clone()) {
-                ids.push(id.clone());
-            }
-        }
-    }
-    ids
+/// The runs each arm of `stored` holds, by arm id (docs/comparisons/experiments.md,
+/// "Which runs an arm holds"): the first `n` counted runs of the arm's coverage cell to
+/// finish, whoever launched them, and the cell's jobs in flight up to what the arm still
+/// needs. The rule a coverage plan's cell and a ladder's rung slot take their runs by.
+///
+/// An arm with no cell (a gg arm whose configuration is gone or leaves a launch slot
+/// unbound) holds nothing, and carries why it cannot be launched.
+async fn arm_holdings(
+    db: &crate::db::Db,
+    stored: &StoredComparison,
+) -> crate::error::Result<BTreeMap<String, ArmHolding>> {
+    let targets = arm_targets(db, &stored.user_id, &stored.config).await?;
+    let slugs = [stored.config.controls.case_slug.clone()];
+    let (counted, in_flight) = if targets.values().any(|t| t.cell.is_some()) {
+        (
+            db.counted_runs_by_cell(&slugs, None).await?,
+            db.count_in_flight_jobs_by_cell(&slugs).await?,
+        )
+    } else {
+        Default::default()
+    };
+    let n = stored.config.n;
+    Ok(targets
+        .into_iter()
+        .map(|(arm_id, target)| {
+            let (run_ids, in_flight) = match &target.cell {
+                Some(cell) => {
+                    let run_ids: Vec<String> = cell_runs(&counted, cell, n)
+                        .iter()
+                        .map(|run| run.id.clone())
+                        .collect();
+                    let in_flight = cell_in_flight(&in_flight, cell, n, run_ids.len() as u32);
+                    (run_ids, in_flight)
+                }
+                None => (Vec::new(), 0),
+            };
+            (
+                arm_id,
+                ArmHolding {
+                    run_ids,
+                    in_flight,
+                    unlaunchable: target.unlaunchable,
+                },
+            )
+        })
+        .collect())
 }
 
-/// Load the record of every counted run in `resolved`, keyed by the id the arm
-/// recorded (the job id a launch handed back) rather than by the run's own id, since
-/// the recorded id is what an arm names its runs by.
-async fn load_arm_runs(
+/// What one arm reads its runs from and whether it can be launched.
+struct ArmTarget {
+    /// The coverage cell the arm's runs are counted in, or `None` when it has none.
+    cell: Option<CellKey>,
+    /// Why the arm cannot be launched now, by the rule a coverage member follows
+    /// ([`resolve_member`]), or `None` when it can.
+    unlaunchable: Option<String>,
+}
+
+/// Every arm of `config`'s [target](ArmTarget), by arm id. A gg arm is resolved against
+/// `user_id`'s gg library as it stands now, which is read only when the comparison has
+/// a gg arm.
+async fn arm_targets(
     db: &crate::db::Db,
-    resolved: &BTreeMap<String, ArmRunStatus>,
-) -> crate::error::Result<BTreeMap<String, RunRecord>> {
-    let counted: Vec<(&String, &String)> = resolved
+    user_id: &str,
+    config: &ComparisonConfig,
+) -> crate::error::Result<BTreeMap<String, ArmTarget>> {
+    let library = if config.arms.iter().any(|arm| arm.gg_config_id.is_some()) {
+        GgLibrary::from_parts(
+            db.list_gg_configs(user_id).await?,
+            db.list_gg_agents(user_id).await?,
+        )
+    } else {
+        GgLibrary::default()
+    };
+    let case = config_case(config);
+    Ok(config
+        .arms
         .iter()
-        .filter_map(|(recorded, status)| match status {
-            ArmRunStatus::Counted(run_id) => Some((recorded, run_id)),
-            _ => None,
+        .map(|arm| {
+            let member = arm_member(arm);
+            let cell = member_cell_identity(&member, &library)
+                .map(|identity| cell_key_of(&case, identity));
+            let unlaunchable = resolve_member(&member, &library).unlaunchable;
+            (arm.id.clone(), ArmTarget { cell, unlaunchable })
         })
-        .collect();
-    let run_ids: Vec<String> = counted
-        .iter()
-        .map(|(_, run_id)| (*run_id).clone())
-        .collect();
-    let by_run_id: BTreeMap<String, RunRecord> = db
-        .get_runs(&run_ids)
-        .await?
-        .into_iter()
-        .map(|stored| (stored.record.id.clone(), stored.record))
-        .collect();
-    let mut runs = BTreeMap::new();
-    for (recorded, run_id) in counted {
-        if let Some(record) = by_run_id.get(run_id) {
-            runs.insert(recorded.clone(), record.clone());
+        .collect())
+}
+
+/// The case pin a comparison's controls name, as a coverage cell keys it.
+fn config_case(config: &ComparisonConfig) -> super::ReviewPlanCase {
+    let controls = &config.controls;
+    super::ReviewPlanCase {
+        slug: controls.case_slug.clone(),
+        version: controls.version.clone(),
+        variant: controls.variant.clone(),
+        engine: Some(controls.engine_slug.clone()),
+    }
+}
+
+/// An arm as the coverage member it launches: a harness on a model, or a saved gg
+/// configuration with its slot models.
+fn arm_member(arm: &ComparisonArm) -> ReviewPlanCombo {
+    match &arm.gg_config_id {
+        Some(config_id) => ReviewPlanCombo {
+            harness: HarnessSlug::Gg,
+            model: String::new(),
+            provider: None,
+            gg_config_id: Some(config_id.clone()),
+            gg_slot_models: arm.gg_slot_models.clone(),
+            gg_config_name: None,
+        },
+        None => ReviewPlanCombo {
+            harness: arm.harness_slug.unwrap_or(HarnessSlug::Gg),
+            model: arm.model_id.clone().unwrap_or_default(),
+            provider: None,
+            gg_config_id: None,
+            gg_slot_models: BTreeMap::new(),
+            gg_config_name: None,
+        },
+    }
+}
+
+/// Refuse (`400`) a comparison two of whose arms read one coverage cell: they would hold
+/// the same runs, so the comparison would compare a configuration against itself.
+async fn ensure_distinct_cells(
+    db: &crate::db::Db,
+    user_id: &str,
+    config: &ComparisonConfig,
+) -> Result<(), ApiError> {
+    let targets = arm_targets(db, user_id, config)
+        .await
+        .map_err(ApiError::from)?;
+    let mut seen: BTreeMap<&CellKey, &str> = BTreeMap::new();
+    for arm in &config.arms {
+        let Some(cell) = targets.get(&arm.id).and_then(|t| t.cell.as_ref()) else {
+            continue;
+        };
+        if let Some(first) = seen.insert(cell, arm.id.as_str()) {
+            return Err(ApiError::bad_request(format!(
+                "arms `{first}` and `{}` run the same configuration, so they would hold the \
+                 same runs",
+                arm.id
+            )));
         }
     }
-    Ok(runs)
+    Ok(())
 }
 
 /// A fresh opaque id for a comparison.

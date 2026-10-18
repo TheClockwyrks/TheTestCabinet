@@ -163,13 +163,28 @@ async fn a_wait_on_the_store_is_reported_with_its_reason() {
 }
 
 #[tokio::test]
+async fn the_end_of_the_session_is_reported_as_validating() {
+    let (base, server) = stub_backend().await;
+    let client = JobClient::new(base, "job-9".to_string(), "tok-1".to_string());
+    client.post_status_validating().await.expect("accepted");
+    let (path, body) = server.await.expect("join");
+    assert_eq!(path, "/jobs/job-9/status");
+    assert_eq!(body["state"], "validating");
+    assert!(
+        body.get("record").is_none_or(|record| record.is_null()),
+        "{body}"
+    );
+    assert!(body.get("artifactsStored").is_none(), "{body}");
+}
+
+#[tokio::test]
 async fn the_end_of_a_wait_says_whether_the_tree_landed() {
     // Landed: the backend reads this as the store taking uploads again.
     let (base, server) = stub_backend().await;
     let client = JobClient::new(base, "job-9".to_string(), "tok-1".to_string());
     client.post_status_wait_over(true).await.expect("accepted");
     let (_, body) = server.await.expect("join");
-    assert_eq!(body["state"], "running");
+    assert_eq!(body["state"], "validating");
     assert_eq!(body["artifactsStored"], true);
 
     // Not landed: nothing is claimed here; the terminal report says what happened.
@@ -177,6 +192,6 @@ async fn the_end_of_a_wait_says_whether_the_tree_landed() {
     let client = JobClient::new(base, "job-9".to_string(), "tok-1".to_string());
     client.post_status_wait_over(false).await.expect("accepted");
     let (_, body) = server.await.expect("join");
-    assert_eq!(body["state"], "running");
+    assert_eq!(body["state"], "validating");
     assert!(body.get("artifactsStored").is_none(), "{body}");
 }

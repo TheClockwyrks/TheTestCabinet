@@ -1,5 +1,6 @@
 @use "../../../styles/tokens" as t;
 @use "../../../styles/surfaces" as s;
+@use "../../../styles/breakpoints" as bp;
 
 // Shared styling for the gg monitor's Phase-1 panels (context / tasks / skills /
 // memories). These are Stage-1 stubs — a tidy list/meter each — so the styling is
@@ -2214,9 +2215,14 @@ $context-palette: (
 // The two-pane explorer: a directory-style sidebar of agents-as-folders on the
 // left, the selected file's view on the right. Fills the page like the panel body
 // it replaces (host is `PageLayout fill` / the run-detail column).
+//
+// It is never shorter than the screen less a small margin, so scrolling the page down
+// past the run's header brings the explorer up to fill the screen, with the selected
+// view scrolling inside it. The host column is one screen tall, so the explorer runs
+// past its bottom; the `.panelsRoot` spacer after it is the gap to the page's end.
 .explorer {
-  flex: 1 1 auto;
-  min-height: 18rem;
+  flex: 1 0 auto;
+  min-height: max(18rem, calc(100dvh - #{t.$space-xl}));
   display: flex;
   gap: t.$space-md;
   align-items: stretch;
@@ -2241,6 +2247,75 @@ $context-palette: (
   display: flex;
   flex-direction: column;
   gap: t.$space-xs;
+}
+
+// The narrow layout's tree toggle (see `FsExplorer`): hidden while the tree has room
+// beside the pane.
+.explorerToggle {
+  display: none;
+}
+
+@include bp.below(t.$bp-md) {
+  // One column: the toggle, then the selected view across the full width. The open
+  // tree sits between the two, and choosing a file folds it away again.
+  .explorer {
+    flex-direction: column;
+    gap: t.$space-xs;
+  }
+
+  .explorerToggle {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: t.$space-xs;
+    width: 100%;
+    padding: t.$space-xs t.$space-sm;
+    border: t.$border-hairline solid t.$color-border;
+    border-radius: t.$radius-md;
+    background: s.$panel-bg;
+    color: t.$color-text;
+    font: inherit;
+    font-size: t.$font-sm;
+    text-align: left;
+    cursor: pointer;
+
+    &:focus-visible {
+      outline: t.$border-hairline solid t.$color-accent;
+      outline-offset: 1px;
+    }
+  }
+
+  .explorerSidebar {
+    display: none;
+    width: auto;
+    max-width: none;
+    max-height: 60dvh;
+  }
+
+  .explorer[data-tree-open] .explorerSidebar {
+    display: block;
+  }
+
+  // The view keeps a screen's worth of height of its own, so opening the tree pushes
+  // it down the page rather than squeezing it.
+  .explorerContent {
+    flex-shrink: 0;
+    min-height: max(16rem, calc(100dvh - #{t.$space-xl} - 2.5rem));
+  }
+}
+
+.explorerToggleLabel {
+  color: t.$color-text-muted;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: 0.75em;
+}
+
+.explorerToggleCurrent {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 // The one place the tree's horizontal geometry is written down. `fsIndent` in

@@ -7,6 +7,7 @@ import type { Model } from "../../../client/types";
 import { BackChevron } from "../../components/BackChevron";
 import { LoadingState } from "../../components/LoadingState";
 import { PageLayout } from "../../components/PageLayout";
+import { useLeaveGuard } from "../../components/useLeaveGuard";
 import { UnsavedChangesDialog } from "./UnsavedChangesDialog";
 import { routes } from "../../routes";
 import { GgConfigEditor } from "../runs/gg/GgConfigEditor";
@@ -103,10 +104,10 @@ export function GgConfigEditPage() {
   const [agentSnapshot, setAgentSnapshot] = useState<GgConfigDraft | null>(
     null,
   );
-  // Which back control the "you have unsaved changes" prompt intercepted, or `null` when
-  // it is not up. One piece of state rather than one per control, because the two are
-  // mutually exclusive: the prompt asks about exactly the step being taken.
-  const [leaving, setLeaving] = useState<"agent" | "config" | null>(null);
+  // Whether the open agent's back control raised the "you have unsaved changes" prompt.
+  // Leaving the page itself is asked about through the [leave guard](useLeaveGuard)
+  // instead, because that step is a navigation and can be taken from anywhere.
+  const [leavingAgent, setLeavingAgent] = useState(false);
 
   useEffect(() => {
     if (!backend || !token) {
@@ -204,18 +205,11 @@ export function GgConfigEditPage() {
     [saved, name, description, draft],
   );
 
-  // Leaving with unsaved work needs a confirmation, whichever way the operator leaves:
-  // the page's own back control (below) and a full-page navigation (here). A React Router
-  // navigation triggered outside this page cannot be intercepted under a `BrowserRouter`
-  // — there is no data router to block on — so the back control is deliberately the one
-  // in-app exit, and it raises the same dialog an open agent's does. The browser's own
-  // prompt is only for the case no component can cover: the tab going away.
-  useEffect(() => {
-    if (!dirty) return;
-    const warn = (e: BeforeUnloadEvent) => e.preventDefault();
-    window.addEventListener("beforeunload", warn);
-    return () => window.removeEventListener("beforeunload", warn);
-  }, [dirty]);
+  // Leaving with unsaved work needs a confirmation, whichever way the operator leaves: the
+  // page's own back control, any link in the app, or the browser's back and forward. All
+  // of them are navigations, so one guard holds them all and one dialog (below) asks. An
+  // open agent's edits are already in the draft, so they count as the configuration's.
+  const guard = useLeaveGuard(dirty);
 
   // Whether the open agent has been edited since it was opened. Measured against the
   // banked draft rather than against the saved configuration, because this is the
@@ -249,7 +243,7 @@ export function GgConfigEditPage() {
     if (agentSnapshot) setDraft(agentSnapshot);
     setAgentSnapshot(null);
     setEditingAgentId(null);
-    setLeaving(null);
+    setLeavingAgent(false);
   }
   // Saving an agent keeps the edits already applied and returns to the configuration —
   // and commits its **type**: what the other types were configured with was scratch
@@ -268,7 +262,7 @@ export function GgConfigEditPage() {
     }));
     setAgentSnapshot(null);
     setEditingAgentId(null);
-    setLeaving(null);
+    setLeavingAgent(false);
   }
 
   // The back control beside the title, while an agent is open. Its parent is the
@@ -280,16 +274,15 @@ export function GgConfigEditPage() {
   // Cancel itself does not ask: it says what it does, and an operator who presses it has
   // already made the decision this dialog exists to collect.
   function backFromAgent() {
-    if (agentDirty) setLeaving("agent");
+    if (agentDirty) setLeavingAgent(true);
     else cancelAgent();
   }
 
   // The back control beside the title on the configuration itself, one step up to the
-  // list of configurations. It asks the same question the agent's does, through the same
-  // dialog: two different prompts for one question made the form read as two forms.
+  // list of configurations. It is a navigation like any other, so the leave guard asks
+  // about it, through the same dialog every other way out raises.
   function backFromConfig() {
-    if (dirty) setLeaving("config");
-    else navigate(routes.accountGgConfigs());
+    navigate(routes.accountGgConfigs());
   }
 
   // Write the open profile to the account's agent library and leave this configuration
@@ -335,7 +328,9 @@ export function GgConfigEditPage() {
     }
   }
 
-  async function onSave() {
+  // Save, then leave: for the list of configurations by default, or wherever the held
+  // navigation was going when the save was asked for from the unsaved-changes dialog.
+  async function onSave(leave?: () => void) {
     if (!token || !savable) return;
     const input: GgConfigInput = {
       name: name.trim(),
@@ -363,10 +358,16 @@ export function GgConfigEditPage() {
       } else if (backend?.createGgConfig) {
         await backend.createGgConfig(input, token);
       }
-      navigate(routes.accountGgConfigs());
+      // The work is stored, but the baseline the form measures against is not re-taken on
+      // the way out, so the exit has to be let through rather than asked about again.
+      guard.release();
+      if (leave) leave();
+      else navigate(routes.accountGgConfigs());
     } catch (e) {
       setError(String(e));
       setBusy(false);
+      // A failed save stays put, error showing, rather than leaving with the work lost.
+      guard.stay();
     }
   }
 
@@ -401,7 +402,7 @@ export function GgConfigEditPage() {
         <button
           type="button"
           className={exec.primary}
-          onClick={onSave}
+          onClick={() => void onSave()}
           disabled={!savable}
         >
           {busy
@@ -483,12 +484,14 @@ export function GgConfigEditPage() {
             savingAgent={savingAgent}
           />
 
-          {/* Raised by whichever back control was pressed with work to lose. One
-              component asks the question in both places: saving from here is exactly
+          {/* Raised by the open agent's back control with work to lose. One component
+              asks the question here and on leaving the page: saving from here is exactly
               what the header's own button does — including its refusal to commit
               something that is not well-formed, which is why the reason is repeated in
               the dialog rather than left on a button the operator can no longer see. */}
-          {leaving === "agent" && openAgent && (
+          {/* Stood down while a navigation away is held: that question covers the whole
+              configuration, this agent included, and one dialog asks at a time. */}
+          {leavingAgent && openAgent && !guard.held && (
             <UnsavedChangesDialog
               title={`Unsaved changes to ${openAgent.name.trim() || "this agent"}`}
               body="Going back to the configuration will leave this agent as it was when you opened it."
@@ -497,30 +500,35 @@ export function GgConfigEditPage() {
               saveBlockedReason={agentError}
               onSave={saveAgent}
               onDiscard={cancelAgent}
-              onCancel={() => setLeaving(null)}
-            />
-          )}
-          {leaving === "config" && (
-            <UnsavedChangesDialog
-              title="Unsaved changes to this configuration"
-              body="Going back to the list of configurations will leave it as it was last saved."
-              saveLabel={
-                editing ? "Save configuration" : "Create configuration"
-              }
-              saveDisabled={!savable}
-              saveBlockedReason={structuralError}
-              // The dialog closes on the decision, not on the outcome: saving navigates
-              // to the list itself when it succeeds, and when it fails the page is left
-              // showing the error it reports rather than a modal sat on top of it.
-              onSave={() => {
-                setLeaving(null);
-                void onSave();
-              }}
-              onDiscard={() => navigate(routes.accountGgConfigs())}
-              onCancel={() => setLeaving(null)}
+              onCancel={() => setLeavingAgent(false)}
             />
           )}
         </>
+      )}
+
+      {/* Raised by any navigation away with work to lose, wherever it came from. Outside
+          the loading branch, so a held navigation is always asked about rather than left
+          waiting on a dialog that is not on screen.
+
+          It closes on the decision, not on the outcome: while the save is in flight the
+          navigation stays held with no dialog over the page, saving goes on to wherever
+          the operator was headed when it succeeds, and when it fails the page is left
+          showing the error it reports rather than a modal sat on top of it. */}
+      {guard.held && !busy && (
+        <UnsavedChangesDialog
+          title="Unsaved changes to this configuration"
+          body={
+            openAgent
+              ? "Leaving now will leave this configuration, and the agent open in it, as it was last saved."
+              : "Leaving now will leave this configuration as it was last saved."
+          }
+          saveLabel={editing ? "Save configuration" : "Create configuration"}
+          saveDisabled={!savable}
+          saveBlockedReason={structuralError}
+          onSave={() => void onSave(guard.proceed)}
+          onDiscard={guard.proceed}
+          onCancel={guard.stay}
+        />
       )}
     </PageLayout>
   );

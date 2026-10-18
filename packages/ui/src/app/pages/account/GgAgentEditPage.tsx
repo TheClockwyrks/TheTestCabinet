@@ -7,6 +7,7 @@ import type { Model } from "../../../client/types";
 import { BackChevron } from "../../components/BackChevron";
 import { LoadingState } from "../../components/LoadingState";
 import { PageLayout } from "../../components/PageLayout";
+import { useLeaveGuard } from "../../components/useLeaveGuard";
 import { UnsavedChangesDialog } from "./UnsavedChangesDialog";
 import { routes } from "../../routes";
 import { GgAgentEditor } from "../runs/gg/GgAgentEditor";
@@ -91,7 +92,6 @@ export function GgAgentEditPage() {
   const [description, setDescription] = useState("");
   const [draft, setDraft] = useState<GgConfigDraft>(() => emptyAgentDraft());
   const [saved, setSaved] = useState<string | null>(null);
-  const [leaving, setLeaving] = useState(false);
 
   useEffect(() => {
     if (!backend || !token) {
@@ -159,14 +159,13 @@ export function GgAgentEditPage() {
     [saved, description, draft],
   );
 
-  useEffect(() => {
-    if (!dirty) return;
-    const warn = (e: BeforeUnloadEvent) => e.preventDefault();
-    window.addEventListener("beforeunload", warn);
-    return () => window.removeEventListener("beforeunload", warn);
-  }, [dirty]);
+  // Every way out of the page — its back control, any link, the browser's back and forward
+  // — is held while there is work to lose, and the dialog below asks about it.
+  const guard = useLeaveGuard(dirty);
 
-  async function onSave() {
+  // Save, then leave: for the list of agents by default, or wherever the held navigation
+  // was going when the save was asked for from the unsaved-changes dialog.
+  async function onSave(leave?: () => void) {
     if (!token || !savable) return;
     // Committing winds back what the types this agent was not saved under were
     // configured with, exactly as saving an agent onto a configuration does.
@@ -188,10 +187,15 @@ export function GgAgentEditPage() {
       } else if (backend?.createGgAgent) {
         await backend.createGgAgent(input, token);
       }
-      navigate(routes.accountGgAgents());
+      // The baseline the form measures against is not re-taken on the way out, so the
+      // exit has to be let through rather than asked about again.
+      guard.release();
+      if (leave) leave();
+      else navigate(routes.accountGgAgents());
     } catch (e) {
       setError(String(e));
       setBusy(false);
+      guard.stay();
     }
   }
 
@@ -204,7 +208,7 @@ export function GgAgentEditPage() {
         <button
           type="button"
           className={exec.primary}
-          onClick={onSave}
+          onClick={() => void onSave()}
           disabled={!savable}
         >
           {busy ? "Saving…" : editing ? "Save agent" : "Create agent"}
@@ -217,10 +221,9 @@ export function GgAgentEditPage() {
       <div className={styles.detailTitleRow}>
         <BackChevron
           label="All gg agents"
-          onBack={() => {
-            if (dirty) setLeaving(true);
-            else navigate(routes.accountGgAgents());
-          }}
+          // A navigation like any other: the leave guard asks first when there is work
+          // to lose.
+          onBack={() => navigate(routes.accountGgAgents())}
         />
         <h1 className={styles.detailTitle}>
           {editing ? agent?.name.trim() || "Agent" : "New gg agent"}
@@ -273,24 +276,24 @@ export function GgAgentEditPage() {
             description={description}
             onDescriptionChange={setDescription}
           />
-
-          {leaving && (
-            <UnsavedChangesDialog
-              title="Unsaved changes to this agent"
-              body="Going back to the list of agents will leave it as it was last saved."
-              saveLabel={editing ? "Save agent" : "Create agent"}
-              saveDisabled={!savable}
-              saveBlockedReason={structuralError}
-              onSave={() => {
-                setLeaving(false);
-                void onSave();
-              }}
-              onDiscard={() => navigate(routes.accountGgAgents())}
-              onCancel={() => setLeaving(false)}
-            />
-          )}
         </>
       ) : null}
+
+      {/* Raised by any navigation away with work to lose. It closes on the decision:
+          while the save is in flight the navigation stays held with no dialog over the
+          page, and a failed save leaves the page showing its error. */}
+      {guard.held && !busy && (
+        <UnsavedChangesDialog
+          title="Unsaved changes to this agent"
+          body="Leaving now will leave this agent as it was last saved."
+          saveLabel={editing ? "Save agent" : "Create agent"}
+          saveDisabled={!savable}
+          saveBlockedReason={structuralError}
+          onSave={() => void onSave(guard.proceed)}
+          onDiscard={guard.proceed}
+          onCancel={guard.stay}
+        />
+      )}
     </PageLayout>
   );
 }

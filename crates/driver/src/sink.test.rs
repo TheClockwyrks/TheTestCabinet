@@ -22,12 +22,14 @@ use crate::client::JobClient;
 use super::{BackendEventSink, BackendPreviewSink, channel, relay_task};
 
 /// One request the stub backend received: the path's trailing segment
-/// (`events`/`preview`/`status`) and how many JSON items the body carried (the
-/// length of a top-level array, or `1` for a single object).
+/// (`events`/`preview`/`status`), how many JSON items the body carried (the
+/// length of a top-level array, or `1` for a single object), and the `state` a
+/// status report carried.
 #[derive(Debug, Clone)]
 struct Received {
     kind: String,
     item_count: usize,
+    state: Option<String>,
 }
 
 /// A stub backend that records the requests the relay posts. Returns its base URL
@@ -98,11 +100,19 @@ async fn read_request(socket: &mut tokio::net::TcpStream) -> Option<Received> {
     }
     let body = &buf[header_end..(header_end + content_length).min(buf.len())];
     let value: serde_json::Value = serde_json::from_slice(body).unwrap_or(serde_json::Value::Null);
+    let state = value
+        .get("state")
+        .and_then(serde_json::Value::as_str)
+        .map(str::to_string);
     let item_count = match value {
         serde_json::Value::Array(items) => items.len(),
         _ => 1,
     };
-    Some(Received { kind, item_count })
+    Some(Received {
+        kind,
+        item_count,
+        state,
+    })
 }
 
 /// Find the first occurrence of `needle` in `haystack`.
@@ -209,4 +219,57 @@ async fn relay_flushes_pending_events_before_a_preview() {
     assert_eq!(calls[1].kind, "preview");
     assert_eq!(calls[2].kind, "events");
     assert_eq!(calls[2].item_count, 1);
+}
+
+#[tokio::test]
+async fn the_end_of_the_session_is_reported_after_every_event_before_it() {
+    let (base, received) = stub_backend().await;
+    let client = Arc::new(JobClient::new(base, "job-4", "tok"));
+
+    let (tx, rx) = channel();
+    // The session's events, its end, then the teardown's event, all queued in one
+    // wakeup: the relay must post the session's events before it reports
+    // `validating`, and the teardown's event after.
+    let mut sink = BackendEventSink::new(tx.clone());
+    sink.emit(&event());
+    sink.emit(&event());
+    sink.emit(&event());
+    sink.session_ended();
+    sink.emit(&event());
+    drop(sink);
+    drop(tx);
+
+    relay_task(client, rx).await;
+
+    let calls = received.lock().expect("lock").clone();
+    assert_eq!(
+        calls.len(),
+        3,
+        "session batch, status, teardown batch: {calls:?}"
+    );
+    assert_eq!(calls[0].kind, "events");
+    assert_eq!(calls[0].item_count, 3, "{calls:?}");
+    assert_eq!(calls[1].kind, "status");
+    assert_eq!(calls[1].state.as_deref(), Some("validating"), "{calls:?}");
+    assert_eq!(calls[2].kind, "events");
+    assert_eq!(calls[2].item_count, 1, "{calls:?}");
+}
+
+#[tokio::test]
+async fn a_refused_validating_report_does_not_stop_the_relay() {
+    // A backend that answers nothing: every post fails. The relay logs the lost
+    // `validating` report and goes on draining, so the run is never held up by it.
+    let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
+    let gone = format!("http://{}", listener.local_addr().expect("addr"));
+    drop(listener);
+    let client = Arc::new(JobClient::new(gone, "job-5", "tok"));
+
+    let (tx, rx) = channel();
+    let mut sink = BackendEventSink::new(tx.clone());
+    sink.session_ended();
+    sink.emit(&event());
+    drop(sink);
+    drop(tx);
+
+    relay_task(client, rx).await;
 }

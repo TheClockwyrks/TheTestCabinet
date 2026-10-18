@@ -17,7 +17,6 @@ fn pi_arm() -> ComparisonArm {
         model_id: Some("anthropic/claude-opus-4.8".into()),
         gg_config_id: None,
         gg_slot_models: BTreeMap::new(),
-        run_ids: vec![],
     }
 }
 
@@ -194,7 +193,6 @@ fn kilo_arm() -> ComparisonArm {
         model_id: Some("openrouter/anthropic/claude-opus-4.8".into()),
         gg_config_id: None,
         gg_slot_models: BTreeMap::new(),
-        run_ids: vec![],
     }
 }
 
@@ -307,7 +305,6 @@ fn stored_from_input_rejects_a_gg_arm_with_no_configuration() {
         model_id: Some("anthropic/claude-opus-4.8".into()),
         gg_config_id: None,
         gg_slot_models: BTreeMap::new(),
-        run_ids: vec![],
     };
     assert_eq!(
         refusal(config_of(vec![kilo_arm(), gg], 3)),
@@ -329,7 +326,6 @@ fn stored_from_input_accepts_a_gg_arm_beside_a_harness_arm() {
             "root".to_string(),
             "anthropic/claude-opus-4.8".to_string(),
         )]),
-        run_ids: vec![],
     };
     let input = ComparisonInput {
         config: config_of(vec![pi_arm(), gg], 3),
@@ -412,66 +408,206 @@ fn an_unresolvable_case_version_leaves_the_engine_control_unchecked() {
     assert!(ensure_engine_control_supported(&store, &sample_config()).is_ok());
 }
 
-/// The defect the resolution exists for, end to end: an arm records the job id its
-/// launch handed back, the run the job stored carries an id of its own, and the
-/// comparison still observes that run. A canceled run is held by neither figure, and
-/// the comparison completes once every arm holds `n` landed runs.
+/// A harness arm named `id`, running `harness` on `model`.
+fn harness_arm(id: &str, harness: HarnessSlug, model: &str) -> ComparisonArm {
+    ComparisonArm {
+        id: id.into(),
+        label: id.into(),
+        harness_slug: Some(harness),
+        model_id: Some(model.into()),
+        gg_config_id: None,
+        gg_slot_models: BTreeMap::new(),
+    }
+}
+
+/// The controls that hold `record`'s case pin and orchestrator constant, so an arm of
+/// its harness and model reads the cell `record` is counted in.
+fn controls_of(record: &RunRecord) -> ComparisonControls {
+    let subject = &record.subject;
+    ComparisonControls {
+        case_slug: subject.test_case_slug.clone(),
+        version: subject.test_case_version.clone(),
+        variant: subject.variant.clone(),
+        orchestrator_slug: subject.orchestrator_slug.clone(),
+        engine_slug: subject.engine_slug.clone(),
+        container_build: None,
+    }
+}
+
+/// A comparison of `arms` at `n` runs per arm, stored under `controls` for account
+/// `u1`.
+fn stored_with(controls: ComparisonControls, arms: Vec<ComparisonArm>, n: u32) -> StoredComparison {
+    stored_from_input(
+        "c1".into(),
+        "u1",
+        ComparisonInput {
+            name: "arms".into(),
+            description: String::new(),
+            config: ComparisonConfig { controls, arms, n },
+        },
+        "2026-06-23T00:00:00Z",
+        "2026-06-23T00:00:00Z",
+    )
+    .unwrap()
+}
+
+/// An arm holds the runs of its coverage cell whoever launched them: runs no comparison
+/// ever launched are held, in the order they finished, up to `n`. A harness error counts
+/// as a coverage cell counts it, an infrastructure failure takes no place, and a job of
+/// the cell in flight is reported against an arm still short of `n`.
 #[tokio::test]
-async fn an_arm_observes_the_runs_its_recorded_jobs_stored() {
+async fn an_arm_holds_the_counted_runs_of_its_cell_whoever_launched_them() {
     use crate::db::tests::{links, new_job, record};
     use test_cabinet_core::run_record::RunState;
 
     let db = crate::db::Db::connect_in_memory().await.unwrap();
     let (_dir, store) = store_supporting(&["none"]);
-    let land = |job: &'static str, run: &'static str, state: RunState| {
-        let db = &db;
-        async move {
-            db.enqueue_job(new_job(job, "2026-06-23T00:00:00Z"))
-                .await
-                .unwrap();
-            let mut r = record(run);
-            r.status.state = state;
-            db.push(&r, &links(), None, None).await.unwrap();
-            db.set_job_state(job, "succeeded", "2026-06-23T00:30:00Z", None, Some(run))
-                .await
-                .unwrap();
-        }
+    let carom = |id: &str, finished_at: &str, state: RunState| {
+        let mut r = record(id);
+        r.subject.test_case_slug = "carom".into();
+        r.subject.test_case_version = "v2.0.0".into();
+        r.finished_at = finished_at.into();
+        r.status.state = state;
+        r
     };
-    land("pi-job", "pi-run", RunState::Completed).await;
-    land("kilo-job", "kilo-run", RunState::Catastrophic).await;
-    land("kilo-canceled", "kilo-canceled-run", RunState::Canceled).await;
-
-    let mut config = sample_config();
-    config.n = 1;
-    config.arms[0].run_ids = vec!["pi-job".into()];
-    config.arms[1].run_ids = vec!["kilo-job".into(), "kilo-canceled".into()];
-    let stored = stored_from_input(
-        "c1".into(),
-        "u1",
-        ComparisonInput {
-            name: "Pi vs Kilo".into(),
-            description: String::new(),
-            config,
-        },
-        "2026-06-23T00:00:00Z",
-        "2026-06-23T00:00:00Z",
-    )
+    // Launched by hand, before the comparison existed.
+    for (id, finished_at, state) in [
+        ("late", "2026-06-17T23:00:00Z", RunState::Completed),
+        ("infra", "2026-06-17T20:00:00Z", RunState::Infrastructure),
+        ("early", "2026-06-17T21:00:00Z", RunState::Completed),
+        ("harness", "2026-06-17T22:00:00Z", RunState::HarnessError),
+    ] {
+        db.push(&carom(id, finished_at, state), &links(), None, None)
+            .await
+            .unwrap();
+    }
+    // A run of another harness, which no arm here runs.
+    let mut other = carom("other", "2026-06-17T21:00:00Z", RunState::Completed);
+    other.subject.harness_slug = HarnessSlug::Pi;
+    db.push(&other, &links(), None, None).await.unwrap();
+    // A job of the second arm's cell, still queued.
+    db.enqueue_job(crate::db::NewJob {
+        test_case_slug: "carom".into(),
+        test_case_version: "v2.0.0".into(),
+        harness_slug: "codex".into(),
+        model_id: "gpt-5.5".into(),
+        ..new_job("codex-job", "2026-06-23T00:00:00Z")
+    })
+    .await
     .unwrap();
 
-    let comparison = assemble_comparison(&db, &store, stored).await.unwrap();
-    let observed: Vec<(usize, Vec<String>)> = comparison
+    let controls = controls_of(&carom("x", "t", RunState::Completed));
+    let arms = vec![
+        harness_arm("claude", HarnessSlug::Claude, "claude-sonnet-4-5"),
+        harness_arm("codex", HarnessSlug::Codex, "gpt-5.5"),
+    ];
+    let comparison =
+        assemble_comparison(&db, &store, stored_with(controls.clone(), arms.clone(), 2))
+            .await
+            .unwrap();
+    let held: Vec<(Vec<String>, u32, usize)> = comparison
         .arms
         .iter()
-        .map(|a| (a.n_observed, a.live_run_ids.clone()))
+        .map(|a| (a.run_ids.clone(), a.in_flight, a.n_observed))
         .collect();
     assert_eq!(
-        observed,
+        held,
         vec![
-            (1, vec!["pi-job".to_string()]),
-            (1, vec!["kilo-job".to_string()]),
+            (vec!["early".to_string(), "harness".to_string()], 0, 2),
+            (Vec::new(), 1, 0),
         ]
     );
+    assert!(!comparison.complete);
+
+    // Raising `n` takes in the next run in the order they finished.
+    let comparison = assemble_comparison(&db, &store, stored_with(controls, arms, 3))
+        .await
+        .unwrap();
+    assert_eq!(comparison.arms[0].run_ids, ["early", "harness", "late"]);
+}
+
+/// A comparison is complete once every arm holds `n` runs, and a job of a full arm's cell
+/// still in flight is not the arm's.
+#[tokio::test]
+async fn a_comparison_whose_arms_hold_n_runs_is_complete() {
+    use crate::db::tests::{links, new_job, record};
+
+    let db = crate::db::Db::connect_in_memory().await.unwrap();
+    let (_dir, store) = store_supporting(&["none"]);
+    for (id, harness) in [("c-1", HarnessSlug::Claude), ("p-1", HarnessSlug::Pi)] {
+        let mut r = record(id);
+        r.subject.test_case_slug = "carom".into();
+        r.subject.test_case_version = "v2.0.0".into();
+        r.subject.harness_slug = harness;
+        db.push(&r, &links(), None, None).await.unwrap();
+    }
+    db.enqueue_job(crate::db::NewJob {
+        test_case_slug: "carom".into(),
+        test_case_version: "v2.0.0".into(),
+        ..new_job("extra", "2026-06-23T00:00:00Z")
+    })
+    .await
+    .unwrap();
+
+    let mut controls = sample_config().controls;
+    controls.engine_slug = "none".into();
+    let arms = vec![
+        harness_arm("claude", HarnessSlug::Claude, "claude-sonnet-4-5"),
+        harness_arm("pi", HarnessSlug::Pi, "claude-sonnet-4-5"),
+    ];
+    let comparison = assemble_comparison(&db, &store, stored_with(controls, arms, 1))
+        .await
+        .unwrap();
+    assert_eq!(comparison.arms[0].in_flight, 0);
     assert!(comparison.complete);
+}
+
+/// A gg arm reads the cell its saved configuration's runs are counted in, and an arm
+/// whose configuration is gone holds nothing rather than another cell's runs.
+#[tokio::test]
+async fn a_gg_arm_whose_configuration_is_gone_holds_no_runs() {
+    let db = crate::db::Db::connect_in_memory().await.unwrap();
+    let (_dir, store) = store_supporting(&["none"]);
+    let arms = vec![
+        pi_arm(),
+        ComparisonArm {
+            id: "gg".into(),
+            label: "gg".into(),
+            harness_slug: None,
+            model_id: None,
+            gg_config_id: Some("saved:missing".into()),
+            gg_slot_models: BTreeMap::new(),
+        },
+    ];
+    let comparison =
+        assemble_comparison(&db, &store, stored_with(sample_config().controls, arms, 1))
+            .await
+            .unwrap();
+    assert!(comparison.arms[1].run_ids.is_empty());
+    assert_eq!(comparison.arms[1].in_flight, 0);
+}
+
+/// Two arms that read one cell would hold the same runs, so a comparison carrying them
+/// is refused at the save.
+#[tokio::test]
+async fn two_arms_running_one_configuration_are_refused() {
+    let db = crate::db::Db::connect_in_memory().await.unwrap();
+    let mut twin = pi_arm();
+    twin.id = "pi-again".into();
+    let err = ensure_distinct_cells(&db, "u1", &config_of(vec![pi_arm(), twin], 1))
+        .await
+        .unwrap_err();
+    assert_eq!(err.status, StatusCode::BAD_REQUEST);
+    assert!(
+        err.message.contains("`pi` and `pi-again`"),
+        "{}",
+        err.message
+    );
+    assert!(
+        ensure_distinct_cells(&db, "u1", &sample_config())
+            .await
+            .is_ok()
+    );
 }
 
 /// Publishing a comparison enqueues only the arm runs with nothing releasing them:
@@ -480,7 +616,8 @@ async fn an_arm_observes_the_runs_its_recorded_jobs_stored() {
 #[tokio::test]
 async fn publishing_a_comparison_enqueues_only_the_runs_not_already_releasing() {
     use crate::api::flow_harness::{
-        GREAT, OWNER, enqueue_other, finish, owner, publish_jobs, report, run_of, test_state,
+        GREAT, OWNER, SONNET, enqueue_other, finish, owner, publish_jobs, report, run_of,
+        test_state,
     };
 
     let (_dir, state) = test_state().await;
@@ -503,12 +640,12 @@ async fn publishing_a_comparison_enqueues_only_the_runs_not_already_releasing() 
         .await
         .unwrap();
 
-    let mut pi = pi_arm();
-    pi.run_ids = vec!["releasing".into(), "waiting".into()];
-    let mut kilo = kilo_arm();
-    kilo.run_ids = vec!["public".into()];
     let input = ComparisonInput {
-        config: config_of(vec![pi, kilo], 2),
+        config: ComparisonConfig {
+            controls: controls_of(&run_of("x", "pong", GREAT)),
+            arms: vec![harness_arm("claude", HarnessSlug::Claude, SONNET), pi_arm()],
+            n: 3,
+        },
         ..sample_input("arms")
     };
     let stored = stored_from_input("c1".into(), OWNER, input, "t", "t").unwrap();
@@ -535,7 +672,7 @@ async fn publishing_a_comparison_enqueues_only_the_runs_not_already_releasing() 
 #[tokio::test]
 async fn publishing_a_comparison_skips_a_run_with_no_stored_tree() {
     use crate::api::flow_harness::{
-        GREAT, OWNER, enqueue_other, finish, owner, publishing, run_of, test_state,
+        GREAT, OWNER, SONNET, enqueue_other, finish, owner, publishing, run_of, test_state,
         with_artifact_service,
     };
     use crate::artifacts::presence_tests::{STUB_TOKEN, spawn_artifact_stub};
@@ -553,12 +690,12 @@ async fn publishing_a_comparison_skips_a_run_with_no_stored_tree() {
     let (base, _stub) = spawn_artifact_stub(&["run-kept"]).await;
     with_artifact_service(&mut state, &base, STUB_TOKEN);
 
-    let mut pi = pi_arm();
-    pi.run_ids = vec!["kept".into()];
-    let mut kilo = kilo_arm();
-    kilo.run_ids = vec!["lost".into()];
     let input = ComparisonInput {
-        config: config_of(vec![pi, kilo], 1),
+        config: ComparisonConfig {
+            controls: controls_of(&run_of("x", "pong", GREAT)),
+            arms: vec![harness_arm("claude", HarnessSlug::Claude, SONNET), pi_arm()],
+            n: 2,
+        },
         ..sample_input("arms")
     };
     let stored = stored_from_input("c1".into(), OWNER, input, "t", "t").unwrap();
@@ -586,7 +723,7 @@ async fn publishing_a_comparison_skips_a_run_with_no_stored_tree() {
 #[tokio::test]
 async fn publishing_a_comparison_skips_a_run_the_service_cannot_be_asked_about() {
     use crate::api::flow_harness::{
-        GREAT, OWNER, enqueue_other, finish, owner, publish_jobs, run_of, test_state,
+        GREAT, OWNER, SONNET, enqueue_other, finish, owner, publish_jobs, run_of, test_state,
         with_artifact_service,
     };
     use crate::artifacts::presence_tests::{STUB_TOKEN, unreachable_base};
@@ -596,10 +733,12 @@ async fn publishing_a_comparison_skips_a_run_the_service_cannot_be_asked_about()
     finish(&state, "j", run_of("run-j", "pong", GREAT)).await;
     with_artifact_service(&mut state, &unreachable_base().await, STUB_TOKEN);
 
-    let mut pi = pi_arm();
-    pi.run_ids = vec!["j".into()];
     let input = ComparisonInput {
-        config: config_of(vec![pi, kilo_arm()], 1),
+        config: ComparisonConfig {
+            controls: controls_of(&run_of("x", "pong", GREAT)),
+            arms: vec![harness_arm("claude", HarnessSlug::Claude, SONNET), pi_arm()],
+            n: 1,
+        },
         ..sample_input("arms")
     };
     let stored = stored_from_input("c1".into(), OWNER, input, "t", "t").unwrap();

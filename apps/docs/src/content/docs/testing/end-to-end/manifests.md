@@ -828,7 +828,10 @@ recorded like any other auto verdict, overridable by the reviewer. See
 [load-bearing](/testing/end-to-end/instrumentation/#the-debug-api-is-load-bearing).
 A script whose precondition could not be met in the world the model invented
 decides nothing: on a validator-rated version the point lowers no rating until
-a reviewer decides it, and on a legacy version it is left for the reviewer. A
+a reviewer decides it, as long as some other scored point is decided (a run that
+decides no scored point at all is rated
+[`broken`](/testing/end-to-end/evaluation/#the-validator-decided-functional-rating)),
+and on a legacy version it is left for the reviewer. A
 host with no browser degrades entirely, exactly as a check does. Which
 properties a script asserts is reporter-side detail: the seeded spec states the
 observable requirement and mandates the instrument.

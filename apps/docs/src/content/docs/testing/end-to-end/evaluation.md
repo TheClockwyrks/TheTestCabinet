@@ -121,19 +121,26 @@ for a gameplay-critical requirement, otherwise `scuffed`, `passable`, or
 
 The rating is derived from the run record alone:
 
-- Every effective domain starts at `flawless`.
+- Every effective domain starts at `flawless` when the effective checklist
+  decides at least one scored point, and at `broken` when it decides none.
 - Each scored point whose validator failed lowers each of the point's `domains`
   to the lower of its current tier and the point's cap. A point fails when its
   validator decided `fail`, or could not run against the build for a reason
   other than an unmet precondition. A point whose validator decided nothing
   because its precondition could not be met, or that has no validator result on
-  the record at all, lowers nothing.
+  the record at all, lowers nothing as long as some other scored point is
+  decided.
 - A point an [erratum](/testing/end-to-end/manifests/#errata) excludes from
-  scoring lowers nothing, however it verdicted.
-- The domain's rating is the lowest cap among its failing points, so two
-  failures capped at `great` and `scuffed` leave the domain `scuffed`. A domain
-  no failing point names stays `flawless`; a failure in the versus controls
-  lowers only the versus domain.
+  scoring lowers nothing, however it verdicted, and never counts as decided.
+- An effective checklist that declares scored points and decides none of them
+  leaves every effective domain `broken`, whatever left the points undecided:
+  every suite stopped at the whole-run cap, no suite could run, or every
+  precondition went unmet. A build the validators could not judge at all has
+  demonstrated nothing.
+- Otherwise the domain's rating is the lowest cap among its failing points, so
+  two failures capped at `great` and `scuffed` leave the domain `scuffed`. A
+  domain no failing point names stays `flawless`; a failure in the versus
+  controls lowers only the versus domain.
 - The run's overall functional rating is the worst across its domains, and the
   [toolchain gate](/components/core/validation/#the-toolchain-gate) applies on
   top of it: a build whose typecheck failed is `broken` whatever its validators
@@ -183,6 +190,12 @@ functional figures derive from its effective checklist (see
 [Scoring](#scoring)), so a review with no overrides reproduces the validators'
 figures exactly.
 
+On a run whose validators decided no scored point, the run reads `broken` at
+zero over the declared weight until a review decides a scored point. That review
+is then rated by the failure-cap rule over the points it decided. A review that
+overrides nothing reproduces the `broken` figure, and since the run takes the
+worst rating across its reviews, it keeps the run `broken`.
+
 A review can be added at any time, before or after publish, so a run published
 on its functional rating alone gains an aesthetic rating when someone plays it.
 For how a reviewer chooses an aesthetic tier, see
@@ -230,7 +243,10 @@ On a validator-rated run each review's effective checklist, the validators'
 verdicts overlaid with that review's [overrides](#review), produces that
 review's figures. Its score counts, on both sides of the ratio, only the points
 that have an effective verdict, and its functional domain ratings follow the
-failure-cap rule above, with the toolchain gate on top. The run's score is the
+failure-cap rule above, with the toolchain gate on top. An effective checklist
+that decides no scored point scores zero over the declared weight of every
+scored point, so every scored point counts as lost, and is rated `broken`.
+Erratum-excluded points still count toward neither side. The run's score is the
 average of its reviews' effective scores and its functional rating is the worst
 across their effective ratings; while the run has no reviews, the validators'
 own score and rating stand. On a legacy run each review's verdicts produce that

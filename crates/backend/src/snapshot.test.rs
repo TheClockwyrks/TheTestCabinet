@@ -1992,6 +1992,228 @@ async fn a_variant_without_a_showcase_exports_null() {
     assert!(parsed["variants"][0]["showcase"].is_null());
 }
 
+/// `manifest()` at `version`, its base variant carrying a one-image showcase whose
+/// bytes are written into `store`.
+fn showcased_manifest(
+    store: &DefinitionStore,
+    version: &str,
+    experimental: bool,
+) -> StoredManifest {
+    let mut m = manifest();
+    m.version = version.to_string();
+    m.experimental = experimental;
+    m.variants[0].showcase = Some(stored_showcase(&[("title.png", MediaKind::Image)]));
+    let dir = store.version_dir(&m.slug, &m.version).join("showcase/base");
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("title.png"), format!("png:{version}")).unwrap();
+    m
+}
+
+/// The parsed `case-showcases.json` of `snapshot`, found through the index's key.
+fn case_showcases_of(snapshot: &Snapshot) -> serde_json::Value {
+    let index: serde_json::Value = serde_json::from_slice(&snapshot.index.bytes).unwrap();
+    let key = index["caseShowcasesKey"]
+        .as_str()
+        .expect("the index names the case showcases");
+    let file = snapshot
+        .objects
+        .iter()
+        .find(|o| o.key == key)
+        .expect("the case showcases file is exported");
+    serde_json::from_slice(&file.bytes).unwrap()
+}
+
+#[tokio::test]
+async fn a_case_showcase_is_published_without_a_published_run_of_its_version() {
+    // The published run built v1.0.0; v2.0.0 has no run. Its case document waits on
+    // one, as before — but its showcase does not: the case is listed, and a listed
+    // case previews its newest showcase, which presents the case rather than a run.
+    let (_tmp, store) = empty_store();
+    let v1 = showcased_manifest(&store, "v1.0.0", false);
+    let v2 = showcased_manifest(&store, "v2.0.0", false);
+    let snapshot = SnapshotBuilder::new(vec![stored_run("r1", "t")], vec![v1, v2], store)
+        .build(now())
+        .await
+        .unwrap();
+    let prefix = format!("snapshots/{}", snapshot.snapshot_id);
+
+    assert!(
+        !snapshot
+            .objects
+            .iter()
+            .any(|o| o.key == format!("{prefix}/cases/pong/v2.0.0.json")),
+        "a version with no published run still gets no case document"
+    );
+    let v2_key = format!(
+        "media/cases/pong/v2.0.0/showcase/base/{}-title.png",
+        content_digest(b"png:v2.0.0")
+    );
+    assert!(
+        snapshot.objects.iter().any(|o| o.key == v2_key),
+        "the run-less version's showcase media is uploaded"
+    );
+
+    let showcases = case_showcases_of(&snapshot);
+    let entries = showcases["showcases"].as_array().unwrap();
+    let versions: Vec<&str> = entries
+        .iter()
+        .map(|e| e["version"].as_str().unwrap())
+        .collect();
+    assert_eq!(
+        versions,
+        ["v1.0.0", "v2.0.0"],
+        "every version, oldest first"
+    );
+    let v2 = &entries[1];
+    assert_eq!(v2["slug"], "pong");
+    assert_eq!(v2["variants"][0]["variant"], "base");
+    assert_eq!(v2["variants"][0]["showcase"]["description"], "A demo game.");
+    let media = &v2["variants"][0]["showcase"]["media"][0];
+    assert_eq!(media["file"], "title.png");
+    assert_eq!(media["kind"], "image");
+    assert_eq!(media["key"], serde_json::json!(v2_key));
+}
+
+#[tokio::test]
+async fn a_case_with_no_published_run_publishes_no_showcase() {
+    // The gallery does not list a case until a run of it is published, so there is
+    // nothing to preview, and nothing is uploaded until then.
+    let (_tmp, store) = empty_store();
+    let m = showcased_manifest(&store, "v1.0.0", false);
+    let snapshot = SnapshotBuilder::new(vec![], vec![m], store)
+        .build(now())
+        .await
+        .unwrap();
+    assert!(
+        case_showcases_of(&snapshot)["showcases"]
+            .as_array()
+            .unwrap()
+            .is_empty()
+    );
+    assert!(
+        !snapshot
+            .objects
+            .iter()
+            .any(|o| o.key.starts_with("media/cases/pong/")),
+        "no showcase media is uploaded for an unlisted case"
+    );
+}
+
+#[tokio::test]
+async fn an_experimental_version_of_a_listed_case_publishes_no_showcase() {
+    // The published run built v1.0.0, so the case is listed — but v2.0.0 is
+    // experimental, and an experimental version is not public at all.
+    let (_tmp, store) = empty_store();
+    let v1 = showcased_manifest(&store, "v1.0.0", false);
+    let v2 = showcased_manifest(&store, "v2.0.0", true);
+    let snapshot = SnapshotBuilder::new(vec![stored_run("r1", "t")], vec![v1, v2], store)
+        .build(now())
+        .await
+        .unwrap();
+    let entries = case_showcases_of(&snapshot)["showcases"]
+        .as_array()
+        .unwrap()
+        .clone();
+    let versions: Vec<&str> = entries
+        .iter()
+        .map(|e| e["version"].as_str().unwrap())
+        .collect();
+    assert_eq!(versions, ["v1.0.0"]);
+    assert!(
+        !snapshot
+            .objects
+            .iter()
+            .any(|o| o.key.starts_with("media/cases/pong/v2.0.0/showcase/")),
+        "no experimental showcase media is uploaded"
+    );
+}
+
+#[tokio::test]
+async fn a_version_with_a_run_names_one_showcase_object_in_both_places() {
+    // v1.0.0 has a run and is showcased, so its showcase is both on its case
+    // document and in the case showcases — one object, uploaded once, under one key.
+    let (_tmp, store) = empty_store();
+    let m = showcased_manifest(&store, "v1.0.0", false);
+    let snapshot = SnapshotBuilder::new(vec![stored_run("r1", "t")], vec![m], store)
+        .build(now())
+        .await
+        .unwrap();
+    let prefix = format!("snapshots/{}", snapshot.snapshot_id);
+    let key = format!(
+        "media/cases/pong/v1.0.0/showcase/base/{}-title.png",
+        content_digest(b"png:v1.0.0")
+    );
+    assert_eq!(
+        snapshot.objects.iter().filter(|o| o.key == key).count(),
+        1,
+        "the showcase media is uploaded exactly once"
+    );
+    let case = snapshot
+        .objects
+        .iter()
+        .find(|o| o.key == format!("{prefix}/cases/pong/v1.0.0.json"))
+        .unwrap();
+    let case: serde_json::Value = serde_json::from_slice(&case.bytes).unwrap();
+    assert_eq!(
+        case["variants"][0]["showcase"]["media"][0]["key"],
+        serde_json::json!(key)
+    );
+    assert_eq!(
+        case_showcases_of(&snapshot)["showcases"][0]["variants"][0]["showcase"]["media"][0]["key"],
+        serde_json::json!(key)
+    );
+}
+
+#[tokio::test]
+async fn an_experimental_version_with_a_run_keeps_its_case_document_showcase() {
+    // A published run of an experimental version still gets the case document it
+    // always did, its showcase and media with it — it is only left out of the case
+    // showcases the catalog previews from.
+    let (_tmp, store) = empty_store();
+    let m = showcased_manifest(&store, "v1.0.0", true);
+    let snapshot = SnapshotBuilder::new(vec![stored_run("r1", "t")], vec![m], store)
+        .build(now())
+        .await
+        .unwrap();
+    let prefix = format!("snapshots/{}", snapshot.snapshot_id);
+    let key = format!(
+        "media/cases/pong/v1.0.0/showcase/base/{}-title.png",
+        content_digest(b"png:v1.0.0")
+    );
+    assert_eq!(snapshot.objects.iter().filter(|o| o.key == key).count(), 1);
+    let case = snapshot
+        .objects
+        .iter()
+        .find(|o| o.key == format!("{prefix}/cases/pong/v1.0.0.json"))
+        .expect("the run's version still gets its case document");
+    let case: serde_json::Value = serde_json::from_slice(&case.bytes).unwrap();
+    assert_eq!(
+        case["variants"][0]["showcase"]["media"][0]["key"],
+        serde_json::json!(key)
+    );
+    assert!(
+        case_showcases_of(&snapshot)["showcases"]
+            .as_array()
+            .unwrap()
+            .is_empty()
+    );
+}
+
+#[tokio::test]
+async fn a_version_without_a_showcase_is_left_out_of_the_case_showcases() {
+    let (_tmp, store) = empty_store();
+    let snapshot = SnapshotBuilder::new(vec![stored_run("r1", "t")], vec![manifest()], store)
+        .build(now())
+        .await
+        .unwrap();
+    assert!(
+        case_showcases_of(&snapshot)["showcases"]
+            .as_array()
+            .unwrap()
+            .is_empty()
+    );
+}
+
 #[tokio::test]
 async fn showcase_webm_is_transcoded_to_mp4_with_the_authored_name_kept() {
     let Some(webm) = make_test_webm() else {
@@ -3578,6 +3800,21 @@ fn run_summary_score_is_the_validator_score_on_a_validator_rated_version() {
     let domains = domains_for(&manifest, "base");
     assert_eq!(domains.len(), 1);
     assert_eq!(domains[0].id, "gameplay");
+}
+
+#[test]
+fn a_validator_rated_run_that_decided_nothing_summarizes_broken_at_zero() {
+    let manifest = validator_manifest();
+    // No validator decided a point: every scored point counts as lost.
+    let run = validator_run("r1", "2026-06-17T21:40:00Z", &[]);
+    let score = run_summary_score(&manifest, &run.record, &run.reviews).unwrap();
+    assert_eq!(score.earned, 0.0);
+    assert_eq!(score.total, 2);
+    assert_eq!(score.reviews, 0);
+    assert_eq!(
+        crate::db::functional_rating(Some(&manifest), &run.record, &run.reviews),
+        Some(test_cabinet_core::review::Rating::Broken)
+    );
 }
 
 #[test]

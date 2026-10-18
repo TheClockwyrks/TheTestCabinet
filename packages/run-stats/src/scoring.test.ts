@@ -15,12 +15,15 @@ import {
   aggregateOverallGrade,
   automatedOnlyScore,
   automatedVerdicts,
+  coveredScore,
+  decidesAScoredPoint,
   effectiveVerdicts,
   isAestheticRating,
   isFailureCap,
   reviewAesthetic,
   validatorAggregateRating,
   validatorAggregateScore,
+  validatorCoveredScore,
   validatorDomainRatings,
   validatorRating,
   validatorReviewRating,
@@ -592,11 +595,14 @@ describe("validatorDomainRatings", () => {
       { id: "crashed", weight: 1, failureCap: "broken", domains: ["gameplay"] },
       { id: "unmet", weight: 1, failureCap: "broken", domains: ["gameplay"] },
       { id: "silent", weight: 1, failureCap: "broken", domains: ["gameplay"] },
+      { id: "decided", weight: 1, failureCap: "broken", domains: ["gameplay"] },
     ];
+    // Undecided points lower nothing while another scored point is decided.
     expect(
       validatorDomainRatings(one, points, [
         script("unmet", null, [], false, true),
         script("silent", null, [], true, false),
+        decided("decided", "decided", true),
       ])[0].rating,
     ).toBe("flawless");
     expect(
@@ -898,5 +904,183 @@ describe("validatorAggregateRating / validatorAggregateScore", () => {
     expect(gated.earned).toBe(0);
     expect(gated.total).toBe(2);
     expect(gated.reviews).toBe(2);
+  });
+});
+
+describe("a checklist that decides no scored point", () => {
+  it("rates every domain broken whatever left the points undecided", () => {
+    const domains = [{ id: "single-player" }, { id: "versus" }];
+    const items: WeightedItem[] = [
+      cappedItem("serve", "great", ["single-player"]),
+      cappedCategory("gameplay", [
+        ["ai", "great", ["single-player"]],
+        ["controls", "great", ["versus"]],
+      ]),
+    ];
+    const broken = [
+      { domain: "single-player", rating: "broken" },
+      { domain: "versus", rating: "broken" },
+    ];
+    // Every point inconclusive.
+    const ratings = validatorDomainRatings(domains, items, [
+      inconclusive("serve"),
+      script("gameplay", "ai", [], false, true),
+      script("gameplay", "controls", [], false, true),
+    ]);
+    expect(ratings).toEqual(broken);
+    expect(validatorRating(false, ratings)).toBe("broken");
+    // No script result at all, a silent clean run, and an undeclared verdict id.
+    expect(validatorDomainRatings(domains, items, [])).toEqual(broken);
+    expect(
+      validatorDomainRatings(domains, items, [script("serve", null, [], true)]),
+    ).toEqual(broken);
+    expect(
+      validatorDomainRatings(domains, items, [decided("ghost", "ghost", true)]),
+    ).toEqual(broken);
+    // One decided pass lifts the rule.
+    expect(
+      validatorDomainRatings(domains, items, [
+        decided("gameplay", "gameplay.ai", true),
+      ]).every((r) => r.rating === "flawless"),
+    ).toBe(true);
+  });
+
+  it("never counts an erratum-excluded point as decided", () => {
+    const one = [{ id: "gameplay" }];
+    const category = cappedCategory("gameplay", [
+      ["ai", "great", ["gameplay"]],
+      ["hud", "great", ["gameplay"]],
+    ]);
+    category.subItems = category.subItems!.map((sub, i) =>
+      i === 0 ? { ...sub, scored: false } : sub,
+    );
+    const items: WeightedItem[] = [
+      { ...cappedItem("serve", "great", ["gameplay"]), scored: false },
+      category,
+      cappedItem("pause", "great", ["gameplay"]),
+    ];
+    const scripts = [
+      decided("serve", "serve", true),
+      decided("gameplay", "gameplay.ai", true),
+    ];
+    expect(validatorDomainRatings(one, items, scripts)[0]!.rating).toBe(
+      "broken",
+    );
+    expect(validatorScore(false, items, scripts)).toEqual({
+      earned: 0,
+      total: 2,
+      reviews: 0,
+    });
+    // A checklist declaring no scored point keeps the ordinary rule.
+    const only: WeightedItem[] = [
+      { ...cappedItem("serve", "great", ["gameplay"]), scored: false },
+    ];
+    expect(validatorDomainRatings(one, only, [])[0]!.rating).toBe("flawless");
+    expect(validatorScore(false, only, [])).toEqual({
+      earned: 0,
+      total: 0,
+      reviews: 0,
+    });
+  });
+
+  it("decidesAScoredPoint reads whole items and sub-items", () => {
+    const excludedSub = cappedCategory("gameplay", [["ai", "great", []]]);
+    excludedSub.subItems = excludedSub.subItems!.map((sub) => ({
+      ...sub,
+      scored: false,
+    }));
+    const items: WeightedItem[] = [
+      cappedItem("serve", "great", []),
+      cappedCategory("menu", [["start", "great", []]]),
+      excludedSub,
+      { id: "legacy", weight: 1, scored: false },
+      { id: "weightless", weight: 0 },
+    ];
+    const one = (id: string) => [fail(id)];
+    expect(decidesAScoredPoint(items, one("serve"))).toBe(true);
+    expect(decidesAScoredPoint(items, one("menu.start"))).toBe(true);
+    expect(decidesAScoredPoint(items, one("weightless"))).toBe(true);
+    expect(decidesAScoredPoint(items, one("menu"))).toBe(false);
+    expect(decidesAScoredPoint(items, one("gameplay.ai"))).toBe(false);
+    expect(decidesAScoredPoint(items, one("legacy"))).toBe(false);
+    expect(decidesAScoredPoint(items, one("ghost"))).toBe(false);
+    expect(decidesAScoredPoint(items, one(OVERALL_VERDICT_ID))).toBe(false);
+    expect(decidesAScoredPoint(items, [])).toBe(false);
+  });
+
+  it("scores zero over the declared weight", () => {
+    const items: WeightedItem[] = [
+      { ...cappedItem("serve", "great", ["gameplay"]), weight: 3 },
+      cappedCategory("gameplay", [
+        ["ai", "great", ["gameplay"]],
+        ["hud", "great", ["gameplay"]],
+      ]),
+    ];
+    const scripts = [
+      inconclusive("serve"),
+      script("gameplay", "ai", [], false, true),
+    ];
+    const zero = { earned: 0, total: 5, reviews: 0 };
+    expect(validatorScore(false, items, scripts)).toEqual(zero);
+    expect(validatorScore(true, items, scripts)).toEqual(zero);
+    const auto = automatedVerdicts(scripts);
+    expect(validatorCoveredScore(items, auto)).toEqual({ earned: 0, total: 5 });
+    expect(validatorReviewScore(false, items, auto, [])).toEqual({
+      earned: 0,
+      total: 5,
+    });
+    expect(validatorAggregateScore(false, items, auto, [])).toEqual(zero);
+    expect(
+      validatorAggregateRating(false, [{ id: "gameplay" }], items, auto, []),
+    ).toBe("broken");
+    // The comparison core keeps counting only decided points: 0/0.
+    expect(coveredScore(items, auto)).toEqual({ earned: 0, total: 0 });
+  });
+
+  it("is lifted for a review that decides a scored point", () => {
+    const one = [{ id: "gameplay" }];
+    const items = [
+      cappedItem("serve", "scuffed", ["gameplay"]),
+      cappedItem("hud", "great", ["gameplay"]),
+    ];
+    const auto = automatedVerdicts([
+      inconclusive("serve"),
+      inconclusive("hud"),
+    ]);
+    expect(validatorReviewRating(false, one, items, auto, [])).toBe("broken");
+    expect(validatorReviewScore(false, items, auto, [])).toEqual({
+      earned: 0,
+      total: 2,
+    });
+    expect(
+      validatorReviewRating(false, one, items, auto, [pass("serve")]),
+    ).toBe("flawless");
+    expect(validatorReviewScore(false, items, auto, [pass("serve")])).toEqual({
+      earned: 1,
+      total: 1,
+    });
+    expect(
+      validatorReviewRating(false, one, items, auto, [fail("serve")]),
+    ).toBe("scuffed");
+    expect(
+      validatorReviewRating(false, one, items, auto, [pass("ghost")]),
+    ).toBe("broken");
+
+    // An aesthetic-only review keeps the run broken; the score averages the
+    // earned weight over the shared declared total.
+    const deciding = [pass("serve"), pass("hud")];
+    expect(
+      validatorAggregateRating(false, one, items, auto, [deciding, []]),
+    ).toBe("broken");
+    expect(validatorAggregateScore(false, items, auto, [deciding, []])).toEqual(
+      {
+        earned: 1,
+        total: 2,
+        reviews: 2,
+      },
+    );
+    expect(validatorAggregateRating(false, one, items, auto, [deciding])).toBe(
+      "flawless",
+    );
   });
 });

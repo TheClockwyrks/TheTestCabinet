@@ -330,6 +330,7 @@ describe("storingRunNotice", () => {
   it("says nothing for a run in any other phase", () => {
     expect(storingRunNotice(undefined)).toBeNull();
     expect(storingRunNotice({ state: "running" })).toBeNull();
+    expect(storingRunNotice({ state: "validating" })).toBeNull();
     expect(
       storingRunNotice({ state: "running", detail: "a stale reason" }),
     ).toBeNull();

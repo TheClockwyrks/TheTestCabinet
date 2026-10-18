@@ -65,6 +65,7 @@ export {
   metricLineChart,
   timeSeriesChart,
   distributionChart,
+  MIN_DISTRIBUTION_SLOT,
   scatterChart,
   type BarPoint,
   type BarDistribution,

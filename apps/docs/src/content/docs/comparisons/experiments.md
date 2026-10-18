@@ -63,75 +63,86 @@ comparison reads it back off the runs: an arm whose runs disagree on
 its billing model. See [metrics](/components/core/metrics/) for the token
 classes and cost fields.
 
+## Which runs an arm holds
+
+An arm counts runs the way a
+[coverage plan](/components/backend/coverage/#counts-are-global-reviews-are-labels)
+counts them. The comparison's controls and an arm's configuration form one
+coverage cell, and the arm's runs are [that cell's
+runs](/components/backend/coverage/#a-cells-runs) under the target `N`. They are
+the first `N` counted runs of the cell to finish, whoever launched them and
+whenever: this comparison, another comparison, a coverage plan, a ladder, or a
+launch by hand.
+
+The cell is identified exactly as a coverage cell is:
+
+- the case pin, from the controls: the slug, version, variant and engine;
+- for a harness arm, the harness and the model as it is launched;
+- for a gg arm, `gg`, the model the bound set's root agent runs, the
+  configuration's id, and the models the bound set runs on.
+
+A gg arm's cell is resolved from the configuration as the account holds it now.
+An arm whose configuration has been deleted, or leaves a launch slot unbound, has
+no cell and holds no runs.
+
+An arm reports why it cannot be launched as `unlaunchable`, by the rule a
+[coverage member](/components/backend/coverage/#a-member-that-cannot-be-launched)
+follows for a gg configuration. This covers a configuration that imports a saved
+agent edited since the configuration was last saved, whose launches would land in
+another cell. Such an arm keeps the runs its cell holds, and the trigger launches
+nothing for it.
+
+Which runs count is the [coverage rule](/components/backend/coverage/#which-runs-count):
+a run counts when it ended `completed`, `catastrophic`, `timed_out`,
+`harness_error`, `limit_exceeded`, or `hung`, and an attempt the backend retried
+counts once, as whatever its last attempt became. An `infrastructure` failure, a
+canceled run and a deleted run take no place, so the next counted run takes the
+place instead.
+
+An arm's jobs in flight are every job of its cell in flight, whoever launched
+it, up to what the arm still needs. An arm holding `N` runs therefore reads none
+in flight.
+
+An arm reports the runs it holds as `runIds`, in the order they finished, and
+its jobs in flight as `inFlight`. Its statistics, diagnostics and published runs
+are computed from the runs it holds. `nObserved` is the number of those runs
+whose record this build can read. A run whose record no longer decodes keeps its
+place, as it does in a coverage cell, and contributes no figure.
+
+Two arms with the same cell hold the same runs. The backend refuses to save a
+comparison whose arms share a cell.
+
 ## Triggering the runs
 
 A comparison reuses the existing launch paths rather than adding a run queue of
-its own. Its "trigger missing runs" action tops each arm up to `N`, counting the
-arm's runs that are in flight or that [count](#which-runs-an-arm-holds) toward
-it. Before it launches, the action prunes the arm's recorded ids of runs that do
-not count, so the stored configuration names only the runs the arm holds.
+its own. Its "trigger missing runs" action launches, for each launchable arm,
+`N` less the runs it holds and its jobs in flight. A comparison whose cells already hold `N`
+runs each launches nothing.
 
 - A harness arm launches through the shared batch path, `launchBatch()` →
   `POST /jobs/batch` (`packages/ui/src/app/pages/runs/launchBatch.ts`), with the
   controls locked and one launch item per missing run.
 - A gg arm launches through gg's own path, `launchGgRun` → `POST /gg/runs`, one
-  request per run, with the arm's slot models bound onto the capability set it
+  request per run, with the arm's slot models bound onto the configuration it
   names.
 
-A launch the backend refuses records nothing on the arm, and the console shows
-the refusal's reason on the page.
-
-### Which runs an arm holds
-
-Runs are matched back to their arm by the ids the arm records at launch, not by
-their [`RunSubject`](/components/core/run-records/) tuple. Two gg arms can share
-a root model and differ only in capability set, which no run tuple
-distinguishes, so an arm's membership is explicit.
-
-A launch returns a job id, and the run its driver stores carries an id of its
-own. The backend resolves each recorded id to the run it stands for by following
-the job's `record_id`, and by following `retried_by` to the retry when the
-backend retried the attempt, so an attempt and its retry are one run. An id
-that already names a stored run resolves to that run.
-
-A resolved run counts toward `N` when it ended `completed`, `catastrophic`,
-`timed_out`, `limit_exceeded`, or `hung`. A run that ends in one of those
-failures counts because the model had its attempt. A run that ends
-`harness_error` or `infrastructure`, is canceled, or was deleted does not count,
-and neither does a job that ended without storing a run. The next trigger
-launches a replacement for each of them. An arm differs here from a
-[coverage cell](/components/backend/coverage/#which-runs-count), which counts a
-harness error.
-
-An arm's statistics, diagnostics and published runs are computed from its
-counted runs. An arm reports the ids it holds, in flight or counted, as
-`liveRunIds`, and the number of counted runs that have landed as `nObserved`.
+Nothing is recorded on the comparison at launch. Every launched run joins its
+arm's cell, and the comparison read after the launch reports it in flight. The
+console shows the reason for each launch the backend refuses.
 
 ### A complete comparison
 
-A comparison is complete when every arm has `N` counted runs and none in
-flight. The console then states that the comparison is complete in place of the
-trigger action, and offers "Run again".
-
-Run again starts a new round. It clears every arm's recorded ids and launches
-`N` runs per arm. The previous round's runs stay stored as ordinary runs.
+A comparison is complete when every arm holds `N` runs. The console then states
+that the comparison is complete in place of the trigger action. Raising `N`
+takes in the next runs of each cell in the order they finished, and the trigger
+launches whatever the cells are still short of.
 
 ### Editing a comparison
 
-An arm's launch identity is its harness and model, or its gg configuration and
-slot models. Saving an edit (`PUT /comparisons/{id}`) compares each arm with the
-stored arm of the same id, and the backend decides which recorded ids each arm
-keeps:
-
-- An arm whose launch identity is unchanged keeps its ids, so a run already in
-  flight is not launched a second time.
-- An added arm, and an arm whose launch identity changed, starts with no ids.
-- A change to any control starts every arm with no ids.
-- On a complete comparison, adding, removing or changing an arm starts every
-  arm with no ids, so the edited comparison is run again as a whole.
-
-Changing `N`, the name or the description keeps every arm's ids, and raising
-`N` leaves the difference to the next trigger. A run an edit drops stays stored
+Saving an edit (`PUT /comparisons/{id}`) stores the configuration as sent. An
+arm's runs follow from its cell, so an edited arm holds the runs of its new cell,
+and an edited control moves every arm to the cells of the new controls. Lowering
+`N` lets go of each arm's latest runs. A run an edit leaves behind stays stored
 as an ordinary run, and one still in flight runs to its end.
 
 ## Result computation
@@ -184,6 +195,13 @@ optional `sub_item_id`) forming the verdict id it backs:
 The covered items are then scored by the same `score_checklist` a human review
 goes through, over the case's effective review items for the variant, common
 plus variant with errata exclusions applied.
+
+On a [validator-rated](/terminology/#validator-rated) case version, a completed
+run whose validators decided no scored point scores zero over the declared
+weight of every scored point, as it does on its own page, where it is rated
+[`broken`](/testing/end-to-end/evaluation/#the-validator-decided-functional-rating).
+It counts toward the arm's score and fails the pass rate. On any other version a
+run with no covered point contributes to neither.
 
 An arm's score is the mean fraction across its scored runs, reported with every
 run's individual point. A run counts toward the arm's [pass

@@ -186,6 +186,14 @@ error behind the hold when the backend reports them. A run the
 hold keeps waiting reads `pending` in the run listings, with the reason as its
 tooltip.
 
+A run whose model has finished working reads "validating" in the run listings,
+from the end of its session until it finishes, counts as an active run for the
+stop controls, and a gg run's status pill reads "Validating". A run log's
+in-progress marker draws a validating run with an
+animation of its own, distinct from a running run's spinner, so a view that shows
+the marker without the state still tells a working model from a build being
+validated.
+
 A run whose driver is waiting on the artifact store reads "storing" in the run
 listings, with the driver's reason as its tooltip, and counts as an active run
 for the stop controls. Its live monitor says that the run has finished and is

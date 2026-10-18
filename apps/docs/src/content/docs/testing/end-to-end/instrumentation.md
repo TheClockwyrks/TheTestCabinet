@@ -307,7 +307,10 @@ So a helper that cannot pose its scenario throws an error carrying the
 `packages/browser-driver/validation.mjs`, and `unmetPrecondition()` in a case's
 `validation/_helpers.mjs`). The driver records such a script as inconclusive: it
 did not run, no failed verdict is synthesized for it, and the point is left for
-the reviewer to judge by hand. An unmarked throw keeps its original meaning, so
+the reviewer to judge by hand. A run where every point is inconclusive is still
+rated `broken` (see
+[Evaluation](/testing/end-to-end/evaluation/#the-validator-decided-functional-rating)).
+An unmarked throw keeps its original meaning, so
 the API misbehaved and the point fails. A bug in the script itself, such as a
 bad argument or an impossible tick count, is a plain `throw` and stays loud.
 

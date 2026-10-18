@@ -686,10 +686,12 @@ export type DebugScriptResult = {
    *
    * An inconclusive result leaves the point unanswered: no failed verdict is
    * synthesized, [scoring](crate::comparison::automated_only_score) skips the point
-   * entirely, and the reviewer decides it by hand. Which inconclusive outcome it
-   * was is carried by [`inconclusive`](Self::inconclusive), and the
-   * [`detail`](Self::detail) names the reason in prose. Only ever `true` alongside
-   * `ran == false`.
+   * entirely, and the reviewer decides it by hand. A validator-rated run that
+   * decides no scored point at all is still rated broken and scores zero over the
+   * declared weight (see [`crate::review::verdict_domain_ratings`]). Which
+   * inconclusive outcome it was is carried by [`inconclusive`](Self::inconclusive),
+   * and the [`detail`](Self::detail) names the reason in prose. Only ever `true`
+   * alongside `ran == false`.
    */
   preconditionUnmet: boolean;
   /**
@@ -2455,9 +2457,9 @@ export type RunRecord = {
    * [`HarnessOutcome::tool_calls`](crate::harness::HarnessOutcome::tool_calls) so
    * a harness comparison can diagnose tool-call behavior (a re-reading or
    * over-shelling harness shows here) that a count derived from the event stream
-   * alone would miss. Defaulted and omitted when
-   * empty so records written before the field existed still deserialize, and a
-   * gg run — whose per-tool detail comes from its own telemetry — carries none.
+   * alone would miss. A Codex run and a gg run, whose output names no tools, are
+   * counted off their events (see [`crate::tool_tally`]). Defaulted and omitted
+   * when empty so records written before the field existed still deserialize.
    */
   toolCalls?: { [key in string]: number };
   /**

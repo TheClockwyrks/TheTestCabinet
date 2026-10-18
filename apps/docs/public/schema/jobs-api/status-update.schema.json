@@ -10,7 +10,12 @@
         },
         {
           "const": "running",
-          "description": "Execution has begun. Also what a driver that was [`Storing`](Self::Storing)\nreports once its upload has landed, returning the job to `running` while it\nfinishes its report.",
+          "description": "Execution has begun: setup has finished and the harness session is about to\nstart.",
+          "type": "string"
+        },
+        {
+          "const": "validating",
+          "description": "The harness session has ended and the driver is doing everything after it:\ncollecting the tree, the post-run analysis, the case's toolchain, validation\nand the upload of the tree. Also what a driver that was\n[`Storing`](Self::Storing) reports once its wait on the artifact store is\nover, with `artifactsStored` saying how it ended, returning the job to\n`validating` while it finishes its report.",
           "type": "string"
         },
         {
@@ -348,7 +353,7 @@
   "description": "The body of `POST /jobs/{id}/status`: the new driver state, plus the produced\nrecord on success or the reason on failure.",
   "properties": {
     "artifactsStored": {
-      "description": "Whether the artifact service acknowledged the run's tree, on a terminal\nreport: `true` when the upload landed and `false` when every attempt failed,\nso the run has nothing to release. Absent when the driver has no artifact\nservice to upload to, and on every non-terminal report but one: the\n`running` report that ends a wait on the store carries `true` when the wait\nended with the tree stored. The backend leaves what it has recorded for the\nrun as it is when the field is absent.",
+      "description": "Whether the artifact service acknowledged the run's tree, on a terminal\nreport: `true` when the upload landed and `false` when every attempt failed,\nso the run has nothing to release. Absent when the driver has no artifact\nservice to upload to, and on every non-terminal report but one: the\n`validating` report that ends a wait on the store carries `true` when the wait\nended with the tree stored. The backend leaves what it has recorded for the\nrun as it is when the field is absent.",
       "type": ["boolean", "null"]
     },
     "detail": {

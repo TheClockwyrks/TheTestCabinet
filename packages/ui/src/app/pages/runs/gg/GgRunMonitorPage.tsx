@@ -1,5 +1,6 @@
 import { Link, useParams } from "react-router";
 import { storingRunNotice } from "../../../../client/artifactStorage";
+import { validatingRunNotice } from "../../../../client/runPhase";
 import { useWorkers } from "../../../../client/context";
 import { KillRunControl } from "../../../components/KillRunControl";
 import { PageLayout } from "../../../components/PageLayout";
@@ -72,12 +73,25 @@ export function GgRunMonitorPage() {
   // phase the telemetry stream says nothing about.
   const storingNotice =
     status.kind === "running" ? storingRunNotice(launched) : null;
+  // The model has finished and the driver is validating its build. The job's own
+  // `validating` phase says so; the session's end on the telemetry stream says the
+  // same thing, often a moment before the phase change reaches the list, so either
+  // one reads as validating.
+  const validating =
+    status.kind === "running" &&
+    storingNotice === null &&
+    (launched?.state === "validating" || sessionEndStatus !== null);
   const dashboardStatus: GgDashboardStatus = {
-    ...statusPhase(status, sawSession, setupStage, storingNotice !== null),
+    ...statusPhase(status, sawSession, setupStage, {
+      storing: storingNotice !== null,
+      validating,
+    }),
     note:
       storingNotice ??
-      (sessionEndStatus && status.kind === "running"
-        ? `gg session ended: ${sessionEndStatus}. Finalizing…`
+      (validating
+        ? sessionEndStatus
+          ? `gg session ended: ${sessionEndStatus}. Validating the build…`
+          : validatingRunNotice(launched)
         : null),
     action:
       status.kind === "running" && jobId ? (
@@ -211,15 +225,23 @@ function statusPhase(
   status: GgMonitorStatus,
   sawSession: boolean,
   setupStage: SetupStage | null,
-  storing: boolean,
+  phase: { storing: boolean; validating: boolean },
 ): Pick<GgDashboardStatus, "label" | "detail" | "tone"> {
   if (status.kind === "running") {
     // Finished, and waiting on the artifact store to take what it built. The note
     // under the pill carries the driver's reason.
-    if (storing) {
+    if (phase.storing) {
       return {
         label: "Storing",
         detail: "finished; waiting on the artifact store",
+        tone: "live",
+      };
+    }
+    // The model's session is over and the driver is validating its build.
+    if (phase.validating) {
+      return {
+        label: "Validating",
+        detail: "the model has finished; validating the build",
         tone: "live",
       };
     }

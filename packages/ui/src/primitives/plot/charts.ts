@@ -104,6 +104,10 @@ const MAX_ROTATED_MARGIN = 220;
 // so a chart with more categories than fit is drawn wider than its container
 // and scrolled sideways (see `Chart`) rather than squeezed.
 export const MIN_ROTATED_SLOT = 32;
+// The narrowest an arm's slot is drawn on a distribution chart with tilted
+// labels. An arm draws its interval to the left of its box and its runs to the
+// right, and all three need room to read apart from the next arm's.
+export const MIN_DISTRIBUTION_SLOT = 120;
 // Plot's own default right margin, kept as the least a chart gets.
 const DEFAULT_RIGHT_MARGIN = 20;
 
@@ -131,7 +135,7 @@ function rotatedBottomMargin(
 // The bars always fill the container: the plot area is what the container
 // leaves after the left margin and Plot's own right margin, `available` being
 // the container's width, and never less than a slot of `MIN_ROTATED_SLOT` per
-// category. A label starts under the middle of its own slot and extends
+// category (or of `minSlot`, for a chart whose categories need wider ones). A label starts under the middle of its own slot and extends
 // `chars · glyph · cos θ` to the right, over the slots after it. Whatever
 // reaches past the last slot is given to the right margin, which makes the
 // chart that much wider than its container instead of narrowing the bars to
@@ -146,11 +150,12 @@ function rotatedAxisLayout(
   rotateDeg: number,
   marginLeft: number,
   available: number | undefined,
+  minSlot: number = MIN_ROTATED_SLOT,
 ): Pick<PlotOptions, "marginBottom" | "marginRight" | "width"> {
   const marginBottom = rotatedBottomMargin(order, rotateDeg);
   const n = order.length;
   const plotArea = Math.max(
-    n * MIN_ROTATED_SLOT,
+    n * minSlot,
     (available ?? 0) - marginLeft - DEFAULT_RIGHT_MARGIN,
   );
   const slot = n > 0 ? plotArea / n : 0;
@@ -435,6 +440,12 @@ interface StackedAxisLabels {
    */
   availableWidth?: number;
   /**
+   * The narrowest a bar's slot is drawn with tilted labels, `MIN_ROTATED_SLOT`
+   * unless given; a chart that names each bar with a long label, such as an
+   * arm's, passes `MIN_DISTRIBUTION_SLOT`.
+   */
+  minSlot?: number;
+  /**
    * The bar order along x, as the full list of group names. Pass it whenever the
    * groups have a meaningful order that is not their sorted order — Plot sorts an
    * ordinal domain it infers, which puts `"100"` before `"70"` and silently
@@ -476,6 +487,7 @@ export function stackedBarChart(
           labels.xTickRotate,
           Number(base.marginLeft),
           labels.availableWidth,
+          labels.minSlot,
         )
       : {}),
     x: {
@@ -939,6 +951,15 @@ interface DistributionLabels {
   yTickFormat?: string | ((value: number) => string);
   /** Formats a raw value for a point's tooltip and the box's summary tooltip. */
   formatValue?: (value: number) => string;
+  /**
+   * Degrees to tilt the arm labels (e.g. `40`, down to the right), for a chart of
+   * many arms with long labels. The chart then lays its arms out as a bar chart
+   * with tilted labels does (see `AxisLabels.xTickRotate`), with a slot of at
+   * least `MIN_DISTRIBUTION_SLOT` per arm.
+   */
+  xTickRotate?: number;
+  /** The width of the container the chart is drawn into, as `Chart` hands it to a spec. */
+  availableWidth?: number;
 }
 
 // Pixel nudges that separate the three layers drawn at each arm's x position: the
@@ -1009,10 +1030,25 @@ export function distributionChart(
   ) as DistributionGroup[];
 
   const domain = distributionDomain(groups);
+  const base = basePlotOptions(palette);
 
   return {
-    ...basePlotOptions(palette),
-    x: { label: null, type: "band", domain: order },
+    ...base,
+    ...(labels.xTickRotate
+      ? rotatedAxisLayout(
+          order,
+          labels.xTickRotate,
+          Number(base.marginLeft),
+          labels.availableWidth,
+          MIN_DISTRIBUTION_SLOT,
+        )
+      : {}),
+    x: {
+      label: null,
+      type: "band",
+      domain: order,
+      tickRotate: labels.xTickRotate,
+    },
     y: {
       label: labels.y ?? null,
       grid: true,

@@ -600,6 +600,135 @@ describe("loadSnapshot", () => {
       },
     });
   });
+
+  // A case is listed once any run of it is published, and previews its NEWEST
+  // showcase from `case-showcases.json` — even when that version has no published
+  // run, and so no case file of its own.
+  describe("with the case showcases", () => {
+    function withShowcases(objects: Map<string, unknown>) {
+      const index = objects.get("index.json") as Record<string, unknown>;
+      index.caseShowcasesKey = "s1/case-showcases.json";
+      const entry = (slug: string, version: string, variants: string[]) => ({
+        slug,
+        version,
+        variants: variants.map((variant) => ({
+          variant,
+          showcase: {
+            description: "shown",
+            media: [
+              {
+                file: "play.json.gz",
+                name: `${version} play`,
+                kind: "replay",
+                key: `media/cases/${slug}/${version}/showcase/${variant}/d-play.json.gz`,
+              },
+            ],
+          },
+        })),
+      });
+      objects.set("s1/case-showcases.json", {
+        schemaVersion: 2,
+        showcases: [
+          entry("alpha", "1.0.0", ["base"]),
+          // Newer than any run of alpha, and listed out of order: the newest wins
+          // by version, not by position.
+          entry("alpha", "10.0.0", ["second", "base"]),
+          entry("alpha", "2.0.0", ["base"]),
+          // A case no published run built: it stays unlisted.
+          entry("unlisted", "1.0.0", ["base"]),
+        ],
+      });
+      objects.set("s1/cases/alpha/1.0.0.json", caseFile("alpha", "1.0.0"));
+      return objects;
+    }
+
+    it("previews a case with its newest showcase, run or no run", async () => {
+      const loaded = await load(bucket(withShowcases(snapshotObjects())), 8);
+      const alpha = exported<
+        Array<{ slug: string; latestVersion: string; showcase: unknown }>
+      >(loaded, "testCases").find((entry) => entry.slug === "alpha");
+      // Listed at the version its runs built, previewed from the newest showcase,
+      // first variant in manifest order.
+      expect(alpha?.latestVersion).toBe("1.0.0");
+      expect(alpha?.showcase).toEqual({
+        version: "10.0.0",
+        variant: "second",
+        media: [{ file: "play.json.gz", name: "10.0.0 play", kind: "replay" }],
+      });
+      const urls = exported<Record<string, Record<string, string>>>(
+        loaded,
+        "catalogShowcaseMediaUrls",
+      );
+      expect(urls["alpha/10.0.0/second"]).toEqual({
+        "play.json.gz": `${BASE}/media/cases/alpha/10.0.0/showcase/second/d-play.json.gz`,
+      });
+      expect(
+        Object.keys(urls).some((key) => key.startsWith("alpha/1.0.0")),
+      ).toBe(false);
+    });
+
+    it("lists no case that only the showcases name", async () => {
+      const loaded = await load(bucket(withShowcases(snapshotObjects())), 8);
+      const slugs = exported<Array<{ slug: string }>>(loaded, "testCases").map(
+        (entry) => entry.slug,
+      );
+      expect(slugs).not.toContain("unlisted");
+      expect(loaded.module).not.toContain("media/cases/unlisted");
+    });
+
+    it("previews nothing for a listed case with no showcase in the file", async () => {
+      // The file is authoritative when present: a case it carries no showcase for
+      // previews the placeholder rather than an older case file's showcase.
+      const objects = withShowcases(snapshotObjects());
+      const file = objects.get("s1/case-showcases.json") as {
+        showcases: Array<{ slug: string }>;
+      };
+      file.showcases = file.showcases.filter((entry) => entry.slug !== "alpha");
+      const loaded = await load(bucket(objects), 8);
+      const alpha = exported<Array<{ slug: string; showcase: unknown }>>(
+        loaded,
+        "testCases",
+      ).find((entry) => entry.slug === "alpha");
+      expect(alpha?.showcase).toBeNull();
+    });
+
+    it("passes over a newer version whose showcase has no media", async () => {
+      // A showcase whose media the publisher could not find in its store reaches
+      // the file empty; the preview takes the next version down instead.
+      const objects = withShowcases(snapshotObjects());
+      const file = objects.get("s1/case-showcases.json") as {
+        showcases: Array<{
+          version: string;
+          variants: Array<{ showcase: { media: unknown[] } }>;
+        }>;
+      };
+      for (const entry of file.showcases) {
+        if (entry.version === "10.0.0") {
+          for (const variant of entry.variants) variant.showcase.media = [];
+        }
+      }
+      const loaded = await load(bucket(objects), 8);
+      const alpha = exported<
+        Array<{ slug: string; showcase: { version: string } | null }>
+      >(loaded, "testCases").find((entry) => entry.slug === "alpha");
+      expect(alpha?.showcase?.version).toBe("2.0.0");
+    });
+
+    it("falls back to the case files when the showcases cannot be read", async () => {
+      const objects = withShowcases(snapshotObjects());
+      objects.delete("s1/case-showcases.json");
+      const loaded = await load(bucket(objects), 8);
+      const alpha = exported<Array<{ slug: string; showcase: unknown }>>(
+        loaded,
+        "testCases",
+      ).find((entry) => entry.slug === "alpha");
+      expect(alpha?.showcase).toEqual({
+        version: "1.0.0",
+        variant: "base",
+        media: [{ file: "clip.webm", name: "Clip", kind: "video" }],
+      });
+    });
+  });
 });
 
 describe("reportSizes", () => {

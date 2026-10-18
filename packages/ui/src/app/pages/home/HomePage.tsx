@@ -18,6 +18,7 @@ import {
 import { CabinetIcon } from "../../components/CabinetIcon";
 import { LoadingState } from "../../components/LoadingState";
 import { PageLayout } from "../../components/PageLayout";
+import { ProjectLinks } from "../../components/ProjectLinks";
 import { PromptHeader } from "../../components/PromptHeader";
 import { UnpublishedTag } from "../../components/UnpublishedTag";
 import {
@@ -73,6 +74,7 @@ export function HomePage() {
           comment={
             <>// insert coin &middot; consume tokens &middot; play the result</>
           }
+          titleActions={<ProjectLinks />}
         />
         <LegendaryShowcase />
         <CabinetPulse />

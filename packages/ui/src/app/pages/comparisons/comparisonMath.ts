@@ -20,138 +20,28 @@ import { categoricalColor } from "../../../primitives/plot/palette";
 import { routes } from "../../routes";
 
 /**
- * The arm's recorded runs that **still exist** — a run is stored for it, or a job
- * for it is still queued or running — exactly as the backend reported them, or
- * `undefined` when it did not report them at all.
+ * How many more runs an arm still needs to reach the comparison's `N`: `N` less
+ * the runs it holds and its cell's jobs in flight (docs/comparisons/experiments.md,
+ * "Triggering the runs"). An arm holds the runs of its coverage cell whoever
+ * launched them, so a run launched anywhere else counts here too.
  *
- * Three states, and the third is not the second:
- *
- * - `undefined` — **liveness was never reported**. A backend older than the field
- *   sends no key at all, and the type stays optional so such a backend still
- *   type-checks. Nothing has been said about this arm's runs, so nothing about
- *   them may be acted on: see {@link countedRunIds} and {@link pruneDeadRunIds}.
- * - `[]` — reported, and **none** of the arm's runs are live (every one was
- *   deleted, or it has never launched any). A current backend always serializes
- *   the field, so an empty array is a positive statement and is trusted as one.
- * - a populated array — those runs, in the arm's launch order.
- *
- * Reading an absent field as "none live" would conflate the first with the
- * second, which is destructive in both directions: a console pointed at an older
- * backend would offer to relaunch every arm from scratch, and would prune every
- * stored run id out of the config on the way to the next write — permanently
- * losing which runs belong to which arm on the strength of a field that was
- * never sent.
- */
-export function reportedLiveRunIds(
-  result: ComparisonArmResult,
-): readonly string[] | undefined {
-  return result.liveRunIds;
-}
-
-/**
- * The ids an arm is *counted* by: its {@link reportedLiveRunIds} when the backend
- * reported liveness, and otherwise the arm's own recorded `runIds` — the figure
- * the page counted before liveness existed.
- *
- * The fallback errs towards under-launching, never towards double-launching: an
- * unreported arm whose runs were deleted looks full rather than empty, which is
- * the recoverable failure (an operator sees "nothing to trigger"; they do not
- * see their experiment silently re-run).
- *
- * `arm` is the record those ids are read off when nothing was reported, and it
- * defaults to the one the result echoes. A caller holding the **stored config's**
- * arm should pass it instead: the config is the authority on what an arm has
- * launched — it is what the top-up writes back — and the echoed arm is only as
- * complete as the aggregation chose to make it.
- */
-export function countedRunIds(
-  result: ComparisonArmResult,
-  arm: ComparisonArm = result.arm,
-): readonly string[] {
-  return result.liveRunIds ?? arm.runIds ?? [];
-}
-
-/**
- * How many more runs an arm still needs to reach the comparison's `N`, counted
- * off the arm's runs that still exist ({@link countedRunIds}).
- *
- * Neither figure beside it can serve, which is why this counts the live ids in
- * preference to everything else (docs/comparisons/experiments.md, "Triggering
- * the runs"):
- *
- * - `arm.runIds` records every run **ever** launched, so an operator who deleted
- *   an arm's runs leaves it counting dead ids — believing itself full, offering
- *   nothing to trigger, and never topping up again. It is only the fallback for
- *   a backend that reports no liveness at all, where it is the *whole* of what is
- *   known.
- * - `nObserved` counts only the runs whose record has landed, so topping up
- *   against it re-launches every run still in flight each time the page is
- *   opened before they complete.
+ * An arm the backend reports `unlaunchable` needs nothing: its launches would land
+ * in a cell it does not read, so topping it up would launch runs it never counts.
+ * A result that reports no held runs at all (a backend older than the field) is
+ * read as needing nothing too: an unknown count is never topped up, since the
+ * failure in that direction is a relaunch of runs that already exist.
  */
 export function remainingForArm(
   n: number,
   result: ComparisonArmResult,
-  arm: ComparisonArm = result.arm,
 ): number {
-  return Math.max(0, n - countedRunIds(result, arm).length);
+  if (result.unlaunchable || !Array.isArray(result.runIds)) return 0;
+  return Math.max(0, n - result.runIds.length - (result.inFlight ?? 0));
 }
 
-/**
- * Drop from every arm's stored `runIds` the ids that no longer exist, keeping the
- * arm's own launch order.
- *
- * The stored config is what accumulates: an arm relaunched after its runs were
- * deleted would otherwise carry the dead ids forever, and each aggregation would
- * go looking for runs that are not there. So the config is pruned on the way to
- * the next write (docs/comparisons/experiments.md: "The arm's recorded run ids
- * are pruned of runs that no longer exist").
- *
- * Pruning is destructive — the config it returns is PUT back — so it acts only on
- * a positive report that a run is gone. Two arms are therefore left exactly as
- * they are: one with no matching result (nothing was read about its runs at all),
- * and one whose result reports no liveness ({@link reportedLiveRunIds} is
- * `undefined` — an older backend that does not send the field). Neither has been
- * *shown* anything about its runs, and an absent field is not evidence of death.
- */
-export function pruneDeadRunIds(
-  config: ComparisonConfig,
-  results: readonly ComparisonArmResult[],
-): ComparisonConfig {
-  return {
-    ...config,
-    arms: config.arms.map((arm) => {
-      const result = results.find((r) => r.arm.id === arm.id);
-      if (!result) return arm;
-      const reported = reportedLiveRunIds(result);
-      if (!reported) return arm;
-      const live = new Set(reported);
-      const kept = (arm.runIds ?? []).filter((id) => live.has(id));
-      return kept.length === (arm.runIds?.length ?? 0)
-        ? arm
-        : { ...arm, runIds: kept };
-    }),
-  };
-}
-
-/**
- * Every arm with its recorded `runIds` cleared: the start of a new round, where
- * "Run again" launches `N` runs per arm (docs/comparisons/experiments.md, "A complete
- * comparison"). The previous round's runs stay stored as ordinary runs.
- */
-export function clearRunIds(config: ComparisonConfig): ComparisonConfig {
-  return {
-    ...config,
-    arms: config.arms.map((arm) => ({ ...arm, runIds: [] })),
-  };
-}
-
-/** How many of a comparison's held runs have not landed yet, across every arm. */
+/** How many runs the arms are waiting on, across every arm. */
 export function runsInFlight(results: readonly ComparisonArmResult[]): number {
-  return results.reduce(
-    (sum, result) =>
-      sum + Math.max(0, countedRunIds(result).length - result.nObserved),
-    0,
-  );
+  return results.reduce((sum, result) => sum + (result.inFlight ?? 0), 0);
 }
 
 /** One arm and how many runs it still needs to reach the comparison's `N`. */
@@ -163,14 +53,9 @@ export interface ArmTopUp {
 /**
  * Every arm of a comparison beside the number of runs it still needs, in the
  * config's arm order — what "Trigger missing runs" both counts and loops over, so
- * the button's number and the launches it fires can never disagree.
- *
- * The top-up is measured against the matching result's {@link countedRunIds} —
- * its live ids where the backend reported them, its own recorded ids where it did
- * not. An arm the aggregation reported nothing for at all (no result carries its
- * id — defensive; the backend computes one result per configured arm) falls back
- * to its recorded ids the same way. Both fallbacks lean the same direction: they
- * may under-launch, never double-launch.
+ * the button's number and the launches it fires can never disagree. An arm no
+ * result carries (defensive; the backend computes one result per configured arm)
+ * needs nothing, on the same terms as {@link remainingForArm}.
  */
 export function armTopUps(
   config: ComparisonConfig,
@@ -178,14 +63,7 @@ export function armTopUps(
 ): ArmTopUp[] {
   return config.arms.map((arm) => {
     const result = results.find((r) => r.arm.id === arm.id);
-    return {
-      arm,
-      // The config's own arm, not the result's echo of it: the stored config is
-      // what records the launches and what this top-up writes back.
-      remaining: result
-        ? remainingForArm(config.n, result, arm)
-        : Math.max(0, config.n - (arm.runIds?.length ?? 0)),
-    };
+    return { arm, remaining: result ? remainingForArm(config.n, result) : 0 };
   });
 }
 
@@ -257,44 +135,6 @@ export function harnessArmLaunchItems(
       engine,
     },
   }));
-}
-
-/**
- * Fold a batch of launch results into an arm's `runIds`: append every
- * successfully-launched run's id, in the order launched, skipping an exact
- * duplicate (defensive — a launch is never expected to repeat an id) and
- * dropping the failures (a rejected combination was never enqueued, so it must
- * not be recorded as one of the arm's runs). This is the entire "top-up" write —
- * pure, so it is tested without a network.
- */
-export function appendRunIds(
-  existing: readonly string[] | undefined,
-  launched: readonly { runId?: string; error?: string }[],
-): string[] {
-  const next = [...(existing ?? [])];
-  for (const result of launched) {
-    if (result.runId && !next.includes(result.runId)) next.push(result.runId);
-  }
-  return next;
-}
-
-/**
- * Replace one arm's `runIds` in a comparison's config, immutably — the shape
- * "Trigger missing runs" PUTs back after topping an arm up. Every other arm is
- * left untouched; unknown `armId` is a no-op (defensive — the detail page only
- * ever calls this with an arm id it just read off the same config).
- */
-export function withArmRunIds(
-  config: ComparisonConfig,
-  armId: string,
-  runIds: readonly string[],
-): ComparisonConfig {
-  return {
-    ...config,
-    arms: config.arms.map((arm) =>
-      arm.id === armId ? { ...arm, runIds: [...runIds] } : arm,
-    ),
-  };
 }
 
 /**
@@ -400,64 +240,212 @@ export interface ArmToolCalls {
   toolCalls: Readonly<Record<string, number>>;
 }
 
-// Cap the tool-name series a stacked chart draws explicitly; per the dataviz
-// non-negotiable a categorical series count beyond what the validated palette
-// covers folds into "other" rather than generating an unchecked color.
-const MAX_TOOL_SERIES = 6;
-const OVERFLOW_SERIES_NAME = "other";
+/** The kind of work a tool call does, the series the tool-call chart stacks
+ * (docs/comparisons/diagnostics.md, "Tool-call kinds"). */
+export type ToolKind =
+  | "reading"
+  | "editing"
+  | "shell"
+  | "search"
+  | "planning"
+  | "subagents"
+  | "board"
+  | "memory"
+  | "context"
+  | "other";
+
+/** gg's program namespaces for the tools of the same names, so a program's
+ * `files.read_file` counts with a tool-calling agent's `read_file`. */
+function withNamespace(namespace: string, names: readonly string[]): string[] {
+  return [...names, ...names.map((name) => `${namespace}.${name}`)];
+}
+
+/**
+ * Every tool name the chart recognizes, lowercased as a tally keys it, under the
+ * kind of work it does. A name absent from every kind counts as `other`.
+ */
+export const TOOL_KINDS: Readonly<
+  Record<Exclude<ToolKind, "other">, readonly string[]>
+> = {
+  reading: [
+    "read",
+    "ls",
+    "list",
+    "read_file",
+    "read_files",
+    "list_files",
+    "list_dir",
+    "tree",
+    "read_image",
+    "files.read_file",
+    "files.list_dir",
+    "files.tree",
+    "views.open_file",
+  ],
+  editing: [
+    "write",
+    "edit",
+    "multiedit",
+    "notebookedit",
+    "apply_patch",
+    "editor",
+    "write_to_file",
+    "replace_in_file",
+    "new_rule",
+    "text_editor",
+    "write_file",
+    "edit_file",
+    "files.write_file",
+    "files.edit_file",
+  ],
+  shell: [
+    "bash",
+    "shell",
+    "background_process",
+    "run_commands",
+    "execute_command",
+    "command",
+    "shell.shell",
+  ],
+  search: [
+    "grep",
+    "glob",
+    "search",
+    "lsp",
+    "codesearch",
+    "search_files",
+    "search_codebase",
+    "files.search",
+  ],
+  planning: [
+    "todowrite",
+    "todoread",
+    "todo",
+    ...withNamespace("tasks", [
+      "add_task",
+      "update_task",
+      "complete_task",
+      "remove_task",
+      "set_blocked_by",
+    ]),
+  ],
+  subagents: [
+    "task",
+    "agent_manager",
+    ...withNamespace("delegation", [
+      "spawn_subagent",
+      "wait_for_subagents",
+      "send_message",
+      "transition_state",
+      "exec",
+      "fork",
+    ]),
+  ],
+  board: withNamespace("board", [
+    "create_epic",
+    "create_issue",
+    "update_issue",
+    "remove_epic",
+    "remove_issue",
+    "set_issue_blocked_by",
+    "wait_for_issue",
+  ]),
+  memory: withNamespace("memories", [
+    "create_memory",
+    "read_memory",
+    "write_memory",
+    "update_memory",
+    "edit_memory",
+    "delete_memory",
+    "search_memories",
+  ]),
+  context: withNamespace("context", [
+    "compact",
+    "archive_thread",
+    "search_archive",
+    "evict_file_view",
+  ]),
+};
+
+// Each kind's one color, the same in every comparison. The six kinds every
+// harness does take the categorical palette in order; gg's own three take the
+// theme's blue, red and lime from `styles/tokens.css`, and `other` its muted
+// grey, so ten kinds stay ten distinguishable hues without cycling the palette.
+const TOOL_KIND_COLORS: Readonly<Record<ToolKind, string>> = {
+  reading: categoricalColor(0),
+  editing: categoricalColor(1),
+  shell: categoricalColor(2),
+  search: categoricalColor(3),
+  planning: categoricalColor(4),
+  subagents: categoricalColor(5),
+  board: "#60a5fa",
+  memory: "#f87171",
+  context: "#a3e635",
+  other: "#94a3b8",
+};
+
+const KIND_ORDER = Object.keys(TOOL_KIND_COLORS) as ToolKind[];
+
+const KIND_OF_TOOL: ReadonlyMap<string, ToolKind> = new Map(
+  Object.entries(TOOL_KINDS).flatMap(([kind, names]) =>
+    names.map((name) => [name, kind as ToolKind] as const),
+  ),
+);
+
+/** The kind of work the tool `name` does; `other` for one the chart does not
+ * recognize. */
+export function toolKind(name: string): ToolKind {
+  return KIND_OF_TOOL.get(name.toLowerCase()) ?? "other";
+}
 
 /**
  * Turn each arm's raw tool-call tally into the stacked-bar-chart shape
  * (`stackedBarChart`, `packages/ui/src/primitives/plot/charts.ts`): one segment
- * per `(arm, tool)`, plus the fixed `series` list (name + color) that both fixes
- * the stacking/legend order and caps it at {@link MAX_TOOL_SERIES}. The kept
- * tools are the top callers **by total across every arm** — so the same tool
- * lands in the same series regardless of which arm is listed first — and every
- * tool past that cutoff is summed into a trailing "other" series rather than
- * spilling into an uncapped, uncheckable legend. Every non-zero count carries a
- * tooltip with the arm's full per-tool breakdown, mirroring
- * `RatingsChartWidget`'s stacked-segment tooltips. A tool with zero calls in a
- * given arm gets no segment for that arm (nothing to stack), matching
- * `ratingSegments`.
+ * per `(arm, kind)`, plus the `series` list of every kind any arm called, in the
+ * fixed kind order and each in its fixed color, so the same work stacks the same
+ * way whichever harness did it. Every segment's tooltip lists the arm's kinds,
+ * each with the tools counted in it, most-called first. A kind an arm never
+ * called gets no segment for that arm.
  */
 export function toolCallChartData(arms: readonly ArmToolCalls[]): {
   segments: StackedBarSegment[];
   series: StackedSeries[];
 } {
-  const totals = new Map<string, number>();
-  for (const arm of arms) {
+  const byArm = arms.map((arm) => {
+    const kinds = new Map<ToolKind, [string, number][]>();
     for (const [name, count] of Object.entries(arm.toolCalls)) {
-      totals.set(name, (totals.get(name) ?? 0) + count);
+      if (count <= 0) continue;
+      const kind = toolKind(name);
+      kinds.set(kind, [...(kinds.get(kind) ?? []), [name, count]]);
     }
-  }
-  const ranked = [...totals.entries()]
-    .sort((a, b) => b[1] - a[1])
-    .map(([name]) => name);
-  const kept = ranked.slice(0, MAX_TOOL_SERIES);
-  const overflow = ranked.slice(MAX_TOOL_SERIES);
-  const names = overflow.length > 0 ? [...kept, OVERFLOW_SERIES_NAME] : kept;
+    const rows = KIND_ORDER.flatMap((kind) => {
+      const tools = kinds.get(kind);
+      if (!tools) return [];
+      tools.sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+      const value = tools.reduce((sum, [, count]) => sum + count, 0);
+      return [{ kind, value, tools }];
+    });
+    return { arm, rows };
+  });
 
-  const series: StackedSeries[] = names.map((name, i) => ({
-    name,
-    color: categoricalColor(i),
-  }));
+  const called = new Set(byArm.flatMap(({ rows }) => rows.map((r) => r.kind)));
+  const series: StackedSeries[] = KIND_ORDER.filter((kind) =>
+    called.has(kind),
+  ).map((kind) => ({ name: kind, color: TOOL_KIND_COLORS[kind] }));
 
-  const segments: StackedBarSegment[] = arms.flatMap((arm) => {
-    const rows = names.map((name) => ({
-      name,
-      value:
-        name === OVERFLOW_SERIES_NAME
-          ? overflow.reduce((sum, n) => sum + (arm.toolCalls[n] ?? 0), 0)
-          : (arm.toolCalls[name] ?? 0),
-    }));
-    const nonZero = rows.filter((r) => r.value > 0);
+  const segments: StackedBarSegment[] = byArm.flatMap(({ arm, rows }) => {
     const title = [
       arm.armLabel,
-      ...nonZero.map((r) => `${r.name}: ${r.value}`),
+      ...rows.map(
+        (r) =>
+          `${r.kind}: ${r.value} (${r.tools
+            .map(([name, count]) => `${name} ${count}`)
+            .join(", ")})`,
+      ),
     ].join("\n");
-    return nonZero.map((r) => ({
+    return rows.map((r) => ({
       group: arm.armLabel,
-      series: r.name,
+      series: r.kind,
       value: r.value,
       title,
     }));

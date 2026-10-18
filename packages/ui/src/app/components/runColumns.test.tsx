@@ -264,3 +264,70 @@ describe("a held run's status cell", () => {
     );
   });
 });
+
+// A run whose model has finished and whose build is being validated reads apart
+// from a running one, in the status cell and in the in-progress marker alike.
+describe("a validating run", () => {
+  const validatingRun: InProgressRun = { ...activeRun, state: "validating" };
+  const selection = { isSelected: () => false, toggle: () => {} };
+
+  beforeEach(() => {
+    useArtifactStorage.setState({ byWorker: {} });
+  });
+
+  it("reads validating in the status cell, saying the model has finished", () => {
+    const { container } = render(
+      column("rating").renderActive(validatingRun, ctx()),
+    );
+    const cell = container.querySelector("[data-state]") as HTMLElement;
+    expect(cell).toHaveTextContent("validating…");
+    expect(cell).toHaveAttribute("data-state", "validating");
+    expect(cell).toHaveAttribute(
+      "title",
+      "The model has finished; validating the build",
+    );
+  });
+
+  it("draws its own marker in the caret gutter, named for the phase", () => {
+    const { getByRole } = render(
+      column("caret").renderActive(validatingRun, ctx()),
+    );
+    const marker = getByRole("img", { name: "Validating" });
+    expect(marker).toHaveAttribute("data-state", "validating");
+    expect(marker).toHaveAttribute("title", "Validating");
+    // A checklist of three lines, not the running spinner's ring.
+    expect(marker.children).toHaveLength(3);
+  });
+
+  it("leaves a running run's marker as the running spinner", () => {
+    const { getByRole } = render(
+      column("caret").renderActive(activeRun, ctx()),
+    );
+    const marker = getByRole("img", { name: "Running" });
+    expect(marker).toHaveAttribute("data-state", "running");
+    expect(marker.children).toHaveLength(0);
+  });
+
+  it("draws its marker under the selectable log's checkbox too", () => {
+    const { container, getByRole } = render(
+      column("caret").renderActive(validatingRun, ctx({ selection })),
+    );
+    // The checkbox names the control; the marker inside it is decorative.
+    expect(getByRole("checkbox", { name: "Select run" })).toBeInTheDocument();
+    const marker = container.querySelector(
+      '[data-state="validating"]',
+    ) as HTMLElement;
+    expect(marker).toHaveAttribute("aria-hidden", "true");
+    expect(marker).toHaveAttribute("title", "Validating");
+  });
+
+  it("draws no marker under a finished row's checkbox", () => {
+    const { container } = render(
+      column("caret").render(
+        { summary: { id: "done-1" } } as Parameters<RunColumn["render"]>[0],
+        ctx({ selection }),
+      ),
+    );
+    expect(container.querySelector("[data-state]")).toBeNull();
+  });
+});

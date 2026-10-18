@@ -91,7 +91,7 @@ function ProbesContent({ model }: { model: ModelSummary }) {
       <section className={styles.section}>
         <h2 className={styles.sectionTitle}>Probe history</h2>
         {state.status === "loading" && (
-          <Spinner variant="flap" label="Loading probes…" />
+          <InlineSpinner label="Loading probes…" />
         )}
         {state.status === "unavailable" && (
           <p className={styles.empty}>Probes are not available here.</p>
@@ -122,7 +122,7 @@ function ProbesContent({ model }: { model: ModelSummary }) {
         <section className={styles.section}>
           <h2 className={styles.sectionTitle}>Probe detail</h2>
           {detail.status === "loading" && (
-            <Spinner variant="flap" label="Loading probe…" />
+            <InlineSpinner label="Loading probe…" />
           )}
           {detail.status === "error" && (
             <p className={styles.notice} role="alert">
@@ -136,6 +136,21 @@ function ProbesContent({ model }: { model: ModelSummary }) {
   );
 }
 
+// A wait shown in the flow of text: the flapping ship, sized to the text, with
+// its label beside it rather than beneath it. The label is what the status
+// announces; the ship is decoration, hidden from assistive tech so the wait is
+// not announced twice.
+function InlineSpinner({ label }: { label: string }) {
+  return (
+    <span className={styles.inlineSpinner} role="status" aria-live="polite">
+      <span className={styles.inlineMark} aria-hidden="true">
+        <Spinner variant="flap" />
+      </span>
+      {label}
+    </span>
+  );
+}
+
 // ---- Trigger controls --------------------------------------------------------
 
 // One labeled form field. The label is a real `<label for>` rather than a
@@ -145,16 +160,21 @@ function Field({
   label,
   modified,
   onReset,
+  wide = false,
   children,
 }: {
   label: string;
   modified: boolean;
   onReset: () => void;
+  /** A picker, which takes the whole row on a narrow screen. */
+  wide?: boolean;
   children: (controlId: string) => ReactNode;
 }) {
   const controlId = useId();
   return (
-    <div className={styles.field}>
+    <div
+      className={wide ? `${styles.field} ${styles.fieldWide}` : styles.field}
+    >
       <span className={styles.fieldLabel}>
         <label htmlFor={controlId}>{label}</label>
         {modified && <ResetControl label={label} onReset={onReset} />}
@@ -238,6 +258,7 @@ function ProbeTriggerForm({
       <div className={styles.triggerFields}>
         <Field
           label="Provider"
+          wide
           modified={provider !== ""}
           onReset={() => setProvider("")}
         >
@@ -261,6 +282,7 @@ function ProbeTriggerForm({
         </Field>
         <Field
           label="Language"
+          wide
           modified={language !== ""}
           onReset={() => setLanguage("")}
         >
@@ -317,6 +339,7 @@ function ProbeTriggerForm({
         </Field>
         <Button
           variant="primary"
+          className={styles.runButton}
           onClick={onRun}
           disabled={!canRun}
           title={
@@ -411,12 +434,7 @@ function ProbeHistory({
               {probe.provider ?? "default route"}
             </span>
             <span className={styles.rowStatus}>
-              {probe.status === "running" && (
-                <>
-                  <Spinner variant="flap" className={styles.rowSpinner} />
-                  Running
-                </>
-              )}
+              {probe.status === "running" && <InlineSpinner label="Running" />}
               {probe.status === "failed" && (
                 <span
                   className={styles.failed}
@@ -450,9 +468,7 @@ function ProbeDetail({ detail }: { detail: ModelProbeDetail }) {
   return (
     <div className={styles.detail}>
       <div className={styles.summaryRow}>
-        {probe.status === "running" && (
-          <Spinner variant="flap" label="Probing…" />
-        )}
+        {probe.status === "running" && <InlineSpinner label="Probing…" />}
         {probe.status === "complete" && probe.verdict && (
           <VerdictBadge verdict={probe.verdict} />
         )}
@@ -548,11 +564,11 @@ function ProbeResults({ detail }: { detail: ModelProbeDetail }) {
           <tbody>
             {groups.length === 0 ? (
               <tr>
-                <td>—</td>
-                <td>—</td>
-                <td>—</td>
-                <td>—</td>
-                <td>—</td>
+                <td data-label="Language">—</td>
+                <td data-label="Scenario">—</td>
+                <td data-label="Pass">—</td>
+                <td data-label="Labels">—</td>
+                <td data-label="Providers">—</td>
               </tr>
             ) : (
               groups.map((group) => {
@@ -560,13 +576,17 @@ function ProbeResults({ detail }: { detail: ModelProbeDetail }) {
                 const passed = scored.filter((i) => i.pass).length;
                 return (
                   <tr key={`${group.language}/${group.scenario}`}>
-                    <td>{languageLabel(group.language)}</td>
-                    <td>{group.scenario}</td>
-                    <td>
+                    <td data-label="Language">
+                      {languageLabel(group.language)}
+                    </td>
+                    <td data-label="Scenario">{group.scenario}</td>
+                    <td data-label="Pass">
                       {scored.length === 0 ? "—" : `${passed}/${scored.length}`}
                     </td>
-                    <td>{distinct(group.items.map((item) => item.label))}</td>
-                    <td>
+                    <td data-label="Labels">
+                      {distinct(group.items.map((item) => item.label))}
+                    </td>
+                    <td data-label="Providers">
                       {distinct(group.items.map((item) => item.provider))}
                     </td>
                   </tr>
@@ -614,9 +634,19 @@ function ProbeItemRow({ item }: { item: ModelProbeItem }) {
             {item.label ?? (item.error ? "error" : "—")}
           </span>
           <span className={styles.itemMeta}>
-            {item.provider ?? "—"} · {item.finishReason ?? "—"} ·{" "}
-            {(item.durationMs / 1000).toFixed(1)}s ·{" "}
-            {item.cost === null ? "—" : formatSpend(item.cost)}
+            {[
+              item.provider ?? "—",
+              item.finishReason ?? "—",
+              `${(item.durationMs / 1000).toFixed(1)}s`,
+              item.cost === null ? "—" : formatSpend(item.cost),
+            ].map((part, index) => (
+              // Each fact keeps to one line; a narrow screen wraps between
+              // facts and drops the separators, which would dangle there.
+              <span key={index} className={styles.itemMetaPart}>
+                {index > 0 && <span className={styles.itemMetaSep}> · </span>}
+                {part}
+              </span>
+            ))}
           </span>
         </summary>
         <div className={styles.itemBody}>

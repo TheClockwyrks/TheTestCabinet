@@ -4,14 +4,15 @@
 // and this is the part that has to work on every host these validators run on:
 // the devcontainer, CI, and the worker that runs a case's toolchain after a run's
 // container is gone. The strategies below are the ones
-// `packages/browser-driver/driver.mjs` established, kept here because a case's
-// validator project is staged into the build's tree and can depend only on what
-// that tree installs.
+// `packages/browser-driver/driver.mjs` established.
 //
-// The tree installs `playwright`, which the case's seeded `package.json` declares
-// — the same dependency an engineless build is given for its own browser checks.
-// This package therefore depends on it for TYPES only, and resolves the runtime
-// through `createRequire` out of whatever tree it was staged into.
+// Playwright itself comes from the RUNNER, never from the tree this project is
+// staged into. A Playwright release launches only the Chromium revision it was
+// released with, the runner's host installs the revision of the browser driver's
+// own pinned Playwright, and the build's dependencies are the model's to choose:
+// a tree that resolved a newer Playwright would ask for a browser the host never
+// installed. The runner names its package in `TCAB_PLAYWRIGHT`, and this package
+// depends on Playwright for TYPES only.
 
 import { createRequire } from "node:module";
 import { accessSync, constants, readdirSync } from "node:fs";
@@ -27,49 +28,67 @@ export interface ChromiumOptions {
 }
 
 /**
- * Import Playwright's `chromium`, across the layouts our hosts produce.
- *
- * A walkable `node_modules/playwright` is what `npm ci` leaves in the build's
- * tree and a bare import already finds it. `playwright-core` is the fallback for
- * a host that installs the automation without the browser-download postinstall.
- * Both are resolved through `createRequire` rather than imported by specifier,
- * because CommonJS resolution honours `NODE_PATH` and ESM bare-specifier
- * resolution does not — which is how Nix's `playwright-driver` exposes the
- * package.
+ * The environment variable the runner names its own Playwright package in: the
+ * absolute path of the package's directory.
  */
-async function importChromium(options: ChromiumOptions): Promise<BrowserType> {
-  const require = createRequire(import.meta.url);
-  const failures: string[] = [];
-  for (const pkg of ["playwright", "playwright-core"]) {
-    try {
-      const entry = require.resolve(pkg);
-      const namespace = (await import(pathToFileURL(entry).href)) as {
-        chromium?: BrowserType;
-        default?: { chromium?: BrowserType };
-      };
-      const chromium = namespace.chromium ?? namespace.default?.chromium;
-      if (chromium) return chromium;
-      failures.push(`${pkg}: resolved (${entry}) but exposes no \`chromium\``);
-    } catch (error) {
-      failures.push(
-        `${pkg}: ${error instanceof Error ? error.message : String(error)}`,
-      );
-    }
+export const PLAYWRIGHT_ENV = "TCAB_PLAYWRIGHT";
+
+/**
+ * Import Playwright's `chromium` from the package the runner names in
+ * {@link PLAYWRIGHT_ENV}, and from nowhere else.
+ *
+ * The runner leaves the variable unset when it has no Playwright of its own, and
+ * that is reported rather than papered over with the tree's: the tree's would
+ * reintroduce exactly the version drift the variable exists to remove.
+ */
+export async function importChromium(
+  options: ChromiumOptions,
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<BrowserType> {
+  const dir = env[PLAYWRIGHT_ENV];
+  if (!dir) {
+    throw new Error(
+      `${options.slug}: the runner named no Playwright package (${PLAYWRIGHT_ENV} is unset), so the build could not be driven in a browser`,
+    );
   }
-  throw new Error(
-    `${options.slug}: could not load Playwright (install it, or point NODE_PATH at it); tried:\n${failures
-      .map((line) => `  - ${line}`)
-      .join("\n")}`,
-  );
+  let entry: string;
+  try {
+    entry = createRequire(join(dir, "package.json")).resolve(dir);
+  } catch (error) {
+    throw new Error(
+      `${options.slug}: could not resolve the runner's Playwright package at ${PLAYWRIGHT_ENV}=${dir}: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+  const namespace = (await import(pathToFileURL(entry).href)) as {
+    chromium?: BrowserType;
+    default?: { chromium?: BrowserType };
+  };
+  const chromium = namespace.chromium ?? namespace.default?.chromium;
+  if (!chromium) {
+    throw new Error(
+      `${options.slug}: the runner's Playwright package (${entry}) exposes no \`chromium\``,
+    );
+  }
+  return chromium;
 }
+
+/**
+ * The directory layouts a Chromium build is unpacked into, per platform: x86-64
+ * (current and older), and arm64.
+ */
+const CHROMIUM_LAYOUTS: readonly string[] = [
+  "chrome-linux64/chrome",
+  "chrome-linux/chrome",
+  "chrome-linux-arm64/chrome",
+];
 
 /**
  * Chromium builds Playwright has already downloaded, newest first.
  *
  * Playwright resolves the browser for the exact revision its own version pins;
- * when the installed build is a different revision, or uses the newer
- * `chrome-linux64` layout, that resolution misses although a perfectly good
- * Chromium is sitting in the cache.
+ * when the installed build is a different revision, or uses a layout that
+ * resolution does not expect, it misses although a perfectly good Chromium is
+ * sitting in the cache.
  */
 function cachedChromium(): string[] {
   const base =
@@ -86,7 +105,7 @@ function cachedChromium(): string[] {
     // Full Chromium builds alone (`chromium-<rev>`), not the headless shell.
     const match = /^chromium-(\d+)$/.exec(name);
     if (!match) continue;
-    for (const layout of ["chrome-linux64/chrome", "chrome-linux/chrome"]) {
+    for (const layout of CHROMIUM_LAYOUTS) {
       const candidate = join(base, name, layout);
       try {
         accessSync(candidate, constants.X_OK);

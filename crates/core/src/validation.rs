@@ -715,7 +715,8 @@ pub enum Inconclusive {
     /// The run exceeded its wall-clock cap and was stopped, which is a fact about the
     /// host. A machine busy enough to stretch a conforming build's suites past the
     /// budget must never turn that build into a failing one, so the points the run
-    /// left undecided stay undecided rather than failing.
+    /// left undecided stay undecided rather than failing. A run the cap leaves with
+    /// no decided point at all is still rated broken.
     TimedOut,
 }
 
@@ -784,10 +785,12 @@ pub struct DebugScriptResult {
     ///
     /// An inconclusive result leaves the point unanswered: no failed verdict is
     /// synthesized, [scoring](crate::comparison::automated_only_score) skips the point
-    /// entirely, and the reviewer decides it by hand. Which inconclusive outcome it
-    /// was is carried by [`inconclusive`](Self::inconclusive), and the
-    /// [`detail`](Self::detail) names the reason in prose. Only ever `true` alongside
-    /// `ran == false`.
+    /// entirely, and the reviewer decides it by hand. A validator-rated run that
+    /// decides no scored point at all is still rated broken and scores zero over the
+    /// declared weight (see [`crate::review::verdict_domain_ratings`]). Which
+    /// inconclusive outcome it was is carried by [`inconclusive`](Self::inconclusive),
+    /// and the [`detail`](Self::detail) names the reason in prose. Only ever `true`
+    /// alongside `ran == false`.
     #[serde(default)]
     pub precondition_unmet: bool,
     /// Which inconclusive outcome this is, set exactly when

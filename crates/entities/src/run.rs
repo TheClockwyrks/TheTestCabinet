@@ -225,6 +225,11 @@ pub struct Model {
     /// could not be confirmed, which hands the run to the backend's periodic retry.
     /// Cleared once the run is published or has a publish job.
     pub auto_publish_deferred: bool,
+    /// Whether the record's tool-call tally has been counted. Read only for a Codex
+    /// or gg run, whose tally is counted off its event stream: one stored before
+    /// that counting existed is counted the first time a comparison holds it, and
+    /// this is what tells a run with no tool calls from one never counted.
+    pub tool_calls_counted: bool,
     /// The full `RunRecord` serialized verbatim (links populated).
     #[sea_orm(column_type = "Text")]
     pub record_json: String,

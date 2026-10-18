@@ -3,6 +3,10 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "description": "The top-level snapshot pointer (`index.json`): where the runs index, per-run\ndocuments, and case documents live under this snapshot's prefix.",
   "properties": {
+    "caseShowcasesKey": {
+      "description": "Where this snapshot's case showcases live (`<prefix>/case-showcases.json`):\nthe showcases of every non-experimental version of each case with a\npublished run, whichever version that run built.\nOptional on the wire because it postdates the other keys: a reader of a\nsnapshot written before it previews a case from its case documents instead.",
+      "type": ["string", "null"]
+    },
     "casesPrefix": {
       "type": "string"
     },

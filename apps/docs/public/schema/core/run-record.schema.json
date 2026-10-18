@@ -695,7 +695,7 @@
         },
         "preconditionUnmet": {
           "default": false,
-          "description": "Whether a `false` [`ran`](Self::ran) is INCONCLUSIVE about the build rather\nthan a contract failure the build earned.\n\nAn inconclusive result leaves the point unanswered: no failed verdict is\nsynthesized, [scoring](crate::comparison::automated_only_score) skips the point\nentirely, and the reviewer decides it by hand. Which inconclusive outcome it\nwas is carried by [`inconclusive`](Self::inconclusive), and the\n[`detail`](Self::detail) names the reason in prose. Only ever `true` alongside\n`ran == false`.",
+          "description": "Whether a `false` [`ran`](Self::ran) is INCONCLUSIVE about the build rather\nthan a contract failure the build earned.\n\nAn inconclusive result leaves the point unanswered: no failed verdict is\nsynthesized, [scoring](crate::comparison::automated_only_score) skips the point\nentirely, and the reviewer decides it by hand. A validator-rated run that\ndecides no scored point at all is still rated broken and scores zero over the\ndeclared weight (see [`crate::review::verdict_domain_ratings`]). Which\ninconclusive outcome it was is carried by [`inconclusive`](Self::inconclusive),\nand the [`detail`](Self::detail) names the reason in prose. Only ever `true`\nalongside `ran == false`.",
           "type": "boolean"
         },
         "ran": {
@@ -1077,7 +1077,7 @@
         },
         {
           "const": "timedOut",
-          "description": "The run exceeded its wall-clock cap and was stopped, which is a fact about the\nhost. A machine busy enough to stretch a conforming build's suites past the\nbudget must never turn that build into a failing one, so the points the run\nleft undecided stay undecided rather than failing.",
+          "description": "The run exceeded its wall-clock cap and was stopped, which is a fact about the\nhost. A machine busy enough to stretch a conforming build's suites past the\nbudget must never turn that build into a failing one, so the points the run\nleft undecided stay undecided rather than failing. A run the cap leaves with\nno decided point at all is still rated broken.",
           "type": "string"
         }
       ]
@@ -2747,7 +2747,7 @@
         "minimum": 0,
         "type": "integer"
       },
-      "description": "How many times each tool the harness's agent invoked was called over the\nrun, keyed by lowercased raw tool name — **including** tools recognized and\nconsumed without emitting an event (the todo tools). Lifted from\n[`HarnessOutcome::tool_calls`](crate::harness::HarnessOutcome::tool_calls) so\na harness comparison can diagnose tool-call behavior (a re-reading or\nover-shelling harness shows here) that a count derived from the event stream\nalone would miss. Defaulted and omitted when\nempty so records written before the field existed still deserialize, and a\ngg run — whose per-tool detail comes from its own telemetry — carries none.",
+      "description": "How many times each tool the harness's agent invoked was called over the\nrun, keyed by lowercased raw tool name — **including** tools recognized and\nconsumed without emitting an event (the todo tools). Lifted from\n[`HarnessOutcome::tool_calls`](crate::harness::HarnessOutcome::tool_calls) so\na harness comparison can diagnose tool-call behavior (a re-reading or\nover-shelling harness shows here) that a count derived from the event stream\nalone would miss. A Codex run and a gg run, whose output names no tools, are\ncounted off their events (see [`crate::tool_tally`]). Defaulted and omitted\nwhen empty so records written before the field existed still deserialize.",
       "type": "object"
     },
     "toolchain": {

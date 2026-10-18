@@ -65,6 +65,7 @@ pub mod salvage;
 pub mod seeding;
 pub mod test_case;
 pub mod test_case_group;
+pub mod tool_tally;
 pub mod toolchain;
 pub mod toolchain_report;
 pub mod toolchain_stage;
@@ -177,9 +178,9 @@ pub use publish_job_api::{
 pub use reference::{BrowserRenderer, ReferenceRenderer, RenderedReference};
 pub use review::{
     AestheticRating, DomainRating, Rating, ReviewVerdict, Score, VerdictStatus, Writeup,
-    effective_verdicts, missing_ratings, missing_verdicts, needs_aesthetic, parse_writeup, score,
-    validator_aggregate_rating, validator_aggregate_score, validator_review_rating,
-    validator_review_score,
+    decides_a_scored_point, effective_verdicts, missing_ratings, missing_verdicts, needs_aesthetic,
+    parse_writeup, score, validator_aggregate_rating, validator_aggregate_score,
+    validator_covered_score, validator_review_rating, validator_review_score,
 };
 pub use run_record::{
     AuthMode, HarnessSlug, PriorGameJamEntry, RunEnvironment, RunLinks, RunRecord, RunShowcase,
@@ -1862,6 +1863,9 @@ where
                 cancel,
             )
             .await?;
+        // Tell the sink the session is over before any post-session work, so an
+        // observer can tell the model working apart from the run being validated.
+        events.session_ended();
         // The run timer the instant the session ended. Everything the run engine did
         // before this point is setup and everything after it is teardown, so this
         // read plus `session_elapsed` is what separates the model's own working time

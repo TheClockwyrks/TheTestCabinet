@@ -12,12 +12,12 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use crate::comparison::{
     ArmDiagnostics, ArmRunPoint, ArmScore, ComparisonArm, ComparisonArmResult, ComparisonConfig,
-    Confound, ScorePoint, automated_only_score,
+    Confound, ScorePoint, automated_only_score, automated_verdicts,
 };
 use crate::comparison_stats::{MetricSummary, PassRate, seed_from_run_ids};
 use crate::metrics::TokenCounts;
 use crate::model_id::canonical_model_id;
-use crate::review::Score;
+use crate::review::{Score, validator_covered_score};
 use crate::run_record::{AuthMode, RunRecord};
 use crate::test_case::ReviewItem;
 
@@ -25,30 +25,50 @@ use crate::test_case::ReviewItem;
 /// the float tolerance for that all-or-nothing check.
 const FULL_MARKS_EPSILON: f64 = 1e-9;
 
+/// The runs one arm holds, as the caller read them off the arm's coverage cell
+/// (docs/comparisons/experiments.md, "Which runs an arm holds").
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ArmHolding {
+    /// The ids of the runs the arm holds, in the order they finished: the first `n`
+    /// counted runs of its cell.
+    pub run_ids: Vec<String>,
+    /// The jobs of the cell in flight, up to what the arm still needs.
+    pub in_flight: u32,
+    /// Why the arm cannot be launched now, or `None` when it can.
+    pub unlaunchable: Option<String>,
+}
+
 /// Fold every arm of `config` into its result. `items` is the case's **effective**
 /// review items (common + variant, errata applied) — shared by every arm, since a
-/// comparison holds the case and variant constant. `runs` maps run id → record; an
-/// arm reads exactly the runs its [`run_ids`](ComparisonArm::run_ids) name that are
-/// present in the map.
+/// comparison holds the case and variant constant.
 ///
-/// `runs` holds the **counted** runs alone, keyed by the id the arm recorded, so the
-/// statistics never read a canceled run or an infrastructure failure. `live` is every
-/// recorded id the arm holds — still in flight, or resolved to a counted run — which
-/// is a wider set than `runs`: a run launched a minute ago has no record yet but must
-/// not be launched again. The caller resolves both against the store (statistics are
-/// computed here; what a recorded id stands for is not a question this module can
-/// answer), and each arm reports its own share of `live` as
-/// [`live_run_ids`](ComparisonArmResult::live_run_ids).
+/// `holdings` maps an arm's id to the runs it holds; an arm absent from it holds none.
+/// Which runs those are is the store's question (an arm holds the runs of its coverage
+/// cell), so the caller answers it and this module computes the statistics. `runs` maps
+/// a run id to its record, and an arm's statistics read exactly its held runs present in
+/// it: a held run whose record no longer decodes keeps its place in
+/// [`run_ids`](ComparisonArmResult::run_ids) and contributes no figure.
+///
+/// `validator_rated` is whether the case version is
+/// [validator-rated](crate::test_case::TestCaseVersion::validator_rated): on such a
+/// version a completed run whose validators decided no scored point scores zero over
+/// the declared weight ([`validator_covered_score`]), exactly as it scores on its own
+/// page, rather than being left out of the arm's score and pass rate.
 pub fn aggregate_comparison(
     config: &ComparisonConfig,
     items: &[ReviewItem],
+    validator_rated: bool,
+    holdings: &BTreeMap<String, ArmHolding>,
     runs: &BTreeMap<String, RunRecord>,
-    live: &BTreeSet<String>,
 ) -> Vec<ComparisonArmResult> {
+    let none = ArmHolding::default();
     config
         .arms
         .iter()
-        .map(|arm| aggregate_arm(config, arm, items, runs, live))
+        .map(|arm| {
+            let holding = holdings.get(&arm.id).unwrap_or(&none);
+            aggregate_arm(config, arm, items, validator_rated, holding, runs)
+        })
         .collect()
 }
 
@@ -57,30 +77,22 @@ fn aggregate_arm(
     config: &ComparisonConfig,
     arm: &ComparisonArm,
     items: &[ReviewItem],
+    validator_rated: bool,
+    holding: &ArmHolding,
     runs: &BTreeMap<String, RunRecord>,
-    live: &BTreeSet<String>,
 ) -> ComparisonArmResult {
     // The arm's present runs, in a deterministic sorted-id order so the bootstrap
     // seed and every derived figure are independent of arrival order.
-    let mut ids: Vec<String> = arm
+    let mut ids: Vec<String> = holding
         .run_ids
         .iter()
         .filter(|id| runs.contains_key(*id))
         .cloned()
         .collect();
     ids.sort();
+    ids.dedup();
     let arm_runs: Vec<&RunRecord> = ids.iter().map(|id| &runs[id]).collect();
     let seed = seed_from_run_ids(&ids);
-
-    // The ids the arm holds, in launch order rather than sorted: this is what a top-up
-    // counts off, and the order it was launched in is the order a reader reads it in.
-    // Wider than `ids` above — a run that has not reported back yet is held.
-    let live_run_ids: Vec<String> = arm
-        .run_ids
-        .iter()
-        .filter(|id| live.contains(*id))
-        .cloned()
-        .collect();
 
     // Cost (comparable USD) and total-token distributions, over the runs that
     // report each metric — a run missing the figure is left out rather than folded
@@ -103,10 +115,8 @@ fn aggregate_arm(
         .filter_map(|r| r.metrics.session_seconds)
         .collect();
     let session_duration = MetricSummary::compute(&sessions, seed);
-    // The raw values the three distributions summarize, one entry per counted run.
-    // Each names the run by its own id rather than by the id the arm recorded, which
-    // is the launching job's: a point links to the run's page, and the page is
-    // addressed by the run.
+    // The raw values the three distributions summarize, one entry per run, each
+    // named by the run's id so a point links to the run's page.
     let run_points: Vec<ArmRunPoint> = arm_runs
         .iter()
         .map(|r| ArmRunPoint {
@@ -119,15 +129,20 @@ fn aggregate_arm(
 
     // Automated-only scores, over the runs that carry validators. A run whose
     // covered denominator is zero (no auto-checkable points ran) contributes to
-    // neither the score nor the pass rate.
+    // neither the score nor the pass rate, except on a validator-rated version, where
+    // a completed run whose validators decided no scored point is broken and scores
+    // zero over the declared weight, as it does everywhere else it is shown.
     let mut points: Vec<ScorePoint> = Vec::new();
     let mut passed = 0u64;
     for r in &arm_runs {
         let scripts = &r.validation.debug_scripts;
-        if scripts.is_empty() {
+        let Score { earned, total } = if validator_rated && r.status.state.is_scored() {
+            validator_covered_score(items, &automated_verdicts(scripts))
+        } else if scripts.is_empty() {
             continue;
-        }
-        let Score { earned, total } = automated_only_score(items, scripts);
+        } else {
+            automated_only_score(items, scripts)
+        };
         if total == 0 {
             continue;
         }
@@ -154,8 +169,10 @@ fn aggregate_arm(
     ComparisonArmResult {
         arm: arm.clone(),
         n_desired: config.n,
+        run_ids: holding.run_ids.clone(),
+        in_flight: holding.in_flight,
         n_observed: arm_runs.len(),
-        live_run_ids,
+        unlaunchable: holding.unlaunchable.clone(),
         cost,
         tokens: tokens_summary,
         session_duration,
