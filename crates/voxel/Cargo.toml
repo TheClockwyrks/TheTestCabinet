@@ -13,7 +13,7 @@ publish.workspace = true
 # rig/animation model, color, config, and the record/preview plumbing — that this
 # crate depends on and re-exports. The `voxel` binary uses the library in the run
 # container to turn the model's operations into a volume, a preview, and a
-# per-part `.glb`; `crates/core` links the same library to replay the recorded log.
+# per-part `.glb`; `crates/driver` links the same library to replay the recorded log.
 # `crates/voxel-anim` is the rigged, animated sibling binary over this same library.
 [lib]
 name = "test_cabinet_voxel"
@@ -21,7 +21,7 @@ path = "src/lib.rs"
 
 # The `voxel` CLI the model invokes inside the run container to sculpt a single
 # static model. Gated behind the `cli` feature (on by default) so that
-# `crates/core`, which depends on this crate with `default-features = false`, links
+# `crates/driver`, which depends on this crate with `default-features = false`, links
 # only the pure library and never pulls in clap or serde_json.
 [[bin]]
 name = "voxel"

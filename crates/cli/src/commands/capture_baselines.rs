@@ -39,7 +39,7 @@
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, bail};
-use test_cabinet_core::{
+use test_cabinet_driver::{
     COLD_STORAGE_DIR_ENV, ColdStorage, SystemCommandRunner, TestCaseCatalog, TestCaseVersion,
     Variant, capture_baseline_media, find_build_output,
 };
@@ -423,7 +423,7 @@ fn generate_baseline(
 }
 
 /// Run one build command string (`sh -c <command>`) from `dir` through the shared
-/// [`CommandRunner`](test_cabinet_core::CommandRunner) seam, surfacing a failing
+/// [`CommandRunner`](test_cabinet_driver::CommandRunner) seam, surfacing a failing
 /// command's output as an error.
 ///
 /// Build commands are authored as shell strings (`npm ci && npm run build`), so
@@ -431,7 +431,7 @@ fn generate_baseline(
 /// through the same [`SystemCommandRunner`] the wrangler deploy uses, so the whole
 /// command keeps a single execution seam.
 async fn run_build_step(runner: &SystemCommandRunner, dir: &Path, command: &str) -> Result<()> {
-    use test_cabinet_core::CommandRunner;
+    use test_cabinet_driver::CommandRunner;
 
     let output = runner
         .run("sh", &["-c", command], Some(dir))

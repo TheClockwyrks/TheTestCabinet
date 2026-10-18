@@ -12,4 +12,4 @@ set -euo pipefail
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/tcab-lib.sh"
 
 log "cargo nextest run --release (engines + core + CLI)"
-cargo nextest run --release --locked -p test-cabinet-engines -p test-cabinet-core -p test-cabinet-cli
+cargo nextest run --release --locked -p test-cabinet-engines -p test-cabinet-driver -p test-cabinet-cli

@@ -198,7 +198,7 @@ fn copy_tree_preserves_the_allowlisted_dotfiles_but_skips_others() {
     // `.tcab` sidecar never enter a copied definition — except the allowlist a
     // case ships (`.gitignore`, `.cargo`, the prettier config), which must
     // survive so a backend-driven run seeds the same set a local run does.
-    // Lockstep with `core`'s `collect_workspace_files` is guaranteed by the
+    // Lockstep with the suites crate's `collect_workspace_files` is guaranteed by the
     // shared `is_seeded_dotfile`.
     let src = TempDir::new().unwrap();
     write(&src.path().join("Cargo.toml"), "[package]");

@@ -12,7 +12,7 @@
 //! The DSP primitives ([`synth`], [`effect`]), the offline mixer ([`sfx`], [`music`]),
 //! the sample-library loader ([`sample`]), the encoders ([`wav`], [`midi`]), the FFT
 //! ([`fft`]), the PNG previews ([`preview`]), and the staged-audio contract
-//! ([`staged`]) are all pure and build without the `cli` feature, so `crates/core` can
+//! ([`staged`]) are all pure and build without the `cli` feature, so `crates/driver` can
 //! regenerate a clip from an op log, and write the palette a run is staged with,
 //! without linking clap. The `cli` feature adds the seeded [`config`] shapes, op-log
 //! [`record`] plumbing, and the TOML pack-manifest reader.

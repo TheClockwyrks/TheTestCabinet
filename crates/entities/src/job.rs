@@ -48,7 +48,7 @@ pub struct Model {
     /// The opaque model id, lifted for the active-run list.
     pub model_id: String,
     /// The slug of the engine the queued run's case pin names (see
-    /// `test_cabinet_core::engine`), lifted out of the launch request at enqueue and
+    /// `test_cabinet_driver::engine`), lifted out of the launch request at enqueue and
     /// mirroring `run.engine_slug` on the run the job produces.
     ///
     /// Part of a job's coverage cell: results are only comparable within one engine, so

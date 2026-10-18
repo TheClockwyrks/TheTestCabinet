@@ -10,8 +10,8 @@ use super::*;
 
 use std::path::Path;
 
-use test_cabinet_core::run_record::HarnessSlug;
-use test_cabinet_core::{AuthPlan, DefaultHarnessRegistry, HarnessRegistry, resolve_auth_with};
+use crate::run_record::HarnessSlug;
+use crate::{AuthPlan, DefaultHarnessRegistry, HarnessRegistry, resolve_auth_with};
 
 /// Serializes the few tests that mutate process-global env (`HOME`, `CODEX_HOME`,
 /// `TCAB_AUTH_MODE`).
@@ -50,7 +50,7 @@ fn with_isolated_home(body: impl FnOnce()) {
 }
 
 /// Resolve a harness's plan from a mounted-creds directory for `slug`.
-fn plan_from_mount(dir: &Path, slug: HarnessSlug) -> Result<AuthPlan, test_cabinet_core::Error> {
+fn plan_from_mount(dir: &Path, slug: HarnessSlug) -> Result<AuthPlan, crate::Error> {
     let creds = mounted_creds(dir, slug);
     let registry = DefaultHarnessRegistry::new();
     let harness = registry.get(slug).unwrap();
@@ -116,7 +116,7 @@ fn required_missing_is_harness_unavailable() {
         let dir = tempfile::tempdir().unwrap();
         let err = plan_from_mount(dir.path(), HarnessSlug::Antigravity).unwrap_err();
         assert!(
-            matches!(err, test_cabinet_core::Error::HarnessUnavailable { .. }),
+            matches!(err, crate::Error::HarnessUnavailable { .. }),
             "got: {err}"
         );
     });

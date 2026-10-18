@@ -57,7 +57,7 @@ use crate::ending::Ending;
 use test_cabinet_contracts::gg::{CAPABILITY_SUBAGENTS, GgCapabilitySet};
 use tokio::sync::{mpsc, oneshot};
 
-/// The subagents capability's one param, [named by core](test_cabinet_contracts::gg) so the vocabulary a
+/// The subagents capability's one param, [named by the contracts](test_cabinet_contracts::gg) so the vocabulary a
 /// document is written in and the vocabulary gg reads it by are one declaration.
 pub(crate) use test_cabinet_contracts::gg::PARAM_MAX_DEPTH;
 

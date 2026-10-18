@@ -14,7 +14,7 @@
 //
 //   node scripts/ci/spec-vocabulary-check.mjs [--show-frozen]
 //
-// WHAT IS SEEDED (and therefore checked). `crates/core/src/seeding.rs` copies, for
+// WHAT IS SEEDED (and therefore checked). `crates/driver/src/seeding.rs` copies, for
 // every run, the version's `prompt.hbs` (rendered into the harness instruction by
 // `contracts/crates/suites/src/prompt.rs`) and the spec files the manifest names — every one of
 // which lives under `specs/`: `.md` and `.py` verbatim, `.md.hbs` rendered. So under

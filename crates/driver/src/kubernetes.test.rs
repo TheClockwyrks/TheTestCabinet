@@ -7,11 +7,11 @@ use super::*;
 
 use std::collections::BTreeMap;
 
+use crate::execution::{ContainerFile, ContainerSpec};
 use k8s_openapi::api::core::v1::{
     ContainerState, ContainerStateWaiting, ContainerStatus, PodCondition, PodSpec, PodStatus,
 };
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::{StatusCause, StatusDetails};
-use test_cabinet_core::execution::{ContainerFile, ContainerSpec};
 
 fn spec(image: &str) -> ContainerSpec {
     ContainerSpec {

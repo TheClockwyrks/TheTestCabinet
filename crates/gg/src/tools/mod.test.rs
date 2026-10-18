@@ -829,7 +829,7 @@ fn an_empty_allowlist_grants_nothing() {
 /// **The default profile grants exactly what its default capabilities offer**, on both surfaces.
 ///
 /// [`GgAgentConfig::root`] authors its two allowlists as literals, because the vocabularies belong
-/// to this crate and the contract belongs to `core`. That is the right split and it is the kind of
+/// to this crate and the contract belongs to the contracts. That is the right split and it is the kind of
 /// split that rots: a tool added to an existing capability, or an operation renamed, leaves the
 /// default profile a call short and nothing about it reads as wrong — a narrower allowlist is a
 /// legitimate configuration, so there is no shape to notice. This is the only thing that notices.

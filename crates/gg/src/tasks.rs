@@ -61,7 +61,7 @@ use crate::modules::{
 };
 use crate::prompts::{self, TaskItemView, TasksBlockContext};
 
-/// The tasks capability's two params, [named by core](test_cabinet_contracts::gg) so the vocabulary a
+/// The tasks capability's two params, [named by the contracts](test_cabinet_contracts::gg) so the vocabulary a
 /// document is written in and the vocabulary gg reads it by are one declaration.
 pub(crate) use test_cabinet_contracts::gg::{PARAM_MAX_TASKS, PARAM_MODE};
 

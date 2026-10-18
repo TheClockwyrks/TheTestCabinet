@@ -18,7 +18,7 @@
 //! The pure model + simulator are always available; the CLI plumbing (the seeded
 //! [`config`], the authoring [`command`]s, and the preview [`render`]er, which links the
 //! `wgpu` + GIF stack) is behind the `cli` feature (on by default), so a library
-//! consumer such as `crates/core` can link this crate with `default-features = false`
+//! consumer such as `crates/driver` can link this crate with `default-features = false`
 //! and pull in only the model types.
 //!
 //! See `apps/docs/src/content/docs/testing/asset-generation/particle-binaries.md`.

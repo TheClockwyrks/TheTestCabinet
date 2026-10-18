@@ -34,7 +34,7 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use serde_json::{Value, json};
-// The shell vocabulary — the two mode ids and the two ceilings — is `crates/core`'s, because the
+// The shell vocabulary — the two mode ids and the two ceilings — is the contracts', because the
 // console writes a shell capability with the same names this reads it back by.
 use test_cabinet_contracts::gg::{
     CAPABILITY_SHELL, PARAM_MAX_CHARS, PARAM_MAX_LINES, SHELL_OUTPUT_INLINE, SHELL_OUTPUT_MODES,

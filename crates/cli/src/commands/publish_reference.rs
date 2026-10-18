@@ -44,7 +44,7 @@
 //! building, deploying, or writing anything.
 
 use anyhow::{Context, Result, bail};
-use test_cabinet_core::{
+use test_cabinet_driver::{
     ColdStorage, SystemCommandRunner, TestCaseVersion, TestType, deploy_pages_build,
     reference_lock::{REFERENCE_LOCK_FILENAME, ReferenceLock},
 };

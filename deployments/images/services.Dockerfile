@@ -87,7 +87,7 @@ FROM docker.io/library/rust:1-bookworm AS build
 WORKDIR /src
 COPY . .
 # TCAB_BUILD_COMMIT stamps the build's provenance commit into the binaries
-# (crates/core/build.rs); this `.git`-less context can't resolve it from git, so
+# (crates/driver/build.rs); this `.git`-less context can't resolve it from git, so
 # CI passes the commit (github.sha) in as a build arg. Unset, it stamps null.
 ARG TCAB_BUILD_COMMIT
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
@@ -307,7 +307,7 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
 # ── Package store stage (driver only) ────────────────────────────────────────
 # The driver seeds each run's repository, and a `packages`-declaring case has its
 # requested `@clockwyrks/*` runtime libraries vendored into the run repo at seed
-# time (crates/core seeding → `.vendor/packages/`). Those libraries are read from a
+# time (crates/driver seeding → `.vendor/packages/`). Those libraries are read from a
 # host package store, so the driver image bakes one exactly as the base run image
 # does: `npm ci` over the npm workspace (the repo-root `.dockerignore` re-includes
 # the packages slice), then `scripts/stage-tcab-packages.mjs` builds the shippable
@@ -321,7 +321,7 @@ RUN --mount=type=cache,target=/root/.npm \
 
 # ── Audio store stage (driver only) ──────────────────────────────────────────
 # The driver stages each run's declared audio packs into its run container out of a
-# host audio store (crates/core `audio_stage` → `/opt/audio`), so the driver image
+# host audio store (crates/driver `audio_stage` → `/opt/audio`), so the driver image
 # carries one. The store is assembled by scripts/stage-audio-store.mjs, which reads
 # the private audio object store with the read-scoped R2 presign credentials, so it
 # is published ONCE as its own data-only image (containers/audio-store/Dockerfile)
@@ -489,7 +489,7 @@ ENTRYPOINT ["tcab-backend"]
 # The driver does NOT publish runs (publishing is a separate, explicit backend
 # operation), so it ships none of the publish CLIs (gh/wrangler). It DOES drive a run
 # end to end *in this process*, and that path shells out to three tools:
-#   - `git`, to seed each run's fresh repository (crates/core seeding `git init`/
+#   - `git`, to seed each run's fresh repository (crates/driver seeding `git init`/
 #     `add`/`commit`); a missing git fails every run at "failed to seed run
 #     repository".
 #   - a shell + `node`/`npm`, to run an end-to-end case's manifest build steps
@@ -547,12 +547,12 @@ COPY --from=gg-build /gg /usr/local/lib/tcab/gg
 RUN chmod 0755 /usr/local/lib/tcab/gg
 
 # The host package store the seeder vendors a `packages`-declaring case's runtime
-# libraries out of (crates/core `TCAB_PACKAGES_DIR`). World-readable so the
+# libraries out of (crates/driver `TCAB_PACKAGES_DIR`). World-readable so the
 # unprivileged `node` user below can read it during seeding.
 COPY --from=tcab-packages /opt/tcab-packages /opt/tcab-packages
 RUN chmod -R a+rX /opt/tcab-packages
 
-# The host audio store a run's declared audio packs are staged out of (crates/core
+# The host audio store a run's declared audio packs are staged out of (crates/driver
 # `TCAB_AUDIO_STORE`). World-readable for the same reason as the package store: the
 # driver reads it as the unprivileged `node` user below while starting a run.
 COPY --from=audio-store /opt/tcab-audio /opt/tcab-audio

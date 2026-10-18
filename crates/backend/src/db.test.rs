@@ -5946,28 +5946,17 @@ async fn the_comparison_publish_gate_waives_review_only_for_an_auto_validated_ru
     assert!(db.ensure_publishable_comparison_run("bare").await.is_err());
 }
 
-/// A record carrying a **real** code analysis, produced by pointing the real analyzer at a
-/// two-file tree. A ninety-five-field literal would drift from the contract on the next
-/// metric added; this cannot.
+/// A record carrying a **real** code analysis: the contract fixture the driver's
+/// analyzer produced over a two-file tree, and is held to by the driver's own test. A
+/// ninety-five-field literal would drift from the contract on the next metric added;
+/// this cannot.
 fn record_with_code_analysis(id: &str) -> RunRecord {
     let mut record = record_with_metrics(id);
-    let tree = tempfile::TempDir::new().expect("temp dir");
-    std::fs::create_dir_all(tree.path().join("src")).expect("a source directory");
-    std::fs::write(
-        tree.path().join("src/main.ts"),
-        "export function boot(): number {\n  return 1;\n}\n",
-    )
-    .expect("a source file");
     record.code_analysis = Some(
-        test_cabinet_code_analysis::analyze(&test_cabinet_code_analysis::AnalysisRequest {
-            root: tree.path(),
-            seed_commit: None,
-            tree_basis: test_cabinet_contracts::code_analysis::CodeTreeBasis::PreValidation,
-            // A hand-built fixture tree with no run behind it, so nothing is known to
-            // have been seeded into its root.
-            root_seeding: test_cabinet_code_analysis::walk::RootSeeding::default(),
-        })
-        .summary,
+        serde_json::from_str(include_str!(
+            "../../../contracts/crates/contracts/fixtures/code-analysis/summary.json"
+        ))
+        .expect("the code-analysis summary fixture deserializes"),
     );
     record
 }

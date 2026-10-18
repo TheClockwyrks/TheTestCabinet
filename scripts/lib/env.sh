@@ -17,9 +17,9 @@
 #
 # The Rust tools that act on a deployed environment — `tcab ingest --env` and The Spec
 # Cabinet's staging and prod publish targets — cannot source this file, so they read
-# crates/core/publish-targets.toml, which scripts/generate-publish-targets.sh renders
+# crates/driver/publish-targets.toml, which scripts/generate-publish-targets.sh renders
 # from it. Re-run that script after editing a cluster, resource group, namespace, or
-# ingest branch here; a test in crates/core fails while the two differ.
+# ingest branch here; a test in crates/driver fails while the two differ.
 #
 # Usage (from a script that has computed its own $script_dir):
 #   source "${script_dir}/lib/env.sh"

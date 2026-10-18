@@ -148,7 +148,7 @@ pub const BOARD_MUTATIONS: &[OperationId] = &[
     BOARD_REMOVE_ISSUE,
 ];
 
-/// The project-management capability's params, [named by core](test_cabinet_contracts::gg) so the
+/// The project-management capability's params, [named by the contracts](test_cabinet_contracts::gg) so the
 /// vocabulary a document is written in and the vocabulary gg reads it by are one declaration.
 ///
 /// Three of them are the board's ceilings, required of an enabled capability and resolved together

@@ -5,7 +5,7 @@
 //
 // - **Parsing is TypeScript only.** It runs on every keystroke to highlight tokens,
 //   underline an error span and answer "what can follow the caret", which a round trip
-//   to a compiled artifact cannot serve — and `test-cabinet-core` does not compile to the
+//   to a compiled artifact cannot serve — and the backend's Rust evaluator does not compile to the
 //   browser anyway. The backend never sees query *text*: the client sends the compiled
 //   `GgQuery`, which is the single wire form, while the URL and the saved object carry
 //   the source.

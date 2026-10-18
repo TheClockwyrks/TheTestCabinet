@@ -10,7 +10,7 @@ crate and how the binary is invoked.
 
 Unlike a third-party harness — which The Test Cabinet drives as an external
 subprocess through an [orchestrator](../../orchestrators/README.md) and
-`tcab-session` — `gg` **is** the executor. `core` invokes this binary **directly**,
+`tcab-session` — `gg` **is** the executor. The driver invokes this binary **directly**,
 and it contains the whole agent, in-process:
 
 - the **model client** (multi-provider, [slot-bound](../../apps/docs/src/content/docs/gg/configurations.md#model-slots)),
@@ -28,7 +28,7 @@ scoreable, reviewable artifact like any other — it just gets there through its
 executor and records far richer telemetry on the way.
 
 The contract types (`GgCapabilitySet`, `GgTelemetryEvent`, …) are owned by
-`crates/core` (`test_cabinet_core::gg`) so they are codegen'd into the published
+the contracts repository (`test_cabinet_contracts::gg`) so they are codegen'd into the published
 TypeScript/JSON contract; this crate consumes them.
 
 ## Where it runs
@@ -51,7 +51,7 @@ gg --config <PATH>
 ```
 
 `<PATH>` points at a **JSON invocation file** that deserializes to
-`GgInvocation` (the shared launch contract, owned by `core`, re-exported as
+`GgInvocation` (the shared launch contract, owned by the contracts, re-exported as
 `config::GgInvocation`):
 
 ```json
@@ -81,15 +81,15 @@ gg --config <PATH>
   set with **no** slot bound, which parses but cannot launch a real session).
 
 A single declarative file — rather than a spray of flags or env vars — keeps the
-configuration inspectable and reproducible and gives `core` one artifact to
+configuration inspectable and reproducible and gives the driver one artifact to
 construct. The **one** input that does not travel in the file is the model
 credential: the client reads `OPENROUTER_API_KEY` from the environment (injected
-into the run container by `core`), so no secret is written to disk.
+into the run container by the driver), so no secret is written to disk.
 
 ### Output
 
 Telemetry is written as **NDJSON on stdout** — one
-`GgTelemetryEvent` (schema v1, owned by `core`) per line. stderr carries only
+`GgTelemetryEvent` (schema v1, owned by the contracts) per line. stderr carries only
 pre-telemetry fatal errors (for example a malformed config file). Exit `0` on a
 completed session.
 
@@ -104,7 +104,7 @@ page in [the docs section](../../apps/docs/src/content/docs/gg/), not this table
 | Module                                      | Role                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | ------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `main.rs`                                   | Entrypoint: parse `--config`, load the invocation, drive the session, emit telemetry.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
-| `config.rs`                                 | Loads the invocation file from disk; re-exports `core`'s `GgInvocation` launch contract.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| `config.rs`                                 | Loads the invocation file from disk; re-exports contracts' `GgInvocation` launch contract.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
 | `telemetry.rs`                              | The NDJSON-on-stdout `Emitter` for `GgTelemetryEvent`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | `model.rs`                                  | The provider-agnostic message/tool types (`Message`, `ToolCall`, `ToolDefinition`, `ModelResponse`) and the `ModelClient` trait + `ModelError`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | `client.rs`                                 | The slot-bound model clients: `OpenRouterClient` (with bounded retry/backoff), the scripted offline `MockClient`, and slot → client selection.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |

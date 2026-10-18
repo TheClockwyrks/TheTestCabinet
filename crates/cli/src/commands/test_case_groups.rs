@@ -8,7 +8,7 @@
 //! listing shows exactly what an ingest of the same checkout would serve.
 
 use anyhow::{Context, Result};
-use test_cabinet_core::{TestCaseGroup, TestCaseGroupCatalog};
+use test_cabinet_driver::{TestCaseGroup, TestCaseGroupCatalog};
 
 use crate::cli::TestCaseGroupsArgs;
 

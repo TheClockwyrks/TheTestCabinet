@@ -18,7 +18,7 @@ path = "src/lib.rs"
 
 # The four CLIs the model invokes inside the run container. All gated behind the
 # `cli` feature (on by default) so a `default-features = false` library consumer
-# (e.g. `crates/core`) links only the pure raster engine and never pulls in clap or
+# (e.g. `crates/driver`) links only the pure raster engine and never pulls in clap or
 # serde_json.
 [[bin]]
 name = "paint"
@@ -44,7 +44,7 @@ required-features = ["cli"]
 default = ["cli"]
 # The four CLIs, plus the `pbr` 3D preview renderer. Enabling `cli` turns on the
 # renderer stack in the two 3D deps so `pbr render` can draw the lit preview surface;
-# a `default-features = false` library consumer (e.g. `crates/core`) links only the
+# a `default-features = false` library consumer (e.g. `crates/driver`) links only the
 # pure raster engine and never compiles wgpu/clap/serde_json.
 cli = [
     "dep:clap",

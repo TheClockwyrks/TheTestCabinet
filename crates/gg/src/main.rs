@@ -1,6 +1,6 @@
 //! The `gg` binary — The Test Cabinet's own first-party coding harness.
 //!
-//! gg is invoked **directly** by The Test Cabinet's `core` (not through the
+//! gg is invoked **directly** by The Test Cabinet's driver (not through the
 //! orchestrator, `tcab-session`, or a harness subprocess — see the design docs
 //! under `gg/` in the documentation site) and runs **inside the run container**,
 //! alongside the seeded workspace. It contains its own model client, agent turn
@@ -21,7 +21,7 @@
 //!
 //! Credentials are the one thing that does **not** travel in the file: the model
 //! client reads `OPENROUTER_API_KEY` from the environment (injected into the run
-//! container by `core`), so a secret is never written to a config file on disk.
+//! container by the driver), so a secret is never written to a config file on disk.
 //!
 //! gg writes its telemetry as **NDJSON on stdout** (one
 //! [`GgTelemetryEvent`](test_cabinet_contracts::gg::GgTelemetryEvent) per line); stderr

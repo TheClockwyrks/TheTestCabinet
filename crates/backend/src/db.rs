@@ -8880,7 +8880,7 @@ impl Db {
 /// committed reference-builds lockfile. There is no lockfile here — a published
 /// asset reference is discovered by listing the snapshot bucket (see the `/ingest`
 /// handler's `reconcile_reference_sheets`) — so the entry type is defined with the
-/// store that consumes it rather than in `core`'s lockfile module.
+/// store that consumes it rather than in the driver's lockfile module.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ReferenceSheetEntry {
     /// The test-case slug.

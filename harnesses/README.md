@@ -2,7 +2,7 @@
 
 Each agent harness The Test Cabinet drives is defined here, one directory per
 harness, named with the harness's stable slug — the same slug used by the agent
-harness layer in `crates/core`, by run records, and by the site.
+harness layer in `crates/driver`, by run records, and by the site.
 
 ```
 harnesses/
@@ -59,7 +59,7 @@ A manifest is the **declarative** half of a harness: its identity and how to
 install it. The **imperative** half — how the CLI is invoked non-interactively,
 how its token usage is parsed, and how its raw output is translated into
 normalized events — lives in the adapter for that slug in
-`crates/core/src/harness_registry.rs`, because it is logic rather than
+`crates/driver/src/harness_registry.rs`, because it is logic rather than
 configuration. Adding a brand-new harness therefore means both a manifest here
 and an adapter (plus a `HarnessSlug` variant) there. See
 [Agent Harnesses](../apps/docs/src/content/docs/components/core/harnesses.md).

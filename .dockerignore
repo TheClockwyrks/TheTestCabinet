@@ -56,7 +56,7 @@
 !/crates
 !/contracts/Cargo.toml
 !/contracts/crates
-# crates/core and crates/engines bake these three trees into the binary verbatim via
+# crates/driver and crates/engines bake these three trees into the binary verbatim via
 # include_str! (core the built-in orchestrator runner scripts and the harness
 # manifests, engines the built-in engine manifests), so they must be present in the
 # context even though they are not Rust sources. A tree that is baked in but not

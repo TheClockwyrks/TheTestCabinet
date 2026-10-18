@@ -76,7 +76,7 @@ use super::{
     ToolContext, ToolFailure, ToolOutcome, invalid_argument, required_str, saturating_u32,
 };
 use test_cabinet_contracts::gg::CAPABILITY_READ_FILE;
-// The read vocabulary — the two mode ids and the one param — is `crates/core`'s, because the
+// The read vocabulary — the two mode ids and the one param — is the contracts', because the
 // console writes a read-file capability with the same names this reads it back by. Re-exported
 // rather than imported so `crate::tools` still names them for the modules that only ever say which
 // mode a configuration is on.

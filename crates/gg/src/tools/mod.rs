@@ -405,7 +405,7 @@ pub fn shell_offload(
 ///
 /// gg runs *inside* the run container, so tools operate on the local filesystem and
 /// shell; every path a tool touches is resolved relative to
-/// [`workspace_dir`](Self::workspace_dir) (the seeded workspace `core` prepared) and
+/// [`workspace_dir`](Self::workspace_dir) (the seeded workspace the driver prepared) and
 /// prevented from escaping it.
 ///
 /// It is also where the **shell seam** lives. Three call paths reach a command line — the

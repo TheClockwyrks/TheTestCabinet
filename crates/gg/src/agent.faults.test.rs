@@ -278,7 +278,7 @@ fn code_mode(set: &mut GgCapabilitySet, profile_id: &str) {
 ///
 /// The root here is a working agent in the middle of a working run: it delegates, waits, and has a
 /// finishing turn scripted after the wait. Before this rule it would have taken that turn, the
-/// session would have ended `completed` and exited 0, and `core` would have collected a tree with
+/// session would have ended `completed` and exited 0, and the driver would have collected a tree with
 /// the child's work missing from it and no way to know. There is no reading of that tree that says
 /// anything true about the model.
 #[tokio::test]
@@ -309,7 +309,7 @@ async fn a_spawned_childs_host_fault_ends_the_run() {
     assert_eq!(
         run_with_factory(&inv, &emitter, Arc::new(factory)).await,
         SessionOutcome::HarnessError,
-        "a run gg broke exits non-zero so `core` records a harness error instead of scoring it"
+        "a run gg broke exits non-zero so the driver records a harness error instead of scoring it"
     );
 
     let events = sink.events();

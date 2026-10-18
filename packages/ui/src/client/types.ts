@@ -1329,7 +1329,7 @@ export interface AssetPreview {
 }
 
 // One line of raw harness output, as recorded in a run's `raw.jsonl`. Mirrors
-// the Rust `RawOutputLine` (crates/core/src/execution.rs). This is UI-only — it
+// the Rust `RawOutputLine` (crates/driver/src/execution.rs). This is UI-only — it
 // is not part of the run-record contract — and feeds the Events tab's raw view.
 export interface RawOutputLine {
   stream: "stdout" | "stderr";

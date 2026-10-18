@@ -335,7 +335,7 @@ readonly GG_LINEAGE_ROOTS=(
 	"blender=docker.io/library/ubuntu:26.04"
 )
 
-# Where the binary is installed inside the container under test. `crates/core`'s
+# Where the binary is installed inside the container under test. `crates/driver`'s
 # `gg::BINARY_PATH` — the path a real run copies gg to, and the one gg's own scratch files
 # are named as siblings of (`/tmp/gg-invocation.json`, `/tmp/gg-cancel`). The check is
 # worth as little as it differs from a run, so it does not invent a path of its own.
@@ -343,7 +343,7 @@ readonly GG_SELFCHECK_CONTAINER_PATH="/tmp/gg"
 
 # The unprivileged user a run's harness executes as: uid 1000 `node`, created by
 # `containers/base/Dockerfile` and recreated with the same name and uid by
-# `containers/blender/Dockerfile` (`crates/core/src/container.rs`'s RUN_USER is what both
+# `containers/blender/Dockerfile` (`crates/driver/src/container.rs`'s RUN_USER is what both
 # are matching). The check runs as that user and not as root, because root would prove
 # permissions no run has — a toolchain directory only root can read is a broken arm that a
 # root check calls healthy.
@@ -412,7 +412,7 @@ readonly GG_TOOLCHAINS_IMAGE="${IMAGE_NAME_PREFIX}gg-toolchains:${IMAGE_TAG}"
 # `build_asset_image`. The pipeline fuses this one in its own scripts/ci/manifest.sh call.
 #
 # A run container is given the packs its test case declares in `[audio] packs`, staged out
-# of this store when the container starts (`crates/core/src/audio_stage.rs`). Publishing
+# of this store when the container starts (`crates/driver/src/audio_stage.rs`). Publishing
 # the store as its own image is what keeps the R2 presign credentials to ONE build: the
 # driver image build takes the published image (the pipeline passes the one it pushed at
 # the same commit), `make -C deployments/local images` builds its own, and a contributor's
@@ -955,7 +955,7 @@ build_audio_store() {
 # a run executes is layered onto it.
 #
 # The audit that produced this gate suggested the equivalent assertion as a Rust unit test
-# over `crates/core`'s image resolution. It belongs here instead, and the reason is the same
+# over `crates/driver`'s image resolution. It belongs here instead, and the reason is the same
 # one that made `gg selfcheck` a subcommand rather than a test: the fact being asserted is a
 # property of the Dockerfiles, and this is the program that reads them. A test would also be
 # asserting it somewhere that cannot stop the push. The same goes for its sibling below.
@@ -1185,7 +1185,7 @@ trap gg_selfcheck_cleanup EXIT
 # start it, `exec` as the run user — rather than bind-mounting it. Two reasons, and the
 # second is the one that would have bitten:
 #
-#   1. It is what production does. `crates/core`'s container runtime creates the run
+#   1. It is what production does. `crates/driver`'s container runtime creates the run
 #      container, copies gg in at `/tmp/gg` and `exec --user node`s it. A gate whose
 #      installation differs from the run's is a gate answering a slightly different
 #      question than the one that matters.

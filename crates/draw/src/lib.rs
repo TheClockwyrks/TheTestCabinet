@@ -5,7 +5,7 @@
 //! of operations — not the pixels left on disk — is the authoritative output of a
 //! run. [`render`] turns that list back into an image, and it is the **one**
 //! drawing implementation: the binary calls it to re-render the preview after
-//! every operation, and `crates/core` calls it to regenerate the scored image
+//! every operation, and `crates/driver` calls it to regenerate the scored image
 //! from the recorded log. Because both go through the same code, an image
 //! produced by any other means cannot match the regeneration — which is what
 //! makes the constrained drawing channel enforceable.

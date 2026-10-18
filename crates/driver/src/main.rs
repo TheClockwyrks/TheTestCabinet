@@ -11,8 +11,8 @@ use std::process::ExitCode;
 use std::sync::Arc;
 use std::time::Duration;
 
-use test_cabinet_core::job_api::JobState;
-use test_cabinet_core::{RunCancellation, mint_run_id, write_failed_record};
+use test_cabinet_driver::job_api::JobState;
+use test_cabinet_driver::{RunCancellation, mint_run_id, write_failed_record};
 use time::OffsetDateTime;
 
 use test_cabinet_driver::cancel::{
@@ -125,7 +125,7 @@ async fn main() -> ExitCode {
     // cancellation path below — a gg session that would not wind down inside its grace,
     // which therefore never hands a return value back — can still record the killed run
     // against its real case identity and test type.
-    let resolved: std::sync::Mutex<Option<test_cabinet_core::TestCaseVersion>> =
+    let resolved: std::sync::Mutex<Option<test_cabinet_driver::TestCaseVersion>> =
         std::sync::Mutex::new(None);
 
     // Race the run against an operator cancellation. `wait_for_cancellation` resolves
@@ -438,7 +438,7 @@ const CANCELED_DETAIL: &str = "canceled by operator";
 /// summary, and is what the cooperative wind-down exists to produce. This is what happens
 /// when that does not arrive: the session would not wind down inside its grace, or it
 /// errored on the way out. The record built here is
-/// [`RunState::Canceled`](test_cabinet_core::RunState::Canceled) all the same, carrying
+/// [`RunState::Canceled`](test_cabinet_driver::RunState::Canceled) all the same, carrying
 /// the resolved case identity when the definition had materialized, but it is bare —
 /// zero metrics, no tree.
 ///
@@ -458,9 +458,9 @@ async fn report_canceled(
     client: &JobClient,
     config: &Config,
     run_id: &str,
-    request: &test_cabinet_core::RunRequest,
+    request: &test_cabinet_driver::RunRequest,
     started_at: OffsetDateTime,
-    test_case: Option<&test_cabinet_core::TestCaseVersion>,
+    test_case: Option<&test_cabinet_driver::TestCaseVersion>,
 ) {
     // The backend holds the streamed events, so the locally-written `events.jsonl`
     // (lost with the ephemeral pod anyway) is immaterial — an empty slice, exactly as
@@ -471,7 +471,7 @@ async fn report_canceled(
         request,
         test_case,
         started_at,
-        test_cabinet_core::RunState::Canceled,
+        test_cabinet_driver::RunState::Canceled,
         CANCELED_DETAIL,
         &[],
     ) {
@@ -521,7 +521,7 @@ async fn report_canceled(
 /// failure. What the caller does with that differs by path, and only the destroy path
 /// treats it as a failed run — see the [`CancelRace::Destroyed`] arm.
 ///
-/// [`JOB_ID_LABEL`]: test_cabinet_core::container::JOB_ID_LABEL
+/// [`JOB_ID_LABEL`]: test_cabinet_driver::container::JOB_ID_LABEL
 async fn teardown_sandbox(config: &Config) -> bool {
     let torn_down = match config.runtime {
         DriverRuntime::Kubernetes => {
@@ -530,7 +530,7 @@ async fn teardown_sandbox(config: &Config) -> bool {
                 Err(err) => Err(err),
             }
         }
-        DriverRuntime::Cli => match test_cabinet_core::CliContainerRuntime::detect() {
+        DriverRuntime::Cli => match test_cabinet_driver::CliContainerRuntime::detect() {
             Ok(runtime) => {
                 runtime
                     .for_job(config.job_id.clone())
@@ -570,7 +570,7 @@ async fn teardown_sandbox(config: &Config) -> bool {
 /// reaches the backend (only its servable artifacts are missing), and the run
 /// outcome is unchanged. When `TCAB_ARTIFACTS_URL` is unset (a local setup with no
 /// artifact service) this is a no-op and the record carries no playable link.
-async fn finalize_artifacts(config: &Config, record: &mut test_cabinet_core::RunRecord) {
+async fn finalize_artifacts(config: &Config, record: &mut test_cabinet_driver::RunRecord) {
     let Some(artifacts_url) = config.artifacts_url.as_deref() else {
         return;
     };
@@ -606,7 +606,7 @@ async fn finalize_artifacts(config: &Config, record: &mut test_cabinet_core::Run
 /// logged but never fatal, exactly like the artifact-service upload.
 async fn finalize_adversarial_backend_upload(
     config: &Config,
-    record: &test_cabinet_core::RunRecord,
+    record: &test_cabinet_driver::RunRecord,
 ) {
     let out_dir = config.work_dir.join("out");
     if let Err(err) = test_cabinet_driver::artifacts::upload_adversarial_to_backend(
@@ -631,7 +631,7 @@ async fn finalize_adversarial_backend_upload(
 /// for a passing run). An upload failure is logged but never fatal.
 async fn finalize_performance_backend_upload(
     config: &Config,
-    record: &test_cabinet_core::RunRecord,
+    record: &test_cabinet_driver::RunRecord,
 ) {
     let out_dir = config.work_dir.join("out");
     if let Err(err) = test_cabinet_driver::artifacts::upload_performance_to_backend(
@@ -656,7 +656,7 @@ async fn finalize_performance_backend_upload(
 /// proofs. Reads the media from the produced tree the driver still holds on disk; an
 /// upload failure is logged but never fatal, exactly like the artifact-service and
 /// adversarial uploads.
-async fn finalize_proof_backend_upload(config: &Config, record: &test_cabinet_core::RunRecord) {
+async fn finalize_proof_backend_upload(config: &Config, record: &test_cabinet_driver::RunRecord) {
     let out_dir = config.work_dir.join("out");
     if let Err(err) = test_cabinet_driver::artifacts::upload_proofs_to_backend(
         &config.backend_url,
@@ -681,7 +681,7 @@ async fn finalize_proof_backend_upload(config: &Config, record: &test_cabinet_co
 /// failure is logged but never fatal, exactly like the proof and asset uploads.
 async fn finalize_validation_backend_upload(
     config: &Config,
-    record: &test_cabinet_core::RunRecord,
+    record: &test_cabinet_driver::RunRecord,
 ) {
     let out_dir = config.work_dir.join("out");
     if let Err(err) = test_cabinet_driver::artifacts::upload_validation_to_backend(
@@ -706,7 +706,7 @@ async fn finalize_validation_backend_upload(
 /// run whose journal never reached the host). Reads the record from the produced tree the driver
 /// still holds on disk; an upload failure is logged but never fatal, exactly like the proof and
 /// validation uploads.
-async fn finalize_replay_backend_upload(config: &Config, record: &test_cabinet_core::RunRecord) {
+async fn finalize_replay_backend_upload(config: &Config, record: &test_cabinet_driver::RunRecord) {
     let out_dir = config.work_dir.join("out");
     if let Err(err) = test_cabinet_driver::artifacts::upload_replay_to_backend(
         &config.backend_url,
@@ -734,7 +734,7 @@ async fn finalize_replay_backend_upload(config: &Config, record: &test_cabinet_c
 /// upload costs a tab and nothing else.
 async fn finalize_code_analysis_backend_upload(
     config: &Config,
-    record: &test_cabinet_core::RunRecord,
+    record: &test_cabinet_driver::RunRecord,
 ) {
     let out_dir = config.work_dir.join("out");
     if let Err(err) = test_cabinet_driver::artifacts::upload_code_analysis_to_backend(
@@ -757,7 +757,7 @@ async fn finalize_code_analysis_backend_upload(
 /// asset result view can display it. A no-op for a non-asset-generation run. Reads
 /// the media from the produced tree the driver still holds on disk; an upload failure
 /// is logged but never fatal, exactly like the proof and adversarial uploads.
-async fn finalize_asset_backend_upload(config: &Config, record: &test_cabinet_core::RunRecord) {
+async fn finalize_asset_backend_upload(config: &Config, record: &test_cabinet_driver::RunRecord) {
     let out_dir = config.work_dir.join("out");
     if let Err(err) = test_cabinet_driver::artifacts::upload_assets_to_backend(
         &config.backend_url,
@@ -781,7 +781,10 @@ async fn finalize_asset_backend_upload(config: &Config, record: &test_cabinet_co
 /// files from the produced tree the driver still holds on disk; an upload failure
 /// is logged but never fatal, exactly like the proof and asset uploads — a
 /// showcase problem never fails a run.
-async fn finalize_showcase_backend_upload(config: &Config, record: &test_cabinet_core::RunRecord) {
+async fn finalize_showcase_backend_upload(
+    config: &Config,
+    record: &test_cabinet_driver::RunRecord,
+) {
     let out_dir = config.work_dir.join("out");
     if let Err(err) = test_cabinet_driver::artifacts::upload_showcase_to_backend(
         &config.backend_url,
@@ -801,8 +804,8 @@ async fn finalize_showcase_backend_upload(config: &Config, record: &test_cabinet
 /// Stream a terminal `failed` status to the backend with a specific reason and
 /// whatever record the run managed to produce.
 ///
-/// A run that errors before [`test_cabinet_core::RunEngine::run_resolved`] reaches
-/// its success path never writes a [`test_cabinet_core::RunRecord`], so — exactly
+/// A run that errors before [`test_cabinet_driver::RunEngine::run_resolved`] reaches
+/// its success path never writes a [`test_cabinet_driver::RunRecord`], so — exactly
 /// as the worker does — the driver builds a `Failed` record via
 /// [`write_failed_record`] carrying the failure detail, so the run is retained and
 /// inspectable rather than vanishing. The backend persists it with the events the
@@ -814,7 +817,7 @@ async fn report_failure(
     client: &JobClient,
     config: &Config,
     run_id: &str,
-    request: &test_cabinet_core::RunRequest,
+    request: &test_cabinet_driver::RunRequest,
     started_at: OffsetDateTime,
     failure: RunFailure,
 ) -> ExitCode {

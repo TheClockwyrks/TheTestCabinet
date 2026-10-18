@@ -973,7 +973,7 @@ fn spec_out(spec: &crate::store::StoredSpec) -> SpecOut {
 }
 
 /// Map a case's declared package name to the wire `{name, description}` shape,
-/// looking the UI-only description up from core's shippable registry. A name with
+/// looking the UI-only description up from the suites crate's shippable registry. A name with
 /// no registry entry (a store ingested against a newer core) falls back to an
 /// empty description rather than dropping the package.
 fn package_out(name: &str) -> PackageOut {

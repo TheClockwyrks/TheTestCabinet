@@ -21,8 +21,8 @@ use std::fs::File;
 use std::io::Seek;
 use std::path::Path;
 
+use crate::{RunRecord, find_build_output};
 use test_cabinet_backend_client::{BackendClient, HttpBackendClient};
-use test_cabinet_core::{RunRecord, find_build_output};
 use tokio_util::io::ReaderStream;
 
 /// A failure tarring or uploading the produced run tree.
@@ -62,7 +62,7 @@ fn body_suffix(body: &str) -> String {
 /// Tar the run tree at `{out_dir}/{run_id}/` and upload it to the artifact service
 /// at `artifacts_url`, presenting `job_token`. The tarball's entries are relative
 /// to the run directory (so the service unpacks them under its own
-/// `<store-root>/{run_id}/`), matching the layout the core resolvers read.
+/// `<store-root>/{run_id}/`), matching the layout the engine's resolvers read.
 ///
 /// `run_id` is the **run/record id** — the store key the upload URL carries and the
 /// console later addresses media by. `job_id` is the **job id** the per-job token
@@ -166,7 +166,7 @@ pub async fn upload_adversarial_to_backend(
     backend_url: &str,
     record: &RunRecord,
     out_dir: &Path,
-) -> test_cabinet_core::Result<()> {
+) -> crate::Result<()> {
     let Some(adversarial) = record.validation.adversarial.as_ref() else {
         return Ok(());
     };
@@ -216,7 +216,7 @@ pub async fn upload_performance_to_backend(
     backend_url: &str,
     record: &RunRecord,
     out_dir: &Path,
-) -> test_cabinet_core::Result<()> {
+) -> crate::Result<()> {
     let Some(performance) = record.validation.performance.as_ref() else {
         return Ok(());
     };
@@ -280,7 +280,7 @@ pub async fn upload_proofs_to_backend(
     backend_url: &str,
     record: &RunRecord,
     out_dir: &Path,
-) -> test_cabinet_core::Result<()> {
+) -> crate::Result<()> {
     let impl_dir = out_dir.join(&record.id).join("implementation");
     let client = HttpBackendClient::new(backend_url);
 
@@ -294,7 +294,7 @@ pub async fn upload_proofs_to_backend(
         let file = format!(
             "{}.{}",
             proof.id,
-            test_cabinet_core::proof_served_extension(&proof.dest),
+            crate::proof_served_extension(&proof.dest),
         );
         client.publish_run_proof(&record.id, &file, bytes).await?;
     }
@@ -314,14 +314,14 @@ pub async fn upload_proofs_to_backend(
 ///
 /// Each present output is read from the produced tree at
 /// `{out_dir}/{id}/implementation/.vendor/validation/<item>__<output>.<ext>` — the flat
-/// [`validation_media_name`](test_cabinet_core::validation_media_name) spelling
+/// [`validation_media_name`](crate::validation_media_name) spelling
 /// `playable::serve_validation_file` serves and the gallery requests — and uploaded
 /// under that same name, so the snapshot key matches the UI lookup. The captured
 /// video is the `.webm` Playwright records; the snapshot transcodes it to `.mp4` at
 /// publish (as it does a video proof), so what is mirrored here stays the raw webm.
 ///
 /// The recordings' **shared image store** (`img.<id>.png` / `img.<id>.bin` — see
-/// [`VALIDATION_IMAGE_PREFIX`](test_cabinet_core::VALIDATION_IMAGE_PREFIX)) is
+/// [`VALIDATION_IMAGE_PREFIX`](crate::VALIDATION_IMAGE_PREFIX)) is
 /// mirrored too, and is the one thing here that is *not* driven off the record: a
 /// store file backs no verdict and is named by its own bytes, so it appears on no
 /// output declaration and is enumerated off the directory instead. Without it the
@@ -336,7 +336,7 @@ pub async fn upload_validation_to_backend(
     backend_url: &str,
     record: &RunRecord,
     out_dir: &Path,
-) -> test_cabinet_core::Result<()> {
+) -> crate::Result<()> {
     let validation_dir = out_dir
         .join(&record.id)
         .join("implementation")
@@ -348,15 +348,14 @@ pub async fn upload_validation_to_backend(
         // The verdict id keys this script's media — the item's own id, or the composite
         // `<item>.<sub>` for a per-sub-item driver.
         let verdict_id = match &script.sub_item_id {
-            Some(sub) => test_cabinet_core::ReviewItem::sub_item_verdict_id(&script.item_id, sub),
+            Some(sub) => crate::ReviewItem::sub_item_verdict_id(&script.item_id, sub),
             None => script.item_id.clone(),
         };
         for output in &script.outputs {
             if !output.actual_present {
                 continue;
             }
-            let file =
-                test_cabinet_core::validation_media_name(&verdict_id, &output.id, output.kind);
+            let file = crate::validation_media_name(&verdict_id, &output.id, output.kind);
             let Ok(bytes) = std::fs::read(validation_dir.join(&file)) else {
                 continue;
             };
@@ -378,7 +377,7 @@ pub async fn upload_validation_to_backend(
             let Some(name) = entry.file_name().to_str().map(str::to_string) else {
                 continue;
             };
-            if !test_cabinet_core::is_validation_image_name(&name) {
+            if !crate::is_validation_image_name(&name) {
                 continue;
             }
             let Ok(bytes) = std::fs::read(entry.path()) else {
@@ -396,11 +395,11 @@ pub async fn upload_validation_to_backend(
 /// counterpart to [`upload_validation_to_backend`], for the same reason.
 ///
 /// A gg run streams every model call it makes into a journal that the host folds into
-/// [`{out_dir}/{id}/replay.json.gz`](test_cabinet_core::gg_session_assembly::GG_SESSION_TREE_ARTIFACT)
-/// at the [post-run seam](test_cabinet_core::post_run) — at the **run tree's root**, not inside
+/// [`{out_dir}/{id}/replay.json.gz`](crate::gg_session_assembly::GG_SESSION_TREE_ARTIFACT)
+/// at the [post-run seam](crate::post_run) — at the **run tree's root**, not inside
 /// `implementation/`, which is a verbatim copy of what the model produced. (The `replay` in those
 /// paths is an
-/// [address](test_cabinet_core::gg_session_record), not a name.) Nothing else writes the backend
+/// [address](crate::gg_session_record), not a name.) Nothing else writes the backend
 /// store's `runs/{id}/replay.json` for a backend-driven run, so without this mirror the record
 /// never reaches `GET /runs/{id}/replay` and a run's session is readable only from whatever host
 /// still has its tree.
@@ -420,7 +419,7 @@ pub async fn upload_replay_to_backend(
 ) -> test_cabinet_backend_client::Result<()> {
     let replay_path = out_dir
         .join(&record.id)
-        .join(test_cabinet_core::gg_session_assembly::GG_SESSION_TREE_ARTIFACT);
+        .join(crate::gg_session_assembly::GG_SESSION_TREE_ARTIFACT);
     let Ok(bytes) = std::fs::read(&replay_path) else {
         // No assembled record (a non-gg run, or a gg run whose journal never reached the host)
         // — nothing to mirror.
@@ -436,7 +435,7 @@ pub async fn upload_replay_to_backend(
 /// convention.
 ///
 /// The post-run stage writes the unbounded document to
-/// [`{out_dir}/{id}/code-analysis.json.gz`](test_cabinet_core::CODE_ANALYSIS_TREE_ARTIFACT) at the
+/// [`{out_dir}/{id}/code-analysis.json.gz`](crate::CODE_ANALYSIS_TREE_ARTIFACT) at the
 /// run tree's **root**, and its bounded summary rides on the record. Nothing else writes the
 /// backend store's `runs/{id}/code-analysis.json` for a backend-driven run, so without this mirror
 /// the document never reaches `GET /runs/{id}/code-analysis` and the per-run Code tab has only the
@@ -457,7 +456,7 @@ pub async fn upload_code_analysis_to_backend(
 ) -> test_cabinet_backend_client::Result<()> {
     let path = out_dir
         .join(&record.id)
-        .join(test_cabinet_core::CODE_ANALYSIS_TREE_ARTIFACT);
+        .join(crate::CODE_ANALYSIS_TREE_ARTIFACT);
     let Ok(bytes) = std::fs::read(&path) else {
         // No analysis for this run — nothing to mirror.
         return Ok(());
@@ -496,7 +495,7 @@ pub async fn upload_assets_to_backend(
     backend_url: &str,
     record: &RunRecord,
     out_dir: &Path,
-) -> test_cabinet_core::Result<()> {
+) -> crate::Result<()> {
     let impl_dir = out_dir.join(&record.id).join("implementation");
     let client = HttpBackendClient::new(backend_url);
 
@@ -591,7 +590,7 @@ pub async fn upload_assets_to_backend(
     Ok(())
 }
 
-/// Mirror a run's [showcase](test_cabinet_core::RunShowcase) files into the
+/// Mirror a run's [showcase](crate::RunShowcase) files into the
 /// **backend store**, keyed by run id — the showcase counterpart to
 /// [`upload_proofs_to_backend`], for the same reason: the public snapshot reads a
 /// run's showcase media from the backend store (`snapshot::run_showcase` →
@@ -609,7 +608,7 @@ pub async fn upload_assets_to_backend(
 /// the carousel — and taking the directory whole keeps the mirror in lockstep with
 /// `playable::serve_showcase_file`, which serves the same namespace from the tree.
 /// A file over the capture's media cap
-/// ([`test_cabinet_core::MAX_SHOWCASE_MEDIA_FILE_BYTES`]) is skipped: the capture
+/// ([`crate::MAX_SHOWCASE_MEDIA_FILE_BYTES`]) is skipped: the capture
 /// already refused to record it, so shipping it would bloat every store downstream
 /// for a file nothing references.
 ///
@@ -622,7 +621,7 @@ pub async fn upload_showcase_to_backend(
     backend_url: &str,
     record: &RunRecord,
     out_dir: &Path,
-) -> test_cabinet_core::Result<()> {
+) -> crate::Result<()> {
     if record.showcase.is_none() {
         return Ok(());
     }
@@ -651,7 +650,7 @@ pub async fn upload_showcase_to_backend(
         }
         if entry
             .metadata()
-            .is_ok_and(|m| m.len() > test_cabinet_core::MAX_SHOWCASE_MEDIA_FILE_BYTES)
+            .is_ok_and(|m| m.len() > crate::MAX_SHOWCASE_MEDIA_FILE_BYTES)
         {
             continue;
         }
@@ -673,7 +672,7 @@ async fn publish_artifacts(
     run_id: &str,
     impl_dir: &Path,
     artifacts: Vec<(String, String)>,
-) -> test_cabinet_core::Result<()> {
+) -> crate::Result<()> {
     for (served, rel) in artifacts {
         let Ok(bytes) = std::fs::read(impl_dir.join(&rel)) else {
             continue;

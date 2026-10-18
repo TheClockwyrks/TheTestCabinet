@@ -1228,7 +1228,7 @@ async fn entries_are_taken_in_the_order_written() {
 /// **The default opening turn is in gg's vocabulary**, and every function on it is one a
 /// configuration can promise: bound by a capability or by every program, never by role or placement.
 ///
-/// The list is written by hand in `core`, and a module id no operation is namespaced on, or an
+/// The list is written by hand in the contracts, and a module id no operation is namespaced on, or an
 /// operation id gg has no row for, would be a default every fresh profile refused the launch over.
 #[test]
 fn the_default_opening_turn_is_in_ggs_vocabulary() {

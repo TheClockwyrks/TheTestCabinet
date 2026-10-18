@@ -1,12 +1,12 @@
 //! Unit tests for `tcab validate`'s pass/fail decision.
 //!
 //! The pass itself builds a tree, drives a browser and runs a case's validators, all
-//! of which `core` exercises in its own tests. What is pinned here is the criteria the
+//! of which the driver library exercises in its own tests. What is pinned here is the criteria the
 //! command reads off the finished [`ValidationSummary`]: which fields make the command
 //! exit non-zero, which are recorded and deliberately do not, and that a fault is
 //! named once rather than counted twice.
 
-use test_cabinet_core::{
+use test_cabinet_driver::{
     AdversarialResult, AdversarialTeam, AutoVerdict, CheckResult, MediaKind, ProofResult,
 };
 
@@ -657,9 +657,11 @@ fn a_suite_case_resolves_from_its_exported_version() {
         test_case.root,
         checkout.path().join("test-suites/carom/versions/v1.0.0")
     );
-    assert!(test_cabinet_core::test_suite::is_suite_defined(&test_case));
+    assert!(test_cabinet_driver::test_suite::is_suite_defined(
+        &test_case
+    ));
     test_case
-        .variant(test_cabinet_core::test_suite::SUITE_VARIANT_SLUG)
+        .variant(test_cabinet_driver::test_suite::SUITE_VARIANT_SLUG)
         .expect("the implicit variant is selectable");
     engines::resolve_for_case("none", &test_case).expect("the engineless run is supported");
 }

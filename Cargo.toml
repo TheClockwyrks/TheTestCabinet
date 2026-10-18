@@ -1,9 +1,7 @@
 [workspace]
 resolver = "3"
 members = [
-	"crates/core",
 	"crates/engines",
-	"crates/code-analysis",
 	"crates/cli",
 	"crates/gg",
 	# The shared build-script body behind every gg program-language ARTIFACT crate, and the arm
@@ -249,7 +247,7 @@ dotenvy = "0.15"
 time = { version = "0.3", features = ["serde", "formatting", "parsing", "macros"] }
 toml = "0.8"
 # Format-preserving TOML *writing*, for the test suite model's canonical emitter
-# (`crates/core`'s `test_suite`). A suite's write model is a whole-file rewrite of
+# (contracts' `test_suite`). A suite's write model is a whole-file rewrite of
 # canonically formatted TOML, so the emitter has to control table order, array
 # layout and string quoting directly rather than accept whatever a plain
 # serializer produces — which means building a `DocumentMut` and rewriting its
@@ -523,7 +521,7 @@ tracing-opentelemetry = "0.33"
 # workspace's minimal-host stance. Only `crates/gg` pulls it in.
 tiktoken-rs = "0.7"
 
-# The TypeScript/JSX front end `crates/code-analysis` parses a produced source tree with.
+# The TypeScript/JSX front end `crates/driver`'s analyzer parses a produced source tree with.
 # Pinned to the 0.141 line that crate is written against: oxc's parser and AST move between
 # minor releases, and a silent bump would change what the analyzer reports.
 oxc = { version = "0.141" }

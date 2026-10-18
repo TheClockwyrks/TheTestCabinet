@@ -18,7 +18,7 @@
 //! not depend on `test-cabinet-gg`, for two reasons that are worth stating exactly because
 //! the obvious one is wrong. It is **not** wasmtime: this binary already links wasmtime,
 //! statically, under musl, through `foray-host` and `lattice-host` by way of
-//! `test-cabinet-core`. It is that gg pulls `oxc` and `tiktoken-rs`, neither of which is
+//! `test-cabinet-driver`. It is that gg pulls `oxc` and `tiktoken-rs`, neither of which is
 //! anywhere in this crate's tree, and — the larger cost — that *building* gg reflects a
 //! signature catalogue out of each of its eleven SDKs with that SDK's own documentation
 //! tool and compiles every arm's artifacts, so every machine and every CI job that links it
@@ -147,7 +147,7 @@ enum ReferenceError {
 /// a lie. Rebuilding costs one fold over documents that are already in memory and makes
 /// every number the picker shows a number this process counted.
 ///
-/// The filenames come from `core` rather than from a constant here, because the process
+/// The filenames come from the contracts rather than from a constant here, because the process
 /// that writes them is `test-cabinet-gg` — a crate this one deliberately does not link, so
 /// the layout is a contract with two sides and no compiler between them unless both sides
 /// call the same function.

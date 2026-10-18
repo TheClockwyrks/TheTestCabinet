@@ -4,7 +4,7 @@
 //! and each call appends the operation to the run's `actions.json` and re-renders
 //! the preview image from the **whole** log, so the recorded log is always the
 //! single source of truth and the preview always reflects it. After the run,
-//! `crates/core` regenerates the scored image from that same log through the same
+//! `crates/driver` regenerates the scored image from that same log through the same
 //! [`test_cabinet_draw`] library — so an image produced any other way cannot
 //! match. The operation subcommands' `--help` is the contract; no operations
 //! schema is seeded.

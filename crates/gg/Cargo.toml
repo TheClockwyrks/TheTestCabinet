@@ -101,7 +101,7 @@ cuid2 = { workspace = true }
 # gg's model-facing prose (the system prompt, the pinned context blocks, the compaction
 # instructions) is authored as Handlebars templates under `templates/` (the two system prompts
 # under the contracts crate's `templates/gg/`) and embedded at compile time; see `src/prompts.rs`. Same engine, and the same strict-mode/no-escape configuration,
-# `core` renders a test case's `prompt.hbs` with, so there is one templating idiom in the
+# the suites crate renders a test case's `prompt.hbs` with, so there is one templating idiom in the
 # workspace.
 handlebars = { workspace = true }
 thiserror = { workspace = true }
@@ -113,11 +113,11 @@ tokio = { workspace = true }
 # Argument parsing: gg takes a single `--config <path>` flag (see the module
 # rustdoc in `src/main.rs`).
 clap = { workspace = true }
-# RFC 3339 timestamps for the telemetry stream, matching how `core` stamps its
+# RFC 3339 timestamps for the telemetry stream, matching how the driver stamps its
 # own event/record times (`OffsetDateTime::now_utc().format(&Rfc3339)`).
 time = { workspace = true }
 # The HTTP client the model client (`src/client.rs`) reaches OpenRouter with — the
-# workspace's rustls-backed `reqwest` (no system OpenSSL); see `crates/core`.
+# workspace's rustls-backed `reqwest` (no system OpenSSL); see `crates/driver`.
 reqwest = { workspace = true }
 # Draining `reqwest`'s `bytes_stream()` in the streaming model transport
 # (`src/client.rs`): `futures-util` supplies the `StreamExt::next` the chunk loop

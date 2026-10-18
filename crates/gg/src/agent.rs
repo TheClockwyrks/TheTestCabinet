@@ -104,7 +104,7 @@
 //! - `"error"` — a launch failure (no bound slot, or the client could not resolve).
 //!
 //! A launch failure (`"error"`) exits the process `1`, and so do three of the endings above,
-//! so that `core` records a retryable harness error rather than a tree to score. They are read
+//! so that the driver records a retryable harness error rather than a tree to score. They are read
 //! off different things:
 //!
 //! - a gg defect (`"internal_error"`) is read off the **whole tree**. The first agent to meet one
@@ -393,7 +393,7 @@ const STATUS_COMPACTION_FAILED: &str = "compaction_failed";
 /// run was supposed to contain and does not, or work the rest of the tree then built around a hole;
 /// a reviewer that never rendered a verdict is an issue merged without the gate its filer asked
 /// for. The tree that comes back is not the tree that configuration produces, and nothing
-/// downstream — not `core`, not a reviewer, not a comparison against another arm — can tell it from
+/// downstream — not the driver, not a reviewer, not a comparison against another arm — can tell it from
 /// one that is. That is worse than losing the run: a missing run is visible, and a plausible wrong
 /// one is not.
 ///
@@ -445,7 +445,7 @@ pub enum SessionOutcome {
     Ran,
     /// **Any agent of the run** ended on a breached [ceiling](RunLimits) — its turn budget, the
     /// run's wall-clock budget, the run's spend, or either error ceiling. The process exits
-    /// [`EXIT_LIMIT_EXCEEDED`](test_cabinet_contracts::gg::EXIT_LIMIT_EXCEEDED), and `core` records a
+    /// [`EXIT_LIMIT_EXCEEDED`](test_cabinet_contracts::gg::EXIT_LIMIT_EXCEEDED), and the driver records a
     /// run state of its own that is published as a per-model statistic and never retried.
     ///
     /// It is read off the run's [ceiling latch](crate::limits::CeilingLatch) rather than off the
@@ -465,7 +465,7 @@ pub enum SessionOutcome {
     /// client's retry schedule was spent, or on a fatal status at the first attempt), the
     /// **root's** model calls were refused because the run's credential was rejected
     /// ([`STATUS_AUTH_ERROR`]), or **any agent of the run** walked into a gg defect mid-session
-    /// ([`STATUS_INTERNAL_ERROR`]). The process exits `1`, so `core` records a retryable harness
+    /// ([`STATUS_INTERNAL_ERROR`]). The process exits `1`, so the driver records a retryable harness
     /// error rather than a scoreable run: none of the four is the model's doing, and scoring any
     /// of them would blame a model for somebody else's failure.
     ///
@@ -1304,7 +1304,7 @@ pub(crate) async fn run_with_seams(
     // The case that is not covered by the root's status is precisely the one the ruling is about: a
     // subagent that broke *after* the root had already finished — a detached child, an issue agent
     // still working through the board — leaves the root's ending saying `completed`, and a session
-    // that reported it would hand `core` a tree to score that a gg defect had a hand in producing.
+    // that reported it would hand the driver a tree to score that a gg defect had a hand in producing.
     // Reading the latch here also makes the decision independent of when the fault landed, so the
     // race between a fault and the root's last turn cannot decide whether a run is scored.
     let fault = orch.fault.raised();
@@ -1349,12 +1349,12 @@ pub(crate) async fn run_with_seams(
     // field a study reads to find out why runs stop.
     root_emitter.record_limit_hit(end.limit.clone());
     // Close the session capture journal: write its mandatory terminating line and join the writer
-    // thread, so the journal `core` collects and folds into the served record is complete. Reported
+    // thread, so the journal the driver collects and folds into the served record is complete. Reported
     // on the stream (never fatal) — a capture that degraded is a fact about the recording, not a
     // run result.
     //
     // Ahead of the summary rather than after it, now that every run captures: the summary must stay
-    // the *last* event before `SessionEnded` — that adjacency is what lets `core` lift it without
+    // the *last* event before `SessionEnded` — that adjacency is what lets the driver lift it without
     // re-parsing the stream — and a line emitted between the two would break it on every run rather
     // than on the rare configured one. Nothing here feeds the summary: the tracker folds typed
     // events, and this emits a `Log`.
@@ -1398,7 +1398,7 @@ pub(crate) async fn run_with_seams(
 
     // Compute and emit the run's aggregatable session summary from the telemetry the run emitted
     // (the per-slot rollups above are now folded in), right before the terminal `SessionEnded`, so
-    // `core` can lift it onto the run record and result aggregation need not re-parse the stream.
+    // the driver can lift it onto the run record and result aggregation need not re-parse the stream.
     let summary = root_emitter.finalize_summary(status);
     root_emitter.emit(GgTelemetryKind::SessionSummary {
         summary: Box::new(summary),
@@ -1413,7 +1413,7 @@ pub(crate) async fn run_with_seams(
     // the model, and the host retries a harness error. A session gg's own defect ended is not one
     // either, for the stronger reason: whatever tree it left was produced by a run that stopped
     // on *our* mistake, and the model never got the chance the record would appear to be
-    // reporting on. Exit non-zero for all three so `core` records a harness error instead of
+    // reporting on. Exit non-zero for all three so the driver records a harness error instead of
     // collecting a tree and scoring it against the model.
     //
     // The three are read off different things, and deliberately so. The credential and the
@@ -1704,7 +1704,7 @@ struct Orchestrator {
     /// The root's build prompt (a subagent is driven by its brief instead).
     prompt: String,
     /// The workspace-relative paths of every file the test case provided — its specs then its
-    /// reference images, as [`core` computed them](GgInvocation::provided_files) — that an agent
+    /// reference images, as [the driver computed them](GgInvocation::provided_files) — that an agent
     /// whose profile enables [autoload-specifications](CAPABILITY_AUTOLOAD_SPECS) reads into its
     /// opening context. Empty when nothing was seeded; consulted per agent, since autoload is a
     /// per-agent capability.
@@ -9160,7 +9160,7 @@ impl Agent {
 ///
 /// Two of the five keep statuses that predate this vocabulary. That is not inconsistency but
 /// compatibility: `exhausted` and `timed_out` are recorded on every historical run and are what the
-/// console, the aggregation facet and `core`'s run-state mapping already read, so re-labelling them
+/// console, the aggregation facet and the driver's run-state mapping already read, so re-labelling them
 /// would rewrite the meaning of runs nobody re-ran. Which ceiling stopped a run is answered by the
 /// [breach](GgLimitBreach), which every one of the five now carries.
 fn status_for_breach(limit: GgLimitKind) -> &'static str {
@@ -10936,7 +10936,7 @@ fn check_skill_languages(
 /// rather than producing a run whose context accounting is quietly wrong.
 ///
 /// This is the last of three lines of defence — the backend refuses to enqueue such a run and
-/// `core` refuses to launch one — and the one that also covers an invocation written by hand.
+/// the driver refuses to launch one — and the one that also covers an invocation written by hand.
 fn validate_model_windows(
     set: &GgCapabilitySet,
     windows: &BTreeMap<String, u64>,

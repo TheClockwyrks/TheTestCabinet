@@ -989,7 +989,7 @@ async fn case_metadata_inlines_specs_and_description() {
     // The script role survives ingest → snapshot, so the Inputs tab tags it "Script".
     assert_eq!(parsed["variants"][0]["seededInputs"][1]["kind"], "script");
     // The declared package is carried with its UI-only description, looked up from
-    // core's registry at snapshot time.
+    // the suites crate's registry at snapshot time.
     assert_eq!(
         parsed["packages"][0]["name"],
         "@clockwyrks/particle-runtime"
@@ -998,7 +998,7 @@ async fn case_metadata_inlines_specs_and_description() {
         parsed["packages"][0]["description"]
             .as_str()
             .is_some_and(|d| !d.is_empty()),
-        "package description should be inlined from core's registry"
+        "package description should be inlined from the suites crate's registry"
     );
 }
 
@@ -2919,27 +2919,15 @@ async fn every_published_run_document_is_scrubbed_on_its_way_out() {
     assert!(body.contains(test_cabinet_redact::PLACEHOLDER));
 }
 
-/// A real `CodeAnalysisSummary`, produced by pointing the real analyzer at a two-file
-/// tree. Cheaper and far more durable than a ninety-five-field literal, which would drift
-/// from the contract the moment a metric is added.
+/// A real `CodeAnalysisSummary`: the contract fixture the driver's analyzer produced
+/// over a two-file tree, and is held to by the driver's own test. Cheaper and far more
+/// durable than a ninety-five-field literal, which would drift from the contract the
+/// moment a metric is added.
 fn code_analysis_summary() -> test_cabinet_contracts::code_analysis::CodeAnalysisSummary {
-    let tree = TempDir::new().expect("temp dir");
-    std::fs::create_dir_all(tree.path().join("src")).expect("a source directory");
-    std::fs::write(
-        tree.path().join("src/main.ts"),
-        "export function boot(): number {\n  return 1;\n}\n",
-    )
-    .expect("a source file");
-    test_cabinet_code_analysis::analyze(&test_cabinet_code_analysis::AnalysisRequest {
-        root: tree.path(),
-        seed_commit: None,
-        tree_basis: test_cabinet_contracts::code_analysis::CodeTreeBasis::PreValidation,
-        // A hand-built fixture tree with no run behind it, so nothing is known to have
-        // been seeded into its root and the floor removes only what the host owns
-        // outright.
-        root_seeding: test_cabinet_code_analysis::walk::RootSeeding::default(),
-    })
-    .summary
+    serde_json::from_str(include_str!(
+        "../../../contracts/crates/contracts/fixtures/code-analysis/summary.json"
+    ))
+    .expect("the code-analysis summary fixture deserializes")
 }
 
 /// A published run that carries a real code analysis, plus its stored unbounded document.

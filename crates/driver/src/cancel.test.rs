@@ -18,7 +18,7 @@ use super::*;
 
 use std::time::Duration;
 
-use test_cabinet_core::{EngineSelection, HarnessSlug, OrchestratorSelection, RunRequest};
+use crate::{EngineSelection, HarnessSlug, OrchestratorSelection, RunRequest};
 
 /// A run request for the given harness. Only the harness is load-bearing here; every
 /// other field is the cheapest value that type admits, since the disposition reads

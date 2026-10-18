@@ -5322,7 +5322,7 @@ async fn run_tags_events_as_root_and_emits_agent_spawned_and_slot_usage() {
 }
 
 /// A session whose credential is refused mid-flight is a **launch failure**, exactly as a
-/// missing credential is: the process exits non-zero so `core` records a harness error
+/// missing credential is: the process exits non-zero so the driver records a harness error
 /// instead of collecting an empty tree and scoring it against a model that never ran.
 #[tokio::test]
 async fn run_reports_a_refused_credential_as_a_launch_failure() {
@@ -9702,7 +9702,7 @@ async fn session_capture_records_model_io_and_tool_results_in_order() {
     assert_eq!(run(&inv, &emitter).await, SessionOutcome::Ran);
 
     let lines = read_session_journal(dir.path());
-    // The header identifies the session (what `core` stamps as the run id) and the configuration.
+    // The header identifies the session (what the driver stamps as the run id) and the configuration.
     let GgJournalLine::Header {
         session_id,
         capability_set,
@@ -9894,7 +9894,7 @@ async fn session_capture_records_a_prompt_frame_for_every_model_turn() {
 /// The capture close-out sits **before** the session summary, so the summary stays the last
 /// event before the terminal `SessionEnded`.
 ///
-/// That adjacency is what lets `core` lift the summary onto the run record without re-parsing the
+/// That adjacency is what lets the driver lift the summary onto the run record without re-parsing the
 /// stream, and it is the one thing always-on capture could have quietly broken: a close-out line
 /// emitted after the summary would have separated the pair on *every* run instead of on the rare
 /// configured one.

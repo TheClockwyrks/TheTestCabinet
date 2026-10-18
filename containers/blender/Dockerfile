@@ -92,7 +92,7 @@ RUN set -eux; \
 
 # Recreate the run user the shared base normally provides: an unprivileged `node` user and
 # group at uid/gid 1000. The runner runs the harness as `node` and `chown node:node /work`
-# (see `crates/core/src/container.rs`), so the name and uid must match. Ubuntu ships a
+# (see `crates/driver/src/container.rs`), so the name and uid must match. Ubuntu ships a
 # default `ubuntu` account on uid 1000, so remove it first to free the id. User-writable
 # npm-global and `~/.local/bin` install locations let a harness's run-time `npm install -g`
 # or curl installer land a CLI on PATH without root — exactly as the base sets up.

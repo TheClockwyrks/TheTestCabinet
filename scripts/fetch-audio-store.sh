@@ -4,7 +4,7 @@
 #
 # A run is staged with the audio packs its test case declares in `[audio] packs`, copied
 # into the container when it starts out of a store on the host (see
-# `crates/core/src/audio_stage.rs` and
+# `crates/driver/src/audio_stage.rs` and
 # `apps/docs/src/content/docs/components/core/execution.md`). In a cluster the driver
 # image carries that store at `/opt/tcab-audio`. On a laptop running `tcab run` or
 # `tcab validate` there is nothing to carry it, so this script puts it there — once.
@@ -36,7 +36,7 @@
 #   scripts/fetch-audio-store.sh --stage [<dest>]   # skip the image; stage out of R2
 #
 # The destination defaults to `$TCAB_AUDIO_STORE` when that is set, and otherwise to
-# ~/.cache/tcab/audio-store. The image reference is built the way `crates/core` resolves a
+# ~/.cache/tcab/audio-store. The image reference is built the way `crates/driver` resolves a
 # run image — `$TCAB_CONTAINER_REGISTRY` (default testcabinet.azurecr.io) and
 # `$TCAB_CONTAINER_TAG` (default latest) — so a deployment that pins its images somewhere
 # else fetches its store from the same place, and an override is one variable rather than

@@ -1,7 +1,7 @@
 //! The `test-cabinet-gg` crate — The Test Cabinet's own first-party coding harness.
 //!
 //! This library backs one entrypoint: the [`gg` binary](run_from_args) (`src/main.rs`), invoked
-//! **directly** by The Test Cabinet's `core` **inside the run container** with a single JSON
+//! **directly** by The Test Cabinet's driver **inside the run container** with a single JSON
 //! invocation file — it drives a
 //! [`GgCapabilitySet`](test_cabinet_contracts::gg::GgCapabilitySet)-configured session to a produced,
 //! scoreable artifact while streaming a first-party
@@ -134,7 +134,7 @@ struct Cli {
 #[derive(Debug, Subcommand)]
 enum Command {
     /// Drive one session to completion from a JSON invocation file. Implied when `gg` is invoked
-    /// with `--config` and no subcommand, which is how `core` launches it.
+    /// with `--config` and no subcommand, which is how the driver launches it.
     Run(RunArgs),
 
     /// Print the tool and responses-as-code API reference gg offers models, as JSON.
@@ -276,7 +276,7 @@ async fn run_session(config: &std::path::Path) -> ExitCode {
     //
     // `3` is a run stopped by one of its own [ceilings](limits): every ceiling is a safeguard the
     // configuration armed and none is expected to be reached, so a run that reached one is neither
-    // a session that finished nor a harness that malfunctioned. `core` reads the code and records
+    // a session that finished nor a harness that malfunctioned. The driver reads the code and records
     // the run under a state of its own, publishable as a per-model statistic and never retried,
     // since a retry runs the same configuration into the same bound. It is `3` rather than `2`
     // because a shell reads `2` as a usage error, and the number is spelled once, in the contract

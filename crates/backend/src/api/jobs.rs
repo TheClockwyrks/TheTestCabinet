@@ -2269,7 +2269,7 @@ fn encode_preview_line(preview: &AssetPreview) -> Bytes {
 /// back to the driver when the dispatcher claims the job — it is the description of
 /// *what to run*, and a driver has no business knowing which plan wanted it. An origin
 /// is queue bookkeeping: one `job` column, read only by a scoped halt. Keeping it out
-/// of the body also keeps [`LaunchBody`] — which lives in `core`, shared with the
+/// of the body also keeps [`LaunchBody`] — which lives in the contracts, shared with the
 /// driver and the dispatcher — from growing a field only the backend ever reads.
 ///
 /// Deserialize-only, and not a codegen contract type: a query string is not a JSON

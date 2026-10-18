@@ -23,7 +23,7 @@
 # The `x86_64` alias below is the release/CI build; to build gg for the HOST arch
 # (e.g. aarch64 in this dev container, for a local k3d cluster) use the arch-adaptive
 # `scripts/build-gg-static.sh`, which the driver image's build stage also runs.
-# All share `test-cabinet-core` and so the same prerequisites. The backend also
+# All share the same prerequisites (`ring`, a little C behind rustls). The backend also
 # pulls in SeaORM's SQLite driver with bundled `libsqlite3-sys`, which compiles
 # SQLite from vendored C source via the same musl toolchain — so it links
 # statically too (its PostgreSQL driver is pure Rust over rustls).

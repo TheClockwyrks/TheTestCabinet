@@ -4,7 +4,7 @@
 //!
 //! Because gg is [headless](test_cabinet_contracts::gg), this stream is the only live
 //! window into a run — the backend and console read it natively. The wire schema
-//! (v1) is owned by `core`; this module only stamps events with an RFC 3339
+//! (v1) is owned by the contracts; this module only stamps events with an RFC 3339
 //! timestamp and the session id, serializes them, and hands each line to the sink.
 //!
 //! The sink is an injection seam: production writes to stdout and **flushes each
@@ -386,7 +386,7 @@ impl Emitter {
     }
 }
 
-/// The current UTC time as an RFC 3339 string, matching how `core` stamps its own
+/// The current UTC time as an RFC 3339 string, matching how the driver stamps its own
 /// event and record timestamps. Falls back to an empty string only if formatting
 /// fails, which it cannot for a valid `now_utc()`.
 pub fn now_rfc3339() -> String {

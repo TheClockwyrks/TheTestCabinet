@@ -2,7 +2,7 @@
 //!
 //! [`Operation`] is the wire form recorded in `actions.json`: an internally
 //! tagged enum (`{ "op": "fill_rect", … }`) mirroring the `CheckAction`
-//! convention in `crates/core`. Every operation is **total** — out-of-bounds
+//! convention in `crates/driver`. Every operation is **total** — out-of-bounds
 //! writes are clipped, never panics — so regenerating an image from an arbitrary
 //! (even hostile) log can always run to completion.
 

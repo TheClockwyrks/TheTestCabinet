@@ -1,8 +1,8 @@
 //! Unit tests for `tcab publish-reference` pure helpers.
 //!
 //! The build/deploy path drives real `sh`/`wrangler`/network and is exercised
-//! through the shared `core` seam (`deploy_pages_build`) and its own tests, and the
-//! lockfile write is covered by `core`'s `reference_lock` tests; here we pin the
+//! through the driver library's shared seam (`deploy_pages_build`) and its own tests, and the
+//! lockfile write is covered by the contracts' `reference_lock` tests; here we pin the
 //! pure logic this command adds — the Pages-project selection and the branch-alias
 //! derivation — leaving the clap surface to `cli.test.rs`.
 

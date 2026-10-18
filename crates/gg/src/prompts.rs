@@ -57,7 +57,7 @@
 //! # The contexts are the contract
 //!
 //! Every template renders in **strict mode** (as the test cases' own templates do in
-//! `core`): referencing a variable the context does not carry is an error, not a silent blank.
+//! the suites crate): referencing a variable the context does not carry is an error, not a silent blank.
 //! The `…Context` structs in this module are therefore the documented surface a template may
 //! reference — they name every variable, and this module's tests render each template with the
 //! capability sections both on and off, so a typo in a `.hbs` file fails the build rather than
@@ -299,7 +299,7 @@ handlebars_helper!(equals: |left: Json, right: Json| left == right);
 
 /// The engine every prompt is rendered through: **strict mode**, so referencing a variable the
 /// context does not carry is an error rather than a silent empty value, and HTML escaping
-/// disabled, since a prompt is plain text (the same configuration `core` renders a test case's
+/// disabled, since a prompt is plain text (the same configuration the suites crate renders a test case's
 /// `prompt.hbs` with).
 ///
 /// Registration happens once, at first use. A template that fails to *parse* is a bug in a file

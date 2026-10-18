@@ -1459,7 +1459,7 @@ fn add_optional(a: Option<f64>, b: Option<f64>) -> Option<f64> {
 /// is then collected, scored, and — when it fails — retried, which spends a second run reaching the
 /// same bound on the same configuration.
 ///
-/// So a breach anywhere in the tree gives the process its own exit code, and `core` records the run
+/// So a breach anywhere in the tree gives the process its own exit code, and the driver records the run
 /// under a state of its own that is never retried.
 ///
 /// # Why a latch, and not a status carried up the spawn paths

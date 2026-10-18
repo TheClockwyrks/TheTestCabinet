@@ -7,7 +7,7 @@
 //! its config and rejects two configs fighting over the same id.
 //!
 //! `harness_family` records which family of harnesses that slug is usable with
-//! (`test_cabinet_core::run_record::HarnessFamily` — `claude`, `codex`,
+//! (`test_cabinet_contracts::run_record::HarnessFamily` — `claude`, `codex`,
 //! `antigravity`, or `openrouter`), so a run form can offer only the slugs the
 //! selected harness can actually launch. It is stored as the family's wire slug.
 

@@ -12,7 +12,7 @@
 //! across the root and every subagent, without threading counters through the orchestrator. At
 //! session end the binary [`finalize`](SessionSummaryTracker::finalize)s the accumulated state
 //! into a [`GgSessionSummary`] and emits it as the terminal
-//! [`SessionSummary`](GgTelemetryKind::SessionSummary) event; `core` then lifts it onto the run
+//! [`SessionSummary`](GgTelemetryKind::SessionSummary) event; the driver then lifts it onto the run
 //! record. Because the summary is derived from the same events it summarizes, the two are
 //! consistent by construction.
 //!

@@ -9,7 +9,7 @@
 //! rendered frames; `tcab publish-reference` runs it and uploads each frame under a
 //! deterministic key derived from the triple and the frame index
 //! (`media/references/<slug>/<version>/<variant>/frames/<index>.png` — see
-//! `test_cabinet_core::asset_reference`). Every URL is therefore *derivable*, and
+//! `test_cabinet_driver::asset_reference`). Every URL is therefore *derivable*, and
 //! the only fact worth storing is which frame indices exist.
 //!
 //! Rows are written **out-of-band**, never at ingest from a manifest and never

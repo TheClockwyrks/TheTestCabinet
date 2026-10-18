@@ -1679,7 +1679,7 @@ pub(crate) fn to_forward_slash(path: &Path) -> String {
 ///
 /// The exceptions are the dotfiles a case legitimately ships (`.gitignore`,
 /// `.cargo`): they are preserved so a backend-driven run seeds the same set a
-/// local run does. The allowlist is shared with `core`'s `collect_workspace_files`
+/// local run does. The allowlist is shared with the suites crate's `collect_workspace_files`
 /// via [`is_seeded_dotfile`], which keeps the two in lockstep.
 pub(crate) fn copy_tree(src: &Path, dst: &Path) -> Result<()> {
     std::fs::create_dir_all(dst)?;
@@ -1713,7 +1713,7 @@ pub(crate) fn copy_tree(src: &Path, dst: &Path) -> Result<()> {
 /// Recreate the symlink at `from` at the new location `to`, preserving its target
 /// verbatim. The target is kept as-is (typically relative to the link's own
 /// directory) so the recreated link resolves the same way the original did. Mirrors
-/// `core`'s `copy_symlink`.
+/// the suites crate's `copy_symlink`.
 fn copy_symlink(from: &Path, to: &Path) -> Result<()> {
     let target = std::fs::read_link(from)?;
     #[cfg(unix)]

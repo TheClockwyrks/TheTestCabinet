@@ -53,7 +53,7 @@ A fifth engine needs no change here at all.
 ## How it reaches a case
 
 There is no build step. The package publishes its TypeScript **source**, which
-`crates/core`'s vitest validator copies into the staged validator project beside
+`crates/driver`'s vitest validator copies into the staged validator project beside
 the case's own files, so the same relative import resolves both in the checkout
 and in a run. Anything that needs compiling would need a compiler in the staged
 tree, and there is none.

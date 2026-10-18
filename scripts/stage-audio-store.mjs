@@ -1,6 +1,6 @@
 // Materialize the HOST AUDIO STORE: every published audio pack, as files on disk.
 //
-// The store is what a run's declared packs are staged out of. `crates/core`'s
+// The store is what a run's declared packs are staged out of. `crates/driver`'s
 // `audio_stage` reads it at `TCAB_AUDIO_STORE` (default `/opt/tcab-audio`) and copies
 // the packs a case names in `[audio] packs` — and only those — into the container that
 // is about to run it. No image bakes a pack, so this tree is the single place the

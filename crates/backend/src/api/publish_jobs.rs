@@ -35,10 +35,10 @@ use time::format_description::well_known::Rfc3339;
 use tokio::sync::broadcast::error::RecvError;
 
 // The notification shapes this module raises a failed publish on; they live in
-// `core` alongside the run-queue's, and are re-exported by `crate::relay`.
+// the contracts alongside the run-queue's, and are re-exported by `crate::relay`.
 use test_cabinet_contracts::job_api::JobSummary;
 use test_cabinet_contracts::job_api::Notification;
-// The publish-queue wire shapes the dispatcher and publisher speak live in `core`
+// The publish-queue wire shapes the dispatcher and publisher speak live in the contracts
 // (so neither must depend on this crate); re-export them so this module refers to
 // them unqualified, mirroring `jobs`'s re-export of the run-queue shapes.
 pub use test_cabinet_contracts::publish_job_api::PublishClaim;
