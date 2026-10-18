@@ -56,7 +56,7 @@ use serde::{Deserialize, Serialize};
 use test_cabinet_core::run_record::HarnessSlug;
 use test_cabinet_core::test_case::TestType;
 
-use crate::auth::AuthUser;
+use crate::auth::Person;
 use crate::coverage::gate::{self, Gate, GateTally, GateThreshold, RungRun};
 use crate::coverage::schedule::{CellDemand, InFlightLimit, launch_pass};
 use crate::db::{
@@ -798,16 +798,16 @@ impl SnapshotRung {
 /// `GET /ladders` — every ladder configuration the token account owns.
 pub async fn list(
     State(state): State<AppState>,
-    user: AuthUser,
+    user: Person,
 ) -> Result<Json<Vec<Ladder>>, ApiError> {
     let stored = state
         .db
-        .list_ladders(&user.0.id)
+        .list_ladders(&user.0)
         .await
         .map_err(ApiError::from)?;
     let library = read_gg_library(
         &state,
-        &user.0.id,
+        &user.0,
         stored.iter().flat_map(|ladder| ladder.combos.iter()),
     )
     .await?;
@@ -823,11 +823,11 @@ pub async fn list(
 /// caller's.
 pub async fn get(
     State(state): State<AppState>,
-    user: AuthUser,
+    user: Person,
     Path(id): Path<String>,
 ) -> Result<Json<Ladder>, ApiError> {
-    let stored = load_ladder(&state, &user.0.id, &id).await?;
-    let library = read_gg_library(&state, &user.0.id, stored.combos.iter()).await?;
+    let stored = load_ladder(&state, &user.0, &id).await?;
+    let library = read_gg_library(&state, &user.0, stored.combos.iter()).await?;
     Ok(Json(ladder_to_wire(stored, &library)))
 }
 
@@ -840,15 +840,15 @@ pub async fn get(
 /// owner presses Run.
 pub async fn create(
     State(state): State<AppState>,
-    user: AuthUser,
+    user: Person,
     Json(input): Json<LadderInput>,
 ) -> Result<Json<Ladder>, ApiError> {
-    let library = reject_unstorable_members(&state, &user.0.id, &input.combos, &[]).await?;
+    let library = reject_unstorable_members(&state, &user.0, &input.combos, &[]).await?;
     let stored = ladder_from_input(new_id(), input, &now()?)?;
     reject_ineligible_rungs(&state, &stored.rungs)?;
     state
         .db
-        .insert_ladder(&user.0.id, &stored)
+        .insert_ladder(&user.0, &stored)
         .await
         .map_err(ApiError::from)?;
     Ok(Json(ladder_to_wire(stored, &library)))
@@ -862,7 +862,7 @@ pub async fn create(
 /// refuses one.
 pub async fn update(
     State(state): State<AppState>,
-    user: AuthUser,
+    user: Person,
     Path(id): Path<String>,
     Json(input): Json<LadderInput>,
 ) -> Result<Json<Ladder>, ApiError> {
@@ -871,17 +871,17 @@ pub async fn update(
     // the whole ladder unsavable.
     let climbing = state
         .db
-        .get_ladder(&user.0.id, &id)
+        .get_ladder(&user.0, &id)
         .await
         .map_err(ApiError::from)?
         .map(|ladder| ladder.combos)
         .unwrap_or_default();
-    let library = reject_unstorable_members(&state, &user.0.id, &input.combos, &climbing).await?;
+    let library = reject_unstorable_members(&state, &user.0, &input.combos, &climbing).await?;
     let stored = ladder_from_input(id.clone(), input, &now()?)?;
     reject_ineligible_rungs(&state, &stored.rungs)?;
     let updated = state
         .db
-        .update_ladder(&user.0.id, &stored)
+        .update_ladder(&user.0, &stored)
         .await
         .map_err(ApiError::from)?;
     if !updated {
@@ -899,12 +899,12 @@ pub async fn update(
 /// their finishes feed nothing, since their dispatch is gone.
 pub async fn delete(
     State(state): State<AppState>,
-    user: AuthUser,
+    user: Person,
     Path(id): Path<String>,
 ) -> Result<StatusCode, ApiError> {
     let deleted = state
         .db
-        .delete_ladder(&user.0.id, &id)
+        .delete_ladder(&user.0, &id)
         .await
         .map_err(ApiError::from)?;
     if !deleted {
@@ -918,11 +918,11 @@ pub async fn delete(
 /// ladder's current rungs. A running dispatch keeps its own order.
 pub async fn reorder_rungs(
     State(state): State<AppState>,
-    user: AuthUser,
+    user: Person,
     Path(id): Path<String>,
     Json(input): Json<LadderRungOrderInput>,
 ) -> Result<Json<Vec<LadderRung>>, ApiError> {
-    let mut stored = load_ladder(&state, &user.0.id, &id).await?;
+    let mut stored = load_ladder(&state, &user.0, &id).await?;
     if input.rung_ids.len() != stored.rungs.len() {
         return Err(ApiError::bad_request(format!(
             "a reorder must list every rung exactly once (ladder has {}, body listed {})",
@@ -951,7 +951,7 @@ pub async fn reorder_rungs(
     stored.updated_at = now()?;
     let updated = state
         .db
-        .update_ladder(&user.0.id, &stored)
+        .update_ladder(&user.0, &stored)
         .await
         .map_err(ApiError::from)?;
     if !updated {
@@ -970,10 +970,10 @@ pub async fn reorder_rungs(
 /// after a dispatch ended replaces it, its verdicts and climbers with it.
 pub async fn run(
     State(state): State<AppState>,
-    user: AuthUser,
+    user: Person,
     Path(id): Path<String>,
 ) -> Result<Json<LadderProgress>, ApiError> {
-    let user_id = &user.0.id;
+    let user_id = &user.0;
     let ladder = load_ladder(&state, user_id, &id).await?;
     if ladder.rungs.is_empty() {
         return Err(ApiError::bad_request("this ladder has no rungs"));
@@ -1030,12 +1030,12 @@ pub async fn run(
 /// what it just enqueued.
 pub async fn stop(
     State(state): State<AppState>,
-    user: AuthUser,
+    user: Person,
     Path(id): Path<String>,
     input: Option<Json<LadderStopInput>>,
 ) -> Result<Json<HaltResult>, ApiError> {
     let input = input.map(|Json(input)| input).unwrap_or_default();
-    load_ladder(&state, &user.0.id, &id).await?;
+    load_ladder(&state, &user.0, &id).await?;
     let stopped_at = now()?;
     let Some(dispatch_id) = state
         .db
@@ -1136,9 +1136,9 @@ async fn cancel_earlier_dispatches(
 /// for the whole list.
 pub async fn summary(
     State(state): State<AppState>,
-    user: AuthUser,
+    user: Person,
 ) -> Result<Json<Vec<LadderSummary>>, ApiError> {
-    let user_id = &user.0.id;
+    let user_id = &user.0;
     let ladders = state
         .db
         .list_ladders(user_id)
@@ -1190,10 +1190,10 @@ pub async fn summary(
 /// dashboard refresh part of the climb.
 pub async fn progress(
     State(state): State<AppState>,
-    user: AuthUser,
+    user: Person,
     Path(id): Path<String>,
 ) -> Result<Json<LadderProgress>, ApiError> {
-    Ok(Json(progress_of(&state, &user.0.id, &id).await?))
+    Ok(Json(progress_of(&state, &user.0, &id).await?))
 }
 
 /// `GET /ladders/{id}/queue` — the completed runs the latest dispatch counts that the
@@ -1206,10 +1206,10 @@ pub async fn progress(
 /// share is listed once, under the lower rung. 404 when the id is not the caller's.
 pub async fn queue(
     State(state): State<AppState>,
-    user: AuthUser,
+    user: Person,
     Path(id): Path<String>,
 ) -> Result<Json<CoverageQueue>, ApiError> {
-    let user_id = &user.0.id;
+    let user_id = &user.0;
     load_ladder(&state, user_id, &id).await?;
     let Some(dispatch) = state
         .db
@@ -1276,11 +1276,11 @@ pub async fn queue(
 /// dispatch is running or the climber is not blocked for one of those two reasons.
 pub async fn retry_climber(
     State(state): State<AppState>,
-    user: AuthUser,
+    user: Person,
     Path(id): Path<String>,
     Json(input): Json<LadderRetryInput>,
 ) -> Result<StatusCode, ApiError> {
-    let user_id = &user.0.id;
+    let user_id = &user.0;
     load_ladder(&state, user_id, &id).await?;
     let dispatch = state
         .db

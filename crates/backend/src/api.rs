@@ -1,10 +1,13 @@
 //! The Axum HTTP surface: shared state and router wiring (§1 of
 //! `design/v0.2.0-contracts.md`).
 //!
-//! There is **no app-level auth** — the backend trusts every caller that can
-//! reach it (the private-network model). Handlers are grouped by area into the
-//! submodules below; this module owns the shared [`AppState`] and assembles the
-//! router every endpoint is mounted on.
+//! Every request identifies its caller: [`crate::auth::identify`] runs in front of
+//! every route and answers `401` to a request with no identity, and each handler
+//! that is not an open read gates the identity's kind with one of the extractors in
+//! [`crate::auth`]. Every route is served at the root, where in-cluster callers
+//! reach it, and under `/api`, the prefix the edge routes the backend under.
+//! Handlers are grouped by area into the submodules below; this module owns the
+//! shared [`AppState`] and assembles the router every endpoint is mounted on.
 
 use std::sync::Arc;
 
@@ -133,9 +136,10 @@ pub struct AppState {
     pub ready: Readiness,
     /// The coalescing snapshot publisher.
     pub publisher: Publisher,
-    /// Verifies bearer tokens against the standalone auth service. The mutating
-    /// run endpoints require a valid token (see [`crate::auth::AuthUser`]).
-    pub auth: Arc<test_cabinet_core::AccountsClient>,
+    /// The Access assertion check, or `None` for a backend with no Access
+    /// application configured, which takes a person's identity from the local
+    /// identity header (see [`crate::auth`]).
+    pub access: crate::auth::AccessMode,
     /// The live event/preview fan-out for in-flight runs (the `/jobs/{id}/live`
     /// and `/notifications` streams), fed by the drivers' progress ingestion.
     pub relay: Relay,
@@ -174,8 +178,62 @@ pub struct AppState {
 /// raises its own (whole-tarball) limit for the same reason.
 const MAX_RUN_UPLOAD_BYTES: usize = 512 * 1024 * 1024;
 
-/// Build the Axum router with every contract endpoint mounted.
+/// Build the Axum router with every contract endpoint mounted, at the root and
+/// under the edge's `/api` prefix, behind the identity check.
 pub fn router(state: AppState) -> Router {
+    let routes = routes();
+    Router::new()
+        .nest(crate::auth::EDGE_PREFIX, routes.clone())
+        .merge(routes)
+        // Innermost, so the telemetry below records a refused request like any
+        // other. Every route needs an identity, except the probes and the two
+        // `verify-token` routes (see `crate::auth::is_exempt`).
+        .layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            crate::auth::identify,
+        ))
+        // Telemetry. Layers wrap from the bottom up, so `TraceLayer` (added last)
+        // is outermost: it creates one server span per request and enters it for
+        // the inner stack. `trace_and_measure` (added first, thus nested inside)
+        // therefore runs *within* that span — it grafts the caller's W3C trace
+        // context onto the span (so server spans join the client's trace) and
+        // records request metrics. Both degrade to no-ops when telemetry is off.
+        .layer(axum::middleware::from_fn(trace_and_measure))
+        .layer(TraceLayer::new_for_http())
+        // Through the edge the console is served from the backend's own origin, so
+        // nothing there is cross-origin. A permissive CORS policy is kept for a
+        // browser on another origin, such as a development server; it widens nothing,
+        // since every request still needs an identity, and it sends no credentials, so
+        // a wildcard origin is valid. `permissive()` sets
+        // `Access-Control-Allow-Headers: *`, but per the Fetch spec `*` does not cover
+        // `Authorization`, so mirror the request's headers instead, which echoes
+        // `Authorization` back explicitly.
+        .layer(CorsLayer::permissive().allow_headers(AllowHeaders::mirror_request()))
+        // Compress responses for callers that advertise `Accept-Encoding: gzip`.
+        // Outermost, so it sees the final response of every route. The listings
+        // are the reason: `GET /runs` hands back whole run records, which reaches
+        // megabytes of JSON on a populated deployment — fast to produce, but slow
+        // to *deliver* to a console sitting behind a VPN or any other thin link,
+        // where it dominates the page load. JSON compresses roughly an order of
+        // magnitude, so this is the difference between a snappy console and one
+        // that appears hung.
+        //
+        // `CompressionLayer`'s default predicate is what makes this safe to apply
+        // service-wide rather than per-route: it skips responses under 32 bytes
+        // (where a gzip header costs more than it saves), already-compressed image
+        // payloads, gRPC, and — critically — `text/event-stream`. This service
+        // streams SSE (`/jobs/{id}/live`, `/publish-jobs/{id}/live`,
+        // `/notifications`, `/runs/{id}/events`); compressing those would buffer
+        // events behind the encoder and stall the live views that depend on them.
+        // Keep that predicate intact: narrowing it to "compress everything" would
+        // break streaming in a way that only shows up under a real client.
+        .layer(CompressionLayer::new().gzip(true))
+        .with_state(state)
+}
+
+/// Every contract endpoint, before the identity check and the telemetry, CORS and
+/// compression layers [`router`] wraps them in.
+fn routes() -> Router<AppState> {
     Router::new()
         .route("/healthz", get(health))
         // Readiness, split from liveness above: the process is alive and correct
@@ -186,7 +244,7 @@ pub fn router(state: AppState) -> Router {
         // The console's client configuration: today just the data-plane artifact
         // service base URL, so the console can resolve a pre-publish run's build
         // and media links against it (the control-plane backend never serves the
-        // bytes). A single read, no auth.
+        // bytes). A read.
         .route("/config", get(client_config))
         .route("/ingest", post(ingest_api::ingest))
         // The model catalog: a merged read (curated config ⋃ models derived from
@@ -211,7 +269,7 @@ pub fn router(state: AppState) -> Router {
         )
         // Model probes: RaC-readiness checks of a catalog model (see
         // `crate::probe`). Triggering and the provider enumeration are
-        // bearer-gated (they reach OpenRouter on the caller's behalf, the
+        // person-gated (they reach OpenRouter on the caller's behalf, the
         // trigger spending real credit); the reads are open like the catalog.
         // History lives under the model, one probe under its own id.
         .route(
@@ -223,7 +281,7 @@ pub fn router(state: AppState) -> Router {
             get(model_probes::providers),
         )
         // The provider candidate list the next gg enqueue of the model would build, read from
-        // OpenRouter's endpoints listing now. Bearer-gated like the provider enumeration: it
+        // OpenRouter's endpoints listing now. Person-gated like the provider enumeration: it
         // reaches OpenRouter on the caller's behalf.
         .route(
             "/models/{slug}/candidates",
@@ -357,21 +415,24 @@ pub fn router(state: AppState) -> Router {
         // the static segment outranks the dynamic one under the router's matcher, so
         // this never resolves as a run-id lookup. A read.
         .route("/runs/unreadable", get(runs::unreadable))
-        // Read one run, or delete it (auth-gated; refused for a published run).
+        // Read one run, or delete it (person-gated; refused for a published run).
         .route("/runs/{id}", get(runs::get).delete(runs::delete))
-        // Submit a review for a run (requires auth; attributed to the token's
-        // account). A run may carry many reviews, one per account.
+        // Submit a review for a run, attributed to the caller's email (or an Access
+        // service token's name). A run may carry many reviews, one per identity.
         .route("/runs/{id}/reviews", post(runs::add_review))
-        // The signed-in account's own submitted reviews (auth-gated; keyed to the
-        // token's account), newest-first with a numbered pager. Backs the account
-        // page's Reviews tab. Console-only — the static site carries no token.
+        // The signed-in person's own submitted reviews (takes a person's
+        // assertion; keyed to their email), newest-first with a numbered pager. Backs
+        // the account page's Reviews tab. Console-only.
         .route("/account/reviews", get(runs::my_reviews))
-        // Aggregate breakdowns of the signed-in account's recent reviews (auth-gated;
-        // keyed to the token's account): reviews per test case, per model, and per
+        // Aggregate breakdowns of the signed-in person's recent reviews (takes a
+        // person's assertion; keyed to their email): reviews per test case, per model, and per
         // rating given. Backs the account page's Profile tab. Console-only.
         .route("/account/review-stats", get(runs::review_stats))
         // Publish a run (requires auth; refused with no reviews). Flips it public.
         .route("/runs/{id}/publish", post(runs::publish))
+        // The run media below are written (POST) by the queue components with their
+        // per-job tokens, and read (GET) by any identity.
+        //
         // A published run's proof-of-implementation media (`<proof-id>.<ext>`):
         // uploaded by the publisher (POST) and served as-is for the reviewer UI's
         // submitted-evidence panes (GET).
@@ -464,7 +525,7 @@ pub fn router(state: AppState) -> Router {
                 .post(tournaments::put_match_replay)
                 .layer(DefaultBodyLimit::max(MAX_RUN_UPLOAD_BYTES)),
         )
-        // The run queue. A console enqueues a run (`POST /jobs`, auth-gated) — or a
+        // The run queue. A console enqueues a run (`POST /jobs`, person-gated) — or a
         // whole batch in one request (`POST /jobs/batch`, same gate); the dispatcher
         // claims the oldest (`POST /jobs/next`, service-token); a per-run driver
         // streams progress and the terminal record back
@@ -475,15 +536,15 @@ pub fn router(state: AppState) -> Router {
         // regardless of registration order.
         .route("/jobs", post(jobs::launch))
         .route("/jobs/batch", post(jobs::launch_batch))
-        // The gg run mode's own enqueue surface (auth-gated, the same gate as
+        // The gg run mode's own enqueue surface (person-gated, the same gate as
         // `POST /jobs`). A gg run is configured by a capability set rather than the
         // flat harness+model+orchestrator tuple, so it gets a gg-native request shape
         // (`POST /gg/runs`); the enqueued job drains through the same
         // dispatcher/driver/relay path, so it is observed through the shared
         // `/jobs/{id}` status and `/jobs/{id}/live` monitor.
         .route("/gg/runs", post(gg::launch_gg))
-        // The operator's saved gg configurations (auth-gated; keyed to the token's
-        // account): named capability sets the new-run form offers once `gg` is
+        // The operator's saved gg configurations (takes a person's assertion; keyed to their
+        // email): named capability sets the new-run form offers once `gg` is
         // picked as the orchestrator. `/gg/configs` is static and `/gg/configs/{id}`
         // is its child, so neither collides with `/gg/runs`.
         .route(
@@ -494,8 +555,8 @@ pub fn router(state: AppState) -> Router {
             "/gg/configs/{id}",
             put(gg_config::update_config).delete(gg_config::delete_config),
         )
-        // The operator's saved gg **agents** (auth-gated; keyed to the token's
-        // account): agent profiles authored on their own, which a configuration
+        // The operator's saved gg **agents** (takes a person's assertion; keyed to their
+        // email): agent profiles authored on their own, which a configuration
         // imports and may override locally. Data only — gg never reads this
         // surface, because the console resolves an import into the configuration's
         // own agent list before anything is stored or launched. `/gg/agents` is
@@ -509,7 +570,7 @@ pub fn router(state: AppState) -> Router {
             "/gg/agents/{id}",
             put(gg_agent::update_agent).delete(gg_agent::delete_agent),
         )
-        // The gg analysis query surface (auth-gated, like the rest of `/gg`, though
+        // The gg analysis query surface (person-gated, like the rest of `/gg`, though
         // the corpus itself is deployment-wide rather than per-account): evaluate one
         // TCQ query, evaluate a dashboard's worth of them against a single index
         // read, or read the field catalog the editor's completer and sidebar are
@@ -519,10 +580,10 @@ pub fn router(state: AppState) -> Router {
         .route("/gg/query", post(gg_query::run_query))
         .route("/gg/query/batch", post(gg_query::run_query_batch))
         .route("/gg/fields", get(gg_query::gg_fields))
-        // The operator's saved **views** over that corpus (auth-gated; keyed to the
-        // token's account): named queries and the dashboards built from them. The
+        // The operator's saved **views** over that corpus (take a person's
+        // assertion; keyed to their email): named queries and the dashboards built from them. The
         // corpus is deployment-wide and the views are personal — that asymmetry is the
-        // whole model, and it is why these filter on the token's account while
+        // whole model, and it is why these filter on the caller's email while
         // `/gg/query` does not. All four paths are static or children of a static
         // segment, so none collides with `/gg/runs`, `/gg/configs` or `/gg/query`.
         .route(
@@ -552,11 +613,10 @@ pub fn router(state: AppState) -> Router {
         // without either privileging one arm or repeating the tools eleven times, and
         // the console's gg Reference section renders them as a picker over the index.
         //
-        // The **one open read under `/gg`**, and deliberately so — the documents are
-        // static, identical for every caller, and carry no account, run or deployment
-        // data, so they are documentation of the harness in the same class as
-        // `/test-cases` and `/config`; a token would buy nothing and would stop a
-        // signed-out console or the docs site from linking to them.
+        // The **one read under `/gg` any identity reaches**, and deliberately so —
+        // the documents are static, identical for every caller, and carry no account,
+        // run or deployment data, so they are documentation of the harness in the same
+        // class as `/test-cases` and `/config`; a person's assertion would buy nothing.
         //
         // Read at run time from the directory `TCAB_GG_REFERENCE` names (the image
         // bakes it), because the backend must not depend on `test-cabinet-gg` (`oxc`,
@@ -570,8 +630,8 @@ pub fn router(state: AppState) -> Router {
             "/gg/reference/{language}",
             get(gg_reference::gg_reference_api),
         )
-        // The operator's saved harness comparisons (auth-gated; keyed to the token's
-        // account): named A/B experiments whose per-arm distributions are computed on
+        // The operator's saved harness comparisons (takes a person's assertion; keyed to their
+        // email): named A/B experiments whose per-arm distributions are computed on
         // read from the arms' runs. `/comparisons` is static and `/comparisons/{id}`
         // its child.
         .route(
@@ -600,7 +660,7 @@ pub fn router(state: AppState) -> Router {
         .route("/jobs/cancel-all", post(jobs::cancel_all))
         .route("/jobs/{id}", get(jobs::status))
         // Kill one in-flight run: moves it to the terminal `canceled` state and
-        // closes its live stream. Bearer-gated like the other job mutations.
+        // closes its live stream. Person-gated like the other job mutations.
         .route("/jobs/{id}/cancel", post(jobs::cancel))
         .route("/jobs/{id}/live", get(jobs::live))
         .route("/jobs/{id}/events", post(jobs::ingest_events))
@@ -615,7 +675,7 @@ pub fn router(state: AppState) -> Router {
         // other auth.
         .route("/jobs/{id}/verify-token", post(jobs::verify_token))
         // The publish queue. A console enqueues a publish (`POST /runs/{id}/publish`,
-        // auth-gated, in `runs`); the dispatcher claims the oldest
+        // person-gated, in `runs`); the dispatcher claims the oldest
         // (`POST /publish-jobs/next`, service-token); a per-publish `tcab-publisher`
         // pod streams progress and the terminal result back
         // (`POST /publish-jobs/{id}/events|result`, per-job token). The console
@@ -645,9 +705,9 @@ pub fn router(state: AppState) -> Router {
             "/notifications/{stream}/topics",
             put(jobs::set_stream_topics),
         )
-        // Coverage tooling (auth-gated; keyed to the token's account): reusable
+        // Coverage tooling (takes a person's assertion; keyed to their email): reusable
         // groups, multiple declarative plans, and the coverage matrix a plan expands
-        // into. Console-only — the public site carries no token and never calls these.
+        // into. Console-only — the public site never calls these.
         .route(
             "/coverage-groups",
             get(coverage::list_groups).post(coverage::create_group),
@@ -717,45 +777,6 @@ pub fn router(state: AppState) -> Router {
         // Reorder the configuration's rungs by their stable ids.
         .route("/ladders/{id}/rungs/order", post(ladders::reorder_rungs))
         .route("/snapshot/refresh", post(runs::refresh))
-        // Telemetry. Layers wrap from the bottom up, so `TraceLayer` (added last)
-        // is outermost: it creates one server span per request and enters it for
-        // the inner stack. `trace_and_measure` (added first, thus nested inside)
-        // therefore runs *within* that span — it grafts the caller's W3C trace
-        // context onto the span (so server spans join the client's trace) and
-        // records request metrics. Both degrade to no-ops when telemetry is off.
-        .layer(axum::middleware::from_fn(trace_and_measure))
-        .layer(TraceLayer::new_for_http())
-        // The browser UIs (the web console and the gallery) are served from a
-        // different origin than this backend, so every request is cross-origin.
-        // The backend already trusts every caller that can reach it (the
-        // private-network, no-auth model in this module's docs); a permissive CORS
-        // policy keeps the browser from blocking those callers without narrowing
-        // that model. No credentials are sent, so a wildcard origin is valid.
-        // `permissive()` sets `Access-Control-Allow-Headers: *`, but per the Fetch
-        // spec `*` does not cover `Authorization`, so a browser rejects a preflight
-        // for a request carrying our bearer token. Mirror the request's headers
-        // instead, which echoes `Authorization` back explicitly.
-        .layer(CorsLayer::permissive().allow_headers(AllowHeaders::mirror_request()))
-        // Compress responses for callers that advertise `Accept-Encoding: gzip`.
-        // Outermost, so it sees the final response of every route. The listings
-        // are the reason: `GET /runs` hands back whole run records, which reaches
-        // megabytes of JSON on a populated deployment — fast to produce, but slow
-        // to *deliver* to a console sitting behind a VPN or any other thin link,
-        // where it dominates the page load. JSON compresses roughly an order of
-        // magnitude, so this is the difference between a snappy console and one
-        // that appears hung.
-        //
-        // `CompressionLayer`'s default predicate is what makes this safe to apply
-        // service-wide rather than per-route: it skips responses under 32 bytes
-        // (where a gzip header costs more than it saves), already-compressed image
-        // payloads, gRPC, and — critically — `text/event-stream`. This service
-        // streams SSE (`/jobs/{id}/live`, `/publish-jobs/{id}/live`,
-        // `/notifications`, `/runs/{id}/events`); compressing those would buffer
-        // events behind the encoder and stall the live views that depend on them.
-        // Keep that predicate intact: narrowing it to "compress everything" would
-        // break streaming in a way that only shows up under a real client.
-        .layer(CompressionLayer::new().gzip(true))
-        .with_state(state)
 }
 
 /// Middleware run inside the per-request server span: graft the caller's inbound

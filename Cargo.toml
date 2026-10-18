@@ -439,6 +439,11 @@ sourcemap = "9"
 # slow link). The backend, auth, and artifact services are the socket-binding
 # crates, so these stay out of the leaner crates.
 axum = "0.8"
+# Verifies the Cloudflare Access assertion in the backend (`crates/backend/src/access.rs`):
+# RS256 against the team's published keys. `rust_crypto` is the pure-Rust backend, so
+# the portable musl build needs no C toolchain; no PEM parsing, since the keys arrive
+# as JWK components.
+jsonwebtoken = { version = "11.1.0", default-features = false, features = ["rust_crypto"] }
 tower = "0.5"
 tower-http = { version = "0.6", features = [
     "trace",

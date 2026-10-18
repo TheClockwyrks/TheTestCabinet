@@ -9,6 +9,7 @@
 use std::path::PathBuf;
 use std::time::Duration;
 
+use crate::access::AccessConfig;
 use crate::ingest::IngestRoots;
 
 /// The default address the Axum server binds when `TCAB_BACKEND_BIND` is unset.
@@ -19,10 +20,6 @@ const DEFAULT_BIND: &str = "127.0.0.1:8787";
 const DEFAULT_DATABASE_URL: &str = "sqlite://./tcab-backend.sqlite?mode=rwc";
 /// The default on-disk definition store when `TCAB_BACKEND_STORE` is unset.
 const DEFAULT_STORE: &str = "./tcab-store";
-/// The default auth service URL when `TCAB_BACKEND_AUTH_URL` is unset: the auth
-/// service's own loopback default, so local dev works with both services up and
-/// no extra configuration.
-const DEFAULT_AUTH_URL: &str = "http://127.0.0.1:8789";
 /// The default coalescing window, in milliseconds, when
 /// `TCAB_SNAPSHOT_COALESCE_MS` is unset.
 ///
@@ -99,10 +96,11 @@ pub struct Config {
     pub cold_storage_root: PathBuf,
     /// On-disk definition store (`TCAB_BACKEND_STORE`).
     pub store: PathBuf,
-    /// The standalone auth service's base URL (`TCAB_BACKEND_AUTH_URL`). The
-    /// backend verifies each mutating request's bearer token against it. Defaults
-    /// to the auth service's loopback address for local dev.
-    pub auth_url: String,
+    /// The Access application assertions are verified against
+    /// (`TCAB_ACCESS_TEAM_DOMAIN` and `TCAB_ACCESS_AUDIENCE`). `None`, both unset
+    /// (the local overlay's shape), verifies no assertion and takes a person's
+    /// identity from the `Cf-Access-Authenticated-User-Email` header as presented.
+    pub access: Option<AccessConfig>,
     /// The shared service token the **dispatcher** authenticates with to claim
     /// queued jobs (`TCAB_BACKEND_SERVICE_TOKEN`). `None` disables the dispatcher
     /// endpoints (the job queue cannot be drained until it is set) — a deployment
@@ -259,6 +257,17 @@ pub enum ConfigError {
     /// A required variable was not set.
     #[error("required environment variable `{0}` is not set")]
     Missing(&'static str),
+    /// One of a pair of variables that are set together was set alone.
+    #[error(
+        "`{set}` is set but `{unset}` is not: set both to verify Access assertions, or \
+         neither to take the identity from Cf-Access-Authenticated-User-Email"
+    )]
+    Unpaired {
+        /// The variable that was set.
+        set: &'static str,
+        /// The variable that was not.
+        unset: &'static str,
+    },
 }
 
 impl Config {
@@ -277,7 +286,10 @@ impl Config {
         let db_azure_ad = truthy("TCAB_BACKEND_DB_AZURE_AD");
         let checkout = PathBuf::from(require("TCAB_BACKEND_CHECKOUT")?);
         let store = PathBuf::from(env_or("TCAB_BACKEND_STORE", DEFAULT_STORE));
-        let auth_url = env_or("TCAB_BACKEND_AUTH_URL", DEFAULT_AUTH_URL);
+        let access = access_config(
+            nonempty("TCAB_ACCESS_TEAM_DOMAIN"),
+            nonempty("TCAB_ACCESS_AUDIENCE"),
+        )?;
         let service_token = nonempty("TCAB_BACKEND_SERVICE_TOKEN");
         let openrouter_api_key = nonempty("TCAB_OPENROUTER_API_KEY");
 
@@ -337,7 +349,7 @@ impl Config {
             suites_root: roots.suites,
             cold_storage_root: roots.cold_storage,
             store,
-            auth_url,
+            access,
             service_token,
             openrouter_api_key,
             r2,
@@ -393,6 +405,31 @@ fn ingest_roots(
         definitions: definitions.map_or(defaults.definitions, PathBuf::from),
         suites: suites.map_or(defaults.suites, PathBuf::from),
         cold_storage: cold_storage.map_or(defaults.cold_storage, PathBuf::from),
+    }
+}
+
+/// Resolve the Access application from the two variables naming it. Both set is a
+/// backend that verifies assertions, both unset one that takes the local identity
+/// header. One without the other is refused, so a deployment that lost one of them
+/// fails to start rather than trusting a header anyone can send.
+fn access_config(
+    team_domain: Option<String>,
+    audience: Option<String>,
+) -> Result<Option<AccessConfig>, ConfigError> {
+    match (team_domain, audience) {
+        (Some(team_domain), Some(audience)) => Ok(Some(AccessConfig {
+            team_domain,
+            audience,
+        })),
+        (None, None) => Ok(None),
+        (Some(_), None) => Err(ConfigError::Unpaired {
+            set: "TCAB_ACCESS_TEAM_DOMAIN",
+            unset: "TCAB_ACCESS_AUDIENCE",
+        }),
+        (None, Some(_)) => Err(ConfigError::Unpaired {
+            set: "TCAB_ACCESS_AUDIENCE",
+            unset: "TCAB_ACCESS_TEAM_DOMAIN",
+        }),
     }
 }
 

@@ -8,7 +8,7 @@
 //! runs (see [`test_cabinet_core::comparison_aggregate`]), so a comparison always
 //! reflects whatever runs have since landed.
 //!
-//! Everything is per-account (attributed to the token's account via [`AuthUser`])
+//! Everything is per-account (attributed to the caller's email via [`Person`])
 //! and private to that operator, exactly like the reviewer's
 //! [coverage](super::coverage) and [gg configuration](super::gg_config) tooling.
 //! Comparisons are created and run only here; they are published read-only to the
@@ -31,7 +31,7 @@ use test_cabinet_core::comparison::{Comparison, ComparisonConfig, carry_run_ids,
 use test_cabinet_core::comparison_aggregate::aggregate_comparison;
 use test_cabinet_core::run_record::{HarnessSlug, RunRecord};
 
-use crate::auth::AuthUser;
+use crate::auth::Person;
 use crate::db::{ArmRunStatus, PublishEnqueue, StoredComparison};
 use crate::error::ApiError;
 
@@ -74,11 +74,11 @@ pub struct ComparisonInput {
 /// updated first, each with its per-arm results computed from its runs.
 pub async fn list_comparisons(
     State(state): State<AppState>,
-    user: AuthUser,
+    user: Person,
 ) -> Result<Json<Vec<Comparison>>, ApiError> {
     let stored = state
         .db
-        .list_comparisons(&user.0.id)
+        .list_comparisons(&user.0)
         .await
         .map_err(ApiError::from)?;
     let mut out = Vec::with_capacity(stored.len());
@@ -96,15 +96,15 @@ pub async fn list_comparisons(
 /// mostly empty) per-arm results.
 pub async fn create_comparison(
     State(state): State<AppState>,
-    user: AuthUser,
+    user: Person,
     Json(input): Json<ComparisonInput>,
 ) -> Result<Json<Comparison>, ApiError> {
     let now = now()?;
     ensure_engine_control_supported(&state.store, &input.config)?;
-    let stored = stored_from_input(new_id(), &user.0.id, input, &now, &now)?;
+    let stored = stored_from_input(new_id(), &user.0, input, &now, &now)?;
     state
         .db
-        .insert_comparison(&user.0.id, &stored)
+        .insert_comparison(&user.0, &stored)
         .await
         .map_err(ApiError::from)?;
     Ok(Json(
@@ -118,12 +118,12 @@ pub async fn create_comparison(
 /// its runs. 404 when the id is not the caller's.
 pub async fn get_comparison(
     State(state): State<AppState>,
-    user: AuthUser,
+    user: Person,
     Path(id): Path<String>,
 ) -> Result<Json<Comparison>, ApiError> {
     let Some(stored) = state
         .db
-        .get_comparison(&user.0.id, &id)
+        .get_comparison(&user.0, &id)
         .await
         .map_err(ApiError::from)?
     else {
@@ -140,7 +140,7 @@ pub async fn get_comparison(
 /// place. 404 when the id is not the caller's.
 pub async fn update_comparison(
     State(state): State<AppState>,
-    user: AuthUser,
+    user: Person,
     Path(id): Path<String>,
     Json(input): Json<ComparisonInput>,
 ) -> Result<Json<Comparison>, ApiError> {
@@ -148,7 +148,7 @@ pub async fn update_comparison(
     // preserves; a missing row is a 404 before any write.
     let Some(existing) = state
         .db
-        .get_comparison(&user.0.id, &id)
+        .get_comparison(&user.0, &id)
         .await
         .map_err(ApiError::from)?
     else {
@@ -166,10 +166,10 @@ pub async fn update_comparison(
         .complete;
     let mut input = input;
     carry_run_ids(&existing_config, existing_complete, &mut input.config);
-    let stored = stored_from_input(id, &user.0.id, input, &created_at, &now()?)?;
+    let stored = stored_from_input(id, &user.0, input, &created_at, &now()?)?;
     let updated = state
         .db
-        .update_comparison(&user.0.id, &stored)
+        .update_comparison(&user.0, &stored)
         .await
         .map_err(ApiError::from)?;
     if !updated {
@@ -186,12 +186,12 @@ pub async fn update_comparison(
 /// unaffected. 404 when the id is not the caller's.
 pub async fn delete_comparison(
     State(state): State<AppState>,
-    user: AuthUser,
+    user: Person,
     Path(id): Path<String>,
 ) -> Result<StatusCode, ApiError> {
     let deleted = state
         .db
-        .delete_comparison(&user.0.id, &id)
+        .delete_comparison(&user.0, &id)
         .await
         .map_err(ApiError::from)?;
     if !deleted {
@@ -233,12 +233,12 @@ pub struct ComparisonPublishOutcome {
 /// failing the whole publish. 404 when the id is not the caller's.
 pub async fn publish_comparison(
     State(state): State<AppState>,
-    user: AuthUser,
+    user: Person,
     Path(id): Path<String>,
 ) -> Result<Json<ComparisonPublishOutcome>, ApiError> {
     let Some(stored) = state
         .db
-        .get_comparison(&user.0.id, &id)
+        .get_comparison(&user.0, &id)
         .await
         .map_err(ApiError::from)?
     else {
@@ -303,7 +303,7 @@ pub async fn publish_comparison(
     // public snapshot rebuilds with it (each completed run publish wakes it again).
     state
         .db
-        .set_comparison_published(&user.0.id, &id, true, Some(&now()?))
+        .set_comparison_published(&user.0, &id, true, Some(&now()?))
         .await
         .map_err(ApiError::from)?;
     state.publisher.queue_refresh();

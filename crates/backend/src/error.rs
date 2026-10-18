@@ -37,15 +37,21 @@ impl ApiError {
         Self::new(StatusCode::NOT_FOUND, "not_found", message)
     }
 
-    /// `401 Unauthorized` with code `unauthorized` — an absent, invalid, or
-    /// expired bearer token on a mutating endpoint.
+    /// `401 Unauthorized` with code `unauthorized` — a request carrying no
+    /// identity, or an Access assertion or backend token that does not verify.
     pub fn unauthorized(message: impl Into<String>) -> Self {
         Self::new(StatusCode::UNAUTHORIZED, "unauthorized", message)
     }
 
-    /// `502 Bad Gateway` with code `auth_unavailable` — the auth service could
-    /// not be reached to verify a token (distinct from a *rejected* token, which
-    /// is a `401`).
+    /// `403 Forbidden` with code `forbidden` — a verified identity of a kind the
+    /// route does not take, such as a person on a route automation drives.
+    pub fn forbidden(message: impl Into<String>) -> Self {
+        Self::new(StatusCode::FORBIDDEN, "forbidden", message)
+    }
+
+    /// `502 Bad Gateway` with code `auth_unavailable` — the Access signing keys
+    /// could not be fetched to verify an assertion (distinct from a *rejected*
+    /// assertion, which is a `401`).
     pub fn auth_unavailable(message: impl Into<String>) -> Self {
         Self::new(StatusCode::BAD_GATEWAY, "auth_unavailable", message)
     }

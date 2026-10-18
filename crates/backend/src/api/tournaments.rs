@@ -14,6 +14,7 @@ use time::format_description::well_known::Rfc3339;
 
 use test_cabinet_core::match_play::TournamentRecord;
 
+use crate::auth::ServiceCaller;
 use crate::db::StoredTournament;
 use crate::error::ApiError;
 
@@ -34,6 +35,7 @@ const MAX_LIMIT: usize = 200;
 )]
 pub async fn publish(
     State(state): State<AppState>,
+    _caller: ServiceCaller,
     Json(record): Json<TournamentRecord>,
 ) -> Result<Response, ApiError> {
     let published_at = OffsetDateTime::now_utc()
@@ -113,6 +115,7 @@ pub async fn match_replay(
 /// replay, uploaded by the publisher alongside the tournament record.
 pub async fn put_match_replay(
     State(state): State<AppState>,
+    _caller: ServiceCaller,
     Path((id, match_id)): Path<(String, String)>,
     body: axum::body::Bytes,
 ) -> Result<Response, ApiError> {

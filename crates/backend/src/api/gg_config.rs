@@ -9,7 +9,7 @@
 //! orchestrator: the picked configuration supplies the capability set and the row's
 //! model binds its [primary slot](test_cabinet_core::gg::PRIMARY_SLOT).
 //!
-//! Everything is per-account (attributed to the token's account via [`AuthUser`])
+//! Everything is per-account (attributed to the caller's email via [`Person`])
 //! and private to that operator, exactly like the reviewer's
 //! [coverage](super::coverage) tooling. The console additionally offers a handful
 //! of code-defined *built-in* configurations (`full`, `minimal`, `no-compaction`,
@@ -33,7 +33,7 @@ use time::format_description::well_known::Rfc3339;
 
 use test_cabinet_core::gg::{GgCapabilitySet, is_valid_agent_slug};
 
-use crate::auth::AuthUser;
+use crate::auth::Person;
 use crate::error::ApiError;
 
 use super::AppState;
@@ -119,11 +119,11 @@ pub struct GgConfigInput {
 /// `GET /gg/configs` — every configuration the token account owns, by name.
 pub async fn list_configs(
     State(state): State<AppState>,
-    user: AuthUser,
+    user: Person,
 ) -> Result<Json<Vec<GgConfig>>, ApiError> {
     let configs = state
         .db
-        .list_gg_configs(&user.0.id)
+        .list_gg_configs(&user.0)
         .await
         .map_err(ApiError::from)?;
     Ok(Json(configs))
@@ -132,13 +132,13 @@ pub async fn list_configs(
 /// `POST /gg/configs` — register a configuration.
 pub async fn create_config(
     State(state): State<AppState>,
-    user: AuthUser,
+    user: Person,
     Json(input): Json<GgConfigInput>,
 ) -> Result<Json<GgConfig>, ApiError> {
     let config = config_from_input(new_id(), input, &now()?)?;
     state
         .db
-        .insert_gg_config(&user.0.id, &config)
+        .insert_gg_config(&user.0, &config)
         .await
         .map_err(ApiError::from)?;
     Ok(Json(config))
@@ -148,14 +148,14 @@ pub async fn create_config(
 /// the caller's.
 pub async fn update_config(
     State(state): State<AppState>,
-    user: AuthUser,
+    user: Person,
     Path(id): Path<String>,
     Json(input): Json<GgConfigInput>,
 ) -> Result<Json<GgConfig>, ApiError> {
     let config = config_from_input(id, input, &now()?)?;
     let updated = state
         .db
-        .update_gg_config(&user.0.id, &config)
+        .update_gg_config(&user.0, &config)
         .await
         .map_err(ApiError::from)?;
     if !updated {
@@ -168,12 +168,12 @@ pub async fn update_config(
 /// it keep their own recorded capability set. 404 when the id is not the caller's.
 pub async fn delete_config(
     State(state): State<AppState>,
-    user: AuthUser,
+    user: Person,
     Path(id): Path<String>,
 ) -> Result<StatusCode, ApiError> {
     let deleted = state
         .db
-        .delete_gg_config(&user.0.id, &id)
+        .delete_gg_config(&user.0, &id)
         .await
         .map_err(ApiError::from)?;
     if !deleted {

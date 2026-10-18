@@ -1,6 +1,9 @@
 use std::path::{Path, PathBuf};
 
-use super::{base_url, gg_reference_dir, ingest_roots, truthy};
+use super::{
+    AccessConfig, Config, ConfigError, access_config, base_url, gg_reference_dir, ingest_roots,
+    truthy,
+};
 
 /// A throwaway env var read by no other code, so setting it here cannot race with
 /// another test's configuration read.
@@ -265,4 +268,78 @@ fn the_ingest_roots_are_read_from_the_environment() {
         std::env::remove_var("TCAB_COLD_STORAGE_ROOT");
         std::env::remove_var("TCAB_COLD_STORAGE_DIR");
     }
+}
+
+#[test]
+fn access_is_verified_with_both_variables_and_local_with_neither() {
+    assert_eq!(
+        access_config(
+            Some("shrill-term-5c16.cloudflareaccess.com".into()),
+            Some("aud-tag".into())
+        )
+        .unwrap(),
+        Some(AccessConfig {
+            team_domain: "shrill-term-5c16.cloudflareaccess.com".into(),
+            audience: "aud-tag".into(),
+        })
+    );
+    assert_eq!(access_config(None, None).unwrap(), None);
+}
+
+#[test]
+fn access_with_one_variable_alone_is_refused() {
+    // A deployment that lost one of the pair must not fall back to trusting the
+    // local identity header, which anyone can send.
+    match access_config(Some("team.cloudflareaccess.com".into()), None) {
+        Err(ConfigError::Unpaired { set, unset }) => {
+            assert_eq!(set, "TCAB_ACCESS_TEAM_DOMAIN");
+            assert_eq!(unset, "TCAB_ACCESS_AUDIENCE");
+        }
+        other => panic!("expected an unpaired error, got {other:?}"),
+    }
+    match access_config(None, Some("aud-tag".into())) {
+        Err(ConfigError::Unpaired { set, unset }) => {
+            assert_eq!(set, "TCAB_ACCESS_AUDIENCE");
+            assert_eq!(unset, "TCAB_ACCESS_TEAM_DOMAIN");
+        }
+        other => panic!("expected an unpaired error, got {other:?}"),
+    }
+}
+
+#[test]
+fn startup_fails_when_only_the_audience_is_set() {
+    let dir = tempfile::tempdir().unwrap();
+    // SAFETY: nextest runs each test in its own process, so this environment is this
+    // test's alone.
+    unsafe {
+        std::env::set_var("TCAB_BACKEND_CHECKOUT", dir.path());
+        std::env::remove_var("TCAB_ACCESS_TEAM_DOMAIN");
+        std::env::set_var("TCAB_ACCESS_AUDIENCE", "aud-tag");
+    }
+    let err = Config::from_env().expect_err("one Access variable alone must not start");
+    assert!(
+        err.to_string().contains("TCAB_ACCESS_TEAM_DOMAIN"),
+        "the error names the missing variable: {err}"
+    );
+}
+
+#[test]
+fn the_certs_url_is_the_team_domains_access_endpoint() {
+    let config = AccessConfig {
+        team_domain: "shrill-term-5c16.cloudflareaccess.com".into(),
+        audience: "aud-tag".into(),
+    };
+    assert_eq!(
+        config.certs_url(),
+        "https://shrill-term-5c16.cloudflareaccess.com/cdn-cgi/access/certs"
+    );
+    // A domain written as a URL resolves to the same endpoint.
+    let config = AccessConfig {
+        team_domain: "https://shrill-term-5c16.cloudflareaccess.com/".into(),
+        audience: "aud-tag".into(),
+    };
+    assert_eq!(
+        config.certs_url(),
+        "https://shrill-term-5c16.cloudflareaccess.com/cdn-cgi/access/certs"
+    );
 }

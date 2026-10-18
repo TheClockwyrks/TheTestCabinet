@@ -50,7 +50,7 @@ pub use test_cabinet_core::{
 };
 use test_cabinet_entities::job;
 
-use crate::auth::{AuthUser, ServiceAuth, bearer_token, token_matches};
+use crate::auth::{Person, ServiceAuth, bearer_token, token_matches};
 use crate::db::{CANCELABLE_ACTIVE_STATES, CANCELABLE_WAITING_STATES, JobCancelFilter, JobOrigin};
 use crate::error::ApiError;
 use crate::relay::{JobSummary, Notification, RunEvent, StreamItem, StreamMessage};
@@ -58,12 +58,12 @@ use crate::relay::{JobSummary, Notification, RunEvent, StreamItem, StreamMessage
 use super::AppState;
 use super::gg::{bind_launch_configuration, launch_configuration_names};
 
-/// `POST /jobs` — enqueue a run. Requires a bearer token; validates the request,
+/// `POST /jobs` — enqueue a run. Takes a person's assertion; validates the request,
 /// mints a job id and per-job driver token, stores it in the `queued` state, and
 /// returns the job id. The run itself is driven later by a driver pod the dispatcher
 /// creates; observe it via the endpoints below.
 ///
-/// The run is **attributed** to the token's account (`job.user_id`) and, when the
+/// The run is **attributed** to the caller's email (`job.user_id`) and, when the
 /// request carries an [`origin`](LaunchQuery::origin), to the coverage plan or ladder
 /// that asked for it (`job.origin`). A launch by hand from the console's run form
 /// sends no origin and so is never swept up by a plan's or ladder's scoped halt.
@@ -82,7 +82,7 @@ use super::gg::{bind_launch_configuration, launch_configuration_names};
 )]
 pub async fn launch(
     State(state): State<AppState>,
-    user: AuthUser,
+    user: Person,
     Query(query): Query<LaunchQuery>,
     Json(mut body): Json<LaunchBody>,
 ) -> Result<Response, ApiError> {
@@ -94,7 +94,7 @@ pub async fn launch(
         && let Some(set) = body.gg_capability_set.as_mut()
     {
         let names =
-            launch_configuration_names(&state.db, &user.0.id, set.preset_id.as_deref()).await?;
+            launch_configuration_names(&state.db, &user.0, set.preset_id.as_deref()).await?;
         bind_launch_configuration(set, &names).map_err(ApiError::bad_request)?;
     }
     crate::bootstrap::seed_launch_facts(&state.db, &state.prices, &launch_models(&body)).await;
@@ -142,7 +142,7 @@ pub async fn launch(
 /// worth of missing runs.
 const MAX_BATCH_RUNS: usize = 20_000;
 
-/// `POST /jobs/batch` — enqueue many runs in one request. Requires a bearer token,
+/// `POST /jobs/batch` — enqueue many runs in one request. Takes a person's assertion,
 /// the same gate as `POST /jobs`. Each requested run is
 /// validated and minted independently, so a single malformed request is reported as
 /// its own error without aborting the rest; the accepted runs are then inserted in
@@ -153,7 +153,7 @@ const MAX_BATCH_RUNS: usize = 20_000;
 /// (the coverage matrix's still-missing runs, the new-run form's combinations)
 /// sends one request and one insert instead of one per run.
 ///
-/// Every run in the batch takes the **same** attribution — the token's account, and
+/// Every run in the batch takes the **same** attribution — the caller's email, and
 /// the one [`origin`](LaunchQuery::origin) the query carries — because a batch is one
 /// decision by one plan, ladder, or person. A caller wanting runs attributed to two
 /// different origins sends two batches.
@@ -171,7 +171,7 @@ const MAX_BATCH_RUNS: usize = 20_000;
 )]
 pub async fn launch_batch(
     State(state): State<AppState>,
-    user: AuthUser,
+    user: Person,
     Query(query): Query<LaunchQuery>,
     Json(body): Json<LaunchBatchBody>,
 ) -> Result<Response, ApiError> {
@@ -210,7 +210,7 @@ pub async fn launch_batch(
     // same configuration usually appears in most of its runs.
     let config_names = launch_configuration_names(
         &state.db,
-        &user.0.id,
+        &user.0,
         body.runs
             .iter()
             .filter(|run| run.harness == HarnessSlug::Gg)
@@ -680,7 +680,7 @@ impl JobAttribution {
     }
 }
 
-/// Resolve the attribution for a launch request: the token's account, plus the plan
+/// Resolve the attribution for a launch request: the caller's email, plus the plan
 /// named by the query's `origin`.
 ///
 /// A client may name only a plan's hand launch, `plan:<id>`. A fill's
@@ -691,10 +691,7 @@ impl JobAttribution {
 /// jobs again, so a run enqueued under a typo'd origin is one no halt will ever reach
 /// — a fault that surfaces much later and in a confusing shape ("this plan will not
 /// stop"), far from the request that caused it.
-pub(super) fn attribution(
-    user: &AuthUser,
-    query: &LaunchQuery,
-) -> Result<JobAttribution, ApiError> {
+pub(super) fn attribution(user: &Person, query: &LaunchQuery) -> Result<JobAttribution, ApiError> {
     let origin = match query.origin.as_deref() {
         None => None,
         Some(token) => match JobOrigin::parse(token) {
@@ -708,7 +705,7 @@ pub(super) fn attribution(
         },
     };
     Ok(JobAttribution {
-        user_id: Some(user.0.id.clone()),
+        user_id: Some(user.0.clone()),
         origin,
     })
 }
@@ -833,8 +830,8 @@ pub async fn status(
     Ok(Json(job_status_out(&job)))
 }
 
-/// `POST /jobs/{id}/cancel` — request cancellation of an in-flight run. Requires a
-/// bearer token, the same gate as `POST /jobs`. Any signed-in account may cancel any
+/// `POST /jobs/{id}/cancel` — request cancellation of an in-flight run. Takes a
+/// person's assertion, the same gate as `POST /jobs`. Any signed-in person may cancel any
 /// run: the queue is a shared workbench, and a stuck run costs everyone. The job
 /// records who *launched* it (`job.user_id`), not who stopped it.
 ///
@@ -859,7 +856,7 @@ pub async fn status(
 #[tracing::instrument(name = "jobs.cancel", skip(state, _user), fields(job.id = %id), err(Debug))]
 pub async fn cancel(
     State(state): State<AppState>,
-    _user: AuthUser,
+    _user: Person,
     Path(id): Path<String>,
 ) -> Result<Json<JobStatusOut>, ApiError> {
     let job = state
@@ -918,8 +915,8 @@ pub async fn cancel(
 }
 
 /// `POST /jobs/cancel-waiting` — cancel every run that has not started yet
-/// (`queued` or `pending`), whoever launched it and whatever launched it. Requires a
-/// bearer token, the same gate as the other job mutations.
+/// (`queued` or `pending`), whoever launched it and whatever launched it. Takes a
+/// person's assertion, the same gate as the other job mutations.
 ///
 /// This is the Runs page's **"Clear pending"** control, and the one of the three that
 /// needs no confirmation: a waiting job has no driver and has spent nothing, so
@@ -934,7 +931,7 @@ pub async fn cancel(
 #[tracing::instrument(name = "jobs.cancel_waiting", skip(state, _user), err(Debug))]
 pub async fn cancel_waiting(
     State(state): State<AppState>,
-    _user: AuthUser,
+    _user: Person,
 ) -> Result<Json<BulkCancelOut>, ApiError> {
     let canceled = sweep_cancel(
         &state,
@@ -951,8 +948,8 @@ pub async fn cancel_waiting(
 }
 
 /// `POST /jobs/cancel-active` — cancel every run that is already executing
-/// (`dispatched`, `starting`, or `running`), whoever launched it. Requires a bearer
-/// token, the same gate as the other job mutations.
+/// (`dispatched`, `starting`, or `running`), whoever launched it. Takes a person's
+/// assertion, the same gate as the other job mutations.
 ///
 /// This is the Runs page's **"Kill active"** control. Unlike [`cancel_waiting`] it
 /// throws work away: each of these runs has a driver Job that is being created,
@@ -963,7 +960,7 @@ pub async fn cancel_waiting(
 #[tracing::instrument(name = "jobs.cancel_active", skip(state, _user), err(Debug))]
 pub async fn cancel_active(
     State(state): State<AppState>,
-    _user: AuthUser,
+    _user: Person,
 ) -> Result<Json<BulkCancelOut>, ApiError> {
     let canceled = sweep_cancel(
         &state,
@@ -980,7 +977,7 @@ pub async fn cancel_active(
 }
 
 /// `POST /jobs/cancel-all` — cancel every in-flight run, waiting or executing.
-/// Requires a bearer token, the same gate as the other job mutations.
+/// Takes a person's assertion, the same gate as the other job mutations.
 ///
 /// This is the Runs page's **"Stop all"** control: [`cancel_waiting`] and
 /// [`cancel_active`] in one atomic sweep, so nothing that was waiting can be claimed
@@ -989,7 +986,7 @@ pub async fn cancel_active(
 #[tracing::instrument(name = "jobs.cancel_all", skip(state, _user), err(Debug))]
 pub async fn cancel_all(
     State(state): State<AppState>,
-    _user: AuthUser,
+    _user: Person,
 ) -> Result<Json<BulkCancelOut>, ApiError> {
     let mut states: Vec<&str> = CANCELABLE_WAITING_STATES.to_vec();
     states.extend_from_slice(&CANCELABLE_ACTIVE_STATES);

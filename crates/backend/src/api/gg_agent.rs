@@ -19,7 +19,7 @@
 //! came from ([`GgAgentSource`](super::GgAgentSource)), which is what makes an
 //! import a live reference rather than a copy.
 //!
-//! Everything is per-account (attributed to the token's account via [`AuthUser`]) and
+//! Everything is per-account (attributed to the caller's email via [`Person`]) and
 //! private to that operator, exactly like the configurations themselves.
 //!
 //! Deleting a saved agent does not disturb the configurations that imported it: each
@@ -36,7 +36,7 @@ use serde::{Deserialize, Serialize};
 
 use test_cabinet_core::gg::{GgAgentConfig, is_valid_agent_slug};
 
-use crate::auth::AuthUser;
+use crate::auth::Person;
 use crate::error::ApiError;
 
 use super::AppState;
@@ -84,11 +84,11 @@ pub struct GgSavedAgentInput {
 /// `GET /gg/agents` — every saved agent the token account owns, by name.
 pub async fn list_agents(
     State(state): State<AppState>,
-    user: AuthUser,
+    user: Person,
 ) -> Result<Json<Vec<GgSavedAgent>>, ApiError> {
     let agents = state
         .db
-        .list_gg_agents(&user.0.id)
+        .list_gg_agents(&user.0)
         .await
         .map_err(ApiError::from)?;
     Ok(Json(agents))
@@ -97,13 +97,13 @@ pub async fn list_agents(
 /// `POST /gg/agents` — save an agent.
 pub async fn create_agent(
     State(state): State<AppState>,
-    user: AuthUser,
+    user: Person,
     Json(input): Json<GgSavedAgentInput>,
 ) -> Result<Json<GgSavedAgent>, ApiError> {
     let agent = agent_from_input(new_id(), input, &now()?)?;
     state
         .db
-        .insert_gg_agent(&user.0.id, &agent)
+        .insert_gg_agent(&user.0, &agent)
         .await
         .map_err(ApiError::from)?;
     Ok(Json(agent))
@@ -114,14 +114,14 @@ pub async fn create_agent(
 /// not the caller's.
 pub async fn update_agent(
     State(state): State<AppState>,
-    user: AuthUser,
+    user: Person,
     Path(id): Path<String>,
     Json(input): Json<GgSavedAgentInput>,
 ) -> Result<Json<GgSavedAgent>, ApiError> {
     let agent = agent_from_input(id, input, &now()?)?;
     let updated = state
         .db
-        .update_gg_agent(&user.0.id, &agent)
+        .update_gg_agent(&user.0, &agent)
         .await
         .map_err(ApiError::from)?;
     if !updated {
@@ -135,12 +135,12 @@ pub async fn update_agent(
 /// not the caller's.
 pub async fn delete_agent(
     State(state): State<AppState>,
-    user: AuthUser,
+    user: Person,
     Path(id): Path<String>,
 ) -> Result<StatusCode, ApiError> {
     let deleted = state
         .db
-        .delete_gg_agent(&user.0.id, &id)
+        .delete_gg_agent(&user.0, &id)
         .await
         .map_err(ApiError::from)?;
     if !deleted {

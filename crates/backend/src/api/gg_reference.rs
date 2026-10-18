@@ -52,11 +52,11 @@
 //!
 //! # Why it is ungated
 //!
-//! Everything under `/gg` so far is auth-gated, so this is the exception and it is a
+//! Everything under `/gg` so far is person-gated, so this is the exception and it is a
 //! deliberate one: the documents are static, identical for every caller, and contain no
 //! account, run or deployment data — they are documentation of the harness, in the same
-//! class as `/test-cases` and `/config`. Requiring a token would buy nothing and would stop
-//! the public docs and a signed-out console from linking to it. `/gg/reference` is a static
+//! class as `/test-cases` and `/config`, so any identity reaches it: requiring a person's
+//! assertion would buy nothing. `/gg/reference` is a static
 //! path and `/gg/reference/{language}` its only child, so neither collides with anything
 //! else mounted under `/gg`.
 //!

@@ -108,9 +108,8 @@ pub async fn status(
 /// is delivered. A connection to an already-finished publish closes after the
 /// backlog. `404` for an unknown publish job.
 ///
-/// Open to any caller that can reach the backend, exactly like
-/// [`super::jobs::live`] — the private-network model gates the backend, and a
-/// publish-job id is itself opaque.
+/// Open to any identity, exactly like [`super::jobs::live`]; a publish-job id is
+/// itself opaque.
 pub async fn live(
     State(state): State<AppState>,
     Path(id): Path<String>,

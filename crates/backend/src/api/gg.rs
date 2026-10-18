@@ -35,7 +35,7 @@ use test_cabinet_core::LaunchBody;
 use test_cabinet_core::gg::GgCapabilitySet;
 use test_cabinet_core::run_record::HarnessSlug;
 
-use crate::auth::AuthUser;
+use crate::auth::Person;
 use crate::error::ApiError;
 
 use super::AppState;
@@ -392,7 +392,7 @@ pub(super) fn gg_launch_body(subject: GgLaunchSubject, identity: GgLaunchIdentit
     }
 }
 
-/// `POST /gg/runs` — enqueue a **gg** run. Requires a bearer token (the launching
+/// `POST /gg/runs` — enqueue a **gg** run. Takes a person's assertion (the launching
 /// account), the same gate as [`POST /jobs`](super::jobs::launch).
 ///
 /// The handler validates the request — the test-case version must be ingested (and
@@ -415,7 +415,7 @@ pub(super) fn gg_launch_body(subject: GgLaunchSubject, identity: GgLaunchIdentit
 /// by is the one the configuration bears rather than the one the client last read. A set
 /// assembled by hand omits the id and is attributed to no configuration.
 ///
-/// The run is **attributed** to the token's account (`job.user_id`) and to the
+/// The run is **attributed** to the caller's email (`job.user_id`) and to the
 /// [origin](super::jobs::LaunchQuery::origin) the query names, exactly as `POST /jobs` is.
 /// Absent — a launch from the new-run form — it leaves `job.origin` null and the run stays
 /// out of every scoped halt, which is what a launch by hand should do. Present, it is what a
@@ -430,7 +430,7 @@ pub(super) fn gg_launch_body(subject: GgLaunchSubject, identity: GgLaunchIdentit
 )]
 pub async fn launch_gg(
     State(state): State<AppState>,
-    user: AuthUser,
+    user: Person,
     Query(query): Query<LaunchQuery>,
     Json(body): Json<GgRunRequest>,
 ) -> Result<Response, ApiError> {
@@ -463,7 +463,7 @@ pub async fn launch_gg(
     // it records that configuration's current name.
     if let Some(set) = launch.gg_capability_set.as_mut() {
         let names =
-            launch_configuration_names(&state.db, &user.0.id, set.preset_id.as_deref()).await?;
+            launch_configuration_names(&state.db, &user.0, set.preset_id.as_deref()).await?;
         bind_launch_configuration(set, &names).map_err(ApiError::bad_request)?;
     }
     // Observe every model this run binds at enqueue, the same seeding `POST /jobs`

@@ -1,9 +1,9 @@
 //! The `tcab-backend` binary entrypoint.
 //!
 //! Resolves configuration from the environment (§5), builds the backend, and
-//! serves the Axum router until terminated. There is no app-level auth — bind to
-//! a private-network interface (e.g. a Tailscale IP) via `TCAB_BACKEND_BIND` in
-//! production.
+//! serves the Axum router until terminated. Every request identifies its caller
+//! by a Cloudflare Access assertion or a backend-minted token; see
+//! `test_cabinet_backend::auth`.
 
 use std::process::ExitCode;
 

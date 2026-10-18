@@ -19,7 +19,7 @@ use test_cabinet_core::pricing::{
     official_provider, provider_candidates, run_parameters,
 };
 
-use crate::auth::AuthUser;
+use crate::auth::Person;
 use crate::db::StoredModel;
 use crate::error::ApiError;
 use crate::stats::{GgRunFacts, provider_fault_rates};
@@ -168,8 +168,8 @@ impl CatalogCandidates {
 }
 
 /// `GET /models/{slug}/candidates` — the candidate list the next gg enqueue of the model would
-/// build, from the endpoints listing read now, for an agent that sets no reasoning. Requires a
-/// bearer token, because it reaches OpenRouter on the caller's behalf.
+/// build, from the endpoints listing read now, for an agent that sets no reasoning. Takes a
+/// person's assertion, because it reaches OpenRouter on the caller's behalf.
 ///
 /// A model OpenRouter does not list is a `404`, as it is for the provider enumeration; a listed
 /// model with no candidate answers with the [refusal](ModelCandidatesOut::refusal).
@@ -177,7 +177,7 @@ impl CatalogCandidates {
 pub async fn candidates(
     State(state): State<AppState>,
     Path(slug): Path<String>,
-    _user: AuthUser,
+    _user: Person,
 ) -> Result<Json<ModelCandidatesOut>, ApiError> {
     let lookup = super::model_probes::resolve_openrouter_slug(&state, &slug).await?;
     let stored = state

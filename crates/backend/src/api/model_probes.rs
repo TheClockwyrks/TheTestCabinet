@@ -5,7 +5,7 @@
 //! The probe itself — the per-language case fixtures, the two scenarios, the
 //! classification of each submitted program, and the verdict — is
 //! [`crate::probe`]; these handlers own only the HTTP surface and the row
-//! lifecycle. Triggering requires a bearer token (the backend spends the
+//! lifecycle. Triggering takes a person's assertion (the backend spends the
 //! operator's OpenRouter credit on their behalf), as does the provider
 //! enumeration (a third-party reach, like the OpenRouter form fill); the reads
 //! are open like the rest of the catalog. Probe results are console-only data
@@ -20,7 +20,7 @@ use time::format_description::well_known::Rfc3339;
 
 use test_cabinet_entities::{model_probe, model_probe_item};
 
-use crate::auth::AuthUser;
+use crate::auth::Person;
 use crate::error::ApiError;
 use crate::probe;
 
@@ -173,13 +173,13 @@ pub struct ProbeProviderOut {
     pub context_length: Option<u64>,
 }
 
-/// `POST /models/{slug}/probes` — trigger a probe. Requires a bearer token; the
+/// `POST /models/{slug}/probes` — trigger a probe. Takes a person's assertion; the
 /// probe runs in the background and the row is returned `running` immediately.
 #[tracing::instrument(name = "model_probes.trigger", skip(state, user, input), fields(model.slug = %slug), err(Debug))]
 pub async fn trigger(
     State(state): State<AppState>,
     Path(slug): Path<String>,
-    user: AuthUser,
+    user: Person,
     input: Option<Json<ProbeTriggerInput>>,
 ) -> Result<(StatusCode, Json<ProbeTriggerResponse>), ApiError> {
     let Some(api_key) = state.config.openrouter_api_key.clone() else {
@@ -233,7 +233,7 @@ pub async fn trigger(
         model_slug: slug,
         openrouter_slug,
         provider,
-        user_id: user.0.id.clone(),
+        user_id: user.0.clone(),
         language,
         samples,
         max_tokens,
@@ -321,13 +321,13 @@ pub async fn get(
 }
 
 /// `GET /models/{slug}/probe-providers` — the providers OpenRouter lists for
-/// the model, so a probe can be pinned to one. Requires a bearer token (a
+/// the model, so a probe can be pinned to one. Takes a person's assertion (a
 /// third-party reach on the caller's behalf, like the OpenRouter form fill).
 #[tracing::instrument(name = "model_probes.providers", skip(state, _user), fields(model.slug = %slug), err(Debug))]
 pub async fn providers(
     State(state): State<AppState>,
     Path(slug): Path<String>,
-    _user: AuthUser,
+    _user: Person,
 ) -> Result<Json<ProbeProvidersResponse>, ApiError> {
     let openrouter_slug = resolve_openrouter_slug(&state, &slug).await?;
     let routes = state

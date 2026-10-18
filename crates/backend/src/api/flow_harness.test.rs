@@ -18,7 +18,7 @@ use test_cabinet_entities::job;
 
 use super::AppState;
 use super::coverage::ReviewPlanCombo;
-use crate::auth::AuthUser;
+use crate::auth::Person;
 use crate::db::JobOrigin;
 use crate::db::tests::{links, priced_model_write, validator_manifest, validator_record};
 /// The account every ladder here belongs to.
@@ -49,9 +49,6 @@ pub(crate) async fn test_state() -> (tempfile::TempDir, AppState) {
         None,
         None,
         None,
-        std::sync::Arc::new(test_cabinet_core::AccountsClient::new(
-            config.auth_url.clone(),
-        )),
         crate::publisher::PublisherTiming {
             coalesce: config.coalesce,
             snapshot_retention: config.snapshot_retention,
@@ -62,9 +59,7 @@ pub(crate) async fn test_state() -> (tempfile::TempDir, AppState) {
         store,
         ready: crate::readiness::Readiness::new(true),
         publisher,
-        auth: std::sync::Arc::new(test_cabinet_core::AccountsClient::new(
-            config.auth_url.clone(),
-        )),
+        access: None,
         relay: crate::relay::Relay::new(),
         publish_relay: crate::publish_relay::PublishRelay::new(),
         config,
@@ -99,13 +94,8 @@ pub(crate) async fn test_state() -> (tempfile::TempDir, AppState) {
     (dir, state)
 }
 
-pub(crate) fn owner() -> AuthUser {
-    AuthUser(test_cabinet_core::Account {
-        id: OWNER.to_string(),
-        username: "owner".to_string(),
-        display_name: "Owner".to_string(),
-        picture_updated_at: None,
-    })
+pub(crate) fn owner() -> Person {
+    Person(OWNER.to_string())
 }
 
 pub(crate) fn harness_combo(model: &str) -> ReviewPlanCombo {

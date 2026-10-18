@@ -7018,6 +7018,15 @@ impl Db {
             .await?)
     }
 
+    /// Fetch the job whose per-job token is `token`, the lookup that resolves a
+    /// driver's bearer token to the job it was minted for.
+    pub async fn job_by_token(&self, token: &str) -> Result<Option<job::Model>> {
+        Ok(job::Entity::find()
+            .filter(job::Column::JobToken.eq(token))
+            .one(&self.conn())
+            .await?)
+    }
+
     /// Every job still in flight (`queued`, `pending`, `dispatched`, `starting`, or
     /// `running`), in queue order. This is the console's active-run list: a run it is
     /// watching survives a page reload because the backend remembers it — including
@@ -7274,6 +7283,15 @@ impl Db {
     /// Fetch one publish job by id.
     pub async fn get_publish_job(&self, id: &str) -> Result<Option<publish_job::Model>> {
         Ok(publish_job::Entity::find_by_id(id.to_string())
+            .one(&self.conn())
+            .await?)
+    }
+
+    /// Fetch the publish job whose per-publish-job token is `token`, the lookup that
+    /// resolves a publisher's bearer token to the publish job it was minted for.
+    pub async fn publish_job_by_token(&self, token: &str) -> Result<Option<publish_job::Model>> {
+        Ok(publish_job::Entity::find()
+            .filter(publish_job::Column::JobToken.eq(token))
             .one(&self.conn())
             .await?)
     }
