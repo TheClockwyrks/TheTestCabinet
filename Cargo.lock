@@ -4975,7 +4975,8 @@ dependencies = [
  "serde",
  "serde_json",
  "test-cabinet-backend-client",
- "test-cabinet-core",
+ "test-cabinet-contracts",
+ "test-cabinet-match-play",
  "test-cabinet-telemetry",
  "thiserror 2.0.18",
  "time",
@@ -5182,10 +5183,8 @@ dependencies = [
  "cuid2",
  "flate2",
  "foray-core",
- "foray-host",
  "hex",
  "lattice-core",
- "lattice-host",
  "png",
  "semver",
  "serde",
@@ -5197,6 +5196,7 @@ dependencies = [
  "test-cabinet-contracts",
  "test-cabinet-draw",
  "test-cabinet-engines",
+ "test-cabinet-match-play",
  "test-cabinet-model-core",
  "test-cabinet-redact",
  "test-cabinet-suites",
@@ -5366,6 +5366,21 @@ dependencies = [
  "wasmtime-wasi",
  "wit-component 0.248.0",
  "wit-parser 0.248.0",
+]
+
+[[package]]
+name = "test-cabinet-match-play"
+version = "0.0.0"
+dependencies = [
+ "foray-core",
+ "foray-host",
+ "lattice-core",
+ "lattice-host",
+ "serde_json",
+ "tempfile",
+ "test-cabinet-contracts",
+ "thiserror 2.0.18",
+ "wat",
 ]
 
 [[package]]

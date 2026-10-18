@@ -34,7 +34,6 @@ pub mod harness_registry;
 pub mod harness_telemetry;
 pub mod install;
 pub mod lockfile_check;
-pub mod match_play;
 pub mod orchestrator;
 pub mod performance_validator;
 pub mod post_run;
@@ -70,6 +69,8 @@ pub use test_cabinet_suites::{
 // Secret scrubbing is the contracts repository's redact crate, re-exported at the
 // module path it had here.
 pub use test_cabinet_redact as redact;
+// The match runner, in the engines family; re-exported at its old path.
+pub use test_cabinet_match_play as match_play;
 
 #[cfg(test)]
 #[path = "lib.test.rs"]

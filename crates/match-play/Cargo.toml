@@ -1,0 +1,42 @@
+[package]
+name = "test-cabinet-match-play"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+# The match runner over the two simulation hosts. It plays an adversarial match
+# between two resolved controllers through `foray-host` (one-off, or every pair of a
+# field as a tournament) and runs a performance submission over one held-out case
+# through `lattice-host`. The arena runs it for the console's matches and
+# tournaments, and the driver's adversarial and performance validators run it over a
+# produced controller, so every caller plays through this one runner and a replay
+# the gallery renders was decided by the simulation that scored it.
+[lib]
+name = "test_cabinet_match_play"
+path = "src/lib.rs"
+
+[dependencies]
+# The shapes a match and a tournament are recorded in (`match_play`), the resolved
+# test case a match is configured from (`test_case`), and the recorded outcome and
+# per-case result shapes (`validation`).
+test-cabinet-contracts = { path = "../../contracts/crates/contracts" }
+# The adversarial simulation (rules, board, replay) and its wasm host; the wasmtime
+# dependency lives entirely in `foray-host`.
+foray-core = { path = "../foray-core" }
+foray-host = { path = "../foray-host" }
+# The performance simulation (scenario, snapshots) and its wasm host.
+lattice-core = { path = "../lattice-core", default-features = false }
+lattice-host = { path = "../lattice-host" }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+# Assembles tiny performance engines from inline WebAssembly text, as
+# `lattice-host`'s own tests do, so the per-case runner is exercised without
+# compiling a reference engine.
+wat = "1"
+
+[lints]
+workspace = true

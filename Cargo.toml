@@ -68,6 +68,7 @@ members = [
 	"crates/lattice-sdk",
 	"crates/lattice-ref-naive",
 	"crates/lattice-ref-transport",
+	"crates/match-play",
 	"crates/backend",
 	"crates/driver",
 	"crates/dispatcher",

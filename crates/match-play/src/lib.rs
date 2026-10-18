@@ -1,40 +1,50 @@
-//! Shared adversarial match play: the canonical match setup, a one-off
-//! head-to-head ("quick") match, and a round-robin tournament.
+//! The match runner over the two simulation hosts.
 //!
-//! The [`AdversarialValidator`](crate::adversarial_validator) scores a run by
-//! playing its submission against the case's committed baseline. The interactive
-//! **arena** modes reuse the very same machinery to let an operator pit *any* two
-//! controllers (baselines or controllers built by prior runs) head-to-head, and to
-//! run a whole field of controllers as a tournament. This module is the one place
-//! the canonical match parameters (map, seed, sandbox, simulation) are assembled,
-//! so the validator and the arena can never disagree on how a match is played.
+//! The adversarial half plays a match between two controllers through
+//! [`foray_host`]: the canonical match setup, a one-off head-to-head ("quick")
+//! match, and a round-robin tournament over a field. The driver's adversarial
+//! validator scores a run by playing its submission against the case's committed
+//! baselines through [`play_match`]; the **arena** plays any two controllers
+//! (baselines or controllers built by prior runs) through [`run_quick_match`] and
+//! a whole field through [`run_tournament`], which are built on it. This crate is
+//! the one place the canonical match parameters (map, seed, sandbox, simulation)
+//! are assembled, so the validator and the arena can never disagree on how a match
+//! is played.
+//!
+//! The performance half, [`performance`], runs a submission engine over one
+//! held-out case through [`lattice_host`] and scores it against the case's
+//! expected answer; the driver's performance validator runs it per case.
 //!
 //! It is deliberately **out_dir-agnostic**: a caller resolves controller wasm bytes
 //! however it likes (a baseline from the case's `references/`, a prior run's module
 //! from the host's run output dir) and hands them in as [`ResolvedController`]s.
-//! The persistence-owning caller — the arena service — owns the disk writes,
-//! progress reporting, and backend publish; this module only plays matches and
-//! tallies results.
+//! The persistence-owning caller (the arena service, or a validator writing into a
+//! run tree) owns the disk writes, progress reporting and publishing; this crate
+//! only plays matches and tallies results.
 
 use std::collections::BTreeMap;
 use std::path::Path;
 
-use crate::error::{Error, Result};
-use crate::test_case::TestCaseVersion;
-use crate::validation::AdversarialOutcome;
 use foray_core::board::Team;
 use foray_core::config::{BoardParamsSerde, Rules, Simulation};
 use foray_core::replay::Replay;
 use foray_core::state::Ended;
-use foray_host::{
-    Decided, DecidedBy, ForfeitInfo, FuelStats, MatchSetup, RunError, SandboxLimits, board_for,
-    run_match,
-};
+use foray_host::{MatchSetup, RunError, SandboxLimits, board_for, run_match};
+use test_cabinet_contracts::test_case::TestCaseVersion;
+use test_cabinet_contracts::validation::AdversarialOutcome;
+
+pub mod error;
+pub mod performance;
+
+pub use error::{Error, Result};
+// How a match was decided and what each side burned, as the host meters them: a
+// caller reads them off a [`PlayedMatch`] without linking the host itself.
+pub use foray_host::{Decided, DecidedBy, ForfeitInfo, FuelStats};
 
 // The shapes a match and a tournament are recorded in, the opponent lists and the
 // names a match and its replay are stored under are read by the arena, the backend
 // and the console as well as played here, so they live in
-// `test_cabinet_contracts::match_play` and are re-exported at their old paths.
+// `test_cabinet_contracts::match_play` and are re-exported here beside the runner.
 pub use test_cabinet_contracts::match_play::*;
 
 /// The shipped map id, recorded in every replay so playback regenerates the maze.
@@ -98,7 +108,7 @@ pub fn canonical_match_setup(
         .into_iter()
         .filter_map(|(section, absent)| absent.then_some(section))
         .collect();
-        return Err(Error::Validation(format!(
+        return Err(Error::Case(format!(
             "test case `{}@{}` declares no {} for its adversarial match",
             test_case.slug,
             test_case.version,
@@ -109,7 +119,7 @@ pub fn canonical_match_setup(
     // (resolution requires it for this type and forbids the performance
     // `fuel_limit`); guard the invariant rather than unwrapping blind.
     let fuel_per_tick = sandbox.fuel_per_tick.ok_or_else(|| {
-        Error::Validation(format!(
+        Error::Case(format!(
             "test case `{}@{}` declares no sandbox.fuel_per_tick for its adversarial match",
             test_case.slug, test_case.version
         ))
@@ -155,11 +165,83 @@ pub fn resolve_run_controller(
         .build
         .as_ref()
         .and_then(|build| build.module.as_ref())
-        .ok_or_else(|| {
-            Error::Validation("the case declares no build.module to resolve".to_string())
-        })?;
+        .ok_or_else(|| Error::Case("the case declares no build.module to resolve".to_string()))?;
     let path = out_dir.join(run_id).join("implementation").join(module_rel);
     Ok(std::fs::read(path)?)
+}
+
+/// A match the host played to its result.
+#[derive(Debug, Clone)]
+pub struct PlayedMatch {
+    /// The browser-playable replay.
+    pub replay: Replay,
+    /// How the match was decided, after the efficiency tie-break (which only the
+    /// host can compute, since it alone meters fuel).
+    pub decided: Decided,
+    /// Each controller's fuel totals, which decided a level-score match.
+    pub fuel: FuelStats,
+    /// Which side forfeited mid-match, on what tick and why, if either did.
+    pub forfeit: Option<ForfeitInfo>,
+}
+
+/// What playing a match came to: a result, or a controller that never loaded.
+#[derive(Debug, Clone)]
+pub enum Played {
+    /// Both controllers loaded and the match ran to its result. A controller that
+    /// misbehaved mid-match (a trap, exhausted fuel or memory, an invalid action)
+    /// forfeited through the host, which still produced a replay.
+    Decided(Box<PlayedMatch>),
+    /// A controller failed to load (it is not a valid module, does not export the
+    /// contract entry, or cannot instantiate), so no match ran and there is no
+    /// replay. `team` is the side that failed; Red is tried first.
+    LoadFailed {
+        /// The side whose controller failed to load.
+        team: Team,
+        /// Why it failed to load.
+        reason: String,
+    },
+}
+
+/// Play one canonical match of `test_case` between two controllers' wasm modules,
+/// Red against Blue, through the shared host. This is the single runner every
+/// caller plays through: the validator with the submission as Red, the arena's
+/// quick matches and tournaments with any two controllers.
+///
+/// A controller that fails to load is [`Played::LoadFailed`], not an error; a case
+/// missing what a match needs is [`Error::Case`], and a host that cannot build its
+/// wasm engine is [`Error::Engine`].
+pub fn play_match(
+    test_case: &TestCaseVersion,
+    red_id: &str,
+    red_wasm: &[u8],
+    blue_id: &str,
+    blue_wasm: &[u8],
+) -> Result<Played> {
+    let setup = canonical_match_setup(test_case, red_id, blue_id)?;
+    let board = board_for(&setup);
+    match run_match(red_wasm, blue_wasm, board, &setup) {
+        Ok(summary) => {
+            // The efficiency tie-break and the fuel totals come from the host
+            // summary (the replay alone has neither), so resolve them before the
+            // replay is moved out of it.
+            let decided = summary.decided();
+            Ok(Played::Decided(Box::new(PlayedMatch {
+                decided,
+                fuel: summary.fuel,
+                forfeit: summary.forfeit,
+                replay: summary.replay,
+            })))
+        }
+        Err(RunError::Engine(err)) => Err(Error::Engine(err.to_string())),
+        Err(RunError::LoadRed(err)) => Ok(Played::LoadFailed {
+            team: Team::Red,
+            reason: err.to_string(),
+        }),
+        Err(RunError::LoadBlue(err)) => Ok(Played::LoadFailed {
+            team: Team::Blue,
+            reason: err.to_string(),
+        }),
+    }
 }
 
 /// Play a single head-to-head match between two resolved controllers and return
@@ -173,38 +255,28 @@ pub fn run_quick_match(
     let red_id = &red.controller.id;
     let blue_id = &blue.controller.id;
     let match_id = match_id(red_id, blue_id);
-    let setup = canonical_match_setup(test_case, red_id, blue_id)?;
-    let board = board_for(&setup);
 
-    match run_match(&red.wasm, &blue.wasm, board, &setup) {
-        Ok(summary) => {
+    match play_match(test_case, red_id, &red.wasm, blue_id, &blue.wasm)? {
+        Played::Decided(played) => {
+            let PlayedMatch {
+                replay,
+                decided,
+                fuel,
+                forfeit,
+            } = *played;
             // A mid-match forfeit (fuel/memory/trap/bad action) still produces a
             // replay, but the replay says only that a forfeit happened — capture the
             // *reason* into the summary detail so the board can show why.
-            let detail = forfeit_detail(summary.forfeit.as_ref());
-            // The efficiency tie-break and the recorded fuel totals come from the
-            // host summary (the replay alone has neither), so resolve them before we
-            // unwrap the replay out of it.
-            let decided = summary.decided();
-            let fuel = summary.fuel;
-            let replay = summary.replay;
             let mut summary =
                 summarize_match(&match_id, red_id, blue_id, &replay, decided, &fuel, None);
-            summary.detail = detail;
+            summary.detail = forfeit_detail(forfeit.as_ref());
             Ok(MatchOutcome {
                 summary,
                 replay: Some(replay),
             })
         }
-        Err(RunError::Engine(err)) => Err(Error::Validation(format!(
-            "the wasm engine could not be built: {err}"
-        ))),
-        Err(RunError::LoadRed(err)) => Ok(MatchOutcome {
-            summary: forfeit_summary(&match_id, red_id, blue_id, Team::Red, err.to_string()),
-            replay: None,
-        }),
-        Err(RunError::LoadBlue(err)) => Ok(MatchOutcome {
-            summary: forfeit_summary(&match_id, red_id, blue_id, Team::Blue, err.to_string()),
+        Played::LoadFailed { team, reason } => Ok(MatchOutcome {
+            summary: forfeit_summary(&match_id, red_id, blue_id, team, reason),
             replay: None,
         }),
     }
@@ -412,7 +484,7 @@ fn forfeit_summary(
 /// [`Loss`](AdversarialOutcome::Loss). A level-score match resolved by fuel is a
 /// plain win or loss; only a genuine draw (level score *and* level fuel, or a
 /// double forfeit) returns [`Draw`](AdversarialOutcome::Draw)/`Forfeit`.
-pub(crate) fn outcome_from(decided: Decided, team: Team) -> AdversarialOutcome {
+pub fn outcome_from(decided: Decided, team: Team) -> AdversarialOutcome {
     match (decided.winner, decided.by) {
         (Some(winner), DecidedBy::Forfeit) if winner == team => AdversarialOutcome::Win,
         // A decided forfeit against this team is this team forfeiting.
@@ -428,7 +500,7 @@ pub(crate) fn outcome_from(decided: Decided, team: Team) -> AdversarialOutcome {
 /// The wire spelling of how a match was decided: the rules ending (`swept`,
 /// `time_limit`, `forfeit`), or `efficiency` when a level score was broken by the
 /// fuel tie-break.
-pub(crate) fn win_type_for(decided: Decided) -> String {
+pub fn win_type_for(decided: Decided) -> String {
     match decided.by {
         DecidedBy::Efficiency => "efficiency".to_string(),
         // The rules endings keep their wire spelling single-sourced in `ended_to`.
@@ -441,7 +513,7 @@ pub(crate) fn win_type_for(decided: Decided) -> String {
 /// Map a foray-core [`Ended`] to the replay's wire spelling (`swept`,
 /// `time_limit`, `forfeit`) through serde, so the recorded string is by
 /// construction the same one the published replay carries.
-pub(crate) fn ended_to(ended: Ended) -> String {
+pub fn ended_to(ended: Ended) -> String {
     serde_json::to_value(ended)
         .ok()
         .and_then(|value| value.as_str().map(str::to_string))
@@ -456,5 +528,5 @@ pub(crate) fn ended_to(ended: Ended) -> String {
 }
 
 #[cfg(test)]
-#[path = "match_play.test.rs"]
+#[path = "lib.test.rs"]
 mod tests;

@@ -83,21 +83,18 @@ test-cabinet-voxel-mesh = { path = "../voxel-mesh", default-features = false }
 # color type core reads the produced `rig.json` and `[voxel] background` through.
 # Linked without the `cli` feature (no clap/serde_json), the same as the voxel dep.
 test-cabinet-model-core = { path = "../model-core", default-features = false }
-# The Foray adversarial game engine and its wasm host. The `AdversarialValidator`
-# loads a submission and the committed baseline opponent and runs the single
-# canonical match through the **shared** host (`foray-host`), so the validator and
-# the `foray` CLI use one host implementation. `foray-core` supplies the rules and
-# the board/replay types; the wasmtime dependency lives entirely in `foray-host`.
+# The match runner over the Foray and Lattice wasm hosts. The `AdversarialValidator`
+# plays a submission against the committed baselines through `play_match`, and the
+# `PerformanceValidator` runs a submission engine over each held-out case through
+# `performance::run_case`, so the validators, the arena and the `foray`/`lattice`
+# CLIs play through one runner over one host implementation. The wasmtime
+# dependency lives entirely in the hosts.
+test-cabinet-match-play = { path = "../match-play" }
+# The Foray rules and replay types the adversarial validator records a match from,
+# and the Lattice snapshot type the performance validator writes a case's produced
+# state in.
 foray-core = { path = "../foray-core" }
-foray-host = { path = "../foray-host" }
-# The Lattice performance engine oracle and its wasm host. The
-# `PerformanceValidator` loads a submission engine and runs it once per held-out
-# input case through the **shared** host (`lattice-host`), scoring it against the
-# `lattice-core` oracle, so the validator and the `lattice` CLI use one host
-# implementation. `lattice-core` supplies the scenario/state types and the oracle;
-# the wasmtime dependency lives entirely in `lattice-host`.
 lattice-core = { path = "../lattice-core", default-features = false }
-lattice-host = { path = "../lattice-host" }
 tracing = { workspace = true }
 # Propagation only — the library never pulls in the OTLP exporters/SDK (those
 # live behind the `otlp` feature the binaries enable). This keeps `crates/core`

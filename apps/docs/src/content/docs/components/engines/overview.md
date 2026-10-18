@@ -19,7 +19,7 @@ it out at `engines/`.
 | `packages/lattice-runtime` (`@clockwyrks/lattice-runtime`)                           | The browser playback of a lattice factory: the renderer, the interpolation and `lattice-core` compiled to the playback ABI |
 | `crates/foray-core`, `crates/foray-host`, the `foray-ref-*` crates and the SDK       | The [adversarial](/testing/adversarial/foray/architecture/) simulation, its wasm host and baselines                        |
 | `crates/lattice-core`, `crates/lattice-host`, the `lattice-ref-*` crates and the SDK | The [performance](/testing/performance/lattice/architecture/) simulation, its wasm host and baselines                      |
-| `match_play`                                                                         | The match runner over the two hosts                                                                                        |
+| `crates/match-play` (`test-cabinet-match-play`)                                      | The match runner over the two hosts                                                                                        |
 
 ## The authored engines
 

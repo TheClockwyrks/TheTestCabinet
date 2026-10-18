@@ -19,7 +19,7 @@ use std::collections::HashSet;
 use std::path::Path;
 
 use test_cabinet_backend_client::BackendClient;
-use test_cabinet_core::match_play::{
+use test_cabinet_match_play::{
     ARENA_OPPONENT_IDS, ControllerKind, ControllerRef, ResolvedController,
 };
 

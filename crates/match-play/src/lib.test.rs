@@ -6,16 +6,16 @@ use std::path::PathBuf;
 use foray_core::board::Team;
 
 use super::*;
-use crate::test_case::{
-    AssetDimension, AssetKind, BuildCommands, ContractSpec, SandboxSpec, SimulationSpec,
-    TestCaseVersion, TestType,
+use test_cabinet_contracts::engine::NONE_SLUG;
+use test_cabinet_contracts::test_case::{
+    AssetDimension, AssetKind, BuildCommands, ContractSpec, EngineSupport, SandboxSpec,
+    SimulationSpec, TestCaseVersion, TestType,
 };
 
-/// A copy of the committed Foray case folder under `testdata/definitions/`, where the
-/// baseline `references/*.wasm` live.
+/// A copy of the committed Foray case's baselines: the `references/*.wasm` every
+/// match below is played between.
 fn case_root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("testdata/definitions/test-cases/adversarial/easy/foray/v1.0.0")
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("testdata/foray")
 }
 
 /// A Foray version rooted at the real case, with a low `max_ticks` so a match
@@ -81,7 +81,7 @@ fn foray_version(max_ticks: u32) -> TestCaseVersion {
         init: None,
         asset_paths: Vec::new(),
         packages: Vec::new(),
-        engines: vec![crate::EngineSupport::unbounded(crate::engine::NONE_SLUG)],
+        engines: vec![EngineSupport::unbounded(NONE_SLUG)],
         variants: Vec::new(),
         common_references: Vec::new(),
         common_proofs: Vec::new(),
@@ -284,4 +284,62 @@ fn every_arena_opponent_resolves_from_the_committed_case() {
             .unwrap_or_else(|err| panic!("opponent `{id}` must resolve: {err}"));
         assert!(!wasm.is_empty(), "opponent `{id}` wasm is non-empty");
     }
+}
+
+#[test]
+fn play_match_reports_a_controller_that_fails_to_load() {
+    let version = foray_version(64);
+    let good = resolve_baseline(&version, "random").expect("baseline");
+
+    let played = play_match(&version, "red", b"\0not-wasm", "blue", &good).expect("played");
+    assert!(
+        matches!(
+            played,
+            Played::LoadFailed {
+                team: Team::Red,
+                ..
+            }
+        ),
+        "{played:?}"
+    );
+    let played = play_match(&version, "red", &good, "blue", b"\0not-wasm").expect("played");
+    assert!(
+        matches!(
+            played,
+            Played::LoadFailed {
+                team: Team::Blue,
+                ..
+            }
+        ),
+        "{played:?}"
+    );
+}
+
+#[test]
+fn a_case_missing_its_match_sections_names_each_one() {
+    let mut version = foray_version(64);
+    version.simulation = None;
+    version.contract = None;
+    let err = canonical_match_setup(&version, "red", "blue").expect_err("no setup");
+    assert!(matches!(err, Error::Case(_)));
+    assert_eq!(
+        err.to_string(),
+        "test case `foray@v1.0.0` declares no [contract], [simulation] for its adversarial match"
+    );
+}
+
+#[test]
+fn a_run_controller_resolves_from_the_run_output_dir() {
+    let version = foray_version(64);
+    let out = tempfile::tempdir().expect("tempdir");
+    let module = out
+        .path()
+        .join("run-1/implementation/target/wasm32-unknown-unknown/release/controller.wasm");
+    std::fs::create_dir_all(module.parent().expect("parent")).expect("dirs");
+    std::fs::write(&module, b"wasm").expect("module");
+
+    let bytes = resolve_run_controller(out.path(), "run-1", &version).expect("resolves");
+    assert_eq!(bytes, b"wasm");
+    let missing = resolve_run_controller(out.path(), "run-2", &version).expect_err("missing");
+    assert!(matches!(missing, Error::Io(_)));
 }

@@ -9,16 +9,16 @@ use foray_core::board::Team;
 use foray_core::config::{BoardParamsSerde, Rules, Simulation};
 use foray_core::replay::{Participants, REPLAY_VERSION, Replay, ReplayResult};
 use foray_core::state::{Ended, Kills, Score};
-use foray_host::{Decided, DecidedBy};
+use test_cabinet_match_play::{Decided, DecidedBy};
 
 use super::{AdversarialValidator, replay_entry, summarize};
 use crate::execution::ArtifactCollection;
-use crate::match_play::ended_to;
 use crate::test_case::{
     AssetDimension, AssetKind, BuildCommands, ContractSpec, SandboxSpec, SimulationSpec,
     TestCaseVersion, TestType, Variant,
 };
 use crate::validation::{AdversarialOutcome, AdversarialReplay, AdversarialTeam, Validator};
+use test_cabinet_match_play::ended_to;
 
 /// A bare default variant: the adversarial validator ignores the variant, so an
 /// empty one (no voxel override) is all these tests need.

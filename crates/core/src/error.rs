@@ -519,6 +519,20 @@ impl From<test_cabinet_backend_client::Error> for Error {
     }
 }
 
+/// The match runner's failures, as the run engine reports them: a case missing what a
+/// match needs and a wasm engine that cannot be built are both validation that could
+/// not be carried out, read exactly as they did when the runner was core's.
+impl From<test_cabinet_match_play::Error> for Error {
+    fn from(err: test_cabinet_match_play::Error) -> Self {
+        use test_cabinet_match_play::Error as MatchPlay;
+        match err {
+            MatchPlay::Case(detail) => Self::Validation(detail),
+            engine @ MatchPlay::Engine(_) => Self::Validation(engine.to_string()),
+            MatchPlay::Io(err) => Self::Io(err),
+        }
+    }
+}
+
 impl From<test_cabinet_suites::Error> for Error {
     fn from(err: test_cabinet_suites::Error) -> Self {
         use test_cabinet_suites::Error as Suites;

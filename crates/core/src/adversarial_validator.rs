@@ -9,9 +9,9 @@
 //! 1. reads the submission module (Red) from `build.module` once,
 //! 2. plays it against each committed reference opponent (Blue) in
 //!    [`AUTO_REPLAY_OPPONENTS`] — the three baselines plus the hidden `fuel-probe`
-//!    — through the shared [`foray_host`] host (the very same host the
-//!    [`foray` CLI`](../../../crates/foray-cli) uses, so there is exactly one host
-//!    implementation),
+//!    — through the shared match runner ([`play_match`]) over the `foray-host`
+//!    host (the very same host the `foray` CLI and the arena use, so there is
+//!    exactly one host implementation),
 //! 3. writes each published, browser-playable replay into the run tree (the
 //!    canonical opponent's as `replay.json`, the rest as `replay-<i>.json`) so they
 //!    are collected and served as ordinary run assets, and
@@ -31,14 +31,13 @@
 
 use foray_core::board::Team;
 use foray_core::replay::Replay;
-use foray_host::{Decided, RunError, board_for, run_match};
+use test_cabinet_match_play::{
+    AUTO_REPLAY_OPPONENTS, Decided, Error as MatchError, Played, outcome_from, play_match,
+    replay_filename, resolve_baseline, win_type_for,
+};
 
 use crate::error::Result;
 use crate::execution::ArtifactCollection;
-use crate::match_play::{
-    AUTO_REPLAY_OPPONENTS, canonical_match_setup, outcome_from, replay_filename, resolve_baseline,
-    win_type_for,
-};
 use crate::reference::RenderedReference;
 use crate::test_case::{ProofFile, TestCaseVersion, Variant};
 use crate::validation::{
@@ -142,48 +141,52 @@ impl Validator for AdversarialValidator {
                 }
             };
 
-            // Build the canonical match setup — the single shared source of the
-            // map/seed/sandbox/simulation params (also used by the arena modes). The
-            // board is generated deterministically from the recorded seed and params
-            // so the replay reconstructs the identical maze on playback. Missing
-            // `[contract]`/`[sandbox]`/`[simulation]` is a case-authoring error.
-            let setup = match canonical_match_setup(test_case, SUBMISSION_ID, opponent_id) {
-                Ok(setup) => setup,
-                Err(err) => return Ok(failed(&err.to_string(), proof_results)),
-            };
-            let board = board_for(&setup);
-
+            // Play the canonical match through the shared runner — the single source
+            // of the map/seed/sandbox/simulation params (also used by the arena
+            // modes). The board is generated deterministically from the recorded
+            // seed and params so the replay reconstructs the identical maze on
+            // playback. Missing `[contract]`/`[sandbox]`/`[simulation]` is a
+            // case-authoring error.
+            //
             // A controller that fails to *load* (does not compile to a valid module
-            // or is missing the contract export) is a `RunError` — the match never
-            // starts; that is the submission forfeiting by failing to present a
-            // controller. A controller that loads but breaks a rule mid-match
-            // forfeits through the host, which still returns a replay.
-            let (replay, decided) = match run_match(&red_wasm, &blue_wasm, board, &setup) {
+            // or is missing the contract export) never starts the match; that is the
+            // submission forfeiting by failing to present a controller. A controller
+            // that loads but breaks a rule mid-match forfeits through the host, which
+            // still returns a replay.
+            let played =
+                match play_match(test_case, SUBMISSION_ID, &red_wasm, opponent_id, &blue_wasm) {
+                    Ok(played) => played,
+                    Err(err @ MatchError::Engine(_)) => {
+                        return Ok(failed(&err.to_string(), proof_results));
+                    }
+                    // A case-authoring failure reads as the run engine's validation
+                    // failure, as it always has.
+                    Err(err) => {
+                        return Ok(failed(&crate::Error::from(err).to_string(), proof_results));
+                    }
+                };
+            let (replay, decided) = match played {
                 // The host alone meters fuel, so the efficiency tie-break (which
-                // decides a level-score match) must be read off the host summary
-                // before we keep just the replay.
-                Ok(summary) => {
-                    let decided = summary.decided();
-                    (summary.replay, decided)
-                }
-                Err(RunError::LoadRed(err)) => {
+                // decides a level-score match) is read off what it played.
+                Played::Decided(played) => (played.replay, played.decided),
+                Played::LoadFailed {
+                    team: Team::Red,
+                    reason,
+                } => {
                     // A controller was emitted (it just won't load): record its path
                     // so a reviewer could still inspect the artifact.
                     return Ok(forfeit_loss(
                         proof_results,
                         module_str,
-                        format!("the submission controller failed to load: {err}"),
+                        format!("the submission controller failed to load: {reason}"),
                     ));
                 }
-                Err(RunError::LoadBlue(err)) => {
+                Played::LoadFailed {
+                    team: Team::Blue,
+                    reason,
+                } => {
                     return Ok(failed(
-                        &format!("the opponent `{opponent_id}` failed to load: {err}"),
-                        proof_results,
-                    ));
-                }
-                Err(RunError::Engine(err)) => {
-                    return Ok(failed(
-                        &format!("the wasm engine could not be built: {err}"),
+                        &format!("the opponent `{opponent_id}` failed to load: {reason}"),
                         proof_results,
                     ));
                 }
@@ -230,7 +233,7 @@ impl Validator for AdversarialValidator {
 /// Build one [`AdversarialReplay`] from a decided match, from the **submission's**
 /// (Red's) perspective. `decided` carries the efficiency tie-break, and the
 /// winner/ended/outcome derivation is the shared
-/// [`match_play`](crate::match_play) logic, so a run's recorded result and an arena
+/// [`test_cabinet_match_play`] logic, so a run's recorded result and an arena
 /// match's summary describe (and decide) the same match identically.
 fn replay_entry(
     opponent: &str,
