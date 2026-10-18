@@ -16,9 +16,10 @@
 
 use std::path::Path;
 
+use test_cabinet_backend_client::HttpBackendClient;
 use test_cabinet_core::{
-    ArtifactCollection, BackendPublisher, CommandRunner, HttpBackendClient, PublishConfig,
-    Publisher, ReleaseRequest, RunRecord, SystemCommandRunner, find_build_output,
+    ArtifactCollection, BackendPublisher, CommandRunner, PublishConfig, Publisher, ReleaseRequest,
+    RunRecord, SystemCommandRunner, find_build_output,
 };
 
 /// The links a successful release produced.

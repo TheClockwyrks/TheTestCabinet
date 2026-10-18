@@ -15,10 +15,13 @@ path = "src/lib.rs"
 
 [dependencies]
 # The shared adversarial engine lives in core: `match_play` (`run_quick_match`,
-# `run_tournament`) plus `HttpBackendClient`, which transitively brings in
-# `foray-host`/`wasmtime` (the CPU-bound wasm sandbox a match executes in). So
-# the arena reuses the engine, not reinvents it.
+# `run_tournament`), which transitively brings in `foray-host`/`wasmtime` (the
+# CPU-bound wasm sandbox a match executes in). So the arena reuses the engine, not
+# reinvents it.
 test-cabinet-core = { path = "../core" }
+# The backend's HTTP client, from contracts: it resolves pushed controllers and
+# publishes tournaments through `HttpBackendClient`.
+test-cabinet-backend-client = { path = "../../contracts/crates/backend-client" }
 # A quick match's response carries a `foray-core` `Replay` (the browser-playable
 # recording); depend on it for that one type, as the worker did.
 foray-core = { path = "../foray-core" }

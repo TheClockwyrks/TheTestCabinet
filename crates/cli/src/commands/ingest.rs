@@ -18,10 +18,10 @@
 use std::sync::Arc;
 
 use anyhow::Context;
+use test_cabinet_backend_client::{HttpBackendClient, IngestMode, IngestProgress, IngestSummary};
 use test_cabinet_core::remote_backend::{
     AZ_LOGIN, AzLogin, RemoteBackend, SystemAzRunner, az_login, remote_target,
 };
-use test_cabinet_core::{HttpBackendClient, IngestMode, IngestProgress, IngestSummary};
 
 use crate::cli::IngestArgs;
 use crate::config;

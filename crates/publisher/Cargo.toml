@@ -15,6 +15,8 @@ path = "src/lib.rs"
 
 [dependencies]
 test-cabinet-core = { path = "../core" }
+# The backend's HTTP client, from contracts.
+test-cabinet-backend-client = { path = "../../contracts/crates/backend-client" }
 # The publisher is a binary: it owns telemetry init, so it pulls the heavy `otlp`
 # feature (the propagation-only default is for libraries like `core`), exactly as
 # the driver's main does.

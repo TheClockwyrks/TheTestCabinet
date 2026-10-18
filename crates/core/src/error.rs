@@ -518,6 +518,19 @@ impl From<test_cabinet_contracts::test_case::VariantNotFound> for Error {
     }
 }
 
+/// The backend client's errors are a subset of this crate's, variant for variant,
+/// so a failure reads the same as when the client was a module of this crate.
+impl From<test_cabinet_backend_client::Error> for Error {
+    fn from(err: test_cabinet_backend_client::Error) -> Self {
+        use test_cabinet_backend_client::Error as Client;
+        match err {
+            Client::Publish(detail) => Self::Publish(detail),
+            Client::Ingest(detail) => Self::Ingest(detail),
+            Client::VariantNotFound(err) => err.into(),
+        }
+    }
+}
+
 impl From<test_cabinet_suites::Error> for Error {
     fn from(err: test_cabinet_suites::Error) -> Self {
         use test_cabinet_suites::Error as Suites;

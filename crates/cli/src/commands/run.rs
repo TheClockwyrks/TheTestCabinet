@@ -11,10 +11,9 @@
 use std::path::PathBuf;
 
 use anyhow::{Context, bail};
-use test_cabinet_core::backend_client::LiveItem;
+use test_cabinet_backend_client::{BackendClient, HttpBackendClient, LiveItem, PublishedRun};
 use test_cabinet_core::{
-    BackendClient, HarnessSlug, HttpBackendClient, JobState, JobStatusOut, LaunchBody, NONE_SLUG,
-    PublishedRun, RunRecord, runtime_hours_to_seconds,
+    HarnessSlug, JobState, JobStatusOut, LaunchBody, NONE_SLUG, RunRecord, runtime_hours_to_seconds,
 };
 
 use crate::cli::RunArgs;

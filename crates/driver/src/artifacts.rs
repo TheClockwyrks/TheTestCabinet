@@ -21,7 +21,8 @@ use std::fs::File;
 use std::io::Seek;
 use std::path::Path;
 
-use test_cabinet_core::{BackendClient, HttpBackendClient, RunRecord, find_build_output};
+use test_cabinet_backend_client::{BackendClient, HttpBackendClient};
+use test_cabinet_core::{RunRecord, find_build_output};
 use tokio_util::io::ReaderStream;
 
 /// A failure tarring or uploading the produced run tree.
@@ -416,7 +417,7 @@ pub async fn upload_replay_to_backend(
     backend_url: &str,
     record: &RunRecord,
     out_dir: &Path,
-) -> test_cabinet_core::Result<()> {
+) -> test_cabinet_backend_client::Result<()> {
     let replay_path = out_dir
         .join(&record.id)
         .join(test_cabinet_core::gg_session_assembly::GG_SESSION_TREE_ARTIFACT);
@@ -453,7 +454,7 @@ pub async fn upload_code_analysis_to_backend(
     backend_url: &str,
     record: &RunRecord,
     out_dir: &Path,
-) -> test_cabinet_core::Result<()> {
+) -> test_cabinet_backend_client::Result<()> {
     let path = out_dir
         .join(&record.id)
         .join(test_cabinet_core::CODE_ANALYSIS_TREE_ARTIFACT);

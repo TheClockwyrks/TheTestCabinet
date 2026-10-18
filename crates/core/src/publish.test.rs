@@ -7,7 +7,8 @@ use std::sync::Mutex;
 
 use super::*;
 use crate::backend_client::{
-    BackendClient, PublishAck, PublishedRun, ResolvedArtifact, ResolvedReference, RunPage,
+    BackendClient, PublishAck, PublishedRun, ResolvedArtifact, ResolvedReference,
+    Result as ClientResult, RunPage,
 };
 use crate::metrics::{Cost, RunMetrics, TokenCounts};
 use crate::review::Writeup;
@@ -310,13 +311,13 @@ struct MockBackend;
 
 #[async_trait::async_trait]
 impl BackendClient for MockBackend {
-    async fn catalog(&self) -> Result<Vec<TestCase>> {
+    async fn catalog(&self) -> ClientResult<Vec<TestCase>> {
         Ok(vec![])
     }
-    async fn versions(&self, _slug: &str) -> Result<Vec<String>> {
+    async fn versions(&self, _slug: &str) -> ClientResult<Vec<String>> {
         Ok(vec![])
     }
-    async fn resolve_version(&self, _slug: &str, _version: &str) -> Result<TestCaseVersion> {
+    async fn resolve_version(&self, _slug: &str, _version: &str) -> ClientResult<TestCaseVersion> {
         unimplemented!("not exercised by release tests")
     }
     async fn artifact(
@@ -324,7 +325,7 @@ impl BackendClient for MockBackend {
         _slug: &str,
         _version: &str,
         _source: &Path,
-    ) -> Result<ResolvedArtifact> {
+    ) -> ClientResult<ResolvedArtifact> {
         unimplemented!("not exercised by release tests")
     }
     async fn references(
@@ -332,25 +333,29 @@ impl BackendClient for MockBackend {
         _slug: &str,
         _version: &str,
         _variant: &str,
-    ) -> Result<Vec<ResolvedReference>> {
+    ) -> ClientResult<Vec<ResolvedReference>> {
         Ok(vec![])
     }
-    async fn prompt_template(&self, _slug: &str, _version: &str) -> Result<String> {
+    async fn prompt_template(&self, _slug: &str, _version: &str) -> ClientResult<String> {
         Ok(String::new())
     }
-    async fn submit_review(&self, _run_id: &str, _review: &Writeup) -> Result<()> {
+    async fn submit_review(&self, _run_id: &str, _review: &Writeup) -> ClientResult<()> {
         Ok(())
     }
-    async fn publish_run(&self, run_id: &str) -> Result<PublishAck> {
+    async fn publish_run(&self, run_id: &str) -> ClientResult<PublishAck> {
         Ok(PublishAck {
             publish_job_id: format!("pj-{run_id}"),
             live_url: format!("/publish-jobs/pj-{run_id}/live"),
         })
     }
-    async fn list_runs(&self, _before: Option<&str>, _limit: Option<usize>) -> Result<RunPage> {
+    async fn list_runs(
+        &self,
+        _before: Option<&str>,
+        _limit: Option<usize>,
+    ) -> ClientResult<RunPage> {
         unimplemented!("not exercised by release tests")
     }
-    async fn read_run(&self, _id: &str) -> Result<PublishedRun> {
+    async fn read_run(&self, _id: &str) -> ClientResult<PublishedRun> {
         unimplemented!("not exercised by release tests")
     }
 }

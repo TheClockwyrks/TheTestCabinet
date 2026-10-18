@@ -30,9 +30,9 @@
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, bail};
-use test_cabinet_core::backend_client::PublishLiveItem;
+use test_cabinet_backend_client::{BackendClient, HttpBackendClient, PublishLiveItem};
 use test_cabinet_core::publish_job_api::{PublishResult, PublishState};
-use test_cabinet_core::{BackendClient, HttpBackendClient, Writeup, parse_writeup};
+use test_cabinet_core::{Writeup, parse_writeup};
 
 use crate::cli::{PublishArgs, ReviewArgs};
 use crate::config;

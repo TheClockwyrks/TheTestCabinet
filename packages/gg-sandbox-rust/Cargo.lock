@@ -205,6 +205,10 @@ name = "contract-codegen"
 version = "0.1.0"
 
 [[patch.unused]]
+name = "test-cabinet-backend-client"
+version = "0.1.0"
+
+[[patch.unused]]
 name = "test-cabinet-contracts"
 version = "0.1.0"
 

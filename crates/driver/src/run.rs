@@ -19,15 +19,16 @@ mod tests;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use test_cabinet_backend_client::{BackendClient, HttpBackendClient};
 use test_cabinet_code_analysis::StaticCodeAnalyzer;
 use test_cabinet_core::ToolchainStage;
 use test_cabinet_core::gg_session_assembly::GgSessionAssembler;
 use test_cabinet_core::{
-    ArtifactCollector, BackendClient, CliArtifactCollector, CliContainerRuntime, ContainerRuntime,
+    ArtifactCollector, CliArtifactCollector, CliContainerRuntime, ContainerRuntime,
     CredBytesSource, DefaultHarnessRegistry, DispatchValidator, Error, FsRepoSeeder,
-    HttpBackendClient, OrchestratorCatalog, PrerenderedReferenceRenderer, PriorGameJamEntry,
-    RenderedReference, RunCancellation, RunEngine, RunRecord, RunRequest, RunState, RunStateExt,
-    TestCaseCatalog, TestCaseVersion, TestType, materialize_version,
+    OrchestratorCatalog, PrerenderedReferenceRenderer, PriorGameJamEntry, RenderedReference,
+    RunCancellation, RunEngine, RunRecord, RunRequest, RunState, RunStateExt, TestCaseCatalog,
+    TestCaseVersion, TestType, materialize_version,
 };
 use tokio::sync::mpsc::UnboundedSender;
 

@@ -24,6 +24,10 @@ test-cabinet-contracts = { path = "../../contracts/crates/contracts" }
 # `content_digest`, `content_labels`, and the halves of `execution`, `validator` and
 # `seeding` that moved).
 test-cabinet-suites = { path = "../../contracts/crates/suites" }
+# The backend's HTTP client, re-exported as `backend_client` at its old path beside
+# the run engine's extensions of it (`materialize_version` and the renderer of the
+# backend's rendered references).
+test-cabinet-backend-client = { path = "../../contracts/crates/backend-client" }
 # Secret scrubbing, re-exported as `redact` at its old path.
 test-cabinet-redact = { path = "../../contracts/crates/redact" }
 # The built-in engine catalog (`built_in_catalog`), re-exported as `engine::built_in_catalog`.
