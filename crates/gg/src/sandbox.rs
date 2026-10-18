@@ -104,6 +104,9 @@ mod locate;
 mod membrane;
 mod operations;
 mod outcome;
+// The test suite's cross-process store of prepared programs: tests alone, never an arm.
+#[cfg(test)]
+mod prepared_cache;
 pub(crate) mod signatures;
 
 pub use invoker::OperationApi;
