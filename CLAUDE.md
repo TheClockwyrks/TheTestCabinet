@@ -41,6 +41,7 @@ lives in, checked out as a submodule at this repository's root.
 | Console (`console.testcabinet.ai`; the operator GUI) | [`components/web/overview.md`](apps/docs/src/content/docs/components/web/overview.md) | `console.testcabinet.ai/` |
 | Operator client (`client-tauri`: the Tauri shell for Windows, Linux, macOS and Android that loads the console) | [`components/client/overview.md`](apps/docs/src/content/docs/components/client/overview.md) | `client-tauri/` |
 | Site (the public gallery on Pages, the `tcab.ai` share-link Worker and the preview-tag Worker) | [`components/site/overview.md`](apps/docs/src/content/docs/components/site/overview.md) | `testcabinet.ai/` |
+| gg's public site (`gg.rocks` on Pages, presenting gg's documentation pages at the gg version it pins) | [`development/releasing.md#static-site-topology`](apps/docs/src/content/docs/development/releasing.md#static-site-topology) | `gg.rocks/` |
 | UI library (`ui-common`: `@clockwyrks/ui` and `@clockwyrks/run-stats`) | [`components/ui/overview.md`](apps/docs/src/content/docs/components/ui/overview.md) | `ui-common/` |
 | Voxel runtime (`@clockwyrks/voxel-runtime` — poses/renders a produced voxel rig; pure-core + three) | [`components/voxel-runtime/overview.md`](apps/docs/src/content/docs/components/voxel-runtime/overview.md) | `engines/` |
 | Particle runtime (`@clockwyrks/particle-runtime` — simulates/renders a produced particle `system.json`; pure-core + three + canvas) | [`components/particle-runtime/overview.md`](apps/docs/src/content/docs/components/particle-runtime/overview.md) | `engines/` |
@@ -49,9 +50,10 @@ lives in, checked out as a submodule at this repository's root.
 Where each responsibility lives, the edges between the repositories and how a
 dependency is named:
 [Repositories](apps/docs/src/content/docs/development/repositories.md#where-each-responsibility-lives).
-Every repository but `contracts`, `engines`, `gg`, `test-suites` and
-`cold-storage` is still a directory of this tree today (`crates/`, `apps/`,
-`packages/`), so until it is extracted its code is found there.
+Every repository but `contracts`, `engines`, `gg`, `gg.rocks`,
+`microservice-repos`, `test-suites` and `cold-storage` is still a directory of
+this tree today (`crates/`, `apps/`, `packages/`), so until it is extracted its
+code is found there.
 
 The shared packages: `@clockwyrks/run-record` (the run record contract; see
 [`components/contracts/run-records.md`](apps/docs/src/content/docs/components/contracts/run-records.md)),

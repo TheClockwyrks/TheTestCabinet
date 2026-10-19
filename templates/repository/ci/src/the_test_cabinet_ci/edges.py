@@ -263,6 +263,7 @@ DATA_EDGES: tuple[DataEdge, ...] = (
     DataEdge("console.testcabinet.ai", "test-suites", "the vendored sprite atlas and reference scenarios"),
     DataEdge("the-spec-cabinet", "test-suites", "the suite being authored"),
     DataEdge("client-tauri", "console.testcabinet.ai", "the URL it loads"),
+    DataEdge("gg.rocks", "gg", "the documentation pages it presents"),
     DataEdge("microservice-driver", "microservice-artifacts", "HTTP, the run tree uploads"),
     DataEdge("microservice-driver", "microservice-repos", "HTTP, the bundle uploads"),
     DataEdge("microservice-backend", "microservice-artifacts", "HTTP, the dataset writes"),

@@ -28,6 +28,7 @@
     "/contracts/**",
     "/engines/**",
     "/gg/**",
+    "/gg.rocks/**",
     "/microservice-repos/**",
     "/apps/docs/src/content/docs/gg/**",
     "/test-suites/**",
