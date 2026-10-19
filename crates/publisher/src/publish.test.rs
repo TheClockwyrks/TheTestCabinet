@@ -20,6 +20,7 @@ use test_cabinet_contracts::run_record::{
 use test_cabinet_contracts::test_case::TestType;
 use test_cabinet_contracts::validation::ValidationSummary;
 
+use crate::pages::tests::StubPagesApi;
 use crate::release::{CommandOutput, CommandRunner};
 
 /// A [`CommandRunner`] standing in for `gh`/`git`/`wrangler`: it records every call
@@ -166,7 +167,7 @@ fn fixture_run_dir(record: &RunRecord) -> (tempfile::TempDir, PathBuf) {
 }
 
 #[tokio::test]
-async fn releases_source_then_build_and_returns_both_links() {
+async fn deploys_the_build_then_releases_the_source_and_returns_both_links() {
     // `PublishConfig::from_env` requires the publish targets (there is no compiled-in
     // fallback); the dispatcher sets these on every publish Job. Spell out the
     // production values the assertions below expect.
@@ -177,8 +178,9 @@ async fn releases_source_then_build_and_returns_both_links() {
     let record = sample_record();
     let (_temp, run_dir) = fixture_run_dir(&record);
     let runner = StubRunner::default();
+    let pages = StubPagesApi::with(Vec::new()).await;
 
-    let links = release_with_runner(&run_dir, runner.clone())
+    let links = release_with_runner(&run_dir, runner.clone(), pages.api())
         .await
         .expect("release should succeed");
 
@@ -191,8 +193,9 @@ async fn releases_source_then_build_and_returns_both_links() {
         Some("https://abc123.test-cabinet-runs.pages.dev")
     );
 
-    // The two steps ran in order, committing the implementation before the push and
-    // releasing the code before deploying the build.
+    // The two steps ran in the order `components/backend/results.md` gives them:
+    // the build was looked up and deployed before the repository was published,
+    // and the implementation was committed before the push.
     let calls = runner.calls();
     let commit = calls
         .iter()
@@ -205,8 +208,9 @@ async fn releases_source_then_build_and_returns_both_links() {
         commit.is_some() && create.is_some() && deploy.is_some(),
         "{calls:?}"
     );
+    assert_eq!(pages.requests().len(), 1, "the deployment was looked up");
     assert!(commit < create, "commit before push: {calls:?}");
-    assert!(create < deploy, "code released before the build: {calls:?}");
+    assert!(deploy < commit, "build deployed before the code: {calls:?}");
 }
 
 #[tokio::test]
@@ -215,7 +219,8 @@ async fn a_missing_record_fails_cleanly() {
     let run_dir = temp.path().join("no-such-run");
     std::fs::create_dir_all(&run_dir).expect("mkdir");
 
-    let err = release_with_runner(&run_dir, StubRunner::default())
+    let pages = StubPagesApi::with(Vec::new()).await;
+    let err = release_with_runner(&run_dir, StubRunner::default(), pages.api())
         .await
         .expect_err("a missing record must fail");
     assert!(

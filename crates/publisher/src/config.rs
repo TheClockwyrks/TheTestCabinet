@@ -16,9 +16,11 @@
 //!
 //! `TCAB_GITHUB_ORG` / `TCAB_PAGES_PROJECT` are **not** parsed here — they are read
 //! directly by [`PublishConfig::from_env`](crate::release::PublishConfig::from_env)
-//! when the release runs. `GH_TOKEN` / `CLOUDFLARE_API_TOKEN` arrive via the Job's
-//! `envFrom` and are consumed by `gh`/`wrangler` directly; the binary never reads
-//! them.
+//! when the release runs. `GH_TOKEN`, `CLOUDFLARE_ACCOUNT_ID` and
+//! `CLOUDFLARE_API_TOKEN` arrive via the Job's `envFrom`. `GH_TOKEN` is consumed by
+//! `gh` alone. The Cloudflare pair is consumed by `wrangler` and read by
+//! [`PagesApi::from_env`](crate::pages::PagesApi::from_env) when the release runs,
+//! to look the build's deployment up before deploying it; both are required.
 
 use std::path::PathBuf;
 

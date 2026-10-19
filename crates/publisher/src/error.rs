@@ -16,6 +16,20 @@ pub enum Error {
          run's implementation; it is left as it is"
     )]
     Diverged(String),
+    /// The Cloudflare API could not list the Pages project's deployments: the
+    /// request failed in transport (`status` is `None`), was answered with an
+    /// error `status`, or returned a listing that could not be read.
+    #[error(
+        "publishing the run: listing the Pages deployments failed{}: {detail}",
+        status.map(|code| format!(" with HTTP {code}")).unwrap_or_default()
+    )]
+    PagesApi {
+        /// The HTTP status the API answered with, or `None` when no response
+        /// arrived.
+        status: Option<u16>,
+        /// Why the request failed.
+        detail: String,
+    },
 }
 
 /// The result of a release step.

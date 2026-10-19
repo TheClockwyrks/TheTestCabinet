@@ -6,6 +6,7 @@
 use std::sync::Mutex;
 
 use super::*;
+use crate::pages::tests::{StubPagesApi, deployment};
 use test_cabinet_backend_client::{
     BackendClient, ResolvedArtifact, ResolvedReference, Result as ClientResult,
 };
@@ -479,8 +480,147 @@ async fn release_code_creates_a_public_repo_and_commits_before_the_push() {
     );
 }
 
+/// Release `build_dir`'s playable build through `publisher`, looking its
+/// deployment up in `stub`.
+async fn release_build_against(
+    publisher: BackendPublisher<MockRunner, MockBackend>,
+    stub: &StubPagesApi,
+    impl_dir: PathBuf,
+    build_dir: &Path,
+) -> (Result<Option<String>>, Vec<String>) {
+    let publisher = publisher.with_pages_api(stub.api());
+    let artifacts = ArtifactCollection::new(impl_dir);
+    let record = sample_record();
+    let request = ReleaseRequest {
+        record: &record,
+        artifacts: &artifacts,
+        build_dir: Some(build_dir),
+    };
+    let result = publisher.release_playable_build(&request).await;
+    (result, publisher.runner().calls())
+}
+
 #[tokio::test]
-async fn release_playable_build_deploys_and_captures_the_wrangler_url() {
+async fn release_playable_build_deploys_with_the_digest_and_captures_the_wrangler_url() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let (publisher, impl_dir, build_dir) = publisher_for(dir.path(), MockRunner::new(false));
+    std::fs::write(build_dir.join("index.html"), b"<!doctype html>").expect("write build");
+    let digest = build_digest(&build_dir).expect("digest");
+    let record = sample_record();
+    // The project holds deployments of this run's branch with another build and
+    // of this build on another branch; neither is reused.
+    let stub = StubPagesApi::with(vec![
+        deployment(
+            "https://other.test-cabinet-runs.pages.dev",
+            &record.id,
+            &"0".repeat(64),
+        ),
+        deployment(
+            "https://elsewhere.test-cabinet-runs.pages.dev",
+            "another-run",
+            &digest,
+        ),
+    ])
+    .await;
+
+    let (playable_build, calls) =
+        release_build_against(publisher, &stub, impl_dir, &build_dir).await;
+
+    // The playable build URL is the one wrangler reported, not a constructed host.
+    assert_eq!(
+        playable_build.expect("release build").as_deref(),
+        Some("https://abc123.test-cabinet-runs.pages.dev")
+    );
+    // The build was looked up, then deployed to Cloudflare Pages under the run-id
+    // branch alias, carrying the scrubbed build's digest as its commit hash.
+    assert_eq!(stub.requests().len(), 1);
+    let deploys: Vec<_> = calls
+        .iter()
+        .filter(|c| c.contains("wrangler pages deploy"))
+        .collect();
+    assert_eq!(deploys.len(), 1, "{calls:?}");
+    assert!(
+        deploys[0].contains(&format!("--branch={}", record.id))
+            && deploys[0].contains(&format!("--commit-hash={digest}"))
+            && deploys[0].contains("--project-name test-cabinet-runs"),
+        "{calls:?}"
+    );
+}
+
+#[tokio::test]
+async fn release_playable_build_reuses_the_deployment_of_the_same_build() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let (publisher, impl_dir, build_dir) = publisher_for(dir.path(), MockRunner::new(false));
+    std::fs::write(build_dir.join("index.html"), b"<!doctype html>").expect("write build");
+    let digest = build_digest(&build_dir).expect("digest");
+    let record = sample_record();
+    let stub = StubPagesApi::with(vec![deployment(
+        "https://3f6fa159.test-cabinet-runs.pages.dev",
+        &record.id,
+        &digest,
+    )])
+    .await;
+
+    let (playable_build, calls) =
+        release_build_against(publisher, &stub, impl_dir, &build_dir).await;
+
+    // The deployment an earlier attempt made is reported, and nothing is deployed.
+    assert_eq!(
+        playable_build.expect("release build").as_deref(),
+        Some("https://3f6fa159.test-cabinet-runs.pages.dev")
+    );
+    assert!(!calls.iter().any(|c| c.contains("wrangler")), "{calls:?}");
+}
+
+#[tokio::test]
+async fn release_playable_build_digests_the_scrubbed_build() {
+    // A leaked key is scrubbed before the digest is taken, so the digest the
+    // lookup searches for is that of the tree actually deployed.
+    let key = "sk-proj-DATA4digestSCRUBtest0123456789abcdefABCDEF";
+    let dir = tempfile::tempdir().expect("tempdir");
+    let (publisher, impl_dir, build_dir) = publisher_for(dir.path(), MockRunner::new(false));
+    std::fs::write(build_dir.join("app.js"), format!("const k = \"{key}\";")).expect("write");
+    let stub = StubPagesApi::with(Vec::new()).await;
+
+    let (playable_build, calls) =
+        release_build_against(publisher, &stub, impl_dir, &build_dir).await;
+    playable_build.expect("release build");
+
+    let scrubbed = std::fs::read_to_string(build_dir.join("app.js")).expect("read");
+    assert!(!scrubbed.contains(key), "{scrubbed}");
+    let digest = build_digest(&build_dir).expect("digest");
+    assert!(
+        calls
+            .iter()
+            .any(|c| c.contains(&format!("--commit-hash={digest}"))),
+        "{calls:?}"
+    );
+}
+
+#[tokio::test]
+async fn release_playable_build_fails_when_the_lookup_fails() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let (publisher, impl_dir, build_dir) = publisher_for(dir.path(), MockRunner::new(false));
+    let stub = StubPagesApi::serve(Vec::new(), axum::http::StatusCode::BAD_GATEWAY).await;
+
+    let (playable_build, calls) =
+        release_build_against(publisher, &stub, impl_dir, &build_dir).await;
+
+    assert!(
+        matches!(
+            playable_build,
+            Err(Error::PagesApi {
+                status: Some(502),
+                ..
+            })
+        ),
+        "{playable_build:?}"
+    );
+    assert!(!calls.iter().any(|c| c.contains("wrangler")), "{calls:?}");
+}
+
+#[tokio::test]
+async fn release_playable_build_without_a_pages_api_deploys_nothing() {
     let dir = tempfile::tempdir().expect("tempdir");
     let (publisher, impl_dir, build_dir) = publisher_for(dir.path(), MockRunner::new(false));
     let artifacts = ArtifactCollection::new(impl_dir);
@@ -491,21 +631,18 @@ async fn release_playable_build_deploys_and_captures_the_wrangler_url() {
         build_dir: Some(&build_dir),
     };
 
-    let playable_build = publisher
-        .release_playable_build(&request)
-        .await
-        .expect("release build");
+    let playable_build = publisher.release_playable_build(&request).await;
 
-    // The playable build URL is the one wrangler reported, not a constructed host.
-    assert_eq!(
-        playable_build.as_deref(),
-        Some("https://abc123.test-cabinet-runs.pages.dev")
-    );
-    // The build was deployed to Cloudflare Pages under the run-id branch alias.
-    let calls = publisher.runner().calls();
     assert!(
-        calls.iter().any(|c| c.contains("wrangler pages deploy")
-            && c.contains(&format!("--branch={}", record.id)))
+        matches!(playable_build, Err(Error::Publish(_))),
+        "{playable_build:?}"
+    );
+    assert!(
+        !publisher
+            .runner()
+            .calls()
+            .iter()
+            .any(|c| c.contains("wrangler"))
     );
 }
 

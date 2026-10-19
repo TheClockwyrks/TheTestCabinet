@@ -10,7 +10,8 @@
 //! site's dataset and deploying the build through a per-run GitHub Pages
 //! workflow): the dataset is gone (the backend exports the site's snapshot), and
 //! the build deploys to Cloudflare Pages directly — capturing the URL `wrangler`
-//! reports rather than constructing one.
+//! reports rather than constructing one, or reusing the deployment an earlier
+//! attempt made of the same build (see [`crate::pages`]).
 
 use std::borrow::Cow;
 use std::path::{Path, PathBuf};
@@ -25,6 +26,7 @@ use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
 
 use crate::error::{Error, Result};
+use crate::pages::{PagesApi, build_digest};
 
 /// A request to release a single finished run: publish its source + build. Used by
 /// the publisher Job to drive [`Publisher::release_code`] and
@@ -77,7 +79,8 @@ pub struct PublishConfig {
     pub repo_prefix: String,
     /// The Cloudflare Pages project the per-run builds deploy to. Each run is
     /// deployed under its own branch alias (`--branch=<run-id>`); the URL is read
-    /// from `wrangler`'s output, never constructed.
+    /// from `wrangler`'s output or the deployment the lookup finds, never
+    /// constructed.
     pub pages_project: String,
     /// The base the implementation is pushed under: the push goes to
     /// `<git_remote_base>/<org>/<repo>.git`. It is GitHub
@@ -371,6 +374,10 @@ pub struct BackendPublisher<R: CommandRunner, B: BackendClient> {
     runner: R,
     backend: B,
     push_retry: PushRetry,
+    /// The Cloudflare API the playable-build deploy looks its deployment up in
+    /// (see [`deploy_pages_build`]). Without one, a run with a build to deploy
+    /// fails rather than deploying without the lookup.
+    pages_api: Option<PagesApi>,
 }
 
 impl<R: CommandRunner, B: BackendClient> BackendPublisher<R, B> {
@@ -382,7 +389,15 @@ impl<R: CommandRunner, B: BackendClient> BackendPublisher<R, B> {
             runner,
             backend,
             push_retry: PushRetry::default(),
+            pages_api: None,
         }
+    }
+
+    /// Look the playable build's deployment up in `pages_api` before deploying
+    /// it, so a repeated deploy reuses the deployment it already made.
+    pub fn with_pages_api(mut self, pages_api: PagesApi) -> Self {
+        self.pages_api = Some(pages_api);
+        self
     }
 
     /// Override the push retry/delay policy. Used by tests to drive the retry
@@ -769,17 +784,21 @@ impl<R: CommandRunner, B: BackendClient> Publisher for BackendPublisher<R, B> {
         let Some(build_dir) = request.build_dir else {
             return Ok(None);
         };
+        let pages_api = self.pages_api.as_ref().ok_or_else(|| {
+            Error::Publish(
+                "no Cloudflare API is configured to look the build's deployment up in".to_string(),
+            )
+        })?;
         // Deploy the already-built static output to Cloudflare Pages under a
         // per-run branch alias, redacting any leaked API key from the built tree
         // first (a key the model wrote into a source file can have been carried
         // through the build into an emitted asset). The branch alias is the run
-        // id; the served URL is read back from wrangler's output rather than
-        // constructed, because Cloudflare sanitizes/truncates long branch-alias
-        // subdomains. This is the exact same Cloudflare-egress step a case
-        // variant's reference implementation deploys through — see
-        // [`deploy_pages_build`], which both paths share.
+        // id. A deployment of the same scrubbed build on that branch is reused,
+        // so the run keeps one deployment however often the step repeats; see
+        // [`deploy_pages_build`].
         let url = deploy_pages_build(
             &self.runner,
+            pages_api,
             build_dir,
             &self.config.pages_project,
             &request.record.id,
@@ -790,43 +809,53 @@ impl<R: CommandRunner, B: BackendClient> Publisher for BackendPublisher<R, B> {
 }
 
 /// Deploy an already-built static `build_dir` to a Cloudflare Pages `project`
-/// under `branch`, returning the served URL `wrangler` reports.
+/// under `branch`, or find the deployment an earlier attempt made of the same
+/// build, returning the URL it is served at.
 ///
-/// This is the shared Cloudflare-egress step behind two very different callers:
-/// a finished run's *playable build* ([`BackendPublisher::release_playable_build`],
-/// branch = the run id) and a case variant's authored *reference implementation*
-/// (`tcab publish-reference`, branch = `<slug>-<version>-<variant>`). Both build a
-/// static site into a `dist/`|`build/`|`out/` tree, both must scrub secrets before
-/// the tree leaves the operator's host, and both must learn the deployed URL the
-/// same way. Factoring the step here keeps the wrangler invocation, the
-/// redaction, and the URL read-back defined once.
-///
-/// The steps, in order:
+/// This is the playable-build step of a publish (branch = the run id). It makes
+/// one deployment per run, however often it is repeated (see
+/// `components/backend/results.md`, "Repeating a step"). The steps, in order:
 ///
 /// 1. **Redact.** `scrub_build_dir` rewrites any leaked provider API key out of
-///    every text file under `build_dir` in place, so a key the model (or an
-///    author) left in a source file cannot ship to the public site through a
-///    built asset.
-/// 2. **Deploy.** `wrangler pages deploy <build_dir> --project-name <project>
-///    --branch <branch>` is run through `runner` (a [`SystemCommandRunner`] in
-///    production, a mock in tests). A non-zero exit is surfaced with whatever
-///    wrangler wrote to *either* stream, since it prints most diagnostics to
-///    stdout.
-/// 3. **Read the URL back.** The deployed host is parsed out of wrangler's output
+///    every text file under `build_dir` in place, so a key the model left in a
+///    source file cannot ship to the public site through a built asset.
+/// 2. **Digest.** [`build_digest`] hashes the scrubbed tree. The digest is the
+///    deployment's commit hash, so a deployment records which build it serves.
+/// 3. **Look up.** [`PagesApi::find_deployment`] searches the project for a
+///    successful deployment on `branch` carrying the digest. One that exists is
+///    reused: its URL is returned and nothing is deployed.
+/// 4. **Deploy.** Otherwise `wrangler pages deploy <build_dir> --project-name
+///    <project> --branch=<branch> --commit-hash=<digest>` is run through `runner`
+///    (a [`SystemCommandRunner`] in production, a mock in tests). A non-zero exit
+///    is surfaced with whatever wrangler wrote to *either* stream, since it prints
+///    most diagnostics to stdout.
+/// 5. **Read the URL back.** The deployed URL is parsed out of wrangler's output
 ///    ([`parse_wrangler_url`]) rather than constructed: Cloudflare sanitizes and
 ///    truncates long branch-alias subdomains, so `https://<branch>.<project>.pages.dev`
-///    is *not* a reliable address. The URL wrangler reports is the only truth.
+///    is *not* a reliable address. The URL wrangler reports is the deployment's
+///    own (`https://<short id>.<project>.pages.dev`), the same URL the lookup
+///    returns for it.
 pub async fn deploy_pages_build(
     runner: &impl CommandRunner,
+    pages_api: &PagesApi,
     build_dir: &Path,
     pages_project: &str,
     branch: &str,
 ) -> Result<String> {
     scrub_build_dir(build_dir)?;
+    let digest = build_digest(build_dir)?;
+    if let Some(url) = pages_api
+        .find_deployment(pages_project, branch, &digest)
+        .await?
+    {
+        tracing::info!(%url, %branch, %digest, "reusing the build's existing Pages deployment");
+        return Ok(url);
+    }
     let dir = build_dir
         .to_str()
         .ok_or_else(|| Error::Publish("build directory path is not valid UTF-8".to_string()))?;
     let branch_arg = format!("--branch={branch}");
+    let commit_hash_arg = format!("--commit-hash={digest}");
     let output = runner
         .run(
             "wrangler",
@@ -837,6 +866,7 @@ pub async fn deploy_pages_build(
                 "--project-name",
                 pages_project,
                 &branch_arg,
+                &commit_hash_arg,
             ],
             None,
         )

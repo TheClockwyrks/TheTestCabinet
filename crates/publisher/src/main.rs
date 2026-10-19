@@ -1,8 +1,8 @@
 //! The `tcab-publisher` binary entrypoint.
 //!
 //! Resolves its configuration from the environment the dispatcher set, downloads the
-//! reviewed run's source tree from the artifact service, performs the GitHub-repo +
-//! Cloudflare Pages release (through
+//! reviewed run's source tree from the artifact service, performs the Cloudflare
+//! Pages + GitHub-repo release, in that order (through
 //! [`tcab_publisher::release::BackendPublisher`]) while streaming progress lines to the
 //! backend, then reports the terminal [`PublishResult`] — carrying the produced links
 //! on success or the reason on failure — and exits. There is no server and no flags;
@@ -103,10 +103,10 @@ async fn main() -> ExitCode {
 /// produced links on success, or a human-readable failure reason on any error — the
 /// caller turns either into the terminal [`PublishResult`].
 ///
-/// The publication preflight comes first and is load-bearing, not cosmetic: a job
-/// that runs against an already-published run would deploy a second Cloudflare Pages
-/// deployment for it. See the check itself for why an unreachable backend fails the
-/// job rather than falling through to a release.
+/// The publication preflight comes first: a job that runs against an
+/// already-published run reports the links the run carries and does nothing else.
+/// See the check itself for why an unreachable backend fails the job rather than
+/// falling through to a release.
 ///
 /// Progress lines are best-effort observation (relayed, never persisted), so a
 /// failure to post one is logged and the release continues; only the download and
@@ -115,10 +115,10 @@ async fn run(config: &Config, client: &PublishJobClient) -> Result<ReleasedLinks
     // Preflight: never release a run that is already published. A publish job can
     // legitimately reach this point against a published run — a duplicate enqueued
     // before the first one finished, or a retry after the live stream dropped once
-    // the release had already landed — and going ahead would deploy a *second*
-    // Cloudflare Pages deployment, since `wrangler pages deploy` mints a new one on
-    // every invocation. Reporting the links the run already carries makes the job a
-    // truthful no-op: the backend re-asserts the same links and leaves the original
+    // the release had already landed. Every release step is safe to repeat (the
+    // Pages deploy reuses the deployment of the same build, the repository publish
+    // reproduces its commit), but the links the run carries are the ones it was
+    // published with, so reporting them makes the job a truthful no-op: the backend re-asserts the same links and leaves the original
     // `published_at` intact.
     if let Some(published) = client
         .published_run(&config.run_id)
