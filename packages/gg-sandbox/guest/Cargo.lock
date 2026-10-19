@@ -433,28 +433,28 @@ checksum = "29666d0abbfad1e3dc4dcf6144730dd3a3ab225bbbdac83319345b1b44ccfc1b"
 
 [[patch.unused]]
 name = "api-codegen"
-version = "0.1.0"
+version = "0.2.0"
 
 [[patch.unused]]
 name = "contract-codegen"
-version = "0.1.0"
+version = "0.2.0"
 
 [[patch.unused]]
 name = "test-cabinet-backend-client"
-version = "0.1.0"
+version = "0.2.0"
 
 [[patch.unused]]
 name = "test-cabinet-contracts"
-version = "0.1.0"
+version = "0.2.0"
 
 [[patch.unused]]
 name = "test-cabinet-redact"
-version = "0.1.0"
+version = "0.2.0"
 
 [[patch.unused]]
 name = "test-cabinet-suites"
-version = "0.1.0"
+version = "0.2.0"
 
 [[patch.unused]]
 name = "test-cabinet-telemetry"
-version = "0.1.0"
+version = "0.2.0"

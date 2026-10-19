@@ -227,11 +227,11 @@ opt-level = 3
 # path into `contracts/`: inside the superrepo the patch table of
 # `.cargo/config.toml` sends this source to the sibling checkout, which may hold
 # crates and changes the tag does not yet carry.
-test-cabinet-contracts = { git = "https://github.com/TheClockwyrks/contracts", tag = "v0.1.0" }
-test-cabinet-suites = { git = "https://github.com/TheClockwyrks/contracts", tag = "v0.1.0" }
-test-cabinet-telemetry = { git = "https://github.com/TheClockwyrks/contracts", tag = "v0.1.0" }
-test-cabinet-redact = { git = "https://github.com/TheClockwyrks/contracts", tag = "v0.1.0" }
-test-cabinet-backend-client = { git = "https://github.com/TheClockwyrks/contracts", tag = "v0.1.0" }
+test-cabinet-contracts = { git = "https://github.com/TheClockwyrks/contracts", tag = "v0.2.0" }
+test-cabinet-suites = { git = "https://github.com/TheClockwyrks/contracts", tag = "v0.2.0" }
+test-cabinet-telemetry = { git = "https://github.com/TheClockwyrks/contracts", tag = "v0.2.0" }
+test-cabinet-redact = { git = "https://github.com/TheClockwyrks/contracts", tag = "v0.2.0" }
+test-cabinet-backend-client = { git = "https://github.com/TheClockwyrks/contracts", tag = "v0.2.0" }
 # Shared runtime dependencies inherited by member crates via { workspace = true }.
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

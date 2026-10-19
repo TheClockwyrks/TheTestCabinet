@@ -5102,7 +5102,7 @@ dependencies = [
 
 [[package]]
 name = "test-cabinet-backend-client"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "async-trait",
  "http",
@@ -5140,7 +5140,7 @@ dependencies = [
 
 [[package]]
 name = "test-cabinet-contracts"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "hex",
  "percent-encoding",
@@ -5458,7 +5458,7 @@ dependencies = [
 
 [[package]]
 name = "test-cabinet-redact"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "serde_json",
  "test-cabinet-contracts",
@@ -5507,7 +5507,7 @@ dependencies = [
 
 [[package]]
 name = "test-cabinet-suites"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "cuid2",
  "handlebars",
@@ -5526,7 +5526,7 @@ dependencies = [
 
 [[package]]
 name = "test-cabinet-telemetry"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "http",
@@ -6825,7 +6825,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.48.0",
 ]
 
 [[package]]
@@ -7435,8 +7435,8 @@ checksum = "b8848ee67ecc8aedbaf3e4122217aff892639231befc6a1b58d29fff4c2cabaa"
 
 [[patch.unused]]
 name = "api-codegen"
-version = "0.1.0"
+version = "0.2.0"
 
 [[patch.unused]]
 name = "contract-codegen"
-version = "0.1.0"
+version = "0.2.0"
