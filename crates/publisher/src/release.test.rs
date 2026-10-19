@@ -251,6 +251,8 @@ struct MockRunner {
     /// so the propagation-lag retry path can be exercised. Counts down as pushes
     /// are attempted.
     push_failures: Mutex<u32>,
+    /// How many leading `wrangler` runs fail before one succeeds.
+    wrangler_failures: Mutex<u32>,
     /// The tree the remote's `main` holds after a refused push, or `None` when
     /// the remote has no `main` (the fetch fails), as a freshly created and still
     /// empty repository does.
@@ -265,6 +267,7 @@ impl MockRunner {
         Self {
             repo_exists,
             push_failures: Mutex::new(0),
+            wrangler_failures: Mutex::new(0),
             remote_tree: None,
             calls: Mutex::new(Vec::new()),
             commit_envs: Mutex::new(Vec::new()),
@@ -275,6 +278,12 @@ impl MockRunner {
     /// GitHub rejecting the push until the new repo's write grant propagates.
     fn failing_first_pushes(mut self, n: u32) -> Self {
         self.push_failures = Mutex::new(n);
+        self
+    }
+
+    /// Make the first `n` `wrangler` runs fail before one succeeds.
+    fn failing_first_deploys(mut self, n: u32) -> Self {
+        self.wrangler_failures = Mutex::new(n);
         self
     }
 
@@ -335,8 +344,17 @@ impl CommandRunner for MockRunner {
             let mut remaining = self.push_failures.lock().expect("lock");
             (*remaining > 0).then(|| *remaining -= 1).is_some()
         };
+        let wrangler_fails = is_wrangler && {
+            let mut remaining = self.wrangler_failures.lock().expect("lock");
+            (*remaining > 0).then(|| *remaining -= 1).is_some()
+        };
         let (success, stdout) = if is_repo_view {
             (self.repo_exists, String::new())
+        } else if wrangler_fails {
+            (
+                false,
+                "✘ [ERROR] A request to the Cloudflare API failed.\n".to_string(),
+            )
         } else if is_wrangler {
             (
                 true,
@@ -403,6 +421,16 @@ impl BackendClient for MockBackend {
     }
 }
 
+/// Five attempts with no pause between them, so the retry paths run without
+/// sleeping.
+pub(super) fn instant_backoff() -> Backoff {
+    Backoff {
+        attempts: 5,
+        initial_delay: Duration::ZERO,
+        max_delay: Duration::ZERO,
+    }
+}
+
 fn publisher_for(
     dir: &Path,
     runner: MockRunner,
@@ -411,14 +439,11 @@ fn publisher_for(
     let build_dir = dir.join("dist");
     std::fs::create_dir_all(&impl_dir).expect("impl dir");
     std::fs::create_dir_all(&build_dir).expect("build dir");
-    // Zero out the propagation-lag delays so the release tests never actually
-    // sleep; the retry *count* is preserved so the retry path stays exercised.
-    let publisher =
-        BackendPublisher::new(sample_config(), runner, MockBackend).with_push_retry(PushRetry {
-            attempts: 5,
-            initial_delay: Duration::ZERO,
-            backoff: Duration::ZERO,
-        });
+    // Zero out the delays so the release tests never actually sleep; the retry
+    // *count* is kept so the retry paths stay exercised.
+    let publisher = BackendPublisher::new(sample_config(), runner, MockBackend)
+        .with_backoff(instant_backoff())
+        .with_create_settle(Duration::ZERO);
     (publisher, impl_dir, build_dir)
 }
 
@@ -617,6 +642,74 @@ async fn release_playable_build_fails_when_the_lookup_fails() {
         "{playable_build:?}"
     );
     assert!(!calls.iter().any(|c| c.contains("wrangler")), "{calls:?}");
+    // A 502 is transient: the lookup was made once per attempt.
+    assert_eq!(stub.requests().len(), 5);
+}
+
+#[tokio::test]
+async fn release_playable_build_fails_at_once_when_the_lookup_is_refused() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let (publisher, impl_dir, build_dir) = publisher_for(dir.path(), MockRunner::new(false));
+    let stub = StubPagesApi::serve(Vec::new(), axum::http::StatusCode::FORBIDDEN).await;
+
+    let (playable_build, calls) =
+        release_build_against(publisher, &stub, impl_dir, &build_dir).await;
+
+    assert!(
+        matches!(
+            playable_build,
+            Err(Error::PagesApi {
+                status: Some(403),
+                ..
+            })
+        ),
+        "{playable_build:?}"
+    );
+    assert_eq!(stub.requests().len(), 1, "a 403 is not retried");
+    assert!(!calls.iter().any(|c| c.contains("wrangler")), "{calls:?}");
+}
+
+#[tokio::test]
+async fn a_failed_wrangler_run_is_retried_after_looking_again() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let (publisher, impl_dir, build_dir) =
+        publisher_for(dir.path(), MockRunner::new(false).failing_first_deploys(1));
+    let stub = StubPagesApi::with(Vec::new()).await;
+
+    let (playable_build, calls) =
+        release_build_against(publisher, &stub, impl_dir, &build_dir).await;
+
+    assert_eq!(
+        playable_build.expect("the second deploy lands").as_deref(),
+        Some("https://abc123.test-cabinet-runs.pages.dev")
+    );
+    assert_eq!(
+        calls.iter().filter(|c| c.starts_with("wrangler ")).count(),
+        2,
+        "{calls:?}"
+    );
+    // Each attempt looked the deployment up before deploying.
+    assert_eq!(stub.requests().len(), 2);
+}
+
+#[tokio::test]
+async fn a_wrangler_run_that_keeps_failing_is_bounded_by_the_attempts() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let (publisher, impl_dir, build_dir) =
+        publisher_for(dir.path(), MockRunner::new(false).failing_first_deploys(99));
+    let stub = StubPagesApi::with(Vec::new()).await;
+
+    let (playable_build, calls) =
+        release_build_against(publisher, &stub, impl_dir, &build_dir).await;
+
+    let err = playable_build.expect_err("every deploy fails");
+    assert!(matches!(err, Error::Command(_)), "{err}");
+    assert!(err.to_string().contains("Cloudflare API failed"), "{err}");
+    assert_eq!(
+        calls.iter().filter(|c| c.starts_with("wrangler ")).count(),
+        5,
+        "{calls:?}"
+    );
 }
 
 #[tokio::test]
@@ -943,6 +1036,15 @@ async fn release_code_retries_the_push_through_the_propagation_lag() {
     let calls = publisher.runner().calls();
     let pushes = calls.iter().filter(|c| is_push(c)).count();
     assert_eq!(pushes, 3, "{calls:?}");
+    // Every attempt asked whether the repository exists before pushing.
+    assert_eq!(
+        calls
+            .iter()
+            .filter(|c| c.starts_with("gh repo view"))
+            .count(),
+        3,
+        "{calls:?}"
+    );
     // Each refused push looked at the remote, which had no `main` yet.
     assert_eq!(calls.iter().filter(|c| is_fetch(c)).count(), 2, "{calls:?}");
 }
@@ -968,8 +1070,8 @@ async fn release_code_fails_when_the_push_never_succeeds() {
         .release_code(&request)
         .await
         .expect_err("release code should fail when the push never lands");
+    assert!(matches!(err, Error::Command(_)), "{err}");
     let message = err.to_string();
-    assert!(message.contains("after 5 attempt"), "{message}");
     assert!(message.contains("403"), "{message}");
 
     // The push was attempted exactly `attempts` times before giving up.

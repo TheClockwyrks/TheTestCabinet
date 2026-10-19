@@ -117,17 +117,15 @@ impl CommandRunner for GitRunner {
     }
 }
 
-/// A publisher pushing under `remotes`, with the push retry's delays zeroed.
+/// A publisher pushing under `remotes`, with the retry's delays zeroed.
 fn publisher(remotes: &Path) -> BackendPublisher<GitRunner, MockBackend> {
     let config = PublishConfig {
         git_remote_base: remotes.to_str().expect("utf-8 path").to_string(),
         ..sample_config()
     };
-    BackendPublisher::new(config, GitRunner::default(), MockBackend).with_push_retry(PushRetry {
-        attempts: 5,
-        initial_delay: Duration::ZERO,
-        backoff: Duration::ZERO,
-    })
+    BackendPublisher::new(config, GitRunner::default(), MockBackend)
+        .with_backoff(super::tests::instant_backoff())
+        .with_create_settle(Duration::ZERO)
 }
 
 /// Create the run's empty bare repository under `remotes`, returning its path.

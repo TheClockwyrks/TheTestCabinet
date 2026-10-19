@@ -27,6 +27,7 @@ use time::format_description::well_known::Rfc3339;
 
 use crate::error::{Error, Result};
 use crate::pages::{PagesApi, build_digest};
+use crate::retry::{Backoff, retry};
 
 /// A request to release a single finished run: publish its source + build. Used by
 /// the publisher Job to drive [`Publisher::release_code`] and
@@ -327,40 +328,17 @@ impl CommandRunner for SystemCommandRunner {
 /// which reads `GH_TOKEN` itself.
 const GH_CREDENTIAL_HELPER: &str = "credential.https://github.com.helper=!gh auth git-credential";
 
-/// How the implementation push tolerates GitHub's permission-propagation lag on
-/// a freshly created organization repository.
+/// The pause after `gh repo create` before the first push to the new
+/// repository.
 ///
 /// `gh repo create` returns as soon as the repository object exists, but the
 /// creator's write grant is not always live on the git backend replica that
 /// serves the push a moment later — an immediate push can then be rejected with
 /// a `403` ("Permission ... denied") even though the token is an org admin with
-/// `repo` scope. Two mechanisms ride this out: an `initial_delay` before the
-/// first push (only after a fresh create — a re-publish of an existing repo
-/// needs none), and bounded retries with exponential `backoff` so a push that
-/// still races the grant self-heals instead of failing the whole publish.
-#[derive(Debug, Clone, Copy)]
-struct PushRetry {
-    /// Total push attempts before giving up (at least one).
-    attempts: u32,
-    /// Pause before the first push of a just-created repo, letting the write
-    /// grant propagate so the first attempt usually succeeds outright.
-    initial_delay: Duration,
-    /// Backoff before the first retry; doubled before each subsequent one.
-    backoff: Duration,
-}
-
-impl Default for PushRetry {
-    fn default() -> Self {
-        // ~3s settle after create, then up to four retries (1s, 2s, 4s, 8s)
-        // covering ~18s total — comfortably past the sub-second propagation lag
-        // that triggers the race while staying well within the publish Job.
-        Self {
-            attempts: 5,
-            initial_delay: Duration::from_secs(3),
-            backoff: Duration::from_secs(1),
-        }
-    }
-}
+/// `repo` scope. The pause lets the grant propagate so the first push usually
+/// lands; a push that still races it is retried with the publisher's backoff.
+/// A re-publish of an existing repository needs no pause.
+const CREATE_SETTLE: Duration = Duration::from_secs(3);
 
 /// Publishes runs: a public per-run GitHub repository for the source, a
 /// Cloudflare Pages deploy for the playable build, and a submission of the
@@ -373,7 +351,12 @@ pub struct BackendPublisher<R: CommandRunner, B: BackendClient> {
     config: PublishConfig,
     runner: R,
     backend: B,
-    push_retry: PushRetry,
+    /// How the repository publish and the Pages deploy retry a transient
+    /// failure (see [`crate::retry`]).
+    retry: Backoff,
+    /// The pause after creating the repository before pushing to it (see
+    /// [`CREATE_SETTLE`]).
+    create_settle: Duration,
     /// The Cloudflare API the playable-build deploy looks its deployment up in
     /// (see [`deploy_pages_build`]). Without one, a run with a build to deploy
     /// fails rather than deploying without the lookup.
@@ -388,7 +371,8 @@ impl<R: CommandRunner, B: BackendClient> BackendPublisher<R, B> {
             config,
             runner,
             backend,
-            push_retry: PushRetry::default(),
+            retry: Backoff::default(),
+            create_settle: CREATE_SETTLE,
             pages_api: None,
         }
     }
@@ -400,11 +384,18 @@ impl<R: CommandRunner, B: BackendClient> BackendPublisher<R, B> {
         self
     }
 
-    /// Override the push retry/delay policy. Used by tests to drive the retry
-    /// path without real backoff sleeps.
+    /// Retry the repository publish and the Pages deploy with `backoff` instead
+    /// of [`Backoff::default`].
+    pub fn with_backoff(mut self, backoff: Backoff) -> Self {
+        self.retry = backoff;
+        self
+    }
+
+    /// Override the pause after creating the repository. Used by tests so the
+    /// create path never really sleeps.
     #[cfg(test)]
-    fn with_push_retry(mut self, push_retry: PushRetry) -> Self {
-        self.push_retry = push_retry;
+    fn with_create_settle(mut self, create_settle: Duration) -> Self {
+        self.create_settle = create_settle;
         self
     }
 
@@ -444,7 +435,7 @@ impl<R: CommandRunner, B: BackendClient> BackendPublisher<R, B> {
     ) -> Result<CommandOutput> {
         let output = self.runner.run_with_env(program, args, cwd, env).await?;
         if !output.success {
-            return Err(Error::Publish(format!(
+            return Err(Error::Command(format!(
                 "`{program} {}` failed: {}",
                 args.join(" "),
                 output.failure_details()
@@ -557,32 +548,16 @@ impl<R: CommandRunner, B: BackendClient> BackendPublisher<R, B> {
         Ok(())
     }
 
-    /// Push the committed implementation in `dir` to the run's public
-    /// repository at `remote`, tolerating GitHub's permission-propagation lag on a
-    /// freshly created organization repo (see [`PushRetry`]).
+    /// Make the run's public repository `qualified` exist and hold the
+    /// committed implementation in `dir`, retrying a transient failure with the
+    /// publisher's backoff (see [`crate::retry`]).
     ///
-    /// The push is a plain push of `main`. A refused push is not a failure by
-    /// itself: the remote's `main` is fetched and its tree compared with `HEAD`'s
-    /// (see `components/repos/overview.md`, Publishing). The same tree is a
-    /// success whatever commit carries it, so a repeat after a push that landed
-    /// succeeds; a different tree is [`Error::Diverged`], left as it is and not
-    /// retried; a remote with no `main` yet, or one that cannot be fetched, is
-    /// retried with backoff.
-    ///
-    /// `just_created` is true when this call created the repository, gating the
-    /// pre-push settle delay: a re-publish of an existing repo skips it. The push
-    /// and the fetch authenticate through `gh`'s git credential helper rather than
-    /// a bare `git`: the publisher pod configures no git credential helper, so the
-    /// token is only reachable via `gh auth git-credential` (which reads
-    /// `GH_TOKEN` itself — this code never handles the token). A leading empty
-    /// `credential.helper` resets any inherited helper so `gh`'s is the one used.
-    async fn push_implementation(
-        &self,
-        dir: &Path,
-        remote: &str,
-        qualified: &str,
-        just_created: bool,
-    ) -> Result<()> {
+    /// Each attempt asks whether the repository exists, creates it public and
+    /// empty when it does not (pausing [`CREATE_SETTLE`] for GitHub's
+    /// permission-propagation lag), and pushes once (see [`Self::push_once`]).
+    /// A failed `gh` or `git` run is transient; a remote whose `main` holds
+    /// another tree is [`Error::Diverged`] and fails at once.
+    async fn publish_repository(&self, dir: &Path, remote: &str, qualified: &str) -> Result<()> {
         self.ensure_origin(dir, remote).await?;
         let head_tree = self
             .require("git", &["rev-parse", "--verify", "HEAD^{tree}"], Some(dir))
@@ -590,67 +565,90 @@ impl<R: CommandRunner, B: BackendClient> BackendPublisher<R, B> {
             .stdout
             .trim()
             .to_string();
+        retry(&self.retry, "the repository publish", || {
+            self.publish_repository_once(dir, qualified, &head_tree)
+        })
+        .await
+    }
 
-        if just_created && !self.push_retry.initial_delay.is_zero() {
-            tokio::time::sleep(self.push_retry.initial_delay).await;
-        }
-
-        let attempts = self.push_retry.attempts.max(1);
-        let mut backoff = self.push_retry.backoff;
-        let mut last = None;
-        for attempt in 1..=attempts {
-            let output = self
-                .runner
-                .run(
-                    "git",
-                    &[
-                        // Authenticate the push via `gh` (reads `GH_TOKEN`),
-                        // clearing any inherited helper first so it is the one used.
-                        "-c",
-                        "credential.helper=",
-                        "-c",
-                        GH_CREDENTIAL_HELPER,
-                        "push",
-                        "--quiet",
-                        "--set-upstream",
-                        "origin",
-                        "HEAD:refs/heads/main",
-                    ],
-                    Some(dir),
-                )
+    /// One attempt of [`Self::publish_repository`].
+    async fn publish_repository_once(
+        &self,
+        dir: &Path,
+        qualified: &str,
+        head_tree: &str,
+    ) -> Result<()> {
+        // Create and push are kept separate (rather than `gh repo create --push`)
+        // so that a re-publish whose first push never landed — leaving the repo
+        // created but empty — still pushes to recover, instead of
+        // short-circuiting on the repo's mere existence.
+        let exists = self
+            .runner
+            .run("gh", &["repo", "view", qualified], None)
+            .await?
+            .success;
+        if !exists {
+            self.require("gh", &["repo", "create", qualified, "--public"], None)
                 .await?;
-            if output.success {
-                return Ok(());
+            if !self.create_settle.is_zero() {
+                tokio::time::sleep(self.create_settle).await;
             }
-            match self.remote_main_tree(dir).await? {
-                Some(tree) if tree == head_tree => {
-                    tracing::info!(
-                        repo = qualified,
-                        "the repository's `main` already holds the run's implementation tree"
-                    );
-                    return Ok(());
-                }
-                Some(_) => return Err(Error::Diverged(qualified.to_string())),
-                None => {}
-            }
-            if attempt < attempts {
-                tracing::warn!(
-                    repo = qualified,
-                    attempt,
-                    "pushing the implementation failed; retrying after backoff \
-                     (likely GitHub repo-permission propagation lag)"
-                );
-                tokio::time::sleep(backoff).await;
-                backoff = backoff.saturating_mul(2);
-            }
-            last = Some(output);
         }
-        let detail = last
-            .map(|o| o.failure_details())
-            .unwrap_or_else(|| "(no output captured)".to_string());
-        Err(Error::Publish(format!(
-            "pushing the implementation to {qualified} failed after {attempts} attempt(s): {detail}"
-        )))
+        self.push_once(dir, qualified, head_tree).await
+    }
+
+    /// Push the committed implementation in `dir` to `origin`'s `main` once.
+    ///
+    /// The push is a plain push of `main`. A refused push is not a failure by
+    /// itself: the remote's `main` is fetched and its tree compared with
+    /// `head_tree` (see `components/repos/overview.md`, Publishing). The same tree
+    /// is a success whatever commit carries it, so a repeat after a push that
+    /// landed succeeds; a different tree is [`Error::Diverged`], left as it is; a
+    /// remote with no `main` yet, or one that cannot be fetched, is an
+    /// [`Error::Command`], which the caller retries.
+    ///
+    /// The push and the fetch authenticate through `gh`'s git credential helper
+    /// rather than a bare `git`: the publisher pod configures no git credential
+    /// helper, so the token is only reachable via `gh auth git-credential` (which
+    /// reads `GH_TOKEN` itself — this code never handles the token). A leading
+    /// empty `credential.helper` resets any inherited helper so `gh`'s is the one
+    /// used.
+    async fn push_once(&self, dir: &Path, qualified: &str, head_tree: &str) -> Result<()> {
+        let output = self
+            .runner
+            .run(
+                "git",
+                &[
+                    "-c",
+                    "credential.helper=",
+                    "-c",
+                    GH_CREDENTIAL_HELPER,
+                    "push",
+                    "--quiet",
+                    "--set-upstream",
+                    "origin",
+                    "HEAD:refs/heads/main",
+                ],
+                Some(dir),
+            )
+            .await?;
+        if output.success {
+            return Ok(());
+        }
+        match self.remote_main_tree(dir).await? {
+            Some(tree) if tree == head_tree => {
+                tracing::info!(
+                    repo = qualified,
+                    "the repository's `main` already holds the run's implementation tree"
+                );
+                Ok(())
+            }
+            Some(_) => Err(Error::Diverged(qualified.to_string())),
+            None => Err(Error::Command(format!(
+                "pushing the implementation to {qualified} failed: {}",
+                output.failure_details()
+            ))),
+        }
     }
 
     /// The tree the `origin` remote's `main` holds, or `None` when it has no
@@ -743,33 +741,13 @@ impl<R: CommandRunner, B: BackendClient> Publisher for BackendPublisher<R, B> {
         self.commit_implementation(impl_dir, &date).await?;
 
         // Ensure the repository exists, creating it public and empty when it does
-        // not. The source is a public repository per `core/results.md` (each run
-        // is released as its own public git repo so anyone can clone and play it).
-        //
-        // Create and push are kept separate (rather than `gh repo create --push`)
-        // for two reasons: the push must retry through GitHub's permission-
-        // propagation lag on a newly created org repo (see `PushRetry`), and a
-        // re-publish whose first push never landed — leaving the repo created but
-        // empty — must still push to recover, instead of short-circuiting on the
-        // repo's mere existence. The commit is deterministic and a remote already
-        // holding the same tree is a success, so an already-complete repo
-        // re-publishes as a clean no-op.
-        let exists = self
-            .runner
-            .run("gh", &["repo", "view", &qualified], None)
-            .await?
-            .success;
-        if !exists {
-            self.require("gh", &["repo", "create", &qualified, "--public"], None)
-                .await?;
-        }
-        self.push_implementation(
-            impl_dir,
-            &self.config.remote_url(record),
-            &qualified,
-            !exists,
-        )
-        .await?;
+        // not, and push. The source is a public repository per `core/results.md`
+        // (each run is released as its own public git repo so anyone can clone and
+        // play it). The commit is deterministic and a remote already holding the
+        // same tree is a success, so an already-complete repo re-publishes as a
+        // clean no-op.
+        self.publish_repository(impl_dir, &self.config.remote_url(record), &qualified)
+            .await?;
 
         Ok(Some(self.config.repo_url(record)))
     }
@@ -802,6 +780,7 @@ impl<R: CommandRunner, B: BackendClient> Publisher for BackendPublisher<R, B> {
             build_dir,
             &self.config.pages_project,
             &request.record.id,
+            &self.retry,
         )
         .await?;
         Ok(Some(url))
@@ -835,25 +814,47 @@ impl<R: CommandRunner, B: BackendClient> Publisher for BackendPublisher<R, B> {
 ///    is *not* a reliable address. The URL wrangler reports is the deployment's
 ///    own (`https://<short id>.<project>.pages.dev`), the same URL the lookup
 ///    returns for it.
+///
+/// Steps 3 to 5 are retried together with `backoff` on a transient failure (see
+/// [`crate::retry`]): a lookup that got no answer or a `408`/`429`/`5xx`, or a
+/// failed `wrangler` run. Each retry looks again first, so a deploy that landed
+/// before its run failed is found rather than repeated.
 pub async fn deploy_pages_build(
     runner: &impl CommandRunner,
     pages_api: &PagesApi,
     build_dir: &Path,
     pages_project: &str,
     branch: &str,
+    backoff: &Backoff,
 ) -> Result<String> {
     scrub_build_dir(build_dir)?;
     let digest = build_digest(build_dir)?;
+    let dir = build_dir
+        .to_str()
+        .ok_or_else(|| Error::Publish("build directory path is not valid UTF-8".to_string()))?;
+    retry(backoff, "the Pages deploy", || {
+        find_or_deploy(runner, pages_api, dir, pages_project, branch, &digest)
+    })
+    .await
+}
+
+/// One attempt of [`deploy_pages_build`]'s lookup and deploy of the scrubbed
+/// build at `dir`, whose digest is `digest`.
+async fn find_or_deploy(
+    runner: &impl CommandRunner,
+    pages_api: &PagesApi,
+    dir: &str,
+    pages_project: &str,
+    branch: &str,
+    digest: &str,
+) -> Result<String> {
     if let Some(url) = pages_api
-        .find_deployment(pages_project, branch, &digest)
+        .find_deployment(pages_project, branch, digest)
         .await?
     {
         tracing::info!(%url, %branch, %digest, "reusing the build's existing Pages deployment");
         return Ok(url);
     }
-    let dir = build_dir
-        .to_str()
-        .ok_or_else(|| Error::Publish("build directory path is not valid UTF-8".to_string()))?;
     let branch_arg = format!("--branch={branch}");
     let commit_hash_arg = format!("--commit-hash={digest}");
     let output = runner
@@ -872,7 +873,7 @@ pub async fn deploy_pages_build(
         )
         .await?;
     if !output.success {
-        return Err(Error::Publish(format!(
+        return Err(Error::Command(format!(
             "`wrangler pages deploy` failed: {}",
             output.failure_details()
         )));

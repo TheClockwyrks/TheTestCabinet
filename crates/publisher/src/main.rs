@@ -16,6 +16,7 @@ use tcab_publisher::client::PublishJobClient;
 use tcab_publisher::config::Config;
 use tcab_publisher::download::download_run_tree;
 use tcab_publisher::publish::{ReleasedLinks, release};
+use tcab_publisher::retry::Backoff;
 
 #[tokio::main]
 async fn main() -> ExitCode {
@@ -110,7 +111,9 @@ async fn main() -> ExitCode {
 ///
 /// Progress lines are best-effort observation (relayed, never persisted), so a
 /// failure to post one is logged and the release continues; only the download and
-/// the release itself are load-bearing.
+/// the release itself are load-bearing. The preflight, the download, the Pages
+/// deploy, the repository publish and the result report each retry a transient
+/// failure with backoff before failing (see [`tcab_publisher::retry`]).
 async fn run(config: &Config, client: &PublishJobClient) -> Result<ReleasedLinks, String> {
     // Preflight: never release a run that is already published. A publish job can
     // legitimately reach this point against a published run — a duplicate enqueued
@@ -144,6 +147,7 @@ async fn run(config: &Config, client: &PublishJobClient) -> Result<ReleasedLinks
         &config.publish_job_id,
         &config.publish_job_token,
         &config.work_dir,
+        &Backoff::default(),
     )
     .await
     .map_err(|err| format!("downloading the run source tree: {err}"))?;

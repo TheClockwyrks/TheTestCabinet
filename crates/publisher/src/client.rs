@@ -13,10 +13,15 @@
 //! published. The progress lines are best-effort observation — they are relayed but
 //! never persisted — so a failure to post one is logged and the release continues;
 //! the terminal result is the durable, must-land call.
+//!
+//! The preflight read and the result report retry a transient failure with the
+//! client's [`Backoff`] (see [`crate::retry`]); a progress line is sent once.
 
 use reqwest::Client;
 use serde::Deserialize;
 use test_cabinet_contracts::publish_job_api::{PublishProgress, PublishResult};
+
+use crate::retry::{Backoff, retry};
 
 /// A failure talking to the backend's publish-job API.
 #[derive(Debug, thiserror::Error)]
@@ -95,6 +100,8 @@ pub struct PublishJobClient {
     job_token: String,
     /// The shared HTTP client.
     http: Client,
+    /// How the preflight read and the result report retry a transient failure.
+    backoff: Backoff,
 }
 
 impl PublishJobClient {
@@ -110,7 +117,15 @@ impl PublishJobClient {
             publish_job_id: publish_job_id.into(),
             job_token: job_token.into(),
             http: Client::new(),
+            backoff: Backoff::default(),
         }
+    }
+
+    /// Retry the preflight read and the result report with `backoff` instead of
+    /// [`Backoff::default`].
+    pub fn with_backoff(mut self, backoff: Backoff) -> Self {
+        self.backoff = backoff;
+        self
     }
 
     /// Stream a progress line (`POST /publish-jobs/{id}/events`). The backend fans
@@ -148,8 +163,17 @@ impl PublishJobClient {
     /// it still needs releasing. An unreachable backend is an error rather than a
     /// fall-through to publishing: this call cannot confirm the release is *needed*,
     /// and the terminal result could not be reported over that same backend anyway, so
-    /// failing here costs nothing and keeps the irreversible external work gated.
+    /// failing here costs nothing and keeps the irreversible external work gated. A
+    /// transient failure is retried with backoff first.
     pub async fn published_run(&self, run_id: &str) -> Result<Option<PublishedRun>, ClientError> {
+        retry(&self.backoff, "the publication preflight", || {
+            self.published_run_once(run_id)
+        })
+        .await
+    }
+
+    /// One `GET /runs/{id}` of [`PublishJobClient::published_run`].
+    async fn published_run_once(&self, run_id: &str) -> Result<Option<PublishedRun>, ClientError> {
         let response = self
             .http
             .get(format!("{}/runs/{run_id}", self.base_url))
@@ -189,8 +213,18 @@ impl PublishJobClient {
     /// Report the terminal outcome of the release (`POST /publish-jobs/{id}/result`).
     /// On `Succeeded` the backend attaches the links and flips the run published; on
     /// `Failed` it records the reason. Either way the live stream closes with this
-    /// exact result.
+    /// exact result. A transient failure is retried with backoff: the backend
+    /// accepts the same result again, so a report whose answer was lost is safe to
+    /// repeat.
     pub async fn post_result(&self, result: &PublishResult) -> Result<(), ClientError> {
+        retry(&self.backoff, "the result report", || {
+            self.post_result_once(result)
+        })
+        .await
+    }
+
+    /// One `POST /publish-jobs/{id}/result` of [`PublishJobClient::post_result`].
+    async fn post_result_once(&self, result: &PublishResult) -> Result<(), ClientError> {
         let response = self
             .http
             .post(self.url("result"))

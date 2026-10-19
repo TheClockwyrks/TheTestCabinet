@@ -36,6 +36,8 @@ tracing = { workspace = true }
 # progress/result back to the backend with. rustls (no system OpenSSL), `json`
 # for the bodies.
 reqwest = { workspace = true }
+# The downloaded `tree.tar` body, handed out of the retried request as it came.
+bytes = { workspace = true }
 # The `CommandRunner` seam the release drives `gh`/`git`/`wrangler` through.
 async-trait = { workspace = true }
 # Untar the `application/x-tar` source tree the artifact service serves (pure

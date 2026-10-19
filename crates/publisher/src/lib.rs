@@ -13,7 +13,8 @@
 //! [`release_code`](release::Publisher::release_code), run in that order (see
 //! [`release`], and [`pages`] for the deployment lookup); the inputs are downloaded from the artifact service (see
 //! [`download`]), and the outcome is reported over the publish-job token (see
-//! [`client`]).
+//! [`client`]). Each of those steps retries a transient failure with backoff (see
+//! [`retry`]).
 //!
 //! There is no app-level auth on the publisher itself — it is a client, not a
 //! server. Its calls authenticate to the backend with the per-publish-job token the
@@ -30,5 +31,6 @@ pub mod error;
 pub mod pages;
 pub mod publish;
 pub mod release;
+pub mod retry;
 
 pub use error::{Error, Result};

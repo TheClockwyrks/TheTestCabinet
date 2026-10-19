@@ -121,9 +121,16 @@ async fn downloads_and_untars_the_run_tree() {
     let (base, captured) = stub_artifacts(fixture_tarball(record_json), StatusCode::OK).await;
     let dest = tempfile::tempdir().expect("tempdir");
 
-    let run_dir = download_run_tree(&base, "run-9", "pub-job-1", "pub-tok", dest.path())
-        .await
-        .expect("download should succeed");
+    let run_dir = download_run_tree(
+        &base,
+        "run-9",
+        "pub-job-1",
+        "pub-tok",
+        dest.path(),
+        &crate::retry::Backoff::default(),
+    )
+    .await
+    .expect("download should succeed");
 
     // Untarred under {dest}/{run_id}/ with the run-directory layout intact.
     assert_eq!(run_dir, dest.path().join("run-9"));
@@ -149,9 +156,16 @@ async fn a_rejected_download_is_surfaced_as_a_status_error() {
     let (base, _captured) = stub_artifacts(Vec::new(), StatusCode::UNAUTHORIZED).await;
     let dest = tempfile::tempdir().expect("tempdir");
 
-    let err = download_run_tree(&base, "run-9", "pub-job-1", "bad-tok", dest.path())
-        .await
-        .expect_err("a 401 must surface as an error");
+    let err = download_run_tree(
+        &base,
+        "run-9",
+        "pub-job-1",
+        "bad-tok",
+        dest.path(),
+        &crate::retry::Backoff::default(),
+    )
+    .await
+    .expect_err("a 401 must surface as an error");
     match err {
         DownloadError::Status { status, .. } => {
             assert_eq!(status, reqwest::StatusCode::UNAUTHORIZED);

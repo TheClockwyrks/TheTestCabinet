@@ -3,11 +3,17 @@
 /// A failure releasing a run's outputs.
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
-    /// A release step failed: `gh`, `git` or `wrangler` could not be run or
-    /// reported a failure, the publish configuration is incomplete, or the staged
-    /// tree could not be read or rewritten for redaction.
+    /// A release step failed for a reason repeating it cannot change: a tool
+    /// could not be started, the publish configuration is incomplete, the staged
+    /// tree could not be read or rewritten for redaction, or a tool's output could
+    /// not be read.
     #[error("publishing the run: {0}")]
     Publish(String),
+    /// `gh`, `git` or `wrangler` ran and reported a failure. Repeating the step
+    /// can succeed (a network error, GitHub's permission-propagation lag, a
+    /// Cloudflare hiccup), so it is transient (see [`crate::retry`]).
+    #[error("publishing the run: {0}")]
+    Command(String),
     /// The run's repository already holds a `main` whose tree differs from the
     /// run's implementation. A plain push may not replace it, so it is left as
     /// it is; repeating the publish cannot change that, so it is not transient.
