@@ -28,6 +28,7 @@ lives in, checked out as a submodule at this repository's root.
 | --- | --- | --- |
 | Contracts (the hub: every wire and file shape, the suites runtime, telemetry, redaction, the backend client, both generators) | [`components/contracts/`](apps/docs/src/content/docs/components/contracts/) | `contracts/` |
 | Engines (the authored engines, the voxel, particle and lattice playback runtimes, foray and lattice with the match runner) | [`components/engines/`](apps/docs/src/content/docs/components/engines/) | `engines/` |
+| gg (the first-party coding harness, its SDKs, program-language toolchains and sandbox packages, released as binaries, reference documents and a toolchains image; its pages are the docs tree's `gg/` entry, which points into the checkout) | [`gg/overview.md`](apps/docs/src/content/docs/gg/overview.md) | `gg/` |
 | Driver (the run engine: execution, harnesses, orchestrators, events, validation, showcases; one Job per run, uploading to artifacts and repos) | [`components/driver/overview.md`](apps/docs/src/content/docs/components/driver/overview.md) | `microservice-driver/` |
 | CLI (`tcab`: validate, analyze, capture-baselines, seed, prompt, ingest, publish-reference, publish-asset-reference; the driver's second binary) | [`components/cli/overview.md`](apps/docs/src/content/docs/components/cli/overview.md) | `microservice-driver/` |
 | Dispatcher (claims queued runs → one driver Job each; admits publish Jobs) | [`components/dispatcher/overview.md`](apps/docs/src/content/docs/components/dispatcher/overview.md) | `microservice-dispatcher/` |
@@ -48,9 +49,9 @@ lives in, checked out as a submodule at this repository's root.
 Where each responsibility lives, the edges between the repositories and how a
 dependency is named:
 [Repositories](apps/docs/src/content/docs/development/repositories.md#where-each-responsibility-lives).
-Every repository but `contracts`, `engines`, `test-suites` and `cold-storage` is
-still a directory of this tree today (`crates/`, `apps/`, `packages/`), so until
-it is extracted its code is found there.
+Every repository but `contracts`, `engines`, `gg`, `test-suites` and
+`cold-storage` is still a directory of this tree today (`crates/`, `apps/`,
+`packages/`), so until it is extracted its code is found there.
 
 The shared packages: `@clockwyrks/run-record` (the run record contract; see
 [`components/contracts/run-records.md`](apps/docs/src/content/docs/components/contracts/run-records.md)),
@@ -283,8 +284,9 @@ template's, and are edited like any other file.
   [`drain-issues-queue`](.claude/skills/drain-issues-queue/SKILL.md).
 - Test cases: [`authoring-test-cases`](.claude/skills/authoring-test-cases/SKILL.md)
   and [`test-cases`](.claude/skills/test-cases/SKILL.md).
-- gg: [`agent-prompts`](.claude/skills/agent-prompts/SKILL.md),
-  [`gg-sdk-documentation`](.claude/skills/gg-sdk-documentation/SKILL.md),
+- gg: [`agent-prompts`](gg/.claude/skills/agent-prompts/SKILL.md) and
+  [`gg-sdk-documentation`](gg/.claude/skills/gg-sdk-documentation/SKILL.md),
+  which live in the `gg` checkout,
   [`driving-gg-directly`](.claude/skills/driving-gg-directly/SKILL.md) and
   [`analyzing-run-costs`](.claude/skills/analyzing-run-costs/SKILL.md).
 - Browser screenshots:

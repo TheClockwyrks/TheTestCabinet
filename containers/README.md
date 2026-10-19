@@ -183,15 +183,8 @@ containers/
 │                               #   FROM it
 ├── game-jam/Dockerfile         # the game-jam run image: full-stack-2d plus its own
 │                               #   identity (separately pinnable)
-├── gg-toolchains/Dockerfile    # the gg LANGUAGE-TOOLCHAIN builder: every compiler a gg
-│                               #   run's responses-as-code programs may need, under
-│                               #   /opt/gg (purs+esbuild, a JDK+TeaVM, the Kotlin
-│                               #   compiler, a pruned rustc, a pruned Swift + its wasm
-│                               #   SDK, wasi-sdk, a pruned .NET). Leaving with gg for
-│                               #   gg's repository, whose pipeline publishes it; build.sh
-│                               #   no longer builds it
 ├── gg/Dockerfile               # ONE parameterized `<parent>-gg` variant: any run image
-│                               #   plus that tree
+│                               #   plus the toolchain tree gg's repository publishes
 ├── sprite/Dockerfile           # the base image plus the baked-in `draw` binary
 ├── sprite-sheet/Dockerfile     # the base image plus the baked-in `draw-sheet` binary
 ├── ui/Dockerfile               # the base image plus the baked-in `paint` + `ui` binaries
@@ -521,8 +514,8 @@ the build dies with `failed to compute cache key: "/<path>": not found`, precede
 by `transferring context: 2B`, and nothing in the repository has changed to
 explain it. This has bitten twice (the Blender image's authoring helpers; the gg
 toolchain builder's Java installer, which took every `-gg` variant down with it,
-because `build.sh` is `set -euo pipefail` and builds that builder before all of
-them). `scripts/ci/build-context.sh` is the gate: it reads every tracked
+because `build.sh` is `set -euo pipefail` and built that builder before all of
+them while gg was built here). `scripts/ci/build-context.sh` is the gate: it reads every tracked
 Dockerfile against `.dockerignore` and fails on a source that is missing or
 excluded, so the mistake is caught at commit time rather than the next time
 someone needs a run container. Run it after adding a `COPY`.
@@ -541,15 +534,12 @@ compiles `test-cabinet-engines`) and `make local-up` with it. The gate reads tho
 paths out of the Rust sources now, those of the submodules the context admits
 included, so the list cannot fall behind.
 
-**And after adding a `packages/gg-sandbox*` package**, which is the same mistake
-without a `COPY` to point at. The driver image's gg stage copies the whole context
-and then compiles those packages — the eleven signature catalogues and the eleven
-arms' artifacts are built, not committed — so a forgotten one fails deep inside a
-`cargo build` with an arm's own "no such file or directory" rather than with
-Docker's cache-key error, and it reads as a broken arm. That is how
-`packages/gg-sandbox-jvm` (the crossing the java and kotlin arms both compile)
-landed, so the same gate now asserts every one of those directories survives the
-allowlist too.
+**And after a gg installer reads a new file.** The devcontainer image stages a slice
+of the `gg/` checkout (every arm's pin and the files those pins read) and runs gg's
+toolchain installers against it, which read them by `$REPO_ROOT/<path>` rather than
+through a `COPY` the gate could point at. So the gate reads those literals out of
+`gg/scripts/ci/install-*.sh` and asserts each survives the allowlist as `gg/<path>`,
+and names the check as not made in a checkout that has not initialized `gg/`.
 
 ## The audio store
 
@@ -897,8 +887,8 @@ the gate is a check per environment rather than a check on one.
 
 The tree carries **PureScript**'s toolchain today: `purs` and `esbuild`, both statically
 linked, both a single file, and both pinned by
-[`packages/gg-sandbox-purescript/purescript-version.sh`](../packages/gg-sandbox-purescript/purescript-version.sh)
-and installed by [`scripts/ci/install-purescript.sh`](../scripts/ci/install-purescript.sh)
+[`gg/packages/gg-sandbox-purescript/purescript-version.sh`](../gg/packages/gg-sandbox-purescript/purescript-version.sh)
+and installed by [`gg/scripts/ci/install-purescript.sh`](../gg/scripts/ci/install-purescript.sh)
 — which the Dockerfile runs rather than duplicating, so a pin is edited in one place. (It
 used to pass the two versions in as build args over `ARG` defaults that restated them; a
 default is a second answer, correct only until somebody edits the version file, and it was
@@ -911,8 +901,9 @@ another.
 
 It carries **Java**'s too, and that one is not a single file: a Temurin JDK (javac is a
 JDK, not a JRE) and ~29 MB of TeaVM jars, pinned by
-[`packages/gg-sandbox-java/java-version.sh`](../packages/gg-sandbox-java/java-version.sh)
-and installed by [`scripts/ci/install-java.sh`](../scripts/ci/install-java.sh) — which the
+[`gg/packages/gg-sandbox-java/java-version.sh`](../gg/packages/gg-sandbox-java/java-version.sh)
+and installed by
+[`gg/scripts/ci/install-java.sh`](../gg/scripts/ci/install-java.sh) — which the
 Dockerfile runs rather than duplicating, so the list of jars exists once. A JDK is not
 excluded by the "shared process" constraint above: gg drives it through a **pool** of warm
 JVMs that lends each to one preparation at a time, which is what makes a warm build
@@ -924,7 +915,7 @@ the vintage reason PureScript's library set is not here either.
 **Kotlin** rides on top of that, and adds ~67 MB of compiler jars and nothing else: a
 Kotlin program is compiled to JVM bytecode and handed to the _same_ TeaVM, so everything
 from bytecode onwards already exists here. Its installer
-([`scripts/ci/install-kotlin.sh`](../scripts/ci/install-kotlin.sh)) runs the Java one
+([`gg/scripts/ci/install-kotlin.sh`](../gg/scripts/ci/install-kotlin.sh)) runs the Java one
 rather than installing a second JDK beside it. Everything it writes is a classpath entry:
 a model's program is an ordinary Kotlin file with its own `fun main()`, so the compiler
 needs its own jars and nothing else.
@@ -952,7 +943,7 @@ shared libraries the published linker was built against. That last one is the wh
 its install is a script rather than two `curl`s: the toolchain is built for Debian 12 and
 its `lld` links against that distribution's `libxml2` soname, which the Debian-derived run
 images have and `blender-gg`'s Ubuntu does not — and this tree is copied to the same
-absolute path in both. So [`scripts/ci/install-swift.sh`](../scripts/ci/install-swift.sh)
+absolute path in both. So [`gg/scripts/ci/install-swift.sh`](../gg/scripts/ci/install-swift.sh)
 puts that library and its closure under `<home>/lib`, and gg names that directory on
 `LD_LIBRARY_PATH` for every compile. What is kept out of 3.3 GB is the driver, the front
 end, `clang`, `lld` and the transitive closure of the shared objects those actually need —
@@ -972,8 +963,9 @@ to make portable, and that is the toolchain rather than the script: `clang` find
 sysroot from its own path, every binary carries an `$ORIGIN/../lib` rpath, and the only
 things outside the tree it needs are the sonames its Debian build links that glibc does
 not provide — the two GCC-runtime ones and `libtinfo` — so
-[`scripts/ci/install-wasi-sdk.sh`](../scripts/ci/install-wasi-sdk.sh) copies each of them
-in beside it, where that rpath finds them and nothing else in the image does. No
+[`gg/scripts/ci/install-wasi-sdk.sh`](../gg/scripts/ci/install-wasi-sdk.sh)
+copies each of them in beside it, where that rpath finds them and nothing else
+in the image does. No
 `LD_LIBRARY_PATH`; the closure is walked to decide that list rather than to place it. What
 is dropped out of ~650 MB is `lldb`, the lint and format tools, the object utilities, the
 other linker drivers, `wasm-component-ld` — and, the largest deletion by far, four of the
@@ -993,7 +985,7 @@ native host, so its ELF closure looks complete on any glibc. It is not: the runt
 `dlopen`s ICU (`libicuuc`, `libicui18n`, `libicudata`) out of
 `libSystem.Globalization.Native.so` at startup, `ldd` reports nothing missing, and a `csc`
 with no ICU beside it `FailFast`s with SIGABRT before it writes a line to stdout. So
-[`scripts/ci/install-dotnet.sh`](../scripts/ci/install-dotnet.sh) vendors the three
+[`gg/scripts/ci/install-dotnet.sh`](../gg/scripts/ci/install-dotnet.sh) vendors the three
 libraries into `<home>/lib`, and gg names that directory on `LD_LIBRARY_PATH` for every
 `dotnet` it runs — the Swift arrangement, for the same reason and by a different route.
 Invariant-globalization mode would also start the compiler and is not used: it changes

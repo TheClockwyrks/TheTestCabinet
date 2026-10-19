@@ -116,6 +116,9 @@ resources:
     - repository: engines
       type: git
       name: the-test-cabinet/engines
+    - repository: gg
+      type: git
+      name: the-test-cabinet/gg
     - repository: test-suites
       type: git
       name: the-test-cabinet/test-suites
@@ -143,6 +146,7 @@ jobs:
         - cold-storage
         - contracts
         - engines
+        - gg
         - test-suites
     steps:
       # One commit is enough. The tag is the commit Azure names in
@@ -185,6 +189,7 @@ jobs:
         - cold-storage
         - contracts
         - engines
+        - gg
         - test-suites
     steps:
       - checkout: self
@@ -221,6 +226,7 @@ jobs:
         - cold-storage
         - contracts
         - engines
+        - gg
         - test-suites
     steps:
       - checkout: self

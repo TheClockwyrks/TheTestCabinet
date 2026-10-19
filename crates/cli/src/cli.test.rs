@@ -593,12 +593,12 @@ fn capture_baselines_requires_a_slug() {
 
 #[test]
 fn analyze_parses_a_bare_directory() {
-    let cli = Cli::try_parse_from(["tcab", "analyze", "crates/gg"])
+    let cli = Cli::try_parse_from(["tcab", "analyze", "crates/driver"])
         .expect("a directory is the only required argument");
 
     match cli.command {
         Command::Analyze(args) => {
-            assert_eq!(args.path, "crates/gg");
+            assert_eq!(args.path, "crates/driver");
             assert!(args.seed_commit.is_none());
             assert!(!args.json);
             assert_eq!(args.top, 10);

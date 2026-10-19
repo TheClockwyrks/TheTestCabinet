@@ -353,9 +353,9 @@ fn release_base_url_with(env: &dyn Fn(&str) -> Option<String>) -> String {
 /// [`release_target`] with the environment and host architecture injected.
 ///
 /// Defaults to the fully static musl target: gg is published and installed as a static binary
-/// (see `.cargo/config.toml`'s `build-portable-gg` and `scripts/build-gg-static.sh`) precisely so
-/// one asset runs across every run-container image (glibc bookworm and the Ubuntu blender image
-/// alike). An operator can override the triple via `TCAB_GG_RELEASE_TARGET`.
+/// (see the gg repository's `build-portable-gg` alias and `scripts/build-gg-static.sh`)
+/// precisely so one asset runs across every run-container image (glibc bookworm and the Ubuntu
+/// blender image alike). An operator can override the triple via `TCAB_GG_RELEASE_TARGET`.
 fn release_target_with(env: &dyn Fn(&str) -> Option<String>, default_arch: &str) -> String {
     env(ENV_RELEASE_TARGET)
         .filter(|t| !t.trim().is_empty())
@@ -365,10 +365,10 @@ fn release_target_with(env: &dyn Fn(&str) -> Option<String>, default_arch: &str)
 /// The URL a published `gg` release asset lives at: `{base_url}/v{version}/gg-{target}`.
 ///
 /// The layout is the contract with the Azure pipeline's gg upload
-/// (`scripts/ci/publish-gg.sh`), which publishes each release under a `v{version}/` prefix
-/// as `gg-{target}` (one per target triple) plus `gg-reference.tar.gz`. Change one side
-/// without the other and every cluster run that installs gg from a release dies at the
-/// download step:
+/// (`scripts/ci/publish-gg.sh` in the `gg` repository), which publishes each release under a
+/// `v{version}/` prefix as `gg-{target}` (one per target triple) plus `gg-reference.tar.gz`.
+/// Change one side without the other and every cluster run that installs gg from a release
+/// dies at the download step:
 ///
 /// - **the prefix is `v{version}`**, the same `v`-prefixed version a release is tagged
 ///   under, so a prerelease like `0.7.0-rc1` lives at `v0.7.0-rc1/`.
@@ -378,9 +378,6 @@ fn release_target_with(env: &dyn Fn(&str) -> Option<String>, default_arch: &str)
 ///   release serve both the `x86_64` and `aarch64` musl builds.
 ///
 /// A trailing slash on `base_url` is ignored, so an operator-supplied base joins cleanly.
-///
-/// Public so `crates/gg` can assert that the URL resolved for a default install names
-/// the version that binary actually reports.
 pub fn release_asset_url(base_url: &str, version: &str, target: &str) -> String {
     let base_url = base_url.trim_end_matches('/');
     format!("{base_url}/v{version}/gg-{target}")

@@ -32,12 +32,10 @@ rendered from (`.copier-answers.yml` names its source, version and answers).
   (`ci_manifest_index`, `ci_assert_namespaced`), and the resolver of a submodule's
   relative URL (`ci_resolve_url`). A script that needs both sources both.
 
-`fetch.sh` is the third sourced helper. It has no side effect at all, not even a
-`cd`, because the toolchain installers that source it also run inside
-`containers/gg-toolchains/Dockerfile` in a tree that is not a checkout. Its
-`gg_fetch` is the one `curl` a large archive is fetched with: it resumes, retries,
-verifies the length the server advertised, and keeps a partial file under
-`~/.cache/tcab/downloads` for the next attempt.
+`cargo-lock.sh` is the third sourced helper: `cargo_locked_args` and
+`cargo_keeping_lock_order`, the lockfile rule under the superrepo's patch table
+(`--locked` only where no patch table shapes the build), which `rust-build.sh` and
+the release builds source.
 
 ## The main pipeline
 
@@ -248,24 +246,15 @@ artifacts, and `mirror`, which pushes the tag. gg is released by its own reposit
 | `changed-paths.sh [--reason <Build.Reason>] [--paths-from <file>]`                                    | which check-job groups a pull request reaches, from the merge commit's diff against its first parent, as `##vso` output variables; every group on any other run                  | `changed-paths.test.sh`               |
 | `require-gated-commit.sh <commit> <source-ref>`                                                       | the release gate above, through the Azure DevOps REST API and the job token                                                                                                      | `require-gated-commit.test.sh`        |
 | `rust-build.sh [--seed]`                                                                              | `cargo build --workspace --all-targets`, the only check that links every target; `--seed` builds what the template's `rust` job compiles                                         | `rust-build.test.sh`                  |
-| `gg-test-build.sh`                                                                                    | `cargo nextest run --no-run -p test-cabinet-gg --lib`, what `gg-test.sh` runs                                                                                                    | `gg-test-build.test.sh`               |
-| `gg-test.sh [k/N]`                                                                                    | gg's suite, `cargo nextest run -p test-cabinet-gg --lib`, whole or one `hash:k/N` partition                                                                                      | `gg-test.test.sh`                     |
 | `cargo-target-prune.sh`                                                                               | remove what cargo linked from `target/`, so a saved build output holds the libraries and fits the agent's disk                                                                   | `cargo-target-prune.test.sh`          |
 | `free-disk-linux.sh`                                                                                  | remove the hosted image's unused SDKs, `/usr/local/lib/android` included, and its preloaded container images, best-effort; readings from `report-disk.sh` either side            | `free-disk-linux.test.sh`             |
 | `report-disk.sh [label]`                                                                              | print the room left on `/`, the container store and the agent work folder, and `docker system df`; always exits 0                                                                | `report-disk.test.sh`                 |
-| `install-gg-toolchains.sh`                                                                            | every toolchain a gg run and gg's reflectors execute (about 1.9 GB), from the per-arm `install-*.sh`                                                                             | `install-gg-toolchains.test.sh`       |
-| `install-gg-build-toolchains.sh`                                                                      | the full .NET SDK and wasi-sdk only the C# guest's link needs (about 1.4 GB; in the devcontainer the SDK is linked to the dotnet image's)                                        | `install-gg-build-toolchains.test.sh` |
-| `gg-image-toolchains.sh`                                                                              | in the devcontainer only, link gg's arms' default homes to the template's language images before the installers run, failing on a pin the image does not hold                    | `gg-image-toolchains.test.sh`         |
-| `install-gg-build-tools.sh`                                                                           | warm the package-manager-delivered tools gg's artifact builds resolve, so `cargo build` stays offline                                                                            | `install-gg-build-tools.test.sh`      |
 | `install-nextest.sh`                                                                                  | cargo-nextest at `NEXTEST_VERSION`, for the Windows leg                                                                                                                          | `install-nextest.test.sh`             |
 | `install-playwright-chromium.sh`                                                                      | Playwright's Chromium and its system libraries at the `PLAYWRIGHT_IMAGE` tag, started once, for a machine outside the devcontainer; run as root                                  | `install-playwright-chromium.test.sh` |
 | `release-build.sh`, `release-test.sh`, `release-doctest.sh`                                           | release build, nextest run and doctests of `test-cabinet-{contracts,suites,engines,core,cli}`                                                                                    | each its `<name>.test.sh`             |
 | `binary-smoke.sh`, `smoke-binary.sh`                                                                  | hand the release `tcab` to the smoke check, and the check itself (`--version`, `--help`, the documented commands listed and the removed ones not)                                | each its `<name>.test.sh`             |
 | `submodule-pins.sh [--branch <b>]`                                                                    | every submodule pin is an ancestor of that submodule's branch of the same name, or of its `master`, fetched commits-only                                                         | `submodule-pins.test.sh`              |
 | `submodules.sh init\|list [--build-context] [<path>...]`, `submodules.sh check`                       | initialize only the named submodules, and those the root `.dockerignore` admits, one deep and never recursively; `check` holds the `submodule_pins` job's list to `.gitmodules`  | `submodules.test.sh`                  |
-| `gg-dist.sh <out-dir>`                                                                                | the static musl `gg-<target>` for this architecture, plus `gg-reference.tar.gz` on both                                                                                          | `gg-dist.test.sh`                     |
-| `gg-version-gate.sh <gg> <ref>`                                                                       | on a tag, `gg --version` must equal the tag without its `v`                                                                                                                      | `gg-version-gate.test.sh`             |
-| `publish-gg.sh <dist-dir> <ref>`                                                                      | re-run the version gate, upload gg's objects to `v<version>/` in the `gg-releases` container                                                                                     | `publish-gg.test.sh`                  |
 | `mirror.sh [--url <mirror>] [--allow-rewrite] <key-file> <ref>`                                       | push the built branch with its tags, or the tag, to the declared mirror, refusing a non-ancestor head                                                                            | `mirror.test.sh`                      |
 | `audio-store-image.sh <commit>`                                                                       | build and push `test-cabinet-audio-store:<commit>-<arch>`                                                                                                                        | `audio-store-image.test.sh`           |
 | `gg-release.sh version\|toolchains-image\|fetch <out-dir>`                                            | the gg release the driver pins: its version, the toolchain image the `-gg` variants copy, or the binary and reference documents, checked                                         | `gg-release.test.sh`                  |
@@ -281,16 +270,14 @@ artifacts, and `mirror`, which pushes the tag. gg is released by its own reposit
 | `deploy-docs.sh <branch>`                                                                             | build `apps/docs` and deploy it to `test-cabinet-docs` (`master`) or `test-cabinet-docs-staging` (`staging`)                                                                     | `deploy-docs.test.sh`                 |
 
 Every script in this directory has its table test beside it, `<name>.test.sh`, the
-ones not listed above included: the per-arm installers (`install-java.sh`,
-`install-kotlin.sh`, `install-purescript.sh`, `install-wasi-sdk.sh`,
-`install-dotnet.sh`, `install-swift.sh`, `install-rust-wasm.sh`,
-`install-wit-bindgen.sh`, `install-adapter.sh`, `install-uv.sh`), their shared
-`fetch.sh`, `tcab-lib.sh`, and the gate script `build-context.sh`. The workspace
-template requires
-it (its render check fails a script here without one), and a new script comes with
-its test. The `shell-tests` gate runs every `scripts/*.test.sh` and
-`scripts/ci/*.test.sh`, each hermetic: temporary directories, stubs of the tools the
-script calls on `PATH`, no network, no registry and no cluster.
+ones not listed above included: `tcab-lib.sh`, `cargo-lock.sh` and the gate script
+`build-context.sh`. The workspace template requires it (its render check fails a
+script here without one), and a new script comes with its test. gg's toolchain
+installers and their tests are the `gg` repository's. The `shell-tests` gate runs
+every `scripts/*.test.sh` and `scripts/ci/*.test.sh`, and the gg checkout's
+`scripts/ci/gg-image-toolchains.test.sh`, each hermetic: temporary
+directories, stubs of the tools the script calls on `PATH`, no network, no
+registry and no cluster.
 
 ## Credentials
 

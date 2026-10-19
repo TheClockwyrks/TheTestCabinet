@@ -44,7 +44,7 @@ export GIT_AUTHOR_NAME=test GIT_AUTHOR_EMAIL=test@example.com
 export GIT_COMMITTER_NAME=test GIT_COMMITTER_EMAIL=test@example.com
 
 # A throwaway repository holding a copy of the script and a .gitmodules that
-# pins four submodules, at `cold-storage`, `contracts`, `engines` and
+# pins five submodules, at `cold-storage`, `contracts`, `engines`, `gg` and
 # `test-suites`.
 fresh_repo() {
 	local repo
@@ -52,7 +52,7 @@ fresh_repo() {
 	mkdir -p "$repo/scripts/ci"
 	cp "$CI_DIR/changed-paths.sh" "$CI_DIR/tcab-lib.sh" "$repo/scripts/ci/"
 	local name
-	for name in cold-storage contracts engines test-suites; do
+	for name in cold-storage contracts engines gg test-suites; do
 		printf '[submodule "%s"]\n\tpath = %s\n\turl = ../%s\n' "$name" "$name" "$name"
 	done >"$repo/.gitmodules"
 	printf '%s' "$repo"
@@ -111,9 +111,9 @@ table "the image names list reaches the Rust jobs" "rust=true submodules=false" 
 table "Markdown outside crates reaches nothing" "rust=false submodules=false" \
 	README.md CLAUDE.md packages/ui/README.md apps/docs/src/content/docs/gg/overview.md
 table "Markdown inside crates reaches the Rust jobs" "rust=true submodules=false" \
-	crates/gg/src/probe_fixtures/errata.md
+	crates/driver/README.md
 table "a shell test reaches nothing" "rust=false submodules=false" \
-	scripts/ci/gg-test.test.sh scripts/devcontainer-setup.test.sh scripts/lib/audio-store.test.mjs
+	scripts/ci/gg-release.test.sh scripts/devcontainer-setup.test.sh scripts/lib/audio-store.test.mjs
 table "lint configuration reaches nothing" "rust=false submodules=false" \
 	.cspell/project-words.txt cspell.json .prettierrc.json .prettierignore .markdownlint.yaml \
 	eslint.config.mjs .pre-commit-config.yaml Makefile .editorconfig .gitignore .copier-answers.yml LICENSE
@@ -123,12 +123,11 @@ table "a crate reaches the Rust jobs" "rust=true submodules=false" \
 table "the lockfile reaches the Rust jobs" "rust=true submodules=false" Cargo.lock
 table "a workspace manifest reaches the Rust jobs" "rust=true submodules=false" Cargo.toml
 table "a harness, an orchestrator and a package reach the Rust jobs" "rust=true submodules=false" \
-	harnesses/pi/harness.toml orchestrators/one-shot/runner.sh packages/gg-sandbox/src/index.ts
+	harnesses/pi/harness.toml orchestrators/one-shot/runner.sh packages/browser-driver/driver.mjs
 table "a script a Rust job runs reaches the Rust jobs" "rust=true submodules=false" \
 	scripts/ci/provision-node.sh
 table "the gg release helper, which only the image jobs run, reaches nothing" \
 	"rust=false submodules=false" scripts/ci/gg-release.sh
-table "an installer reaches the Rust jobs" "rust=true submodules=false" scripts/ci/install-java.sh
 table "a script with no rule reaches the Rust jobs" "rust=true submodules=false" \
 	scripts/vendor-lattice-assets.mjs scripts/lib/siblings.sh scripts/ci/some-new-script.sh
 table "a directory with no rule reaches the Rust jobs" "rust=true submodules=false" \
@@ -145,6 +144,7 @@ table "the contracts pin reaches the Rust jobs and submodule_pins" "rust=true su
 	contracts
 table "the engines pin reaches the Rust jobs and submodule_pins" "rust=true submodules=true" \
 	engines
+table "the gg pin reaches the Rust jobs and submodule_pins" "rust=true submodules=true" gg
 table "the test-suites pin reaches the Rust jobs and submodule_pins" \
 	"rust=true submodules=true" test-suites
 table ".gitmodules reaches submodule_pins alone" "rust=false submodules=true" .gitmodules

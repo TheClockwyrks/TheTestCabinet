@@ -572,9 +572,9 @@ fn release_download_command_builds_the_expected_url_and_script() {
 }
 
 /// The asset URL is the contract with the Azure pipeline's gg upload
-/// (`scripts/ci/publish-gg.sh`): each release is published under a `v{version}/` prefix
-/// of the release container, with gg as a bare `gg-{target}` executable. Pinning the
-/// whole string here means a change to either half of that layout has to be made
+/// (`scripts/ci/publish-gg.sh` in the `gg` repository): each release is published under a
+/// `v{version}/` prefix of the release container, with gg as a bare `gg-{target}` executable.
+/// Pinning the whole string here means a change to either half of that layout has to be made
 /// deliberately, in a place that names the upload script.
 #[test]
 fn the_release_asset_url_is_the_versioned_object_in_the_release_container() {

@@ -71,7 +71,7 @@ fresh_repo() { # script
 	repo="$(mktemp -d "$tmp/repoXXXXXX")"
 	mkdir -p "$repo/scripts/ci" "$repo/bin"
 	cp "$CI_DIR/$1" "$CI_DIR/tcab-lib.sh" "$repo/scripts/ci/"
-	cp "$CI_DIR/../gg-cargo-lock.sh" "$repo/scripts/"
+	cp "$CI_DIR/cargo-lock.sh" "$repo/scripts/ci/"
 	cat >"$repo/bin/cargo" <<'STUB'
 #!/usr/bin/env bash
 echo "cargo $* [cwd=$PWD]" >>"$STUB_LOG"
@@ -100,7 +100,7 @@ out="$(STUB_CARGO_EXIT_1=101 run "$repo" release-build.sh)"
 check_equal "a failing cargo fails the step with its status" "101" "$?"
 
 # Under a patch table cargo writes the lock's unused patches in no stable order, so the
-# build runs without `--locked` (scripts/gg-cargo-lock.sh).
+# build runs without `--locked` (scripts/ci/cargo-lock.sh).
 mkdir -p "$repo/.cargo"
 printf '[patch."https://github.com/TheClockwyrks/engines"]\nx = { path = "x" }\n' >"$repo/.cargo/config.toml"
 out="$(run "$repo" release-build.sh)"

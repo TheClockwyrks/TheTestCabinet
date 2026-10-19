@@ -86,12 +86,14 @@ is_pipeline() { # path
 # prose, every shell test, and the scripts only the image, deploy and release
 # jobs run. Of the submodule pins, contracts' and engines' reach them, since the
 # patch table builds their crates from the checkouts and every Rust job
-# initializes both with scripts/ci/submodules.sh, and test-suites' does, since
-# the core and backend suites read the committed catalog from that checkout.
+# initializes both with scripts/ci/submodules.sh, gg's does, since cargo loads the
+# crate the patch table names for it and the lock records its version, and
+# test-suites' does, since the core and backend suites read the committed
+# catalog from that checkout.
 reaches_rust() { # path
 	is_pipeline "$1" && return 0
 	case "$1" in
-		contracts | engines | test-suites | scripts/ci/submodules.sh) return 0 ;;
+		contracts | engines | gg | test-suites | scripts/ci/submodules.sh) return 0 ;;
 		apps/docs/* | apps/web/* | apps/site/*) return 1 ;;
 		tasks/* | .github/* | .devcontainer/* | .claude/* | .vscode/*) return 1 ;;
 		deployments/*) return 1 ;;
@@ -109,11 +111,10 @@ reaches_rust() { # path
 			scripts/ci/ci-image-purge.sh | scripts/ci/ci-image.sh | \
 			scripts/ci/deploy-docs.sh | \
 			scripts/ci/deploy-environment.sh | scripts/ci/deploy.sh | \
-			scripts/ci/gg-dist.sh | scripts/ci/gg-release.sh | \
-			scripts/ci/gg-version-gate.sh | scripts/ci/k8s-deploy-sets.sh | \
+			scripts/ci/gg-release.sh | scripts/ci/k8s-deploy-sets.sh | \
 			scripts/ci/manifest.sh | scripts/ci/mirror.sh | scripts/ci/npm-install.sh | \
 			scripts/ci/pin-images.sh | scripts/ci/post-deploy.sh | \
-			scripts/ci/pre-deploy.sh | scripts/ci/publish-gg.sh | \
+			scripts/ci/pre-deploy.sh | \
 			scripts/ci/registry-purge.sh | scripts/ci/report-disk.sh | \
 			scripts/ci/require-gated-commit.sh | scripts/ci/retire-legacy-backend.sh | \
 			scripts/ci/run-image-inputs.sh | scripts/ci/run-images.sh | \

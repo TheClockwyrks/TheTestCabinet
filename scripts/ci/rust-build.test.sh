@@ -71,7 +71,7 @@ fresh_repo() { # script
 	repo="$(mktemp -d "$tmp/repoXXXXXX")"
 	mkdir -p "$repo/scripts/ci" "$repo/bin"
 	cp "$CI_DIR/$1" "$CI_DIR/tcab-lib.sh" "$repo/scripts/ci/"
-	cp "$CI_DIR/../gg-cargo-lock.sh" "$repo/scripts/"
+	cp "$CI_DIR/cargo-lock.sh" "$repo/scripts/ci/"
 	cat >"$repo/bin/cargo" <<'STUB'
 #!/usr/bin/env bash
 echo "cargo $* [cwd=$PWD]" >>"$STUB_LOG"
@@ -122,7 +122,7 @@ check_contains "which says how to call it" "usage: scripts/ci/rust-build.sh [--s
 check_equal "and runs nothing" "" "$(cat "$tmp/cargo.log")"
 
 # Under a patch table cargo writes the lock's unused patches in no stable order, so the
-# build runs without `--locked` (scripts/gg-cargo-lock.sh).
+# build runs without `--locked` (scripts/ci/cargo-lock.sh).
 mkdir -p "$repo/.cargo"
 printf '[patch."https://github.com/TheClockwyrks/engines"]\nx = { path = "x" }\n' >"$repo/.cargo/config.toml"
 out="$(run "$repo" rust-build.sh)"

@@ -2,32 +2,6 @@
 resolver = "3"
 members = [
 	"crates/cli",
-	"crates/gg",
-	# The shared build-script body behind every gg program-language ARTIFACT crate, and the arm
-	# crates that use it. Each arm crate builds one program language's compile inputs — a guest
-	# component, an SDK jar, a compiler — into its own `OUT_DIR` and publishes the directory to
-	# `crates/gg`, which `include_bytes!`s them from there. They are ten crates rather than ten
-	# steps of `crates/gg/build.rs` so that each arm has its own rerun set; the argument is
-	# in `gg-artifact-build`'s header, along with the recipe for adding one.
-	#
-	# The list arrived one arm at a time, each entry landing on the change that stopped committing
-	# that arm's bytes — never before, because an arm crate here is a crate whose build script runs
-	# on `cargo build --workspace`, and running an arm's toolchain to produce bytes nothing embeds is
-	# pure cost. It is complete now: ten packages serving eleven arms, `packages/gg-sandbox` serving
-	# TypeScript and JavaScript from one build exactly as `scripts/gg-arms.sh` does. Nothing under
-	# `crates/gg/src/sandbox/guests/` is committed any more, and what is left beside it under
-	# `checkers/` is gg's own hand-written Java and its pins.
-	"crates/gg-sandbox-artifacts/build-support",
-	"crates/gg-sandbox-artifacts/typescript",
-	"crates/gg-sandbox-artifacts/python",
-	"crates/gg-sandbox-artifacts/ruby",
-	"crates/gg-sandbox-artifacts/java",
-	"crates/gg-sandbox-artifacts/kotlin",
-	"crates/gg-sandbox-artifacts/purescript",
-	"crates/gg-sandbox-artifacts/rust",
-	"crates/gg-sandbox-artifacts/swift",
-	"crates/gg-sandbox-artifacts/cpp",
-	"crates/gg-sandbox-artifacts/csharp",
 	"crates/draw",
 	"crates/model-core",
 	"crates/voxel",
@@ -61,10 +35,12 @@ members = [
 	"crates/entities",
 	"crates/migration",
 ]
-# The contracts and engines repositories, submodules, are workspaces of their own.
-# Their crates are named under `[workspace.dependencies]` by their public source, and
-# the patch table of `.cargo/config.toml` builds them from the checkouts.
-exclude = ["contracts", "engines"]
+# The contracts, engines and gg repositories, submodules, are workspaces of their own.
+# The contracts and engines crates are named under `[workspace.dependencies]` by their
+# public source, and the patch table of `.cargo/config.toml` builds them from the
+# checkouts. No member depends on gg; the patch table names its crate all the same,
+# and the lock records it as unused.
+exclude = ["contracts", "engines", "gg"]
 
 [workspace.package]
 edition = "2024"
@@ -102,15 +78,14 @@ codegen-units = 1
 codegen-units = 1
 opt-level = 3
 
-# Cranelift compiles gg's responses-as-code sandbox components (`crates/gg/src/sandbox`)
-# in test processes, and `cargo nextest` runs ONE PROCESS PER TEST. The test suite's
-# on-disk cache (`crates/gg/src/sandbox/engine.cache.rs`) spares most processes the
-# embedded guests' compile, but the first processes of a build still pay it and every
-# compiled arm (Swift above all) compiles a new artifact per program. These are the
-# crates that compile a component and read its debug information — Cranelift, wasmtime's
-# compile path, and the DWARF readers a Swift artifact's `.debug_*` sections go through —
-# none of them workspace members, so optimising them changes no behaviour under test and
-# roughly halves the CPU a component compile costs; the cost is one slower first build.
+# Cranelift compiles wasm modules in test processes: the Foray and Lattice hosts of the
+# engines repository, which the driver and the arena link through the match runner,
+# compile each controller with wasmtime, and `cargo nextest` runs ONE PROCESS PER TEST.
+# These are the crates that compile a module and read its debug information —
+# Cranelift, wasmtime's compile path and the DWARF readers — none of them workspace
+# members, so optimising them changes no behaviour under test and makes each compile
+# cheaper; the cost is one slower first build. gg's own manifest carries the same pins
+# for its sandbox's components.
 [profile.dev.package.cranelift-codegen]
 opt-level = 3
 
@@ -160,14 +135,6 @@ opt-level = 3
 opt-level = 3
 
 [profile.dev.package.object]
-opt-level = 3
-
-# gg's test suite keys its on-disk cache of compiled components
-# (`crates/gg/src/sandbox/engine.cache.rs`) on a SHA-256 of each component, and
-# the embedded guests are tens of megabytes: unoptimised, hashing the 25 MB Python
-# guest takes ~1.3s, against ~75ms optimised and ~70ms to map the compiled copy
-# in. Optimising the hash changes no output, only how long the digest takes.
-[profile.dev.package.sha2]
 opt-level = 3
 
 [workspace.dependencies]
@@ -231,10 +198,6 @@ toml_edit = { version = "0.25", features = ["serde"] }
 # refuses runs, so it is not hand-rolled. Already in the lock file transitively,
 # so naming it here adds no new fetch.
 semver = { version = "1", features = ["serde"] }
-# Renders each test case's `prompt.hbs` template into the instruction handed to
-# the harness, interpolating the in-container workspace and seeded spec paths so
-# they are never hard-coded into a specification.
-handlebars = "6"
 tempfile = "3"
 # Gzip framing, shared by every crate on the **run-tree artifact** path: a run's
 # whole-run analysis documents (`replay.json.gz`, `code-analysis.json.gz`) are
@@ -288,10 +251,7 @@ schemars = "1"
 which = "8"
 # HTTP client for fetching OpenRouter model prices. rustls avoids a system
 # OpenSSL dependency so the workspace builds cleanly on minimal hosts (NixOS).
-# `stream` carries both directions of the streaming work. `Response::bytes_stream`
-# is what gg's streaming model transport reads server-sent events off, so its loop
-# detector can abandon a reply while the model is still writing it
-# (`crates/gg/src/client.rs`). `Body::wrap_stream` is how the driver uploads a
+# `stream` is for `Body::wrap_stream`, which is how the driver uploads a
 # produced run tree without holding the tarball in memory (`crates/driver/src/artifacts.rs`);
 # a driver killed for exceeding its memory ceiling mid-upload destroys a run that
 # has already paid for every one of its harness API calls, so the upload body is
@@ -302,70 +262,6 @@ reqwest = { version = "0.12", default-features = false, features = [
 	"stream",
 ] }
 
-# The wasm runtime of gg's sandbox and of the Foray and Lattice hosts (`foray-host`,
-# `lattice-host`, in the engines repository), which the driver and the arena link
-# through the match runner. wasmtime is pure Rust (no system packages), so it builds
-# on the same minimal hosts as the rest of the workspace. `cranelift` is the JIT
-# (default); `cache` is dropped because matches run in ephemeral run containers
-# where a compile cache buys nothing. Pinned to the major version the hosts were
-# written against, the engines repository's own pin, so an automatic minor bump
-# never silently changes the fuel/epoch semantics the sandbox relies on.
-#
-# `gc` and `gc-null` are here for **gg's C++ program language**, and they are the one entry in
-# this file that a language arm asked for. C++ exceptions compile to the wasm exception-handling
-# proposal, and wasmtime gates that proposal behind `Config::wasm_exceptions`, which is
-# `#[cfg(feature = "gc")]` — an exception reference is a GC-managed value, so the runtime will not
-# even build the setter without GC support, and it refuses to build an `Engine` at all when `gc`
-# is on and no collector is. `gc-null` is the cheapest collector there is: it allocates nothing
-# and collects nothing, which is exactly right for a feature whose only user here allocates no GC
-# objects. Without both, a C++ program that so much as links libc++'s `eh` build is refused with
-# *exceptions proposal not enabled* — measured, on this pinned release.
-#
-# Cargo features are additive across a build, so this reaches `foray-host` and `lattice-host`
-# too. What it changes for them is that `WasmFeatures::default()` gains `GC_TYPES`, which would
-# widen what a submitted controller may contain; both now turn it back off explicitly on their own
-# `Config`, so the modules they accept are what they were. gg's engine is a third, separate
-# `Engine` — see `crates/gg/src/sandbox/engine.rs` — and it is the only one that opts in.
-wasmtime = { version = "45", default-features = false, features = [
-	"cranelift",
-	"gc",
-	"gc-null",
-	"runtime",
-] }
-
-# The WASI preview-2 host implementation gg's responses-as-code sandbox links into
-# every guest (`crates/gg/src/sandbox.rs`). Only the `p2` feature: the default set
-# additionally pulls the preview-1 adapter and `wiggle`, which no guest here imports.
-# Same major version as `wasmtime` above, and it requires the patch release it names,
-# so adding it moves the whole workspace's wasmtime to that patch — including the two
-# wasm hosts, which also inherit the `async` feature `p2` turns on. Neither uses an
-# async entry point, so this changes their build surface and not their behaviour.
-wasmtime-wasi = { version = "45", default-features = false, features = ["p2"] }
-
-# Turning a core wasm module into a **component**, in process, on the turn path
-# (`crates/gg/src/sandbox/language/rust.compile.rs`). The Rust program language compiles a
-# model's program with `rustc --target wasm32-unknown-unknown`, which emits a core module
-# carrying the `component-type` custom section `wit-bindgen` put there; this crate reads that
-# section and encodes the component gg's engine then instantiates. It is the same step the
-# `wasm-tools component new` CLI performs, taken as a library so no second binary has to be
-# installed in a run container and no artifact has to round-trip through a file.
-#
-# Pinned to the wasmparser line `wasmtime` 45 is built on (0.248), so the whole workspace
-# resolves ONE `wasmparser`/`wasm-encoder` pair: an encoder from a newer line may emit a
-# component feature the runtime's validator does not know, and the failure would be a
-# validation error on a program nobody wrote wrong.
-wit-component = "0.248"
-# The WIT parser `wit-component` is built on, at the same pin for the same reason: gg stamps the
-# `component-type` section of the JVM arms' modules from its own Rust (`sandbox/language/jvm.rs`),
-# which needs a `Resolve` and a `WorldId` — types that must come from the very crate the encoder
-# reads them with.
-wit-parser = "0.248"
-# The source-map reader gg resolves a guest frame through
-# (`crates/gg/src/sandbox/locate.rs`). The invariants allow a location to be reached through a
-# source map and by no other means, so the arms whose compilers emit JavaScript hand the guest a
-# source carrying its own map and gg reads the map with the library the ecosystem reads them with
-# rather than with a VLQ decoder of its own.
-sourcemap = "9"
 
 # Backend HTTP server. Axum is the settled web framework; `tower-http` supplies
 # the request-tracing/limit middleware, the CORS layer the browser UIs need to
@@ -424,8 +320,7 @@ hex = "0.4"
 md-5 = "0.10"
 percent-encoding = "2"
 
-# The operating system's entropy, at the version `wasmtime-wasi` already pulls in, so gg's own
-# reads and WASI's `random_get` come from one generator.
+# The operating system's entropy.
 getrandom = "0.3"
 
 # Streaming HTTP bodies. The backend relays a run's live harness events to the
@@ -474,15 +369,6 @@ opentelemetry-semantic-conventions = { version = "0.32", features = [
 opentelemetry-appender-tracing = "0.32"
 tracing-opentelemetry = "0.33"
 
-# BPE tokenizer for gg's context-window token accounting (`crates/gg`'s `context`
-# module). gg tags every context contribution with a source and an estimated token
-# count so it can report what fills the window (context visibility) and trigger
-# compaction on fullness. Exact per-provider counts are not available cross-provider,
-# so gg counts with a fixed BPE base (o200k) as a documented cross-model approximation;
-# the estimator is swappable so a later phase can refine it per model family.
-# `tiktoken-rs` embeds the BPE vocab (no network, no system deps), matching the
-# workspace's minimal-host stance. Only `crates/gg` pulls it in.
-tiktoken-rs = "0.7"
 
 # The TypeScript/JSX front end `crates/driver`'s analyzer parses a produced source tree with.
 # Pinned to the 0.141 line that crate is written against: oxc's parser and AST move between

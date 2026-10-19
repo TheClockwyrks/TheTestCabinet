@@ -119,8 +119,8 @@ async fn build_with_prices(
         tracing::warn!(
             directory = %config.gg_reference.display(),
             "no gg reference documents (index.json), so GET /gg/reference answers 503; \
-             write them with `scripts/gg-reference.sh` or point TCAB_GG_REFERENCE at a \
-             `gg reference --out` directory"
+             write them with `scripts/gg-reference.sh` in the gg checkout and point \
+             TCAB_GG_REFERENCE at them, or at any `gg reference --out` directory"
         );
     }
 

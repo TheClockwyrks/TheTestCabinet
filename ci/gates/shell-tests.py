@@ -1,7 +1,10 @@
 """Run every *.test.sh under scripts/, each driving its script through stubs.
 
 Every `*.test.sh` under `scripts/`, `scripts/ci/` and `scripts/repos/` runs
-(the last is this project's: the repository scripts), and a failure does
+(the last is this project's: the repository scripts), and so does the gg
+checkout's `scripts/ci/gg-image-toolchains.test.sh` where `gg/` is checked out:
+it holds the language-image tags this repository's devcontainer compose file
+names to gg's pins, and gg's own pipeline never sees that file. A failure does
 not stop the ones after it: a run names every test that failed rather than the
 first one, which is what makes one run enough to see the whole picture. Each
 test drives its script through stubs of the tools it calls, so none reaches a
@@ -21,6 +24,13 @@ tests = [
     for directory in ("scripts", "scripts/ci", "scripts/repos")
     for test in sorted(Path(directory).glob("*.test.sh"))
 ]
+# The devcontainer's language images against gg's pins, from the gg checkout,
+# which reads this repository's compose file beside it.
+GG_IMAGE_TOOLCHAINS = Path("gg/scripts/ci/gg-image-toolchains.test.sh")
+if GG_IMAGE_TOOLCHAINS.is_file():
+    tests.append(GG_IMAGE_TOOLCHAINS)
+else:
+    say(f"gg/ is not checked out, so {GG_IMAGE_TOOLCHAINS} does not run")
 if not tests:
     skip("No shell tests under scripts/.")
 

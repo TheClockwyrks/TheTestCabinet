@@ -74,8 +74,10 @@ x-devcontainer-build-args: &devcontainer-build-args
   CLAUDE_CODE_VERSION: 2.1.236
   # The project's own pins of two tools the toolchain image holds, for the jobs
   # that run outside every image built on it: no Dockerfile step reads either.
-  # scripts/ci/gg-ci-toolchains.sh installs Node at NODE_VERSION on the hosted
-  # agents the gg jobs run on and into the Rust job's gg cache, and the
+  # scripts/ci/provision-node.sh installs Node at NODE_VERSION on the hosted
+  # agents the jobs that need one outside an image run on (gg's
+  # scripts/ci/gg-ci-toolchains.sh pins the same version, and its
+  # gg-image-toolchains.test.sh checks the two agree), and the
   # repository kit's install-nextest.sh, which the rendered repositories'
   # Windows jobs run, holds cargo-nextest at NEXTEST_VERSION
   # (scripts/repos/test_render.py checks the two agree). Each is the version
@@ -85,13 +87,13 @@ x-devcontainer-build-args: &devcontainer-build-args
   NEXTEST_VERSION: 0.9.140
   # gg's program-language toolchains, which the last of the Dockerfile's own steps
   # bakes into the image with languages/gg/install.sh, are pinned elsewhere on
-  # purpose: each arm's packages/gg-sandbox-*/<lang>-version.sh is the one pin
-  # the pipeline, the run images and this image all install from, and the Rust
-  # arm's defers to rust-toolchain.toml. Where an arm's toolchain is one of the
+  # purpose: each arm's gg/packages/gg-sandbox-*/<lang>-version.sh, in the gg
+  # checkout, is the one pin gg's pipeline, the run images and this image all
+  # install from, and the Rust arm's defers to gg's rust-toolchain.toml. Where an arm's toolchain is one of the
   # language images named above, that step links the image's tree rather than
   # downloading the arm, so the arm's pin is the version the image's tag names:
   # the step fails when the image lacks it, and
-  # scripts/ci/gg-image-toolchains.test.sh fails the shell-tests gate when a tag
+  # gg/scripts/ci/gg-image-toolchains.test.sh fails the shell-tests gate when a tag
   # here and a pin disagree. A template update that moves one of those images
   # therefore moves the arm's pin with it. The project's other steps read no
   # argument: helm is pinned in tools/helm.sh, and the system packages
@@ -114,10 +116,11 @@ services:
   dev:
     build:
       # The repository root rather than this directory. The image's last layer
-      # installs gg's program-language toolchains with the repository's own
-      # installers, scripts/ci/install-gg-toolchains.sh and
-      # scripts/ci/install-gg-build-toolchains.sh, which read their pins from
-      # beside the arms under packages/, so the build has to see them. The root
+      # installs gg's program-language toolchains with gg's own installers,
+      # scripts/ci/install-gg-toolchains.sh and
+      # scripts/ci/install-gg-build-toolchains.sh in the gg/ checkout, which
+      # read their pins from beside the arms under its packages/, so the build
+      # has to see them, and gg/ has to be checked out before it starts. The root
       # .dockerignore is an allowlist and decides what it sees; every COPY in
       # the Dockerfile is written from the root. See "The build context" in
       # README.md.

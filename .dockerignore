@@ -15,9 +15,11 @@
 # read none of it.)
 #
 # WHAT THIS ALLOWLIST ACTUALLY WEIGHS, because this paragraph used to say "~100kB" and
-# was wrong by three orders of magnitude for years: ~35 MB across ~2,300 files, nearly
-# all of it the Rust workspace's sources (crates/ is ~22 MB, the eleven guest packages
-# ~13 MB) — real build inputs, every one of them compiled or reflected by some image.
+# was wrong by three orders of magnitude for years: it was ~35 MB across ~2,300 files
+# while gg was built here, ~13 MB of them gg's guest packages, which left with gg. Nearly
+# all of what is left is the Rust sources (the crates of the superrepo, contracts and
+# engines are ~15 MB without their test data) — real build inputs, every one of them
+# compiled by some image.
 # The figure is worth keeping honest because it is the unit of the `COPY . .` snapshot
 # each of the seven whole-context builds materialises on a cache miss, which is why the
 # re-exclusions at the foot of this file keep ignored output out of it.
@@ -31,7 +33,7 @@
 # SUBMODULES. A path in a submodule is re-included like any other, by naming it (the
 # submodule's own path, or a path inside it, never a wildcard), and `*` below keeps
 # every submodule this file does not name out of the context, cold-storage's ~2 GB
-# of baseline media included. contracts and engines are the ones named, below. What a submodule
+# of baseline media included. contracts, engines, test-suites and gg are the ones named, below. What a submodule
 # path adds is a precondition: the build reads what the checkout it runs in holds,
 # and a checkout leaves every submodule empty until it is initialized. So the
 # image jobs run `scripts/ci/submodules.sh init --build-context`, which
@@ -71,6 +73,16 @@
 !/orchestrators
 !/harnesses
 !/engines/engines
+# The gg repository's crate, which no image compiles: the patch table in .cargo/ names
+# it like every repository's crate, and cargo loads every patch path eagerly, so a build
+# under the superrepo fails without it. Cargo reads its manifest, the gg workspace
+# manifest that manifest inherits from, and the three target files it names, and records
+# the entry in the lock as `[[patch.unused]]`; nothing more of gg enters a `COPY . .`.
+!/gg/Cargo.toml
+!/gg/crates/gg/Cargo.toml
+!/gg/crates/gg/build.rs
+!/gg/crates/gg/src/lib.rs
+!/gg/crates/gg/src/main.rs
 
 # The backend service image (services.Dockerfile, `--target backend`) bakes the
 # Playwright browser-driver into its runtime to render references at ingest, so the
@@ -104,60 +116,6 @@
 !/containers/blender/tcab_blend_export.py
 !/containers/blender/tcab-blend
 
-# The gg language-toolchain builder (containers/gg-toolchains/Dockerfile) installs the
-# Java arm's JDK and TeaVM jars by running the SAME script a developer's or CI machine
-# runs, so there is one pinned list of versions rather than two: it COPYs
-# scripts/ci/install-java.sh and the version file that script sources. Both live outside
-# every path re-included above (nothing under crates/ reaches them), so without this the
-# COPYs fail with "not found" against the allowlisted context (transferring context: 2B) —
-# the same trap the Blender entry above records. That failure is not confined to Java:
-# containers/build.sh is `set -euo pipefail` and builds this builder before every `-gg`
-# variant, so a gg run image of ANY language stops being buildable.
-!/packages/gg-sandbox-java/java-version.sh
-!/scripts/ci/install-java.sh
-# The Kotlin arm does the same, and its installer RUNS the Java one — it compiles Kotlin to
-# JVM bytecode and hands that bytecode to the same TeaVM — so all four files are needed for
-# either block to build.
-!/packages/gg-sandbox-kotlin/kotlin-version.sh
-!/scripts/ci/install-kotlin.sh
-# The Swift arm does the same, and its installer does more than fetch: it PRUNES a 3.3 GB
-# toolchain to the ~1 GB a wasm cross-compile actually runs, and vendors the shared libraries
-# the published `lld` links against so the tree works on both the Debian-derived run images and
-# `blender-gg`'s Ubuntu. That knowledge must live in one place, so the image runs the same
-# script a developer's machine does.
-!/packages/gg-sandbox-swift/swift-version.sh
-!/scripts/ci/install-swift.sh
-# The C++ arm does the same. Its installer prunes a ~650 MB wasi-sdk to the ~200 MB a wasm
-# cross-compile actually runs and vendors the two GCC-runtime sonames the published binaries
-# link, so the tree works on both the Debian-derived run images and `blender-gg`'s Ubuntu.
-# That knowledge must live in one place, so the image runs the same script a developer's
-# machine does.
-!/packages/gg-sandbox-cpp/cpp-version.sh
-!/scripts/ci/install-wasi-sdk.sh
-# The C# arm does the same, and its version file SOURCES the C++ arm's (the two share a
-# wasi-sdk pin and a wit-bindgen pin, deliberately, so that two arms reading one crates/gg/wit
-# cannot describe the wire differently) — so its block needs both. Its installer prunes a
-# ~770 MB .NET SDK to the ~122 MB a Roslyn compile actually runs, and deletes Roslyn's resident
-# compiler server, which is a decision that must live in one place rather than two.
-!/packages/gg-sandbox-csharp/csharp-version.sh
-!/scripts/ci/install-dotnet.sh
-# The PureScript arm does the same, and it is the arm where the version file and the image
-# were LAST to stop disagreeing: its block used to restate `purs` and `esbuild` as ARG
-# defaults that containers/build.sh overrode, so the Dockerfile carried a second, silently
-# stale answer for anyone who built it without the wrapper. It runs the installer now. The
-# third file is spago.yaml, which the version file is not merely beside but READS — the
-# registry package set is written down where Spago reads it, and purescript-version.sh
-# projects it — so sourcing that file without this line fails inside the image.
-#
-# The fourth is spago.lock, and it belongs to a different consumer: `install-gg-build-tools.sh`
-# warms Spago's package STORE by running `spago install` in this package, and the lockfile is
-# what decides which versions that resolves to. Without it the warm would resolve the package
-# set afresh and cache a set the arm's build then re-resolves — a warm that warms the wrong
-# thing is worse than none, because it looks like it worked.
-!/packages/gg-sandbox-purescript/purescript-version.sh
-!/packages/gg-sandbox-purescript/spago.yaml
-!/packages/gg-sandbox-purescript/spago.lock
-!/scripts/ci/install-purescript.sh
 
 # The performance image bakes the committed training scenarios from the
 # Lattice case's version folder in the test-suites submodule (see
@@ -238,61 +196,38 @@
 # containers/README.md#the-shippable-test-cabinet-packages). The script is the one
 # extra file that build needs beyond the console's slice, so re-include it.
 !/scripts/stage-tcab-packages.mjs
-# THE gg GUEST PACKAGES, whole. No image compiles gg any more: the driver and backend
-# images fetch the gg release the driver pins (services.Dockerfile's `gg-release` stage).
-# Two readers are left. The devcontainer image's gg layer (.devcontainer/ubuntu.dockerfile)
-# installs gg's program-language toolchains with the installers under scripts/ci, against
-# a slice of these packages it stages file by file: every arm's pin, the files those pins
-# read, and the Rust arm's and the ECMAScript guest's lockfiles, which an installer fetches
-# by directory. And crates/gg is still a member of this workspace, whose `include_str!`
-# sources reach into the packages like any member's (scripts/ci/build-context.sh holds
-# every member's to this file), so each package is named as a directory rather than as the
-# slice's file list.
-!/packages/gg-sandbox
-!/packages/gg-sandbox-python
-!/packages/gg-sandbox-ruby
-!/packages/gg-sandbox-purescript
-!/packages/gg-sandbox-java
-!/packages/gg-sandbox-jvm
-!/packages/gg-sandbox-kotlin
-!/packages/gg-sandbox-rust
-!/packages/gg-sandbox-swift
-!/packages/gg-sandbox-cpp
-!/packages/gg-sandbox-csharp
-# gg's shared build shell, ENUMERATED, and the enumeration is load-bearing: the
-# devcontainer image COPYs `./scripts/gg-*.sh`, which takes whatever this file admits. This
-# used to be one line, `!/scripts/gg-*.sh`, and it cannot be: A RE-INCLUSION MUST NEVER
-# CARRY A WILDCARD. BuildKit's context sender skips an ignored directory outright only while
-# it can prove no negated pattern is rooted beneath it, and it proves that by string prefix —
-# so the moment ANY `!` pattern in this file contains a `*`, `?` or `[`, the proof is off for
-# every directory and the sender walks the ENTIRE working tree (node_modules, target/, tmp/ —
-# ~650,000 entries on a developer machine) to ship the ~200 kB it keeps. That cost twenty
-# seconds per build, and it meant one unreadable entry anywhere in the tree — a transient
-# `bad file descriptor` on a shared mount, under tmp/, in a directory no image reads — failed
-# `make local-rebuild`. A literal list keeps the walk to the paths named here.
-# scripts/ci/build-context.sh enforces both halves: no negation anywhere in an allowlist may
-# contain a wildcard, and every tracked `scripts/gg-*.sh` must still survive this file, so the
-# list below cannot silently fall behind.
-!/scripts/gg-arms.sh
-!/scripts/gg-artifacts-out-dir.sh
-!/scripts/gg-artifacts.sh
-!/scripts/gg-cargo-lock.sh
-!/scripts/gg-cargo-lock.test.sh
-!/scripts/gg-downloads.sh
-!/scripts/gg-npm-tools.sh
-!/scripts/gg-npm-tools.test.sh
-# The committed lock of each npm-delivered build tool's tree, which the resolver
-# installs with `npm ci`. The devcontainer image runs install-gg-build-tools.sh at build
-# time and reads the lock out of the context beside the resolver. A directory, named
-# without a wildcard.
-!/scripts/gg-npm-locks
-!/scripts/gg-probe-fixtures.sh
-!/scripts/gg-reference.sh
-!/scripts/gg-scratch-lock.sh
-!/scripts/gg-signatures.sh
-# The CI scripts: the toolchain installers the devcontainer and gg toolchain images run,
-# and scripts/ci/gg-release.sh with the pin it reads, which services.Dockerfile's
-# `gg-release` stage bind-mounts to fetch the release the driver pins.
+# THE gg SLICE the devcontainer image's gg layer (.devcontainer/ubuntu.dockerfile) stages
+# from the gg checkout to install gg's program-language toolchains with gg's own
+# installers: gg's scripts (the installers under scripts/ci, the shared shell they
+# source, gg's build shell and the npm-delivered build tools' locks), the
+# rust-toolchain.toml the Rust arm's pin defers to, and, file by file, every arm's pin
+# and the files those pins read. The packages are named file by file, because a whole
+# package would put the arms' sources into every `COPY . .` cache key; the installers
+# read them by `$REPO_ROOT/<path>`, which scripts/ci/build-context.sh holds to this list.
+# gg's scripts are one directory, named without a wildcard, so a new installer in gg
+# needs no edit here.
+!/gg/scripts
+!/gg/rust-toolchain.toml
+!/gg/packages/gg-sandbox-cpp/cpp-version.sh
+!/gg/packages/gg-sandbox-csharp/csharp-version.sh
+!/gg/packages/gg-sandbox-java/java-version.sh
+!/gg/packages/gg-sandbox-kotlin/kotlin-version.sh
+!/gg/packages/gg-sandbox-purescript/purescript-version.sh
+!/gg/packages/gg-sandbox-purescript/spago.yaml
+!/gg/packages/gg-sandbox-purescript/spago.lock
+!/gg/packages/gg-sandbox-python/build.sh
+!/gg/packages/gg-sandbox-python/requirements.txt
+!/gg/packages/gg-sandbox-ruby/opal-version.sh
+!/gg/packages/gg-sandbox-ruby/yard-version.sh
+!/gg/packages/gg-sandbox-rust/rust-version.sh
+!/gg/packages/gg-sandbox-rust/Cargo.toml
+!/gg/packages/gg-sandbox-rust/Cargo.lock
+!/gg/packages/gg-sandbox/guest/Cargo.toml
+!/gg/packages/gg-sandbox/guest/Cargo.lock
+!/gg/packages/gg-sandbox-swift/swift-version.sh
+# The CI scripts: scripts/ci/gg-release.sh with the shared shell it sources, which
+# services.Dockerfile's `gg-release` stage bind-mounts to fetch the release the driver
+# pins (the pin itself rides in under crates/).
 !/scripts/ci
 # This image is also the one service Dockerfile that COPYs sibling files from its
 # own deployments/images/ directory (the nginx server block) — the Rust images embed
@@ -301,10 +236,9 @@
 !/deployments/images/web
 
 # The DEVCONTAINER image (.devcontainer/ubuntu.dockerfile) builds from this same
-# context, because its last layer installs gg's program-language toolchains with the
-# repository's own installers (scripts/ci/install-gg-toolchains.sh and
-# install-gg-build-toolchains.sh, admitted with scripts/ci above), which read their
-# pins from beside the arms under packages/. Its own COPYs read these five paths and
+# context, because its last layer installs gg's program-language toolchains with gg's
+# own installers, from the gg slice admitted above, which read their pins from beside
+# the arms under gg/packages/. Its own COPYs read these five paths and
 # nothing else under .devcontainer/: README.md, devcontainer.json, the compose files,
 # the Dockerfile and the host's .env are not admitted, and they churn harder than the
 # scripts do. There is deliberately no sibling ubuntu.dockerfile.dockerignore: BuildKit
@@ -330,19 +264,6 @@
 # and the copies weigh tens of megabytes.
 /crates/*/testdata/
 /engines/crates/*/testdata/
-# The guest packages' own scratch, which the directories above would otherwise admit
-# and which dwarfs everything else in this context: measured on a developer machine that
-# has built every arm by hand, the ten packages are ~6 MB of sources and ~420 MB of
-# these — 179 MB of PureScript `.build`, 123 MB of Rust, 75 MB of C#, 54 MB of Swift,
-# 34 MB of `purs` output. No image reads them.
-**/.build/
-**/.spago/
-**/__pycache__/
-/packages/gg-sandbox-purescript/output/
-# The Rust arm's WIT bindings, GENERATED into its source tree (bindings.sh writes
-# src/bindings.rs, which is gitignored); no image reads them either.
-/packages/gg-sandbox-rust/src/bindings.rs
-
 # TypeScript's incremental build state. `packages/ui/tsconfig.tsbuildinfo` is gitignored
 # output that lands inside `!/packages/ui` — re-included for the web console image, which
 # reads that package's sources — and it is REWRITTEN by every local `tsc -b`. So a

@@ -26,7 +26,7 @@
 # Credentials, beyond the main pipeline's: the run's build identity may view
 # and queue runs of the main pipeline, and this pipeline is authorized for
 # `the-test-cabinet-acr`, the `github-mirror-key` secure
-# file and the `contracts` and `engines` repositories. `resources.pipelines` names the main pipeline by its name in Azure
+# file and the `contracts`, `engines` and `gg` repositories. `resources.pipelines` names the main pipeline by its name in Azure
 # DevOps, which is how its definition id reaches the gate.
 
 trigger:
@@ -44,10 +44,10 @@ resources:
     - pipeline: main
       source: the-test-cabinet
       trigger: none
-  # The contracts and engines repositories, the `contracts/` and `engines/`
-  # submodules every build compiles against, as in azure-pipelines.yml: a job
-  # that builds names them under `uses:` and runs
-  # `scripts/ci/submodules.sh init contracts engines`.
+  # The contracts, engines and gg repositories, the `contracts/`, `engines/`
+  # and `gg/` submodules every build reads through the patch table, as in
+  # azure-pipelines.yml: a job that builds names them under `uses:` and runs
+  # `scripts/ci/submodules.sh init contracts engines gg`.
   repositories:
     - repository: contracts
       type: git
@@ -55,6 +55,9 @@ resources:
     - repository: engines
       type: git
       name: the-test-cabinet/engines
+    - repository: gg
+      type: git
+      name: the-test-cabinet/gg
 
 pool:
   vmImage: ubuntu-24.04

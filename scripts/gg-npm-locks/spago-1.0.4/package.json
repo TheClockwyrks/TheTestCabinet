@@ -1,7 +1,0 @@
-{
-  "name": "spago-1.0.4",
-  "private": true,
-  "dependencies": {
-    "spago": "1.0.4"
-  }
-}

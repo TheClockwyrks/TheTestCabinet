@@ -259,7 +259,8 @@ set -- ${positional[@]+"${positional[@]}"}
 if [[ -n "${GG_SELFCHECK_BIN}" ]]; then
 	if [[ ! -f "${GG_SELFCHECK_BIN}" || ! -x "${GG_SELFCHECK_BIN}" ]]; then
 		echo "--gg-selfcheck: '${GG_SELFCHECK_BIN}' is not an executable file." >&2
-		echo "       Build one with: scripts/build-gg-static.sh <out-path>" >&2
+		echo "       Fetch the pinned release with: scripts/ci/gg-release.sh fetch <dir>" >&2
+		echo "       (or build one in the gg checkout: gg/scripts/build-gg-static.sh <out-path>)" >&2
 		exit 1
 	fi
 	GG_SELFCHECK_BIN="$(cd "$(dirname "${GG_SELFCHECK_BIN}")" && pwd)/$(basename "${GG_SELFCHECK_BIN}")"

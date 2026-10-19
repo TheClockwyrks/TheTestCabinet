@@ -12,8 +12,8 @@
 //! # The cases: two scenarios over several input prompts, per language arm
 //!
 //! The requests are the embedded fixtures under `probe/fixtures/` — one JSON document per gg
-//! program language, projected out of gg's own machinery by `scripts/gg-probe-fixtures.sh`
-//! (provenance inside each file). Every fixture carries one case per (scenario, input prompt)
+//! program language, projected out of gg's own machinery by `scripts/gg-probe-fixtures.sh` in
+//! the gg checkout, which writes them here (provenance inside each file). Every fixture carries one case per (scenario, input prompt)
 //! pair, at least three input prompts across them:
 //!
 //! - [`baseline`](SCENARIO_BASELINE) — the conversation holds an open documentation view of every
@@ -91,7 +91,7 @@ pub const SCENARIO_MISSING_DOCVIEW: &str = "missing-docview";
 // The embedded fixtures
 // ---------------------------------------------------------------------------
 
-/// One language's fixture document, as `scripts/gg-probe-fixtures.sh` writes it.
+/// One language's fixture document, as gg's `scripts/gg-probe-fixtures.sh` writes it.
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct Fixture {

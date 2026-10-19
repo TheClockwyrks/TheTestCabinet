@@ -124,9 +124,9 @@ least often to what changes most often:
   - `languages/gg/install.sh`: gg's eleven program-language toolchains and the
     build toolchains of its C# guest, under `~/.local/share`, linked to the
     language images above where those hold an arm and otherwise installed by
-    the repository's own installers from the pins beside each arm. Building
-    `crates/gg` reflects a signature catalogue out of every arm's SDK, so
-    without them `cargo build --workspace` fails. See
+    gg's own installers from the pins beside each arm. Building gg's crate
+    (in the `gg/` checkout) reflects a signature catalogue out of every arm's
+    SDK, so without them its build fails. See
     [gg's toolchains](#ggs-toolchains).
 - The Claude Code and Codex CLIs, because a harness session runs inside the
   devcontainer of the workspace it belongs to, and both publish often, so their
@@ -145,19 +145,20 @@ after it, and a second workspace of this project builds its image from the
 machine's build cache. Every version is pinned: the published images' by their
 tags, the steps' by the anchor or, where a step reads no argument, by the
 script that installs it. gg's toolchains are pinned in each arm's
-`packages/gg-sandbox-*/<lang>-version.sh`, the one pin the pipeline, the run
-images and this image all install from, with the Rust arm's deferring to
-`rust-toolchain.toml`. A gate whose toolchain is absent fails and
+`gg/packages/gg-sandbox-*/<lang>-version.sh` in the gg checkout, the one pin
+the pipeline, the run images and this image all install from, with the Rust
+arm's deferring to gg's `rust-toolchain.toml`. A gate whose toolchain is absent fails and
 names what installs it, so a toolchain missing here is a check that says so
 rather than one that quietly passes.
 
-`post-create.sh` populates the `contracts/` and `engines/` submodules, which every
+`post-create.sh` populates the `contracts/`, `engines/` and `gg/` submodules, which every
 build compiles against, and the `test-suites/` submodule, the suites checkout the local backend
 ingests (not `cold-storage/`, which is optional and about 2 GB), through
 `tools/submodule-checkout.sh` (see [Submodule checkout](#submodule-checkout)),
 installs the git hook through `scripts/setup-hooks.sh`, places cargo's target
 directory (see [Where cargo builds](#where-cargo-builds)) and installs the npm
-workspace's locked dependencies when the container is created.
+workspace's locked dependencies, and gg's own in `gg/`, when the container is
+created.
 A folder that `git init` has not been run in yet takes the rest and says the
 hook was skipped. Nothing runs in the background afterwards: when it returns,
 the container builds the whole workspace.
@@ -311,7 +312,7 @@ executables land, is on the `PATH`.
 ## gg's toolchains
 
 gg drives a model in one of eleven program languages, and what a model is told
-about each one is a signature catalogue that `crates/gg/build.rs` reflects out
+about each one is a signature catalogue that `gg/crates/gg/build.rs` reflects out
 of that arm's own SDK, with that arm's own documentation tool, on every build of
 the crate. The toolchains are therefore a prerequisite of building the
 workspace, and a prerequisite of working in the repository is a prerequisite of
@@ -323,7 +324,7 @@ Most of them come from the language images, which every workspace on a machine
 copies from the same layers rather than downloading for itself. The project
 answers yes to the template's `wasm_components`, `wasi_sdk`, `python`, `jvm`,
 `dotnet`, `ruby`, `swift` and `purescript` toolchains, and
-`scripts/ci/gg-image-toolchains.sh` runs first in the layer. It builds, at the
+gg's `scripts/ci/gg-image-toolchains.sh` runs first in the layer. It builds, at the
 default home each arm's installer checks, a small tree of links into the
 image's toolchain with the installer's version stamp beside it:
 
@@ -336,7 +337,7 @@ image's toolchain with the installer's version stamp beside it:
 | Java | `~/.local/share/gg-java/jdk` | the jvm image's JDK |
 | Java and Kotlin, TeaVM | `~/.local/share/gg-java/libs` | each pinned TeaVM jar the jvm image's Gradle cache holds |
 | Kotlin | `~/.local/share/gg-kotlin/libs` | the compiler's jars in the jvm image's Gradle cache |
-| PureScript, spago | `~/.local/share/tcab/gg-npm/spago-<version>-<lock digest>` | the purescript image's spago, whose tree has to be the one `scripts/gg-npm-locks/` names |
+| PureScript, spago | `~/.local/share/tcab/gg-npm/spago-<version>-<lock digest>` | the purescript image's spago, whose tree has to be the one gg's `scripts/gg-npm-locks/` names |
 | The C++, Swift and Rust arms' bindings | `~/.local/share/tcab/gg-wit-bindgen-<version>` | the wasm-components image's `wit-bindgen` |
 
 `purs`, YARD (in `GEM_HOME`) and componentize-py are where the installers and
@@ -344,7 +345,7 @@ gg already look, so the script only checks their versions. Then the two
 installers run, and each arm the images hold is already installed as far as
 they can tell:
 
-- `scripts/ci/install-gg-toolchains.sh` installs the eleven arms. In this image
+- gg's `scripts/ci/install-gg-toolchains.sh` installs the eleven arms. In this image
   it fetches what no language image holds: the TeaVM dependencies the jvm
   image's Gradle cache lacks (it resolved ASM to another release, and holds
   neither hppc nor Rhino), `esbuild`, the
@@ -354,7 +355,7 @@ they can tell:
   package-manager-delivered build tools the arms' artifact builds resolve
   offline (spago's store, componentize-js and opal-compiler, the opal gem, the
   Python arm's wheels and the two Rust crate sets).
-- `scripts/ci/install-gg-build-toolchains.sh` installs what building the C#
+- gg's `scripts/ci/install-gg-build-toolchains.sh` installs what building the C#
   guest needs and no run does. In this image it fetches the Mono WASI runtime
   pack, installs the `wasi-experimental` workload into the dotnet image's SDK
   tree, and fetches the wasi-sdk release the guest links with. That release is
@@ -364,7 +365,7 @@ they can tell:
   `DOTNET_ROOT` and `~/.local/bin/dotnet` name, so the workspace's own `dotnet`
   has the workload too, in this layer only.
 
-They are the same two installers the pipeline's `scripts/ci/gg-ci-toolchains.sh`
+They are the same two installers gg's pipeline's `scripts/ci/gg-ci-toolchains.sh`
 and the driver image's gg stage run, so the one pinned list serves every surface
 that builds gg. Those surfaces copy no language image and run no link script, so
 there the installers download every arm as before. Everything lands under the
@@ -372,16 +373,16 @@ container user's home, which is where the reflectors look first, so the layer
 runs as that user and `"updateRemoteUserUID": false` in `devcontainer.json` is
 load-bearing: a uid rewrite at start would orphan it.
 
-Each arm's pin stays in its `packages/gg-sandbox-*/<lang>-version.sh`, and has
+Each arm's pin stays in its `gg/packages/gg-sandbox-*/<lang>-version.sh`, and has
 to be the version the image's tag in `docker-compose.yml` names. A pin the
 image does not hold fails the link script, and the image build with it, with
 the pin file and both versions named, rather than letting an installer
-download the arm into the image unnoticed. `scripts/ci/gg-image-toolchains.test.sh`
+download the arm into the image unnoticed. `gg/scripts/ci/gg-image-toolchains.test.sh`
 reads the anchor's tags against the pins, so the same disagreement fails the
 `shell-tests` gate before an image is built. A template update that moves one
 of these images therefore moves the arm's pin in the same change.
 
-The layer is last, and its own, so a pin moving under `packages/`, an installer
+The layer is last, and its own, so a pin moving under `gg/packages/`, an installer
 changing or a new arm arriving rebuilds it and nothing above it, and a failed
 download from one of its upstreams is retried with everything else cached. Each
 installer checks what is there against its pin and touches no network when they
@@ -391,13 +392,15 @@ image it came from is then downloaded into its default home, over the links,
 until the container is rebuilt on a template that holds it:
 
 ```sh
+cd gg
 scripts/ci/install-gg-toolchains.sh
 scripts/ci/install-gg-build-toolchains.sh
 ```
 
 The one prerequisite of a gg build that is not in the image is the npm
 workspace, because two of the eleven catalogues are reflected with the pinned
-`typescript` in it, and it lives in the checkout. `post-create.sh` installs it.
+`typescript` in it, and it lives in the gg checkout. `post-create.sh` installs
+it with `npm ci --prefix gg`.
 
 ## The build context
 
@@ -407,16 +410,18 @@ repository is not mounted while an image builds. Every `COPY` in
 `ubuntu.dockerfile` is therefore written from the root, and the last layer
 stages a partial repository at `/tmp/scripts/gg-repo` for the installers: the
 installers and the shell they source, gg's own build shell, every arm's pins
-and the files those pins read, and `rust-toolchain.toml`. `scripts/ci/tcab-lib.sh`
+and the files those pins read, and `rust-toolchain.toml`, all copied from the
+`gg/` checkout, so `gg/` is checked out on the host before the image is built
+(`git submodule update --init gg`). gg's `scripts/ci/tcab-lib.sh`
 resolves the repository root from its own path, which is what lets the slice
 stand in for a checkout. The `RUN` that installs deletes it, so the image ships
 no stale half repository to read a pin out of.
 
 The root `.dockerignore` is an allowlist, and it decides what the build sees:
 it admits the directories under `.devcontainer/` the Dockerfile copies, the
-installers, gg's shell, the guest packages and `rust-toolchain.toml`. A source
+installers, gg's shell, the guest packages and `rust-toolchain.toml` under `gg/`. A source
 it keeps out fails the build at that `COPY` with the path not found, under
-Docker and Podman alike. The files under `packages/` are copied one by one
+Docker and Podman alike. The files under `gg/packages/` are copied one by one
 rather than as a directory, because a directory copy takes everything the
 allowlist admits, and would put the arms' whole sources into the toolchain
 layer's cache key; the price is that a new arm names its version file in the
@@ -672,7 +677,7 @@ warning about it.
 
 ## Submodule checkout
 
-The `contracts/`, `engines/` and `test-suites/` submodules live in the
+The `contracts/`, `engines/`, `gg/` and `test-suites/` submodules live in the
 organization's other repositories, reached over SSH at `ssh.dev.azure.com`.
 `post-create.sh` checks them out ahead of `npm ci`, whose workspace lists the
 packages `contracts/` and `engines/` hold, and `post-start.sh` checks them out
@@ -680,7 +685,7 @@ again at every start, each through `tools/submodule-checkout.sh` after the SSH
 agent is published. The script pins
 Azure DevOps' published RSA host key in `~/.ssh/known_hosts`, so the first clone
 does not stop at the interactive host-key prompt nothing is there to answer, and
-runs `git submodule update --init contracts engines test-suites` through the host's agent
+runs `git submodule update --init contracts engines gg test-suites` through the host's agent
 when the checkout holds a `.gitmodules`. Passed submodule paths, it checks out
 those instead; `cold-storage/` is left to a `git submodule update --init
 cold-storage` by hand. It never fails the step it runs from: a host with no

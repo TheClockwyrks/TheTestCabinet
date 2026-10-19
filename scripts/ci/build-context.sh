@@ -45,7 +45,7 @@
 # WHICH DOCKERFILES. Every one built from the repository root: `deployments/images/*`,
 # `containers/**`, and `.devcontainer/ubuntu.dockerfile`, whose compose service sets
 # the context to the repository root so that its last layer can run gg's toolchain
-# installers against the pins under packages/. The template's two CI images
+# installers against the pins under the gg checkout's packages/. The template's two CI images
 # (`ci/images/rust.Dockerfile`, `ci/images/web.Dockerfile`) copy only the
 # devcontainer's install scripts, through their own sibling ignore files, and the
 # template answers for them, so they are left out by name (TEMPLATE_DOCKERFILES
@@ -644,13 +644,16 @@ mapfile -t rust_sources < <(git ls-files 'crates/*.rs' | grep -v '\.test\.rs$')
 # patch table sending their sources there: the engines repository's engine table
 # bakes in its manifests the same way. Read from each checkout's own index, and
 # passed over for a submodule this checkout has not initialized, which part four
-# names.
+# names. Only a source the allowlist admits is read: a submodule may be admitted for
+# a slice no image compiles (gg's crate enters with its manifest and the target files
+# it names, because the patch table makes cargo load it, and nothing depends on it),
+# and a source the context does not carry is compiled by no image.
 while IFS= read -r context_sub; do
 	[[ -n "$context_sub" ]] || continue
 	submodule_checked_out "$context_sub" || continue
-	mapfile -t -O "${#rust_sources[@]}" rust_sources < <(
-		git -C "$REPO_ROOT/$context_sub" ls-files 'crates/*.rs' | grep -v '\.test\.rs$' | sed "s|^|$context_sub/|"
-	)
+	while IFS= read -r context_source; do
+		context_includes "$context_source" && rust_sources+=("$context_source")
+	done < <(git -C "$REPO_ROOT/$context_sub" ls-files 'crates/*.rs' | grep -v '\.test\.rs$' | sed "s|^|$context_sub/|")
 done < <(context_submodules)
 ((${#rust_sources[@]} > 0)) || {
 	echo "error: no compiled Rust sources found under crates/; this check would pass vacuously." >&2
@@ -884,70 +887,84 @@ done
 
 # --- what a COPY cannot tell you, part three: the paths the toolchain installers read ---
 
-# `scripts/ci/install-gg-toolchains.sh` and the per-arm installers it runs are copied into
-# the devcontainer image (`.devcontainer/ubuntu.dockerfile`) and the per-arm installers
-# into the gg toolchain image (`containers/gg-toolchains/Dockerfile`), along with a
-# slice of `packages/`, and they read pins, lockfiles and manifests out of that
-# slice by `$REPO_ROOT/<path>`. No COPY names those files, so nothing above sees them; a
-# missing one fails the image build minutes in with cargo's "manifest path ... does not
-# exist".
+# gg's toolchain installers (`scripts/ci/install-gg-toolchains.sh` and the per-arm
+# installers it runs, in the gg repository) are copied out of the `gg/` submodule into
+# the devcontainer image (`.devcontainer/ubuntu.dockerfile`), along with a slice of gg's
+# `packages/`, and they read pins, lockfiles and manifests out of that slice by
+# `$REPO_ROOT/<path>`, the root being the gg checkout's. No COPY names those files, so
+# nothing above sees them; a missing one fails the image build minutes in with cargo's
+# "manifest path ... does not exist".
 #
-# So every tracked `$REPO_ROOT/<path>` literal in those installers must survive every
-# allowlist an installer-running image is built against: the root one, and the sibling of
-# each Dockerfile that names the installer. An image that runs no installer (the web CI
-# image) keeps an empty context, and this check leaves it alone. Untracked paths
-# (`node_modules/.bin/tsc`, which an installer probes and does without) are skipped. A
-# `cargo fetch --manifest-path` needs two more things than the manifest: the lockfile beside
-# it, which `--locked` reads, and — because the slice deliberately carries no `src/` — a
-# manifest that names its `[lib] path` rather than having cargo discover it.
+# So every tracked `$REPO_ROOT/<path>` literal in those installers, read as
+# `gg/<path>`, must survive every allowlist an installer-running image is built
+# against: the root one, and the sibling of each Dockerfile that names the installer.
+# An image that runs no installer (the web CI image) keeps an empty context, and this
+# check leaves it alone. Untracked paths (`node_modules/.bin/tsc`, which an installer
+# probes and does without) are skipped. A `cargo fetch --manifest-path` needs two more
+# things than the manifest: the lockfile beside it, which `--locked` reads, and —
+# because the slice deliberately carries no `src/` — a manifest that names its
+# `[lib] path` rather than having cargo discover it. gg's own build-context gate
+# holds the same literals to its toolchains image's allowlist. A checkout that has
+# not initialized `gg/` cannot be read, and the check is named as not made.
+readonly INSTALLER_REPO="gg"
 installer_checked=0
-# shellcheck disable=SC2016 # the `$REPO_ROOT` in both patterns is the literal text being matched.
-mapfile -t installer_paths < <(
-	git -C "$REPO_ROOT" ls-files -z -- 'scripts/ci/install-*.sh' |
-		xargs -0 -I{} grep -ohE '\$(\{REPO_ROOT\}|REPO_ROOT)/[A-Za-z0-9_./-]+' "$REPO_ROOT/{}" |
-		sed -E 's#^\$(\{REPO_ROOT\}|REPO_ROOT)/##' | sort -u
-)
-((${#installer_paths[@]} > 0)) || {
-	echo "error: no \$REPO_ROOT paths found in scripts/ci/install-*.sh; this check would pass vacuously." >&2
-	exit 1
-}
 installer_inputs=()
-for path in "${installer_paths[@]}"; do
-	git -C "$REPO_ROOT" ls-files --error-unmatch -- "$path" >/dev/null 2>&1 || continue
-	installer_inputs+=("$path")
-	[[ "$path" == */Cargo.toml ]] || continue
-	installer_inputs+=("${path%Cargo.toml}Cargo.lock")
-	grep -qE '^path *= *"src/lib\.rs"' "$REPO_ROOT/$path" && continue
-	echo "error: $path is fetched by a toolchain installer from a slice with no src/, and does not name its [lib] path." >&2
-	echo "       cargo then looks for src/lib.rs and fails before it fetches anything." >&2
-	echo "       Fix: add 'path = \"src/lib.rs\"' under its [lib] table." >&2
-	problems=$((problems + 1))
-done
-# The root allowlist always applies; a sibling applies where an installer-running
-# Dockerfile has one. A Dockerfile must still run the installer, or the check is about
-# nothing.
 installer_ignore_files=(".dockerignore")
-installer_dockerfiles=0
-for dockerfile in "${dockerfiles[@]}"; do
-	grep -qE '^[^#]*scripts/ci/install-' "$REPO_ROOT/$dockerfile" || continue
-	installer_dockerfiles=$((installer_dockerfiles + 1))
-	[[ -f "$REPO_ROOT/$dockerfile.dockerignore" ]] && installer_ignore_files+=("$dockerfile.dockerignore")
-done
-((installer_dockerfiles > 0)) || {
-	echo "error: no Dockerfile copies a scripts/ci/install-*.sh; the installer-input check would pass vacuously." >&2
-	exit 1
-}
-for ignore_file in "${installer_ignore_files[@]}"; do
-	load_dockerignore "$REPO_ROOT/$ignore_file"
-	for path in "${installer_inputs[@]}"; do
-		installer_checked=$((installer_checked + 1))
-		context_includes "$path" && continue
-		echo "error: $ignore_file keeps '$path' OUT of the build context, and a toolchain installer reads it." >&2
-		echo "       scripts/ci/install-*.sh run in images built against this allowlist, so the" >&2
-		echo "       image build fails partway through the install. Fix: add '!/$path' to $ignore_file, with a comment." >&2
+if submodule_checked_out "$INSTALLER_REPO"; then
+	# shellcheck disable=SC2016 # the `$REPO_ROOT` in both patterns is the literal text being matched.
+	mapfile -t installer_paths < <(
+		git -C "$REPO_ROOT/$INSTALLER_REPO" ls-files -z -- 'scripts/ci/install-*.sh' |
+			xargs -0 -I{} grep -ohE '\$(\{REPO_ROOT\}|REPO_ROOT)/[A-Za-z0-9_./-]+' "$REPO_ROOT/$INSTALLER_REPO/{}" |
+			sed -E 's#^\$(\{REPO_ROOT\}|REPO_ROOT)/##' | sort -u
+	)
+	((${#installer_paths[@]} > 0)) || {
+		echo "error: no \$REPO_ROOT paths found in $INSTALLER_REPO/scripts/ci/install-*.sh; this check would pass vacuously." >&2
+		exit 1
+	}
+	for path in "${installer_paths[@]}"; do
+		git -C "$REPO_ROOT/$INSTALLER_REPO" ls-files --error-unmatch -- "$path" >/dev/null 2>&1 || continue
+		installer_inputs+=("$INSTALLER_REPO/$path")
+		[[ "$path" == */Cargo.toml ]] || continue
+		installer_inputs+=("$INSTALLER_REPO/${path%Cargo.toml}Cargo.lock")
+		grep -qE '^path *= *"src/lib\.rs"' "$REPO_ROOT/$INSTALLER_REPO/$path" && continue
+		echo "error: $INSTALLER_REPO/$path is fetched by a toolchain installer from a slice with no src/, and does not name its [lib] path." >&2
+		echo "       cargo then looks for src/lib.rs and fails before it fetches anything." >&2
+		echo "       Fix: add 'path = \"src/lib.rs\"' under its [lib] table, in the gg repository." >&2
 		problems=$((problems + 1))
 	done
-done
+	# The root allowlist always applies; a sibling applies where an installer-running
+	# Dockerfile has one. A Dockerfile must still run the installer, or the check is about
+	# nothing.
+	installer_dockerfiles=0
+	for dockerfile in "${dockerfiles[@]}"; do
+		grep -qE "^[^#]*$INSTALLER_REPO/scripts/ci/install-" "$REPO_ROOT/$dockerfile" || continue
+		installer_dockerfiles=$((installer_dockerfiles + 1))
+		[[ -f "$REPO_ROOT/$dockerfile.dockerignore" ]] && installer_ignore_files+=("$dockerfile.dockerignore")
+	done
+	((installer_dockerfiles > 0)) || {
+		echo "error: no Dockerfile copies a $INSTALLER_REPO/scripts/ci/install-*.sh; the installer-input check would pass vacuously." >&2
+		exit 1
+	}
+	for ignore_file in "${installer_ignore_files[@]}"; do
+		load_dockerignore "$REPO_ROOT/$ignore_file"
+		for path in "${installer_inputs[@]}"; do
+			installer_checked=$((installer_checked + 1))
+			# A directory (the guest a cargo fetch runs in) reaches the slice when anything
+			# under it does; the files it is fetched with are inputs of their own.
+			if [[ -d "$REPO_ROOT/$path" ]]; then
+				context_includes_dir "$path" && continue
+			else
+				context_includes "$path" && continue
+			fi
+			echo "error: $ignore_file keeps '$path' OUT of the build context, and a toolchain installer reads it." >&2
+			echo "       $INSTALLER_REPO/scripts/ci/install-*.sh run in images built against this allowlist, so the" >&2
+			echo "       image build fails partway through the install. Fix: add '!/$path' to $ignore_file, with a comment." >&2
+			problems=$((problems + 1))
+		done
+	done
+else
+	UNVERIFIED+=("$INSTALLER_REPO the paths its toolchain installers read, which the devcontainer image stages")
+fi
 
 # --- what an allowlist's SHAPE costs, before a byte is transferred ------------
 
@@ -964,17 +981,16 @@ done
 # never touches tmp/ and one that dies because a single entry under it could not be
 # lstat'ed. It did: `make local-rebuild` failed on `bad file descriptor` for a file inside
 # a scratch directory's node_modules, which no image reads and which the allowlist had
-# excluded on its first line. The one glob re-inclusion in the root allowlist
+# excluded on its first line. The one glob re-inclusion the root allowlist then held
 # (`!/scripts/gg-*.sh`) was the reason the sender was there at all.
 #
 # THE RULE: a re-inclusion names a path, never a family. Excludes may still be globs —
 # `**/node_modules/` is an exclude, and the sender handles those without walking.
 #
-# THE OTHER HALF OF THE RULE is what the globs used to buy: a new arm's installer, version
-# file or gg helper was admitted without an edit. An enumeration that falls behind fails
-# the build minutes in rather than at the COPY, so for every family an allowlist admits by
-# enumeration, every tracked file in that family must survive it. The families are the
-# former globs, verbatim, so the check preserves exactly what each allowlist admitted.
+# The families the globs used to admit without an edit (a new arm's installer, version
+# file or gg helper) now arrive as directories: the gg slice's scripts are one
+# re-inclusion of `gg/scripts`, and the arms' pins are held to the allowlist by the
+# installer-input check above.
 shape_checked=0
 for ignore_file in "${ignore_files[@]}"; do
 	load_dockerignore "$REPO_ROOT/$ignore_file"
@@ -985,34 +1001,9 @@ for ignore_file in "${ignore_files[@]}"; do
 		echo "error: $ignore_file re-includes '!${DI_RAW[$index]}' with a wildcard, and a re-inclusion must name a path." >&2
 		echo "       BuildKit skips an ignored directory only while every negation can be prefix-tested against it;" >&2
 		echo "       one wildcard negation makes the context sender walk the whole working tree on every build." >&2
-		echo "       Fix: replace the glob with one '!' line per file, and list the family below so the gate keeps it complete." >&2
+		echo "       Fix: replace the glob with one '!' line per file, or re-include the directory that holds them." >&2
 		problems=$((problems + 1))
 	done
-done
-
-# allowlist → the git pathspecs whose every tracked file it must admit.
-enumerated_families_root=('scripts/gg-*.sh')
-family_checked=0
-check_family() {
-	local ignore_file="$1" pathspec="$2" path count=0
-	load_dockerignore "$REPO_ROOT/$ignore_file"
-	while IFS= read -r path; do
-		[[ -n "$path" ]] || continue
-		count=$((count + 1))
-		family_checked=$((family_checked + 1))
-		context_includes "$path" && continue
-		echo "error: $ignore_file keeps '$path' OUT of the build context, and it admits '$pathspec' by enumeration." >&2
-		echo "       That family used to be one glob line; it is a list now (a re-inclusion must not carry a" >&2
-		echo "       wildcard), and this file is new to the list. Fix: add '!/$path' beside its siblings in $ignore_file." >&2
-		problems=$((problems + 1))
-	done < <(git -C "$REPO_ROOT" ls-files -- "$pathspec")
-	((count > 0)) || {
-		echo "error: no tracked file matches '$pathspec'; the $ignore_file family check would pass vacuously." >&2
-		problems=$((problems + 1))
-	}
-}
-for pathspec in "${enumerated_families_root[@]}"; do
-	check_family ".dockerignore" "$pathspec"
 done
 
 # --- part four: submodules in the build context ------------------------------
@@ -1076,16 +1067,16 @@ done < <(
 
 ((problems == 0)) || {
 	echo >&2
-	echo "$problems build-context problem(s) found across ${#dockerfiles[@]} Dockerfiles, $baked_checked baked-in includes, $staged_checked staged packages, $installer_checked installer inputs, ${#ignored_paths[@]} git-ignored paths, $shape_checked re-inclusions, $family_checked enumerated-family files and $rust_pins_checked Rust pins." >&2
+	echo "$problems build-context problem(s) found across ${#dockerfiles[@]} Dockerfiles, $baked_checked baked-in includes, $staged_checked staged packages, $installer_checked installer inputs, ${#ignored_paths[@]} git-ignored paths, $shape_checked re-inclusions and $rust_pins_checked Rust pins." >&2
 	exit 1
 }
 
 # A count of CHECKS rather than of distinct paths: a Dockerfile with a sibling
 # allowlist has its sources checked against both, which is the point.
 echo "$checked context-source check(s) — every COPY across ${#dockerfiles[@]} Dockerfiles, against each allowlist that can apply to it (every RUN bind mount of a context path among them), plus the $baked_checked path(s) the workspace bakes in with include_str! and the $staged_checked package(s) $STAGING_SCRIPT bakes into the host package store — all survive."
-echo "$installer_checked installer-input check(s) — ${#installer_inputs[@]} tracked path(s) scripts/ci/install-*.sh read, against each of the ${#installer_ignore_files[@]} allowlist(s) an installer-running image is built against — all survive."
+echo "$installer_checked installer-input check(s) — ${#installer_inputs[@]} tracked path(s) $INSTALLER_REPO/scripts/ci/install-*.sh read, against each of the ${#installer_ignore_files[@]} allowlist(s) an installer-running image is built against — all survive."
 echo "$ignored_checked exclusion check(s) — ${#ignored_paths[@]} git-ignored path(s) against each allowlist — none reach the build context."
-echo "$shape_checked re-inclusion(s) across ${#ignore_files[@]} allowlist(s) name a path rather than a wildcard family, and $family_checked file(s) of the families those allowlists enumerate all survive."
+echo "$shape_checked re-inclusion(s) across ${#ignore_files[@]} allowlist(s) name a path rather than a wildcard family."
 echo "$rust_pins_checked Rust pin(s) under containers/ name rust-toolchain.toml's channel, $rust_channel."
 if ((${#context_subs[@]} == 0)); then
 	echo "No submodule is in the build context."
