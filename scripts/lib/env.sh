@@ -2,7 +2,7 @@
 # Shared per-environment target resolver for the REMOTE cluster/vault scripts.
 #
 # The scripts that act on a deployed environment — upload-subscription-creds.sh,
-# enable-secret-rotation.sh, backfill-run-media.sh, recover-run-media-from-snapshot.sh,
+# enable-secret-rotation.sh, extract-cluster-assets.sh,
 # deployments/k8s/secrets/upload-test-suites-credential.sh — take a
 # REQUIRED `--env <prod|staging>` and source this file to turn that name into the
 # concrete Azure resources they operate on. Keeping the mapping here means the
@@ -23,7 +23,7 @@
 #
 # Usage (from a script that has computed its own $script_dir):
 #   source "${script_dir}/lib/env.sh"
-#   tcab_env_resolve "$env"   # sets TCAB_VAULT / TCAB_CLUSTER / TCAB_RG / TCAB_NAMESPACE
+#   tcab_env_resolve "$env"   # sets TCAB_VAULT / TCAB_CLUSTER / TCAB_RG / TCAB_NAMESPACE / TCAB_ORIGIN
 #
 # Returns 2 (and prints a usage error) for an empty or unknown env, so callers can:
 #   tcab_env_resolve "$env" || exit $?
@@ -38,6 +38,8 @@ tcab_env_resolve() {
       TCAB_CLUSTER="testcabinet-prod-westus2-aks"
       TCAB_RG="testcabinet-prod-westus2-rg"
       TCAB_NAMESPACE="tcab-prod"
+      # The environment's origin at the edge, behind Cloudflare Access.
+      TCAB_ORIGIN="https://console.testcabinet.ai"
       # The branch whose tip the backend ingests its catalog (test-case defs + the
       # reference-build lockfile) from. A stable branch — NOT a per-release tag — so
       # reingest picks up pushed catalog/reference changes on demand without a roll;
@@ -45,24 +47,14 @@ tcab_env_resolve() {
       # Kept == the branch each overlay's patch-backend-ingest.yaml clones, and the
       # branch a publish to this environment pushes.
       TCAB_INGEST_BRANCH="master"
-      # The artifact service's PUBLIC (internal-ingress) read URL for this env.
-      TCAB_ARTIFACTS_PUBLIC_URL="https://artifacts.tcab.testcabinet.ai"
-      # The public base the exported snapshot is served under (the CF Pages/R2 URL the
-      # site reads as TCAB_SNAPSHOT_URL — set dashboard-side, mirrored here so the
-      # recovery script can read a prior snapshot). Override with SOURCE_BASE if the
-      # dashboard value differs.
-      TCAB_SNAPSHOT_URL="https://snapshot.testcabinet.ai"
       ;;
     staging)
       TCAB_VAULT="testcabinet-staging"
       TCAB_CLUSTER="testcabinet-staging-westus2-aks"
       TCAB_RG="testcabinet-staging-westus2-rg"
       TCAB_NAMESPACE="tcab-staging"
+      TCAB_ORIGIN="https://console.staging.testcabinet.ai"
       TCAB_INGEST_BRANCH="staging"
-      TCAB_ARTIFACTS_PUBLIC_URL="https://artifacts.staging.tcab.testcabinet.ai"
-      # The staging snapshot read base (must equal the staging site's dashboard-set
-      # TCAB_SNAPSHOT_URL). Override with SOURCE_BASE if the dashboard value differs.
-      TCAB_SNAPSHOT_URL="https://snapshot.staging.testcabinet.ai"
       ;;
     "")
       echo "error: --env is required (one of: prod, staging)" >&2

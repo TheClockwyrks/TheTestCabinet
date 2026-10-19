@@ -47,9 +47,6 @@ import exec from "../runs/RunExec.module.scss";
 vi.mock("../../components/PageLayout", () => ({
   PageLayout: ({ children }: { children: ReactNode }) => <div>{children}</div>,
 }));
-vi.mock("../../../client/auth", () => ({
-  useAuth: () => ({ token: "t0" }),
-}));
 let confirmAnswer = true;
 const confirmSpy = vi.fn();
 vi.mock("../../components/ConfirmDialog", () => ({

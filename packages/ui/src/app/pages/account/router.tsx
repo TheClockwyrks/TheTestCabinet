@@ -2,8 +2,6 @@ import { Route } from "react-router";
 import { routePatterns } from "../../routes";
 import { AccountPage } from "./AccountPage";
 import { ReviewsPage } from "./ReviewsPage";
-import { LoginPage } from "./LoginPage";
-import { RegisterPage } from "./RegisterPage";
 import { CoveragePlansPage } from "./CoveragePlansPage";
 import { CoveragePlanLayout } from "./CoveragePlanLayout";
 import { CoveragePlanPage } from "./CoveragePlanPage";
@@ -20,15 +18,15 @@ import { GgConfigEditPage } from "./GgConfigEditPage";
 import { GgAgentsPage } from "./GgAgentsPage";
 import { GgAgentEditPage } from "./GgAgentEditPage";
 
-// Routes owned by the account section: the signed-in account view (its Profile,
-// Coverage, Ladders, Groups, and gg tabs) plus the sign-in and registration pages,
-// each its own URL so it is linkable (the top-bar account control links to them).
+// Routes owned by the account section: the signed-in identity's view (its Activity,
+// Reviews, Coverage, Ladders, Groups, and gg tabs), each its own URL so it is
+// linkable (the top-bar account control links to it).
 // The reviewer coverage tooling — coverage plans, ladders, and the reusable groups
 // both reference — lives here too, scoped to the account it belongs to, as do the
 // operator's saved gg configurations (named capability sets the new-run form
-// launches once `gg` is picked as the orchestrator). They drive the
-// auth context the static site does not provide, so they mount only when the host
-// can execute runs (the web console). Static segments like
+// launches once `gg` is picked as the orchestrator). They are scoped to
+// an identity the static site does not have, so they mount only when the host can
+// execute runs (the web console). Static segments like
 // `/account/coverage/new` outrank the dynamic `:planId`, so route order does not
 // matter. Returned as a fragment so the app's single <Routes> stitches every
 // section's routes together.
@@ -42,8 +40,6 @@ export function accountRoutes(canExecute: boolean) {
             path={routePatterns.accountReviews}
             element={<ReviewsPage />}
           />
-          <Route path={routePatterns.login} element={<LoginPage />} />
-          <Route path={routePatterns.register} element={<RegisterPage />} />
           <Route
             path={routePatterns.accountCoverage}
             element={<CoveragePlansPage />}

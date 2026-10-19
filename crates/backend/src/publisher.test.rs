@@ -62,11 +62,7 @@ async fn seed_published(db: &Db, id: &str, published_at: &str) {
     db.add_review(
         id,
         &StoredReview {
-            reviewer: crate::db::Reviewer {
-                user_id: "u1".to_string(),
-                username: "ada".to_string(),
-                display_name: "Ada".to_string(),
-            },
+            reviewer: "ada@clockwyrks.com".to_string(),
             ratings: vec![DomainRating {
                 domain: "gameplay".to_string(),
                 rating: Rating::Great,
@@ -100,7 +96,7 @@ async fn dev_publisher() -> (TempDir, Publisher, Arc<Db>) {
         None,
         None,
         None,
-        Arc::new(crate::accounts::AccountsClient::new("http://auth.invalid")),
+        None,
         PublisherTiming {
             coalesce: Duration::from_millis(10),
             // Retention is irrelevant to the dev publisher: with no R2 there is no

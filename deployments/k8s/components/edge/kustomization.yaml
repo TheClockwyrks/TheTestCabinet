@@ -1,0 +1,48 @@
+# Edge component: the in-cluster half of the edge
+# (apps/docs/src/content/docs/deployment/kubernetes/edge.md). A Cloudflare Tunnel
+# held open from inside the namespace by `tcab-cloudflared` carries every request
+# from outside the cluster to the services, routed by path on the environment's one
+# origin hostname and by hostname for Grafana. No Ingress, no load balancer, no
+# public IP and no certificate exist in the cluster; TLS terminates at Cloudflare and
+# Cloudflare Access admits each request before it reaches the tunnel.
+#
+# Layered onto the staging and prod overlays through their `components:` list, so
+# the including overlay's `namespace:` directive retargets these resources and its
+# `images:` transformer rewrites the tcab-web image.
+#
+# It adds:
+#   1. components/web     — the tcab-web console Deployment + ClusterIP Service,
+#                           nested so an overlay can serve the console in-cluster
+#                           without the edge.
+#   2. cloudflared.yaml   — the tcab-cloudflared Deployment running the tunnel.
+#   3. networkpolicy.yaml — admits the tcab-cloudflared pods through the base's
+#                           default-deny to each routed service on its port.
+#   4. the tcab-cloudflared ConfigMap, generated from config.yaml: the tunnel id
+#      and its ingress rules.
+#
+# The defaults are prod's: the tcab-prod tunnel and the testcabinet.ai hostnames.
+# overlays/staging replaces the generated ConfigMap's config.yaml through its
+# patch-cloudflared.yaml.
+#
+# Prerequisites (out of band, "Setting up an environment" on the Edge page): the
+# named tunnel exists, its credentials file is the Key Vault secret
+# `cloudflare-tunnel-credentials` (synced by components/keyvault-csi into the
+# tcab-cloudflared Secret), the hostnames are proxied CNAMEs to the tunnel, and the
+# Access applications guard them.
+apiVersion: kustomize.config.k8s.io/v1alpha1
+kind: Component
+
+components:
+  - ../web
+
+resources:
+  - cloudflared.yaml
+  - networkpolicy.yaml
+
+configMapGenerator:
+  # Name-suffixed with a content hash, so a change to the routing changes the
+  # ConfigMap name, which changes the pod template, which rolls the tunnel's pods:
+  # cloudflared reads its configuration once, at start.
+  - name: tcab-cloudflared
+    files:
+      - config.yaml

@@ -5,7 +5,7 @@ title: PostgreSQL
 The backend talks to its store through SeaORM, so the same binary runs on
 SQLite or PostgreSQL depending only on `TCAB_BACKEND_DATABASE_URL`. Pointing it
 at a managed PostgreSQL instance removes the single-replica pin and the
-database volume, and the schema migrates itself on first start.
+backend's persistent volume, and the schema migrates itself on first start.
 
 ## The managed-database shape
 
@@ -15,6 +15,15 @@ deletes the base's `tcab-backend` `StatefulSet` and adds a stateless
 template's deploy waits on), with the connection string supplied by `Secret`.
 The `ClusterIP` `Service` is untouched, and the replacement `Deployment` reuses
 the same selector labels, so the `Service` keeps routing.
+
+The `Deployment` runs two replicas with a rolling update, spread across nodes,
+and a `PodDisruptionBudget` keeps one of them available through a node drain.
+Every durable thing the backend keeps is in the database or on the artifacts
+service (see [durable state](/components/backend/overview/#durable-state)), so
+a pod holds only its definition store and ingest checkout, on an ephemeral
+volume of its own. A new pod's ingest sidecar fills its store while the pod is
+held unready, and the rolling update retires an old pod only once the new one
+is ready, so the `Service` always routes to a backend that can serve.
 
 The `staging` and `prod` overlays include the component and back it with Azure
 Database for PostgreSQL Flexible Server. Provider backups and point-in-time

@@ -58,9 +58,9 @@ async fn ingest_local(args: &IngestArgs, scope: &str) -> anyhow::Result<IngestSu
     println!("tcab ingest: {scope} via {backend}/ingest");
     let mode = print_options(args);
 
-    // The ingest endpoint is open — definitions are gated at the network layer
-    // rather than by an account — so the client carries no token.
-    let client = HttpBackendClient::new(backend);
+    // A local backend is reached directly, and its ingest route takes the service
+    // token, so the client presents `TCAB_BACKEND_SERVICE_TOKEN` when it is set.
+    let client = HttpBackendClient::new(backend).with_token(config::service_token());
     let mut on_progress = |progress: &IngestProgress| print_progress(progress);
     // The run engine's error already names the ingest and the backend it was against, so no
     // context is added over it.

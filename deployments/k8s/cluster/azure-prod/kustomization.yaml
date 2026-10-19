@@ -14,7 +14,6 @@ kind: Kustomization
 resources:
   - ../namespace
   - ../observability
-  - ../internal-ingress
 
 patches:
   - target: { kind: Namespace, name: tcab-prod }

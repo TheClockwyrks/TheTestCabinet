@@ -42,7 +42,8 @@ spec:
       port: 3000
       targetPort: 3000
   # ClusterIP only — the workloads export to it over the cluster network, and
-  # operators reach Grafana via `kubectl port-forward`; never a public Ingress.
+  # operators reach Grafana via `kubectl port-forward` or, where the edge component
+  # is included, through the edge's Grafana host; never a LoadBalancer.
   type: ClusterIP
 ---
 apiVersion: v1

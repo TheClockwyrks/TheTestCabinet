@@ -3,7 +3,6 @@ import { PageLayout } from "../../components/PageLayout";
 import { PromptHeader } from "../../components/PromptHeader";
 import { RunsTabs } from "../runs/RunsTabs";
 import { StopRunsControls, useCanStopRuns } from "../runs/StopRunsControls";
-import { useAuth } from "../../../client/auth";
 import { useGalleryData } from "../../data/galleryContext";
 import { routes } from "../../routes";
 import { ComparisonsList } from "./ComparisonsList";
@@ -17,7 +16,6 @@ import exec from "../runs/RunExec.module.scss";
 // PageLayout + prompt header + shared `RunsTabs`, then the list body.
 export function ComparisonsIndexPage() {
   const { canExecute } = useGalleryData();
-  const { token } = useAuth();
   const canStop = useCanStopRuns();
 
   return (
@@ -32,7 +30,7 @@ export function ComparisonsIndexPage() {
           <>// the same benchmark under several configurations, side by side</>
         }
         titleActions={
-          canExecute && token ? (
+          canExecute ? (
             <Link className={exec.primary} to={routes.comparisonNew()}>
               + New comparison
             </Link>

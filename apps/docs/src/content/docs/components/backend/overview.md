@@ -38,6 +38,11 @@ version's reference mockups to screenshots as it goes. The repository is the
 editing source and the store is the distribution source a runner resolves at
 run time. Ingest caches a version rather than transforming it.
 
+Ingest builds each version in a staging area inside the store and swaps the
+finished version into place, so a reader sees a version whole or not at all. A
+pass that stops part way leaves its staging behind, and the backend empties the
+staging area when it starts, before it serves or ingests anything.
+
 The scan also reads the [test suites](/test-suites/overview/) tree. Every
 definition a suite version offers is lowered into the same store as an ordinary
 test case version, recording the suite coordinate it came from, so a runner
@@ -270,6 +275,80 @@ of a filling plan or a running dispatch whenever a run of one of its cells
 finishes. Each pass claims its row first, so two concurrent passes cannot both
 enqueue for one shortfall.
 
+## Durable state
+
+Everything the backend must keep lives in its database or on the
+[artifacts service](/components/artifacts/overview/). A pod's local disk holds
+only the definition store and the ingest checkout, which are caches ingest
+fills from the repositories. A pod that starts with an empty store is held
+unready until ingest fills it.
+
+| State                                                        | Where it lives                                            |
+| ------------------------------------------------------------ | --------------------------------------------------------- |
+| Run records, reviews, links, jobs, plans, ladders and probes | The database                                              |
+| A job's relayed event stream                                 | The database, one row per event keyed by job and sequence |
+| A job's held record and claim lease                          | The database, on the job's row                            |
+| An adversarial run's pushed `controller.wasm`                | The database, beside the run's row                        |
+| A tournament, its standings and its match summaries          | The database                                              |
+| A tournament match's replay                                  | The artifacts service's private container                 |
+| A run's media, gg session record and code-analysis document  | The run's tree on the artifacts service                   |
+
+The driver's upload of the run tree is what stores a run's media, its
+`replay.json.gz` and its `code-analysis.json.gz`, and the artifacts service
+serves them (see [Routes](/components/artifacts/overview/#routes)), so the
+backend keeps no copy. The backend writes each tournament match replay through
+the artifacts service when the arena persists it, and reads it back from there
+to serve `GET /tournaments/{id}/matches/{matchId}/replay.json`. The object route
+it writes and reads through is listed with the artifacts service's
+[routes](/components/artifacts/overview/#routes).
+
+Each accepted batch of relayed events is written to the database before the
+backend acknowledges it, as [delivery to the
+backend](/components/driver/events/#delivery-to-the-backend) specifies. The
+live relay fans a stored batch out to the job's subscribers, and a subscriber
+who connects mid-run is replayed the stored events first.
+
+### Replicas
+
+On PostgreSQL the backend runs as more than one replica, each with its own
+definition store and ingest sidecar. Work one replica does on behalf of all is
+claimed through the database:
+
+- a launch pass claims its plan's or ladder's row with a lease;
+- a snapshot refresh and a publish's index rewrite hold a database lock;
+- a model probe holds a lease on its row, renewed while it runs;
+- a reclamation sweep pass holds a database lock.
+
+Each stored event batch and each [console stream](/components/backend/api/#the-console-stream)
+message is announced through PostgreSQL `LISTEN`/`NOTIFY`, so a subscriber
+connected to any replica receives what every replica accepts. An embedded SQLite
+database is single-writer, so a SQLite deployment runs one replica.
+
+## Finishing a job
+
+A driver hands its finished run to the backend before anything else that could
+fail. Its first `storing` report carries the run record, which the backend
+stores in Postgres on the job's row, so the result survives the driver from
+then on. A job that the dispatcher later reports lost while it holds a record
+is finished from that record, with the state the record carries, and is never
+retried. A job reported lost with no record is failed as
+[`infrastructure`](/components/contracts/run-records/#status) and retried.
+
+Every report is idempotent by job. A repeated `storing` report replaces the
+held record with the same record, and a repeated terminal report for a job
+already in that terminal state is answered with success. A terminal report
+that arrives after the job was reported lost supersedes the lost outcome, and
+the backend withdraws the automatic retry the lost outcome enqueued, canceling
+it when it was already claimed.
+
+Each claim carries a two-minute lease stored on the job's row, which the
+dispatcher renews for every driver it still sees. A `dispatched` job whose
+lease lapsed returns to the queue at its original position with a fresh
+per-job token and no attempt counted. A later-state job whose lease lapsed is
+the dispatcher's to report lost. The routes are specified under [the held
+record](/components/backend/api/#the-held-record) and [leases and lost
+jobs](/components/backend/api/#leases-and-lost-jobs).
+
 ## Restarts
 
 The backend never fails in-flight jobs when it starts. Every driver runs as its
@@ -287,9 +366,21 @@ the jobs the backend believes are executing with the driver `Job`s the cluster
 runs, so it fails only jobs whose driver is actually gone.
 
 Once the definition store is servable after a start, the backend releases every
-launch-pass claim the previous process held and runs one launch pass for every
+launch-pass claim whose lease has lapsed and runs one launch pass for every
 filling plan and every running ladder dispatch, restoring the launch moments the
 restart lost.
+
+The rest of the work the backend owns survives a restart in the database:
+
+- A snapshot refresh, whatever requests it, sets the snapshot state's `dirty`
+  flag before it is queued. A backend that starts with the flag set runs the
+  refresh, and the flag clears only when a refresh has written the dataset.
+- A model probe left `running` loses its lease and is resumed, as [model
+  probes](/components/backend/api/#model-probes) describes.
+- A job's relayed events are already stored, so the recorded stream and the
+  live replay are whole across the restart.
+- The ingest staging area is emptied, and the next ingest pass completes the
+  work the interrupted pass left.
 
 ## The public dataset
 
@@ -335,7 +426,7 @@ marks runs published, skipping the dataset writes.
 | `TCAB_BACKEND_BIND`                  | Bind address.                                                                                                                                                                                                                        | `127.0.0.1:8787`                          |
 | `TCAB_BACKEND_DATABASE_URL`          | System-of-record database; the scheme picks SQLite or PostgreSQL.                                                                                                                                                                    | `sqlite://./tcab-backend.sqlite?mode=rwc` |
 | `TCAB_BACKEND_DB_AZURE_AD`           | Authenticate to PostgreSQL with a Microsoft Entra managed-identity token.                                                                                                                                                            | `false`                                   |
-| `TCAB_BACKEND_STORE`                 | The on-disk definition store.                                                                                                                                                                                                        | `./tcab-store`                            |
+| `TCAB_BACKEND_STORE`                 | The definition store, a cache ingest fills.                                                                                                                                                                                          | `./tcab-store`                            |
 | `TCAB_ACCESS_TEAM_DOMAIN`            | The Cloudflare Access team domain whose certificates assertions are verified against. Unset with the audience (the `local` overlay), no assertion is verified and the identity is `Cf-Access-Authenticated-User-Email` as presented. | —                                         |
 | `TCAB_ACCESS_AUDIENCE`               | The Access application's audience tag an assertion must name.                                                                                                                                                                        | —                                         |
 | `TCAB_BACKEND_SERVICE_TOKEN`         | Shared token the dispatcher claims jobs with and the in-cluster services present. Unset disables the claim endpoints.                                                                                                                | —                                         |

@@ -5,13 +5,14 @@ import {
   useLiveGallery,
 } from "@clockwyrks/ui/app";
 import {
-  AuthProvider,
   BackendProvider,
+  IdentityProvider,
   WorkersProvider,
+  fetchEdgeIdentity,
   useBackend,
 } from "@clockwyrks/ui/client";
-import { createHttpArena, fetchArenaUrl } from "@clockwyrks/ui/transport";
-import { useEffect, useMemo, useState } from "react";
+import { ARENA_PATH, createHttpArena } from "@clockwyrks/ui/transport";
+import { useMemo } from "react";
 import { BrowserRouter } from "react-router";
 
 import {
@@ -33,15 +34,15 @@ export function App() {
   return (
     <BackendProvider value={backend}>
       <WorkersProvider value={workers}>
-        {/* Auth lives below the workers provider — register/login go through the
-            execution transport (now the backend + auth service) — and above the
-            gallery so the review UI can read the signed-in account. */}
-        <AuthProvider>
+        {/* The identity the edge signed the reader in as, so the review UI can
+            recognise the reader's own review. It gates nothing: the services
+            decide from the assertion the edge adds to every request. */}
+        <IdentityProvider resolve={fetchEdgeIdentity}>
           {/* Above the data source so a launched run's refresh signal reaches it. */}
           <RunsRuntimeProvider>
             <WebGallery />
           </RunsRuntimeProvider>
-        </AuthProvider>
+        </IdentityProvider>
       </WorkersProvider>
     </BackendProvider>
   );
@@ -49,36 +50,13 @@ export function App() {
 
 function WebGallery() {
   // The arena reads persisted tournaments from the backend but runs matches and
-  // tournaments against the dedicated `tcab-arena` service, whose base URL the
-  // backend reports at `GET /config`. Resolve it once per backend (best-effort:
-  // null leaves the run methods to fail loudly and the gallery to degrade the
-  // adversarial run UI, which it already gates on `canExecute`). The arena handle is
-  // rebuilt when either URL changes so it always targets the current connection.
+  // tournaments against the dedicated `tcab-arena` service, served at `/arena` of
+  // the console's own origin. The handle is rebuilt when the backend changes so it
+  // always targets the current connection.
   const { url: backendUrl } = useBackend();
-  // The arena URL is kept with the backend it was read from, so a switch of
-  // backend reads as "not resolved yet" until the new backend answers, without
-  // an effect having to clear it first.
-  const [resolved, setResolved] = useState<{
-    readonly backendUrl: string;
-    readonly arenaUrl: string | null;
-  } | null>(null);
-  useEffect(() => {
-    if (!backendUrl) return;
-    const controller = new AbortController();
-    void (async () => {
-      // Never rejects: an unreachable backend resolves null.
-      const arenaUrl = await fetchArenaUrl(backendUrl);
-      if (!controller.signal.aborted) setResolved({ backendUrl, arenaUrl });
-    })();
-    return () => {
-      controller.abort();
-    };
-  }, [backendUrl]);
-  const arenaUrl =
-    resolved?.backendUrl === backendUrl ? resolved.arenaUrl : null;
   const arena = useMemo(
-    () => (backendUrl ? createHttpArena(backendUrl, arenaUrl) : undefined),
-    [backendUrl, arenaUrl],
+    () => (backendUrl ? createHttpArena(backendUrl, ARENA_PATH) : undefined),
+    [backendUrl],
   );
   const data = useLiveGallery(arena);
   return (

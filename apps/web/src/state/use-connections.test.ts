@@ -14,18 +14,21 @@ import { useBackendConnection, useExecConnection } from "./use-connections";
 const BACKEND = "https://backend.test";
 const OTHER = "https://other.test";
 
-/** Answers `/healthz` and `/config` for each backend in `up`, refusing the rest. */
+/** Answers `/healthz` for each backend in `up`, refusing the rest. */
 function serve(up: readonly string[]): ReturnType<typeof vi.fn> {
   return vi.fn((input: RequestInfo | URL) => {
     const url = new URL(input instanceof Request ? input.url : String(input));
-    if (!up.includes(url.origin)) {
-      return Promise.reject(new TypeError("Failed to fetch"));
-    }
-    const body =
-      url.pathname === "/healthz"
-        ? { id: `${url.host}-id`, version: "1.2.3", storeReady: true }
-        : { artifactsUrl: `${url.origin}/artifacts` };
-    return Promise.resolve(Response.json(body));
+    return up.includes(url.origin)
+      ? Promise.resolve(
+          url.pathname === "/healthz"
+            ? Response.json({
+                id: `${url.host}-id`,
+                version: "1.2.3",
+                storeReady: true,
+              })
+            : Response.json({}, { status: 404 }),
+        )
+      : Promise.reject(new TypeError("Failed to fetch"));
   });
 }
 
@@ -130,7 +133,7 @@ describe("the execution connection", () => {
     expect(result.current.active).toBeNull();
   });
 
-  it("offers the backend itself as the one target", async () => {
+  it("offers the backend itself as the one target", () => {
     const fetch = serve([BACKEND]);
     vi.stubGlobal("fetch", fetch);
 
@@ -140,12 +143,19 @@ describe("the execution connection", () => {
     expect(result.current.activeId).toBe("backend");
     expect(result.current.active?.url).toBe(BACKEND);
     expect(result.current.active?.backendMatch).toBe("match");
-    // The artifact service's address is read from the backend's `/config`.
-    await waitFor(() => {
-      expect(fetch).toHaveBeenCalledWith(
-        `${BACKEND}/config`,
-        expect.anything(),
-      );
-    });
+  });
+
+  it("reads a run's media from the artifacts path of its own origin", () => {
+    const fetch = serve([BACKEND]);
+    vi.stubGlobal("fetch", fetch);
+
+    const { result } = renderHook(() => useExecConnection(BACKEND));
+
+    // Nothing is fetched to learn where the artifacts service is: it is a path
+    // of the origin the console is served from.
+    expect(result.current.active?.client.runArchiveUrl?.("run-1")).toBe(
+      "/artifacts/runs/run-1/archive.tar.gz",
+    );
+    expect(fetch).not.toHaveBeenCalled();
   });
 });

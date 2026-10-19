@@ -500,8 +500,8 @@ export function useStaticGallery(): GalleryDataInput {
     // existed) leaves this undefined, and the section is simply not mounted.
     ggData: publishedGgRuns ?? undefined,
     // The public gallery has no backend to ask for a Grafana URL, and its readers
-    // have no access to one — the observability stack is VPN-only. Always null, so
-    // the run view never offers a link nobody could follow.
+    // have no access to one — Grafana sits behind the edge's Access sign-in. Always
+    // null, so the run view never offers a link nobody could follow.
     grafanaUrl: null,
     fetchRunEvents,
     readCodeAnalysis,

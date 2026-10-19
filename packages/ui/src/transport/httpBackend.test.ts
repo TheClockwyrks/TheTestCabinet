@@ -2,7 +2,6 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { createBackendExec, createHttpBackend } from "./httpBackend";
 
 const BACKEND = "https://backend.example";
-const AUTH = "https://auth.example";
 const ARTIFACTS = "https://artifacts.example";
 
 // A stored run as the backend serves it, with the root-relative build link a
@@ -30,7 +29,7 @@ describe("createBackendExec build-link resolution", () => {
       vi.fn(async () => Response.json(storedRunBody("run-1"))),
     );
 
-    const client = createBackendExec(BACKEND, AUTH, ARTIFACTS);
+    const client = createBackendExec(BACKEND, ARTIFACTS);
     const run = await client.readRun("run-1");
 
     expect(run.record.links.playableBuild).toBe(
@@ -38,35 +37,18 @@ describe("createBackendExec build-link resolution", () => {
     );
   });
 
-  // The regression: the artifact base URL is itself fetched (`GET /config`), and
-  // the resolved link is snapshotted into the record the run-detail chrome fetches
-  // exactly once per run id. Reading whatever URL was known at construction time
-  // meant a cold deep-link to /runs/:id/play — where the record fetch beats the
-  // config fetch — stored an unresolved `/runs/{id}/build/`, which the console's
-  // own origin then served as the SPA shell instead of the build. Nothing
-  // re-fetches the record, so the broken link stuck until the tab was remounted
-  // (which is why switching to Verdict and back appeared to fix it).
-  it("awaits a not-yet-resolved artifacts URL rather than leaving the link unresolved", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => Response.json(storedRunBody("run-2"))),
-    );
+  // The console's own shape: the artifacts service is a path of the origin the
+  // console is served from, so the link resolves to a root-relative path under it
+  // and nothing is fetched to learn where the service is.
+  it("resolves a build link under the artifacts path of the console's origin", async () => {
+    const fetchMock = vi.fn(async () => Response.json(storedRunBody("run-2")));
+    vi.stubGlobal("fetch", fetchMock);
 
-    let settle: (url: string | null) => void = () => {};
-    const settled = new Promise<string | null>((resolve) => {
-      settle = resolve;
-    });
+    const client = createBackendExec(BACKEND, "/artifacts");
+    const run = await client.readRun("run-2");
 
-    // `current: null` is exactly the cold-deep-link state: the config fetch is
-    // still in flight when the record is read.
-    const client = createBackendExec(BACKEND, AUTH, { current: null, settled });
-    const pending = client.readRun("run-2");
-    settle(ARTIFACTS);
-
-    const run = await pending;
-    expect(run.record.links.playableBuild).toBe(
-      `${ARTIFACTS}/runs/run-2/build/`,
-    );
+    expect(run.record.links.playableBuild).toBe("/artifacts/runs/run-2/build/");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it("leaves the link unresolved when no artifact service is configured", async () => {
@@ -75,10 +57,7 @@ describe("createBackendExec build-link resolution", () => {
       vi.fn(async () => Response.json(storedRunBody("run-3"))),
     );
 
-    const client = createBackendExec(BACKEND, AUTH, {
-      current: null,
-      settled: Promise.resolve(null),
-    });
+    const client = createBackendExec(BACKEND, null);
     const run = await client.readRun("run-3");
 
     expect(run.record.links.playableBuild).toBe("/runs/run-3/build/");
@@ -92,7 +71,7 @@ describe("createBackendExec build-link resolution", () => {
       vi.fn(async () => Response.json(body)),
     );
 
-    const client = createBackendExec(BACKEND, AUTH, ARTIFACTS);
+    const client = createBackendExec(BACKEND, ARTIFACTS);
     const run = await client.readRun("run-4");
 
     expect(run.record.links.playableBuild).toBe("https://pages.example/run-4/");
@@ -101,14 +80,14 @@ describe("createBackendExec build-link resolution", () => {
 
 describe("createBackendExec media resolvers", () => {
   it("resolves a run's showcase file against the artifact service", () => {
-    const client = createBackendExec(BACKEND, AUTH, ARTIFACTS);
+    const client = createBackendExec(BACKEND, ARTIFACTS);
     expect(client.showcaseMediaUrl?.("run-1", "title.png")).toBe(
       `${ARTIFACTS}/runs/run-1/showcase/title.png`,
     );
   });
 
   it("resolves no showcase file without an artifact service", () => {
-    const client = createBackendExec(BACKEND, AUTH, null);
+    const client = createBackendExec(BACKEND, null);
     expect(client.showcaseMediaUrl?.("run-1", "title.png")).toBeNull();
   });
 });
@@ -140,7 +119,7 @@ describe("createBackendExec unreadable listing", () => {
     const fetchMock = vi.fn(async (_url: string) => Response.json(page));
     vi.stubGlobal("fetch", fetchMock);
 
-    const client = createBackendExec(BACKEND, AUTH, ARTIFACTS);
+    const client = createBackendExec(BACKEND, ARTIFACTS);
     const result = await client.listUnreadableRuns!();
 
     // An open read like the other run reads: no bearer travels with it.
@@ -156,7 +135,7 @@ describe("createBackendExec unreadable listing", () => {
     );
     vi.stubGlobal("fetch", fetchMock);
 
-    const client = createBackendExec(BACKEND, AUTH, ARTIFACTS);
+    const client = createBackendExec(BACKEND, ARTIFACTS);
     await client.listUnreadableRuns!({ limit: 20, offset: 40 });
 
     expect(fetchMock.mock.calls[0]![0]).toBe(
@@ -429,19 +408,16 @@ describe("engine dimension", () => {
     );
     vi.stubGlobal("fetch", fetchMock);
 
-    await createBackendExec(BACKEND, AUTH, ARTIFACTS).launchRun(
-      {
-        testCase: "carom",
-        version: "v3.0.0",
-        variant: "base",
-        harness: "claude",
-        modelId: "claude-opus-4-8",
-        orchestrator: "one-shot",
-        engine: "simple-2d",
-        maxRuntimeOverride: null,
-      },
-      "token",
-    );
+    await createBackendExec(BACKEND, ARTIFACTS).launchRun({
+      testCase: "carom",
+      version: "v3.0.0",
+      variant: "base",
+      harness: "claude",
+      modelId: "claude-opus-4-8",
+      orchestrator: "one-shot",
+      engine: "simple-2d",
+      maxRuntimeOverride: null,
+    });
 
     const body = JSON.parse(String(fetchMock.mock.calls[0]![1].body));
     expect(body.engine).toBe("simple-2d");
@@ -455,18 +431,15 @@ describe("engine dimension", () => {
     );
     vi.stubGlobal("fetch", fetchMock);
 
-    await createBackendExec(BACKEND, AUTH, ARTIFACTS).launchRun(
-      {
-        testCase: "carom",
-        version: "v1.0.0",
-        variant: "base",
-        harness: "claude",
-        modelId: "claude-opus-4-8",
-        orchestrator: "one-shot",
-        maxRuntimeOverride: null,
-      },
-      "token",
-    );
+    await createBackendExec(BACKEND, ARTIFACTS).launchRun({
+      testCase: "carom",
+      version: "v1.0.0",
+      variant: "base",
+      harness: "claude",
+      modelId: "claude-opus-4-8",
+      orchestrator: "one-shot",
+      maxRuntimeOverride: null,
+    });
 
     const body = JSON.parse(String(fetchMock.mock.calls[0]![1].body));
     expect(body).not.toHaveProperty("engine");
@@ -634,7 +607,7 @@ describe("createBackendExec console stream", () => {
     vi.stubGlobal("fetch", fetchMock);
     const sources = useFakeEventSource();
 
-    const client = createBackendExec(BACKEND, AUTH, ARTIFACTS);
+    const client = createBackendExec(BACKEND, ARTIFACTS);
     client.subscribeToNotifications({ onNotification: () => {} });
     const first = sources.instances[0]!;
     first.open();
@@ -668,7 +641,7 @@ describe("createBackendExec console stream", () => {
     vi.stubGlobal("fetch", fetchMock);
     const sources = useFakeEventSource();
 
-    const client = createBackendExec(BACKEND, AUTH, ARTIFACTS);
+    const client = createBackendExec(BACKEND, ARTIFACTS);
     client.subscribeToNotifications({ onNotification: () => {} });
     await client.setRunLifecycleEnabled(true);
     expect(fetchMock).not.toHaveBeenCalled();
@@ -693,7 +666,7 @@ describe("createBackendExec console stream", () => {
     );
     const sources = useFakeEventSource();
 
-    const client = createBackendExec(BACKEND, AUTH, ARTIFACTS);
+    const client = createBackendExec(BACKEND, ARTIFACTS);
     client.subscribeToNotifications({ onNotification: () => {} });
     sources.instances[0]!.open();
     expect(sources.instances).toHaveLength(1);
@@ -714,7 +687,7 @@ describe("createBackendExec console stream", () => {
     );
     const sources = useFakeEventSource();
 
-    const client = createBackendExec(BACKEND, AUTH, ARTIFACTS);
+    const client = createBackendExec(BACKEND, ARTIFACTS);
     client.subscribeToNotifications({ onNotification: () => {} });
     sources.instances[0]!.open();
     sources.instances[0]!.fail(FakeEventSource.CONNECTING);
@@ -734,7 +707,7 @@ describe("createBackendExec console stream", () => {
     );
     const sources = useFakeEventSource();
 
-    const client = createBackendExec(BACKEND, AUTH, ARTIFACTS);
+    const client = createBackendExec(BACKEND, ARTIFACTS);
     client.subscribeToNotifications({ onNotification: () => {} });
     sources.instances[0]!.open();
 
@@ -753,7 +726,7 @@ describe("createBackendExec console stream", () => {
     );
     const sources = useFakeEventSource();
 
-    const client = createBackendExec(BACKEND, AUTH, ARTIFACTS);
+    const client = createBackendExec(BACKEND, ARTIFACTS);
     client.subscribeToNotifications({ onNotification: () => {} });
     const source = sources.instances[0]!;
     source.open();
@@ -776,7 +749,7 @@ describe("createBackendExec console stream", () => {
     );
     const sources = useFakeEventSource();
 
-    const client = createBackendExec(BACKEND, AUTH, ARTIFACTS);
+    const client = createBackendExec(BACKEND, ARTIFACTS);
     const unsubscribe = client.subscribeToNotifications({
       onNotification: () => {},
     });
@@ -799,7 +772,7 @@ describe("createBackendExec console stream", () => {
     const onRunLifecycle = vi.fn();
     const onResync = vi.fn();
 
-    const client = createBackendExec(BACKEND, AUTH, ARTIFACTS);
+    const client = createBackendExec(BACKEND, ARTIFACTS);
     client.subscribeToNotifications({
       onNotification,
       onRunLifecycle,
@@ -829,7 +802,7 @@ describe("createBackendExec console stream", () => {
     const sources = useFakeEventSource();
     const onNotification = vi.fn();
 
-    const client = createBackendExec(BACKEND, AUTH, ARTIFACTS);
+    const client = createBackendExec(BACKEND, ARTIFACTS);
     client.subscribeToNotifications({ onNotification });
     const source = sources.instances[0]!;
     source.open();
@@ -915,7 +888,7 @@ describe("subscribeToRun over a dropped live stream", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    const client = createBackendExec(BACKEND, AUTH, ARTIFACTS);
+    const client = createBackendExec(BACKEND, ARTIFACTS);
     const { onEvent, onError, done } = subscribe(client);
 
     await expect(done).resolves.toEqual({
@@ -951,7 +924,7 @@ describe("subscribeToRun over a dropped live stream", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    const client = createBackendExec(BACKEND, AUTH, ARTIFACTS);
+    const client = createBackendExec(BACKEND, ARTIFACTS);
     const { onEvent, onError, done } = subscribe(client);
     await vi.advanceTimersByTimeAsync(5_000);
 
@@ -976,7 +949,7 @@ describe("subscribeToRun over a dropped live stream", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    const client = createBackendExec(BACKEND, AUTH, ARTIFACTS);
+    const client = createBackendExec(BACKEND, ARTIFACTS);
     const { onError, done } = subscribe(client);
     await vi.advanceTimersByTimeAsync(60_000);
 
@@ -1021,14 +994,14 @@ describe("publish stream failures", () => {
         throw new Error(`unexpected fetch ${url}`);
       }),
     );
-    return createBackendExec(BACKEND, AUTH, ARTIFACTS);
+    return createBackendExec(BACKEND, ARTIFACTS);
   }
 
   it("names the status when the backend refuses the stream", async () => {
     const c = client(
       () => new Response("nope", { status: 503, statusText: "Unavailable" }),
     );
-    await expect(c.publish("run-1", "tok")).rejects.toThrow(
+    await expect(c.publish("run-1")).rejects.toThrow(
       "publish stream failed: HTTP 503 Unavailable",
     );
   });
@@ -1037,7 +1010,7 @@ describe("publish stream failures", () => {
     // The merged `!res.ok || !res.body` guard reported this as "publish stream
     // failed: 200", naming a success as the failure.
     const c = client(() => new Response(null, { status: 200 }));
-    await expect(c.publish("run-1", "tok")).rejects.toThrow(
+    await expect(c.publish("run-1")).rejects.toThrow(
       "publish stream carried no body",
     );
   });
@@ -1046,7 +1019,7 @@ describe("publish stream failures", () => {
     const c = client(() =>
       publish([JSON.stringify({ type: "progress", message: "releasing" })]),
     );
-    await expect(c.publish("run-1", "tok")).rejects.toThrow(
+    await expect(c.publish("run-1")).rejects.toThrow(
       "publish stream ended before reporting a result",
     );
   });
@@ -1063,7 +1036,7 @@ describe("publish stream failures", () => {
         }),
       ]),
     );
-    await expect(c.publish("run-1", "tok")).rejects.toThrow(
+    await expect(c.publish("run-1")).rejects.toThrow(
       "pages deploy failed: HTTP 403",
     );
   });
@@ -1080,19 +1053,17 @@ describe("createHttpBackend ladder climber retry", () => {
     vi.stubGlobal("fetch", fetchMock);
     const combination = { harness: "claude", model: "anthropic/opus" } as const;
     await expect(
-      createHttpBackend(BACKEND).retryLadderClimber!(
-        "l/1",
-        { combination },
-        "tok",
-      ),
+      createHttpBackend(BACKEND).retryLadderClimber!("l/1", { combination }),
     ).resolves.toBeUndefined();
     const [url, init] = fetchMock.mock.calls[0]!;
     expect(url).toBe(`${BACKEND}/ladders/l%2F1/climbers/retry`);
     expect(init?.method).toBe("POST");
     expect(JSON.parse(String(init?.body))).toEqual({ combination });
-    expect((init?.headers as Record<string, string>).authorization).toBe(
-      "Bearer tok",
-    );
+    // The console presents no credential of its own: the edge's assertion is
+    // the caller's identity.
+    expect(
+      (init?.headers as Record<string, string>).authorization,
+    ).toBeUndefined();
   });
 
   it("rejects a climber that is not blocked as failing", async () => {
@@ -1106,11 +1077,9 @@ describe("createHttpBackend ladder climber retry", () => {
       ),
     );
     await expect(
-      createHttpBackend(BACKEND).retryLadderClimber!(
-        "l1",
-        { combination: { harness: "claude", model: "opus" } },
-        "tok",
-      ),
+      createHttpBackend(BACKEND).retryLadderClimber!("l1", {
+        combination: { harness: "claude", model: "opus" },
+      }),
     ).rejects.toThrow();
   });
 });
@@ -1139,9 +1108,9 @@ describe("createHttpBackend dispatch and fill controls", () => {
       runsUnreviewed: 0,
     };
     const fetchMock = stubJson(progress);
-    await expect(
-      createHttpBackend(BACKEND).runLadder!("l/1", "tok"),
-    ).resolves.toEqual(progress);
+    await expect(createHttpBackend(BACKEND).runLadder!("l/1")).resolves.toEqual(
+      progress,
+    );
     const [url, init] = fetchMock.mock.calls[0]!;
     expect(url).toBe(`${BACKEND}/ladders/l%2F1/run`);
     expect(init?.method).toBe("POST");
@@ -1150,11 +1119,7 @@ describe("createHttpBackend dispatch and fill controls", () => {
   it("stops a ladder, saying whether running jobs are cancelled too", async () => {
     const fetchMock = stubJson({ canceled: 2, includedActive: true });
     await expect(
-      createHttpBackend(BACKEND).stopLadder!(
-        "l1",
-        { cancelRunning: true },
-        "tok",
-      ),
+      createHttpBackend(BACKEND).stopLadder!("l1", { cancelRunning: true }),
     ).resolves.toEqual({ canceled: 2, includedActive: true });
     const [url, init] = fetchMock.mock.calls[0]!;
     expect(url).toBe(`${BACKEND}/ladders/l1/stop`);
@@ -1164,7 +1129,7 @@ describe("createHttpBackend dispatch and fill controls", () => {
   it("reads every ladder's summary in one request", async () => {
     const fetchMock = stubJson([]);
     await expect(
-      createHttpBackend(BACKEND).getLaddersSummary!("tok"),
+      createHttpBackend(BACKEND).getLaddersSummary!(),
     ).resolves.toEqual([]);
     expect(fetchMock.mock.calls[0]![0]).toBe(`${BACKEND}/ladders/summary`);
   });
@@ -1179,7 +1144,7 @@ describe("createHttpBackend dispatch and fill controls", () => {
     };
     const fetchMock = stubJson(result);
     await expect(
-      createHttpBackend(BACKEND).fillCoveragePlan!("p/1", "tok"),
+      createHttpBackend(BACKEND).fillCoveragePlan!("p/1"),
     ).resolves.toEqual(result);
     const [url, init] = fetchMock.mock.calls[0]!;
     expect(url).toBe(`${BACKEND}/coverage-plans/p%2F1/fill`);
@@ -1193,7 +1158,7 @@ describe("createHttpBackend dispatch and fill controls", () => {
       combination: { harness: "claude", model: "anthropic/opus" },
     } as const;
     await expect(
-      createHttpBackend(BACKEND).retryCoveragePlanCell!("p1", input, "tok"),
+      createHttpBackend(BACKEND).retryCoveragePlanCell!("p1", input),
     ).resolves.toBeUndefined();
     const [url, init] = fetchMock.mock.calls[0]!;
     expect(url).toBe(`${BACKEND}/coverage-plans/p1/cells/retry`);
@@ -1214,16 +1179,16 @@ const authorization = (init?: RequestInit) =>
   new Headers(init?.headers).get("authorization");
 
 describe("createHttpBackend model list prices", () => {
-  it("refreshes every list price with the bearer token", async () => {
+  it("refreshes every list price, presenting no credential of its own", async () => {
     const counts = { total: 4, updated: 1, unchanged: 2, unresolved: 1 };
     const fetchMock = stubJsonOk(counts);
     await expect(
-      createHttpBackend(BACKEND).refreshListPrices?.("tok"),
+      createHttpBackend(BACKEND).refreshListPrices?.(),
     ).resolves.toEqual(counts);
     const [url, init] = fetchMock.mock.calls[0] ?? [];
     expect(url).toBe(`${BACKEND}/models/list-prices/refresh`);
     expect(init?.method).toBe("POST");
-    expect(authorization(init)).toBe("Bearer tok");
+    expect(authorization(init)).toBeNull();
   });
 
   const LISTING = {
@@ -1240,7 +1205,6 @@ describe("createHttpBackend model list prices", () => {
       const fetchMock = stubJsonOk(LISTING);
       await createHttpBackend(BACKEND).lookupOpenrouterModel?.(
         "qwen/qwen3-coder",
-        "tok",
         pin,
       );
       expect(fetchMock.mock.calls[0]?.[0]).toBe(
@@ -1254,7 +1218,6 @@ describe("createHttpBackend model list prices", () => {
     await expect(
       createHttpBackend(BACKEND).lookupOpenrouterModel?.(
         "qwen/qwen3-coder",
-        "tok",
         " Alibaba Cloud ",
       ),
     ).resolves.toEqual(LISTING);
@@ -1262,6 +1225,6 @@ describe("createHttpBackend model list prices", () => {
     expect(url).toBe(
       `${BACKEND}/models/openrouter?slug=qwen%2Fqwen3-coder&providerPin=Alibaba+Cloud`,
     );
-    expect(authorization(init)).toBe("Bearer tok");
+    expect(authorization(init)).toBeNull();
   });
 });

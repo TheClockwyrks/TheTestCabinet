@@ -2,7 +2,6 @@ import type { Comparison } from "@clockwyrks/backend-api/comparison";
 import { useCallback, useState } from "react";
 import { Link } from "react-router";
 import { Panel } from "@clockwyrks/ui";
-import { useAuth } from "../../../client/auth";
 import { useOptionalBackend } from "../../../client/context";
 import { LoadingState } from "../../components/LoadingState";
 import { SubmitNotice } from "../../components/SubmitNotice";
@@ -23,7 +22,6 @@ import styles from "./Comparisons.module.scss";
 // comparison is per-account (like a coverage plan or a gg configuration), so a
 // signed-out visitor sees a sign-in prompt in place of the list.
 export function ComparisonsList() {
-  const { token } = useAuth();
   const { canExecute } = useGalleryData();
   // Optional: the read-only static site mounts no backend provider at all, and
   // renders this list off the published snapshot. No client ⇒ nothing to delete.
@@ -36,11 +34,11 @@ export function ComparisonsList() {
 
   // Deleting is a per-account mutation, so it is console-only and signed-in —
   // the public gallery renders the same list without the affordance.
-  const canDelete = Boolean(canExecute && token && backend?.deleteComparison);
+  const canDelete = Boolean(canExecute && backend?.deleteComparison);
 
   const deleteComparison = useCallback(
     async (comparison: Comparison) => {
-      if (!backend?.deleteComparison || !token) return;
+      if (!backend?.deleteComparison) return;
       // Destructive, so it asks through the app's own themed dialog rather than
       // the browser's `confirm()` (docs/components/ui/overview.md, "Dialogs").
       const confirmed = await confirm({
@@ -59,7 +57,7 @@ export function ComparisonsList() {
       setBusy(true);
       setActionError(null);
       try {
-        await backend.deleteComparison(comparison.id, token);
+        await backend.deleteComparison(comparison.id);
         await reload();
       } catch (e) {
         setActionError(String(e));
@@ -67,22 +65,9 @@ export function ComparisonsList() {
         setBusy(false);
       }
     },
-    [backend, token, confirm, reload],
+    [backend, confirm, reload],
   );
 
-  // A console (can execute) needs a signed-in account, since comparisons are saved
-  // per-account. A read-only host (the static site) renders the published set with
-  // no sign-in — so the prompt shows only on a signed-out console.
-  if (canExecute && !token) {
-    return (
-      <Panel>
-        <p className={styles.empty}>
-          Sign in to use harness comparisons. They are saved to your account.
-          Use the account control in the top bar to register or log in.
-        </p>
-      </Panel>
-    );
-  }
   if (error) {
     return (
       <Panel>
@@ -106,7 +91,7 @@ export function ComparisonsList() {
           No comparisons yet.{" "}
           {canExecute ? "Create one to run" : "A comparison runs"} the same case
           under several configurations (harnesses, gg configurations, or both)
-          and publishes the cost, token, and score spread side by side.
+          and publishes the cost, and score spread side by side.
         </p>
       </div>
     );

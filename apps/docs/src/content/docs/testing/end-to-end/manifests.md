@@ -28,7 +28,7 @@ prompt = "prompt.hbs"        # the prompt template handed to the harness (requir
 max_runtime_hours = 0.5      # cap on the session and on each setup step (default 1)
 experimental = false         # optional; true hides the case unless the deployment opts in
 workspace = "workspaces/base" # optional starter directory, seeded into the run root
-init = "npm install"         # optional command run after seeding, before the harness
+init = "npm ci"              # optional command run after seeding, before the harness
 assets = []                  # asset files/directories, seeded (relative paths)
 packages = []                # Test Cabinet packages the build imports (npm names)
 engines = ["none"]           # supported engines, no version range (omit for ["none"])
@@ -236,8 +236,8 @@ description = "The escalating Frenzy mode: uncapped speed that ramps every hit."
   [Workspace](/testing/end-to-end/overview/#workspace).
 - `init` is an optional command run inside the run container once the workspace
   and specs are seeded and before the harness starts. It must be non-empty when
-  declared. It is verified against the workspace's lockfile and retried, up to
-  three attempts. See [Init](/testing/end-to-end/overview/#init).
+  declared. It is verified against the lockfile the workspace ships and retried,
+  up to three attempts. See [Init](/testing/end-to-end/overview/#init).
 - `assets` lists files or directories seeded into the run at their path relative
   to the version folder; a directory is seeded recursively.
 - `packages` lists the Test Cabinet runtime libraries the build imports. Each

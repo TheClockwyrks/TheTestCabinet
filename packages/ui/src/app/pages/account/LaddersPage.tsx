@@ -10,7 +10,6 @@ import styles from "./Coverage.module.scss";
 import { dispatchBadgeClass } from "./ladder-dispatch";
 import ladderStyles from "./Ladder.module.scss";
 import { dispatchStatusLabel } from "./LadderPage";
-import { useAuth } from "../../../client/auth";
 import { useBackend } from "../../../client/context";
 import { useConfirm } from "../../components/ConfirmDialog";
 import { LoadingState } from "../../components/LoadingState";
@@ -110,7 +109,6 @@ function Count({ n, label }: { n: number; label: string }) {
 // and a number changing never moves anything. A card too narrow for that stacks its
 // slots instead, by its own width rather than the viewport's.
 export function LaddersPage() {
-  const { token } = useAuth();
   const { client: backend } = useBackend();
   const { confirm } = useConfirm();
 
@@ -120,12 +118,12 @@ export function LaddersPage() {
   const [error, setError] = useState<string | null>(null);
 
   const reload = useCallback(async () => {
-    if (!backend?.getLaddersSummary || !token) return;
-    setLadders(await backend.getLaddersSummary(token));
-  }, [backend, token]);
+    if (!backend?.getLaddersSummary) return;
+    setLadders(await backend.getLaddersSummary());
+  }, [backend]);
 
   useEffect(() => {
-    if (!backend?.getLaddersSummary || !token) {
+    if (!backend?.getLaddersSummary) {
       setLoading(false);
       return;
     }
@@ -133,7 +131,7 @@ export function LaddersPage() {
     setLoading(true);
     setError(null);
     backend
-      .getLaddersSummary(token)
+      .getLaddersSummary()
       .then((list) => {
         if (!active) return;
         setLadders(list);
@@ -147,13 +145,12 @@ export function LaddersPage() {
     return () => {
       active = false;
     };
-  }, [backend, token]);
+  }, [backend]);
 
   const deleteLadder = useCallback(
     async (id: string, name: string) => {
       if (
         !backend?.deleteLadder ||
-        !token ||
         !(await confirm({
           title: "Delete ladder",
           message:
@@ -168,7 +165,7 @@ export function LaddersPage() {
       setBusy(true);
       setError(null);
       try {
-        await backend.deleteLadder(id, token);
+        await backend.deleteLadder(id);
         await reload();
       } catch (error_) {
         setError(String(error_));
@@ -176,10 +173,10 @@ export function LaddersPage() {
         setBusy(false);
       }
     },
-    [backend, token, reload, confirm],
+    [backend, reload, confirm],
   );
 
-  return token ? (
+  return (
     <PageLayout>
       <PromptHeader
         command="--ladders"
@@ -292,15 +289,6 @@ export function LaddersPage() {
           })}
         </div>
       )}
-    </PageLayout>
-  ) : (
-    <PageLayout>
-      <PromptHeader command="--ladders" comment={<>// your ladders</>} />
-      <AccountTabs active="ladders" />
-      <p className={`${exec.notice} ${exec.warn}`}>
-        Sign in to use ladders. They are saved to your account. Use the account
-        control in the top bar to register or log in.
-      </p>
     </PageLayout>
   );
 }

@@ -1,7 +1,6 @@
 import type { RunSummary } from "@clockwyrks/backend-api/snapshot";
 import { useCallback } from "react";
 import { useOptionalWorkers } from "../../client/context";
-import { useAuth } from "../../client/auth";
 import { describeRunState } from "./runState";
 import { useGalleryData } from "./galleryContext";
 import { useRunsRuntime } from "../runtime/runsRuntime";
@@ -39,7 +38,7 @@ export function isPublishable(summary: RunSummary): boolean {
  * right-click menu (one run, or a whole checked selection). The sibling of
  * {@link useRunDeletion} / {@link useRunKill}, and gated the same way: a host that
  * can execute runs (the consoles; the static public site cannot), a worker whose
- * transport can publish, and a signed-in account whose token authorizes it.
+ * transport can publish. The backend decides from the identity the edge asserts.
  *
  * `publishRun` **enqueues** the release and resolves as soon as the backend accepts
  * it — it does not wait for the gh/wrangler Job to finish. That is deliberate: a
@@ -58,25 +57,23 @@ export function useRunPublish(): {
   // Optional: the static site mounts no <WorkersProvider>, and this hook renders
   // there inside the runs list's right-click menu. No worker ⇒ nothing publishable.
   const worker = useOptionalWorkers()?.active ?? null;
-  const { token } = useAuth();
   const runtime = useRunsRuntime();
   const client = worker?.client ?? null;
 
-  const canPublish =
-    canExecute && Boolean(client?.enqueuePublish) && Boolean(token);
+  const canPublish = canExecute && Boolean(client?.enqueuePublish);
 
   const publishRun = useCallback(
     async (runId: string): Promise<void> => {
-      if (!client?.enqueuePublish || !token) {
+      if (!client?.enqueuePublish) {
         throw new Error("Publishing is not available here.");
       }
-      await client.enqueuePublish(runId, token);
+      await client.enqueuePublish(runId);
       // The run is now releasing. Re-read so anything already resolved settles;
       // the run leaves the publish worklist only once its release lands, which is
       // minutes away and arrives on its own.
       runtime.requestRefresh();
     },
-    [client, token, runtime],
+    [client, runtime],
   );
 
   return { canPublish, publishRun };

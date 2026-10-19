@@ -656,8 +656,8 @@ report from a winding-down driver is discarded. A `canceled` status must carry a
 run record (`422` without one), normally a complete partial record: the driver
 [winds a gg run down](/components/driver/overview/#cancellation) and posts what
 the ordinary post-session path produced, including metrics, the collected tree
-and the session summary. The backend persists it with the events its relay
-accumulated and attaches the record id to the already-canceled job. The job
+and the session summary. The backend stores it beside the events already stored
+for the job and attaches the record id to the already-canceled job. The job
 keeps its `canceled` state and its cancellation detail, no completion
 notification fires, and no retry is enqueued.
 
@@ -666,12 +666,55 @@ status. A killed run of any other harness, and a gg run killed before its
 session was launched, is destroyed by its driver, which posts nothing further,
 so the job stays `canceled` with no record attached.
 
-`POST /jobs/{id}/lost` is the dispatcher's report of a job whose driver is
-[gone without reporting](/components/dispatcher/overview/#lost-drivers). It
-requires the service token and takes a `failed` status with a detail and no record
-(`422` otherwise). A job still `dispatched`, `starting`, or `running` is failed
-exactly as the driver's own `failed` report would fail it. A job in any other
-state is left alone. Either way the answer is `204`.
+### The held record
+
+The driver reports `storing` carrying the run record before it uploads
+anything, with the failure detail when the run failed (see [finishing a
+run](/components/driver/overview/#finishing-a-run)). The backend stores that
+record and detail in Postgres on the job's row before it answers, and a
+repeated `storing` report replaces them. A held record is what the backend
+finishes the run from when the driver cannot: a job reported lost while it
+holds one is recorded from it, with the state the held record carries, and no
+retry is enqueued.
+
+The terminal report carries the record with its build link, and may also carry
+`artifactsStored` and `storeFault`. `artifactsStored` is `true` when the
+artifacts service acknowledged the run tree, `false` when it did not, and
+absent when the driver has no artifacts service; the backend leaves what it
+recorded for the run as it is when the field is absent. `storeFault` is the
+last upload failure when `artifactsStored` is `false` because of the store
+rather than the run's own tree, and the backend reads it as evidence about the
+store whatever state the job is in. A terminal report repeated for a job that
+already holds that terminal state answers `204` and changes nothing.
+
+### Leases and lost jobs
+
+`POST /jobs/next` stores a lease expiry on the claimed job's row, two minutes
+after the claim. `POST /jobs/leases`, with the service token, takes a set of job
+ids and extends the lease of each job still driven to two minutes after the
+call. `GET /jobs/active` reports each job's lease expiry beside its state. See
+[claim leases](/components/dispatcher/overview/#claim-leases).
+
+A `dispatched` job whose lease has lapsed is back in the queue: the next claim
+takes it at its original queue position and mints a fresh per-job token, and no
+attempt is counted. The backend refuses the old token from then on.
+
+`POST /jobs/{id}/lost` is the dispatcher's report of a job whose lease lapsed
+past `dispatched`, its driver [gone without
+reporting](/components/dispatcher/overview/#lost-drivers). It requires the
+service token and takes a `failed` status with a detail and no record (`422`
+otherwise). A `starting`, `running` or `storing` job that holds a record is
+finished from it. One that holds none is failed as
+[`infrastructure`](/components/contracts/run-records/#status), exactly as the
+driver's own `failed` report would fail it. A job in any other state is left
+alone. Either way the answer is `204`.
+
+A terminal report that reaches the backend after the job was reported lost
+supersedes the lost outcome (see [late terminal
+reports](/components/driver/overview/#late-terminal-reports)). The backend
+records the run from the report and withdraws the automatic retry the lost
+outcome enqueued: a retry still queued is removed, and one already claimed is
+canceled.
 
 ### `POST /runs/{id}/reviews`
 
@@ -741,16 +784,19 @@ review, since it has no review checklist.
 
 The endpoint is idempotent while a release is under way. A run that already has
 a live publish job gets that job's id and live URL back rather than a second
-enqueue, and two concurrent requests cannot both enqueue. A publish is not
-idempotent externally: every publish job mints a brand-new Cloudflare Pages
-deployment, so two jobs for one run would leave an orphaned public build behind.
+enqueue, and two concurrent requests cannot both enqueue.
 
-A publish job whose publisher died before reporting stops blocking after an
-hour, and a failed publish never blocks at all: it stays immediately retryable.
-As a second layer, the publisher itself re-checks the run's publication state
-before doing any external work, and skips the release, reporting the links the
-run already carries, when the run is already published. The repository push is
-idempotent on the repos service's side as well.
+A publish is resumable and idempotent end to end, as [repeating a
+step](/components/backend/results/#repeating-a-step) states. The publisher
+first asks whether the run is already published and reports the links it
+carries when it is. The Pages deploy makes one deployment per run, looked up by
+the digest of the scrubbed build, so a repeat reuses it, and the repository
+publish reproduces its commit. The backend accepts a repeated success result,
+which re-asserts the same links and keeps the run's publication time.
+
+A publish job whose publisher stops without reporting is failed by the bounds
+[a publisher that stops](/components/backend/results/#a-publisher-that-stops)
+lists, and a failed publish never blocks: it stays immediately retryable.
 
 ### `DELETE /runs/{id}`
 
@@ -989,8 +1035,10 @@ detail and its summary card always report the same functional rating and score.
 ### `GET /runs/{id}/events`
 
 The run's recorded normalized [event stream](/components/driver/events/) as a JSON
-array, empty when the run recorded none. Raw harness output is never served.
-`404` for an unknown run.
+array, empty when the run recorded none. The stream is the run's job's events as
+the backend stored them on receipt, in sequence order (see [delivery to the
+backend](/components/driver/events/#delivery-to-the-backend)). Raw harness output
+is never served. `404` for an unknown run.
 
 ### `GET /runs/{id}/bundle`
 
@@ -1372,7 +1420,10 @@ least 80% of its scored calls, and `not-ready` otherwise.
 
 Probes are append-only history: a re-run is a new dated record. They are
 console-only data and never feed the public snapshot. A probe executes inside
-the backend process, so a backend restart fails any probe still `running`.
+a backend process, which records each call's item as the call completes and
+holds a lease on the probe's row while it runs. A probe still `running` whose
+lease has lapsed, as one does when its backend restarts, is resumed by a
+running backend, which issues only the calls the probe has no item for.
 
 ### `POST /models/{slug}/probes`
 

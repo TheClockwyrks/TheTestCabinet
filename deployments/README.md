@@ -1,8 +1,8 @@
 # Deployment assets
 
 Copy-pasteable templates for deploying The Test Cabinet's long-running services —
-the **backend** (`tcab-backend`), the **auth service** (`tcab-auth-service`), the
-**dispatcher** (`tcab-dispatcher`), and the **artifact service** (`tcab-artifacts`)
+the **backend** (`tcab-backend`), the **dispatcher** (`tcab-dispatcher`), the
+**artifact service** (`tcab-artifacts`) and the **arena** (`tcab-arena`)
 — to **Kubernetes**, where a run is a **per-run Kubernetes Job**: the dispatcher
 creates one **driver** (`tcab-driver`) Job per queued run, and each driver spawns a
 separate **sandbox pod** via the Kubernetes API. There is no worker pool and no
@@ -29,13 +29,13 @@ lives on the docs site and this README is just a map.
 ```
 deployments/
 ├── local/
-│   ├── compose.yml            # backend + auth service in containers (a minimal stack)
+│   ├── compose.yml            # the backend in a container (a minimal stack)
 │   └── Makefile               # the full stack on a local k3d cluster (`make local-up`)
 ├── images/                    # service images, pushed to the ACR (see below)
 │   ├── services.Dockerfile    # EVERY Rust service, one `--target` each, over one
 │   │                          #   shared cargo build stage: backend (+ headless
-│   │                          #   Chromium), auth, dispatcher, driver, artifacts,
-│   │                          #   arena, publisher
+│   │                          #   Chromium), dispatcher, driver, artifacts, arena,
+│   │                          #   publisher
 │   ├── backend.Dockerfile     # the-test-cabinet-backend: a retag of tcab-backend
 │   ├── web.Dockerfile         # tcab-web, the console SPA behind nginx (no crate)
 │   └── web/                   # its nginx.conf, config.js.template and the
@@ -49,18 +49,16 @@ deployments/
 │   │   ├── rbac.yaml          # driver SA/Role (sandbox pods), dispatcher SA/Role (Jobs)
 │   │   ├── secrets.example.yaml # Secret templates (placeholders only)
 │   │   ├── backend.yaml       # backend StatefulSet (1 replica) + PVC + Service
-│   │   ├── auth.yaml          # auth StatefulSet (1 replica) + PVC + Service
 │   │   ├── dispatcher.yaml    # dispatcher Deployment (1 replica), no Service
-│   │   ├── artifacts.yaml     # artifact StatefulSet (1 replica) + PVC + Service + SA
+│   │   ├── artifacts.yaml     # artifact Deployment (2, no PVC) + Service + PDB + SA
 │   │   ├── arena.yaml         # arena Deployment (1 replica) + Service + SA
 │   │   ├── ingest-cronjob.yaml # periodic POST /ingest to refresh the catalog
 │   │   └── networkpolicy.yaml # optional default-deny-ingress + allows
 │   ├── components/            # observability, postgres, postgres-azure-ad, keyvault-csi,
-│   │                          #   web, internal-ingress
+│   │                          #   web, edge (the Cloudflare Tunnel connector)
 │   ├── cluster/               # cluster-scoped objects, applied by hand by a cluster administrator
 │   │   ├── namespace/         # the environment's Namespace
 │   │   ├── observability/     # the LGTM stack's node-metrics ClusterRole + binding
-│   │   ├── internal-ingress/  # the cert-manager ClusterIssuer
 │   │   └── azure-{staging,prod}/ # the bootstraps for tcab-staging and tcab-prod
 │   ├── overlays/
 │   │   ├── prod/              # prod on managed PostgreSQL, deployed from master
@@ -75,8 +73,6 @@ deployments/
 └── env/
     ├── backend.staging.env.example
     ├── backend.prod.env.example
-    ├── auth.staging.env.example
-    ├── auth.prod.env.example
     ├── dispatcher.staging.env.example
     └── dispatcher.prod.env.example
 ```
@@ -92,8 +88,8 @@ of each service's configuration.
 The Azure pipeline ([`azure-pipelines.yml`](../azure-pipelines.yml)) builds the
 service images under `images/` on every push to `master` and `staging`, natively
 for `amd64` and `arm64`, and pushes each to the Test Cabinet Azure Container
-Registry as `testcabinet.azurecr.io/tcab-backend:<sha>`, `…/tcab-auth-service`,
-`…/tcab-dispatcher`, `…/tcab-driver`, `…/tcab-artifacts`, `…/tcab-arena`,
+Registry as `testcabinet.azurecr.io/tcab-backend:<sha>`, `…/tcab-dispatcher`,
+`…/tcab-driver`, `…/tcab-artifacts`, `…/tcab-arena`,
 `…/tcab-publisher`, and `…/tcab-web`. The workspace template's publish stage then
 builds `images/backend.Dockerfile`, a retag of `tcab-backend:<sha>` with no build
 steps, and pushes it as `testcabinet.azurecr.io/the-test-cabinet-backend:<sha>`,
@@ -105,7 +101,7 @@ instead, see the build instructions in each Dockerfile's header.
 The `staging` and `prod` overlays name every Test Cabinet image at the tag
 `unpinned`, which nothing pushes, so an overlay applied as it stands fails to pull.
 [`scripts/ci/pin-images.sh`](../scripts/ci/pin-images.sh) pins an overlay to one
-commit: all eight images, and the dispatcher's driver and publisher images and
+commit: all seven images, and the dispatcher's driver and publisher images and
 run-container registry and tag. Every deployment goes through it.
 
 A push to `staging` deploys staging in the workspace template's deployment job
@@ -114,7 +110,8 @@ A push to `staging` deploys staging in the workspace template's deployment job
 1. **Before**: [`scripts/ci/pre-deploy.sh`](../scripts/ci/pre-deploy.sh) pins the
    overlay, records the commit the namespace runs now, gives every rollout 600
    seconds, and retires the backend Deployment of its old name, `tcab-backend`, which
-   holds the backend's disk
+   holds the backend's disk, and the artifacts service's StatefulSet, which its
+   stateless Deployment replaces
    ([`retire-legacy-backend.sh`](../scripts/ci/retire-legacy-backend.sh)).
 2. **The template's deploy**: `scripts/ci/deploy.sh` applies the overlay and waits on
    `the-test-cabinet-backend`, rolling it back if it does not become ready.
@@ -168,7 +165,6 @@ Where that store comes from depends on who is building:
 Every file here is a **template with placeholder values only** — never commit a
 real secret. The per-environment files under `env/` are deliberately thin; the
 repo-root [`.env.backend.example`](../.env.backend.example),
-[`.env.auth.example`](../.env.auth.example),
 [`.env.dispatcher.example`](../.env.dispatcher.example), and
 [`.env.artifacts.example`](../.env.artifacts.example) remain the authoritative
 reference for every variable each service reads. Supply real values through

@@ -3,18 +3,18 @@
 #
 # Serves the browser console (apps/web) as STATIC assets behind nginx. Unlike the
 # other service images this carries no Rust binary and no Playwright/Chromium — it
-# is a `vite build` of the SPA copied into an nginx web root. The in-cluster
-# internal-ingress component fronts it at the private console hostname (see
-# deployments/k8s/components/internal-ingress and tasks/context.md); it is never
-# exposed publicly.
+# is a `vite build` of the SPA copied into an nginx web root. In the cluster the
+# edge component routes `/` of the environment's origin to it through the
+# Cloudflare Tunnel, behind Cloudflare Access (see deployments/k8s/components/edge);
+# it has no public Service of its own.
 #
 # Runtime config, NOT a build-time bake. CI builds ONE tcab-web:<git-sha> image
-# shared by every overlay (mirroring tcab-publisher), so the backend/auth URLs
+# shared by every overlay (mirroring tcab-publisher), so the backend URL
 # cannot be inlined per-environment via Vite's build-time VITE_* vars. Instead the
-# entrypoint `envsubst`s /config.js from TCAB_WEB_BACKEND_URL / TCAB_WEB_AUTH_URL
+# entrypoint `envsubst`s /config.js from TCAB_WEB_BACKEND_URL
 # at container start; the console reads window.__TCAB_CONFIG__ from that file
 # before it boots (see apps/web/index.html + apps/web/src/state/useConnections.ts).
-# Both default to empty, so an unset env yields a valid (empty) config that leaves
+# It defaults to empty, so an unset env yields a valid (empty) config that leaves
 # the console unconfigured rather than broken.
 #
 # The canonical image is built by the Azure pipeline (scripts/ci/service-image.sh)

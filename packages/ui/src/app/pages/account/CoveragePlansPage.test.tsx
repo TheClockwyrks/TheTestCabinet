@@ -26,9 +26,6 @@ vi.mock("../../components/ConfirmDialog", () => ({
   useConfirm: () => ({ confirm: async () => true, alert: async () => {} }),
 }));
 // A plan belongs to an account, so a token is what makes the list exist at all.
-vi.mock("../../../client/auth", () => ({
-  useAuth: () => ({ token: "t0" }),
-}));
 
 // A plan card's bar tracks runs done (the runs that count, capped at each cell's
 // target), the text beside it is only the cells filled, and the run detail rides in

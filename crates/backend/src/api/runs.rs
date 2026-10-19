@@ -2,10 +2,11 @@
 //!
 //! A produced run is stored privately when it finishes (the driver reports it via
 //! `POST /jobs/{id}/status`) — its build playable for reviewers but absent from the
-//! public snapshot. Any account may then **review** it (one review per account). An
-//! explicit **publish** flips it public, and is refused unless it has at least one
-//! review. Review and publish each require a valid bearer token (see
-//! [`crate::auth::AuthUser`]); reads stay open on the private network.
+//! public snapshot. Any identity may then **review** it (one review per identity),
+//! a person under their `email` or an Access service token under its `common_name`
+//! (see [`crate::auth::Reviewer`]). An explicit **publish** flips it public, and
+//! takes a person's assertion (see [`crate::auth::Person`]), as does a delete. The
+//! reads are open to any identity.
 
 use axum::Json;
 use axum::extract::{Path, Query, State};
@@ -19,10 +20,8 @@ use crate::review::{AestheticRating, DomainRating, Rating, ReviewRevision, Revie
 use test_cabinet_contracts::match_play::{ControllerKind, ControllerRef};
 use test_cabinet_contracts::run_record::RunRecord;
 
-use crate::auth::AuthUser;
-use crate::db::{
-    Reviewer, SortDir, StoredReview, StoredRun, SummaryFilter, SummarySort, SummaryState,
-};
+use crate::auth::{Person, Reviewer as ReviewerIdentity, ServiceCaller};
+use crate::db::{SortDir, StoredReview, StoredRun, SummaryFilter, SummarySort, SummaryState};
 use crate::error::ApiError;
 use crate::snapshot::{RunSummary, RunSummaryExt, run_summary_score};
 use crate::store::{CaseNames, DefinitionStore, StoredManifest, case_display_name};
@@ -36,19 +35,20 @@ const DEFAULT_LIMIT: usize = 50;
 const MAX_LIMIT: usize = 200;
 
 /// `POST /runs/{id}/reviews` — submit a review for a run, attributed to the
-/// token's account. The review gate (at least one domain rated, a non-empty
-/// writeup) applies here. An account reviews a run at most once: re-submitting
-/// updates that review. Requires a bearer token. `404` for an unknown run.
+/// caller's identity: a person's `email`, or an Access service token's
+/// `common_name`. The review gate (at least one domain rated, a non-empty writeup)
+/// applies here. An identity reviews a run at most once: re-submitting updates that
+/// review. A backend-minted token is a `403`. `404` for an unknown run.
 #[tracing::instrument(
     name = "runs.add_review",
     skip(state, user, request),
-    fields(run.id = %id, reviewer = %user.0.username),
+    fields(run.id = %id, reviewer = %user.0),
     err(Debug),
 )]
 pub async fn add_review(
     State(state): State<AppState>,
     Path(id): Path<String>,
-    user: AuthUser,
+    user: ReviewerIdentity,
     Json(request): Json<ReviewRequest>,
 ) -> Result<Json<ReviewResponse>, ApiError> {
     // A domain-scored legacy case rates at least one domain; a game jam rates none
@@ -112,11 +112,8 @@ pub async fn add_review(
         .format(&Rfc3339)
         .map_err(|e| ApiError::internal(format!("formatting reviewedAt: {e}")))?;
     let review = StoredReview {
-        reviewer: Reviewer {
-            user_id: user.0.id,
-            username: user.0.username,
-            display_name: user.0.display_name,
-        },
+        // The identity the assertion carries, never one the body names.
+        reviewer: user.0,
         ratings: request.ratings,
         aesthetics: Vec::new(),
         aesthetic: request.aesthetic,
@@ -206,7 +203,7 @@ fn validate_validator_rated_review(
 /// not an infrastructure failure, and a completed run with ≥1 review) and enqueues
 /// a publish job. It no longer flips `published` synchronously — that happens when
 /// the publisher reports a terminal success (see [`crate::api::publish_jobs`]).
-/// Requires a bearer token. `404` for an unknown run. Returns `202 Accepted` with
+/// Takes a person's assertion. `404` for an unknown run. Returns `202 Accepted` with
 /// the publish-job id and the live URL to observe it on.
 ///
 /// **Idempotent while a release is under way.** When the run already has a live
@@ -218,13 +215,13 @@ fn validate_validator_rated_review(
 #[tracing::instrument(
     name = "runs.publish",
     skip(state, _user),
-    fields(run.id = %id, reviewer = %_user.0.username),
+    fields(run.id = %id, reviewer = %_user.0),
     err(Debug),
 )]
 pub async fn publish(
     State(state): State<AppState>,
     Path(id): Path<String>,
-    _user: AuthUser,
+    _user: Person,
 ) -> Result<Response, ApiError> {
     // Gate at enqueue so the user is rejected immediately (rather than after a
     // publish Job spins up and fails). This is the same gate the legacy
@@ -270,7 +267,7 @@ pub async fn publish(
 
 /// `DELETE /runs/{id}` — permanently delete a run. Refused with `422` when the
 /// run is **published** and this build can read its record (a public run is in the
-/// snapshot and gallery). Requires a bearer token. `404` for an unknown run.
+/// snapshot and gallery). Takes a person's assertion. `404` for an unknown run.
 /// Removes the run record, its reviews, its links, and its stored media.
 ///
 /// Operates on the stored row rather than on the record, so it deletes a run whose
@@ -280,13 +277,13 @@ pub async fn publish(
 #[tracing::instrument(
     name = "runs.delete",
     skip(state, _user),
-    fields(run.id = %id, reviewer = %_user.0.username),
+    fields(run.id = %id, reviewer = %_user.0),
     err(Debug),
 )]
 pub async fn delete(
     State(state): State<AppState>,
     Path(id): Path<String>,
-    _user: AuthUser,
+    _user: Person,
 ) -> Result<Response, ApiError> {
     // The system of record is the run row: deleting it (and its cascaded reviews
     // and links) makes the run vanish from every listing. This also enforces the
@@ -517,7 +514,7 @@ pub(super) fn summary_cards(
 /// an adversarial result and uploaded a controller wasm. The arena resolves these
 /// as [`ControllerKind::PushedRun`] (fetching the wasm from
 /// `GET /runs/{id}/controller.wasm`), so a reviewer can pit a pushed
-/// implementation from any host. A read; no auth on the private network.
+/// implementation from any host. A read, open to any identity.
 pub async fn adversarial_controllers(
     State(state): State<AppState>,
     Query(params): Query<ControllersParams>,
@@ -577,7 +574,7 @@ pub async fn get(
 /// reachable from nowhere while still occupying the store. Each row carries the
 /// identity the run's lifted columns hold plus the error decoding its record
 /// produces now; deleting one goes through [`delete`], which acts on the row. A
-/// read; no auth on the private network, like the other run reads.
+/// read, open to any identity like the other run reads.
 #[tracing::instrument(name = "runs.unreadable", skip(state), err(Debug))]
 pub async fn unreadable(
     State(state): State<AppState>,
@@ -643,9 +640,13 @@ pub async fn events(
         .into_response())
 }
 
-/// `POST /snapshot/refresh` — force an immediate regen + upload + hook fire.
-#[tracing::instrument(name = "snapshot.refresh", skip(state), err(Debug))]
-pub async fn refresh(State(state): State<AppState>) -> Result<Json<RefreshResponse>, ApiError> {
+/// `POST /snapshot/refresh` — force an immediate regen + upload + hook fire. Takes
+/// the service token or an Access service token's assertion.
+#[tracing::instrument(name = "snapshot.refresh", skip(state, _caller), err(Debug))]
+pub async fn refresh(
+    State(state): State<AppState>,
+    _caller: ServiceCaller,
+) -> Result<Json<RefreshResponse>, ApiError> {
     let outcome = state
         .publisher
         .refresh_now()
@@ -658,25 +659,25 @@ pub async fn refresh(State(state): State<AppState>) -> Result<Json<RefreshRespon
     }))
 }
 
-/// `GET /account/reviews` — the signed-in account's own submitted reviews, newest
+/// `GET /account/reviews` — the signed-in person's own submitted reviews, newest
 /// first (by when they reviewed), for the account page's Reviews tab. A numbered
 /// pager: `limit` + `offset`, with the total count so the console can size it. Each
 /// entry pairs the reviewed run's summary card with this account's review of it.
-/// Requires a bearer token; an account only ever lists its own reviews.
+/// Takes a person's assertion; a person only ever lists their own reviews.
 #[tracing::instrument(
     name = "runs.my_reviews",
     skip(state, user, params),
-    fields(reviewer = %user.0.username),
+    fields(reviewer = %user.0),
     err(Debug),
 )]
 pub async fn my_reviews(
     State(state): State<AppState>,
-    user: AuthUser,
+    user: Person,
     Query(params): Query<MyReviewsParams>,
 ) -> Result<Json<MyReviewsResponse>, ApiError> {
     let limit = params.limit.unwrap_or(DEFAULT_LIMIT).clamp(1, MAX_LIMIT);
     let offset = params.offset.unwrap_or(0);
-    let user_id = user.0.id;
+    let user_id = user.0;
 
     let (runs, total) = state
         .db
@@ -693,7 +694,7 @@ pub async fn my_reviews(
             let review = run
                 .reviews
                 .iter()
-                .find(|review| review.reviewer.user_id == user_id)?;
+                .find(|review| review.reviewer == user_id)?;
             Some(MyReviewOut {
                 run: RunSummary::from_stored(run),
                 review: review_out(review),
@@ -710,26 +711,26 @@ pub async fn my_reviews(
 /// not their all-time totals.
 const REVIEW_STATS_WINDOW: usize = 100;
 
-/// `GET /account/review-stats` — aggregate breakdowns of the signed-in account's
+/// `GET /account/review-stats` — aggregate breakdowns of the signed-in person's
 /// recent reviews, for the account page's Profile tab: how those reviews split across
 /// **test cases** (all variants and versions of a case folded together), across
 /// **models**, and across the **ratings** the account gave. Computed over the
 /// account's most recent [`REVIEW_STATS_WINDOW`] reviews (the "recently reviewed"
-/// window), each breakdown ordered largest-first (ratings best-to-worst). Requires a
-/// bearer token; an account only ever sees its own activity.
+/// window), each breakdown ordered largest-first (ratings best-to-worst). Takes a
+/// person's assertion; a person only ever sees their own activity.
 #[tracing::instrument(
     name = "runs.review_stats",
     skip(state, user),
-    fields(reviewer = %user.0.username),
+    fields(reviewer = %user.0),
     err(Debug),
 )]
 pub async fn review_stats(
     State(state): State<AppState>,
-    user: AuthUser,
+    user: Person,
 ) -> Result<Json<ReviewStatsResponse>, ApiError> {
     let (subjects, total) = state
         .db
-        .recent_review_subjects(&user.0.id, REVIEW_STATS_WINDOW)
+        .recent_review_subjects(&user.0, REVIEW_STATS_WINDOW)
         .await
         .map_err(ApiError::from)?;
 
@@ -837,9 +838,7 @@ fn stored_run_out(run: &StoredRun, manifest: Option<&StoredManifest>) -> StoredR
 /// public identity.
 fn review_out(review: &StoredReview) -> ReviewOut {
     ReviewOut {
-        reviewer_id: review.reviewer.user_id.clone(),
-        reviewer: review.reviewer.display_name.clone(),
-        username: review.reviewer.username.clone(),
+        reviewer: review.reviewer.clone(),
         ratings: review.ratings.clone(),
         aesthetic: review.aesthetic,
         writeup: review.writeup.clone(),
@@ -1148,9 +1147,8 @@ pub struct StoredRunOut {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct ReviewOut {
-    reviewer_id: String,
+    /// The identity the review is attributed to: the Access assertion's email.
     reviewer: String,
-    username: String,
     ratings: Vec<DomainRating>,
     /// The reviewer's run-wide aesthetic tier (a legacy per-domain row already
     /// collapsed to its worst); absent on a legacy run's review.

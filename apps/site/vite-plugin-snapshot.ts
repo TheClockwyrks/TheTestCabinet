@@ -136,11 +136,9 @@ interface SnapshotDomainAesthetic {
   rating: string;
 }
 
-// One review entry in a run's `reviews[]` array: the reviewer's verdict plus
-// attribution (the public snapshot exposes the display name and id, not the
-// username). A run can carry more than one.
+// One review entry in a run's `reviews[]` array: the reviewer's verdict plus the
+// name recorded with it. A run can carry more than one.
 interface SnapshotReview {
-  reviewerId?: string;
   reviewer?: string;
   ratings: SnapshotDomainRating[];
   // The reviewer's RUN-WIDE aesthetic tier (a stored legacy row's per-domain
@@ -153,11 +151,6 @@ interface SnapshotReview {
   writeup: string;
   checklist?: SnapshotReviewVerdict[];
   reviewedAt?: string | null;
-  // The snapshot-relative object key of the reviewer's profile picture
-  // (`pfp/<reviewer-id>`), when they have one. Resolved to an absolute avatar URL
-  // against the snapshot base. Absent for a reviewer with no picture, or a snapshot
-  // written before reviewer pictures existed.
-  pictureKey?: string | null;
 }
 
 // `documents/runs/<run-id>/<digest>.json`: the full run record plus its review and
@@ -448,10 +441,8 @@ interface SnapshotDomain {
 
 // ---- The shape the app consumes (mirrors src/data/testCases.ts) -------------
 
-// One assembled review the app consumes (the gallery's `StoredReview`). The
-// public snapshot carries the display name + id, not the username.
+// One assembled review the app consumes (the gallery's `StoredReview`).
 interface AssembledReview {
-  reviewerId: string;
   reviewer: string;
   ratings: SnapshotDomainRating[];
   // The run-wide aesthetic tier; null on a legacy run's review. A stale
@@ -463,9 +454,6 @@ interface AssembledReview {
   writeup: string;
   checklist: SnapshotReviewVerdict[];
   reviewedAt: string | null;
-  // The reviewer's absolute avatar URL (resolved from `pictureKey` against the
-  // snapshot base), or null when they have no picture. Shown beside their name.
-  reviewerPictureUrl: string | null;
 }
 
 interface AssembledSnapshot {
@@ -985,14 +973,9 @@ function frameWriteup(reviews: SnapshotReview[]): string | null {
 }
 
 // Map a snapshot review to the app's StoredReview shape, filling sensible
-// defaults for fields an older snapshot may omit. The reviewer's `pictureKey` is
-// resolved to an absolute avatar URL against the snapshot `base`.
-function toAssembledReview(
-  base: string,
-  review: SnapshotReview,
-): AssembledReview {
+// defaults for fields an older snapshot may omit.
+function toAssembledReview(review: SnapshotReview): AssembledReview {
   return {
-    reviewerId: review.reviewerId ?? "",
     reviewer: review.reviewer ?? "Reviewer",
     ratings: review.ratings ?? [],
     // Resolve the run-wide tier here so the app reads one field either way; the
@@ -1004,9 +987,6 @@ function toAssembledReview(
     writeup: review.writeup ?? "",
     checklist: review.checklist ?? [],
     reviewedAt: review.reviewedAt ?? null,
-    reviewerPictureUrl: review.pictureKey
-      ? joinUrl(base, review.pictureKey)
-      : null,
   };
 }
 
@@ -1408,9 +1388,7 @@ async function loadSnapshot(
     emitRecord(summary.id, JSON.stringify(runFile.record));
     const runReviews = runFile.reviews ?? [];
     if (runReviews.length > 0) {
-      reviews[summary.id] = runReviews.map((review) =>
-        toAssembledReview(base, review),
-      );
+      reviews[summary.id] = runReviews.map(toAssembledReview);
       const framed = frameWriteup(runReviews);
       if (framed !== null) writeups[summary.id] = framed;
     }

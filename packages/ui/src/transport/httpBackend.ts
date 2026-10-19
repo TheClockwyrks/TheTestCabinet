@@ -20,7 +20,6 @@ import { readOutcome } from "../client/absence";
 import type {
   AssetKind,
   AssetPreview,
-  AuthResult,
   BackendIdentity,
   CaseShowcase,
   CatalogShowcase,
@@ -148,7 +147,6 @@ import {
   joinUrl,
   postJson,
   postVoid,
-  putBytes,
   putJson,
   putVoid,
 } from "./http";
@@ -326,12 +324,10 @@ interface ResolvedVersion {
   }[];
 }
 
-// One review entry of `GET /runs/{id}` — the reviewer's verdict plus attribution
-// (id, display name, and login username).
+// One review entry of `GET /runs/{id}` — the reviewer's verdict plus the identity
+// it is attributed to.
 interface ReviewResponse {
-  reviewerId: string;
   reviewer: string;
-  username?: string | null;
   ratings: StoredReview["ratings"];
   // The reviewer's run-wide aesthetic tier; absent on a legacy run's review.
   aesthetic?: StoredReview["aesthetic"];
@@ -386,13 +382,9 @@ interface RunSummaryPageResponse {
 }
 
 // Map one wire review (`ReviewResponse`) to the transport-neutral `StoredReview`.
-// The reviewer avatar URL is attached separately (it needs the auth service base
-// URL, which only the exec transport holds); left absent here.
 function toStoredReview(rv: ReviewResponse): StoredReview {
   return {
-    reviewerId: rv.reviewerId,
     reviewer: rv.reviewer,
-    username: rv.username ?? null,
     ratings: rv.ratings,
     aesthetic: rv.aesthetic ?? null,
     aesthetics: rv.aesthetics ?? [],
@@ -421,50 +413,6 @@ function toStoredRun(r: StoredRunResponse): StoredRun {
     aesthetic: r.aesthetic,
     validatorRated: r.validatorRated,
     score: r.score,
-  };
-}
-
-// Resolve an account/reviewer id to its profile-picture URL on the auth service
-// (`GET /auth/users/{id}/picture`). `version` (the account's `pictureUpdatedAt`)
-// cache-busts a replaced picture; omitted for a reviewer whose version is unknown,
-// in which case the avatar simply relies on the endpoint's short cache.
-function pictureUrlFor(
-  authUrl: string,
-  id: string,
-  version?: string | null,
-): string {
-  const query = version ? `?v=${encodeURIComponent(version)}` : "";
-  return joinUrl(
-    authUrl,
-    `/auth/users/${encodeURIComponent(id)}/picture${query}`,
-  );
-}
-
-// Attach the transport-resolved `pictureUrl` to an account: a ready-to-use avatar
-// URL when the account has a picture (`pictureUpdatedAt` set), else null. Every
-// consumer (top bar, profile) then reads one field rather than re-deriving the URL.
-function accountWithPicture(
-  authUrl: string,
-  account: AuthResult["account"],
-): AuthResult["account"] {
-  return {
-    ...account,
-    pictureUrl: account.pictureUpdatedAt
-      ? pictureUrlFor(authUrl, account.id, account.pictureUpdatedAt)
-      : null,
-  };
-}
-
-// Attach a reviewer's avatar URL to a review for display. Emitted unconditionally
-// (the wire review carries no "has picture" flag): a reviewer with no picture
-// simply 404s and the avatar falls back to their initials.
-function reviewWithPicture(
-  authUrl: string,
-  review: StoredReview,
-): StoredReview {
-  return {
-    ...review,
-    reviewerPictureUrl: pictureUrlFor(authUrl, review.reviewerId),
   };
 }
 
@@ -740,29 +688,24 @@ export function createHttpBackend(baseUrl: string): BackendClient {
       return body.models;
     },
 
-    async createModel(input: ModelInput, token: string): Promise<Model> {
-      return postJson<Model>(baseUrl, "/models", input, token);
+    async createModel(input: ModelInput): Promise<Model> {
+      return postJson<Model>(baseUrl, "/models", input);
     },
 
-    async updateModel(
-      slug: string,
-      input: ModelInput,
-      token: string,
-    ): Promise<Model> {
+    async updateModel(slug: string, input: ModelInput): Promise<Model> {
       return putJson<Model>(
         baseUrl,
         `/models/${encodeURIComponent(slug)}`,
         input,
-        token,
       );
     },
 
-    async deleteModel(slug: string, token: string): Promise<void> {
-      await delVoid(baseUrl, `/models/${encodeURIComponent(slug)}`, token);
+    async deleteModel(slug: string): Promise<void> {
+      await delVoid(baseUrl, `/models/${encodeURIComponent(slug)}`);
     },
 
-    async fetchModelLogo(url: string, token: string): Promise<LogoFetchResult> {
-      return postJson<LogoFetchResult>(baseUrl, "/models/logo", { url }, token);
+    async fetchModelLogo(url: string): Promise<LogoFetchResult> {
+      return postJson<LogoFetchResult>(baseUrl, "/models/logo", { url });
     },
 
     async listHarnessConfigs(): Promise<HarnessConfigEntry[]> {
@@ -772,13 +715,11 @@ export function createHttpBackend(baseUrl: string): BackendClient {
     async setHarnessMaxParallelism(
       slug: string,
       maxParallelism: number | null,
-      token: string,
     ): Promise<HarnessConfigEntry[]> {
       return postJson<HarnessConfigEntry[]>(
         baseUrl,
         `/harness-config/${encodeURIComponent(slug)}`,
         { maxParallelism },
-        token,
       );
     },
 
@@ -791,7 +732,6 @@ export function createHttpBackend(baseUrl: string): BackendClient {
 
     async lookupOpenrouterModel(
       slug: string,
-      token: string,
       providerPin?: string | null,
     ): Promise<ModelListing> {
       // The developer provider rides along only when the form has one: the
@@ -803,16 +743,14 @@ export function createHttpBackend(baseUrl: string): BackendClient {
       return getJson<ModelListing>(
         baseUrl,
         `/models/openrouter?${query.toString()}`,
-        token,
       );
     },
 
-    async refreshListPrices(token: string): Promise<ListPriceRefresh> {
+    async refreshListPrices(): Promise<ListPriceRefresh> {
       return postJson<ListPriceRefresh>(
         baseUrl,
         "/models/list-prices/refresh",
         {},
-        token,
       );
     },
 
@@ -834,36 +772,26 @@ export function createHttpBackend(baseUrl: string): BackendClient {
     async triggerModelProbe(
       slug: string,
       input: ModelProbeTriggerInput,
-      token: string,
     ): Promise<ModelProbe> {
       const body = await postJson<{ probe: ModelProbe }>(
         baseUrl,
         `/models/${encodeURIComponent(slug)}/probes`,
         input,
-        token,
       );
       return body.probe;
     },
 
-    async listModelProbeProviders(
-      slug: string,
-      token: string,
-    ): Promise<ModelProbeProviders> {
+    async listModelProbeProviders(slug: string): Promise<ModelProbeProviders> {
       return getJson<ModelProbeProviders>(
         baseUrl,
         `/models/${encodeURIComponent(slug)}/probe-providers`,
-        token,
       );
     },
 
-    async getModelCandidates(
-      slug: string,
-      token: string,
-    ): Promise<ModelCandidates> {
+    async getModelCandidates(slug: string): Promise<ModelCandidates> {
       return getJson<ModelCandidates>(
         baseUrl,
         `/models/${encodeURIComponent(slug)}/candidates`,
-        token,
       );
     },
 
@@ -885,406 +813,293 @@ export function createHttpBackend(baseUrl: string): BackendClient {
       return getJson<CabinetStatsResponse>(baseUrl, "/stats/cabinet");
     },
 
-    async listCoverageGroups(token: string): Promise<CoverageGroup[]> {
-      return getJson<CoverageGroup[]>(baseUrl, "/coverage-groups", token);
+    async listCoverageGroups(): Promise<CoverageGroup[]> {
+      return getJson<CoverageGroup[]>(baseUrl, "/coverage-groups");
     },
 
     async createCoverageGroup(
       input: CoverageGroupInput,
-      token: string,
     ): Promise<CoverageGroup> {
-      return postJson<CoverageGroup>(baseUrl, "/coverage-groups", input, token);
+      return postJson<CoverageGroup>(baseUrl, "/coverage-groups", input);
     },
 
     async updateCoverageGroup(
       id: string,
       input: CoverageGroupInput,
-      token: string,
     ): Promise<CoverageGroup> {
       return putJson<CoverageGroup>(
         baseUrl,
         `/coverage-groups/${encodeURIComponent(id)}`,
         input,
-        token,
       );
     },
 
-    async deleteCoverageGroup(id: string, token: string): Promise<void> {
-      await delVoid(
-        baseUrl,
-        `/coverage-groups/${encodeURIComponent(id)}`,
-        token,
-      );
+    async deleteCoverageGroup(id: string): Promise<void> {
+      await delVoid(baseUrl, `/coverage-groups/${encodeURIComponent(id)}`);
     },
 
-    async listCoveragePlans(token: string): Promise<CoveragePlanOut[]> {
+    async listCoveragePlans(): Promise<CoveragePlanOut[]> {
       // Each plan arrives with whether it is filling (`CoveragePlanOut`), so a
       // listing needs no call per plan.
-      return getJson<CoveragePlanOut[]>(baseUrl, "/coverage-plans", token);
+      return getJson<CoveragePlanOut[]>(baseUrl, "/coverage-plans");
     },
 
     async createCoveragePlan(
       input: CoveragePlanInput,
-      token: string,
     ): Promise<CoveragePlanOut> {
-      return postJson<CoveragePlanOut>(
-        baseUrl,
-        "/coverage-plans",
-        input,
-        token,
-      );
+      return postJson<CoveragePlanOut>(baseUrl, "/coverage-plans", input);
     },
 
     async updateCoveragePlan(
       id: string,
       input: CoveragePlanInput,
-      token: string,
     ): Promise<CoveragePlanOut> {
-      return putJson<CoveragePlanOut>(baseUrl, planPath(id), input, token);
+      return putJson<CoveragePlanOut>(baseUrl, planPath(id), input);
     },
 
-    async deleteCoveragePlan(id: string, token: string): Promise<void> {
-      await delVoid(baseUrl, planPath(id), token);
+    async deleteCoveragePlan(id: string): Promise<void> {
+      await delVoid(baseUrl, planPath(id));
     },
 
-    async getCoveragePlansSummary(
-      token: string,
-    ): Promise<CoveragePlanSummary[]> {
-      return getJson<CoveragePlanSummary[]>(
-        baseUrl,
-        "/coverage-plans/summary",
-        token,
-      );
+    async getCoveragePlansSummary(): Promise<CoveragePlanSummary[]> {
+      return getJson<CoveragePlanSummary[]>(baseUrl, "/coverage-plans/summary");
     },
 
-    async getCoveragePlanCoverage(
-      id: string,
-      token: string,
-    ): Promise<CoverageMatrix> {
-      return getJson<CoverageMatrix>(baseUrl, planPath(id, "/coverage"), token);
+    async getCoveragePlanCoverage(id: string): Promise<CoverageMatrix> {
+      return getJson<CoverageMatrix>(baseUrl, planPath(id, "/coverage"));
     },
 
-    async getCoverageSettings(token: string): Promise<CoverageSettings> {
-      return getJson<CoverageSettings>(baseUrl, "/coverage-settings", token);
+    async getCoverageSettings(): Promise<CoverageSettings> {
+      return getJson<CoverageSettings>(baseUrl, "/coverage-settings");
     },
 
     async setCoverageSettings(
       input: CoverageSettingsInput,
-      token: string,
     ): Promise<CoverageSettings> {
       // The backend clamps a bound, so it echoes back what it actually stored
       // rather than what was asked for — display that, not the submitted value.
-      return putJson<CoverageSettings>(
-        baseUrl,
-        "/coverage-settings",
-        input,
-        token,
-      );
+      return putJson<CoverageSettings>(baseUrl, "/coverage-settings", input);
     },
 
-    async fillCoveragePlan(
-      id: string,
-      token: string,
-    ): Promise<LaunchPassResult> {
+    async fillCoveragePlan(id: string): Promise<LaunchPassResult> {
       // No body: every input (the plan, its limit, what is in flight) is server-side
       // state the pass recomputes, which is what makes repeating the call harmless.
-      return postJson<LaunchPassResult>(
-        baseUrl,
-        planPath(id, "/fill"),
-        {},
-        token,
-      );
+      return postJson<LaunchPassResult>(baseUrl, planPath(id, "/fill"), {});
     },
 
     async retryCoveragePlanCell(
       id: string,
       input: PlanCellRetryInput,
-      token: string,
     ): Promise<void> {
       // The cell travels in the body, not the path: a model id contains slashes.
-      await postVoid(baseUrl, planPath(id, "/cells/retry"), input, token);
+      await postVoid(baseUrl, planPath(id, "/cells/retry"), input);
     },
 
-    async getCoveragePlanQueue(
-      id: string,
-      token: string,
-    ): Promise<CoverageQueue> {
-      return getJson<CoverageQueue>(baseUrl, planPath(id, "/queue"), token);
+    async getCoveragePlanQueue(id: string): Promise<CoverageQueue> {
+      return getJson<CoverageQueue>(baseUrl, planPath(id, "/queue"));
     },
 
-    async getCoveragePlanRuns(
-      id: string,
-      token: string,
-    ): Promise<CoveragePlanRuns> {
-      return getJson<CoveragePlanRuns>(baseUrl, planPath(id, "/runs"), token);
+    async getCoveragePlanRuns(id: string): Promise<CoveragePlanRuns> {
+      return getJson<CoveragePlanRuns>(baseUrl, planPath(id, "/runs"));
     },
 
-    async haltCoveragePlan(id: string, token: string): Promise<HaltResult> {
-      return postJson<HaltResult>(baseUrl, planPath(id, "/halt"), {}, token);
+    async haltCoveragePlan(id: string): Promise<HaltResult> {
+      return postJson<HaltResult>(baseUrl, planPath(id, "/halt"), {});
     },
 
-    async haltAllCoveragePlan(id: string, token: string): Promise<HaltResult> {
-      return postJson<HaltResult>(
-        baseUrl,
-        planPath(id, "/halt-all"),
-        {},
-        token,
-      );
+    async haltAllCoveragePlan(id: string): Promise<HaltResult> {
+      return postJson<HaltResult>(baseUrl, planPath(id, "/halt-all"), {});
     },
 
-    async listLadders(token: string): Promise<Ladder[]> {
-      return getJson<Ladder[]>(baseUrl, "/ladders", token);
+    async listLadders(): Promise<Ladder[]> {
+      return getJson<Ladder[]>(baseUrl, "/ladders");
     },
 
-    async getLaddersSummary(token: string): Promise<LadderSummary[]> {
-      return getJson<LadderSummary[]>(baseUrl, "/ladders/summary", token);
+    async getLaddersSummary(): Promise<LadderSummary[]> {
+      return getJson<LadderSummary[]>(baseUrl, "/ladders/summary");
     },
 
-    async getLadder(id: string, token: string): Promise<Ladder> {
-      return getJson<Ladder>(baseUrl, ladderPath(id), token);
+    async getLadder(id: string): Promise<Ladder> {
+      return getJson<Ladder>(baseUrl, ladderPath(id));
     },
 
-    async createLadder(input: LadderInput, token: string): Promise<Ladder> {
+    async createLadder(input: LadderInput): Promise<Ladder> {
       // The response carries every rung's minted id — the stable handle a reorder and
       // a dispatch's slots key off — so the caller must adopt the returned ladder
       // rather than the one it submitted.
-      return postJson<Ladder>(baseUrl, "/ladders", input, token);
+      return postJson<Ladder>(baseUrl, "/ladders", input);
     },
 
-    async updateLadder(
-      id: string,
-      input: LadderInput,
-      token: string,
-    ): Promise<Ladder> {
-      return putJson<Ladder>(baseUrl, ladderPath(id), input, token);
+    async updateLadder(id: string, input: LadderInput): Promise<Ladder> {
+      return putJson<Ladder>(baseUrl, ladderPath(id), input);
     },
 
-    async deleteLadder(id: string, token: string): Promise<void> {
-      await delVoid(baseUrl, ladderPath(id), token);
+    async deleteLadder(id: string): Promise<void> {
+      await delVoid(baseUrl, ladderPath(id));
     },
 
     async reorderLadderRungs(
       id: string,
       input: LadderRungOrderInput,
-      token: string,
     ): Promise<LadderRung[]> {
       return postJson<LadderRung[]>(
         baseUrl,
         ladderPath(id, "/rungs/order"),
         input,
-        token,
       );
     },
 
-    async runLadder(id: string, token: string): Promise<LadderProgress> {
-      return postJson<LadderProgress>(
-        baseUrl,
-        ladderPath(id, "/run"),
-        {},
-        token,
-      );
+    async runLadder(id: string): Promise<LadderProgress> {
+      return postJson<LadderProgress>(baseUrl, ladderPath(id, "/run"), {});
     },
 
-    async stopLadder(
-      id: string,
-      input: LadderStopInput,
-      token: string,
-    ): Promise<HaltResult> {
-      return postJson<HaltResult>(
-        baseUrl,
-        ladderPath(id, "/stop"),
-        input,
-        token,
-      );
+    async stopLadder(id: string, input: LadderStopInput): Promise<HaltResult> {
+      return postJson<HaltResult>(baseUrl, ladderPath(id, "/stop"), input);
     },
 
-    async getLadderProgress(
-      id: string,
-      token: string,
-    ): Promise<LadderProgress> {
-      return getJson<LadderProgress>(
-        baseUrl,
-        ladderPath(id, "/progress"),
-        token,
-      );
+    async getLadderProgress(id: string): Promise<LadderProgress> {
+      return getJson<LadderProgress>(baseUrl, ladderPath(id, "/progress"));
     },
 
-    async getLadderQueue(id: string, token: string): Promise<CoverageQueue> {
-      return getJson<CoverageQueue>(baseUrl, ladderPath(id, "/queue"), token);
+    async getLadderQueue(id: string): Promise<CoverageQueue> {
+      return getJson<CoverageQueue>(baseUrl, ladderPath(id, "/queue"));
     },
 
     async retryLadderClimber(
       id: string,
       input: LadderRetryInput,
-      token: string,
     ): Promise<void> {
       // Acknowledged with an empty 204: the retry only resets the climber's failing
       // streak and runs a launch pass, and the board is re-read for the result.
-      await postVoid(baseUrl, ladderPath(id, "/climbers/retry"), input, token);
+      await postVoid(baseUrl, ladderPath(id, "/climbers/retry"), input);
     },
 
     // The operator's saved gg configurations — named capability sets the account
     // section registers and the new-run form launches once `gg` is the chosen
-    // orchestrator. Per-account, so every call carries the bearer token.
-    async listGgConfigs(token: string): Promise<GgConfig[]> {
-      return getJson<GgConfig[]>(baseUrl, "/gg/configs", token);
+    // orchestrator. Per-identity: the backend scopes each to the caller.
+    async listGgConfigs(): Promise<GgConfig[]> {
+      return getJson<GgConfig[]>(baseUrl, "/gg/configs");
     },
 
-    async createGgConfig(
-      input: GgConfigInput,
-      token: string,
-    ): Promise<GgConfig> {
-      return postJson<GgConfig>(baseUrl, "/gg/configs", input, token);
+    async createGgConfig(input: GgConfigInput): Promise<GgConfig> {
+      return postJson<GgConfig>(baseUrl, "/gg/configs", input);
     },
 
-    async updateGgConfig(
-      id: string,
-      input: GgConfigInput,
-      token: string,
-    ): Promise<GgConfig> {
+    async updateGgConfig(id: string, input: GgConfigInput): Promise<GgConfig> {
       return putJson<GgConfig>(
         baseUrl,
         `/gg/configs/${encodeURIComponent(id)}`,
         input,
-        token,
       );
     },
 
-    async deleteGgConfig(id: string, token: string): Promise<void> {
-      await delVoid(baseUrl, `/gg/configs/${encodeURIComponent(id)}`, token);
+    async deleteGgConfig(id: string): Promise<void> {
+      await delVoid(baseUrl, `/gg/configs/${encodeURIComponent(id)}`);
     },
 
     // The operator's saved gg agents — agent profiles authored on their own, which a
     // configuration imports and may override locally. Per-account, like the
     // configurations that import them.
-    async listGgAgents(token: string): Promise<GgSavedAgent[]> {
-      return getJson<GgSavedAgent[]>(baseUrl, "/gg/agents", token);
+    async listGgAgents(): Promise<GgSavedAgent[]> {
+      return getJson<GgSavedAgent[]>(baseUrl, "/gg/agents");
     },
 
-    async createGgAgent(
-      input: GgSavedAgentInput,
-      token: string,
-    ): Promise<GgSavedAgent> {
-      return postJson<GgSavedAgent>(baseUrl, "/gg/agents", input, token);
+    async createGgAgent(input: GgSavedAgentInput): Promise<GgSavedAgent> {
+      return postJson<GgSavedAgent>(baseUrl, "/gg/agents", input);
     },
 
     async updateGgAgent(
       id: string,
       input: GgSavedAgentInput,
-      token: string,
     ): Promise<GgSavedAgent> {
       return putJson<GgSavedAgent>(
         baseUrl,
         `/gg/agents/${encodeURIComponent(id)}`,
         input,
-        token,
       );
     },
 
-    async deleteGgAgent(id: string, token: string): Promise<void> {
-      await delVoid(baseUrl, `/gg/agents/${encodeURIComponent(id)}`, token);
+    async deleteGgAgent(id: string): Promise<void> {
+      await delVoid(baseUrl, `/gg/agents/${encodeURIComponent(id)}`);
     },
 
     // The gg analysis query surface. The body is the *compiled* query — the client
     // owns the parser, so nothing about what a query means is decided twice.
-    async runGgQuery(query: GgQuery, token: string): Promise<GgQueryResponse> {
-      return postJson<GgQueryResponse>(baseUrl, "/gg/query", query, token);
+    async runGgQuery(query: GgQuery): Promise<GgQueryResponse> {
+      return postJson<GgQueryResponse>(baseUrl, "/gg/query", query);
     },
 
     // A whole board in one request. Not an optimisation: the batch is what makes
     // every panel of a board answer from the same index read, so two panels can
     // never disagree because the corpus refreshed between them.
-    async runGgQueryBatch(
-      batch: GgQueryBatch,
-      token: string,
-    ): Promise<GgQueryBatchResponse> {
-      return postJson<GgQueryBatchResponse>(
-        baseUrl,
-        "/gg/query/batch",
-        batch,
-        token,
-      );
+    async runGgQueryBatch(batch: GgQueryBatch): Promise<GgQueryBatchResponse> {
+      return postJson<GgQueryBatchResponse>(baseUrl, "/gg/query/batch", batch);
     },
 
-    async getGgFields(token: string): Promise<GgFieldCatalog> {
-      return getJson<GgFieldCatalog>(baseUrl, "/gg/fields", token);
+    async getGgFields(): Promise<GgFieldCatalog> {
+      return getJson<GgFieldCatalog>(baseUrl, "/gg/fields");
     },
 
-    // The operator's saved views over the corpus. Per-account, so every call carries
-    // the bearer token as an owner filter rather than only as a gate.
-    async listGgSavedQueries(token: string): Promise<GgSavedQuery[]> {
-      return getJson<GgSavedQuery[]>(baseUrl, "/gg/saved-queries", token);
+    // The operator's saved views over the corpus. Per-identity: the caller's identity
+    // is an owner filter here rather than only a gate.
+    async listGgSavedQueries(): Promise<GgSavedQuery[]> {
+      return getJson<GgSavedQuery[]>(baseUrl, "/gg/saved-queries");
     },
 
-    async createGgSavedQuery(
-      input: GgSavedQueryInput,
-      token: string,
-    ): Promise<GgSavedQuery> {
-      return postJson<GgSavedQuery>(baseUrl, "/gg/saved-queries", input, token);
+    async createGgSavedQuery(input: GgSavedQueryInput): Promise<GgSavedQuery> {
+      return postJson<GgSavedQuery>(baseUrl, "/gg/saved-queries", input);
     },
 
     async updateGgSavedQuery(
       id: string,
       input: GgSavedQueryInput,
-      token: string,
     ): Promise<GgSavedQuery> {
       return putJson<GgSavedQuery>(
         baseUrl,
         `/gg/saved-queries/${encodeURIComponent(id)}`,
         input,
-        token,
       );
     },
 
-    async deleteGgSavedQuery(id: string, token: string): Promise<void> {
-      await delVoid(
-        baseUrl,
-        `/gg/saved-queries/${encodeURIComponent(id)}`,
-        token,
-      );
+    async deleteGgSavedQuery(id: string): Promise<void> {
+      await delVoid(baseUrl, `/gg/saved-queries/${encodeURIComponent(id)}`);
     },
 
-    async listGgDashboards(token: string): Promise<GgDashboard[]> {
-      return getJson<GgDashboard[]>(baseUrl, "/gg/dashboards", token);
+    async listGgDashboards(): Promise<GgDashboard[]> {
+      return getJson<GgDashboard[]>(baseUrl, "/gg/dashboards");
     },
 
-    async getGgDashboard(id: string, token: string): Promise<GgDashboard> {
+    async getGgDashboard(id: string): Promise<GgDashboard> {
       return getJson<GgDashboard>(
         baseUrl,
         `/gg/dashboards/${encodeURIComponent(id)}`,
-        token,
       );
     },
 
-    async createGgDashboard(
-      input: GgDashboardInput,
-      token: string,
-    ): Promise<GgDashboard> {
-      return postJson<GgDashboard>(baseUrl, "/gg/dashboards", input, token);
+    async createGgDashboard(input: GgDashboardInput): Promise<GgDashboard> {
+      return postJson<GgDashboard>(baseUrl, "/gg/dashboards", input);
     },
 
     async updateGgDashboard(
       id: string,
       input: GgDashboardInput,
-      token: string,
     ): Promise<GgDashboard> {
       return putJson<GgDashboard>(
         baseUrl,
         `/gg/dashboards/${encodeURIComponent(id)}`,
         input,
-        token,
       );
     },
 
-    async deleteGgDashboard(id: string, token: string): Promise<void> {
-      await delVoid(baseUrl, `/gg/dashboards/${encodeURIComponent(id)}`, token);
+    async deleteGgDashboard(id: string): Promise<void> {
+      await delVoid(baseUrl, `/gg/dashboards/${encodeURIComponent(id)}`);
     },
 
     // gg's reference, in two calls because it is two documents: the language-independent
     // index (families, tools, the arm list), and one arm's responses-as-code surface.
     //
-    // No token on either: the documents are static and caller-independent, so the backend
-    // serves them to anyone who can reach it. That is also why they are fetched rather
+    // The documents are static and caller-independent, so the backend serves them to
+    // any identity. That is also why they are fetched rather
     // than bundled — the deployment projects them from the gg *it* ships, so the answer to
     // "what does this deployment's gg tell models" comes from that deployment and not from
     // whatever gg this console was built beside.
@@ -1302,46 +1117,37 @@ export function createHttpBackend(baseUrl: string): BackendClient {
       );
     },
 
-    async listComparisons(token: string): Promise<Comparison[]> {
-      return getJson<Comparison[]>(baseUrl, "/comparisons", token);
+    async listComparisons(): Promise<Comparison[]> {
+      return getJson<Comparison[]>(baseUrl, "/comparisons");
     },
 
-    async getComparison(id: string, token: string): Promise<Comparison> {
+    async getComparison(id: string): Promise<Comparison> {
       return getJson<Comparison>(
         baseUrl,
         `/comparisons/${encodeURIComponent(id)}`,
-        token,
       );
     },
 
-    async createComparison(
-      input: ComparisonInput,
-      token: string,
-    ): Promise<Comparison> {
-      return postJson<Comparison>(baseUrl, "/comparisons", input, token);
+    async createComparison(input: ComparisonInput): Promise<Comparison> {
+      return postJson<Comparison>(baseUrl, "/comparisons", input);
     },
 
     async updateComparison(
       id: string,
       input: ComparisonInput,
-      token: string,
     ): Promise<Comparison> {
       return putJson<Comparison>(
         baseUrl,
         `/comparisons/${encodeURIComponent(id)}`,
         input,
-        token,
       );
     },
 
-    async deleteComparison(id: string, token: string): Promise<void> {
-      await delVoid(baseUrl, `/comparisons/${encodeURIComponent(id)}`, token);
+    async deleteComparison(id: string): Promise<void> {
+      await delVoid(baseUrl, `/comparisons/${encodeURIComponent(id)}`);
     },
 
-    async publishComparison(
-      id: string,
-      token: string,
-    ): Promise<ComparisonPublishOutcome> {
+    async publishComparison(id: string): Promise<ComparisonPublishOutcome> {
       // `POST /comparisons/{id}/publish` marks the comparison published and
       // best-effort enqueues one ordinary publish job per publishable arm run,
       // resolving which were enqueued and which were skipped (with why). It does
@@ -1351,13 +1157,11 @@ export function createHttpBackend(baseUrl: string): BackendClient {
         baseUrl,
         `/comparisons/${encodeURIComponent(id)}/publish`,
         {},
-        token,
       );
     },
 
     async listMyReviews(
       opts: { limit?: number; offset?: number } | undefined,
-      token: string,
     ): Promise<MyReviewsPage> {
       // `GET /account/reviews` — the signed-in account's own reviews, newest-first,
       // with a numbered pager (limit + offset) and the total count. Each row is a
@@ -1369,7 +1173,6 @@ export function createHttpBackend(baseUrl: string): BackendClient {
       const body = await getJson<MyReviewsResponseBody>(
         baseUrl,
         `/account/reviews${query ? `?${query}` : ""}`,
-        token,
       );
       return {
         reviews: body.reviews.map((entry) => ({
@@ -1380,11 +1183,11 @@ export function createHttpBackend(baseUrl: string): BackendClient {
       };
     },
 
-    async getReviewStats(token: string): Promise<ReviewStats> {
+    async getReviewStats(): Promise<ReviewStats> {
       // `GET /account/review-stats` — the signed-in account's recent-review
       // breakdowns. The wire shape matches `ReviewStats` field-for-field (camelCase),
       // so it needs no mapping.
-      return getJson<ReviewStats>(baseUrl, "/account/review-stats", token);
+      return getJson<ReviewStats>(baseUrl, "/account/review-stats");
     },
 
     async listRuns(opts): Promise<RunPage> {
@@ -1526,13 +1329,13 @@ async function listRunsPage(
 async function listAllRuns(
   baseUrl: string,
   state: string,
-  resolveBuild: (run: StoredRun) => Promise<StoredRun>,
+  resolveBuild: (run: StoredRun) => StoredRun,
 ): Promise<StoredRun[]> {
   const acc: StoredRun[] = [];
   let before: string | undefined;
   for (;;) {
     const page = await listRunsPage(baseUrl, state, { before });
-    for (const run of page.runs) acc.push(await resolveBuild(run));
+    for (const run of page.runs) acc.push(resolveBuild(run));
     if (!page.nextCursor || page.runs.length === 0) break;
     before = page.nextCursor;
   }
@@ -1540,28 +1343,6 @@ async function listAllRuns(
 }
 
 // --- Run execution (the backend's `/jobs` control plane) --------------------
-
-// The backend's `GET /config` body (mirrors `ClientConfig`). `artifactsUrl` is
-// the artifact service's public base URL — non-null when a pre-publish run's
-// build and media are served separately from the control-plane backend — or null
-// when artifacts are not served separately (a single-box dev setup).
-interface ClientConfigResponse {
-  artifactsUrl?: string | null;
-  // The arena service's public base URL — non-null when adversarial matches and
-  // tournaments are executed separately from the control-plane backend — or null
-  // when adversarial execution is not served (a single-box dev setup).
-  arenaUrl?: string | null;
-  // Grafana's base URL — non-null when the deployment runs the observability
-  // stack — or null when it does not (a local stack, or any overlay without the
-  // observability component). Used to link a run to the traces it emitted.
-  grafanaUrl?: string | null;
-  // The public **read** base URL of the snapshot bucket (the R2 bucket the backend
-  // exports the public snapshot to), or null when no bucket is configured. Distinct
-  // from `artifactsUrl`: a case's published asset-reference frames live in that
-  // bucket, not in any run tree the artifact service holds. Absent on a backend
-  // that predates the field.
-  snapshotUrl?: string | null;
-}
 
 // The backend's `POST /jobs` ack (`LaunchAck`): the enqueued job id plus the URLs
 // to observe it. Only the id is needed here; the status/live URLs are
@@ -1632,14 +1413,6 @@ interface JobStatusResponse {
   detail?: string | null;
 }
 
-// The auth service's register/login result (`AuthnResponse`). The console reaches
-// the standalone auth service directly now — the worker that used to proxy it is
-// gone.
-interface AuthResultResponse {
-  token: string;
-  account: AuthResult["account"];
-}
-
 // Map a backend job state (`JobStatusOut.state`) to the console's coarse run
 // outcome. A `succeeded` job produced a record (its own `status.state` may still
 // be a failure); anything terminal-but-not-succeeded is a failure for the
@@ -1685,82 +1458,6 @@ function mapActiveState(state: string): InProgressRun["state"] {
   return runPhase(state) ?? "running";
 }
 
-// The artifact service's base URL as the execution client consumes it. It is
-// fetched (`GET /config`), so a host that hands over only the value it happens to
-// hold at construction time forces every consumer to cope with "not known yet" —
-// which the synchronous, re-rendered media resolvers do fine but the record's
-// build link cannot (see `resolveBuild`). Supplying both forms lets each consumer
-// take the one it can actually use.
-export interface ArtifactsUrlSource {
-  /** The resolved URL if the config fetch has landed, else null. */
-  current: string | null;
-  /** Resolves to the URL (or null) once the config fetch has settled. */
-  settled: Promise<string | null>;
-}
-
-// Resolve the artifact service's base URL from the backend's `GET /config`, or
-// null when artifacts are not served separately. Best-effort: a backend that
-// can't be reached resolves null, so pre-publish build/media links are simply
-// left unresolved (the same behavior as before the artifact service existed).
-export async function fetchArtifactsUrl(
-  backendUrl: string,
-): Promise<string | null> {
-  try {
-    const config = await getJson<ClientConfigResponse>(backendUrl, "/config");
-    return config.artifactsUrl ?? null;
-  } catch {
-    return null;
-  }
-}
-
-// Resolve the arena service's base URL from the backend's `GET /config`, or null
-// when adversarial execution is not served separately. Best-effort: a backend that
-// can't be reached resolves null, so the adversarial run UI simply degrades (the
-// same behavior as before the arena service existed).
-export async function fetchArenaUrl(
-  backendUrl: string,
-): Promise<string | null> {
-  try {
-    const config = await getJson<ClientConfigResponse>(backendUrl, "/config");
-    return config.arenaUrl ?? null;
-  } catch {
-    return null;
-  }
-}
-
-// Resolve Grafana's base URL from the backend's `GET /config`, or null when the
-// deployment runs no observability stack. Best-effort: a backend that can't be
-// reached resolves null, which reads the same as "no Grafana" — the run's link to
-// its traces is simply not offered, which is the correct degradation for a
-// convenience link.
-export async function fetchGrafanaUrl(
-  backendUrl: string,
-): Promise<string | null> {
-  try {
-    const config = await getJson<ClientConfigResponse>(backendUrl, "/config");
-    return config.grafanaUrl ?? null;
-  } catch {
-    return null;
-  }
-}
-
-// Resolve the public snapshot bucket's read base URL from the backend's
-// `GET /config`, or null when no bucket is configured (a single-box dev setup, or
-// a backend that predates the field). Best-effort like the resolvers above: an
-// unreachable backend resolves null, which reads the same as "no bucket" — a case's
-// published asset-reference frames are then simply not offered, rather than
-// resolved against a base that would 404.
-export async function fetchSnapshotUrl(
-  backendUrl: string,
-): Promise<string | null> {
-  try {
-    const config = await getJson<ClientConfigResponse>(backendUrl, "/config");
-    return config.snapshotUrl ?? null;
-  } catch {
-    return null;
-  }
-}
-
 // The object key one published asset-reference file sits at inside the snapshot
 // bucket, relative to its base: `media/references/<slug>/<version>/<variant>/<file>`,
 // where `file` is `frames/<index>.png` or `frames/<index>.actions.json`.
@@ -1784,19 +1481,19 @@ export function referenceMediaKey(
 
 // The web console's run-execution client: the `WorkerClient` interface the shared
 // UI drives, implemented against the backend's `/jobs` control plane (launch /
-// live stream / active list / completion feed), the backend's run-lifecycle
-// endpoints (review, publish), and the standalone auth service (register/login).
+// live stream / active list / completion feed) and the backend's run-lifecycle
+// endpoints (review, publish).
 //
-// `backendUrl` is the single backend the console talks to; `authUrl` is the auth
-// service it registers/logs in against; `artifacts` is the artifact service's base
-// URL used to resolve a pre-publish run's build and media links.
+// `backendUrl` is the single backend the console talks to; `artifactsUrl` is the
+// artifacts service's base ({@link ARTIFACTS_PATH} of the console's own origin), used
+// to resolve a pre-publish run's build and media links, or null to leave them
+// unresolved.
 // The driver pushes a finished run's record to the backend itself, so there is no
 // `POST /push` here — `push` is a no-op that echoes the run's already-resolved
 // links.
 export function createBackendExec(
   backendUrl: string,
-  authUrl: string,
-  artifacts: ArtifactsUrlSource | string | null,
+  artifactsUrl: string | null,
 ): WorkerClient {
   const backend = createHttpBackend(backendUrl);
 
@@ -1813,22 +1510,6 @@ export function createBackendExec(
   let streamId: string | null = null;
   let runLifecycleWanted = false;
 
-  // The artifact service's base URL is itself fetched (`GET /config`), so it has
-  // two forms here and they are not interchangeable. `artifactsNow` is the
-  // best-known value *this instant*, for the synchronous media resolvers below —
-  // they are called during render, so a null early on is corrected when the host
-  // re-renders with the resolved URL. `artifactsSettled` resolves once the config
-  // fetch has actually finished, for the link resolution that snapshots a URL into
-  // a fetched record — that one must await, because nothing re-renders it later.
-  const artifactsNow =
-    typeof artifacts === "string" || artifacts === null
-      ? artifacts
-      : artifacts.current;
-  const artifactsSettled =
-    typeof artifacts === "string" || artifacts === null
-      ? Promise.resolve(artifacts)
-      : artifacts.settled;
-
   // Prefix the artifact service's base URL to a root-relative media path. When no
   // artifact service is configured the path is left unresolved (null), matching
   // the unpublished-run behavior before artifacts were served separately.
@@ -1837,9 +1518,9 @@ export function createBackendExec(
     kind: string,
     file: string,
   ): string | null => {
-    if (!artifactsNow) return null;
+    if (!artifactsUrl) return null;
     const path = `/runs/${encodeURIComponent(runId)}/${kind}/${encodeURIComponent(file)}`;
-    return joinUrl(artifactsNow, path);
+    return joinUrl(artifactsUrl, path);
   };
 
   // Resolve a run's root-relative playable-build link (`/runs/{id}/build/`)
@@ -1848,21 +1529,9 @@ export function createBackendExec(
   // absolute (a published run whose build the snapshot pipeline placed) is left
   // as-is; with no artifact service configured a root-relative link is left
   // unresolved, exactly as today's unpublished-run behavior.
-  //
-  // This **awaits** the artifact URL rather than reading whatever is known now.
-  // The resolved link is snapshotted into the returned record, and the run-detail
-  // chrome fetches that record exactly once per run id, so a link left unresolved
-  // because the config fetch had not landed yet is never corrected — the Play tab
-  // then loads `/runs/{id}/build/` against the console's own origin, which serves
-  // the SPA shell instead of the build. That is only observable on a cold
-  // deep-link to /runs/:id/play (opened in a new tab, reloaded, or duplicated),
-  // where the record fetch races the config fetch; arriving via another tab gives
-  // the config time to land, which is why switching to Verdict and back "fixed"
-  // it. Awaiting removes the race outright.
-  const resolveBuild = async (run: StoredRun): Promise<StoredRun> => {
+  const resolveBuild = (run: StoredRun): StoredRun => {
     const link = run.record.links.playableBuild;
     if (!link || !link.startsWith("/")) return run;
-    const artifactsUrl = await artifactsSettled;
     if (!artifactsUrl) return run;
     return {
       ...run,
@@ -1886,28 +1555,24 @@ export function createBackendExec(
 
     async launchRun(
       config: LaunchConfig,
-      token?: string | null,
       origin?: LaunchOrigin | null,
     ): Promise<string> {
       // Enqueue a run on the backend's job queue; the dispatcher creates the
       // driver Job. The body is the backend's `LaunchBody` (camelCase). The
-      // backend gates `POST /jobs` on the launching account, so the signed-in
-      // account's token rides along as `Authorization: Bearer` — without it the
-      // enqueue is rejected `401`. The account is recorded on the job; `origin`,
+      // backend records the identity the edge asserts on the request on the job;
+      // `origin`,
       // when given, additionally records which plan asked for the run,
       // which is what puts it inside that plan's halt scope.
       const ack = await postJson<LaunchAckResponse>(
         backendUrl,
         `/jobs${originQuery(origin)}`,
         launchBodyOf(config),
-        token,
       );
       return ack.jobId;
     },
 
     async launchRunBatch(
       configs: LaunchConfig[],
-      token?: string | null,
       origin?: LaunchOrigin | null,
     ): Promise<BatchLaunchResult[]> {
       // Enqueue the whole set in one `POST /jobs/batch` (same account gate as
@@ -1922,7 +1587,6 @@ export function createBackendExec(
         backendUrl,
         `/jobs/batch${originQuery(origin)}`,
         { runs: configs.map(launchBodyOf) },
-        token,
       );
       return ack.jobs.map((entry) => ({
         runId: entry.jobId,
@@ -1930,17 +1594,15 @@ export function createBackendExec(
       }));
     },
 
-    async launchGgRun(req: GgRunRequest, token: string): Promise<LaunchAck> {
+    async launchGgRun(req: GgRunRequest): Promise<LaunchAck> {
       // Enqueue a gg run on its own endpoint (`POST /gg/runs`); the dispatcher
       // creates the gg driver Job. gg is configured by the request's capability
       // set rather than a `(harness, model, orchestrator)` tuple, so — unlike
       // `launchRun` — the `GgRunRequest` is already the exact wire body (camelCase)
-      // and is posted verbatim. Same account gate as `POST /jobs`: the signed-in
-      // account's token rides along as `Authorization: Bearer` (a missing/invalid
-      // token is rejected `401`). Unlike `launchRun`, the whole ack is returned —
+      // and is posted verbatim. Same identity gate as `POST /jobs`. Unlike `launchRun`, the whole ack is returned —
       // its `statusUrl`/`liveUrl` locate the run — since the console watches a gg
       // run through the ack's `jobId`.
-      return postJson<LaunchAck>(backendUrl, "/gg/runs", req, token);
+      return postJson<LaunchAck>(backendUrl, "/gg/runs", req);
     },
 
     async getRun(runId: string): Promise<RunJob> {
@@ -1956,8 +1618,7 @@ export function createBackendExec(
       const state = mapJobState(status.state);
       let record: RunRecord | null = null;
       if (status.recordId) {
-        record = (await resolveBuild(await backend.readRun(status.recordId)))
-          .record;
+        record = resolveBuild(await backend.readRun(status.recordId)).record;
       }
       return {
         runId,
@@ -2185,15 +1846,8 @@ export function createBackendExec(
     },
 
     async readRun(id: string): Promise<StoredRun> {
-      // Resolve the pre-publish build link, and attach each reviewer's avatar URL
-      // (the run-detail Verdict tab shows a reviewer's picture beside their name).
-      const run = await resolveBuild(await backend.readRun(id));
-      return {
-        ...run,
-        reviews: run.reviews.map((review) =>
-          reviewWithPicture(authUrl, review),
-        ),
-      };
+      // Resolve the pre-publish build link against the artifacts service.
+      return resolveBuild(await backend.readRun(id));
     },
 
     readRunEvents(
@@ -2206,81 +1860,15 @@ export function createBackendExec(
       return backend.readRunEvents(id, onProgress);
     },
 
-    // --- Accounts (the standalone auth service, reached directly) ---
-
-    async register(
-      username: string,
-      password: string,
-      displayName: string,
-    ): Promise<AuthResult> {
-      const result = await postJson<AuthResultResponse>(
-        authUrl,
-        "/auth/register",
-        { username, password, displayName },
-      );
-      return {
-        ...result,
-        account: accountWithPicture(authUrl, result.account),
-      };
-    },
-
-    async login(username: string, password: string): Promise<AuthResult> {
-      const result = await postJson<AuthResultResponse>(
-        authUrl,
-        "/auth/login",
-        {
-          username,
-          password,
-        },
-      );
-      return {
-        ...result,
-        account: accountWithPicture(authUrl, result.account),
-      };
-    },
-
-    async setProfilePicture(
-      picture: Blob,
-      token: string,
-    ): Promise<AuthResult["account"]> {
-      // `PUT /auth/profile/picture` — the body is the (already downscaled) image
-      // bytes and the `Content-Type` names their type; the auth service stores them
-      // and returns the updated account. Attach the fresh avatar URL so the caller
-      // can update the session immediately.
-      const account = await putBytes<AuthResultResponse["account"]>(
-        authUrl,
-        "/auth/profile/picture",
-        picture,
-        picture.type || "application/octet-stream",
-        token,
-      );
-      return accountWithPicture(authUrl, account);
-    },
-
-    async removeProfilePicture(token: string): Promise<AuthResult["account"]> {
-      // `DELETE /auth/profile/picture` — clear the account's picture; the auth
-      // service returns the updated (picture-less) account.
-      const account = await delJson<AuthResultResponse["account"]>(
-        authUrl,
-        "/auth/profile/picture",
-        token,
-      );
-      return accountWithPicture(authUrl, account);
-    },
-
     // --- Run lifecycle: review -> publish ---
     //
     // There is no console-driven push: the driver pushes a finished run's record
     // to the backend itself, so by the time the console sees a produced run it is
     // already stored and reviewable (its own links resolve the build/media).
 
-    async submitReview(
-      id: string,
-      review: ReviewDocumentInput,
-      token: string,
-    ): Promise<void> {
-      // `POST /runs/{id}/reviews` attributes the review to the token's account; a
-      // run can carry one review per account.
+    async submitReview(id: string, review: ReviewDocumentInput): Promise<void> {
+      // `POST /runs/{id}/reviews` attributes the review to the caller's identity;
+      // a run can carry one review per identity.
       await postJson<{ id: string; published: boolean }>(
         backendUrl,
         `/runs/${encodeURIComponent(id)}/reviews`,
@@ -2294,34 +1882,31 @@ export function createBackendExec(
           // Only meaningful on an edit; the backend ignores it on a first submission.
           editNote: review.editNote,
         },
-        token,
       );
     },
 
-    enqueuePublish(id: string, token: string): Promise<PublishEnqueued> {
-      return enqueuePublish(backendUrl, id, token);
+    enqueuePublish(id: string): Promise<PublishEnqueued> {
+      return enqueuePublish(backendUrl, id);
     },
 
     async publish(
       id: string,
-      token: string,
       onProgress?: (progress: PublishProgress) => void,
     ): Promise<PublishResult> {
       // Publishing is asynchronous: the POST only gates and enqueues. Subscribe to
       // the live NDJSON stream it points at and resolve once that reports the
       // terminal result — never poll.
-      const ack = await enqueuePublish(backendUrl, id, token);
+      const ack = await enqueuePublish(backendUrl, id);
       return streamPublish(backendUrl, ack.liveUrl, onProgress);
     },
 
-    async deleteRun(id: string, token: string): Promise<void> {
+    async deleteRun(id: string): Promise<void> {
       // `DELETE /runs/{id}` removes the run, its reviews, and its stored media.
       // The backend refuses a published run (`422`), so this only ever applies to
       // an unpublished produced run.
       await delJson<{ id: string; deleted: boolean }>(
         backendUrl,
         `/runs/${encodeURIComponent(id)}`,
-        token,
       );
     },
 
@@ -2343,49 +1928,37 @@ export function createBackendExec(
       );
     },
 
-    async killRun(id: string, token: string): Promise<void> {
+    async killRun(id: string): Promise<void> {
       // `POST /jobs/{id}/cancel` moves an in-flight run to the terminal `canceled`
       // state and closes its live stream; the driver polls its own state, notices
-      // the cancellation, and tears its sandbox down. The backend gates it on the
-      // launching account, so the signed-in token rides along; it refuses a run
+      // the cancellation, and tears its sandbox down. The backend refuses a run
       // that already finished (`409`).
       await postJson<JobStatusResponse>(
         backendUrl,
         `/jobs/${encodeURIComponent(id)}/cancel`,
         {},
-        token,
       );
     },
 
-    async cancelWaitingRuns(token: string): Promise<BulkCancelOut> {
+    async cancelWaitingRuns(): Promise<BulkCancelOut> {
       // `POST /jobs/cancel-waiting` — every `queued` and `pending` job, whoever
       // launched it. The backend names these states "waiting" rather than "pending"
       // because `pending` is one of them (a run held back by its harness's
       // parallelism cap), and the console surfaces that state separately.
-      return postJson<BulkCancelOut>(
-        backendUrl,
-        "/jobs/cancel-waiting",
-        {},
-        token,
-      );
+      return postJson<BulkCancelOut>(backendUrl, "/jobs/cancel-waiting", {});
     },
 
-    async cancelActiveRuns(token: string): Promise<BulkCancelOut> {
+    async cancelActiveRuns(): Promise<BulkCancelOut> {
       // `POST /jobs/cancel-active` — every `dispatched`, `starting`, and `running`
       // job. It deliberately leaves the waiting queue alone, so the dispatcher
       // resumes claiming from it immediately; `cancelAllRuns` is the one that stops.
-      return postJson<BulkCancelOut>(
-        backendUrl,
-        "/jobs/cancel-active",
-        {},
-        token,
-      );
+      return postJson<BulkCancelOut>(backendUrl, "/jobs/cancel-active", {});
     },
 
-    async cancelAllRuns(token: string): Promise<BulkCancelOut> {
+    async cancelAllRuns(): Promise<BulkCancelOut> {
       // `POST /jobs/cancel-all` — both sets in one atomic sweep rather than two
       // calls, so no queued job can be claimed into execution between them.
-      return postJson<BulkCancelOut>(backendUrl, "/jobs/cancel-all", {}, token);
+      return postJson<BulkCancelOut>(backendUrl, "/jobs/cancel-all", {});
     },
 
     // A pre-publish run's proof / asset media is served by the artifact service
@@ -2410,9 +1983,9 @@ export function createBackendExec(
     // when no artifact service is configured, in which case the console offers no
     // download rather than linking somewhere that 404s.
     runArchiveUrl(runId: string): string | null {
-      if (!artifactsNow) return null;
+      if (!artifactsUrl) return null;
       return joinUrl(
-        artifactsNow,
+        artifactsUrl,
         `/runs/${encodeURIComponent(runId)}/archive.tar.gz`,
       );
     },
@@ -2426,7 +1999,7 @@ export function createBackendExec(
 // artifact-service prefix to the completed run's build link.
 async function streamLive(
   backendUrl: string,
-  resolveBuild: (run: StoredRun) => Promise<StoredRun>,
+  resolveBuild: (run: StoredRun) => StoredRun,
   runId: string,
   handlers: RunSubscription,
   controller: AbortController,
@@ -2474,8 +2047,8 @@ async function streamLive(
       `/jobs/${encodeURIComponent(runId)}`,
     );
     if (mapJobState(status.state) === "completed" && status.recordId) {
-      const record = (
-        await resolveBuild(await backend.readRun(status.recordId))
+      const record = resolveBuild(
+        await backend.readRun(status.recordId),
       ).record;
       handlers.onDone({ kind: "completed", record });
     } else if (status.state === "canceled") {
@@ -2490,7 +2063,7 @@ async function streamLive(
       // list is the fallback either way.
       const recordId = await awaitCanceledRecordId(backendUrl, runId);
       const record = recordId
-        ? (await resolveBuild(await backend.readRun(recordId))).record
+        ? resolveBuild(await backend.readRun(recordId)).record
         : null;
       handlers.onDone({
         kind: "canceled",
@@ -2698,13 +2271,11 @@ type PublishStreamLine =
 function enqueuePublish(
   backendUrl: string,
   id: string,
-  token: string,
 ): Promise<PublishEnqueued> {
   return postJson<PublishEnqueued>(
     backendUrl,
     `/runs/${encodeURIComponent(id)}/publish`,
     {},
-    token,
   );
 }
 

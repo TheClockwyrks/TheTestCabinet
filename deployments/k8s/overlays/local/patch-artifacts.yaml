@@ -1,8 +1,13 @@
-# Local artifact-service override: tag the environment. Everything else (its own
-# `artifacts` PVC, bind address, backend/auth URLs) carries over from the base
-# manifest unchanged.
+# Local artifact-service override: tag the environment and point the service at the
+# overlay's Azurite (azurite.yaml) instead of the environment's Blob account and R2
+# bucket. Endpoint and key together select Shared Key, so the service needs no
+# workload identity here, and it creates both containers at start-up. The public
+# dataset is the Azurite container `public` (TCAB_ARTIFACTS_PUBLIC_BLOB_CONTAINER);
+# the base's TCAB_R2_* keys are optional and absent from the local
+# tcab-backend-secrets, so the R2 bucket is never named locally. Everything else
+# (bind address, backend URL, replicas) carries over from the base manifest.
 apiVersion: apps/v1
-kind: StatefulSet
+kind: Deployment
 metadata:
   name: tcab-artifacts
   # the base pins tcab-prod; this overlay's `namespace:` directive retargets it on build
@@ -18,3 +23,12 @@ spec:
             # Export to the in-cluster Grafana LGTM stack (the observability component).
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
               value: "http://tcab-lgtm:4318"
+            - name: TCAB_ARTIFACTS_BLOB_ACCOUNT
+              value: "devstoreaccount1"
+            - name: TCAB_ARTIFACTS_BLOB_ENDPOINT
+              value: "http://tcab-azurite:10000/devstoreaccount1"
+            # Azurite's well-known development key, published with the emulator.
+            - name: TCAB_ARTIFACTS_BLOB_KEY
+              value: "Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==" # cspell:disable-line
+            - name: TCAB_ARTIFACTS_PUBLIC_BLOB_CONTAINER
+              value: "public"

@@ -63,32 +63,32 @@ calls() { sed 's/ gg=.*//' "$tmp/calls.log"; }
 
 expected_order() {
 	local service
-	for service in backend auth dispatcher driver artifacts arena publisher web; do
+	for service in backend dispatcher driver artifacts arena publisher web; do
 		echo "service-image.sh $service $SHA"
 	done
 }
 
 out="$(run "$SHA")"
 check_equal "every service builds" "0" "$?"
-check_equal "the eight services, Rust ones first and web last, each with the sha" \
+check_equal "the seven services, Rust ones first and web last, each with the sha" \
 	"$(expected_order)" "$(calls)"
 check_contains "and the summary names the tag" "every service image is pushed as <image>:$SHA-amd64" "$out"
-check_equal "each call runs from the repository root" "8" "$(grep -c "\[cwd=$repo\]" "$tmp/calls.log")"
+check_equal "each call runs from the repository root" "7" "$(grep -c "\[cwd=$repo\]" "$tmp/calls.log")"
 
 out="$(STUB_UNAME_M=aarch64 run "$SHA")"
 check_equal "an arm64 build succeeds" "0" "$?"
 check_contains "and names its own tag" "<image>:$SHA-arm64" "$out"
 
 out="$(TCAB_PREBUILT_GG=/stage/gg run "$SHA")"
-check_equal "a prebuilt gg is passed through" "8" "$(grep -c 'gg=/stage/gg' "$tmp/calls.log")"
+check_equal "a prebuilt gg is passed through" "7" "$(grep -c 'gg=/stage/gg' "$tmp/calls.log")"
 out="$(run "$SHA")"
-check_equal "and is unset when the caller sets none" "8" "$(grep -c 'gg=<unset>' "$tmp/calls.log")"
+check_equal "and is unset when the caller sets none" "7" "$(grep -c 'gg=<unset>' "$tmp/calls.log")"
 
 out="$(STUB_FAIL_ON=driver run "$SHA")"
 check_equal "a failing service fails the build" "1" "$?"
 check_contains "naming it" "the driver image did not build; the ones before it are pushed." "$out"
 check_equal "after the services before it and none after" \
-	"$(expected_order | head -4)" "$(calls)"
+	"$(expected_order | head -3)" "$(calls)"
 
 out="$(run)"
 check_equal "no sha is a usage error" "1" "$?"

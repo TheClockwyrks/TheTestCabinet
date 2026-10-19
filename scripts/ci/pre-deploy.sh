@@ -9,18 +9,22 @@
 # backend alone and waits on it alone; this does the rest a Test Cabinet deployment
 # needs first, in order:
 #
-#   1. Pins the overlay (scripts/ci/pin-images.sh, in place): the other seven images
+#   1. Pins the overlay (scripts/ci/pin-images.sh, in place): the other six images
 #      and the dispatcher's run-image environment, all at <commit>. deploy.sh lays
 #      its own layer over the overlay, so the render it applies carries them.
-#   2. Reads, in one command in the cluster, the commit the namespace's backend runs
+#   2. Refuses an overlay that binds a workload to a workload identity annotated
+#      `unprovisioned` (tcab-lib.sh's ci_assert_identities_provisioned), before
+#      anything reaches the cluster.
+#   3. Reads, in one command in the cluster, the commit the namespace's backend runs
 #      now: the tag of `the-test-cabinet-backend`, else of the legacy
 #      `tcab-backend`. It sets the pipeline variables TCAB_PREVIOUS_COMMIT (empty on
 #      a first deployment) and TCAB_PREVIOUS_BACKEND (the Deployment it was read
 #      from), which the job's after-failure step reads to print the recovery.
-#   3. Sets THE_TEST_CABINET_ROLLOUT_TIMEOUT to 600s for the steps after it, the time
+#   4. Sets THE_TEST_CABINET_ROLLOUT_TIMEOUT to 600s for the steps after it, the time
 #      every rollout has always been given here, rather than the template's 300s.
-#   4. Retires the legacy `tcab-backend` Deployment
-#      (scripts/ci/retire-legacy-backend.sh), which holds the backend's disk.
+#   5. Retires the legacy workloads (scripts/ci/retire-legacy-backend.sh): the
+#      `tcab-backend` Deployment, which holds the backend's disk, and the artifacts
+#      service's `tcab-artifacts` StatefulSet, which the Deployment replaces.
 #
 # `--dry-run` pins a temporary copy instead, prints its render and the commands it
 # would run in the cluster, and runs none of them.
@@ -36,6 +40,8 @@ CI_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 readonly CI_DIR
 # shellcheck source=scripts/ci/lib.sh
 source "${CI_DIR}/lib.sh"
+# shellcheck source=scripts/ci/tcab-lib.sh
+source "${CI_DIR}/tcab-lib.sh"
 
 readonly USAGE="usage: scripts/ci/pre-deploy.sh [--dry-run] <staging|prod> <commit>"
 readonly ROLLOUT_TIMEOUT="600s"
@@ -114,6 +120,15 @@ for tool in az jq kubectl; do
 done
 
 "${CI_DIR}/pin-images.sh" "$OVERLAY" "$COMMIT"
+
+# A workload bound to an identity that does not exist yet would never become ready,
+# and step 5 would already have retired what it replaces. Refuse before the cluster.
+if ! kubectl kustomize "deployments/k8s/overlays/${OVERLAY}" | ci_assert_identities_provisioned; then
+	echo "pre-deploy.sh: overlays/${OVERLAY} binds a workload to an unprovisioned identity, above; nothing was retired or applied." >&2
+	remediation "Provision it, put its clientId in deployments/k8s/overlays/${OVERLAY}/patch-artifacts-identity.yaml" \
+		"and copy the trees on the claim artifacts-tcab-artifacts-0 in ${NAMESPACE} into the container, then deploy again."
+	exit 1
+fi
 
 echo "Reading the commit ${NAMESPACE} runs on ${CLUSTER}."
 answer="$(aks_invoke "$RESOURCE_GROUP" "$CLUSTER" "$READ_SCRIPT" "sh read-backend-commit.sh")" || {

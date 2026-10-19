@@ -245,7 +245,7 @@ export function ModelConfigPage() {
       .catch((e) => setSeedError(String(e)));
   }, [editing, fromRun, alias, config]);
 
-  // Configuring models isn't possible here (read-only or logged-out) — show a
+  // Configuring models isn't possible here (a read-only transport) — show a
   // notice instead of a form that could not submit.
   if (!config) {
     return (
@@ -255,8 +255,7 @@ export function ModelConfigPage() {
           comment={<>// configure a model</>}
         />
         <p className={`${styles.notice} ${styles.warn}`}>
-          Sign in to configure models. Use the account control in the top bar to
-          register or log in, then return here.
+          Models cannot be configured from this console.
         </p>
       </PageLayout>
     );

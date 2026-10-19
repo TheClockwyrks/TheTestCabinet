@@ -19,6 +19,7 @@ use test_cabinet_contracts::reference_lock::ReferenceLock;
 use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
 
+use crate::auth::ServiceCaller;
 use crate::db::ReferenceSheetEntry;
 use crate::error::ApiError;
 use crate::ingest::{IngestEvent, IngestReport, IngestRequest, IngestRoots, Ingestor};
@@ -46,6 +47,7 @@ use super::AppState;
 #[tracing::instrument(name = "ingest", skip(state, headers, body), err(Debug))]
 pub async fn ingest(
     State(state): State<AppState>,
+    _caller: ServiceCaller,
     headers: HeaderMap,
     body: Option<Json<IngestBody>>,
 ) -> Result<Response, ApiError> {
@@ -158,7 +160,7 @@ fn scan_changed_store(report: &IngestReport) -> bool {
 /// this backend's environment, queuing a snapshot refresh when the set changes.
 ///
 /// This is the ingest half of the reference-implementation **pull** model: rather
-/// than a client pushing a URL to a (private, VPN-only) backend, `tcab
+/// than a client pushing a URL to a (private, Access-guarded) backend, `tcab
 /// publish-reference` commits each deployed URL into
 /// `test-cases/reference-builds.lock.json`, and the backend — which git-fetches its
 /// checkout before ingesting — reads the entries for its own `TCAB_ENV` from the

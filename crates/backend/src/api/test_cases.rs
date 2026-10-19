@@ -15,6 +15,7 @@ use test_cabinet_suites::content_labels::{self, ContentLabels};
 use test_cabinet_suites::engine::{EngineSelection, ResolvedEngine};
 use test_cabinet_suites::test_case::shippable_package_description;
 
+use crate::auth::JobCaller;
 use crate::error::ApiError;
 use crate::store::StoredManifest;
 use crate::suite_store::StoredSuite;
@@ -445,6 +446,7 @@ pub async fn run_proof(
 /// by the publisher alongside the run record. The raw request body is the bytes.
 pub async fn put_run_proof(
     State(state): State<AppState>,
+    _caller: JobCaller,
     Path((id, file)): Path<(String, String)>,
     body: axum::body::Bytes,
 ) -> Result<Response, ApiError> {
@@ -475,6 +477,7 @@ pub async fn run_validation(
 /// validation media, uploaded by the publisher alongside the run record.
 pub async fn put_run_validation(
     State(state): State<AppState>,
+    _caller: JobCaller,
     Path((id, file)): Path<(String, String)>,
     body: axum::body::Bytes,
 ) -> Result<Response, ApiError> {
@@ -503,6 +506,7 @@ pub async fn run_asset(
 /// media, uploaded by the publisher alongside the run record.
 pub async fn put_run_asset(
     State(state): State<AppState>,
+    _caller: JobCaller,
     Path((id, file)): Path<(String, String)>,
     body: axum::body::Bytes,
 ) -> Result<Response, ApiError> {
@@ -535,6 +539,7 @@ pub async fn run_showcase(
 /// files, uploaded by the publisher alongside the run record.
 pub async fn put_run_showcase(
     State(state): State<AppState>,
+    _caller: JobCaller,
     Path((id, file)): Path<(String, String)>,
     body: axum::body::Bytes,
 ) -> Result<Response, ApiError> {
@@ -562,6 +567,7 @@ pub async fn run_controller(
 /// uploaded by the publisher at push alongside the run record.
 pub async fn put_run_controller(
     State(state): State<AppState>,
+    _caller: JobCaller,
     Path(id): Path<String>,
     body: axum::body::Bytes,
 ) -> Result<Response, ApiError> {
@@ -596,6 +602,7 @@ pub async fn run_replay(
 /// body opaque: it is never parsed.
 pub async fn put_run_replay(
     State(state): State<AppState>,
+    _caller: JobCaller,
     Path(id): Path<String>,
     body: axum::body::Bytes,
 ) -> Result<Response, ApiError> {
@@ -639,6 +646,7 @@ pub async fn run_code_analysis(
 /// run that does not exist yet is not an error.
 pub async fn put_run_code_analysis(
     State(state): State<AppState>,
+    _caller: JobCaller,
     Path(id): Path<String>,
     body: axum::body::Bytes,
 ) -> Result<Response, ApiError> {

@@ -1,19 +1,30 @@
-# Artifact service: serves the produced run trees (playable builds, proof/asset
-# media) off a persistent volume, so artifacts survive the ephemeral driver Jobs
-# that produced them.
+# Artifact service: the write-through store of run trees (playable builds, proof,
+# asset, validation and showcase media, logs, the replay and the code analysis)
+# over two object stores, so artifacts survive the ephemeral driver Jobs that
+# produced them. See apps/docs/src/content/docs/deployment/kubernetes/run-plane.md
+# ("Artifacts service") and components/artifacts/overview.md.
 #
 # This is a DATA-plane peer, deliberately separate from the control-plane backend:
 # the driver UPLOADS each run's tree here before reporting terminal status, and the
 # console READS it here. Artifact bytes never transit the backend. It binds
-# 0.0.0.0:8790 and is reached over the cluster network (and, for the console, via
-# the same private boundary the other services sit behind — TCAB_ARTIFACTS_PUBLIC_URL
-# on the backend is what the console resolves links against).
+# 0.0.0.0:8790 and is reached over the cluster network, and by the console through
+# the edge at `/artifacts/` of the environment's origin, where it verifies the Access
+# assertion (TCAB_ACCESS_TEAM_DOMAIN / TCAB_ACCESS_AUDIENCE, set by the staging and
+# prod overlays' patch-access.yaml; unset locally).
 #
-# It needs NO Kubernetes API access — it only talks HTTP to the backend (to verify
-# a driver's per-job upload token) and to the auth service (to gate a reviewer's
-# read of a pre-publish run). It does need durable storage: a single PVC mounted at
-# TCAB_ARTIFACTS_ROOT. Single replica + ReadWriteOnce, because a local-disk store is
-# single-node; point it at an object store (R2) later to scale out and drop the PVC.
+# STATELESS: a Deployment of two interchangeable replicas with no volume. The run
+# trees live in the environment's private Azure Blob container
+# (TCAB_ARTIFACTS_BLOB_ACCOUNT / TCAB_ARTIFACTS_BLOB_CONTAINER), which the service
+# reaches as a user-assigned managed identity holding Storage Blob Data Contributor
+# on it, federated to this ServiceAccount by workload identity. The public dataset
+# lives in the environment's Cloudflare R2 bucket (TCAB_R2_*), which only this
+# service writes. The staging and prod overlays' patch-artifacts-identity.yaml set
+# the identity's client id on the ServiceAccount, the pod's
+# `azure.workload.identity/use` label and the environment's account; the local
+# overlay points the service at the Azurite emulator with Shared Key instead.
+#
+# It needs NO Kubernetes API access — it talks HTTP to the backend (to verify a
+# driver's per-job or a publisher's per-publish-job token) and to the two stores.
 apiVersion: v1
 kind: Service
 metadata:
@@ -35,15 +46,27 @@ kind: ServiceAccount
 metadata:
   name: tcab-artifacts
   namespace: tcab-prod
+  # No API access. The staging and prod overlays federate it to the environment's
+  # managed identity (`azure.workload.identity/client-id`, in
+  # patch-artifacts-identity.yaml); the base names none, so the local overlay's pod
+  # signs its Azurite requests with Shared Key alone.
 ---
 apiVersion: apps/v1
-kind: StatefulSet
+kind: Deployment
 metadata:
   name: tcab-artifacts
   namespace: tcab-prod
 spec:
-  serviceName: tcab-artifacts
-  replicas: 1 # local-disk store is single-node; do not scale out (use R2 to scale).
+  # Two interchangeable replicas: the service holds nothing a restart loses, so a
+  # planned disruption of one leaves the other serving (Planned disruption, in
+  # deployment/kubernetes/control-plane.md). A deploy starts the new pod and waits
+  # for it to be Ready before terminating an old one.
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
   selector:
     matchLabels:
       app.kubernetes.io/name: tcab-artifacts
@@ -54,6 +77,9 @@ spec:
         app.kubernetes.io/part-of: test-cabinet
     spec:
       serviceAccountName: tcab-artifacts # no API access — its own identity only
+      # Sized to the longest request the service answers: a run-tree upload in
+      # progress completes on the terminating replica.
+      terminationGracePeriodSeconds: 300
       containers:
         - name: artifacts
           image: REPLACE_REGISTRY/tcab-artifacts:latest # the staging and prod overlays name testcabinet.azurecr.io/tcab-artifacts
@@ -76,17 +102,20 @@ spec:
             #
             # Prod peak was 3.2Gi — by far the largest here, and almost entirely the
             # upload it used to buffer whole in memory (a 2Gi cap's worth) plus page
-            # cache from unpacking. That upload now spools to disk (api.rs), leaving
-            # anon memory at 397Mi with the largest of prod's 568 stored trees at
-            # 176Mi.
+            # cache from unpacking onto the volume it then had. The service now holds
+            # no volume: an upload is unpacked as it arrives, each entry streamed
+            # into the private Blob container in pieces of at most 8Mi, a few in
+            # flight at once (store.upload.rs), so an upload's peak is bounded by
+            # those pieces rather than by the tree.
             #
-            # The `tree.tar`/`archive.tar.gz` reads no longer build their archive in
+            # The `tree.tar`/`archive.tar.gz` reads do not build their archive in
             # memory either: both stream the tar (and, for the archive, the gzip) into
-            # the response as the tree is walked, so a download's peak is the chunk
+            # the response as the objects are read, so a download's peak is the chunk
             # buffer plus the gzip window — about 2Mi — however large the tree is. NO
-            # SIZE OF STORED TREE CAN NOW SET THIS POD'S PEAK. What remains is the
-            # service's own working set: the store listing, the tar walk's per-entry
-            # buffers, and page cache from reading the tree off the PVC.
+            # SIZE OF STORED TREE CAN SET THIS POD'S PEAK. What remains is the
+            # service's own working set: the object listings, the pieces in flight to
+            # and from Blob and R2, and the one ffmpeg transcode `publish-media` runs
+            # at a time.
             #
             # So the 1.5Gi below is no longer sized against anything — it is simply
             # the number that was here when the last unbounded read was removed, and
@@ -101,23 +130,74 @@ spec:
               memory: 1536Mi
           ports:
             - containerPort: 8790
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8790
+            periodSeconds: 5
+          lifecycle:
+            # Hold the pod while its endpoint's removal from the Service
+            # propagates, so no new request is routed to a stopping replica.
+            preStop:
+              sleep:
+                seconds: 5
           env:
             - name: TCAB_ARTIFACTS_BIND
               value: "0.0.0.0:8790"
-            # The PVC mount below — each run's tree lives at <root>/<run-id>/.
-            - name: TCAB_ARTIFACTS_ROOT
-              value: "/artifacts"
-            # The backend it forwards a driver's per-job token to for upload auth.
-            # (Reads are ungated — browser-loaded media carries no token — so the
-            # service needs no auth-service URL.)
+            # The storage account and private container the run trees are written
+            # to: `<run-id>/current` names the tree's generation, and the tree's
+            # files are `<run-id>/g/<generation>/<path>`. Prod's account; the
+            # staging overlay names its own, the local overlay Azurite's.
+            - name: TCAB_ARTIFACTS_BLOB_ACCOUNT
+              value: "tcabprodstore"
+            - name: TCAB_ARTIFACTS_BLOB_CONTAINER
+              value: "run-trees"
+            # The public dataset's R2 bucket, its endpoint and credentials: the keys
+            # of tcab-backend-secrets keyvault-csi materializes. Optional here so the
+            # local stack, whose Secret carries none, uses its Azurite container
+            # instead; the service itself refuses to start with a partial set, or
+            # with no public store at all.
+            - name: TCAB_R2_ACCOUNT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: tcab-backend-secrets
+                  key: TCAB_R2_ACCOUNT_ID
+                  optional: true
+            - name: TCAB_R2_BUCKET
+              valueFrom:
+                secretKeyRef:
+                  name: tcab-backend-secrets
+                  key: TCAB_R2_BUCKET
+                  optional: true
+            - name: TCAB_R2_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: tcab-backend-secrets
+                  key: TCAB_R2_ACCESS_KEY_ID
+                  optional: true
+            - name: TCAB_R2_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: tcab-backend-secrets
+                  key: TCAB_R2_SECRET_ACCESS_KEY
+                  optional: true
+            - name: TCAB_R2_ENDPOINT
+              valueFrom:
+                secretKeyRef:
+                  name: tcab-backend-secrets
+                  key: TCAB_R2_ENDPOINT
+                  optional: true
+            # The backend a driver's per-job or a publisher's per-publish-job token is
+            # forwarded to for verification. A browser's read carries the edge's
+            # Access assertion instead.
             - name: TCAB_BACKEND_URL
               value: "http://tcab-backend:8787"
-            # The shared control-plane service token a run-tree delete must present.
-            # The backend presents this when it prunes a deleted run's tree, so it
-            # must equal the backend's own TCAB_BACKEND_SERVICE_TOKEN — sourced from
-            # the same secret (the backend is the presenter). Optional: when the
-            # secret/key is absent the delete route is disabled (it rejects every
-            # caller) and uploads/reads are unaffected.
+            # The shared control-plane service token the backend's own calls present:
+            # the tree delete, the `GET /runs` listing, `publish-media` and the
+            # `PUT /public/{key}` snapshot writes. It must equal the backend's own
+            # TCAB_BACKEND_SERVICE_TOKEN — sourced from the same secret (the backend is
+            # the presenter). Optional: when the secret/key is absent those routes
+            # reject every caller and uploads/reads are unaffected.
             - name: TCAB_BACKEND_SERVICE_TOKEN
               valueFrom:
                 secretKeyRef:
@@ -126,15 +206,17 @@ spec:
                   optional: true
             - name: TCAB_ENV
               value: "prod"
-          volumeMounts:
-            - name: artifacts
-              mountPath: /artifacts
-  volumeClaimTemplates:
-    - metadata:
-        name: artifacts
-      spec:
-        accessModes: ["ReadWriteOnce"]
-        resources:
-          requests:
-            storage: 20Gi
-        # storageClassName: <your-block-storage-class>
+---
+# Planned disruption: a drain evicts one replica and waits for its replacement to
+# be Ready before evicting the other. The selector is the service's own name label,
+# so the budget reaches no run pod.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: tcab-artifacts
+  namespace: tcab-prod
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: tcab-artifacts

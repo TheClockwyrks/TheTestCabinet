@@ -1,21 +1,17 @@
 # The in-cluster web console (apps/web, packaged as the tcab-web image — a static
-# SPA served by nginx, see deployments/images/web.Dockerfile). Serving it inside the
-# cluster means there is a real URL to visit rather than each operator running the
-# console locally and pointing it at a `kubectl port-forward`ed backend. In prod the
-# `internal-ingress` component fronts it at a private hostname
-# (console.tcab.testcabinet.ai); in local dev the overlay serves it over a
-# `kubectl port-forward` (see the components/web kustomization for both consumers).
+# SPA served by nginx, see deployments/images/web.Dockerfile). In the staging and
+# prod overlays the edge component (components/edge) nests this one and routes the
+# environment's origin to it: `/` of console[.staging].testcabinet.ai reaches
+# tcab-web:8080 through the Cloudflare Tunnel. The local overlay does not include
+# it; locally the console runs from source.
 #
 # The single tcab-web image is environment-agnostic (one build per git-sha, like the
-# publisher image), so the backend + auth URLs are injected at RUNTIME via env: the
-# image's entrypoint `envsubst`s a /config.js the SPA reads (window.__TCAB_CONFIG__).
-# The placeholders below are empty defaults — each consumer patches the real URLs
-# (prod sets TCAB_WEB_BACKEND_URL=https://api.tcab.testcabinet.ai etc.; local points
-# them at the host-forwarded http://127.0.0.1:8787 / :8789).
+# publisher image), so the backend URL is injected at RUNTIME via env: the image's
+# entrypoint `envsubst`s a /config.js the SPA reads (window.__TCAB_CONFIG__). The
+# placeholder below is an empty default, which an overlay may patch.
 #
 # It is a DATA-plane peer like the other services: a ClusterIP Service is the only
-# in-cluster surface, and (in prod) the ingress — never a LoadBalancer here — is the
-# boundary.
+# in-cluster surface, and the edge, never a LoadBalancer here, is the boundary.
 apiVersion: v1
 kind: Service
 metadata:
@@ -26,9 +22,9 @@ spec:
     app.kubernetes.io/name: tcab-web
   ports:
     - name: http
-      port: 80
+      port: 8080
       targetPort: 8080
-  # ClusterIP only — the internal ingress is the boundary; never a LoadBalancer here.
+  # ClusterIP only — the edge is the boundary; never a LoadBalancer here.
   type: ClusterIP
 ---
 apiVersion: apps/v1
@@ -80,10 +76,8 @@ spec:
           env:
             # The console reads these at container start (the entrypoint emits
             # /config.js from them). Empty by default so an unset env yields a valid
-            # (empty) config; each overlay patches the real https URLs (task-3).
+            # (empty) config.
             - name: TCAB_WEB_BACKEND_URL
-              value: ""
-            - name: TCAB_WEB_AUTH_URL
               value: ""
           readinessProbe:
             httpGet:

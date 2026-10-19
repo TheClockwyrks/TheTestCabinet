@@ -1,4 +1,9 @@
 // Small fetch helpers shared by the backend and worker HTTP transports.
+//
+// None of them carries a credential. The console addresses paths of its own
+// origin, so the browser sends the edge's Access cookie with every request and
+// the edge turns it into the assertion the services verify; in development the
+// Vite dev server adds the local identity header instead.
 import { HttpReadError, readTextWithProgress } from "../client";
 import type { ProgressCallback } from "../client";
 
@@ -6,43 +11,26 @@ export function joinUrl(base: string, path: string): string {
   return `${base.replace(/\/+$/, "")}${path}`;
 }
 
-// Build the `Authorization: Bearer <token>` header for a mutating call, or an
-// empty object when there is no token (an unauthenticated read). Merge it into a
-// request's headers so any helper can attach the current account's token.
-export function bearer(token?: string | null): Record<string, string> {
-  return token ? { authorization: `Bearer ${token}` } : {};
-}
-
-// GET a JSON document. `token`, when given, is sent as `Authorization: Bearer
-// <token>` — the reviewer coverage-plan reads are account-scoped and supply it;
-// the open reads (catalog, published runs) omit it.
-export async function getJson<T>(
-  base: string,
-  path: string,
-  token?: string | null,
-): Promise<T> {
+// GET a JSON document.
+export async function getJson<T>(base: string, path: string): Promise<T> {
   const res = await fetch(joinUrl(base, path), {
-    headers: { accept: "application/json", ...bearer(token) },
+    headers: { accept: "application/json" },
   });
   if (!res.ok) throw await httpError(res, path);
   return (await res.json()) as T;
 }
 
-// POST a JSON body. `token`, when given, is sent as `Authorization: Bearer
-// <token>` — every mutating worker call (push/review/publish) supplies it; the
-// account register/login calls do not (they produce the token).
+// POST a JSON body and parse the JSON reply.
 export async function postJson<T>(
   base: string,
   path: string,
   body: unknown,
-  token?: string | null,
 ): Promise<T> {
   const res = await fetch(joinUrl(base, path), {
     method: "POST",
     headers: {
       "content-type": "application/json",
       accept: "application/json",
-      ...bearer(token),
     },
     body: JSON.stringify(body),
   });
@@ -50,20 +38,17 @@ export async function postJson<T>(
   return (await res.json()) as T;
 }
 
-// PUT a JSON body, sending `token` as `Authorization: Bearer <token>` — the
-// mutating model-config update supplies it. Mirrors {@link postJson}.
+// PUT a JSON body and parse the JSON reply. Mirrors {@link postJson}.
 export async function putJson<T>(
   base: string,
   path: string,
   body: unknown,
-  token?: string | null,
 ): Promise<T> {
   const res = await fetch(joinUrl(base, path), {
     method: "PUT",
     headers: {
       "content-type": "application/json",
       accept: "application/json",
-      ...bearer(token),
     },
     body: JSON.stringify(body),
   });
@@ -71,99 +56,56 @@ export async function putJson<T>(
   return (await res.json()) as T;
 }
 
-// PUT a JSON body to an endpoint that returns no body (`204 No Content`), sending
-// `token` as a bearer. Used by the coverage-plan upsert, which acknowledges with
+// PUT a JSON body to an endpoint that returns no body (`204 No Content`). Used by the coverage-plan upsert, which acknowledges with
 // an empty body. Mirrors {@link putJson} without the response parse.
 export async function putVoid(
   base: string,
   path: string,
   body: unknown,
-  token?: string | null,
 ): Promise<void> {
   const res = await fetch(joinUrl(base, path), {
     method: "PUT",
     headers: {
       "content-type": "application/json",
-      ...bearer(token),
     },
     body: JSON.stringify(body),
   });
   if (!res.ok) throw await httpError(res, path);
 }
 
-// POST a JSON body to an endpoint that returns no body (`204 No Content`), sending
-// `token` as a bearer. Used by the ladder climber retry, which acknowledges with an
+// POST a JSON body to an endpoint that returns no body (`204 No Content`). Used by the ladder climber retry, which acknowledges with an
 // empty body. Mirrors {@link postJson} without the response parse.
 export async function postVoid(
   base: string,
   path: string,
   body: unknown,
-  token?: string | null,
 ): Promise<void> {
   const res = await fetch(joinUrl(base, path), {
     method: "POST",
     headers: {
       "content-type": "application/json",
-      ...bearer(token),
     },
     body: JSON.stringify(body),
   });
   if (!res.ok) throw await httpError(res, path);
 }
 
-// PUT raw bytes (not JSON) with an explicit content type, sending `token` as a
-// bearer, and parse the JSON acknowledgement. Used by the profile-picture upload,
-// whose body is the image bytes themselves and whose `Content-Type` names their
-// image type. Mirrors {@link putJson} but sends a binary body.
-export async function putBytes<T>(
-  base: string,
-  path: string,
-  body: BodyInit,
-  contentType: string,
-  token?: string | null,
-): Promise<T> {
-  const res = await fetch(joinUrl(base, path), {
-    method: "PUT",
-    headers: {
-      "content-type": contentType,
-      accept: "application/json",
-      ...bearer(token),
-    },
-    body,
-  });
-  if (!res.ok) throw await httpError(res, path);
-  return (await res.json()) as T;
-}
-
-// DELETE a resource. `token` is sent as `Authorization: Bearer <token>` — the
-// run-delete call (the only DELETE the console issues) is mutating and supplies
-// it. Parses and returns the JSON acknowledgement.
-export async function delJson<T>(
-  base: string,
-  path: string,
-  token?: string | null,
-): Promise<T> {
+// DELETE a resource and parse the JSON acknowledgement.
+export async function delJson<T>(base: string, path: string): Promise<T> {
   const res = await fetch(joinUrl(base, path), {
     method: "DELETE",
     headers: {
       accept: "application/json",
-      ...bearer(token),
     },
   });
   if (!res.ok) throw await httpError(res, path);
   return (await res.json()) as T;
 }
 
-// DELETE a resource that returns no body (`204 No Content`), sending `token` as a
-// bearer. Used by the model-config delete, which acknowledges with an empty body.
-export async function delVoid(
-  base: string,
-  path: string,
-  token?: string | null,
-): Promise<void> {
+// DELETE a resource that returns no body (`204 No Content`). Used by the model-config delete, which acknowledges with an empty body.
+export async function delVoid(base: string, path: string): Promise<void> {
   const res = await fetch(joinUrl(base, path), {
     method: "DELETE",
-    headers: { ...bearer(token) },
   });
   if (!res.ok) throw await httpError(res, path);
 }

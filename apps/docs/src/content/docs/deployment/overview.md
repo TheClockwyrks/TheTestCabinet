@@ -17,21 +17,21 @@ playable builds are static and are covered by
 
 ## Deployed components
 
-| Thing                                                                   | Deployed as                                                                                                                                        |
-| ----------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [Backend](/components/backend/overview/) (`tcab-backend`)               | `Deployment` (1 replica) on managed PostgreSQL + `ClusterIP` `Service` + a volume for the definition store and ingest checkout; owns the run queue |
-| [Dispatcher](/components/dispatcher/overview/) (`tcab-dispatcher`)      | `Deployment` (1 replica), no `Service`; creates one driver `Job` per claimed run and one publisher `Job` per publish                               |
-| [Driver](/components/driver/overview/) (`tcab-driver`)                  | One `Job` per run, created by the dispatcher; each creates a sandbox pod through the API and exits                                                 |
-| Publisher (`tcab-publisher`)                                            | One `Job` per publish, created by the dispatcher                                                                                                   |
-| [Artifacts service](/components/artifacts/overview/) (`tcab-artifacts`) | `Deployment` + `Service`, stateless; the run trees in a private Azure Blob container and the public dataset in Cloudflare R2                       |
-| [Repos service](/components/repos/overview/) (`tcab-repos`)             | `Deployment` + `Service`, stateless; the run bundles in a private Azure Blob container                                                             |
-| [Arena](/components/arena/overview/) (`tcab-arena`)                     | `Deployment` (1 replica) + `Service`; runs adversarial matches and tournaments                                                                     |
-| [Console](/components/web/overview/) (`tcab-web`)                       | `Deployment` + `Service` serving a static bundle at `/` of the environment's origin                                                                |
-| [Edge](/deployment/kubernetes/edge/) (`tcab-cloudflared`)               | `Deployment` holding the Cloudflare Tunnel that routes the origin to the services above                                                            |
-| [Gallery](/components/site/serving/)                                    | Cloudflare Pages, two Workers and the R2 bucket; see [Public Gallery](/deployment/public-gallery/)                                                 |
-| Docs, per-run builds                                                    | Static Cloudflare Pages sites; see [Releasing](/development/releasing/)                                                                            |
-| [CLI](/components/cli/overview/) (`tcab`)                               | A local tool an operator installs; see [Building](/development/building/)                                                                          |
-| [Operator client](/components/client/overview/)                         | Desktop and Android bundles of a tag, loading the console's origin                                                                                 |
+| Thing                                                                   | Deployed as                                                                                                                                                |
+| ----------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [Backend](/components/backend/overview/) (`tcab-backend`)               | `Deployment` (2 replicas) on managed PostgreSQL + `ClusterIP` `Service`, each replica caching the definition store and ingest checkout; owns the run queue |
+| [Dispatcher](/components/dispatcher/overview/) (`tcab-dispatcher`)      | `Deployment` (1 replica), no `Service`; creates one driver `Job` per claimed run and one publisher `Job` per publish                                       |
+| [Driver](/components/driver/overview/) (`tcab-driver`)                  | One `Job` per run, created by the dispatcher; each creates a sandbox pod through the API and exits                                                         |
+| Publisher (`tcab-publisher`)                                            | One `Job` per publish, created by the dispatcher                                                                                                           |
+| [Artifacts service](/components/artifacts/overview/) (`tcab-artifacts`) | `Deployment` (2 replicas) + `Service`, stateless; the run trees in a private Azure Blob container and the public dataset in Cloudflare R2                  |
+| [Repos service](/components/repos/overview/) (`tcab-repos`)             | `Deployment` (2 replicas) + `Service`, stateless; the run bundles in a private Azure Blob container                                                        |
+| [Arena](/components/arena/overview/) (`tcab-arena`)                     | `Deployment` (1 replica) + `Service`; runs adversarial matches and tournaments                                                                             |
+| [Console](/components/web/overview/) (`tcab-web`)                       | `Deployment` (2 replicas) + `Service` serving a static bundle at `/` of the environment's origin                                                           |
+| [Edge](/deployment/kubernetes/edge/) (`tcab-cloudflared`)               | `Deployment` holding the Cloudflare Tunnel that routes the origin to the services above                                                                    |
+| [Gallery](/components/site/serving/)                                    | Cloudflare Pages, two Workers and the R2 bucket; see [Public Gallery](/deployment/public-gallery/)                                                         |
+| Docs, per-run builds                                                    | Static Cloudflare Pages sites; see [Releasing](/development/releasing/)                                                                                    |
+| [CLI](/components/cli/overview/) (`tcab`)                               | A local tool an operator installs; see [Building](/development/building/)                                                                                  |
+| [Operator client](/components/client/overview/)                         | Desktop and Android bundles of a tag, loading the console's origin                                                                                         |
 
 ## The control plane and the run plane
 
@@ -65,7 +65,7 @@ exists for the duration of one run.
   through the service; the public dataset lives in the Cloudflare R2 bucket,
   which only this service writes. It runs under its own `ServiceAccount` with
   no Kubernetes API access, authenticates to Blob as a managed identity, and is
-  stateless, so its replica count is a free choice. The backend calls it over
+  stateless, so it runs two replicas. The backend calls it over
   its in-cluster `TCAB_ARTIFACTS_URL` to prune a deleted run's tree, to sweep
   the trees no run row references, and to write the public snapshot.
 - The repos service owns each run's implementation as a git bundle in a
@@ -79,11 +79,17 @@ exists for the duration of one run.
 | Dispatcher        | `Deployment` (1), no `Service`                                               | None                                                   | None                                                           |
 | Driver            | One `Job` per run                                                            | Scratch only                                           | Model APIs and package registries, from inside the sandbox pod |
 | Publisher         | One `Job` per publish                                                        | Scratch only                                           | Cloudflare Pages                                               |
-| Artifacts service | `Deployment` + `Service`                                                     | Azure Blob (run trees), Cloudflare R2 (public dataset) | Azure Blob, Cloudflare R2                                      |
-| Repos service     | `Deployment` + `Service`                                                     | Azure Blob (run bundles)                               | Azure Blob, GitHub                                             |
+| Artifacts service | `Deployment` (2) + `Service`                                                 | Azure Blob (run trees), Cloudflare R2 (public dataset) | Azure Blob, Cloudflare R2                                      |
+| Repos service     | `Deployment` (2) + `Service`                                                 | Azure Blob (run bundles)                               | Azure Blob, GitHub                                             |
 | Arena             | `Deployment` (1) + `Service`                                                 | None                                                   | None                                                           |
-| Console           | `Deployment` + `Service`                                                     | None                                                   | None                                                           |
+| Console           | `Deployment` (2) + `Service`                                                 | None                                                   | None                                                           |
 | Edge              | `Deployment` (2), no `Service`                                               | None                                                   | Cloudflare, the tunnel                                         |
+
+A planned disruption, a deploy or a node drain, leaves every run to finish.
+The run pods carry a budget that holds a drain until they finish, and the
+services restart with graceful termination, one replica at a time where they
+run two. See [Node drains](/deployment/kubernetes/run-plane/#node-drains) and
+[Planned disruption](/deployment/kubernetes/control-plane/#planned-disruption).
 
 ## From a queued run to a Job
 

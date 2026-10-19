@@ -1,0 +1,28 @@
+# The tcab-prod tunnel's configuration: the ingress rules of the Edge page
+# (apps/docs/src/content/docs/deployment/kubernetes/edge.md#hostnames-and-paths).
+# overlays/staging replaces it whole through patch-cloudflared.yaml there, whose
+# copy differs only in the tunnel id and the hostnames; keep the two in step.
+#
+# Rules are matched top to bottom, so the path rules of the origin come before its
+# catch-all. cloudflared forwards the path unchanged, and each service accepts its
+# routes under its edge prefix.
+tunnel: 2c861acd-1478-4429-b926-7f1f442a3132 # tcab-prod
+credentials-file: /etc/cloudflared/credentials/credentials.json
+# The readiness probe reads /ready here; nothing outside the pod reaches it.
+metrics: 0.0.0.0:2000
+no-autoupdate: true
+ingress:
+  - hostname: console.testcabinet.ai
+    path: ^/api/
+    service: http://tcab-backend:8787
+  - hostname: console.testcabinet.ai
+    path: ^/artifacts/
+    service: http://tcab-artifacts:8790
+  - hostname: console.testcabinet.ai
+    path: ^/arena/
+    service: http://tcab-arena:8791
+  - hostname: console.testcabinet.ai
+    service: http://tcab-web:8080
+  - hostname: grafana.testcabinet.ai
+    service: http://tcab-lgtm:3000
+  - service: http_status:404

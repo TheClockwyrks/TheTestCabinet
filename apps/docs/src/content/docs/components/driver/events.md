@@ -27,6 +27,42 @@ Each event is one of the normalized [event types](#event-types) below. Every
 event carries a discriminator identifying its type, and callers branch on that
 discriminator rather than inspecting a generic payload.
 
+## Delivery to the backend
+
+The driver delivers a run's events to the backend in batches over
+`POST /jobs/{id}/events`, authenticated by the job's per-job token. It numbers
+the events of a job with a sequence that starts at `0` and rises by one per
+event, and each batch carries the sequence of its first event beside the events
+that follow it contiguously:
+
+```jsonc
+{
+  // The sequence of the first event in `events`.
+  "sequence": 0,
+  // Normalized events, in the order the harness emitted them.
+  "events": [],
+}
+```
+
+The backend writes every event of a batch to its database, keyed by job and
+sequence, and answers `204` once the write has committed. An event whose key
+is already stored is skipped, so a resent batch is idempotent. Only then does
+the backend fan the batch out to the job's live subscribers.
+
+The driver posts one batch at a time, in sequence order, and holds each batch
+until the backend acknowledges it. While the backend is unreachable or answers
+`5xx`, the driver sends the batch again with backoff, and events emitted in the
+meantime wait for the next batch. Every path that posts a terminal status,
+failure included, posts it only after every batch is acknowledged, so the
+stored stream is complete when the status arrives.
+
+The stored events of a job, in sequence order, are its recorded stream. A
+subscriber to the job's live stream is replayed them before the live tail, and
+[`GET /runs/{id}/events`](/components/backend/api/#get-runsidevents) serves them
+once the run is recorded. A job that ends with no run record keeps its stored
+stream all the same. Live [preview frames](/components/live-streaming/) travel
+outside this sequence and are relayed without being stored.
+
 ## Common fields
 
 Every event carries the following fields, with its type specific data inline

@@ -1,10 +1,11 @@
 # Local k3d overlay — the development mirror of a Kubernetes deployment.
 #
-# It deploys the WHOLE run topology — backend + auth (stateful), the dispatcher,
+# It deploys the WHOLE run topology — the backend (stateful), the dispatcher,
 # the artifact service, and the driver/dispatcher RBAC — reusing the same flat
 # manifests staging/prod use and overriding only what differs locally: the
-# namespace, locally-built images, the TCAB_ENV tag, dev secrets, and a read-only
-# mount of the repository checkout the backend ingests from.
+# namespace, locally-built images, the TCAB_ENV tag, dev secrets, a read-only
+# mount of the repository checkout the backend ingests from, and an Azurite blob
+# emulator in place of the environment's Blob containers and R2 bucket.
 #
 # With the dispatcher + driver/artifacts in the cluster, a run enqueued at the
 # backend schedules as a per-run driver Job in-cluster — full local/deploy parity,
@@ -29,6 +30,9 @@ resources:
   # so they live under ../../cluster rather than in the base and its components.
   - ../../cluster/namespace
   - ../../cluster/observability
+  # The Azurite blob emulator: the object store of the artifacts service here, its
+  # run-tree container and the public dataset's container (patch-artifacts.yaml).
+  - azurite.yaml
 
 # Stand the in-cluster Grafana LGTM stack up alongside the run topology (it replaces
 # the LGTM the devcontainer's docker-compose used to ship). The patch-*.yaml files
@@ -37,15 +41,15 @@ resources:
 # (and the OTLP port, for host/devcontainer processes) with
 # `make -C deployments/local local-grafana`.
 #
-# The web console is deliberately NOT served in the cluster locally (prod still is —
-# via the internal-ingress component in the prod overlay). Baking the console
+# The web console is deliberately NOT served in the cluster locally (staging and prod
+# serve it behind the edge component). Baking the console
 # into an in-cluster pod forces a full image rebuild + re-import on every UI edit,
 # which makes iterating on the console painfully slow. Locally we run it straight from
-# source instead: `npm run -w apps/web dev` serves it on 127.0.0.1:1430, pre-pointed at
-# the host-forwarded backend/auth (apps/web/.env.development) so no extra flags are
-# needed. The browser reaches the backend/artifacts/arena over `make local-forward`,
-# exactly as the in-cluster console did. (The backend/auth CORS layers are permissive,
-# so the cross-origin dev-server → forwarded-backend requests are allowed.)
+# source instead: `npm run -w apps/web dev` serves it on 127.0.0.1:1430 and proxies
+# `/api`, `/artifacts` and `/arena` of its own origin to the backend/artifacts/arena
+# `make local-forward` exposes on localhost (apps/web/vite.config.ts), adding the
+# `Cf-Access-Authenticated-User-Email` header (`dev@local` by default) that each
+# service takes the identity from, since this overlay sets no TCAB_ACCESS_* variable.
 components:
   - ../../components/observability
 
@@ -55,9 +59,6 @@ components:
 images:
   - name: REPLACE_REGISTRY/tcab-backend
     newName: tcab-backend
-    newTag: local
-  - name: REPLACE_REGISTRY/tcab-auth-service
-    newName: tcab-auth-service
     newTag: local
   - name: REPLACE_REGISTRY/tcab-dispatcher
     newName: tcab-dispatcher
@@ -85,13 +86,13 @@ images:
 #     $ANTHROPIC_API_KEY / $OPENAI_API_KEY / $OPENROUTER_API_KEY.
 # The manifests reference these by fixed name; the Makefile creates them with those
 # exact names (no hash suffix), so the references match. The backend's R2/deploy-hook
-# keys stay absent locally (the backend skips the snapshot upload when unset).
+# keys stay absent locally (the backend skips the snapshot upload when unset), and
+# the artifacts service's public store is an Azurite container instead.
 
 patches:
   # Per-environment overrides for the always-on workloads (TCAB_ENV, the repo mount,
   # the local namespaces + driver image, etc.).
   - path: patch-backend.yaml
-  - path: patch-auth.yaml
   - path: patch-dispatcher.yaml
   - path: patch-artifacts.yaml
   - path: patch-arena.yaml
@@ -128,15 +129,6 @@ patches:
       kind: NetworkPolicy
       metadata:
         name: tcab-allow-services-from-runners
-  - target:
-      kind: NetworkPolicy
-      name: tcab-allow-arena-from-console
-    patch: |-
-      $patch: delete
-      apiVersion: networking.k8s.io/v1
-      kind: NetworkPolicy
-      metadata:
-        name: tcab-allow-arena-from-console
   - target:
       kind: NetworkPolicy
       name: tcab-allow-artifacts-from-drivers

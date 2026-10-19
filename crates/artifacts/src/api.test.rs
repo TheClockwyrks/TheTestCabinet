@@ -1,15 +1,16 @@
 //! End-to-end tests for the artifact service's HTTP surface, driving the real
-//! router over a temp-dir [`LocalFsStore`]:
+//! router over a run-tree store held in memory ([`MemoryStore`]):
 //!
 //! - the upload → serve round-trip (store a fake build, fetch `/runs/{id}/build`
 //!   and assert the content plus the per-run base-href rewrite `serve_build_file`
 //!   applies);
-//! - ungated reads (a build request with no token still succeeds — browser media
-//!   cannot carry one);
+//! - reads by a reader's identity (a build request with no bearer succeeds on the
+//!   local identity header — browser media cannot carry a bearer — and is refused
+//!   with no identity at all; the identity layer itself is `auth.test.rs`'s);
 //! - upload auth (an upload without a valid job token is rejected);
 //! - the `tree.tar` source-tree download (round-trip, publish-job-token auth, and
 //!   a `404` for an unknown run);
-//! - the ungated `archive.tar.gz` run download (gzip framing, the `<run-id>/`
+//! - the `archive.tar.gz` run download (gzip framing, the `<run-id>/`
 //!   prefix, the `Content-Disposition` filename, and a `404` for an unknown run);
 //! - that both whole-tree downloads **stream** — no `Content-Length`, several body
 //!   frames — because a buffered one made this pod's peak allocation a function of
@@ -30,19 +31,19 @@ use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use axum::routing::post;
 use axum::{Json, Router};
-use tempfile::TempDir;
 use tower::ServiceExt;
 
 use super::*;
-use crate::store::LocalFsStore;
+use crate::auth::LOCAL_IDENTITY_HEADER;
+use crate::store::MemoryStore;
 
 /// The per-job token the stub accepts at `/jobs/{id}/verify-token`.
-const GOOD_JOB_TOKEN: &str = "good-job-token";
+pub(super) const GOOD_JOB_TOKEN: &str = "good-job-token";
 /// The **job id** the stub accepts the token for. Deliberately not equal to any
 /// run id an upload uses as its path/store key, so a test that succeeds proves the
 /// service verified against the job id from the `x-tcab-job-id` header, not the run
 /// id in the path.
-const GOOD_JOB_ID: &str = "job-1";
+pub(super) const GOOD_JOB_ID: &str = "job-1";
 
 /// The per-publish-job token the stub accepts at `/publish-jobs/{id}/verify-token`.
 const GOOD_PUBLISH_TOKEN: &str = "good-publish-token";
@@ -53,11 +54,11 @@ const GOOD_PUBLISH_TOKEN: &str = "good-publish-token";
 const GOOD_PUBLISH_JOB_ID: &str = "publish-1";
 
 /// Spawn the stub backend server on an ephemeral port and return its base URL. It
-/// answers `/jobs/{id}/verify-token` (job token → `204` or `401`) — the only
-/// upstream the artifact service calls now that reads are ungated. It accepts the
+/// answers `/jobs/{id}/verify-token` (job token → `204` or `401`) and the
+/// publish-job analogue — the upstream the token routes call. It accepts the
 /// good token only for [`GOOD_JOB_ID`], so it also asserts the service forwards the
 /// header's job id rather than the upload path's run id.
-async fn spawn_stub() -> String {
+pub(super) async fn spawn_stub() -> String {
     let app = Router::new()
         .route(
             "/jobs/{id}/verify-token",
@@ -102,35 +103,54 @@ async fn spawn_stub() -> String {
 }
 
 /// The shared control-plane service token the delete tests present.
-const SERVICE_TOKEN: &str = "service-secret";
+pub(super) const SERVICE_TOKEN: &str = "service-secret";
 
-/// Build the artifact router over a fresh temp-dir store pointed at `stub_url` for
-/// upload auth, with **deletion disabled** (no service token). Returns the router
-/// and the store (whose temp dir must outlive the test).
-async fn app(stub_url: &str) -> (Router, LocalFsStore, TempDir) {
+/// Build the artifact router over a fresh in-memory store pointed at `stub_url` for
+/// upload auth, with **deletion disabled** (no service token). Returns the router,
+/// the run-tree store, and the object store beneath it.
+pub(super) async fn app(stub_url: &str) -> (Router, Arc<ArtifactStore>, MemoryStore) {
     app_with_service_token(stub_url, None).await
 }
 
 /// As [`app`], but with the delete route gated on `service_token` — `Some` enables
 /// deletion for callers presenting that token, `None` disables it.
-async fn app_with_service_token(
+pub(super) async fn app_with_service_token(
     stub_url: &str,
     service_token: Option<&str>,
-) -> (Router, LocalFsStore, TempDir) {
-    let dir = TempDir::new().unwrap();
-    let store = LocalFsStore::new(dir.path()).unwrap();
+) -> (Router, Arc<ArtifactStore>, MemoryStore) {
+    app_with_limit(stub_url, service_token, MAX_UPLOAD_BYTES).await
+}
+
+/// As [`app_with_service_token`], accepting uploads of at most `upload_limit`
+/// bytes.
+pub(super) async fn app_with_limit(
+    stub_url: &str,
+    service_token: Option<&str>,
+    upload_limit: u64,
+) -> (Router, Arc<ArtifactStore>, MemoryStore) {
+    let objects = MemoryStore::new();
+    let store = Arc::new(ArtifactStore::new(Arc::new(objects.clone())));
     let state = AppState {
-        store: Arc::new(store.clone()),
+        store: Arc::clone(&store),
+        upload_limit,
         backend_url: Arc::new(stub_url.trim_end_matches('/').to_string()),
         http: reqwest::Client::new(),
         service_token: service_token.map(|t| Arc::new(t.to_string())),
+        access: None,
+        public: Arc::new(crate::public::MemoryPublicStore::new()),
+        transcoder: Arc::new(crate::publish::testing::FakeTranscoder::working()),
     };
-    (router(state), store, dir)
+    (router(state), store, objects)
+}
+
+/// Whether `store` holds a tree for run `id`.
+pub(super) async fn stored(store: &ArtifactStore, id: &str) -> bool {
+    store.run_tree(id).await.is_ok()
 }
 
 /// A `tar` archive of a minimal build: `implementation/dist/index.html` whose
 /// `<head>` references a root-absolute asset, so the base-href rewrite is testable.
-fn build_tarball() -> Vec<u8> {
+pub(super) fn build_tarball() -> Vec<u8> {
     let html = b"<html><head><script src=\"/assets/app.js\"></script></head><body>hi</body></html>";
     let mut builder = tar::Builder::new(Vec::new());
     let mut header = tar::Header::new_gnu();
@@ -160,7 +180,7 @@ fn source_tree_tarball() -> Vec<u8> {
 }
 
 /// A `tar` archive of the given `(path, contents)` entries, relative to the run root.
-fn tarball(entries: &[(&str, &[u8])]) -> Vec<u8> {
+pub(super) fn tarball(entries: &[(&str, &[u8])]) -> Vec<u8> {
     let mut builder = tar::Builder::new(Vec::new());
     for (path, contents) in entries {
         let mut header = tar::Header::new_gnu();
@@ -173,7 +193,7 @@ fn tarball(entries: &[(&str, &[u8])]) -> Vec<u8> {
 }
 
 /// Untar a `tree.tar` response body into a `(path, contents)` map.
-fn untar_to_map(archive: &[u8]) -> std::collections::BTreeMap<String, Vec<u8>> {
+pub(super) fn untar_to_map(archive: &[u8]) -> std::collections::BTreeMap<String, Vec<u8>> {
     let mut out = std::collections::BTreeMap::new();
     let mut reader = tar::Archive::new(Cursor::new(archive));
     for entry in reader.entries().unwrap() {
@@ -212,7 +232,7 @@ fn incompressible(len: usize) -> Vec<u8> {
 /// The frame *count* is the observable that separates a streamed response from a
 /// buffered one: a handler that builds its archive first hands the body over as a
 /// single `Bytes`, however large.
-async fn body_frames(body: Body) -> Vec<bytes::Bytes> {
+pub(super) async fn body_frames(body: Body) -> Vec<bytes::Bytes> {
     use futures_util::StreamExt;
     let mut stream = body.into_data_stream();
     let mut frames = Vec::new();
@@ -223,7 +243,7 @@ async fn body_frames(body: Body) -> Vec<bytes::Bytes> {
 }
 
 /// Concatenate `frames` into the whole body.
-fn joined(frames: &[bytes::Bytes]) -> Vec<u8> {
+pub(super) fn joined(frames: &[bytes::Bytes]) -> Vec<u8> {
     frames.iter().flat_map(|frame| frame.to_vec()).collect()
 }
 
@@ -248,7 +268,7 @@ async fn seed_heavy_run(app: &Router, run_id: &str, payload: &[u8]) {
 
 #[tokio::test]
 async fn archive_streams_the_tree_instead_of_buffering_it() {
-    // The regression this guards is an exit 137. `archive` is ungated — the console
+    // The regression this guards is an exit 137. `archive` is any reviewer's — the console
     // links it as a plain download — so any reviewer could ask this long-lived pod to
     // hold a whole run tree in memory, and prod's largest trees are far past the
     // 1536Mi limit. The body arriving in several frames, with no `Content-Length`, is
@@ -264,6 +284,7 @@ async fn archive_streams_the_tree_instead_of_buffering_it() {
         .oneshot(
             Request::builder()
                 .uri("/runs/run-big/archive.tar.gz")
+                .header(LOCAL_IDENTITY_HEADER, "dev@local")
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -490,10 +511,11 @@ async fn upload_then_serve_build_round_trips_with_base_href_rewrite() {
     let response = app.clone().oneshot(upload).await.unwrap();
     assert_eq!(response.status(), StatusCode::CREATED);
 
-    // Serve the build root with no token — reads are ungated.
+    // Serve the build root with no bearer — a read takes the reader's identity.
     let get = Request::builder()
         .method("GET")
         .uri("/runs/run-1/build")
+        .header(LOCAL_IDENTITY_HEADER, "dev@local")
         .body(Body::empty())
         .unwrap();
     let response = app.clone().oneshot(get).await.unwrap();
@@ -539,6 +561,7 @@ async fn serving_the_trailing_slash_build_root_succeeds() {
     let get = Request::builder()
         .method("GET")
         .uri("/runs/run-slash/build/")
+        .header(LOCAL_IDENTITY_HEADER, "dev@local")
         .body(Body::empty())
         .unwrap();
     let response = app.clone().oneshot(get).await.unwrap();
@@ -554,7 +577,7 @@ async fn serving_the_trailing_slash_build_root_succeeds() {
 }
 
 #[tokio::test]
-async fn serving_a_build_without_a_token_succeeds() {
+async fn serving_a_build_to_a_reader_without_a_bearer_succeeds() {
     let stub = spawn_stub().await;
     let (app, _store, _dir) = app(&stub).await;
 
@@ -571,17 +594,30 @@ async fn serving_a_build_without_a_token_succeeds() {
         StatusCode::CREATED
     );
 
-    // No token → still served: the console loads build/media as browser requests
-    // (`<img>`/`<iframe>`/relative sub-resources) that carry no Authorization
-    // header, so reads are ungated and rely on the private-network boundary.
+    // No bearer → still served to a reader's identity: the console loads build/media
+    // as browser requests (`<img>`/`<iframe>`/relative sub-resources) that carry no
+    // Authorization header, which the edge authorizes by the Access cookie, or
+    // locally by the identity header the console's proxy adds.
     let get = Request::builder()
         .method("GET")
         .uri("/runs/run-2/build")
+        .header(LOCAL_IDENTITY_HEADER, "dev@local")
         .body(Body::empty())
         .unwrap();
     assert_eq!(
         app.clone().oneshot(get).await.unwrap().status(),
         StatusCode::OK
+    );
+
+    // With no identity at all, the same read is refused.
+    let anonymous = Request::builder()
+        .method("GET")
+        .uri("/runs/run-2/build")
+        .body(Body::empty())
+        .unwrap();
+    assert_eq!(
+        app.clone().oneshot(anonymous).await.unwrap().status(),
+        StatusCode::UNAUTHORIZED
     );
 }
 
@@ -616,7 +652,7 @@ async fn uploading_without_a_job_token_is_rejected() {
     );
 
     assert!(
-        !store.run_dir("run-3").exists(),
+        !stored(&store, "run-3").await,
         "a rejected upload stored nothing"
     );
 }
@@ -657,7 +693,7 @@ async fn uploading_without_the_job_id_header_is_rejected() {
     );
 
     assert!(
-        !store.run_dir("run-4").exists(),
+        !stored(&store, "run-4").await,
         "a rejected upload stored nothing"
     );
 }
@@ -677,7 +713,7 @@ async fn seed_upload(app: &Router, run_id: &str) {
     );
 }
 
-fn delete_request(run_id: &str, token: Option<&str>) -> Request<Body> {
+pub(super) fn delete_request(run_id: &str, token: Option<&str>) -> Request<Body> {
     let mut builder = Request::builder()
         .method("DELETE")
         .uri(format!("/runs/{run_id}/artifacts"));
@@ -692,7 +728,7 @@ async fn deleting_with_the_service_token_removes_the_tree() {
     let stub = spawn_stub().await;
     let (app, store, _dir) = app_with_service_token(&stub, Some(SERVICE_TOKEN)).await;
     seed_upload(&app, "run-del").await;
-    assert!(store.run_dir("run-del").exists());
+    assert!(stored(&store, "run-del").await);
 
     let response = app
         .clone()
@@ -701,7 +737,7 @@ async fn deleting_with_the_service_token_removes_the_tree() {
         .unwrap();
     assert_eq!(response.status(), StatusCode::NO_CONTENT);
     assert!(
-        !store.run_dir("run-del").exists(),
+        !stored(&store, "run-del").await,
         "the run's tree was removed"
     );
 
@@ -730,7 +766,7 @@ async fn deleting_without_or_with_a_wrong_token_is_rejected_and_keeps_the_tree()
         assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
     }
     assert!(
-        store.run_dir("run-keep").exists(),
+        stored(&store, "run-keep").await,
         "a rejected delete left the tree in place"
     );
 }
@@ -748,7 +784,7 @@ async fn deleting_when_no_service_token_is_configured_is_disabled() {
         .await
         .unwrap();
     assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
-    assert!(store.run_dir("run-disabled").exists());
+    assert!(stored(&store, "run-disabled").await);
 }
 
 #[tokio::test]
@@ -783,7 +819,7 @@ async fn cors_preflight_covers_the_authorization_header() {
 }
 
 #[tokio::test]
-async fn archive_downloads_the_whole_run_tree_ungated() {
+async fn archive_downloads_the_whole_run_tree() {
     let stub = spawn_stub().await;
     let (app, _store, _dir) = app(&stub).await;
 
@@ -806,6 +842,7 @@ async fn archive_downloads_the_whole_run_tree_ungated() {
         .oneshot(
             Request::builder()
                 .uri("/runs/run-arc/archive.tar.gz")
+                .header(LOCAL_IDENTITY_HEADER, "dev@local")
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -854,6 +891,7 @@ async fn archive_for_an_unknown_run_is_not_found() {
         .oneshot(
             Request::builder()
                 .uri("/runs/no-such-run/archive.tar.gz")
+                .header(LOCAL_IDENTITY_HEADER, "dev@local")
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -886,6 +924,7 @@ async fn a_text_build_file_is_gzipped_for_a_client_that_accepts_it() {
         .oneshot(
             Request::builder()
                 .uri("/runs/run-gz/build")
+                .header(LOCAL_IDENTITY_HEADER, "dev@local")
                 .header("accept-encoding", "gzip")
                 .body(Body::empty())
                 .unwrap(),
@@ -930,6 +969,7 @@ async fn a_stored_recording_is_served_as_json_framed_in_gzip() {
         .oneshot(
             Request::builder()
                 .uri("/runs/run-replay/validation/no-tunnel__serve.json.gz")
+                .header(LOCAL_IDENTITY_HEADER, "dev@local")
                 .header("accept-encoding", "gzip")
                 .body(Body::empty())
                 .unwrap(),
@@ -976,6 +1016,7 @@ async fn the_pre_compressed_archive_is_not_re_encoded() {
         .oneshot(
             Request::builder()
                 .uri("/runs/run-gz2/archive.tar.gz")
+                .header(LOCAL_IDENTITY_HEADER, "dev@local")
                 .header("accept-encoding", "gzip")
                 .body(Body::empty())
                 .unwrap(),
@@ -994,7 +1035,7 @@ async fn the_pre_compressed_archive_is_not_re_encoded() {
 }
 
 /// A `GET /runs` request, optionally presenting `token` as a bearer.
-fn list_request(token: Option<&str>) -> Request<Body> {
+pub(super) fn list_request(token: Option<&str>) -> Request<Body> {
     let mut builder = Request::builder().method("GET").uri("/runs");
     if let Some(token) = token {
         builder = builder.header("authorization", format!("Bearer {token}"));

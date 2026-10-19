@@ -1,7 +1,6 @@
 import type { CoverageGroup } from "@clockwyrks/backend-api/coverage";
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router";
-import { useAuth } from "../../../client/auth";
 import { useBackend } from "../../../client/context";
 import { LoadingState } from "../../components/LoadingState";
 import { PageLayout } from "../../components/PageLayout";
@@ -19,7 +18,6 @@ import styles from "./Coverage.module.scss";
 // as pointers. Editing a group reshapes every plan that references it. Console-only;
 // gated on a signed-in account.
 export function GroupsPage() {
-  const { token } = useAuth();
   const { client: backend } = useBackend();
   const { confirm } = useConfirm();
 
@@ -29,19 +27,19 @@ export function GroupsPage() {
   const [error, setError] = useState<string | null>(null);
 
   const reload = useCallback(async () => {
-    if (!backend?.listCoverageGroups || !token) return;
-    setGroups(await backend.listCoverageGroups(token));
-  }, [backend, token]);
+    if (!backend?.listCoverageGroups) return;
+    setGroups(await backend.listCoverageGroups());
+  }, [backend]);
 
   useEffect(() => {
-    if (!backend || !token) {
+    if (!backend) {
       setLoading(false);
       return;
     }
     let active = true;
     setLoading(true);
     setError(null);
-    Promise.resolve(backend.listCoverageGroups?.(token) ?? [])
+    Promise.resolve(backend.listCoverageGroups?.() ?? [])
       .then((g) => {
         if (!active) return;
         setGroups(g);
@@ -55,11 +53,11 @@ export function GroupsPage() {
     return () => {
       active = false;
     };
-  }, [backend, token]);
+  }, [backend]);
 
   const deleteGroup = useCallback(
     async (group: CoverageGroup) => {
-      if (!backend?.deleteCoverageGroup || !token) return;
+      if (!backend?.deleteCoverageGroup) return;
       if (
         !(await confirm({
           title: "Delete group",
@@ -74,7 +72,7 @@ export function GroupsPage() {
       setBusy(true);
       setError(null);
       try {
-        await backend.deleteCoverageGroup(group.id, token);
+        await backend.deleteCoverageGroup(group.id);
         await reload();
       } catch (e) {
         setError(String(e));
@@ -82,23 +80,8 @@ export function GroupsPage() {
         setBusy(false);
       }
     },
-    [backend, token, reload, confirm],
+    [backend, reload, confirm],
   );
-
-  if (!token) {
-    return (
-      <PageLayout>
-        <PromptHeader
-          command="--groups"
-          comment={<>// reusable combination &amp; case groups</>}
-        />
-        <AccountTabs active="groups" />
-        <p className={`${exec.notice} ${exec.warn}`}>
-          Sign in to manage coverage groups. They are saved to your account.
-        </p>
-      </PageLayout>
-    );
-  }
 
   const comboGroups = groups?.filter((g) => g.kind === "combo") ?? [];
   const caseGroups = groups?.filter((g) => g.kind === "case") ?? [];

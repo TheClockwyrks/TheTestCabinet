@@ -4,14 +4,13 @@
 # The base nginx-unprivileged image runs every executable script under
 # /docker-entrypoint.d/ (in name order) before launching nginx, so this lands as
 # 30-… after the base image's own 10-/20- setup scripts. It envsubst's ONLY the
-# two TCAB_WEB_* variables into /config.js, overwriting the placeholder shipped in
-# the bundle. Defaulting both to empty means an unset env still produces a valid
+# TCAB_WEB_BACKEND_URL variable into /config.js, overwriting the placeholder shipped
+# in the bundle. Defaulting it to empty means an unset env still produces a valid
 # (empty) config rather than leaving literal ${...} placeholders or failing.
 set -eu
 
 : "${TCAB_WEB_BACKEND_URL:=}"
-: "${TCAB_WEB_AUTH_URL:=}"
-export TCAB_WEB_BACKEND_URL TCAB_WEB_AUTH_URL
+export TCAB_WEB_BACKEND_URL
 
 template=/etc/nginx/config.js.template
 output=/usr/share/nginx/html/config.js
@@ -21,6 +20,6 @@ output=/usr/share/nginx/html/config.js
 # are intentional: envsubst wants a literal list of variable NAMES, not their
 # values, so the shell must not expand them here.
 # shellcheck disable=SC2016
-envsubst '${TCAB_WEB_BACKEND_URL} ${TCAB_WEB_AUTH_URL}' < "$template" > "$output"
+envsubst '${TCAB_WEB_BACKEND_URL}' < "$template" > "$output"
 
-echo "tcab-web: rendered $output (backend='${TCAB_WEB_BACKEND_URL}' auth='${TCAB_WEB_AUTH_URL}')"
+echo "tcab-web: rendered $output (backend='${TCAB_WEB_BACKEND_URL}')"

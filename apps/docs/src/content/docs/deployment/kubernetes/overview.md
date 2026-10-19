@@ -11,12 +11,11 @@ per-run `Job` running the driver, and that driver creates one ephemeral sandbox
 pod for the run.
 
 The design is provider-agnostic apart from its object stores. The backend is a
-`Deployment` on a managed PostgreSQL instance with a volume for its definition
-store, the dispatcher is a stateless one-replica `Deployment` with RBAC to
-manage `Job`s, the artifacts and repos services are stateless `Deployment`s
-over Azure Blob containers, and a run is a short-lived `Job` whose driver
-creates one sandbox pod. Any conformant cluster, managed or self-hosted, works
-the same way.
+two-replica `Deployment` on a managed PostgreSQL instance, the dispatcher is a
+stateless one-replica `Deployment` with RBAC to manage `Job`s, the artifacts and
+repos services are stateless `Deployment`s over Azure Blob containers, and a
+run is a short-lived `Job` whose driver creates one sandbox pod. Any conformant
+cluster, managed or self-hosted, works the same way.
 
 The manifests are a kustomize base under `deployments/k8s/base/`, reusable
 components under `deployments/k8s/components/`, one overlay per environment under
@@ -40,14 +39,14 @@ to adapt.
    │    /artifacts/  → tcab-artifacts:8790   /arena/ → tcab-arena:8791            │
    │    grafana.*    → tcab-lgtm:3000                                             │
    │                                                                              │
-   │  tcab-backend (Deployment, 1)  ◀── claim ──  tcab-dispatcher (Deployment, 1) │
+   │  tcab-backend (Deployment, 2)  ◀── claim ──  tcab-dispatcher (Deployment, 1) │
    │   queue, records, scoring,                    creates one Job per run        │
    │   ingest sidecar, + PostgreSQL                and one per publish (K8s API)  │
    │      │ public writes                              │                          │
    │      ▼                                            ▼                          │
-   │  tcab-artifacts (Deployment)  ◀── run tree ──  tcab-driver Job               │
+   │  tcab-artifacts (Deployment, 2) ◀─ run tree ─  tcab-driver Job               │
    │   run trees → Blob, public → R2                   │ bundle   │ exec          │
-   │  tcab-repos (Deployment)      ◀───────────────────┘          ▼               │
+   │  tcab-repos (Deployment, 2)   ◀───────────────────┘          ▼               │
    │   bundles → Blob, publish → GitHub  ◀── publish ──     sandbox pod           │
    │                                     tcab-publisher Job  (ephemeral,          │
    │  tcab-arena (Deployment, 1)         (Pages deploy)       untrusted)          │
@@ -82,8 +81,9 @@ fetches it from the repos service.
   and `prod` overlays need no pull secret. A deployment pulling from a private registry
   without such a grant creates an `imagePullSecret` and names it in
   `TCAB_K8S_IMAGE_PULL_SECRETS`.
-- A `StorageClass` for the backend's `PersistentVolumeClaim`, which holds its
-  definition store and ingest checkout. `ReadWriteOnce` is sufficient.
+- A `StorageClass` for the observability stack's volumes, and in the SQLite
+  shape for the backend's `PersistentVolumeClaim`. `ReadWriteOnce` is
+  sufficient.
 - An Azure storage account with the environment's two private Blob containers,
   one for the artifacts service's run trees and one for the repos service's
   bundles, and a user-assigned managed identity per service holding Storage
@@ -183,6 +183,19 @@ and the observability stack's `ClusterRole` and `ClusterRoleBinding`
      --role AcrDelete --scope "$ACR_ID"
    ```
 
+5. Apply the node pools' upgrade settings, which hold a drain until the run
+   pods on a node have finished (see
+   [Node drains](/deployment/kubernetes/run-plane/#node-drains)):
+
+   ```sh
+   scripts/configure-node-pools.sh --env prod   # or --env staging
+   ```
+
+   The script sets `drainTimeoutInMinutes`, `undrainableNodeBehavior`,
+   `maxSurge` and `maxUnavailable` on every user node pool with
+   `az aks nodepool update`, and is safe to re-run. A node pool added later is
+   configured by running it again.
+
 Re-apply step 2 whenever anything under `deployments/k8s/cluster/` changes. The
 pipeline refuses to deploy an overlay that renders a cluster-scoped object, so a
 change that needs one lands in `deployments/k8s/cluster/` and is applied here.
@@ -195,6 +208,10 @@ Enable it once per cluster with
 configuration rather than a Kubernetes object. Adding a brand-new key to a
 Secret still needs
 `kubectl delete secret <name> && kubectl rollout restart deploy/tcab-keyvault-sync`.
+
+Keep each cluster on a supported Kubernetes version. An upgrade AKS initiates
+for an unsupported version overrides every `PodDisruptionBudget`, the run pod
+budget included.
 
 ## Deploying
 
@@ -234,7 +251,9 @@ around it (`.azure/project/deploy-steps.yml`):
 1. copies `deployments/k8s` to a temporary directory and pins the `prod` overlay
    there with `pin-images.sh` from the commit's submodule pointers;
 2. renders it with `kubectl kustomize` on the agent into one manifest file, and
-   refuses the file if it holds anything outside the environment's namespace;
+   refuses the file if it holds anything outside the environment's namespace, or
+   binds a workload to a workload identity whose client id is still
+   `unprovisioned` (a pod that cannot reach its store never becomes ready);
 3. runs `kubectl apply -f` on the file inside the cluster through
    `az aks command invoke`, which uploads the file with the command;
 4. waits up to 600 seconds, concurrently, on every `Deployment` and
@@ -339,9 +358,10 @@ scripts/ci/deploy-environment.sh prod <sha>            # pin, apply, and wait
 ```
 
 The base lists the RBAC, backend, dispatcher, artifacts, repos, arena, ingest
-`CronJob`, and `NetworkPolicy` resources, all namespaced. An overlay sets the
-namespace and `TCAB_ENV`, patches in the environment's secret references and
-its Access audience tag, and layers on the components it needs. The `local`
+`CronJob`, `NetworkPolicy` and `PodDisruptionBudget` resources, all namespaced.
+An overlay sets the namespace and `TCAB_ENV`, patches in the environment's
+secret references and its Access audience tag, and layers on the components it
+needs. The `local`
 overlay also includes `deployments/k8s/cluster/namespace` and
 `deployments/k8s/cluster/observability`, so one apply creates its `Namespace`
 and node-metrics grant; the remote overlays render only namespaced objects, and

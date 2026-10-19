@@ -66,9 +66,9 @@ trap 'rm -rf "$tmp"' EXIT
 COMMIT="0123456789abcdef0123456789abcdef01234567"
 PREVIOUS="89abcdef0123456789abcdef0123456789abcdef"
 WORKLOADS="deployment.apps/the-test-cabinet-backend
-deployment.apps/tcab-auth
+deployment.apps/tcab-arena
 deployment.apps/tcab-dispatcher
-statefulset.apps/tcab-artifacts"
+statefulset.apps/tcab-lgtm"
 
 fresh_repo() {
 	local repo
@@ -154,8 +154,8 @@ check_contains "each wait takes the rollout timeout" "WAIT=600s" "$sent"
 check_contains "the undo waits what remains of the budget" "UNDO_WAIT=240s" "$sent"
 check_contains "the script leaves the backend to deploy.sh" "EXCLUDE=the-test-cabinet-backend" "$sent"
 kubectl_log="$(cat "$repo/kubectl.log")"
-check_contains "waits on a Deployment" "rollout status deployment/tcab-auth --timeout=600s" "$kubectl_log"
-check_contains "waits on a StatefulSet" "rollout status statefulset/tcab-artifacts --timeout=600s" "$kubectl_log"
+check_contains "waits on a Deployment" "rollout status deployment/tcab-arena --timeout=600s" "$kubectl_log"
+check_contains "waits on a StatefulSet" "rollout status statefulset/tcab-lgtm --timeout=600s" "$kubectl_log"
 check_lacks "does not wait on the backend" "rollout status deployment/the-test-cabinet-backend" "$kubectl_log"
 check_lacks "undoes nothing" "rollout undo" "$kubectl_log"
 
@@ -167,8 +167,8 @@ status=$?
 check_failed "fails" "$status"
 kubectl_log="$(cat "$repo/kubectl.log")"
 check_contains "undoes the one that failed" "rollout undo deployment/tcab-dispatcher" "$kubectl_log"
-check_lacks "leaves the ready ones alone" "rollout undo deployment/tcab-auth" "$kubectl_log"
-check_lacks "leaves the ready StatefulSet alone" "rollout undo statefulset/tcab-artifacts" "$kubectl_log"
+check_lacks "leaves the ready ones alone" "rollout undo deployment/tcab-arena" "$kubectl_log"
+check_lacks "leaves the ready StatefulSet alone" "rollout undo statefulset/tcab-lgtm" "$kubectl_log"
 check_contains "describes the failed workload's pods" \
 	"describe pods -l app.kubernetes.io/name=tcab-dispatcher" "$kubectl_log"
 check_contains "describes every Test Cabinet pod" "describe pods -l app.kubernetes.io/part-of=test-cabinet" "$kubectl_log"
@@ -188,11 +188,11 @@ echo "--- --after-failure with a previous commit ---"
 
 repo="$(fresh_repo)"
 out="$(run "$repo" THE_TEST_CABINET_ROLLOUT_TIMEOUT=600s TCAB_PREVIOUS_COMMIT="$PREVIOUS" \
-	TCAB_PREVIOUS_BACKEND=the-test-cabinet-backend STUB_FAILING=statefulset/tcab-artifacts -- --after-failure "$COMMIT")"
+	TCAB_PREVIOUS_BACKEND=the-test-cabinet-backend STUB_FAILING=statefulset/tcab-lgtm -- --after-failure "$COMMIT")"
 status=$?
 check_failed "fails" "$status"
 check_contains "waits a short while after a failure" "WAIT=120s" "$(cat "$repo/sent/settle-workloads.sh")"
-check_contains "undoes the sibling the apply left unready" "rollout undo statefulset/tcab-artifacts" "$(cat "$repo/kubectl.log")"
+check_contains "undoes the sibling the apply left unready" "rollout undo statefulset/tcab-lgtm" "$(cat "$repo/kubectl.log")"
 check_contains "prints the recovery onto the previous commit" \
 	"scripts/ci/deploy-environment.sh staging ${PREVIOUS}" "$out"
 check_lacks "does not say fix forward" "Fix forward" "$out"

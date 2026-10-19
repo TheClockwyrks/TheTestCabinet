@@ -23,9 +23,6 @@ vi.mock("../../components/ConfirmDialog", () => ({
   useConfirm: () => ({ confirm: async () => true, alert: async () => {} }),
 }));
 // A group belongs to an account, so a token is what makes the list exist at all.
-vi.mock("../../../client/auth", () => ({
-  useAuth: () => ({ token: "t0" }),
-}));
 
 function renderPage(groups: CoverageGroup[]) {
   const value = {

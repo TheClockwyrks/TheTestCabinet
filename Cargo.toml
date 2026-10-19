@@ -57,7 +57,6 @@ members = [
 	"crates/publisher",
 	"crates/artifacts",
 	"crates/arena",
-	"crates/auth-service",
 	"crates/db-auth",
 	"crates/entities",
 	"crates/migration",
@@ -178,18 +177,18 @@ opt-level = 3
 # path into `contracts/`: inside the superrepo the patch table of
 # `.cargo/config.toml` sends this source to the sibling checkout, which may hold
 # crates and changes the tag does not yet carry.
-test-cabinet-contracts = { git = "https://github.com/TheClockwyrks/contracts", tag = "v0.2.0" }
-test-cabinet-suites = { git = "https://github.com/TheClockwyrks/contracts", tag = "v0.2.0" }
-test-cabinet-telemetry = { git = "https://github.com/TheClockwyrks/contracts", tag = "v0.2.0" }
-test-cabinet-redact = { git = "https://github.com/TheClockwyrks/contracts", tag = "v0.2.0" }
-test-cabinet-backend-client = { git = "https://github.com/TheClockwyrks/contracts", tag = "v0.2.0" }
+test-cabinet-contracts = { git = "https://github.com/TheClockwyrks/contracts", tag = "v0.2.1" }
+test-cabinet-suites = { git = "https://github.com/TheClockwyrks/contracts", tag = "v0.2.1" }
+test-cabinet-telemetry = { git = "https://github.com/TheClockwyrks/contracts", tag = "v0.2.1" }
+test-cabinet-redact = { git = "https://github.com/TheClockwyrks/contracts", tag = "v0.2.1" }
+test-cabinet-backend-client = { git = "https://github.com/TheClockwyrks/contracts", tag = "v0.2.1" }
 # The crates of the engines repository, named the same way at its tag. The engine
 # catalog, the match runner, and the Foray and Lattice rules the validators and the
 # arena record a match or a case's state in.
-test-cabinet-engines = { git = "https://github.com/TheClockwyrks/engines", tag = "v1.1.0" }
-test-cabinet-match-play = { git = "https://github.com/TheClockwyrks/engines", tag = "v1.1.0" }
-foray-core = { git = "https://github.com/TheClockwyrks/engines", tag = "v1.1.0" }
-lattice-core = { git = "https://github.com/TheClockwyrks/engines", tag = "v1.1.0", default-features = false }
+test-cabinet-engines = { git = "https://github.com/TheClockwyrks/engines", tag = "v1.1.1" }
+test-cabinet-match-play = { git = "https://github.com/TheClockwyrks/engines", tag = "v1.1.1" }
+foray-core = { git = "https://github.com/TheClockwyrks/engines", tag = "v1.1.1" }
+lattice-core = { git = "https://github.com/TheClockwyrks/engines", tag = "v1.1.1", default-features = false }
 # Shared runtime dependencies inherited by member crates via { workspace = true }.
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -375,6 +374,11 @@ sourcemap = "9"
 # slow link). The backend, auth, and artifact services are the socket-binding
 # crates, so these stay out of the leaner crates.
 axum = "0.8"
+# Verifies the Cloudflare Access assertion in the backend (`crates/backend/src/access.rs`):
+# RS256 against the team's published keys. `rust_crypto` is the pure-Rust backend, so
+# the portable musl build needs no C toolchain; no PEM parsing, since the keys arrive
+# as JWK components.
+jsonwebtoken = { version = "11.1.0", default-features = false, features = ["rust_crypto"] }
 tower = "0.5"
 tower-http = { version = "0.6", features = [
     "trace",
@@ -419,16 +423,6 @@ hex = "0.4"
 # RustCrypto family as `sha2`/`hmac`, so it costs no new dependency tree.
 md-5 = "0.10"
 percent-encoding = "2"
-
-# The standalone auth service hashes passwords with Argon2id (the password-hashing
-# competition winner; memory-hard, the settled default for new password stores)
-# and mints opaque bearer tokens from OS randomness. `argon2` re-exports the
-# `password-hash` PHC-string machinery so a stored hash carries its own salt and
-# parameters. `rand` supplies the `OsRng` used for both the per-password salt and
-# the token bytes; its `rand_core` matches the one `password-hash` expects. Only
-# `crates/auth-service` pulls these in, so the leaner crates never compile them.
-argon2 = "0.5"
-rand = "0.8"
 
 # The operating system's entropy, at the version `wasmtime-wasi` already pulls in, so gg's own
 # reads and WASI's `random_get` come from one generator.

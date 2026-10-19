@@ -45,7 +45,6 @@ vi.mock("../../components/PromptHeader", () => ({
     </>
   ),
 }));
-vi.mock("../../../client/auth", () => ({ useAuth: () => ({ token: "t0" }) }));
 
 const runGgQueryBatch = vi.fn();
 const getGgDashboard = vi.fn();
@@ -173,7 +172,7 @@ describe("GgDashboardViewPage", () => {
     });
     renderAt("/gg/dashboards/d1");
     await waitFor(() => expect(runGgQueryBatch).toHaveBeenCalled());
-    expect(getGgDashboard).toHaveBeenCalledWith("d1", "t0");
+    expect(getGgDashboard).toHaveBeenCalledWith("d1");
     expect(runGgQueryBatch).toHaveBeenCalledTimes(1);
     expect(lastBatch().queries).toHaveLength(2);
   });

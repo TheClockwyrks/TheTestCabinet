@@ -159,11 +159,12 @@ pub async fn upload_run_tree(
 ///
 /// Best-effort and driven purely off the produced record: a no-op for a
 /// non-adversarial run, and for a forfeit-before-load that emitted no controller and
-/// no replays. The backend upload routes are ungated on the private network, so the
-/// client carries no token. An individual missing file is skipped (the run is still
+/// no replays. The client presents the per-job `job_token`, the credential the
+/// backend's run-media upload routes take. An individual missing file is skipped (the run is still
 /// inspectable); a rejected upload is surfaced so the caller can log it.
 pub async fn upload_adversarial_to_backend(
     backend_url: &str,
+    job_token: &str,
     record: &RunRecord,
     out_dir: &Path,
 ) -> crate::Result<()> {
@@ -171,7 +172,7 @@ pub async fn upload_adversarial_to_backend(
         return Ok(());
     };
     let impl_dir = out_dir.join(&record.id).join("implementation");
-    let client = HttpBackendClient::new(backend_url);
+    let client = backend_client(backend_url, job_token);
 
     // The controller wasm first. It is the artifact the arena gates a run's
     // pushed-controller listing on (`has_run_controller`), so it must land even if a
@@ -214,6 +215,7 @@ pub async fn upload_adversarial_to_backend(
 /// missing file is skipped; a rejected upload is surfaced so the caller can log it.
 pub async fn upload_performance_to_backend(
     backend_url: &str,
+    job_token: &str,
     record: &RunRecord,
     out_dir: &Path,
 ) -> crate::Result<()> {
@@ -221,7 +223,7 @@ pub async fn upload_performance_to_backend(
         return Ok(());
     };
     let impl_dir = out_dir.join(&record.id).join("implementation");
-    let client = HttpBackendClient::new(backend_url);
+    let client = backend_client(backend_url, job_token);
 
     // Each passing case's scenario, under its own run-root-relative filename,
     // matching `playable::serve_asset_file`'s `scenario`/`scenario-<i>` addressing.
@@ -274,15 +276,16 @@ pub async fn upload_performance_to_backend(
 ///
 /// Best-effort and driven purely off the produced record: a no-op for a run that
 /// declares no proofs, and skips any proof the agent did not produce or whose file is
-/// unreadable. The backend upload route is ungated on the private network, so the
-/// client carries no token. A rejected upload is surfaced so the caller can log it.
+/// unreadable. The client presents the per-job `job_token`, the credential the
+/// backend's run-media upload routes take. A rejected upload is surfaced so the caller can log it.
 pub async fn upload_proofs_to_backend(
     backend_url: &str,
+    job_token: &str,
     record: &RunRecord,
     out_dir: &Path,
 ) -> crate::Result<()> {
     let impl_dir = out_dir.join(&record.id).join("implementation");
-    let client = HttpBackendClient::new(backend_url);
+    let client = backend_client(backend_url, job_token);
 
     for proof in &record.validation.proofs {
         if !proof.present {
@@ -329,11 +332,12 @@ pub async fn upload_proofs_to_backend(
 ///
 /// Best-effort and driven off the produced record (plus that one directory listing):
 /// a no-op for a run that declares no debug scripts, and skips any output the build
-/// did not produce or whose file is unreadable. The backend upload route is ungated
-/// on the private network, so the client carries no token. A rejected upload is
-/// surfaced so the caller can log it.
+/// did not produce or whose file is unreadable. The client presents the per-job
+/// `job_token`, the credential the backend's run-media upload routes take. A rejected
+/// upload is surfaced so the caller can log it.
 pub async fn upload_validation_to_backend(
     backend_url: &str,
+    job_token: &str,
     record: &RunRecord,
     out_dir: &Path,
 ) -> crate::Result<()> {
@@ -342,7 +346,7 @@ pub async fn upload_validation_to_backend(
         .join("implementation")
         .join(".vendor")
         .join("validation");
-    let client = HttpBackendClient::new(backend_url);
+    let client = backend_client(backend_url, job_token);
 
     for script in &record.validation.debug_scripts {
         // The verdict id keys this script's media — the item's own id, or the composite
@@ -409,11 +413,12 @@ pub async fn upload_validation_to_backend(
 /// only cost the transfer and be re-done on the way out.
 ///
 /// Best-effort: a no-op for a run with no assembled record (a third-party-harness run, or a gg run
-/// whose journal never reached the host), and reads it straight off the produced tree. The backend
-/// upload route is ungated on the private network, so the client carries no token. A rejected upload
-/// is surfaced so the caller can log it.
+/// whose journal never reached the host), and reads it straight off the produced tree. The client
+/// presents the per-job `job_token`, the credential the backend's run-media upload routes take. A
+/// rejected upload is surfaced so the caller can log it.
 pub async fn upload_replay_to_backend(
     backend_url: &str,
+    job_token: &str,
     record: &RunRecord,
     out_dir: &Path,
 ) -> test_cabinet_backend_client::Result<()> {
@@ -425,7 +430,7 @@ pub async fn upload_replay_to_backend(
         // — nothing to mirror.
         return Ok(());
     };
-    HttpBackendClient::new(backend_url)
+    backend_client(backend_url, job_token)
         .publish_run_replay(&record.id, bytes)
         .await
 }
@@ -451,6 +456,7 @@ pub async fn upload_replay_to_backend(
 /// one whose tree never reached the host). A rejected upload is surfaced so the caller can log it.
 pub async fn upload_code_analysis_to_backend(
     backend_url: &str,
+    job_token: &str,
     record: &RunRecord,
     out_dir: &Path,
 ) -> test_cabinet_backend_client::Result<()> {
@@ -461,7 +467,7 @@ pub async fn upload_code_analysis_to_backend(
         // No analysis for this run — nothing to mirror.
         return Ok(());
     };
-    HttpBackendClient::new(backend_url)
+    backend_client(backend_url, job_token)
         .publish_run_code_analysis(&record.id, bytes)
         .await
 }
@@ -489,15 +495,16 @@ pub async fn upload_code_analysis_to_backend(
 /// A no-op for any non-asset-generation run (an adversarial run's replays are
 /// mirrored by [`upload_adversarial_to_backend`] instead). Best-effort: an
 /// artifact missing from disk is skipped (the run is still inspectable); a rejected
-/// upload is surfaced so the caller can log it. The backend upload route is ungated
-/// on the private network, so the client carries no token.
+/// upload is surfaced so the caller can log it. The client presents the per-job
+/// `job_token`, the credential the backend's run-media upload routes take.
 pub async fn upload_assets_to_backend(
     backend_url: &str,
+    job_token: &str,
     record: &RunRecord,
     out_dir: &Path,
 ) -> crate::Result<()> {
     let impl_dir = out_dir.join(&record.id).join("implementation");
-    let client = HttpBackendClient::new(backend_url);
+    let client = backend_client(backend_url, job_token);
 
     if let Some(asset) = record.validation.asset.as_ref() {
         // A single sprite serves under bare names; a sheet suffixes each frame with
@@ -615,10 +622,11 @@ pub async fn upload_assets_to_backend(
 /// A no-op for a run whose record carries no showcase — the files serve no one
 /// without the record's description and carousel. Best-effort: an unreadable file
 /// is skipped (the run is still inspectable); a rejected upload is surfaced so the
-/// caller can log it. The backend upload route is ungated on the private network,
-/// so the client carries no token.
+/// caller can log it. The client presents the per-job `job_token`, the credential
+/// the backend's run-media upload routes take.
 pub async fn upload_showcase_to_backend(
     backend_url: &str,
+    job_token: &str,
     record: &RunRecord,
     out_dir: &Path,
 ) -> crate::Result<()> {
@@ -634,7 +642,7 @@ pub async fn upload_showcase_to_backend(
         // nothing to mirror.
         return Ok(());
     };
-    let client = HttpBackendClient::new(backend_url);
+    let client = backend_client(backend_url, job_token);
     for entry in entries.flatten() {
         let Ok(file_type) = entry.file_type() else {
             continue;
@@ -662,6 +670,13 @@ pub async fn upload_showcase_to_backend(
             .await?;
     }
     Ok(())
+}
+
+/// A backend client presenting the driver's per-job `job_token` on every call: the
+/// run-media upload routes take that token, and every read needs an identity (see
+/// the auth overview's "In-cluster callers").
+fn backend_client(backend_url: &str, job_token: &str) -> HttpBackendClient {
+    HttpBackendClient::new(backend_url).with_token(Some(job_token.to_string()))
 }
 
 /// Publish a list of `(served-name, run-root-relative on-disk path)` artifacts,

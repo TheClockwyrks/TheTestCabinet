@@ -36,9 +36,15 @@ impl ApiError {
     }
 
     /// `401 Unauthorized` with code `unauthorized` — an absent, invalid, or
-    /// expired token on a gated endpoint.
+    /// expired assertion or token.
     pub fn unauthorized(message: impl Into<String>) -> Self {
         Self::new(StatusCode::UNAUTHORIZED, "unauthorized", message)
+    }
+
+    /// `403 Forbidden` with code `forbidden` — a verified caller whose identity
+    /// the route does not admit (a person's assertion on a service write).
+    pub fn forbidden(message: impl Into<String>) -> Self {
+        Self::new(StatusCode::FORBIDDEN, "forbidden", message)
     }
 
     /// `400 Bad Request` with code `bad_request` — a malformed upload (a path that
@@ -48,15 +54,16 @@ impl ApiError {
     }
 
     /// `502 Bad Gateway` with code `auth_unavailable` — an upstream the service
-    /// depends on (the auth service for reads, the backend for upload auth) could
-    /// not be reached, distinct from a *rejected* token (a `401`).
+    /// depends on to check a credential (the Access team's signing keys for an
+    /// assertion, the backend for a per-job or per-publish-job token) could not be
+    /// reached, distinct from a *rejected* credential (a `401`).
     pub fn auth_unavailable(message: impl Into<String>) -> Self {
         Self::new(StatusCode::BAD_GATEWAY, "auth_unavailable", message)
     }
 
     /// `413 Payload Too Large` — the upload exceeded the service's cap. Raised while
-    /// the body is being spooled to disk, so an oversized upload is refused as it
-    /// arrives rather than after it has been held somewhere.
+    /// the body is being streamed into the store, so an oversized upload is refused
+    /// as it arrives rather than after it has been held somewhere.
     pub fn payload_too_large(message: impl Into<String>) -> Self {
         Self::new(StatusCode::PAYLOAD_TOO_LARGE, "payload_too_large", message)
     }

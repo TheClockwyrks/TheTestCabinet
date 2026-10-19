@@ -1,7 +1,6 @@
 import type { GgConfig } from "@clockwyrks/backend-api/gg";
 import { useCallback, useState } from "react";
 import { Link } from "react-router";
-import { useAuth } from "../../../client/auth";
 import { useBackend } from "../../../client/context";
 import { useConfirm } from "../../components/ConfirmDialog";
 import { LoadingState } from "../../components/LoadingState";
@@ -24,7 +23,6 @@ import styles from "./Coverage.module.scss";
 // configuration listed is the signed-in operator's own — there are no shared
 // read-only built-ins to duplicate before you can change anything.
 export function GgConfigsPage() {
-  const { token } = useAuth();
   const { client: backend } = useBackend();
   // Both halves: the stored configurations, and the same ones with every imported agent
   // resolved. The row's summary is of what a run would carry, which is the resolved
@@ -38,7 +36,7 @@ export function GgConfigsPage() {
 
   const deleteConfig = useCallback(
     async (config: GgConfig) => {
-      if (!backend?.deleteGgConfig || !token) return;
+      if (!backend?.deleteGgConfig) return;
       if (
         !(await confirm({
           title: "Delete gg configuration",
@@ -51,7 +49,7 @@ export function GgConfigsPage() {
       setBusy(true);
       setActionError(null);
       try {
-        await backend.deleteGgConfig(config.id, token);
+        await backend.deleteGgConfig(config.id);
         await reload();
       } catch (e) {
         setActionError(String(e));
@@ -59,7 +57,7 @@ export function GgConfigsPage() {
         setBusy(false);
       }
     },
-    [backend, token, reload, confirm],
+    [backend, reload, confirm],
   );
 
   const renderSaved = (config: GgConfig) => {
@@ -121,11 +119,9 @@ export function GgConfigsPage() {
         command="--gg-configs"
         comment={<>// named capability sets to run gg with</>}
         titleActions={
-          token ? (
-            <Link className={exec.primary} to={routes.accountGgConfigNew()}>
-              + New configuration
-            </Link>
-          ) : undefined
+          <Link className={exec.primary} to={routes.accountGgConfigNew()}>
+            + New configuration
+          </Link>
         }
       />
       <AccountTabs active="ggConfigs" />
@@ -134,12 +130,7 @@ export function GgConfigsPage() {
 
       {/* No section heading: every configuration on this page is the operator's own,
           so "Your configurations" would be labelling the only thing there is. */}
-      {!token ? (
-        <p className={`${exec.notice} ${exec.warn}`}>
-          Sign in to register your own gg configurations. They are saved to your
-          account.
-        </p>
-      ) : loading ? (
+      {loading ? (
         <LoadingState size="section" label="Loading configurations…" />
       ) : saved.length === 0 ? (
         <div className={styles.emptyState}>

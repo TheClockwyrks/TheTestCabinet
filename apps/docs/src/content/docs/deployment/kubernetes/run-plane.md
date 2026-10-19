@@ -270,6 +270,85 @@ the pod IP, so a driver `Job` without it cannot collect a run. The
 `tcab-allow-driver-from-sandbox` NetworkPolicy admits both flows on clusters
 that enforce policies.
 
+## Node drains
+
+A run pod that is evicted destroys its run. The driver `Job` is
+`backoffLimit: 0` and the sandbox pod has no controller, so neither is ever
+recreated, and the model spend the run had incurred is lost with it. Runs are
+unscheduled and start at any hour, so no maintenance window lines up with them.
+A drain therefore waits for the run pods on a node to finish rather than evicting
+them.
+
+### The run pod budget
+
+The `tcab-run-pods` `PodDisruptionBudget` (`deployments/k8s/base/run-pods-pdb.yaml`)
+refuses the eviction of every run pod in the namespace:
+
+```yaml
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: tcab-run-pods
+spec:
+  minAvailable: 1000000
+  unhealthyPodEvictionPolicy: IfHealthyBudget
+  selector:
+    matchExpressions:
+      - key: app.kubernetes.io/managed-by
+        operator: In
+        values: [tcab-dispatcher, tcab-driver]
+```
+
+The selector covers the driver and publish `Job` pods, labelled `managed-by:
+tcab-dispatcher`, and the sandbox pods, labelled `managed-by: tcab-driver`. The
+budget takes an absolute integer `minAvailable` because that is the one form the
+disruption controller computes for these pods: the sandbox pod is bare, and a
+`Job` has no scale subresource, so `maxUnavailable` and percentages resolve to no
+expected count. The integer sits far above any number of run pods the namespace
+can hold, so the budget is never met and allows zero disruptions.
+
+`IfHealthyBudget` keeps a run pod that is not `Ready` under the same protection.
+A finished pod is outside any budget, so a driver pod waiting out
+`TCAB_DISPATCHER_JOB_TTL_SECONDS` never holds a drain.
+
+### Node pool upgrade settings
+
+Every node pool that can seat a run pod carries these upgrade settings, which
+`scripts/configure-node-pools.sh --env <prod|staging>` applies (see
+[Cluster prerequisites](/deployment/kubernetes/overview/#cluster-prerequisites)):
+
+| Setting                   | Value    | Why                                                                              |
+| ------------------------- | -------- | -------------------------------------------------------------------------------- |
+| `drainTimeoutInMinutes`   | `1440`   | The AKS maximum, above the longest run and equal to the sandbox's 24h deadline   |
+| `undrainableNodeBehavior` | Schedule | A node still holding a run pod at the timeout is returned to service and retried |
+| `maxSurge`                | `10%`    | Surge nodes take new runs while the drained nodes finish theirs                  |
+| `maxUnavailable`          | `0`      | Capacity never drops below the pool's size during an upgrade                     |
+
+An upgrade cordons a node, so no new run lands on it, and retries each eviction
+the budget refuses until the node's run pods have finished. The node then
+empties and takes the new image. An upgrade of a busy pool takes as long as the
+longest run on it, which is the intended cost.
+
+A node that still holds a run pod when the timeout elapses is uncordoned and
+left on its old image, and the pool's upgrade is reported as failed. The
+managed auto-upgrade retries the pool at its next scheduled window, when the
+node is drained again, so a node that outlasts the timeout is reimaged without
+an operator's hand. Under the run limits the timeout is above every run, so
+this path is a fallback rather than an expected one.
+
+### What each guard covers
+
+| Disruption                                | Guard                                                                                                             |
+| ----------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| A node-image or Kubernetes upgrade drain  | The run pod budget and the pools' drain timeout                                                                   |
+| An operator's `kubectl drain`             | The run pod budget                                                                                                |
+| Cluster autoscaler scale-down             | `cluster-autoscaler.kubernetes.io/safe-to-evict: "false"` and the budget                                          |
+| Node pressure, node loss, spot preemption | None that keeps the run; [sandbox reaping](/components/dispatcher/overview/#sandbox-reaping) and the death report |
+
+The `safe-to-evict` annotation every run pod carries is read by the cluster
+autoscaler alone. It keeps the autoscaler from choosing a node with a run pod
+for scale-down, and an upgrade drain or `kubectl drain` ignores it.
+
 ## Publish Jobs
 
 Publishing a run runs in its own `Job`. A run publishes automatically when it
@@ -316,7 +395,9 @@ live in the environment's private Azure Blob container, and the public dataset
 (the documents, media, index objects and short-code objects the gallery reads)
 in the environment's Cloudflare R2 bucket, which only this service writes. No
 `PersistentVolumeClaim` and no `StatefulSet`: the service holds nothing a
-restart loses, and its replica count is a free choice.
+restart loses, and it runs two replicas so a planned disruption of one leaves
+the other serving (see
+[Planned disruption](/deployment/kubernetes/control-plane/#planned-disruption)).
 
 It runs under its own `ServiceAccount` with no Kubernetes API access. Blob
 access is a user-assigned managed identity per environment, holding Storage Blob
@@ -348,8 +429,8 @@ The repos service keeps each run's implementation as a git bundle: a stateless
 `Deployment` with a `ClusterIP` `Service`, bound to `0.0.0.0:8792`
 (`deployments/k8s/base/repos.yaml`), over a private Blob container of its own,
 with `git` on its image. It takes the artifacts service's shape exactly: its own
-`ServiceAccount` with no API access, a managed identity on its container, and a
-free replica count.
+`ServiceAccount` with no API access, a managed identity on its container, and two
+replicas.
 
 | Variable                                          | Purpose                                                                                                     |
 | ------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
@@ -367,14 +448,16 @@ Its outbound traffic is the Blob container and GitHub.
 ## Arena service
 
 Adversarial matches and tournaments are CPU-bound in-process wasm, so they run on
-the arena rather than the single-replica backend. It is a stateless `Deployment`
+the arena rather than the backend. It is a stateless `Deployment`
 with a `ClusterIP` `Service`, its own `ServiceAccount` with no Kubernetes API
 access, and real CPU requests and limits, bound to `0.0.0.0:8791`
 (`deployments/k8s/base/arena.yaml`).
 
-It runs exactly one replica: the in-flight tournament registry and the live
-progress channel are in-memory and per-pod. It fetches every controller input
-from the backend and persists finished tournaments and replays back to it. The
+It runs exactly one replica: the live progress channel is per-pod, and one
+arena owns resuming the unfinished tournaments the backend records. It fetches
+every controller input from the backend and records each tournament and its
+matches through it as they complete, as the [arena](/components/arena/overview/)
+page states. The
 console reaches it through the edge at `/arena/`, and the arena verifies the
 assertion on each request with the same two `TCAB_ACCESS_*` variables as the
 backend; the backend serves published tournaments and replays itself, so only

@@ -223,17 +223,80 @@ the run's document and the updated index objects through it, swapping the
 `index.json` pointer last. The publisher holds the Cloudflare credential alone;
 the GitHub credential is the repos service's.
 
-The release is idempotent. A re-publish reuses an existing repository rather
-than recreating it, and still re-commits and re-pushes the implementation, which
-recovers a publish whose repository was created before its first push landed.
-The first push settles briefly and is then retried with backoff, so a transient
-post-create `403` from GitHub's permission-propagation lag self-heals.
+#### Repeating a step
+
+A publish is resumable and idempotent. Every step of the publisher's sequence is
+safe to repeat, so a publish that stopped at any point is finished by running the
+sequence again from the start, and a repeated step reaches the state its first
+run reached and reports the same links.
+
+- The publisher first asks the backend whether the run is already published.
+  When it is, the publisher reports the links the run carries and does nothing
+  else.
+- The download is a read, and a repeat fetches the same tree.
+- The Pages deploy makes one deployment per run. The publisher deploys with the
+  digest of the scrubbed build as the deployment's commit hash, and first looks
+  up the run's branch for a deployment carrying that digest. A deployment it
+  finds is reused and its URL reported.
+- The repository publish is deterministic, as the repos service's
+  [publishing](/components/repos/overview/#publishing) states: the commit is
+  made from the run's tree with a fixed message, author and date, so a repeat
+  reproduces its SHA, and a push whose remote already holds the same tree is a
+  success.
+- The backend accepts the result more than once. A repeated success re-asserts
+  the same links and keeps the run's publication time.
+
+Each step that reaches over the network retries a transient failure with backoff
+before the publish fails: the download, the Pages deploy, the repository publish
+and the result report.
+
+#### A publisher that stops
+
+On `SIGTERM` the publisher starts no further step. It finishes the step it is on
+when that step ends within the pod's termination grace period, and otherwise
+abandons it, which leaves it repeatable. It then reports the publish failed with
+the reason that the publisher was interrupted, and the failure is retried like
+any other.
+
+A publisher that ends without reporting is recognised by three bounds:
+
+- The dispatcher's [death detection](/components/dispatcher/overview/#lost-drivers)
+  covers publisher Jobs as it covers driver Jobs. A publish job held
+  `dispatched` with no active publisher Job for two minutes is reported lost,
+  and the backend records it failed.
+- The dispatcher gives every publisher Job an `activeDeadlineSeconds` of 45
+  minutes, which ends a publisher that has hung.
+- The backend records a publish job that has been `dispatched` for an hour with
+  no result as failed, with the reason that its publisher never reported. It is
+  recorded as having failed at that hour, so a job abandoned long ago takes its
+  place in the order of events. The hour outlasts the deadline, so the sweep
+  never fails a job whose publisher is still running.
+
+#### Retrying a failed publish
 
 A release that does not land records its reason on the publish job and raises a
-publish-failed notification on the console. Publishing the run again is the
-recovery, admitted as soon as the failed publish job is terminal, and the run
-waits in the console's [Unpublished
-worklist](/components/web/overview/#the-runs-section) until a release lands.
+publish-failed notification on the console, and the backend enqueues another
+publish job for the run by itself. The retry applies to every unpublished run
+whose latest publish job failed, whether automatic publishing or an operator
+enqueued that job, and a run has at most one publish job in flight at any time.
+
+| Consecutive failures of the run | Wait after the latest failure |
+| ------------------------------- | ----------------------------- |
+| 1                               | 5 minutes                     |
+| 2                               | 10 minutes                    |
+| 3                               | 20 minutes                    |
+| n                               | 5 minutes doubled n - 1 times |
+| 7 and above                     | 4 hours                       |
+
+Before each retry the backend applies the publish gate again as the run stands
+now, so a run that stopped being publishable after its publish failed is left
+unpublished.
+
+The retries of a run end 24 hours after its first failed publish job. The run
+then waits in the console's [Unpublished
+worklist](/components/web/overview/#the-runs-section) for an operator. An
+operator's publish is accepted at any time, whatever the run's wait or age, and
+a publish job it enqueues that fails counts as one more consecutive failure.
 
 ### Automatic publishing
 
@@ -266,11 +329,11 @@ two moments:
   even when another launch produced it.
 
 Automatic publishing enqueues the same publish job an operator's publish does,
-and at most one for a run. A run that already has a publish job in any state is
-left alone, so a failed automatic publish is never retried automatically: it
-raises the publish-failed notification and waits in the Unpublished worklist for
-an operator. An automatic publish that cannot be enqueued is logged and never
-fails the report or the pass that prompted it.
+and at most one for a run. At these moments a run that already has a publish job
+in any state is left alone, and a run whose publish job failed is taken up by
+the [retry of failed publishes](#retrying-a-failed-publish). An automatic
+publish that cannot be enqueued is logged and never fails the report or the pass
+that prompted it.
 
 Only published runs appear in the public dataset and therefore in the gallery. A
 published catastrophic or timeout failure shows its generated source and has no

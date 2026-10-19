@@ -134,7 +134,8 @@ impl PublishJobClient {
     }
 
     /// Whether run `run_id` is **already published**, and if so the links it already
-    /// carries (`GET /runs/{id}` — an unauthenticated read, so no token is presented).
+    /// carries (`GET /runs/{id}`). Like every call, it presents the per-publish-job token:
+    /// reads need an identity too.
     ///
     /// The publisher calls this *before* doing any external work. Publishing is not
     /// idempotent on the Cloudflare side: `wrangler pages deploy` mints a brand-new
@@ -152,6 +153,7 @@ impl PublishJobClient {
         let response = self
             .http
             .get(format!("{}/runs/{run_id}", self.base_url))
+            .bearer_auth(&self.job_token)
             .send()
             .await
             .map_err(|source| ClientError::Transport {

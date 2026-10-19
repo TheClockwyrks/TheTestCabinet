@@ -6,8 +6,9 @@ zone: EDGE
 number: 1
 title: Deploy the Cloudflare Tunnel and Access edge for staging and prod
 type: generic
-state: open
+state: done
 created: 2026-10-13T21:11:19.642122519Z
+done: 2026-10-19T02:35:00.242871653Z
 ---
 
 The staging and prod clusters are reached through OpenVPN and an internal

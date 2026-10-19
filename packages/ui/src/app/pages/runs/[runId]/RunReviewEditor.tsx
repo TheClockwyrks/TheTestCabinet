@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useSearchParams } from "react-router";
+import { useSearchParams } from "react-router";
 import {
   AestheticBadge,
   Avatar,
@@ -7,9 +7,8 @@ import {
   Panel,
   RatingBadge,
 } from "@clockwyrks/ui";
-import { routes } from "../../../routes";
 import { useBackend, useWorkers } from "../../../../client/context";
-import { useAuth } from "../../../../client/auth";
+import { useIdentity } from "../../../../client/identity";
 import type {
   ProofMedia,
   ReferenceShot,
@@ -181,12 +180,11 @@ function GradeChoice({
 // the review differs (graded categories plus a whole-game overall grade instead
 // of per-domain ratings and pass/fail items).
 //
-// Every mutating action requires a signed-in account; signing in and viewing the
-// account live on their own pages (reached from the top bar's account control),
-// so the editor only links to the sign-in page when signed out. A review is
-// attributed to the signed-in account, and a run may carry one review per
-// account. The editor seeds from the *current account's own* prior review (when
-// any) so re-reviewing keeps that reviewer's answers.
+// A review is attributed to the identity the edge asserts on the request, and a
+// run may carry one review per identity. Signing in happens at the edge, so the
+// editor never prompts for it. The editor seeds from the *current identity's own*
+// prior review (when the console knows its identity and one exists) so
+// re-reviewing keeps that reviewer's answers.
 //
 // The checklist is presented one question at a time with a navigable rail of all
 // items (answered ones marked done) so the reviewer can move freely. Each question
@@ -213,7 +211,7 @@ export function RunReviewEditor({
 }: {
   run: RunRecord;
   /** The run's reviews, fetched with the record by the run-detail layout — the
-   * editor seeds from the current account's prior review and gates Publish on the
+   * editor seeds from the current identity's prior review and gates Publish on the
    * run carrying at least one. */
   reviews: StoredReview[];
   /** Whether the run has already been published. A published run is public and
@@ -231,7 +229,7 @@ export function RunReviewEditor({
   const subject = run.subject;
   const { active: worker } = useWorkers();
   const client = worker?.client ?? null;
-  const { account, token } = useAuth();
+  const { email } = useIdentity();
   const { confirm } = useConfirm();
   // The checklist items are catalog data: read them from the backend, keyed by
   // the run's case identity — the worker doesn't serve the catalog.
@@ -246,12 +244,12 @@ export function RunReviewEditor({
     [testCase, subject.variant],
   );
   const domains = variant?.domains ?? testCase?.domains ?? [];
-  // The current account's own prior review (when any) among the run's reviews —
+  // The current identity's own prior review (when any) among the run's reviews —
   // the seed for re-reviewing. The reviews arrive from the run-detail layout,
   // fetched with the record.
   const ownReview = useMemo(
-    () => reviews.find((r) => account && r.reviewerId === account.id),
-    [reviews, account],
+    () => reviews.find((r) => email !== null && r.reviewer === email),
+    [reviews, email],
   );
   const [ratings, setRatings] = useState<Record<string, Rating>>({});
   // The RUN-WIDE aesthetic tier on a validator-rated run — one tier for the
@@ -275,7 +273,7 @@ export function RunReviewEditor({
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  // Reviews this account has submitted this session, so Publish enables without a
+  // Reviews this identity has submitted this session, so Publish enables without a
   // refetch right after submitting.
   const [submittedThisSession, setSubmittedThisSession] = useState(false);
   // Whether a publish succeeded this session, so the Publish action retires
@@ -286,7 +284,7 @@ export function RunReviewEditor({
   // sees it open to write their first review; once they carry one it collapses to
   // the summary so the form is not in the way of publishing. Deriving the
   // effective `showForm` from this OR "has no own review" keeps the form open
-  // while `ownReview` is still resolving (account/reviews loading). The
+  // while `ownReview` is still resolving (identity/reviews loading). The
   // single-review page's Edit control reopens it for a re-review by linking back
   // here with `?edit=1`, which seeds this open.
   const [searchParams] = useSearchParams();
@@ -375,7 +373,7 @@ export function RunReviewEditor({
   }, [run]);
 
   // Load the case's declared checklist items from the backend (common + this
-  // variant's own), seeding verdicts from the account's own prior review so
+  // variant's own), seeding verdicts from the identity's own prior review so
   // re-reviewing keeps that reviewer's earlier answers.
   //
   // The backend serves the case's whole declared checklist, which is engine-
@@ -401,7 +399,7 @@ export function RunReviewEditor({
         const loaded = reviewItemsForEngine(declared, subject.engineSlug);
         // Verdicts are keyed by verdict id — the item's own id when it is graded
         // as a whole, or a `<item>.<sub>` composite per sub-item. Seed each draft
-        // from, in precedence: the account's own prior verdict of the same id (a
+        // from, in precedence: the identity's own prior verdict of the same id (a
         // re-review keeps the reviewer's earlier call); otherwise this run's auto
         // verdict (pre-filled); otherwise unset. Either way a draft that agrees
         // with what validation decided is marked auto-set, so re-opening a review
@@ -440,7 +438,7 @@ export function RunReviewEditor({
     return () => {
       cancelled = true;
     };
-    // Seed on run/backend/account change; `ownReview` is the initial value.
+    // Seed on run/backend/identity change; `ownReview` is the initial value.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     backend,
@@ -448,10 +446,10 @@ export function RunReviewEditor({
     subject.testCaseVersion,
     subject.variant,
     subject.engineSlug,
-    account?.id,
+    email,
   ]);
 
-  // Seed each domain's rating from the account's own prior review, defaulting to
+  // Seed each domain's rating from the identity's own prior review, defaulting to
   // "great" so a domain always carries a value (adjusted down where warranted).
   useEffect(() => {
     const prior = new Map(
@@ -461,40 +459,40 @@ export function RunReviewEditor({
     for (const domain of domains)
       seeded[domain.id] = prior.get(domain.id) ?? "great";
     setRatings(seeded);
-    // Seed when the domain set or account changes; `ownReview` is the initial value.
+    // Seed when the domain set or identity changes; `ownReview` is the initial value.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [domains, account?.id]);
+  }, [domains, email]);
 
-  // Seed the run-wide aesthetic tier from the account's own prior review (a
+  // Seed the run-wide aesthetic tier from the identity's own prior review (a
   // validator-rated run) — a legacy stored row's per-domain tiers collapse to
   // their worst via `reviewAesthetic`. Unset when the prior review carried none.
   useEffect(() => {
     setAesthetic(ownReview ? (reviewAesthetic(ownReview) ?? "") : "");
-    // Seed when the account changes; `ownReview` is the initial value.
+    // Seed when the identity changes; `ownReview` is the initial value.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [account?.id]);
+  }, [email]);
 
-  // Seed the writeup from the account's own prior review, re-seeding when the
-  // account resolves (it can load after mount). Mirrors the rating/verdict
+  // Seed the writeup from the identity's own prior review, re-seeding when the
+  // identity resolves (it can load after mount). Mirrors the rating/verdict
   // seeding above so an existing reviewer's prose is restored when they reopen
   // the form to revise — the form may be collapsed until then.
   useEffect(() => {
     setWriteup(ownReview?.writeup ?? "");
-    // Seed when the account changes; `ownReview` is the initial value.
+    // Seed when the identity changes; `ownReview` is the initial value.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [account?.id]);
+  }, [email]);
 
-  // Seed the whole-game overall grade (a game-jam review) from the account's own
-  // prior review's reserved OVERALL_VERDICT_ID verdict, re-seeding when the account
+  // Seed the whole-game overall grade (a game-jam review) from the identity's own
+  // prior review's reserved OVERALL_VERDICT_ID verdict, re-seeding when the identity
   // resolves. Empty when the prior review recorded no (valid) overall grade.
   useEffect(() => {
     const prior = (ownReview?.checklist ?? []).find(
       (v) => v.id === OVERALL_VERDICT_ID,
     );
     setOverall(prior && isGrade(prior.status) ? prior.status : "");
-    // Seed when the account changes; `ownReview` is the initial value.
+    // Seed when the identity changes; `ownReview` is the initial value.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [account?.id]);
+  }, [email]);
 
   // An item is fully addressed once every one of its verdict ids (its own, or one
   // per sub-item) carries a status. The publish gate and the rail's progress count
@@ -945,7 +943,7 @@ export function RunReviewEditor({
   // Run a mutating lifecycle action, wrapping it in the busy/error/message
   // plumbing so each button shares one path.
   async function runAction(label: string, action: () => Promise<void>) {
-    if (!client || !token) return;
+    if (!client) return;
     setBusy(true);
     setError(null);
     setMessage(null);
@@ -962,7 +960,7 @@ export function RunReviewEditor({
 
   // --- Lifecycle actions ---
 
-  // Submit review: attribute this account's review to the run.
+  // Submit review: attribute this identity's review to the run.
   const onSubmitReview = () => {
     // Editing a submitted review requires a note explaining the change; catch it
     // client-side for an immediate message rather than a round-trip rejection.
@@ -973,7 +971,7 @@ export function RunReviewEditor({
       return;
     }
     runAction(ownReview ? "Review updated." : "Review submitted.", async () => {
-      await client!.submitReview(runId, buildReview(), token!);
+      await client!.submitReview(runId, buildReview());
       setSubmittedThisSession(true);
       // A review is labelling only: it never launches, holds back or decides a run.
       // Plans fill and ladders climb in the backend as runs finish.
@@ -989,7 +987,7 @@ export function RunReviewEditor({
       // Publishing is asynchronous: enqueue and observe the release over its live
       // stream, surfacing each progress line, then confirm on the terminal result.
       setMessage("Publishing…");
-      const result = await client!.publish(runId, token!, (progress) => {
+      const result = await client!.publish(runId, (progress) => {
         setMessage(`Publishing… ${progress.message}`);
       });
       setMessage(result.published ? "Published." : "Publish did not complete.");
@@ -1021,7 +1019,7 @@ export function RunReviewEditor({
   // second, doomed Publish.
   const isPublished = published || publishedThisSession;
 
-  // Show the form when re-reviewing (Edit) or when this account has no review yet
+  // Show the form when re-reviewing (Edit) or when this identity has no review yet
   // — so a first-time reviewer always lands on the form, and a reviewer who has
   // already weighed in sees only the summary until they choose to revise.
   const showForm = editing || !ownReview;
@@ -1210,7 +1208,7 @@ export function RunReviewEditor({
     <Panel>
       {/* The run's existing reviews and the aggregate rating + score, so a
           reviewer sees what others recorded before adding their own. Each review
-          links to its own page, where the active account's own review carries the
+          links to its own page, where the active identity's own review carries the
           Edit control that reopens this form to revise it. */}
       <ExistingReviews
         reviews={reviews}
@@ -1229,7 +1227,7 @@ export function RunReviewEditor({
         <ValidatorVerdict run={run} model={validatorModel} reviews={reviews} />
       )}
 
-      {/* With the review form collapsed (this account already carries a review)
+      {/* With the review form collapsed (this identity already carries a review)
           the editable walker below is not mounted, so the read-only per-item
           browser stands in as the single per-item surface — exactly what a
           visitor sees on the published Verdict tab. Never rendered beside the
@@ -1820,29 +1818,20 @@ export function RunReviewEditor({
             : validatorRated
               ? "Write a review and choose the run's aesthetic tier first"
               : "Write a review, rate every domain, and give every checklist item a verdict first";
-        const needAccount = !account || !token;
         // Who is reviewing, shown left of the action buttons (in place of the
-        // former standalone "Reviewing as …" bar): the signed-in account's avatar
-        // and name, or a sign-in prompt while logged out. Rendered only with the
-        // form open (the read-only published view has no actions row).
+        // former standalone "Reviewing as …" bar): the signed-in identity, once the
+        // console knows it. Rendered only with the form open (the read-only
+        // published view has no actions row); the empty slot keeps the buttons
+        // pushed to the row's trailing edge while the identity is unknown.
         const reviewingAs = showForm ? (
           <div className={styles.reviewingAs}>
-            {account ? (
+            {email && (
               <>
-                <Avatar
-                  name={account.displayName}
-                  pictureUrl={account.pictureUrl}
-                  size={22}
-                />
+                <Avatar name={email} size={22} />
                 <span>
-                  Reviewing as <strong>{account.displayName}</strong>
+                  Reviewing as <strong>{email}</strong>
                 </span>
               </>
-            ) : (
-              <span className={styles.reviewingAsWarn}>
-                <Link to={routes.login(routes.runVerdict(runId))}>Sign in</Link>{" "}
-                to review and publish this run.
-              </span>
             )}
           </div>
         ) : null;
@@ -1862,8 +1851,8 @@ export function RunReviewEditor({
           <button
             className={isPublished ? styles.primary : styles.secondary}
             onClick={onSubmitReview}
-            disabled={busy || needAccount || !reviewReady}
-            title={needAccount ? "Sign in to review" : reviewTitle}
+            disabled={busy || !reviewReady}
+            title={reviewTitle}
           >
             {ownReview ? "Update review" : "Submit review"}
           </button>
@@ -1872,17 +1861,15 @@ export function RunReviewEditor({
           <button
             className={styles.primary}
             onClick={onPublish}
-            disabled={busy || needAccount || !canPublish}
+            disabled={busy || !canPublish}
             title={
-              needAccount
-                ? "Sign in to publish"
-                : !canPublish
-                  ? "Submit at least one review before publishing"
-                  : validatorRated &&
-                      reviews.length === 0 &&
-                      !submittedThisSession
-                    ? "Publish without an aesthetic review; one can be added later"
-                    : undefined
+              !canPublish
+                ? "Submit at least one review before publishing"
+                : validatorRated &&
+                    reviews.length === 0 &&
+                    !submittedThisSession
+                  ? "Publish without an aesthetic review; one can be added later"
+                  : undefined
             }
           >
             Publish run
@@ -1913,7 +1900,7 @@ export function RunReviewEditor({
 // mean earned over the case's checklist ({@link aggregateScore}, when the scoring
 // model is available) — with the review count pushed to its right. Each review is
 // a compact, clickable card linking to that review's own page, where the active
-// account's own review carries the Edit control that reopens the form to revise it.
+// identity's own review carries the Edit control that reopens the form to revise it.
 function ExistingReviews({
   reviews,
   items,

@@ -4,7 +4,6 @@
 //! exists and otherwise reports that the orchestration is not implemented yet.
 
 pub mod analyze;
-pub mod auth;
 pub mod capture_baselines;
 pub mod engines;
 pub mod event_printer;

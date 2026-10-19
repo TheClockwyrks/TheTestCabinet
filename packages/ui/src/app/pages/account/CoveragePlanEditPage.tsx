@@ -26,7 +26,6 @@ import {
   retryLimitHelp,
   useRetryLimitField,
 } from "./retry-limit";
-import { useAuth } from "../../../client/auth";
 import { useBackend } from "../../../client/context";
 import type { Model } from "../../../client/types";
 import { BackChevron } from "../../components/BackChevron";
@@ -54,7 +53,6 @@ const DEFAULT_RUNS_PER_CELL = 3;
 export function CoveragePlanEditPage() {
   const { planId } = useParams();
   const editing = Boolean(planId);
-  const { token } = useAuth();
   const { client: backend } = useBackend();
   const navigate = useNavigate();
 
@@ -93,7 +91,7 @@ export function CoveragePlanEditPage() {
   );
 
   useEffect(() => {
-    if (!backend || !token) {
+    if (!backend) {
       setLoading(false);
       return;
     }
@@ -101,9 +99,9 @@ export function CoveragePlanEditPage() {
     setLoading(true);
     setError(null);
     Promise.all([
-      backend.listCoverageGroups?.(token) ?? Promise.resolve([]),
+      backend.listCoverageGroups?.() ?? Promise.resolve([]),
       editing
-        ? (backend.listCoveragePlans?.(token) ?? Promise.resolve([]))
+        ? (backend.listCoveragePlans?.() ?? Promise.resolve([]))
         : Promise.resolve<CoveragePlanOut[]>([]),
     ])
       .then(([gs, plans]) => {
@@ -143,7 +141,7 @@ export function CoveragePlanEditPage() {
     // block editing the plan, so the placeholder simply keeps the compiled-in
     // fallback.
     backend
-      .getCoverageSettings?.(token)
+      .getCoverageSettings?.()
       .then((s) => active && setAccountLimit(s.inFlightLimit))
       .catch(() => {
         /* optional; the placeholder stays the compiled-in default */
@@ -152,14 +150,7 @@ export function CoveragePlanEditPage() {
       active = false;
     };
     // Both fields' `set` are referentially stable (see components/NumberField).
-  }, [
-    backend,
-    token,
-    editing,
-    planId,
-    runsPerCellField.set,
-    retryLimitField.set,
-  ]);
+  }, [backend, editing, planId, runsPerCellField.set, retryLimitField.set]);
 
   const comboGroups = useMemo(
     () => groups.filter((g) => g.kind === "combo"),
@@ -190,7 +181,7 @@ export function CoveragePlanEditPage() {
     retryLimitField.valid;
 
   async function onSave() {
-    if (!token || !savable) return;
+    if (!savable) return;
     const input: CoveragePlanInput = {
       name: name.trim(),
       runsPerCell,
@@ -209,33 +200,15 @@ export function CoveragePlanEditPage() {
     setError(null);
     try {
       if (editing && planId && backend?.updateCoveragePlan) {
-        await backend.updateCoveragePlan(planId, input, token);
+        await backend.updateCoveragePlan(planId, input);
       } else if (backend?.createCoveragePlan) {
-        await backend.createCoveragePlan(input, token);
+        await backend.createCoveragePlan(input);
       }
       navigate(routes.accountCoverage());
     } catch (e) {
       setError(String(e));
       setBusy(false);
     }
-  }
-
-  if (!token) {
-    return (
-      <PageLayout>
-        <header className={styles.detailHeader}>
-          <div className={styles.detailTitleRow}>
-            <BackChevron to={routes.accountCoverage()} label="All plans" />
-            <h1 className={styles.detailTitle}>
-              {editing ? "Coverage plan" : "New plan"}
-            </h1>
-          </div>
-        </header>
-        <p className={`${exec.notice} ${exec.warn}`}>
-          Sign in to edit coverage plans. They are saved to your account.
-        </p>
-      </PageLayout>
-    );
   }
 
   return (

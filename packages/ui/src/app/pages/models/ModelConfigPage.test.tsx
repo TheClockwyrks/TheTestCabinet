@@ -27,9 +27,6 @@ import { ModelConfigPage } from "./ModelConfigPage";
 vi.mock("../../components/PageLayout", () => ({
   PageLayout: ({ children }: { children: ReactNode }) => <div>{children}</div>,
 }));
-vi.mock("../../../client/auth", () => ({
-  useAuth: () => ({ token: "t" }),
-}));
 
 const LISTING = {
   name: "Claude Sonnet 4.5",
@@ -135,11 +132,7 @@ describe("ModelConfigPage's OpenRouter fill-in", () => {
     fireEvent.click(fillButton());
 
     await waitFor(() => expect(nameInput()).toHaveValue("Claude Sonnet 4.5"));
-    expect(lookup).toHaveBeenCalledWith(
-      "anthropic/claude-sonnet-4.5",
-      "t",
-      null,
-    );
+    expect(lookup).toHaveBeenCalledWith("anthropic/claude-sonnet-4.5", null);
     expect(providerInput()).toHaveValue("Anthropic");
     expect(descriptionInput()).toHaveValue(LISTING.description);
   });
@@ -192,11 +185,7 @@ describe("ModelConfigPage's OpenRouter fill-in", () => {
     fireEvent.click(fillButton());
 
     await settle();
-    expect(lookup).toHaveBeenCalledWith(
-      "anthropic/claude-sonnet-4.5",
-      "t",
-      null,
-    );
+    expect(lookup).toHaveBeenCalledWith("anthropic/claude-sonnet-4.5", null);
   });
 
   it("reports a slug OpenRouter does not list and changes nothing", async () => {
@@ -278,7 +267,7 @@ describe("ModelConfigPage's OpenRouter fill-in", () => {
 
     await waitFor(() => expect(inputPriceInput()).toHaveValue("3"));
     expect(lookup).toHaveBeenCalledTimes(1);
-    expect(lookup).toHaveBeenCalledWith("qwen/qwen3-coder", "t", "Alibaba");
+    expect(lookup).toHaveBeenCalledWith("qwen/qwen3-coder", "Alibaba");
   });
 
   it("leaves the list-price block blank when OpenRouter yields no rate", async () => {

@@ -1,11 +1,11 @@
-# Lock down Grafana before it is reachable over the internal ingress.
+# Lock down Grafana before it is reachable through the edge.
 #
 # The observability component runs the grafana/otel-lgtm all-in-one, whose image
 # ships Grafana with ANONYMOUS ADMIN and the login form hidden — deliberately, so the
 # local/port-forward workflow needs no credentials. That is safe when the only way in
 # is a kubectl-gated `kubectl port-forward`, but this overlay ALSO exposes Grafana at
-# grafana.tcab.testcabinet.ai over the internal ingress (components/internal-ingress),
-# and anonymous-admin behind a URL means every VPN client is a Grafana admin.
+# grafana.testcabinet.ai through the edge (components/edge), and anonymous-admin
+# behind a URL means every person Access admits is a Grafana admin.
 #
 # This patch — applied only in the deployed overlay, never in the shared component, so
 # local keeps its no-login convenience — flips Grafana to authenticated access:
@@ -18,7 +18,7 @@
 # `grafana-admin-user` and `grafana-admin-password` vault secrets MUST exist before
 # this overlay is applied, or the CSI mount fails (all-or-nothing) and this pod stays
 # in CreateContainerConfigError — fail-closed, which is correct: better a Grafana that
-# will not start than one silently serving anonymous admin on the VPN.
+# will not start than one silently serving anonymous admin behind the edge.
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:

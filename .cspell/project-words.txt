@@ -492,7 +492,6 @@ Lattice
 launchable
 lavapipe
 lerp
-letsencrypt
 letterboxed
 letterboxing
 levelclear
@@ -1053,6 +1052,7 @@ unpowered
 unpremultiplied
 unpressured
 UNPROJECTED
+unprovisioned
 unpublishing
 unranked
 unrecognised
@@ -1133,3 +1133,9 @@ xhigh
 Xrender
 xtal
 zoneable
+emptydir
+nodepool
+uncordon
+undrainable
+reimaged
+uncordoned

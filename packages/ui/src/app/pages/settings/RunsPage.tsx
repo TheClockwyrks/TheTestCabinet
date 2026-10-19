@@ -15,7 +15,6 @@ import {
 import { LoadingState } from "../../components/LoadingState";
 import { useRevealNotice } from "../../components/SubmitNotice";
 import { SettingsLayout } from "../../layouts/settings/SettingsLayout";
-import { useAuth } from "../../../client/auth";
 import { useBackend } from "../../../client/context";
 import { Button, Input } from "../../../primitives";
 import styles from "./RunsPage.module.scss";
@@ -32,7 +31,6 @@ import styles from "./RunsPage.module.scss";
 // third instruction of its own: every plan and ladder launches everything it can at
 // once unless it says otherwise.
 export function RunsPage() {
-  const { token } = useAuth();
   const { client: backend } = useBackend();
 
   const [settings, setSettings] = useState<CoverageSettings | null>(null);
@@ -42,7 +40,7 @@ export function RunsPage() {
   const errorRef = useRevealNotice<HTMLParagraphElement>(error);
 
   useEffect(() => {
-    if (!backend?.getCoverageSettings || !token) {
+    if (!backend?.getCoverageSettings) {
       setLoading(false);
       return;
     }
@@ -50,7 +48,7 @@ export function RunsPage() {
     setLoading(true);
     setError(null);
     backend
-      .getCoverageSettings(token)
+      .getCoverageSettings()
       .then((s) => {
         if (!active) return;
         setSettings(s);
@@ -64,38 +62,23 @@ export function RunsPage() {
     return () => {
       active = false;
     };
-  }, [backend, token]);
+  }, [backend]);
 
   const saveLimit = useCallback(
     async (inFlightLimit: InFlightLimit) => {
-      if (!backend?.setCoverageSettings || !token) return;
+      if (!backend?.setCoverageSettings) return;
       setBusy(true);
       setError(null);
       try {
-        setSettings(
-          await backend.setCoverageSettings({ inFlightLimit }, token),
-        );
+        setSettings(await backend.setCoverageSettings({ inFlightLimit }));
       } catch (e) {
         setError(String(e));
       } finally {
         setBusy(false);
       }
     },
-    [backend, token],
+    [backend],
   );
-
-  if (!token) {
-    return (
-      <SettingsLayout tab="runs">
-        <Panel>
-          <p className={styles.muted}>
-            Sign in to change your run settings. They are saved to your account.
-            Use the account control in the top bar to register or log in.
-          </p>
-        </Panel>
-      </SettingsLayout>
-    );
-  }
 
   return (
     <SettingsLayout tab="runs">

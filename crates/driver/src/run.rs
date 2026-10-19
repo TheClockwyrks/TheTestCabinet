@@ -170,7 +170,10 @@ pub async fn drive(
     // per-job store, and reuse the backend's pre-rendered references as the seeded
     // visual targets and validation baselines.
     let version_str = request.test_case_version.clone().unwrap_or_default();
-    let client = HttpBackendClient::new(config.backend_url.clone());
+    // Every backend call needs an identity, reads included: the driver presents its
+    // per-job token, the credential the backend issued this run.
+    let client = HttpBackendClient::new(config.backend_url.clone())
+        .with_token(Some(config.job_token.clone()));
     let version_store = store_dir.join(&request.test_case_slug).join(&version_str);
     let (test_case, references) = materialize_version(
         &client,

@@ -1,18 +1,19 @@
-//! Serving a run's produced playable build and proof media to a reviewer.
+//! Serving a run's produced playable build and media to a reviewer, from the
+//! run's stored tree.
 //!
-//! A finished run collects its implementation under `<run>/implementation/`,
-//! including the static build output the validator produced (`dist`/`build`/`out`).
-//! A *published* run deploys that build to its own Cloudflare Pages host, where it
+//! A finished run collects its implementation under `implementation/`, including
+//! the static build output the validator produced (`dist`/`build`/`out`). A
+//! *published* run deploys that build to its own Cloudflare Pages host, where it
 //! lives at the host root and its absolute asset references (`/assets/…`) resolve
 //! (the publisher's release). But a reviewer must be able to play an *unpublished*
 //! run too — that is the entire point of reviewing before publishing — so the
-//! artifact service serves the same on-disk build over HTTP, discovering and
-//! serving it through the helpers here.
+//! artifact service serves the same build over HTTP from the run's stored tree,
+//! discovering and serving it through the resolvers here.
 //!
 //! The same applies to a run's proof-of-implementation media — the screenshots and
-//! clips the agent wrote as evidence (see [`serve_proof_file`]). A published run's
-//! proofs are uploaded to the backend, but an unpublished run's sit in its collected
-//! tree, so the artifact service serves them over HTTP from the resolver here.
+//! clips the agent wrote as evidence (see [`serve_proof_file`]) — and to its
+//! validation, showcase and asset-generation media: an unpublished run's sit in its
+//! stored tree, so the service serves them from the resolvers here.
 //!
 //! Serving under a per-run sub-path (rather than a host root) is the one wrinkle.
 //! A Vite build emitted with the default `base: "/"` references its assets
@@ -20,97 +21,191 @@
 //! 404. So when serving an HTML document this module relocates it under the
 //! build's base: it injects a `<base href>` and de-absolutizes root-relative
 //! `src`/`href` references so the injected base applies (a `<base href>` does not
-//! affect already-absolute `/…` URLs). Non-HTML assets are served byte-for-byte.
-//! That rule is [`serve_build_file`], from `test_cabinet_contracts::layout`, because
-//! the backend serves a suite's reference builds under a sub-path by the same rule.
+//! affect already-absolute `/…` URLs). Non-HTML assets are served byte-for-byte,
+//! streamed from the store. That rule is `test_cabinet_contracts::layout`'s
+//! `serve_build_file`, because the backend serves a suite's reference builds under
+//! a sub-path by the same rule; its pure pieces (`normalize_build_path`,
+//! `content_type_for`, `rewrite_html_base` and `find_build_output_in`, from the
+//! same module) are applied here to object keys, so every host serving a build
+//! applies the same rewrite and the same traversal guard.
+//!
+//! Every resolver answers `Ok(None)` for something the tree does not hold (the
+//! caller's `404`) and an error only for a store that failed.
 
 use std::path::Path;
 
 use test_cabinet_contracts::RunRecord;
+use test_cabinet_contracts::layout::{
+    content_type_for, find_build_output_in, normalize_build_path, rewrite_html_base,
+};
 use test_cabinet_contracts::test_case::{MATERIAL_JSON_DEST, UI_JSON_DEST};
 use test_cabinet_suites::content_labels::{self, ContentLabels};
 
-// The build-output names, the rule that finds a run's build among them, the rule a
-// build file is served under a sub-path by, and the rules a proof is named and
-// labelled by are run-tree layout every side agrees on (the validator, the code
-// analyzer, the snapshot builder, the gallery, the backend's reference builds), so
-// they live in `test_cabinet_contracts::layout` and are re-exported here beside the
-// serving that uses them.
+use crate::object::{ObjectBody, ObjectStream, body_from_bytes};
+use crate::store::{MAX_WHOLE_READ_BYTES, RunTree, StoreError};
+
+// The build-output names and the rules a proof is named and labelled by are
+// run-tree layout every side agrees on (the validator, the code analyzer, the
+// snapshot builder, the gallery, the backend's reference builds), so they live in
+// `test_cabinet_contracts::layout` and are re-exported here beside the serving that
+// uses them.
 pub use test_cabinet_contracts::layout::{
-    BUILD_OUTPUTS, ServedBuildFile, find_build_output, proof_labelled_name,
-    proof_published_extension, proof_served_extension, serve_build_file,
+    BUILD_OUTPUTS, proof_labelled_name, proof_published_extension, proof_served_extension,
 };
 
-/// A proof-of-implementation media file resolved from a run, ready to write to an
-/// HTTP or IPC response.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ServedProofFile {
-    /// The `Content-Type` to send, derived from the file name.
+/// A file of a run's tree resolved for serving: what to label the response with,
+/// and the body to stream.
+pub struct Served {
+    /// The `Content-Type` to send.
     pub content_type: &'static str,
     /// The `Content-Encoding` to send, `None` unless the bytes are a framed
     /// document (see [`content_labels`]).
     pub content_encoding: Option<&'static str>,
-    /// The proof media bytes, served verbatim.
-    pub body: Vec<u8>,
+    /// The body's length, when the store reported it.
+    pub content_length: Option<u64>,
+    /// The body, streamed from the store (or, for a relocated HTML document,
+    /// the rewritten bytes).
+    pub body: ObjectBody,
 }
 
-/// Resolve and read one proof-of-implementation media file from a produced run's
-/// output directory, for serving to a reviewer before the run is published.
+impl std::fmt::Debug for Served {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Served")
+            .field("content_type", &self.content_type)
+            .field("content_encoding", &self.content_encoding)
+            .field("content_length", &self.content_length)
+            .finish_non_exhaustive()
+    }
+}
+
+impl Served {
+    /// Serve `object` verbatim under `labels`.
+    fn object(object: ObjectStream, labels: ContentLabels) -> Self {
+        Self {
+            content_type: labels.content_type,
+            content_encoding: labels.content_encoding,
+            content_length: Some(object.properties.content_length),
+            body: object.body,
+        }
+    }
+}
+
+/// The build output of a run's tree: the first of [`BUILD_OUTPUTS`] present as a
+/// directory beside its implementation, or `None` when the run produced no build.
+pub async fn find_build_output(tree: &RunTree) -> Result<Option<&'static str>, StoreError> {
+    let names = tree.subdirectories("implementation").await?;
+    Ok(find_build_output_in(names.iter().map(String::as_str)))
+}
+
+/// Resolve one file of the run's build output `build` (from
+/// [`find_build_output`]) for serving under `base_href`, the URL path the build is
+/// mounted at with a trailing slash (`/runs/<id>/build/`).
 ///
-/// `run_dir` is the run's output directory (`<out>/<id>`), which holds its
-/// `run-record.json` and its collected `implementation/` tree. `file` is the
-/// requested file name `<proof-id>.<ext>` — the proof id is matched against the
-/// record's `validation.proofs` to find the proof's recorded `dest`, so the
-/// agent's chosen location is honored and the extension is only cosmetic. The
-/// media is then read from `implementation/<dest>` and its content type derived
-/// from `file`'s extension. Returns `None` when the run record, the named proof,
-/// or the media file is missing or unreadable — the caller maps that to a 404.
-pub fn serve_proof_file(run_dir: &Path, file: &str) -> Option<ServedProofFile> {
+/// `rel_path` is the request path within the build. Empty and `.` segments are
+/// skipped and a `..` segment refused, so a request cannot leave the build. The
+/// build root, and a path naming a directory, serve its `index.html`. An HTML
+/// document is relocated under `base_href`; anything else streams verbatim.
+/// `Ok(None)` when the path names no file of the build.
+pub async fn serve_build_file(
+    tree: &RunTree,
+    build: &str,
+    rel_path: &str,
+    base_href: &str,
+) -> Result<Option<Served>, StoreError> {
+    let Some(rel) = normalize_build_path(rel_path) else {
+        return Ok(None);
+    };
+    let root = format!("implementation/{build}");
+    let candidates = if rel.is_empty() {
+        vec!["index.html".to_string()]
+    } else {
+        vec![rel.clone(), format!("{rel}/index.html")]
+    };
+    for candidate in candidates {
+        let Some(object) = tree.get(&format!("{root}/{candidate}")).await? else {
+            continue;
+        };
+        let content_type = content_type_for(&candidate);
+        if !content_type.starts_with("text/html") {
+            return Ok(Some(Served::object(
+                object,
+                ContentLabels::plain(content_type),
+            )));
+        }
+        let length = object.properties.content_length;
+        if length > MAX_WHOLE_READ_BYTES {
+            return Err(StoreError::TooLargeToRead(candidate));
+        }
+        let bytes = crate::object::collect_body(object.body)
+            .await
+            .map_err(StoreError::Body)?;
+        let rewritten = rewrite_html_base(&bytes, base_href);
+        return Ok(Some(Served {
+            content_type,
+            content_encoding: None,
+            content_length: Some(rewritten.len() as u64),
+            body: body_from_bytes(rewritten),
+        }));
+    }
+    Ok(None)
+}
+
+/// The run's record, `None` when the tree holds none or it does not parse.
+async fn run_record(tree: &RunTree) -> Result<Option<RunRecord>, StoreError> {
+    Ok(tree
+        .read("run-record.json")
+        .await?
+        .and_then(|bytes| serde_json::from_slice(&bytes).ok()))
+}
+
+/// Read `implementation/<rel>` from the tree.
+async fn implementation_file(
+    tree: &RunTree,
+    rel: &str,
+) -> Result<Option<ObjectStream>, StoreError> {
+    tree.get(&format!("implementation/{rel}")).await
+}
+
+/// Resolve one proof-of-implementation media file of a produced run, for serving
+/// to a reviewer before the run is published.
+///
+/// `file` is the requested file name `<proof-id>.<ext>` — the proof id is matched
+/// against the record's `validation.proofs` to find the proof's recorded `dest`, so
+/// the agent's chosen location is honored and the extension is only cosmetic. The
+/// media is then read from `implementation/<dest>` and labelled from the dest's
+/// name (see [`proof_labelled_name`]). `Ok(None)` when the run record, the named
+/// proof, or the media file is missing — the caller maps that to a 404.
+pub async fn serve_proof_file(tree: &RunTree, file: &str) -> Result<Option<Served>, StoreError> {
     // The request names the file `<proof-id>.<ext>`; recover the proof id.
     let proof_id = file.rsplit_once('.').map(|(stem, _)| stem).unwrap_or(file);
 
-    let record_bytes = std::fs::read(run_dir.join("run-record.json")).ok()?;
-    let record: RunRecord = serde_json::from_slice(&record_bytes).ok()?;
-    let proof = record.validation.proofs.iter().find(|p| p.id == proof_id)?;
-
-    let body = std::fs::read(run_dir.join("implementation").join(&proof.dest)).ok()?;
+    let Some(record) = run_record(tree).await? else {
+        return Ok(None);
+    };
+    let Some(proof) = record.validation.proofs.iter().find(|p| p.id == proof_id) else {
+        return Ok(None);
+    };
+    let Some(object) = implementation_file(tree, &proof.dest).await? else {
+        return Ok(None);
+    };
     let labels = proof_labels(proof_labelled_name(&proof.dest, file));
-    Some(ServedProofFile {
-        content_type: labels.content_type,
-        content_encoding: labels.content_encoding,
-        body,
-    })
-}
-
-/// A synthesized validation media file resolved from a run, ready to write to an
-/// HTTP or IPC response.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ServedValidationFile {
-    /// The `Content-Type` to send, derived from the file name.
-    pub content_type: &'static str,
-    /// The `Content-Encoding` to send, `None` unless the bytes are a framed
-    /// document (see [`content_labels`]).
-    pub content_encoding: Option<&'static str>,
-    /// The media bytes, served verbatim.
-    pub body: Vec<u8>,
+    Ok(Some(Served::object(object, labels)))
 }
 
 /// The host namespace directory produced trees carried before it was renamed to
 /// `.vendor`. Runs collected under the old name are immutable history, so every
 /// read-back path keeps resolving it.
-const LEGACY_VENDOR_DIR: &str = ".tcab";
+pub(crate) const LEGACY_VENDOR_DIR: &str = ".tcab";
 
-/// Resolve and read one synthesized validation media file from a produced run's
-/// output directory, for serving to a reviewer the same way [`serve_proof_file`]
-/// serves proof media.
+/// Resolve one synthesized validation media file of a produced run, for serving to
+/// a reviewer the same way [`serve_proof_file`] serves proof media.
 ///
-/// `run_dir` is the run's output directory (`<out>/<id>`), holding its
-/// `run-record.json` and its collected `implementation/` tree. `file` is the flat,
+/// `file` is the flat,
 /// addressable media name a debug script's output is stored under —
 /// `<item>__<output>.<ext>` for the model's build, `<item>__<output>.baseline.<ext>`
 /// for the reference implementation (see `test_cabinet_contracts::layout::validation_media_name`).
 /// The bytes live in the collected tree under `.vendor/validation/`, so this reads
-/// straight from `implementation/.vendor/validation/<file>`. Returns `None` when the
+/// straight from `implementation/.vendor/validation/<file>`. `Ok(None)` when the
 /// file is missing or the name would escape the directory — the caller maps that to
 /// a 404.
 ///
@@ -126,91 +221,61 @@ const LEGACY_VENDOR_DIR: &str = ".tcab";
 /// Trees collected before the host namespace was renamed carry the same media under
 /// `.tcab/validation/`. Those runs are immutable and are still served, so a miss in
 /// the current directory falls back to the legacy one rather than 404ing history.
-pub fn serve_validation_file(run_dir: &Path, file: &str) -> Option<ServedValidationFile> {
+pub async fn serve_validation_file(
+    tree: &RunTree,
+    file: &str,
+) -> Result<Option<Served>, StoreError> {
     // The name is a single flat segment; reject any path separator or traversal so a
     // request can only ever name a file directly inside the validation media dir.
-    if file.is_empty() || file.contains('/') || file.contains('\\') || file.contains("..") {
-        return None;
+    if !is_flat_name(file) {
+        return Ok(None);
     }
-    let implementation = run_dir.join("implementation");
-    let body = [".vendor", LEGACY_VENDOR_DIR].into_iter().find_map(|dir| {
-        std::fs::read(implementation.join(dir).join("validation").join(file)).ok()
-    })?;
-    let labels = proof_labels(file);
-    Some(ServedValidationFile {
-        content_type: labels.content_type,
-        content_encoding: labels.content_encoding,
-        body,
-    })
+    for dir in [".vendor", LEGACY_VENDOR_DIR] {
+        if let Some(object) = implementation_file(tree, &format!("{dir}/validation/{file}")).await?
+        {
+            return Ok(Some(Served::object(object, proof_labels(file))));
+        }
+    }
+    Ok(None)
 }
 
-/// A showcase file resolved from a run, ready to write to an HTTP or IPC
-/// response.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ServedShowcaseFile {
-    /// The `Content-Type` to send, derived from the file name.
-    pub content_type: &'static str,
-    /// The `Content-Encoding` to send, `None` unless the bytes are a framed
-    /// document (see [`content_labels`]).
-    pub content_encoding: Option<&'static str>,
-    /// The media bytes, served verbatim.
-    pub body: Vec<u8>,
+/// Whether `file` is one flat file name: non-empty, with no path separator and no
+/// `..`.
+pub(crate) fn is_flat_name(file: &str) -> bool {
+    !(file.is_empty() || file.contains('/') || file.contains('\\') || file.contains(".."))
 }
 
-/// Resolve and read one of a run's [showcase](test_cabinet_contracts::RunShowcase) files from a
-/// produced run's output directory, for serving to a reviewer the same way
-/// [`serve_validation_file`] serves validation media.
+/// Resolve one of a run's [showcase](test_cabinet_contracts::RunShowcase) files, for
+/// serving to a reviewer the same way [`serve_validation_file`] serves validation
+/// media.
 ///
-/// `run_dir` is the run's output directory (`<out>/<id>`), holding its
-/// `run-record.json` and its collected `implementation/` tree. `file` is the plain
+/// `file` is the plain
 /// file name a showcase entry (or an image the description references) carries —
 /// the showcase directory is a flat namespace by construction — so this reads
 /// straight from `implementation/showcase/<file>`. `showcase.toml` is refused so
 /// this route exposes exactly the namespace the backend store mirror holds (the
-/// manifest is capture-side input, already folded into the record). Returns `None`
+/// manifest is capture-side input, already folded into the record). `Ok(None)`
 /// when the file is missing or the name would escape the directory — the caller
 /// maps that to a 404.
 ///
 /// A `.json.gz` replay is labelled as the JSON it is with the gzip declared as the
 /// body's framing (exactly as validation replays are), so a browser inflates it
 /// transparently before the player sees it.
-pub fn serve_showcase_file(run_dir: &Path, file: &str) -> Option<ServedShowcaseFile> {
+pub async fn serve_showcase_file(tree: &RunTree, file: &str) -> Result<Option<Served>, StoreError> {
     // The name is a single flat segment; reject any path separator or traversal so a
     // request can only ever name a file directly inside the showcase dir.
-    if file.is_empty() || file.contains('/') || file.contains('\\') || file.contains("..") {
-        return None;
+    if !is_flat_name(file) || file == "showcase.toml" {
+        return Ok(None);
     }
-    if file == "showcase.toml" {
-        return None;
-    }
-    let body = std::fs::read(run_dir.join("implementation").join("showcase").join(file)).ok()?;
-    let labels = showcase_labels(file);
-    Some(ServedShowcaseFile {
-        content_type: labels.content_type,
-        content_encoding: labels.content_encoding,
-        body,
-    })
+    Ok(implementation_file(tree, &format!("showcase/{file}"))
+        .await?
+        .map(|object| Served::object(object, showcase_labels(file))))
 }
 
-/// An asset-generation media file resolved from a run, ready to write to an HTTP
-/// or IPC response.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ServedAssetFile {
-    /// The `Content-Type` to send, derived from the file name.
-    pub content_type: &'static str,
-    /// The `Content-Encoding` to send, `None` unless the bytes are a framed
-    /// document (see [`content_labels`]).
-    pub content_encoding: Option<&'static str>,
-    /// The media bytes, served verbatim.
-    pub body: Vec<u8>,
-}
-
-/// Resolve and read one asset-generation artifact from a produced run's output
-/// directory, for serving to a reviewer (or the gallery) the same way
-/// [`serve_proof_file`] serves proof media.
+/// Resolve one asset-generation artifact of a produced run, for serving to a
+/// reviewer the same way [`serve_proof_file`] serves proof media.
 ///
-/// `run_dir` is the run's output directory (`<out>/<id>`), holding its
-/// `run-record.json` and its collected `implementation/` tree. `file` is a
+/// `file` is a
 /// logical name with an extension whose kind selects which recorded path in the
 /// run's `validation.asset` frame to read from `implementation/`:
 ///
@@ -227,19 +292,30 @@ pub struct ServedAssetFile {
 /// The flat `<kind>-<index>` spelling keeps each artifact a single path segment so
 /// it routes through the one-segment `/asset/{file}` endpoints unchanged.
 ///
-/// Returns `None` when the run record, its asset result, the named frame, the
+/// `Ok(None)` when the run record, its asset result, the named frame, the
 /// artifact, or the file is missing — the caller maps that to a 404.
-pub fn serve_asset_file(run_dir: &Path, file: &str) -> Option<ServedAssetFile> {
-    let (kind, frame) = parse_asset_request(file)?;
+pub async fn serve_asset_file(tree: &RunTree, file: &str) -> Result<Option<Served>, StoreError> {
+    let Some(record) = run_record(tree).await? else {
+        return Ok(None);
+    };
+    let Some(rel) = asset_path(&record, file) else {
+        return Ok(None);
+    };
+    Ok(implementation_file(tree, rel)
+        .await?
+        .map(|object| Served::object(object, asset_labels(file))))
+}
 
-    let record_bytes = std::fs::read(run_dir.join("run-record.json")).ok()?;
-    let record: RunRecord = serde_json::from_slice(&record_bytes).ok()?;
+/// The path within `implementation/` the asset request `file` names in `record`,
+/// `None` when the record names none.
+pub(crate) fn asset_path<'r>(record: &'r RunRecord, file: &str) -> Option<&'r str> {
+    let (kind, frame) = parse_asset_request(file)?;
 
     // The replay of an adversarial run is served as an ordinary run asset too: the
     // browser replay player fetches `replay.json` over the same `/asset/{file}`
     // path the asset-gen media use, so the asset-media plumbing stays
     // test-type-agnostic.
-    let rel: &str = if let Some(asset) = record.validation.asset.as_ref() {
+    let rel: &'r str = if let Some(asset) = record.validation.asset.as_ref() {
         // A frame index selects that frame for a sheet; its absence selects the
         // one frame of a single sprite.
         let frame_result = match frame {
@@ -345,13 +421,7 @@ pub fn serve_asset_file(run_dir: &Path, file: &str) -> Option<ServedAssetFile> {
         }
     };
 
-    let body = std::fs::read(run_dir.join("implementation").join(rel)).ok()?;
-    let labels = asset_labels(file);
-    Some(ServedAssetFile {
-        content_type: labels.content_type,
-        content_encoding: labels.content_encoding,
-        body,
-    })
+    Some(rel)
 }
 
 /// Parse an asset request into its kind and optional frame index: `regenerated.png`

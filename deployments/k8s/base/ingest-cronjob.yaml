@@ -3,7 +3,7 @@
 # is a refresh, not a per-restart step. Schedule to taste.
 #
 # This example clones into an emptyDir and posts to the backend over the cluster
-# network. If your backend serves its checkout from the PVC, mount that PVC here
+# network with the backend's shared service token, which the ingest route takes. If your backend serves its checkout from the PVC, mount that PVC here
 # (ReadWriteOnce means the backend pod and this job must land on the same node, or
 # use a ReadWriteMany class) instead of the emptyDir.
 apiVersion: batch/v1
@@ -37,11 +37,18 @@ spec:
                   # Tell the backend to re-ingest. force:true is required after a
                   # test-case edit (the def store is immutable per version).
                   curl -fsS -X POST "$TCAB_BACKEND_URL/ingest" \
+                    -H "authorization: Bearer $TCAB_BACKEND_SERVICE_TOKEN" \
                     -H 'content-type: application/json' \
                     -d '{"force": true}'
               env:
                 - name: TCAB_BACKEND_URL
                   value: "http://tcab-backend:8787"
+                # The backend's shared service token, which POST /ingest takes.
+                - name: TCAB_BACKEND_SERVICE_TOKEN
+                  valueFrom:
+                    secretKeyRef:
+                      name: tcab-backend-secrets
+                      key: TCAB_BACKEND_SERVICE_TOKEN
               volumeMounts:
                 - name: work
                   mountPath: /work

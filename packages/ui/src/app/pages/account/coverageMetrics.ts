@@ -7,7 +7,6 @@ import { useEffect, useMemo, useState } from "react";
 import type { RatingCounts } from "@clockwyrks/ui";
 import { RATINGS, type Rating } from "../../data/ratings";
 import { countsAsModelResult } from "../../data/runState";
-import { useAuth } from "../../../client/auth";
 import { useBackend } from "../../../client/context";
 import { comboLabel } from "./comboLabels";
 
@@ -184,7 +183,6 @@ export function useCoverageRunMetrics(
   testCaseName: (slug: string) => string,
 ): CoverageRunMetricsState {
   const { client: backend } = useBackend();
-  const { token } = useAuth();
   const [summaries, setSummaries] = useState<RunSummary[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -197,7 +195,7 @@ export function useCoverageRunMetrics(
     : true;
 
   useEffect(() => {
-    if (empty || !backend?.getCoveragePlanRuns || !token) {
+    if (empty || !backend?.getCoveragePlanRuns) {
       setSummaries(null);
       setLoading(false);
       return;
@@ -206,7 +204,7 @@ export function useCoverageRunMetrics(
     setLoading(true);
     setError(null);
     backend
-      .getCoveragePlanRuns(planId, token)
+      .getCoveragePlanRuns(planId)
       .then((result) => {
         if (!active) return;
         setSummaries(result.runs);
@@ -222,7 +220,7 @@ export function useCoverageRunMetrics(
       active = false;
     };
     // `scope` stands for the plan's runs: a fetch is due exactly when it changes.
-  }, [backend, token, planId, scope, empty]);
+  }, [backend, planId, scope, empty]);
 
   const metrics = useMemo(
     () =>

@@ -9,9 +9,8 @@ import type {
 // `tcab-arena` service, which executes the CPU-bound wasm off the control-plane
 // backend. The three READ methods — list published tournaments, read one, and the
 // per-match replay URL — stay on the backend, which owns that persisted data. The
-// backend reports the arena's base URL at `GET /config` (see `fetchArenaUrl`); when
-// no arena service is configured (`arenaUrl` null) the gallery degrades the
-// adversarial run UI.
+// arena is served at `/arena` of the console's own origin (`ARENA_PATH`); a host
+// that passes no arena (`arenaUrl` null) degrades the adversarial run UI.
 import type { ArenaApi, ArenaWorkerOption } from "../app/data/galleryContext";
 import { getJson, joinUrl, postJson } from "./http";
 
@@ -63,7 +62,7 @@ export function createHttpArena(
   const requireArena = (): string => {
     if (!arenaUrl) {
       throw new Error(
-        "arena execution not configured (the backend reported no arenaUrl)",
+        "arena execution is not available on this host (no arena URL)",
       );
     }
     return arenaUrl;
