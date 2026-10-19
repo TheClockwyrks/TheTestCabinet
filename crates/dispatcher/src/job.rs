@@ -105,6 +105,11 @@ impl JobKind {
 /// The name prefix of every publish `Job` (see [`publish_job_name`]).
 pub const PUBLISH_JOB_PREFIX: &str = "tcab-publisher-";
 
+/// The `activeDeadlineSeconds` of every publisher `Job`: 45 minutes. Kubernetes ends
+/// a publisher still running at that point, so a hung publisher stops well inside
+/// the hour after which the backend records a publish job with no result failed.
+pub const PUBLISH_ACTIVE_DEADLINE_SECONDS: i64 = 45 * 60;
+
 /// The `app.kubernetes.io/managed-by` value the **driver** stamps on the sandbox
 /// pods it creates, as distinct from [`MANAGED_BY`] (which the dispatcher stamps on
 /// its own `Job`s). The dispatcher never creates a sandbox pod, but it does *reap*
@@ -324,7 +329,9 @@ pub fn build_driver_job(claim: &ClaimedJob, config: &Config) -> Result<Job, serd
 /// which can reach the API server for nothing it is allowed to mutate). It does
 /// share the run path's ownership/job-id labels, `backoffLimit: 0`, and
 /// `ttlSecondsAfterFinished`, so the dispatcher's reconcile/cleanup covers it too;
-/// its [`JobKind::Publish`] label is what keeps it out of the run lane's count.
+/// its [`JobKind::Publish`] label is what keeps it out of the run lane's count. Unlike
+/// a driver `Job` it carries an `activeDeadlineSeconds` of
+/// [`PUBLISH_ACTIVE_DEADLINE_SECONDS`], which ends a publisher that has hung.
 pub fn build_publish_job(claim: &PublishClaim, config: &Config) -> Job {
     // The publisher image is only ever called here, and the controller never claims
     // a publish job unless `publishing_enabled()` (i.e. an image is set), so this
@@ -375,8 +382,8 @@ pub fn build_publish_job(claim: &PublishClaim, config: &Config) -> Job {
 
     let pod_spec = PodSpec {
         containers: vec![container],
-        // A publisher that fails reports its own failure (or surfaces as a stuck
-        // `dispatched` publish job); never restart it in place.
+        // A publisher that fails reports its own failure (or is reported lost by the
+        // dispatcher once its lease lapses); never restart it in place.
         restart_policy: Some("Never".to_string()),
         // No `service_account_name`: the publisher needs no Kubernetes API access, so
         // it runs under the namespace default and must NOT get the driver's
@@ -390,6 +397,9 @@ pub fn build_publish_job(claim: &PublishClaim, config: &Config) -> Job {
         // Do not retry a failed publish Job: the publisher owns reporting its own
         // failure, and a retry could double-deploy.
         backoff_limit: Some(0),
+        // End a hung publisher: Kubernetes stops the Job once it has been active this
+        // long, and the dispatcher then reports the publish job lost.
+        active_deadline_seconds: Some(PUBLISH_ACTIVE_DEADLINE_SECONDS),
         ttl_seconds_after_finished: Some(config.job_ttl_seconds),
         template: PodTemplateSpec {
             metadata: Some(ObjectMeta {

@@ -395,6 +395,26 @@ fn sets_ttl_after_finished() {
     );
 }
 
+/// A publisher `Job` is ended by Kubernetes after 45 minutes, so a hung publisher
+/// stops inside the backend's one-hour bound.
+#[test]
+fn publish_job_carries_the_45_minute_active_deadline() {
+    let job = build_publish_job(&publish_claim(), &config());
+    assert_eq!(PUBLISH_ACTIVE_DEADLINE_SECONDS, 2700);
+    assert_eq!(
+        job.spec.as_ref().unwrap().active_deadline_seconds,
+        Some(2700),
+    );
+}
+
+/// The publisher's deadline is its own: a driver `Job` is bounded by the driver's
+/// finishing deadlines, not by an `activeDeadlineSeconds`.
+#[test]
+fn driver_job_carries_no_active_deadline() {
+    let job = build_driver_job(&claim(), &config()).unwrap();
+    assert_eq!(job.spec.as_ref().unwrap().active_deadline_seconds, None);
+}
+
 #[test]
 fn carries_ownership_and_job_id_labels() {
     let claim = claim();

@@ -260,3 +260,70 @@ fn sandbox_selector_cannot_match_a_driver_job_pod() {
         crate::job::MANAGED_BY
     )));
 }
+
+#[test]
+fn a_publish_job_is_named_a_publisher_and_any_other_a_driver() {
+    assert_eq!(job_role("tcab-publisher-pub-1"), "publisher");
+    assert_eq!(job_role("tcab-driver-job-9"), "driver");
+}
+
+fn failed_job(reason: Option<&str>, deadline: Option<i64>, failed_pods: Option<i32>) -> Job {
+    Job {
+        spec: Some(k8s_openapi::api::batch::v1::JobSpec {
+            active_deadline_seconds: deadline,
+            ..Default::default()
+        }),
+        status: Some(JobStatus {
+            conditions: Some(vec![JobCondition {
+                reason: reason.map(str::to_string),
+                ..condition("Failed", "True")
+            }]),
+            failed: failed_pods,
+            ..Default::default()
+        }),
+        ..Default::default()
+    }
+}
+
+#[test]
+fn a_job_stopped_at_its_deadline_says_so_with_the_deadline() {
+    let job = failed_job(Some("DeadlineExceeded"), Some(2700), Some(1));
+    assert_eq!(
+        deadline_detail(&job, "tcab-publisher-p1", "publisher").as_deref(),
+        Some(
+            "publisher Job `tcab-publisher-p1` ran past its active deadline of 2700 seconds \
+             and was stopped by Kubernetes"
+        )
+    );
+}
+
+#[test]
+fn a_job_that_failed_for_another_reason_has_no_deadline_detail() {
+    let job = failed_job(Some("BackoffLimitExceeded"), Some(2700), Some(1));
+    assert_eq!(
+        deadline_detail(&job, "tcab-publisher-p1", "publisher"),
+        None
+    );
+    assert_eq!(
+        deadline_detail(&Job::default(), "tcab-driver-j1", "driver"),
+        None
+    );
+}
+
+#[test]
+fn a_vanished_pod_names_the_role_and_whether_one_ran() {
+    let ran = failed_job(None, None, Some(1));
+    assert!(
+        vanished_pod_detail(Some(&ran), "tcab-publisher-p1", "publisher")
+            .starts_with("publisher Job `tcab-publisher-p1` ran a pod that no longer exists")
+    );
+    let never = failed_job(None, None, None);
+    assert_eq!(
+        vanished_pod_detail(Some(&never), "tcab-driver-j1", "driver"),
+        "driver Job `tcab-driver-j1` failed before its pod started"
+    );
+    assert_eq!(
+        vanished_pod_detail(None, "tcab-driver-j1", "driver"),
+        "driver Job `tcab-driver-j1` failed before its pod started"
+    );
+}
