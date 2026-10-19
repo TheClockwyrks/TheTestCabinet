@@ -65,6 +65,42 @@ impl ClientError {
     }
 }
 
+/// What the driver does when its first report, `starting`, fails.
+///
+/// The first report is the first call the driver makes with its per-job token, so
+/// it is where a driver learns that the backend no longer accepts that token: its
+/// job's claim [lease](https://docs.testcabinet.ai/components/dispatcher/overview/#claim-leases)
+/// lapsed while the job was still `dispatched`, the job returned to the queue with a
+/// fresh token, and another driver may already hold it. See
+/// [`first_report_failure`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FirstReportFailure {
+    /// The backend refused the report ([`ClientError::is_refused`]): the job is no
+    /// longer this driver's. The driver deletes the sandbox it holds and exits
+    /// successfully, so its `Job` completes rather than fails and nothing reaps or
+    /// reports against the job id the reclaimed run now carries.
+    Withdrawn,
+    /// The backend could not be reached or did not answer. The driver cannot stream
+    /// and exits non-zero.
+    Unreachable,
+}
+
+impl FirstReportFailure {
+    /// Whether the driver exits successfully on this failure.
+    pub fn exits_successfully(self) -> bool {
+        matches!(self, Self::Withdrawn)
+    }
+}
+
+/// Classify a failure of the driver's first report ([`JobClient::post_status_starting`]).
+pub fn first_report_failure(error: &ClientError) -> FirstReportFailure {
+    if error.is_refused() {
+        FirstReportFailure::Withdrawn
+    } else {
+        FirstReportFailure::Unreachable
+    }
+}
+
 /// What a terminal report says of the run tree's upload (`artifactsStored`,
 /// `storeFault`).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -362,3 +398,7 @@ impl JobClient {
 #[cfg(test)]
 #[path = "client.test.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "client.first_report.test.rs"]
+mod first_report_tests;

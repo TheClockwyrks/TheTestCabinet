@@ -9,7 +9,9 @@
 //! that terminal status landed or was refused. A `SIGTERM` is handled as
 //! [`sigterm`](test_cabinet_driver::sigterm) sets: a run holding its record keeps
 //! finishing, one that holds none is reported `failed` as `infrastructure`, and
-//! either way the sandbox is deleted first. There is no server and no flags;
+//! either way the sandbox is deleted first. A first report the backend refuses
+//! means the job went back to the queue: the driver exits successfully without
+//! running anything (see [`first_report_failure`]). There is no server and no flags;
 //! everything arrives through `TCAB_*` env (see
 //! [`config`](test_cabinet_driver::config)).
 
@@ -24,7 +26,7 @@ use time::OffsetDateTime;
 use test_cabinet_driver::cancel::{
     CancelDisposition, CancelRace, cancel_disposition, race_cancellation,
 };
-use test_cabinet_driver::client::JobClient;
+use test_cabinet_driver::client::{JobClient, first_report_failure};
 use test_cabinet_driver::config::{Config, DriverRuntime};
 use test_cabinet_driver::finish::{
     FinishTarget, Mirrors, REPORT_ATTEMPT_TIMEOUT, RunOutcome, finish,
@@ -206,7 +208,26 @@ async fn run_job(
     // `running` from inside `drive` once setup finishes and the harness session is
     // about to begin. A failure to even report this is terminal: the driver cannot
     // stream, so there is nothing useful it can still do.
+    //
+    // A *refusal* is the backend saying the job is no longer this driver's: its claim
+    // lease lapsed while it was still `dispatched`, so it went back to the queue with
+    // a fresh token, and a reclaimed run of the same job id may already be driving.
+    // The driver deletes the sandbox it holds and exits successfully, so its `Job`
+    // completes: a failed `Job` would have the dispatcher reap sandboxes by job-id
+    // label and report a death, both against the reclaimed run. The driver holds no
+    // sandbox yet — `drive` starts it after this report — so there is nothing of its
+    // own to delete, and it must not delete by job-id label, which would take the
+    // reclaimed run's sandbox.
     if let Err(err) = client.post_status_starting().await {
+        if first_report_failure(&err).exits_successfully() {
+            tracing::warn!(
+                job_id = %config.job_id,
+                error = %err,
+                "the backend refused this job's token: the job returned to the queue \
+                 and is no longer this driver's; exiting without running it"
+            );
+            return ExitCode::SUCCESS;
+        }
         eprintln!("could not report `starting` to the backend: {err}");
         return ExitCode::FAILURE;
     }
