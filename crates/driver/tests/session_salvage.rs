@@ -38,7 +38,7 @@ use test_cabinet_driver::{
 };
 
 /// A copy of the frozen carom v2.1.0 under `testdata/definitions/test-cases/`, so the
-/// run is seeded from a real case exactly as a `tcab run` would be, without depending on
+/// run is seeded from a real case exactly as a launched run would be, without depending on
 /// where the repository's catalog lives.
 fn catalog_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("testdata/definitions/test-cases")

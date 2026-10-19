@@ -1107,7 +1107,7 @@ carrying the staged [audio store](#the-audio-store) at `/opt/tcab-audio`. It is
 what puts every published pack on a machine that has no repository checkout and no
 R2 credential: the driver image resolves it through an `AUDIO_STORE_IMAGE` build
 arg and `COPY --from`s the tree out, and `scripts/fetch-audio-store.sh` pulls the
-same published image for a local `tcab run`. Pulling it from `testcabinet.azurecr.io`
+same published image for a local `tcab validate`. Pulling it from `testcabinet.azurecr.io`
 needs `az acr login --name testcabinet` and `AcrPull`.
 
 It is the source for a machine that _cannot_ stage, not for one that can. A build

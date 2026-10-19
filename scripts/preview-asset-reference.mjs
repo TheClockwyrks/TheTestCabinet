@@ -203,7 +203,7 @@ function findCaseVersion(slug, versionArg) {
   return versionDir;
 }
 
-/** The manifest's first listed variant — the default one, as `tcab run` uses. */
+/** The manifest's first listed variant — the default one, as a run uses. */
 function defaultVariant(versionDir) {
   const manifest = toml.parse(
     fs.readFileSync(path.join(versionDir, "test-case.toml"), "utf8"),

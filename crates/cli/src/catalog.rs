@@ -1,7 +1,7 @@
 //! Where the local commands find the definitions they read.
 //!
 //! `tcab seed`, `tcab prompt`, `tcab validate`, `tcab capture-baselines`,
-//! `tcab publish-reference` and `tcab test-case-groups` all read a checkout rather
+//! `tcab publish-reference` and `tcab publish-asset-reference` all read a checkout rather
 //! than the backend, and they all have to answer the same question first: which
 //! directory is the catalog. That answer is stated once here.
 //!

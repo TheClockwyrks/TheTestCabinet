@@ -185,24 +185,6 @@ impl BackendClient for StubBackend {
     async fn prompt_template(&self, _slug: &str, _version: &str) -> Result<String> {
         Ok("Build {{variant.name}} at {{workspace}}".to_string())
     }
-    async fn submit_review(&self, _run_id: &str, _review: &crate::review::Writeup) -> Result<()> {
-        Ok(())
-    }
-    async fn publish_run(&self, run_id: &str) -> Result<PublishAck> {
-        Ok(PublishAck {
-            publish_job_id: format!("pj-{run_id}"),
-            live_url: format!("/publish-jobs/pj-{run_id}/live"),
-        })
-    }
-    async fn list_runs(&self, _before: Option<&str>, _limit: Option<usize>) -> Result<RunPage> {
-        Ok(RunPage {
-            runs: vec![],
-            next_before: None,
-        })
-    }
-    async fn read_run(&self, _id: &str) -> Result<PublishedRun> {
-        unimplemented!("not exercised by materialize tests")
-    }
 }
 
 #[tokio::test]
@@ -330,18 +312,6 @@ impl BackendClient for AdversarialStubBackend {
     }
     async fn prompt_template(&self, slug: &str, version: &str) -> Result<String> {
         StubBackend.prompt_template(slug, version).await
-    }
-    async fn submit_review(&self, run_id: &str, review: &crate::review::Writeup) -> Result<()> {
-        StubBackend.submit_review(run_id, review).await
-    }
-    async fn publish_run(&self, run_id: &str) -> Result<PublishAck> {
-        StubBackend.publish_run(run_id).await
-    }
-    async fn list_runs(&self, before: Option<&str>, limit: Option<usize>) -> Result<RunPage> {
-        StubBackend.list_runs(before, limit).await
-    }
-    async fn read_run(&self, id: &str) -> Result<PublishedRun> {
-        StubBackend.read_run(id).await
     }
 }
 
@@ -512,18 +482,6 @@ impl BackendClient for SuiteStubBackend {
             fixture_suites_root().join("carom/versions/v1.0.0/prompts/end-to-end.hbs"),
         )
         .expect("the fixture prompt template"))
-    }
-    async fn submit_review(&self, run_id: &str, review: &crate::review::Writeup) -> Result<()> {
-        StubBackend.submit_review(run_id, review).await
-    }
-    async fn publish_run(&self, run_id: &str) -> Result<PublishAck> {
-        StubBackend.publish_run(run_id).await
-    }
-    async fn list_runs(&self, before: Option<&str>, limit: Option<usize>) -> Result<RunPage> {
-        StubBackend.list_runs(before, limit).await
-    }
-    async fn read_run(&self, id: &str) -> Result<PublishedRun> {
-        StubBackend.read_run(id).await
     }
 }
 

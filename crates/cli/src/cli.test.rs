@@ -15,12 +15,58 @@ fn cli_definition_is_valid() {
 }
 
 #[test]
-fn run_help_parses() {
-    // `tcab run --help` is a parse "error" of the help kind; clap signals it via
+fn a_subcommands_help_parses() {
+    // `tcab validate --help` is a parse "error" of the help kind; clap signals it via
     // `ErrorKind::DisplayHelp` rather than a real failure.
-    let err = Cli::try_parse_from(["tcab", "run", "--help"])
+    let err = Cli::try_parse_from(["tcab", "validate", "--help"])
         .expect_err("--help should short-circuit parsing");
     assert_eq!(err.kind(), clap::error::ErrorKind::DisplayHelp);
+}
+
+/// The commands the CLI overview documents, in the order `tcab --help` lists them.
+const DOCUMENTED_COMMANDS: [&str; 8] = [
+    "validate",
+    "seed",
+    "prompt",
+    "publish-reference",
+    "publish-asset-reference",
+    "capture-baselines",
+    "ingest",
+    "analyze",
+];
+
+#[test]
+fn the_cli_declares_exactly_the_documented_commands() {
+    let command = Cli::command();
+    let declared: Vec<&str> = command
+        .get_subcommands()
+        .map(|sub| sub.get_name())
+        .collect();
+    assert_eq!(declared, DOCUMENTED_COMMANDS);
+}
+
+#[test]
+fn the_run_side_commands_are_gone() {
+    // Launching, reviewing and publishing a run, and listing the harnesses,
+    // orchestrators, engines and groups a run is launched with, all happen in the
+    // console; the CLI launches nothing.
+    for command in [
+        "run",
+        "review",
+        "publish",
+        "harnesses",
+        "orchestrators",
+        "engines",
+        "test-case-groups",
+    ] {
+        let err =
+            Cli::try_parse_from(["tcab", command]).expect_err("a removed command should not parse");
+        assert_eq!(
+            err.kind(),
+            clap::error::ErrorKind::InvalidSubcommand,
+            "`tcab {command}` should be an unknown subcommand"
+        );
+    }
 }
 
 #[test]
@@ -28,179 +74,6 @@ fn top_level_help_parses() {
     let err =
         Cli::try_parse_from(["tcab", "--help"]).expect_err("--help should short-circuit parsing");
     assert_eq!(err.kind(), clap::error::ErrorKind::DisplayHelp);
-}
-
-#[test]
-fn run_parses_required_arguments() {
-    let cli = Cli::try_parse_from([
-        "tcab",
-        "run",
-        "--test-case",
-        "pong",
-        "--version",
-        "1.0.0",
-        "--variant",
-        "base",
-        "--harness",
-        "claude",
-        "--model",
-        "some-model-id",
-    ])
-    .expect("a fully specified run invocation should parse");
-
-    match cli.command {
-        Command::Run(args) => {
-            assert_eq!(args.test_case, "pong");
-            assert_eq!(args.version, "1.0.0");
-            assert_eq!(args.variant, "base");
-            assert_eq!(args.harness, HarnessArg::Claude);
-            assert_eq!(args.model, "some-model-id");
-            assert!(args.out_dir.is_none());
-            // Omitting --max-runtime leaves the override unset, so the run uses
-            // the test case's own default cap.
-            assert!(args.max_runtime.is_none());
-            // Omitting --orchestrator defaults to the single-session one-shot
-            // orchestrator.
-            assert_eq!(args.orchestrator, "one-shot");
-            // Omitting --engine defaults to `none`: no runtime, which is what
-            // every run looked like before engines existed.
-            assert_eq!(args.engine, "none");
-            // Omitting --auth-mode keeps the backend's default auth behavior.
-            assert!(args.auth_mode.is_none());
-        }
-        other => panic!("expected a run command, got {other:?}"),
-    }
-}
-
-#[test]
-fn run_accepts_an_orchestrator_and_auth_mode_selection() {
-    let cli = Cli::try_parse_from([
-        "tcab",
-        "run",
-        "--test-case",
-        "pong",
-        "--version",
-        "1.0.0",
-        "--variant",
-        "base",
-        "--harness",
-        "claude",
-        "--model",
-        "some-model-id",
-        // Any slug parses here — the flag is free-form and resolution (built-in or
-        // external) happens later, so an unknown one is rejected by the catalog,
-        // not by the parser.
-        "--orchestrator",
-        "looper",
-        "--auth-mode",
-        "subscription",
-    ])
-    .expect("a run invocation with orchestrator and auth-mode selection should parse");
-
-    match cli.command {
-        Command::Run(args) => {
-            assert_eq!(args.orchestrator, "looper");
-            assert_eq!(args.auth_mode.as_deref(), Some("subscription"));
-        }
-        other => panic!("expected a run command, got {other:?}"),
-    }
-}
-
-#[test]
-fn run_accepts_an_engine_selection() {
-    let cli = Cli::try_parse_from([
-        "tcab",
-        "run",
-        "--test-case",
-        "carom",
-        "--version",
-        "3.0.0",
-        "--variant",
-        "base",
-        "--harness",
-        "claude",
-        "--model",
-        "some-model-id",
-        // Any slug parses here, exactly as `--orchestrator` does: the catalogue is
-        // consulted later (and the case's supported set later still), so an unknown
-        // engine is rejected by resolution rather than by the parser.
-        "--engine",
-        "simple-2d",
-    ])
-    .expect("a run invocation with an engine selection should parse");
-
-    match cli.command {
-        Command::Run(args) => assert_eq!(args.engine, "simple-2d"),
-        other => panic!("expected a run command, got {other:?}"),
-    }
-}
-
-#[test]
-fn run_accepts_a_max_runtime_override() {
-    let cli = Cli::try_parse_from([
-        "tcab",
-        "run",
-        "--test-case",
-        "pong",
-        "--version",
-        "1.0.0",
-        "--variant",
-        "base",
-        "--harness",
-        "claude",
-        "--model",
-        "some-model-id",
-        "--max-runtime",
-        "1.5",
-    ])
-    .expect("a run invocation with --max-runtime should parse");
-
-    match cli.command {
-        Command::Run(args) => assert_eq!(args.max_runtime, Some(1.5)),
-        other => panic!("expected a run command, got {other:?}"),
-    }
-}
-
-#[test]
-fn run_requires_a_harness() {
-    let err = Cli::try_parse_from([
-        "tcab",
-        "run",
-        "--test-case",
-        "pong",
-        "--version",
-        "1.0.0",
-        "--variant",
-        "base",
-        "--model",
-        "some-model-id",
-    ])
-    .expect_err("omitting --harness should be a parse error");
-    assert_eq!(err.kind(), clap::error::ErrorKind::MissingRequiredArgument);
-}
-
-#[test]
-fn run_defaults_the_variant_to_base() {
-    // A suite-defined test case declares no variants and carries exactly one
-    // implicit `base`, and every authored case declares a `base` of its own, so
-    // omitting the flag selects it rather than failing the parse.
-    let cli = Cli::try_parse_from([
-        "tcab",
-        "run",
-        "--test-case",
-        "pong",
-        "--version",
-        "1.0.0",
-        "--harness",
-        "claude",
-        "--model",
-        "some-model-id",
-    ])
-    .expect("omitting --variant parses");
-    match cli.command {
-        Command::Run(args) => assert_eq!(args.variant, "base"),
-        other => panic!("expected run, got {other:?}"),
-    }
 }
 
 #[test]
@@ -297,84 +170,6 @@ fn ingest_refuses_changed_with_force() {
 }
 
 #[test]
-fn run_rejects_unknown_harness() {
-    let err = Cli::try_parse_from([
-        "tcab",
-        "run",
-        "--test-case",
-        "pong",
-        "--version",
-        "1.0.0",
-        "--variant",
-        "base",
-        "--harness",
-        "not-a-harness",
-        "--model",
-        "some-model-id",
-    ])
-    .expect_err("an unknown harness value should be rejected");
-    assert_eq!(err.kind(), clap::error::ErrorKind::InvalidValue);
-}
-
-#[test]
-fn every_harness_slug_is_accepted() {
-    use test_cabinet_driver::run_record::HarnessSlug;
-
-    for slug in HarnessSlug::ALL {
-        let cli = Cli::try_parse_from([
-            "tcab",
-            "run",
-            "--test-case",
-            "pong",
-            "--version",
-            "1.0.0",
-            "--variant",
-            "base",
-            "--harness",
-            slug.as_str(),
-            "--model",
-            "m",
-        ])
-        .unwrap_or_else(|e| panic!("harness `{}` should parse: {e}", slug.as_str()));
-
-        match cli.command {
-            Command::Run(args) => {
-                let parsed: HarnessSlug = args.harness.into();
-                assert_eq!(parsed, slug);
-            }
-            other => panic!("expected a run command, got {other:?}"),
-        }
-    }
-}
-
-#[test]
-fn publish_accepts_a_batch_of_run_ids() {
-    let cli = Cli::try_parse_from(["tcab", "publish", "run-a", "run-b", "run-c"])
-        .expect("multiple run ids should parse for batch publishing");
-
-    match cli.command {
-        Command::Publish(args) => {
-            assert_eq!(args.run_ids.len(), 3);
-            assert!(!args.dry_run);
-        }
-        other => panic!("expected a publish command, got {other:?}"),
-    }
-}
-
-#[test]
-fn review_parses() {
-    let cli = Cli::try_parse_from(["tcab", "review", "run-a", "--writeup", "w.md"])
-        .expect("review parses");
-    match cli.command {
-        Command::Review(args) => {
-            assert_eq!(args.run_id, "run-a");
-            assert_eq!(args.writeup, Some(std::path::PathBuf::from("w.md")));
-        }
-        other => panic!("expected a review command, got {other:?}"),
-    }
-}
-
-#[test]
 fn the_account_commands_are_gone() {
     for command in ["login", "logout", "register"] {
         assert!(
@@ -382,13 +177,6 @@ fn the_account_commands_are_gone() {
             "`tcab {command}` still parses"
         );
     }
-}
-
-#[test]
-fn publish_requires_at_least_one_run_record() {
-    let err = Cli::try_parse_from(["tcab", "publish"])
-        .expect_err("publish with no run records should be a parse error");
-    assert_eq!(err.kind(), clap::error::ErrorKind::MissingRequiredArgument);
 }
 
 #[test]
@@ -413,8 +201,8 @@ fn validate_parses_required_arguments() {
             assert_eq!(args.test_case, "pong");
             assert_eq!(args.version, "1.0.0");
             assert_eq!(args.variant, "base");
-            // As on `tcab run`, omitting --engine validates the build as an
-            // engineless one.
+            // Omitting --engine validates the build as an engineless one, the
+            // same default a run takes.
             assert_eq!(args.engine, "none");
         }
         other => panic!("expected a validate command, got {other:?}"),
@@ -516,42 +304,9 @@ fn removed_catalog_subcommand_no_longer_parses() {
 }
 
 #[test]
-fn harnesses_parses_with_json_flag() {
-    let cli = Cli::try_parse_from(["tcab", "harnesses", "--json"])
-        .expect("the harnesses subcommand should parse");
-
-    match cli.command {
-        Command::Harnesses(args) => assert!(args.json),
-        other => panic!("expected a harnesses command, got {other:?}"),
-    }
-}
-
-#[test]
-fn orchestrators_parses_with_json_flag() {
-    let cli = Cli::try_parse_from(["tcab", "orchestrators", "--json"])
-        .expect("the orchestrators subcommand should parse");
-
-    match cli.command {
-        Command::Orchestrators(args) => assert!(args.json),
-        other => panic!("expected an orchestrators command, got {other:?}"),
-    }
-}
-
-#[test]
-fn engines_parses_with_json_flag() {
-    let cli = Cli::try_parse_from(["tcab", "engines", "--json"])
-        .expect("the engines subcommand should parse");
-
-    match cli.command {
-        Command::Engines(args) => assert!(args.json),
-        other => panic!("expected an engines command, got {other:?}"),
-    }
-}
-
-#[test]
 fn local_commands_accept_an_engine_selection() {
     // The three commands that reproduce a run's inputs locally take the same
-    // `--engine` as `tcab run`, because each of them renders or materializes
+    // `--engine` a run is launched with, because each of them renders or materializes
     // something the engine changes: the seeded tree, the prompt, and what the
     // build is validated against.
     let seed = Cli::try_parse_from([
@@ -912,4 +667,114 @@ fn an_environment_maps_to_its_origin_with_the_backend_under_api() {
         DeployEnv::Staging.backend_url(),
         "https://console.staging.testcabinet.ai/api"
     );
+}
+
+#[test]
+fn publish_asset_reference_parses_slug_only_and_defaults_version_and_selectors() {
+    let cli = Cli::try_parse_from([
+        "tcab",
+        "publish-asset-reference",
+        "--env",
+        "staging",
+        "sprite",
+    ])
+    .expect("a bare slug with --env parses");
+    match cli.command {
+        Command::PublishAssetReference(args) => {
+            assert_eq!(args.env, DeployEnv::Staging);
+            assert_eq!(args.slug, "sprite");
+            assert_eq!(args.version, None);
+            assert_eq!(args.variant, None);
+            assert!(!args.all_variants);
+        }
+        other => panic!("expected a publish-asset-reference command, got {other:?}"),
+    }
+}
+
+#[test]
+fn publish_asset_reference_accepts_a_positional_version_and_a_selector() {
+    let cli = Cli::try_parse_from([
+        "tcab",
+        "publish-asset-reference",
+        "--env",
+        "prod",
+        "sprite",
+        "v1.0.0",
+        "--variant",
+        "base",
+    ])
+    .expect("a version and --variant parse");
+    match cli.command {
+        Command::PublishAssetReference(args) => {
+            assert_eq!(args.env, DeployEnv::Prod);
+            assert_eq!(args.version.as_deref(), Some("v1.0.0"));
+            assert_eq!(args.variant.as_deref(), Some("base"));
+        }
+        other => panic!("expected a publish-asset-reference command, got {other:?}"),
+    }
+
+    let cli = Cli::try_parse_from([
+        "tcab",
+        "publish-asset-reference",
+        "--env",
+        "prod",
+        "sprite",
+        "--all-variants",
+    ])
+    .expect("--all-variants parses");
+    match cli.command {
+        Command::PublishAssetReference(args) => assert!(args.all_variants),
+        other => panic!("expected a publish-asset-reference command, got {other:?}"),
+    }
+}
+
+#[test]
+fn publish_asset_reference_rejects_variant_with_all_variants() {
+    let err = Cli::try_parse_from([
+        "tcab",
+        "publish-asset-reference",
+        "--env",
+        "prod",
+        "sprite",
+        "--variant",
+        "base",
+        "--all-variants",
+    ])
+    .expect_err("the two selectors are mutually exclusive");
+    assert_eq!(err.kind(), clap::error::ErrorKind::ArgumentConflict);
+}
+
+#[test]
+fn publish_asset_reference_requires_an_env_and_a_slug() {
+    let err = Cli::try_parse_from(["tcab", "publish-asset-reference", "sprite"])
+        .expect_err("--env is required");
+    assert_eq!(err.kind(), clap::error::ErrorKind::MissingRequiredArgument);
+    let err = Cli::try_parse_from(["tcab", "publish-asset-reference", "--env", "prod"])
+        .expect_err("the slug is required");
+    assert_eq!(err.kind(), clap::error::ErrorKind::MissingRequiredArgument);
+}
+
+#[test]
+fn publish_asset_reference_takes_only_its_documented_flags() {
+    // An asset reference is drawn, not built: there is no engine to pick, no baseline
+    // to capture and no plan to print.
+    for flag in ["--engine", "--skip-baselines", "--dry-run"] {
+        let mut argv = vec![
+            "tcab",
+            "publish-asset-reference",
+            "--env",
+            "prod",
+            "sprite",
+            flag,
+        ];
+        if flag == "--engine" {
+            argv.push("none");
+        }
+        let err = Cli::try_parse_from(argv).expect_err("an undocumented flag should not parse");
+        assert_eq!(
+            err.kind(),
+            clap::error::ErrorKind::UnknownArgument,
+            "`{flag}` should be unknown"
+        );
+    }
 }

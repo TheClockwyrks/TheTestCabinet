@@ -101,7 +101,8 @@ pub async fn execute(args: PublishReferenceArgs) -> Result<()> {
     // An asset-generation reference is a script that draws a sheet, not a static
     // site: it is regenerated on the spot and its frames are uploaded to the object
     // store the site already reads, with no Pages project, no served URL to read
-    // back, and no lockfile. That is a different enough shape to be its own path.
+    // back, and no lockfile. That is a different enough shape to be its own path,
+    // the one `tcab publish-asset-reference` takes.
     if test_case.test_type == TestType::AssetGeneration {
         println!(
             "tcab publish-reference: {}@{} -> object store ({} reference build(s))",
@@ -109,7 +110,13 @@ pub async fn execute(args: PublishReferenceArgs) -> Result<()> {
             test_case.version,
             targets.len(),
         );
-        return super::publish_asset_reference::execute(&test_case, &targets, &args).await;
+        return super::publish_asset_reference::publish(
+            &test_case,
+            &targets,
+            args.env,
+            args.dry_run,
+        )
+        .await;
     }
 
     // The required `--env` selects the Pages project; there is no default, so a

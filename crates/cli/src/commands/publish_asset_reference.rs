@@ -1,4 +1,7 @@
-//! The **asset-generation** half of `tcab publish-reference`.
+//! `tcab publish-asset-reference` — publish an **asset-generation** case's reference.
+//!
+//! This is also the path `tcab publish-reference` takes when the case it is pointed
+//! at is an asset-generation case, so either command publishes the same objects.
 //!
 //! An end-to-end or full-stack reference implementation is a static site: it is
 //! built with the case's `[build]` commands, deployed to Cloudflare Pages, and
@@ -34,28 +37,70 @@ use anyhow::{Context, Result, anyhow, bail};
 use reqwest::header::{CONTENT_TYPE, HeaderMap, HeaderValue, LOCATION};
 use test_cabinet_backend_client::AccessCredential;
 use test_cabinet_driver::{
-    SystemCommandRunner, TestCaseVersion, Variant,
+    SystemCommandRunner, TestCaseVersion, TestType, Variant,
     asset_reference::{
         ASSET_REFERENCE_SCRIPT, build_asset_reference, reference_actions_key, reference_image_key,
         reference_prefix,
     },
 };
 
-use super::capture_baselines::Target;
-use crate::cli::PublishReferenceArgs;
+use super::capture_baselines::{Target, resolve_version, select_targets};
+use crate::cli::{DeployEnv, PublishAssetReferenceArgs};
 use crate::config::{ACCESS_CLIENT_ID, ACCESS_CLIENT_SECRET, Credentials};
 
-/// Publish every targeted variant's asset reference to the object store.
+/// `tcab publish-asset-reference` — draw and upload the reference of an
+/// asset-generation case's targeted variant(s).
+///
+/// The case is resolved the way `tcab publish-reference` resolves it, at the
+/// requested version or its newest, from the local catalog. A case of any other
+/// test type is refused before anything is drawn: its reference is a static site,
+/// which `tcab publish-reference` builds and deploys.
+pub async fn execute(args: PublishAssetReferenceArgs) -> Result<()> {
+    let catalog = crate::catalog::catalog();
+    let version = resolve_version(&catalog, &args.slug, args.version.as_deref())?;
+    let test_case = catalog
+        .resolve(&args.slug, &version)
+        .with_context(|| format!("resolving {}@{}", args.slug, version))?;
+    require_asset_generation(&test_case.slug, &test_case.version, test_case.test_type)?;
+
+    // An asset reference is drawn once per variant, whatever engines the case
+    // supports, so no engine narrows the selection.
+    let targets = select_targets(&test_case, args.variant.as_deref(), None, args.all_variants)?;
+    println!(
+        "tcab publish-asset-reference: {}@{} -> object store ({} reference build(s))",
+        test_case.slug,
+        test_case.version,
+        targets.len(),
+    );
+    publish(&test_case, &targets, args.env, false).await
+}
+
+/// Refuse a case that is not an asset-generation case, naming the command that
+/// publishes its reference instead.
+fn require_asset_generation(slug: &str, version: &str, test_type: TestType) -> Result<()> {
+    if test_type != TestType::AssetGeneration {
+        bail!(
+            "{slug}@{version} is not an asset-generation case; its reference implementation \
+             is a static site, published with `tcab publish-reference`"
+        );
+    }
+    Ok(())
+}
+
+/// Publish every targeted variant's asset reference to the object store through
+/// `env`'s artifacts service, or with `dry_run` print what would be drawn and
+/// where it would land.
 ///
 /// Each variant is built and uploaded in turn; one variant's failure is reported
 /// and counted but does not abort the rest, matching the Pages path's behaviour so
 /// a multi-variant sweep still makes progress.
-pub(super) async fn execute(
+pub(super) async fn publish(
     test_case: &TestCaseVersion,
     targets: &[Target<'_>],
-    args: &PublishReferenceArgs,
+    env: DeployEnv,
+    dry_run: bool,
 ) -> Result<()> {
-    if args.dry_run {
+    if dry_run {
         println!("\n--dry-run: nothing was built or uploaded.");
         for target in targets {
             println!("  {}", target.label());
@@ -76,11 +121,11 @@ pub(super) async fn execute(
     // only the Access service token is presented. The target is echoed so a publish
     // into the wrong environment is visible before anything is drawn.
     let credential = service_credential(&Credentials::from_env()?)?;
-    let uploader = PublicWriter::new(artifacts_url(args.env), credential);
+    let uploader = PublicWriter::new(artifacts_url(env), credential);
     println!(
         "  uploading through `{}` (env `{}`)",
         uploader.base,
-        args.env.as_str()
+        env.as_str()
     );
     let runner = SystemCommandRunner;
 
@@ -101,7 +146,7 @@ pub(super) async fn execute(
     }
 
     if published > 0 {
-        let env = args.env.as_str();
+        let env = env.as_str();
         println!("\npublished {published} asset reference(s).");
         // Unlike the Pages path there is no lockfile to commit: the keys are
         // deterministic, so the backend learns what exists by listing the prefix
@@ -179,7 +224,7 @@ async fn publish_one(
 
 /// The artifacts service's base URL at `env`'s edge: the origin's `/artifacts`
 /// path.
-fn artifacts_url(env: crate::cli::DeployEnv) -> String {
+fn artifacts_url(env: DeployEnv) -> String {
     format!("{}/artifacts", env.origin())
 }
 

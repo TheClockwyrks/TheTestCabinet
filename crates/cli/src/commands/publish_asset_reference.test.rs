@@ -258,3 +258,20 @@ async fn the_services_own_refusal_carries_its_message() {
         "{message}"
     );
 }
+
+#[test]
+fn an_asset_generation_case_is_accepted() {
+    require_asset_generation("sprite", "v1.0.0", TestType::AssetGeneration)
+        .expect("an asset-generation case publishes through this command");
+}
+
+#[test]
+fn a_case_of_any_other_type_is_refused_toward_publish_reference() {
+    for test_type in [TestType::EndToEnd, TestType::FullStack] {
+        let err = require_asset_generation("carom", "v1.0.0", test_type)
+            .expect_err("a site reference is not an asset reference");
+        let message = err.to_string();
+        assert!(message.contains("carom@v1.0.0"), "{message}");
+        assert!(message.contains("`tcab publish-reference`"), "{message}");
+    }
+}

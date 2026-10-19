@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # Smoke-checks an already-built `tcab` binary: it must print a version, show its
-# help, and still expose its subcommands. This is the single definition of "is
+# help, and list exactly the commands the CLI overview documents
+# (apps/docs/src/content/docs/components/cli/overview.md), none of the run-side
+# commands the console took over. This is the single definition of "is
 # this binary flat-out broken?" — it runs no build, needs no container runtime or
 # API keys, and simply executes the binary it is given.
 #
@@ -29,12 +31,25 @@ if [[ -z "$version" ]]; then
 	exit 1
 fi
 
-# The binary is only sane if its subcommands are wired up. Check a few of the
-# less generic ones so a parser that silently lost its commands is caught.
+# The binary is only sane if its subcommands are wired up, and only the slim CLI if
+# the run-side ones are gone. The names are read off the help's command list, one
+# per line, and compared whole, so `publish` is not mistaken for
+# `publish-reference`. A carriage return is dropped for the Windows build.
 help="$("$bin" --help)"
-for subcommand in run validate harnesses publish orchestrators; do
-	if ! grep -q -- "$subcommand" <<<"$help"; then
+listed="$(awk '/^Commands:/ { inside = 1; next }
+	inside && /^[[:space:]]*$/ { exit }
+	inside { print $1 }' <<<"$help" | tr -d '\r')"
+for subcommand in validate analyze capture-baselines seed prompt ingest \
+	publish-reference publish-asset-reference; do
+	if ! grep -qxF -- "$subcommand" <<<"$listed"; then
 		echo "tcab --help is missing the '$subcommand' subcommand" >&2
+		exit 1
+	fi
+done
+for subcommand in run review publish harnesses orchestrators engines \
+	test-case-groups; do
+	if grep -qxF -- "$subcommand" <<<"$listed"; then
+		echo "tcab --help still lists the removed '$subcommand' subcommand" >&2
 		exit 1
 	fi
 done

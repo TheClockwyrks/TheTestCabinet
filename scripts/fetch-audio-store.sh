@@ -6,8 +6,8 @@
 # into the container when it starts out of a store on the host (see
 # `crates/driver/src/audio_stage.rs` and
 # `apps/docs/src/content/docs/components/core/execution.md`). In a cluster the driver
-# image carries that store at `/opt/tcab-audio`. On a laptop running `tcab run` or
-# `tcab validate` there is nothing to carry it, so this script puts it there — once.
+# image carries that store at `/opt/tcab-audio`. On a laptop running `tcab validate`
+# there is nothing to carry it, so this script puts it there — once.
 #
 # The clip bytes live in a private R2 bucket that only the publish-side tooling
 # (`scripts/stage-audio-store.mjs`, `scripts/build-sample-pack.mjs`) can read, with the

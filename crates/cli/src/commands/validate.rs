@@ -15,7 +15,7 @@ use test_cabinet_driver::{
 
 use crate::catalog;
 use crate::cli::ValidateArgs;
-use crate::commands::engines;
+use crate::commands::engine_selection;
 
 /// Run the engine's validation pass (load check plus any declared checks) over an
 /// already-produced implementation, summarizing the result and reporting whether
@@ -54,7 +54,7 @@ pub async fn execute(args: ValidateArgs) -> anyhow::Result<ExitCode> {
     // different engine measures it against a contract it was never given. The check
     // is the case's declared support, and it happens before anything is built,
     // because a mismatch is a mistake in the invocation rather than a result.
-    let engine = engines::resolve_for_case(&args.engine, &test_case)
+    let engine = engine_selection::resolve_for_case(&args.engine, &test_case)
         .with_context(|| format!("selecting engine `{}`", args.engine))?;
     println!("  engine: {}", engine.slug());
 

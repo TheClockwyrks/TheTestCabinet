@@ -13,7 +13,7 @@ use test_cabinet_driver::{
 
 use crate::catalog;
 use crate::cli::SeedArgs;
-use crate::commands::engines;
+use crate::commands::engine_selection;
 
 /// Seed the selected test case version into `out_dir` and report where it landed.
 ///
@@ -45,7 +45,7 @@ pub async fn execute(args: SeedArgs) -> anyhow::Result<()> {
     // half-way through a copy that has already created the output directory. The
     // starter project is read through it, because a case ships one project per
     // engine.
-    let engine = engines::resolve_for_case(&args.engine, &test_case)
+    let engine = engine_selection::resolve_for_case(&args.engine, &test_case)
         .with_context(|| format!("selecting engine `{}`", args.engine))?;
     let workspace = test_case.workspace_for(variant, engine.slug());
 

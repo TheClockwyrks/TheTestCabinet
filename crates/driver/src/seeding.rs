@@ -439,7 +439,7 @@ fn seed_asset_tool(
     }
     // When a viewer is observing the run, seed the live-preview endpoint so the
     // drawing binary streams each re-rendered frame back to the host. Absent for an
-    // unobserved run (a plain `tcab run`/`tcab validate`), which seeds no `live`.
+    // unobserved run (a run no viewer is watching, or a `tcab seed`), which seeds no `live`.
     if let Some(live) = live_preview {
         config["live"] = serde_json::json!({
             "endpoint": live.endpoint,
@@ -676,7 +676,7 @@ fn seed_voxel_tool(
     }
     // When a viewer is observing the run, seed the live-preview endpoint so the
     // sculpting binary streams each re-rendered frame back to the host. Absent for
-    // an unobserved run (a plain `tcab run`/`tcab validate`), which seeds no `live`.
+    // an unobserved run (a run no viewer is watching, or a `tcab seed`), which seeds no `live`.
     if let Some(live) = live_preview {
         config["live"] = serde_json::json!({
             "endpoint": live.endpoint,
