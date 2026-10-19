@@ -5,10 +5,10 @@
 # tcab-web:8080 through the Cloudflare Tunnel. The local overlay does not include
 # it; locally the console runs from source.
 #
-# The single tcab-web image is environment-agnostic (one build per git-sha, like the
-# publisher image) and takes no configuration: the console carries no service URL
-# and addresses /api, /artifacts and /arena of its own origin, which the edge routes
-# to the services. No overlay patches it beyond the image name.
+# The tcab-web container takes no runtime configuration: the console carries no
+# service URL and addresses /api, /artifacts and /arena of its own origin, which the
+# edge routes to the services, so it has no environment and no overlay patches it
+# beyond the image.
 #
 # It is a DATA-plane peer like the other services: a ClusterIP Service is the only
 # in-cluster surface, and the edge, never a LoadBalancer here, is the boundary.

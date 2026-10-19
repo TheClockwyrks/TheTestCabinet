@@ -130,7 +130,10 @@ The route takes the service token. The request body is optional JSON:
 checkout, and the `cold-storage` clone beside it, to the tip of the branch the
 environment ingests before the scan. A backend with no sidecar ignores it. When
 the suites' update fails and the scan continues without it, the streamed feed
-opens with a `notice` line carrying the message the caller prints.
+opens with a `notice` line carrying the message the caller prints. Any other
+refresh failure fails the ingest before the scan. The streamed feed opens before
+the refresh runs, so the failure ends it as its `error` line; the JSON answer is
+a `502` with `ingest_refresh_failed`.
 
 Each `testCases` entry is either a bare case id, its slug or folder name,
 expanding to every version the case declares (`"carom"`), or a version-qualified

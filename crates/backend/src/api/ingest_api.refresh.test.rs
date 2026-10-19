@@ -1,8 +1,9 @@
 //! `POST /ingest` with `refresh`, driven through the assembled router against a
 //! stub ingest sidecar on an ephemeral port: the refresh is asked for only when
 //! the body says so and a sidecar is configured, a failed suites update reaches
-//! the feed as its first line, and any other refresh failure answers before the
-//! scan.
+//! the feed as its first line, the feed opens before the refresh finishes, and
+//! any other refresh failure ends the feed with an `error` line (or answers `502`
+//! to a plain JSON request) before the scan.
 //!
 //! Each test owns the process environment (nextest runs one process per test) and
 //! resolves its configuration through [`Config::from_env`], so the variable a
@@ -47,6 +48,26 @@ async fn spawn_sidecar(status: StatusCode, body: &'static str) -> (String, Arc<A
     let addr = listener.local_addr().unwrap();
     tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
     (format!("http://{addr}/cgi-bin/refresh"), calls)
+}
+
+/// A stub sidecar refresh endpoint that answers `{"suitesUpdated":true}` only once
+/// `release` is notified, standing in for a refresh that outlasts the edge's wait
+/// for a first byte.
+async fn spawn_held_sidecar(release: Arc<tokio::sync::Notify>) -> String {
+    let app = Router::new().route(
+        "/cgi-bin/refresh",
+        post(move || {
+            let release = Arc::clone(&release);
+            async move {
+                release.notified().await;
+                (StatusCode::OK, r#"{"suitesUpdated":true}"#)
+            }
+        }),
+    );
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+    format!("http://{addr}/cgi-bin/refresh")
 }
 
 /// A router over an empty checkout, with `refresh_url` as the sidecar's endpoint.
@@ -97,18 +118,36 @@ async fn backend(refresh_url: Option<&str>) -> (Router, tempfile::TempDir) {
     (router(state), dir)
 }
 
-/// Post `body` to `/ingest` asking for the feed, and return the status and the
-/// response lines.
-async fn ingest(router: &Router, body: &str) -> (StatusCode, Vec<serde_json::Value>) {
-    let request = Request::builder()
+/// An ingest request posting `body`, asking for `accept`.
+fn ingest_request(body: &str, accept: &str) -> Request<Body> {
+    Request::builder()
         .method("POST")
         .uri("/ingest")
         .header("authorization", format!("Bearer {SERVICE_TOKEN}"))
         .header("content-type", "application/json")
-        .header("accept", "application/x-ndjson")
+        .header("accept", accept)
         .body(Body::from(body.to_owned()))
+        .unwrap()
+}
+
+/// Post `body` to `/ingest` asking for the feed, and return the status and the
+/// response lines.
+async fn ingest(router: &Router, body: &str) -> (StatusCode, Vec<serde_json::Value>) {
+    ingest_as(router, body, "application/x-ndjson").await
+}
+
+/// Post `body` to `/ingest` asking for `accept`, and return the status and the
+/// response's lines (the JSON answer is one line).
+async fn ingest_as(
+    router: &Router,
+    body: &str,
+    accept: &str,
+) -> (StatusCode, Vec<serde_json::Value>) {
+    let response = router
+        .clone()
+        .oneshot(ingest_request(body, accept))
+        .await
         .unwrap();
-    let response = router.clone().oneshot(request).await.unwrap();
     let status = response.status();
     let bytes = axum::body::to_bytes(response.into_body(), 1 << 20)
         .await
@@ -170,7 +209,7 @@ async fn a_failed_suites_update_opens_the_feed_with_the_notice_and_scans() {
 }
 
 #[tokio::test]
-async fn any_other_refresh_failure_fails_the_ingest_before_the_scan() {
+async fn any_other_refresh_failure_ends_the_feed_with_an_error_before_the_scan() {
     let (url, _) = spawn_sidecar(
         StatusCode::INTERNAL_SERVER_ERROR,
         "fatal: unable to access the mirror",
@@ -178,8 +217,31 @@ async fn any_other_refresh_failure_fails_the_ingest_before_the_scan() {
     .await;
     let (router, _dir) = backend(Some(&url)).await;
     let (status, lines) = ingest(&router, r#"{"refresh":true}"#).await;
+    // The feed had opened before the refresh ran, so the failure is in-band.
+    assert_eq!(status, StatusCode::OK);
+    // One error line and nothing else: nothing was scanned.
+    assert_eq!(lines.len(), 1, "{lines:?}");
+    assert_eq!(lines[0]["event"], "error", "{lines:?}");
+    assert!(
+        lines[0]["message"]
+            .as_str()
+            .unwrap()
+            .contains("unable to access the mirror"),
+        "{lines:?}"
+    );
+}
+
+#[tokio::test]
+async fn any_other_refresh_failure_answers_a_json_ingest_with_502() {
+    let (url, _) = spawn_sidecar(
+        StatusCode::INTERNAL_SERVER_ERROR,
+        "fatal: unable to access the mirror",
+    )
+    .await;
+    let (router, _dir) = backend(Some(&url)).await;
+    let (status, lines) = ingest_as(&router, r#"{"refresh":true}"#, "application/json").await;
     assert_eq!(status, StatusCode::BAD_GATEWAY);
-    // One error envelope, and no feed: nothing was scanned.
+    // One error envelope: nothing was scanned.
     assert_eq!(lines.len(), 1, "{lines:?}");
     assert_eq!(lines[0]["error"]["code"], "ingest_refresh_failed");
     assert!(
@@ -189,4 +251,38 @@ async fn any_other_refresh_failure_fails_the_ingest_before_the_scan() {
             .contains("unable to access the mirror"),
         "{lines:?}"
     );
+}
+
+#[tokio::test]
+async fn the_feed_opens_before_the_refresh_finishes() {
+    let release = Arc::new(tokio::sync::Notify::new());
+    let url = spawn_held_sidecar(Arc::clone(&release)).await;
+    let (router, _dir) = backend(Some(&url)).await;
+    // The sidecar is held, so the headers can only arrive if the handler answers
+    // without waiting on the refresh.
+    let response = tokio::time::timeout(
+        std::time::Duration::from_secs(10),
+        router.clone().oneshot(ingest_request(
+            r#"{"refresh":true}"#,
+            "application/x-ndjson",
+        )),
+    )
+    .await
+    .expect("the feed's headers wait on the refresh")
+    .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(
+        response.headers()["content-type"],
+        "application/x-ndjson",
+        "{:?}",
+        response.headers()
+    );
+    release.notify_one();
+    let bytes = axum::body::to_bytes(response.into_body(), 1 << 20)
+        .await
+        .unwrap();
+    let body = String::from_utf8(bytes.to_vec()).unwrap();
+    let last: serde_json::Value =
+        serde_json::from_str(body.lines().rfind(|l| !l.trim().is_empty()).unwrap()).unwrap();
+    assert_eq!(last["event"], "done", "{body}");
 }

@@ -8,12 +8,12 @@
 # Cloudflare Tunnel, behind Cloudflare Access (see deployments/k8s/components/edge);
 # it has no public Service of its own.
 #
-# No configuration, at build or at run time. CI builds ONE tcab-web:<git-sha> image
-# shared by every overlay (mirroring tcab-publisher), and it needs nothing per
-# environment: the console carries no service URL and addresses /api, /artifacts
-# and /arena of its own origin, which the edge routes to the services (see
-# packages/ui/src/transport/origin-services.ts). The image is nginx and the static
-# bundle, with no entrypoint script and no environment.
+# No runtime configuration. The console carries no service URL: it addresses /api,
+# /artifacts and /arena of its own origin, which the edge routes to the services
+# (see packages/ui/src/transport/origin-services.ts). Nothing is configured at
+# container start: the image is nginx and the static bundle, with no entrypoint
+# script and no environment. What a build bakes in is the bundle's business (see
+# components/web/overview.md, "Configuration").
 #
 # The canonical image is built by the Azure pipeline (scripts/ci/service-image.sh)
 # on every push to master and staging, natively per architecture, and pushed to the
