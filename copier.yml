@@ -63,12 +63,14 @@ _exclude:
     scripts/ci/install-nextest.test.sh
     {% endif %}
 
-# The crate's source files are written once and then belong to the repository:
-# a merge of template scaffolding into a grown crate has no right answer.
-# Everything else, README and manifests included, is merged on update.
+# The crate's source files, and an application's Dockerfile, are written once
+# and then belong to the repository: a merge of template scaffolding into a
+# grown crate or image has no right answer. Everything else, README and
+# manifests included, is merged on update.
 _skip_if_exists:
   - crates/*/src/lib.rs
   - crates/*/src/main.rs
+  - Dockerfile
 
 # Every derived value (the crate, the workspace's dependencies, the pipeline's
 # resources and images) is computed by the context extension from the tables

@@ -22,6 +22,12 @@ running after the gates, for a tag alone, and to running no gate of its own.
 The suite also runs on Windows, in a job of the gates stage that runs no gate,
 on a hosted Windows agent, under nextest installed by the kit's script.
 {% endif %}
+{% if ci_image %}
+On master and staging, once the gates passed, the image stage builds the
+repository's image natively on each architecture, fetching what its manifests
+reach as the Rust job does, and fuses the two into the multi-arch tag a
+deployment pins; the `build-context` gate holds its Dockerfile first.
+{% endif %}
 {% if ci_mirror %}
 A commit on master, staging or nightly, and a published tag, is pushed to the
 GitHub mirror by the last stage, held to running after the gates and the
@@ -99,6 +105,18 @@ MIRROR_KEY = "{{mirror_key}}"
 MIRROR_URL = "{{public_source}}"
 {% endif %}
 MIRROR_SCRIPT = "scripts/ci/mirror.sh"
+# The image this repository's kind builds, or none: the stage, the branches
+# it builds on, one job per architecture and the pool each runs on, and the
+# scripts and service connection the jobs use.
+BUILDS_IMAGE = {{ "True" if ci_image else "False" }}
+IMAGE_NAME = "{{name}}"
+IMAGE_STAGE = "image"
+IMAGE_BRANCHES = ("master", "staging")
+IMAGE_POOLS = {"amd64": "vmImage: ubuntu-24.04", "arm64": "name: pool-dev-linux-arm64-wus3-4c-eph-01"}
+IMAGE_SCRIPT = "scripts/ci/image.sh"
+MANIFEST_SCRIPT = "scripts/ci/manifest.sh"
+BUILD_CONTEXT_GATE = "build-context"
+GIT_SOURCES_SCRIPT = "scripts/ci/git-sources.sh"
 # The feed a job authenticates npm to before its first install, or nothing for
 # a kind that builds no workspace.
 FEED_SCRIPT_REGISTRY = "{{feed_registry if typescript_workspace else ''}}"
@@ -171,6 +189,11 @@ def _misplaced(checks: Iterable[str], by_job: Mapping[str, list[str]]) -> dict[s
 
 def _stages() -> dict[str, str]:
     return _sections(STAGE, PIPELINE.read_text(encoding="utf-8"))
+
+
+def _expected_stages(*, mirror: bool) -> list[str]:
+    """The pipeline's stages in order: the gates, the image a kind builds, the publish and the mirror."""
+    return ["gates", *([IMAGE_STAGE] if BUILDS_IMAGE else []), PUBLISH_STAGE, *(["mirror"] if mirror else [])]
 
 
 def _resources(entry: re.Pattern[str]) -> dict[str, dict[str, str]]:
@@ -467,7 +490,7 @@ def test_a_tag_publishes_the_public_packages_after_the_gates() -> None:
 {% if ci_mirror %}
 def test_the_mirror_stage_pushes_the_gated_refs_last() -> None:
     stages = _stages()
-    assert list(stages) == ["gates", PUBLISH_STAGE, MIRROR_STAGE], f"the pipeline's stages are {list(stages)}"
+    assert list(stages) == _expected_stages(mirror=True), f"the pipeline's stages are {list(stages)}"
     mirror = stages[MIRROR_STAGE]
     assert "      - gates\n      - publish\n" in mirror, "the stage does not wait for the gates and the publish"
     assert "eq(dependencies.gates.result, 'Succeeded')" in mirror, "the stage runs after a failed gate"
@@ -484,6 +507,79 @@ def test_the_mirror_stage_pushes_the_gated_refs_last() -> None:
 {% else %}
 def test_no_stage_pushes_to_a_mirror() -> None:
     stages = _stages()
-    assert list(stages) == ["gates", PUBLISH_STAGE], f"the pipeline's stages are {list(stages)}"
+    assert list(stages) == _expected_stages(mirror=False), f"the pipeline's stages are {list(stages)}"
     assert MIRROR_SCRIPT not in PIPELINE.read_text(encoding="utf-8"), "the pipeline pushes to a mirror"
 {% endif %}
+
+
+def _image_jobs() -> dict[str, str]:
+    stages = _stages()
+    assert IMAGE_STAGE in stages, f"the pipeline has no {IMAGE_STAGE} stage; it has {sorted(stages)}"
+    return _sections(JOB, stages[IMAGE_STAGE])
+
+
+def test_the_image_is_built_by_a_kind_that_builds_one_alone() -> None:
+    """A kind that builds an image has its stage, its scripts, its Dockerfile and its gate; any other has none."""
+    pipeline = PIPELINE.read_text(encoding="utf-8")
+    should = "is missing" if BUILDS_IMAGE else "is here, though the kind builds no image"
+    assert (IMAGE_STAGE in _stages()) is BUILDS_IMAGE, f"the {IMAGE_STAGE} stage {should}"
+    assert (IMAGE_SCRIPT in pipeline) is BUILDS_IMAGE, f"the step running {IMAGE_SCRIPT} {should}"
+    assert (MANIFEST_SCRIPT in pipeline) is BUILDS_IMAGE, f"the step running {MANIFEST_SCRIPT} {should}"
+    assert (BUILD_CONTEXT_GATE in GATE_IDS) is BUILDS_IMAGE, f"the {BUILD_CONTEXT_GATE} gate {should}"
+    for path in ("Dockerfile", ".dockerignore", IMAGE_SCRIPT, MANIFEST_SCRIPT, "scripts/ci/build-context.sh"):
+        assert (ROOT / path).is_file() is BUILDS_IMAGE, f"{path} {should}"
+
+
+def test_the_build_context_gate_runs_in_the_checks_job() -> None:
+    if not BUILDS_IMAGE:
+        pytest.skip("this repository's kind builds no image")
+    assert BUILD_CONTEXT_GATE in _gates_by_job()["checks"], f"the checks job does not run {BUILD_CONTEXT_GATE}"
+    assert BUILD_CONTEXT_GATE in _hook_ids(), f"{BUILD_CONTEXT_GATE} has no hook, though it finishes in moments"
+
+
+def test_the_image_stage_builds_after_the_gates_on_master_and_staging() -> None:
+    if not BUILDS_IMAGE:
+        pytest.skip("this repository's kind builds no image")
+    stage = _stages()[IMAGE_STAGE]
+    assert "    dependsOn: gates\n" in stage, "the image stage does not wait for the gates"
+    branches = ", ".join(f"'refs/heads/{branch}'" for branch in IMAGE_BRANCHES)
+    assert f"condition: and(succeeded(), in(variables['Build.SourceBranch'], {branches}))" in stage, (
+        f"the image stage is not held to {IMAGE_BRANCHES} after the gates passed"
+    )
+    assert _named(stage) == set(), f"the image stage runs gates: {sorted(_named(stage))}"
+    publish = _stages()[PUBLISH_STAGE]
+    assert "dependsOn: gates\n" in publish, "the publish stage waits on more than the gates"
+
+
+def test_each_architecture_builds_natively_and_pushes_its_tag() -> None:
+    """One job per architecture, on its own pool, fetches as the Rust job does and pushes `<name>:<commit>-<arch>`."""
+    if not BUILDS_IMAGE:
+        pytest.skip("this repository's kind builds no image")
+    jobs = _image_jobs()
+    assert sorted(jobs) == sorted([*(f"{IMAGE_STAGE}_{arch}" for arch in IMAGE_POOLS), f"{IMAGE_STAGE}_manifest"])
+    for arch, pool in IMAGE_POOLS.items():
+        job = jobs[f"{IMAGE_STAGE}_{arch}"]
+        assert f"        pool:\n          {pool}\n" in job, f"the {arch} image is not built on {pool!r}"
+        assert "container:" not in job, f"the {arch} image is built inside a container, with no daemon to build on"
+        assert sorted(_uses(job)) == sorted(FETCHED), f"the {arch} image job uses {sorted(_uses(job))}"
+        sources = job.find(f"- script: {GIT_SOURCES_SCRIPT}\n")
+        login = job.find("- task: Docker@2\n")
+        build = job.find(f'- script: {IMAGE_SCRIPT} {IMAGE_NAME} "$(Build.SourceVersion)"\n')
+        assert 0 <= sources < login < build, f"the {arch} job does not rewrite the sources, log in, then build"
+        assert "SYSTEM_ACCESSTOKEN: $(System.AccessToken)" in _step_at(job, job.rindex("\n", 0, sources) + 1)
+        assert f"containerRegistry: {IMAGE_ENDPOINT}\n" in _step_at(job, job.rindex("\n", 0, login) + 1)
+    assert (ROOT / IMAGE_SCRIPT).is_file(), f"the pipeline runs {IMAGE_SCRIPT}, which the repository does not hold"
+    assert (ROOT / GIT_SOURCES_SCRIPT).is_file()
+
+
+def test_the_manifest_job_fuses_the_architectures_last() -> None:
+    if not BUILDS_IMAGE:
+        pytest.skip("this repository's kind builds no image")
+    job = _image_jobs()[f"{IMAGE_STAGE}_manifest"]
+    needs = "".join(f"          - {IMAGE_STAGE}_{arch}\n" for arch in IMAGE_POOLS)
+    assert f"        dependsOn:\n{needs}" in job, "the manifest job does not wait for every architecture"
+    login = job.find("- task: Docker@2\n")
+    fuse = job.find(f'- script: {MANIFEST_SCRIPT} "$(Build.SourceVersion)" {IMAGE_NAME}\n')
+    assert 0 <= login < fuse, "the manifest job does not log in and then fuse this repository's image"
+    assert f"containerRegistry: {IMAGE_ENDPOINT}\n" in _step_at(job, job.rindex("\n", 0, login) + 1)
+    assert (ROOT / MANIFEST_SCRIPT).is_file(), f"the pipeline runs {MANIFEST_SCRIPT}, which is not here"

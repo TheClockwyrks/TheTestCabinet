@@ -339,6 +339,10 @@ and the kit's `edges.py` hold:
 - the Windows job, for a repository `WINDOWS_TESTS` names;
 - the steps of the gates a repository writes itself, which `EXTRA_GATES` names
   by the job each runs in;
+- for an `application`, the `Dockerfile` scaffold and its `.dockerignore`
+  allowlist, the `build-context` gate, and the image stage that builds the
+  image natively on an amd64 and an arm64 agent and fuses the two into
+  `<name>:<commit>` (`IMAGE_KINDS` in `render.py`);
 - for a `tool`, the image job that bakes its binaries, and for a `shell`, the
   bundle jobs;
 - the mirror, the feed and the branches.
