@@ -822,6 +822,8 @@ pub async fn active(State(state): State<AppState>) -> Result<Json<Vec<ActiveJobO
                 run_id: job.id.clone(),
                 summary: job_summary(job),
                 state: JobState::from_db(&job.state),
+                // No lease is stored on the job row yet, so none is reported.
+                lease_expires_at: None,
             })
             .collect(),
     ))
