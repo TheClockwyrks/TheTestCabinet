@@ -14,8 +14,8 @@ An upgrade drain evicts driver and sandbox pods mid-run. Neither is ever
 recreated, so the run is lost along with the model spend it had incurred. The
 run plane documentation makes a drain wait for the run pods on a node to
 finish: a `PodDisruptionBudget` refuses their eviction, and every node pool that
-can seat a run pod carries a drain timeout above the longest run with
-undrainable nodes cordoned. See
+can seat a run pod carries a drain timeout above the longest run, with a node
+that outlasts it returned to service for the next scheduled upgrade. See
 `apps/docs/src/content/docs/deployment/kubernetes/run-plane.md`, section
 "Node drains" and its subsections "The run pod budget", "Node pool upgrade
 settings" and "What each guard covers", and
@@ -26,8 +26,7 @@ The run pods carry the `cluster-autoscaler.kubernetes.io/safe-to-evict: "false"`
 annotation (`crates/dispatcher/src/job.rs`, `pod_annotations`, and
 `crates/driver/src/kubernetes.rs`, the sandbox pod spec), which the autoscaler
 alone reads. Nothing in the namespace refuses an upgrade drain's eviction, and
-the pools run the AKS defaults: a 30-minute drain timeout and the `Schedule`
-undrainable-node behavior.
+the pools run the AKS default drain timeout of 30 minutes.
 
 ## What is missing
 
@@ -35,15 +34,11 @@ undrainable-node behavior.
   as the page shows it, listed in `deployments/k8s/base/kustomization.yaml` so
   the `local`, `staging` and `prod` overlays all render it.
 - `scripts/configure-node-pools.sh --env <prod|staging>`, which sets
-  `drainTimeoutInMinutes` to `1440`, `undrainableNodeBehavior` to `Cordon`,
+  `drainTimeoutInMinutes` to `1440`, `undrainableNodeBehavior` to `Schedule`,
   `maxSurge` to `10%` and `maxUnavailable` to `0` on every user node pool of
   the environment's cluster with `az aks nodepool update`, and is idempotent.
-- Its `--release-quarantined` mode: for each node labelled
-  `kubernetes.azure.com/upgrade-status=Quarantined` that holds no running run
-  pod, delete the machine and scale its pool back to its count.
 - A `*.test.sh` beside the script covering the arguments it passes to `az` for
-  each environment and the selection of empty quarantined nodes, run by the
-  `shell-tests` gate.
+  each environment, run by the `shell-tests` gate.
 - The settings applied to both clusters' user pools.
 
 ## Verify
@@ -58,6 +53,9 @@ undrainable-node behavior.
 - A drain of a node whose run has finished proceeds, including a node holding a
   completed driver pod waiting for its TTL.
 - `az aks nodepool show` on every user pool of both clusters reports
-  `drainTimeoutInMinutes: 1440`, `undrainableNodeBehavior: Cordon`,
+  `drainTimeoutInMinutes: 1440`, `undrainableNodeBehavior: Schedule`,
   `maxSurge: 10%` and `maxUnavailable: 0`.
+- On staging, a node-image upgrade started while a run is in progress
+  completes once the run ends, with the run scored and the node on the new
+  image.
 - `uv run --quiet --project ci gate run shell-tests` passes.

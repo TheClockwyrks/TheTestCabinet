@@ -1137,3 +1137,5 @@ emptydir
 nodepool
 uncordon
 undrainable
+reimaged
+uncordoned

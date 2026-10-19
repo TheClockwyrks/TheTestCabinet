@@ -317,23 +317,24 @@ Every node pool that can seat a run pod carries these upgrade settings, which
 `scripts/configure-node-pools.sh --env <prod|staging>` applies (see
 [Cluster prerequisites](/deployment/kubernetes/overview/#cluster-prerequisites)):
 
-| Setting                   | Value  | Why                                                                                 |
-| ------------------------- | ------ | ----------------------------------------------------------------------------------- |
-| `drainTimeoutInMinutes`   | `1440` | The AKS maximum, above the longest run and equal to the sandbox's 24h deadline      |
-| `undrainableNodeBehavior` | Cordon | A node still holding a run pod at the timeout is set aside and the upgrade moves on |
-| `maxSurge`                | `10%`  | Surge nodes take new runs while the drained nodes finish theirs                     |
-| `maxUnavailable`          | `0`    | Capacity never drops below the pool's size during an upgrade                        |
+| Setting                   | Value    | Why                                                                              |
+| ------------------------- | -------- | -------------------------------------------------------------------------------- |
+| `drainTimeoutInMinutes`   | `1440`   | The AKS maximum, above the longest run and equal to the sandbox's 24h deadline   |
+| `undrainableNodeBehavior` | Schedule | A node still holding a run pod at the timeout is returned to service and retried |
+| `maxSurge`                | `10%`    | Surge nodes take new runs while the drained nodes finish theirs                  |
+| `maxUnavailable`          | `0`      | Capacity never drops below the pool's size during an upgrade                     |
 
 An upgrade cordons a node, so no new run lands on it, and retries each eviction
 the budget refuses until the node's run pods have finished. The node then
 empties and takes the new image. An upgrade of a busy pool takes as long as the
 longest run on it, which is the intended cost.
 
-A node that still holds a run pod when the timeout elapses stays cordoned,
-labelled `kubernetes.azure.com/upgrade-status=Quarantined`, on its old image.
-Once its run pods have finished, `scripts/configure-node-pools.sh --env <env>
---release-quarantined` deletes each empty quarantined node and scales its pool
-back to its count, so the replacement node starts on the current image.
+A node that still holds a run pod when the timeout elapses is uncordoned and
+left on its old image, and the pool's upgrade is reported as failed. The
+managed auto-upgrade retries the pool at its next scheduled window, when the
+node is drained again, so a node that outlasts the timeout is reimaged without
+an operator's hand. Under the run limits the timeout is above every run, so
+this path is a fallback rather than an expected one.
 
 ### What each guard covers
 
