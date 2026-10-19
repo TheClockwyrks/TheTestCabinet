@@ -1,6 +1,7 @@
-//! Unit tests for the pure admission decision. No cluster and no backend: the
-//! decision reads only the `Job`s the dispatcher owns, the two caps, and whether a
-//! publisher image is configured.
+//! Unit tests for the pure admission and lease decisions. No cluster and no
+//! backend: admission reads only the `Job`s the dispatcher owns, the two caps, and
+//! whether a publisher image is configured; the lease decisions read only the `Job`s
+//! and the backend's rows. The loop itself is tested in `controller.leases.test.rs`.
 
 use super::*;
 
@@ -166,4 +167,94 @@ fn a_failed_lane_admitted_nothing() {
         "publish",
         Err(anyhow::anyhow!("backend down"))
     ));
+}
+
+fn row(id: &str, state: JobState, lease: Option<&str>) -> ActiveJob {
+    ActiveJob {
+        run_id: id.to_string(),
+        state,
+        lease_expires_at: lease.map(str::to_string),
+    }
+}
+
+fn instant(text: &str) -> OffsetDateTime {
+    OffsetDateTime::parse(text, &Rfc3339).expect("instant")
+}
+
+#[test]
+fn only_live_run_jobs_with_a_job_id_are_renewed() {
+    let mut managed = jobs(JobKind::Run, JobPhase::Active, 2);
+    managed.extend(jobs(JobKind::Run, JobPhase::Complete, 1));
+    managed.extend(jobs(JobKind::Run, JobPhase::Failed, 1));
+    managed.extend(jobs(JobKind::Publish, JobPhase::Active, 1));
+    managed.push(ManagedJob {
+        job_id: None,
+        name: "tcab-driver-unlabelled".to_string(),
+        kind: JobKind::Run,
+        phase: JobPhase::Active,
+    });
+    assert_eq!(
+        lease_renewals(&managed),
+        vec!["tcab-driver-0".to_string(), "tcab-driver-1".to_string()]
+    );
+    assert!(lease_renewals(&[]).is_empty());
+}
+
+#[test]
+fn a_lease_past_dispatched_is_lapsed_once_its_expiry_has_passed() {
+    let now = instant("2026-10-19T12:00:00Z");
+    let jobs = [
+        row("past", JobState::Running, Some("2026-10-19T11:59:59Z")),
+        row("future", JobState::Running, Some("2026-10-19T12:00:01Z")),
+        row("exact", JobState::Running, Some("2026-10-19T12:00:00Z")),
+        row("none", JobState::Storing, None),
+        row("garbled", JobState::Starting, Some("not a time")),
+    ];
+    assert_eq!(lapsed(&jobs, now), vec!["past", "none", "garbled"]);
+}
+
+/// Instants compare as instants: a sub-second expiry in another offset that is
+/// lexically greater can still lie in the past.
+#[test]
+fn leases_compare_chronologically_not_lexically() {
+    let now = instant("2026-10-19T12:00:00Z");
+    let jobs = [
+        row(
+            "offset-past",
+            JobState::Running,
+            Some("2026-10-19T13:59:59.9+02:00"),
+        ),
+        row(
+            "fraction-future",
+            JobState::Running,
+            Some("2026-10-19T12:00:00.5Z"),
+        ),
+    ];
+    assert_eq!(lapsed(&jobs, now), vec!["offset-past"]);
+}
+
+#[test]
+fn only_starting_running_and_storing_jobs_are_judged() {
+    let now = instant("2026-10-19T12:00:00Z");
+    let states = [
+        JobState::Queued,
+        JobState::Pending,
+        JobState::Dispatched,
+        JobState::Starting,
+        JobState::Running,
+        JobState::Storing,
+        JobState::Succeeded,
+        JobState::Failed,
+        JobState::Canceled,
+        JobState::Unknown,
+    ];
+    let jobs: Vec<ActiveJob> = states
+        .iter()
+        .enumerate()
+        .map(|(n, state)| row(&format!("{state:?}-{n}"), *state, None))
+        .collect();
+    assert_eq!(
+        lapsed(&jobs, now),
+        vec!["Starting-3", "Running-4", "Storing-5"]
+    );
 }

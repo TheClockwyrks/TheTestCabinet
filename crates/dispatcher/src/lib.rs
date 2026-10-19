@@ -13,7 +13,11 @@
 //!    driver `Job`s and one for publish `Job`s, each recomputed every tick from the
 //!    live cluster (the backend's `job` table is the source of truth, so a restart
 //!    reconciles rather than assuming zero in-flight).
-//! 4. **Watches** the `Job`s it created and, when one fails terminally before its
+//! 4. **Renews the claim lease** of every run whose driver `Job` is live, each tick
+//!    and before judging any lease, then reports a job past `dispatched` whose lease
+//!    has lapsed as lost (see [`controller`]). The lease lives in the backend's
+//!    `job` row in Postgres, so it survives a dispatcher restart.
+//! 5. **Watches** the `Job`s it created and, when one fails terminally before its
 //!    driver could report, reports a **specific** death reason to the backend
 //!    (see [`kubernetes`]) so an infra failure never leaves a job hung with no
 //!    diagnostic.
@@ -26,4 +30,3 @@ pub mod config;
 pub mod controller;
 pub mod job;
 pub mod kubernetes;
-pub mod lost;

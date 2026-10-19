@@ -53,13 +53,15 @@ pub use test_cabinet_contracts::job_api::LaunchBatchAck;
 pub use test_cabinet_contracts::job_api::LaunchBatchBody;
 pub use test_cabinet_contracts::job_api::LaunchBatchItem;
 pub use test_cabinet_contracts::job_api::LaunchBody;
+pub use test_cabinet_contracts::job_api::LeaseRenewal;
 pub use test_cabinet_contracts::job_api::StatusUpdate;
 pub use test_cabinet_contracts::job_api::StreamTopicsBody;
 use test_cabinet_entities::job;
 
 use crate::auth::{Person, ServiceAuth, bearer_token, token_matches};
 use crate::db::{
-    CANCELABLE_ACTIVE_STATES, CANCELABLE_WAITING_STATES, JobCancelFilter, JobOrigin, WithdrawnRetry,
+    CANCELABLE_ACTIVE_STATES, CANCELABLE_WAITING_STATES, DRIVEN_STATES, JobCancelFilter, JobOrigin,
+    WithdrawnRetry,
 };
 use crate::error::ApiError;
 use crate::relay::{JobSummary, Notification, RunEvent, StreamItem, StreamMessage};
@@ -811,9 +813,11 @@ pub(super) fn build_new_job(
 }
 
 /// `GET /jobs/active` — the runs still in flight (queued, pending, dispatched,
-/// starting, running, or storing), each described by the identity captured at enqueue. The
-/// console seeds its in-progress list from this so a run it is watching survives a
-/// reload — including runs held back (`pending`) or still spinning up (`starting`).
+/// starting, running, or storing), each described by the identity captured at enqueue,
+/// with its claim lease's expiry when it holds one. The console seeds its in-progress
+/// list from this so a run it is watching survives a reload — including runs held back
+/// (`pending`) or still spinning up (`starting`) — and the dispatcher reads it, after
+/// renewing, to judge which driven jobs' leases have lapsed.
 pub async fn active(State(state): State<AppState>) -> Result<Json<Vec<ActiveJobOut>>, ApiError> {
     let jobs = state.db.active_jobs().await.map_err(ApiError::from)?;
     Ok(Json(
@@ -822,6 +826,7 @@ pub async fn active(State(state): State<AppState>) -> Result<Json<Vec<ActiveJobO
                 run_id: job.id.clone(),
                 summary: job_summary(job),
                 state: JobState::from_db(&job.state),
+                lease_expires_at: job.lease_expires_at.clone(),
             })
             .collect(),
     ))
@@ -1170,6 +1175,11 @@ pub async fn live(
 /// `POST /jobs/next` — the dispatcher claims the oldest queued job. Requires the
 /// service token. Returns `200` with the claimed job (id, driver token, and the
 /// launch request to run) or `204 No Content` when the queue is empty.
+///
+/// The claim stores a lease on the job's row two minutes out, and the same pass first
+/// returns every `dispatched` job whose lease lapsed to the queue at its original
+/// position with a fresh per-job token (see [`crate::db::Db::claim_next`]); each such
+/// job is announced to the console like any other display state the pass reconciled.
 pub async fn claim(
     State(state): State<AppState>,
     _service: ServiceAuth,
@@ -1207,6 +1217,26 @@ pub async fn claim(
         request,
     })
     .into_response())
+}
+
+/// `POST /jobs/leases` — the dispatcher renews the claim leases of the jobs whose
+/// driver `Job` it saw live this tick. Requires the service token. Each listed job
+/// still driven (`dispatched`, `starting`, `running` or `storing`) has its lease
+/// extended to two minutes past the call; ids of unknown jobs and of jobs in any other
+/// state are ignored. Answers `204`.
+#[tracing::instrument(name = "jobs.leases", skip(state, _service, renewal), fields(jobs = renewal.job_ids.len()), err(Debug))]
+pub async fn renew_leases(
+    State(state): State<AppState>,
+    _service: ServiceAuth,
+    Json(renewal): Json<LeaseRenewal>,
+) -> Result<StatusCode, ApiError> {
+    let now = now_rfc3339()?;
+    state
+        .db
+        .renew_job_leases(&renewal.job_ids, &now)
+        .await
+        .map_err(ApiError::from)?;
+    Ok(StatusCode::NO_CONTENT)
 }
 
 /// `POST /jobs/{id}/events` — the driver streams a batch of harness events.
@@ -1337,10 +1367,6 @@ pub async fn report_lost(
     }
     apply_status(&state, &id, job, update).await
 }
-
-/// The job states a driver exists for: what [`report_lost`] may fail, and what a
-/// `storing` report may move to `storing`.
-const DRIVEN_STATES: [&str; 4] = ["dispatched", "starting", "running", "storing"];
 
 /// The record `job` holds from its driver's `storing` report, or `None` when it holds
 /// none. A held record that no longer decodes is logged and treated as none: the job
@@ -2632,3 +2658,7 @@ mod tests;
 #[cfg(test)]
 #[path = "jobs.storing.test.rs"]
 mod storing_tests;
+
+#[cfg(test)]
+#[path = "jobs.lease.test.rs"]
+mod lease_tests;

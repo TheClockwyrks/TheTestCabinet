@@ -121,6 +121,50 @@ fn in_flight_limit_to_column(limit: InFlightLimit) -> i32 {
 /// slot until its terminal report lands.
 const ACTIVE_SLOT_STATES: [&str; 4] = ["dispatched", "starting", "running", "storing"];
 
+/// The job states a driver exists for, or is being created for: what the dispatcher
+/// may report lost, what a `storing` report may move to `storing`, and the states whose
+/// [claim lease](JOB_LEASE) a renewal extends. Same members as `ACTIVE_SLOT_STATES`,
+/// different question: that one asks which jobs hold a parallelism slot, this one
+/// asks which jobs the backend believes a driver is executing.
+pub const DRIVEN_STATES: [&str; 4] = ["dispatched", "starting", "running", "storing"];
+
+/// How long a job's claim lease runs: the claim sets the expiry this far past the
+/// claim, and each renewal this far past the renewal (the dispatcher overview's
+/// "Claim leases").
+pub const JOB_LEASE: time::Duration = time::Duration::minutes(2);
+
+/// The lease expiry for a claim or renewal made at `now` (RFC 3339): [`JOB_LEASE`]
+/// past it, written at whole-second precision in UTC (`YYYY-MM-DDTHH:MM:SSZ`).
+///
+/// The fixed width is what makes two stored expiries compare chronologically as
+/// strings; `now` itself may carry any subsecond precision, which is truncated.
+/// `BadRequest` when `now` is not RFC 3339.
+pub fn job_lease_expiry(now: &str) -> Result<String> {
+    let now = parse_instant(now)?;
+    let expiry = (now + JOB_LEASE)
+        .to_offset(time::UtcOffset::UTC)
+        .replace_nanosecond(0)
+        .map_err(|e| BackendError::BadRequest(format!("lease expiry: {e}")))?;
+    expiry
+        .format(&Rfc3339)
+        .map_err(|e| BackendError::BadRequest(format!("formatting a lease expiry: {e}")))
+}
+
+/// Whether a job's claim lease has lapsed at `now`: it holds none, its stored expiry
+/// does not parse, or the expiry is before `now`. Compared as instants, so neither
+/// side's subsecond precision matters.
+fn lease_lapsed(lease_expires_at: Option<&str>, now: OffsetDateTime) -> bool {
+    lease_expires_at
+        .and_then(|at| OffsetDateTime::parse(at, &Rfc3339).ok())
+        .is_none_or(|expiry| expiry < now)
+}
+
+/// Parse an RFC 3339 instant a caller passed as `now`; `BadRequest` when it is not one.
+fn parse_instant(now: &str) -> Result<OffsetDateTime> {
+    OffsetDateTime::parse(now, &Rfc3339)
+        .map_err(|e| BackendError::BadRequest(format!("`{now}` is not an RFC 3339 instant: {e}")))
+}
+
 /// The in-flight job states that have **cost nothing yet**: the job is waiting to be
 /// claimed (`queued`) or deliberately held back behind a cap or a same-model game jam
 /// (`pending`), and no driver exists for it. Cancelling one throws away nothing.
@@ -6528,6 +6572,8 @@ fn new_job_model(new: NewJob, queue_seq: i64) -> job::ActiveModel {
         held_record: Set(None),
         held_detail: Set(None),
         lost_at: Set(None),
+        // A job holds no lease until it is claimed.
+        lease_expires_at: Set(None),
     }
 }
 
@@ -6692,10 +6738,44 @@ impl Db {
     /// reconciliation moves any number of others between `queued` and `pending`.
     /// Returning only the claim would leave every held-back run's row stale until
     /// something else re-read the queue.
+    ///
+    /// The claimed job's **lease** is set [`JOB_LEASE`] past `now`. Before anything is
+    /// counted, the pass returns every `dispatched` job whose lease has lapsed (or that
+    /// holds none) to `queued`: its claim was never followed by a driver, whether the
+    /// driver `Job`'s creation failed or the dispatcher died before creating it. Such a
+    /// job keeps its `queue_seq`, so it is taken again at its original position, and
+    /// its `attempt`, since nothing ran; it is given a fresh per-job token, so the
+    /// backend refuses the old one from then on, and its lease is cleared. No retry is
+    /// enqueued. Returning it first frees the parallelism slot it held, and each such
+    /// job is reported among [`ClaimOutcome::reconciled`] with the state it ends the
+    /// pass in, unless this same pass claims it again.
+    ///
+    /// `now` is an RFC 3339 instant; `BadRequest` when it is not one.
     pub async fn claim_next(&self, now: &str) -> Result<ClaimOutcome> {
         use std::collections::{HashMap, HashSet};
 
+        let now_instant = parse_instant(now)?;
+        let lease = job_lease_expiry(now)?;
         let txn = self.conn().begin().await?;
+
+        // Return every lapsed claim to the queue before the slots are counted, so the
+        // slot it held is free for this very pass.
+        let mut reconciled: Vec<job::Model> = Vec::new();
+        for job in job::Entity::find()
+            .filter(job::Column::State.eq("dispatched"))
+            .all(&txn)
+            .await?
+        {
+            if !lease_lapsed(job.lease_expires_at.as_deref(), now_instant) {
+                continue;
+            }
+            let mut active_model = job.into_active_model();
+            active_model.state = Set("queued".to_string());
+            active_model.job_token = Set(cuid2::create_id());
+            active_model.lease_expires_at = Set(None);
+            active_model.updated_at = Set(now.to_string());
+            reconciled.push(active_model.update(&txn).await?);
+        }
 
         // The per-harness parallelism limits (harnesses with no configured limit are
         // absent → unlimited).
@@ -6740,7 +6820,6 @@ impl Db {
             .await?;
 
         let mut claimed: Option<job::Model> = None;
-        let mut reconciled: Vec<job::Model> = Vec::new();
         for job in waiting {
             let active = active_by_harness
                 .get(&job.harness_slug)
@@ -6764,8 +6843,12 @@ impl Db {
                 if job.test_type == TestType::GameJam.as_str() {
                     jams_in_flight.insert(jam_key);
                 }
+                // A job this pass returned to the queue and now claims again is
+                // announced by the claim alone.
+                reconciled.retain(|requeued| requeued.id != job.id);
                 let mut active_model = job.into_active_model();
                 active_model.state = Set("dispatched".to_string());
+                active_model.lease_expires_at = Set(Some(lease.clone()));
                 active_model.updated_at = Set(now.to_string());
                 claimed = Some(active_model.update(&txn).await?);
                 continue;
@@ -6777,6 +6860,9 @@ impl Db {
             // claim pass would be pure noise on the console stream.
             let target = if has_room { "queued" } else { "pending" };
             if job.state != target {
+                // A job this pass returned to the queue is reported once, in the state
+                // it ends the pass in.
+                reconciled.retain(|requeued| requeued.id != job.id);
                 let mut active_model = job.into_active_model();
                 active_model.state = Set(target.to_string());
                 active_model.updated_at = Set(now.to_string());
@@ -6796,6 +6882,32 @@ impl Db {
     /// the display states the same pass reconciled around it.
     pub async fn claim_next_job(&self, now: &str) -> Result<Option<job::Model>> {
         Ok(self.claim_next(now).await?.claimed)
+    }
+
+    /// Extend the claim lease of each listed job still driven ([`DRIVEN_STATES`]) to
+    /// [`JOB_LEASE`] past `now`, the dispatcher's renewal for every job whose driver
+    /// `Job` is live. Ids of unknown jobs and of jobs in any other state are ignored:
+    /// a job that finished or returned to the queue between the dispatcher's read of
+    /// the cluster and this call holds no lease to extend. Returns how many jobs were
+    /// renewed. `BadRequest` when `now` is not an RFC 3339 instant.
+    pub async fn renew_job_leases(&self, ids: &[String], now: &str) -> Result<u64> {
+        let lease = job_lease_expiry(now)?;
+        if ids.is_empty() {
+            return Ok(0);
+        }
+        let mut renewed = 0;
+        // Chunked so a large cluster's renewal stays under the per-statement bound
+        // parameter limits.
+        for chunk in ids.chunks(1000) {
+            renewed += job::Entity::update_many()
+                .col_expr(job::Column::LeaseExpiresAt, Expr::value(lease.clone()))
+                .filter(job::Column::Id.is_in(chunk.iter().cloned()))
+                .filter(job::Column::State.is_in(DRIVEN_STATES))
+                .exec(&self.conn())
+                .await?
+                .rows_affected;
+        }
+        Ok(renewed)
     }
 
     /// Every stored per-harness config row (harnesses with no overrides are absent).
@@ -9449,3 +9561,7 @@ impl Db {
         Ok(res.rows_affected)
     }
 }
+
+#[cfg(test)]
+#[path = "db.lease.test.rs"]
+mod lease_tests;

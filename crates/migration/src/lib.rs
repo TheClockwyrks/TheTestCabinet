@@ -84,6 +84,7 @@ mod m20261010_000057_drop_model_price_rates;
 mod m20261018_000058_collapse_review_reviewer;
 mod m20261019_000059_add_job_held_record;
 mod m20261019_000060_add_run_artifacts_stored;
+mod m20261019_000061_add_job_lease;
 
 pub struct Migrator;
 
@@ -155,6 +156,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20261018_000058_collapse_review_reviewer::Migration),
             Box::new(m20261019_000059_add_job_held_record::Migration),
             Box::new(m20261019_000060_add_run_artifacts_stored::Migration),
+            Box::new(m20261019_000061_add_job_lease::Migration),
         ]
     }
 }
