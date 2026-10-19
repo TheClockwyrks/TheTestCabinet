@@ -81,6 +81,8 @@ async fn service(access: AccessMode) -> (MemoryStore, Router) {
         http: reqwest::Client::new(),
         service_token: Some(Arc::new(SERVICE_TOKEN.to_string())),
         access,
+        public: Arc::new(crate::public::MemoryPublicStore::new()),
+        transcoder: Arc::new(crate::publish::testing::FakeTranscoder::working()),
     };
     (objects, router(state))
 }
@@ -473,5 +475,135 @@ async fn resolution_names_each_kind_of_caller() {
             .await
             .unwrap(),
         Identity::Token
+    );
+}
+
+/// `method uri` with `body` and `headers`, answering the status.
+async fn send(
+    app: &Router,
+    method: &str,
+    uri: &str,
+    headers: &[(&str, &str)],
+    body: &'static [u8],
+) -> StatusCode {
+    let mut request = Request::builder().method(method).uri(uri);
+    for (name, value) in headers {
+        request = request.header(*name, *value);
+    }
+    app.clone()
+        .oneshot(request.body(Body::from(body)).unwrap())
+        .await
+        .unwrap()
+        .status()
+}
+
+#[tokio::test]
+async fn a_public_write_takes_a_services_identity_and_refuses_a_person() {
+    let (_dir, app) = verifying_service().await;
+    let token = bearer(SERVICE_TOKEN);
+    let service = KEY_A.sign(&service_claims("tcab-cli.access", AUDIENCE));
+    let person = KEY_A.sign(&person_claims("ada@example.com", AUDIENCE));
+    let job = bearer(JOB_TOKEN);
+    /// A request's path, its identity headers, and the status it is answered.
+    type Case<'a> = (&'a str, &'a [(&'a str, &'a str)], StatusCode);
+    let cases: [Case; 5] = [
+        // The backend, in-cluster.
+        (
+            "/public/index.json",
+            &[("authorization", &token)],
+            StatusCode::CREATED,
+        ),
+        // The CLI, through the edge with an Access service token.
+        (
+            "/artifacts/public/media/cases/x.png",
+            &[(ASSERTION_HEADER, &service)],
+            StatusCode::CREATED,
+        ),
+        // A person, however verified, writes nothing public.
+        (
+            "/artifacts/public/index.json",
+            &[(ASSERTION_HEADER, &person)],
+            StatusCode::FORBIDDEN,
+        ),
+        (
+            "/public/index.json",
+            &[("authorization", &job)],
+            StatusCode::UNAUTHORIZED,
+        ),
+        ("/public/index.json", &[], StatusCode::UNAUTHORIZED),
+    ];
+    for (uri, identity, expected) in cases {
+        let mut headers = identity.to_vec();
+        headers.push(("content-type", "application/json"));
+        assert_eq!(
+            send(&app, "PUT", uri, &headers, b"{}").await,
+            expected,
+            "{uri} {identity:?}"
+        );
+    }
+
+    // With no Access application, the local identity header is a person's.
+    let (_dir, app) = local_service().await;
+    let headers = [
+        (LOCAL_IDENTITY_HEADER, "dev@local"),
+        ("content-type", "application/json"),
+    ];
+    assert_eq!(
+        send(&app, "PUT", "/public/index.json", &headers, b"{}").await,
+        StatusCode::FORBIDDEN
+    );
+}
+
+#[tokio::test]
+async fn publishing_media_takes_the_service_token_alone() {
+    let (_dir, app) = verifying_service().await;
+    let service = KEY_A.sign(&service_claims("tcab-cli.access", AUDIENCE));
+    let person = KEY_A.sign(&person_claims("ada@example.com", AUDIENCE));
+    for headers in [
+        vec![(ASSERTION_HEADER, service.as_str())],
+        vec![(ASSERTION_HEADER, person.as_str())],
+        vec![],
+    ] {
+        assert_eq!(
+            send(&app, "POST", "/runs/run-1/publish-media", &headers, b"").await,
+            StatusCode::UNAUTHORIZED,
+            "{headers:?}"
+        );
+    }
+    // The run holds a build but no record, so nothing says what it publishes.
+    let token = bearer(SERVICE_TOKEN);
+    assert_eq!(
+        send(
+            &app,
+            "POST",
+            "/runs/run-1/publish-media",
+            &[("authorization", &token)],
+            b""
+        )
+        .await,
+        StatusCode::NOT_FOUND
+    );
+}
+
+#[test]
+fn a_public_write_is_authorized_by_identity() {
+    use super::authorize_public_write;
+    assert!(authorize_public_write(Some(&Identity::ServiceToken)).is_ok());
+    assert!(authorize_public_write(Some(&Identity::ServiceAssertion("cli".to_string()))).is_ok());
+    assert_eq!(
+        authorize_public_write(Some(&Identity::Person("ada@example.com".to_string())))
+            .unwrap_err()
+            .status,
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(
+        authorize_public_write(Some(&Identity::Token))
+            .unwrap_err()
+            .status,
+        StatusCode::UNAUTHORIZED
+    );
+    assert_eq!(
+        authorize_public_write(None).unwrap_err().status,
+        StatusCode::UNAUTHORIZED
     );
 }

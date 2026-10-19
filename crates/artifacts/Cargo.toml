@@ -72,9 +72,13 @@ flate2 = { workspace = true }
 # The public store (`public`) is one interface over the R2 and Blob clients,
 # held as a trait object because the environment picks the store at startup.
 async-trait = { workspace = true }
+# A published video is staged on disk for its transcode (`publish`), because
+# ffmpeg moves the mp4 index to the front, which needs a seekable output; the
+# staged files are read back into the public store as a stream.
+tempfile = { workspace = true }
+tokio-util = { workspace = true }
 
 [dev-dependencies]
-tempfile = { workspace = true }
 # Decodes the fixed test keys the Access tests sign assertions with.
 base64 = { workspace = true }
 tokio = { workspace = true, features = ["full", "test-util"] }

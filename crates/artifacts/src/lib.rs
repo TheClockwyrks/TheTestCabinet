@@ -36,6 +36,9 @@
 //!   until those writes go through this service.
 //! - [`public`] — the public dataset's store: the R2 bucket, or an Azurite
 //!   container on the local stack, behind one interface.
+//! - [`publish`] — the two writes into the public store: a published run's
+//!   media copied from its tree (`publish-media`), and the key rule of a
+//!   public dataset object (`PUT /public/{key}`).
 //! - [`object`] — the shapes both object stores read and write in.
 //! - [`auth`] — who is calling: the Access assertion every edge request carries
 //!   (checked by [`access`]), or one of the in-cluster tokens, with no route
@@ -53,6 +56,7 @@ pub mod error;
 pub mod object;
 pub mod playable;
 pub mod public;
+pub mod publish;
 pub mod r2;
 pub mod store;
 
@@ -74,14 +78,15 @@ pub struct ArtifactService {
 }
 
 /// Assemble the artifact service from a configuration: the Blob client of the
-/// private run-tree container, the verify HTTP client and the Access verifier, and
-/// the router over them. Fails when the container's credential cannot be set up (a
-/// workload identity the pod was not given), so the service refuses to start
-/// rather than fail every request later.
+/// private run-tree container, the public store, the verify HTTP client and the
+/// Access verifier, and the router over them. Fails when the container's
+/// credential cannot be set up (a workload identity the pod was not given), so
+/// the service refuses to start rather than fail every request later.
 pub fn build(config: Config) -> Result<ArtifactService, BlobError> {
     let bind = config.bind.clone();
     let http = reqwest::Client::new();
     let runs = BlobClient::new(&config.blob, http.clone())?;
+    let public = public::open(&config.public_store, &runs);
     let store = ArtifactStore::new(Arc::new(BlobStore::new(runs)));
     let access = config
         .access
@@ -94,6 +99,8 @@ pub fn build(config: Config) -> Result<ArtifactService, BlobError> {
         http,
         service_token: config.service_token.map(Arc::new),
         access,
+        public,
+        transcoder: Arc::new(publish::Ffmpeg::new()),
     };
     Ok(ArtifactService {
         router: api::router(state),

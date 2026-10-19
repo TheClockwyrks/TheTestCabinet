@@ -11,10 +11,15 @@
 //! [piece](crate::object::PIECE_SIZE) is staged and committed at once, so a
 //! reader sees the previous object or the new one, never a part.
 
-use std::sync::Arc;
+use std::collections::BTreeMap;
+use std::sync::{Arc, Mutex};
+
+use bytes::Bytes;
 
 use crate::blob::{BlobClient, BlobError};
-use crate::object::{ByteRange, ObjectBody, ObjectProperties, ObjectStream};
+use crate::object::{
+    ByteRange, ObjectBody, ObjectProperties, ObjectStream, body_from_bytes, collect_body,
+};
 use crate::r2::{R2Client, R2Config, R2Error};
 
 /// A public-store request failed.
@@ -155,6 +160,157 @@ pub fn open(config: &PublicStoreConfig, runs: &BlobClient) -> Arc<dyn PublicStor
     match config {
         PublicStoreConfig::R2(r2) => Arc::new(R2Client::new(r2.clone())),
         PublicStoreConfig::Blob { container } => Arc::new(runs.for_container(container)),
+    }
+}
+
+/// One object a [`MemoryPublicStore`] holds: its bytes and the labels stored
+/// on it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MemoryObject {
+    /// The object's bytes.
+    pub body: Vec<u8>,
+    /// The content type stored on it.
+    pub content_type: String,
+    /// The content encoding stored on it, when one was.
+    pub content_encoding: Option<String>,
+}
+
+/// A [`PublicStore`] held in memory, for tests.
+///
+/// A write lands whole once its body has been read to the end, so a body that
+/// fails leaves any earlier object in place, as the real stores' staged writes
+/// do. It counts every write, so a test can assert that a key already held was
+/// not written again.
+#[derive(Debug, Clone, Default)]
+pub struct MemoryPublicStore {
+    objects: Arc<Mutex<BTreeMap<String, MemoryObject>>>,
+    writes: Arc<Mutex<Vec<String>>>,
+}
+
+impl MemoryPublicStore {
+    /// An empty store.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Store `body` at `key` directly, as an earlier publish left it, without
+    /// counting it as a write.
+    pub fn insert(&self, key: &str, body: &[u8], content_type: &str) {
+        self.lock().insert(
+            key.to_string(),
+            MemoryObject {
+                body: body.to_vec(),
+                content_type: content_type.to_string(),
+                content_encoding: None,
+            },
+        );
+    }
+
+    /// The object at `key`, when the store holds one.
+    pub fn object(&self, key: &str) -> Option<MemoryObject> {
+        self.lock().get(key).cloned()
+    }
+
+    /// Every key the store holds, in order.
+    pub fn keys(&self) -> Vec<String> {
+        self.lock().keys().cloned().collect()
+    }
+
+    /// Every key written through [`PublicStore::put`], in the order written.
+    pub fn writes(&self) -> Vec<String> {
+        self.writes
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone()
+    }
+
+    fn lock(&self) -> std::sync::MutexGuard<'_, BTreeMap<String, MemoryObject>> {
+        self.objects
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
+    fn properties(object: &MemoryObject) -> ObjectProperties {
+        ObjectProperties {
+            content_length: object.body.len() as u64,
+            content_type: Some(object.content_type.clone()),
+            content_encoding: object.content_encoding.clone(),
+            last_modified: None,
+            etag: None,
+        }
+    }
+}
+
+#[async_trait::async_trait]
+impl PublicStore for MemoryPublicStore {
+    fn kind(&self) -> &'static str {
+        "memory"
+    }
+
+    async fn put(
+        &self,
+        key: &str,
+        body: ObjectBody,
+        content_type: &str,
+        content_encoding: Option<&str>,
+    ) -> Result<u64, PublicStoreError> {
+        let body = collect_body(body).await.map_err(|source| {
+            PublicStoreError::Blob(BlobError::Body {
+                target: key.to_string(),
+                source,
+            })
+        })?;
+        let length = body.len() as u64;
+        self.lock().insert(
+            key.to_string(),
+            MemoryObject {
+                body,
+                content_type: content_type.to_string(),
+                content_encoding: content_encoding.map(str::to_string),
+            },
+        );
+        self.writes
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .push(key.to_string());
+        Ok(length)
+    }
+
+    async fn get(
+        &self,
+        key: &str,
+        range: Option<ByteRange>,
+    ) -> Result<Option<ObjectStream>, PublicStoreError> {
+        let Some(object) = self.object(key) else {
+            return Ok(None);
+        };
+        let mut body = Bytes::from(object.body.clone());
+        if let Some(range) = range {
+            let start = (range.start as usize).min(body.len());
+            let end = range
+                .end
+                .map_or(body.len(), |end| (end as usize + 1).min(body.len()));
+            body = body.slice(start..end.max(start));
+        }
+        let mut properties = Self::properties(&object);
+        properties.content_length = body.len() as u64;
+        Ok(Some(ObjectStream {
+            properties,
+            body: body_from_bytes(body),
+        }))
+    }
+
+    async fn head(&self, key: &str) -> Result<Option<ObjectProperties>, PublicStoreError> {
+        Ok(self.lock().get(key).map(Self::properties))
+    }
+
+    async fn list_keys(&self, prefix: &str) -> Result<Vec<String>, PublicStoreError> {
+        Ok(self
+            .lock()
+            .keys()
+            .filter(|key| key.starts_with(prefix))
+            .cloned()
+            .collect())
     }
 }
 

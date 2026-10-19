@@ -194,7 +194,7 @@ pub async fn serve_proof_file(tree: &RunTree, file: &str) -> Result<Option<Serve
 /// The host namespace directory produced trees carried before it was renamed to
 /// `.vendor`. Runs collected under the old name are immutable history, so every
 /// read-back path keeps resolving it.
-const LEGACY_VENDOR_DIR: &str = ".tcab";
+pub(crate) const LEGACY_VENDOR_DIR: &str = ".tcab";
 
 /// Resolve one synthesized validation media file of a produced run, for serving to
 /// a reviewer the same way [`serve_proof_file`] serves proof media.
@@ -240,7 +240,7 @@ pub async fn serve_validation_file(
 
 /// Whether `file` is one flat file name: non-empty, with no path separator and no
 /// `..`.
-fn is_flat_name(file: &str) -> bool {
+pub(crate) fn is_flat_name(file: &str) -> bool {
     !(file.is_empty() || file.contains('/') || file.contains('\\') || file.contains(".."))
 }
 
@@ -307,7 +307,7 @@ pub async fn serve_asset_file(tree: &RunTree, file: &str) -> Result<Option<Serve
 
 /// The path within `implementation/` the asset request `file` names in `record`,
 /// `None` when the record names none.
-fn asset_path<'r>(record: &'r RunRecord, file: &str) -> Option<&'r str> {
+pub(crate) fn asset_path<'r>(record: &'r RunRecord, file: &str) -> Option<&'r str> {
     let (kind, frame) = parse_asset_request(file)?;
 
     // The replay of an adversarial run is served as an ordinary run asset too: the

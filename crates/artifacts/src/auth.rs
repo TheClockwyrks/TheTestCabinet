@@ -27,15 +27,21 @@
 //!   the upload forwards its per-job token to the backend's
 //!   `POST /jobs/{id}/verify-token` ([`verify_job_token`]), the `tree.tar` pull its
 //!   per-publish-job token to `POST /publish-jobs/{id}/verify-token`
-//!   ([`verify_publish_job_token`]), and the tree delete and the `GET /runs`
-//!   listing compare the service token ([`verify_service_token`]). The backend is
-//!   the authority for the two job tokens, so [`identify`] lets a bearer it cannot
-//!   recognise through to these routes and the route decides.
-//! - **Reads** (a run's build, media, logs and archive) take a verified identity:
-//!   a person's or service token's assertion, the shared service token (the
-//!   backend's snapshot builder reads media with it), or, with no Access
-//!   application, the local identity header. [`require_reader`] refuses a bearer
-//!   that is none of these.
+//!   ([`verify_publish_job_token`]), and the tree delete, the `GET /runs`
+//!   listing and `POST /runs/{id}/publish-media` compare the service token
+//!   ([`verify_service_token`]). The backend is the authority for the two job
+//!   tokens, so [`identify`] lets a bearer it cannot recognise through to these
+//!   routes and the route decides.
+//! - **The public write**, `PUT /public/{key}`, takes a service's identity
+//!   ([`authorize_public_write`]): the shared service token the backend writes
+//!   the public dataset with, or the assertion of an Access service token, which
+//!   is how the CLI writes an asset reference through the edge. A person's
+//!   assertion is refused (`403`).
+//! - **Reads** (a run's build, media, logs, gg session record, code analysis and
+//!   archive) take a verified identity: a person's or service token's assertion,
+//!   the shared service token (the backend's snapshot builder reads media with
+//!   it), or, with no Access application, the local identity header.
+//!   [`require_reader`] refuses a bearer that is none of these.
 //!
 //! [Identity]: https://docs.testcabinet.ai/components/auth/overview/
 //! [Auth]: https://docs.testcabinet.ai/components/artifacts/overview/#auth
@@ -117,6 +123,23 @@ pub async fn require_reader(request: Request, next: Next) -> Response {
         )
         .into_response(),
         None => ApiError::unauthorized("the request carries no identity").into_response(),
+    }
+}
+
+/// Authorize a write of the public dataset (`PUT /public/{key}`) by the
+/// caller's `identity`: the shared service token or an Access service token's
+/// assertion. A person, however verified, writes nothing public (`403`); a
+/// bearer that is not the service token is refused as unrecognised (`401`).
+pub fn authorize_public_write(identity: Option<&Identity>) -> Result<(), ApiError> {
+    match identity {
+        Some(Identity::ServiceToken | Identity::ServiceAssertion(_)) => Ok(()),
+        Some(Identity::Person(_)) => Err(ApiError::forbidden(
+            "a public write takes the service token or an Access service token, not a person",
+        )),
+        Some(Identity::Token) => Err(ApiError::unauthorized(
+            "invalid bearer token: a public write takes the service token",
+        )),
+        None => Err(ApiError::unauthorized("the request carries no identity")),
     }
 }
 
@@ -262,15 +285,16 @@ pub async fn verify_publish_job_token(
     }
 }
 
-/// Authorize a control-plane **delete** of a run's tree: the caller must present
-/// the shared service token (`TCAB_BACKEND_SERVICE_TOKEN`) the backend holds.
-/// Unlike an upload (a per-job token verified against the backend), a delete is
-/// the backend acting on its own authority, so it is gated by the shared secret
-/// directly. `expected` is `None` when the service has no token configured, in
-/// which case deletion is disabled and every caller is rejected.
+/// Authorize a control-plane route — the tree delete, the `GET /runs` listing,
+/// `publish-media` — by the shared service token (`TCAB_BACKEND_SERVICE_TOKEN`)
+/// the backend holds. Unlike an upload (a per-job token verified against the
+/// backend), these are the backend acting on its own authority, so they are
+/// gated by the shared secret directly. `expected` is `None` when the service has
+/// no token configured, in which case the routes are disabled and every caller
+/// is rejected.
 pub fn verify_service_token(headers: &HeaderMap, expected: Option<&str>) -> Result<(), ApiError> {
     let expected = expected.ok_or_else(|| {
-        ApiError::unauthorized("run-tree deletion is not enabled on this service")
+        ApiError::unauthorized("the service token is not configured on this service")
     })?;
     let presented =
         bearer(headers).ok_or_else(|| ApiError::unauthorized("missing service token"))?;

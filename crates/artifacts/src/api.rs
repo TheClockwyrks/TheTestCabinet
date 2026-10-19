@@ -1,7 +1,7 @@
 //! The artifact service's HTTP surface: upload a run's tree, serve its build and
 //! media.
 //!
-//! Three callers (see [`crate::auth`]):
+//! The callers (see [`crate::auth`]):
 //!
 //! - The **driver** uploads a finished run's collected tree —
 //!   `POST /runs/{id}/artifacts` with a `tar` body — authed by its **per-job
@@ -26,6 +26,14 @@
 //!   through the edge, which turns the browser's Access cookie into the assertion
 //!   on every one of them. The backend's snapshot builder reads media with the
 //!   service token instead.
+//! - A **person or an analysis tool** reads the run's gg session record,
+//!   `GET /runs/{id}/replay`, and its code analysis, `GET /runs/{id}/code-analysis`,
+//!   with the same reader identity.
+//! - The **backend** publishes a run's media, `POST /runs/{id}/publish-media`
+//!   with the service token, and writes each object of the public dataset,
+//!   `PUT /public/{key}`; the **CLI** writes an asset reference with the same
+//!   route, through the edge with an Access service token (see
+//!   [`crate::publish`]).
 //!
 //! Every route is served at the root, which is what an in-cluster caller uses, and
 //! under the edge's [`/artifacts`](crate::auth::EDGE_PREFIX) prefix, which
@@ -43,10 +51,10 @@ use std::io::Write;
 use std::sync::Arc;
 
 use axum::body::Body;
-use axum::extract::{OriginalUri, Path, Request, State};
+use axum::extract::{Extension, OriginalUri, Path, Request, State};
 use axum::http::{StatusCode, header};
 use axum::response::{IntoResponse, Response};
-use axum::routing::{get, post};
+use axum::routing::{get, post, put};
 use axum::{Json, Router};
 use bytes::{Bytes, BytesMut};
 use futures_util::StreamExt;
@@ -62,9 +70,12 @@ use crate::playable::{
 };
 
 use crate::auth::{
-    AccessMode, EDGE_PREFIX, require_reader, verify_job_token, verify_publish_job_token,
+    AccessMode, EDGE_PREFIX, Identity, authorize_public_write, require_reader, verify_job_token,
+    verify_publish_job_token,
 };
 use crate::error::ApiError;
+use crate::public::PublicStore;
+use crate::publish::{PublishError, Transcoder, check_public_key, publish_run_media};
 use crate::store::{ArchiveShape, ArtifactStore, StoreError, start_archive, write_archive};
 
 /// The maximum size of an uploaded run tree's `tar` body, in bytes. A run's
@@ -275,6 +286,11 @@ pub struct AppState {
     /// The Access verifier an edge request's assertion is checked with, or `None`
     /// when the service takes a person's identity from the local identity header.
     pub access: AccessMode,
+    /// The public dataset's store, which `publish-media` and `PUT /public/{key}`
+    /// write.
+    pub public: Arc<dyn PublicStore>,
+    /// What transcodes a published webm clip to mp4.
+    pub transcoder: Arc<dyn Transcoder>,
 }
 
 /// Every route of the service, served by [`router`] at the root and under the
@@ -297,7 +313,15 @@ fn routes() -> Router<AppState> {
         // Download a run's source tree as a tar (publisher → service, per-publish-job
         // token): a server-to-server pull the publisher uses to drive the
         // GitHub-repo + Pages release, verified against the backend like an upload.
-        .route("/runs/{id}/tree.tar", get(tree_tar));
+        .route("/runs/{id}/tree.tar", get(tree_tar))
+        // Copy a published run's media into the public store (backend → service,
+        // shared control-plane service token).
+        .route("/runs/{id}/publish-media", post(publish_media))
+        // Write one object of the public dataset (backend → service with the
+        // service token; the CLI through the edge with an Access service token).
+        // No `DefaultBodyLimit` layer, as for the upload: the body is streamed and
+        // capped as it is read.
+        .route("/public/{*key}", put(put_public));
     let read_routes = Router::new()
         // Serve the run's playable build and media (reviewer → service, through the
         // edge with the Access assertion), read from the run's stored tree.
@@ -320,6 +344,10 @@ fn routes() -> Router<AppState> {
         .route("/runs/{id}/showcase/{file}", get(showcase_file))
         .route("/runs/{id}/events.jsonl", get(events_file))
         .route("/runs/{id}/raw.jsonl", get(raw_file))
+        // The gg session record and the code analysis, each a JSON document the
+        // tree holds gzipped (person or analysis tool → service).
+        .route("/runs/{id}/replay", get(replay_file))
+        .route("/runs/{id}/code-analysis", get(code_analysis_file))
         .route_layer(axum::middleware::from_fn(require_reader));
     token_routes.merge(read_routes)
 }
@@ -878,6 +906,280 @@ async fn serve_run_stream(
     Ok(response)
 }
 
+/// The run-tree file `GET /runs/{id}/replay` serves: the driver's gg session
+/// record.
+pub const REPLAY_TREE_FILE: &str = "replay.json.gz";
+
+/// The run-tree file `GET /runs/{id}/code-analysis` serves: the driver's code
+/// analysis document.
+pub const CODE_ANALYSIS_TREE_FILE: &str = "code-analysis.json.gz";
+
+/// `GET /runs/{id}/replay` — a run's gg session record, the JSON document the
+/// driver stores gzipped as [`REPLAY_TREE_FILE`], served as `application/json`
+/// with a gzip content encoding. `404` when the run or the record is absent.
+async fn replay_file(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<Response, ApiError> {
+    serve_gzipped_json(&state, &id, REPLAY_TREE_FILE).await
+}
+
+/// `GET /runs/{id}/code-analysis` — a run's code analysis, the JSON document the
+/// driver stores gzipped as [`CODE_ANALYSIS_TREE_FILE`], served as
+/// `application/json` with a gzip content encoding. `404` when the run or the
+/// document is absent.
+async fn code_analysis_file(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<Response, ApiError> {
+    serve_gzipped_json(&state, &id, CODE_ANALYSIS_TREE_FILE).await
+}
+
+/// The two bytes every gzip member begins with (RFC 1952 §2.3.1). A JSON
+/// document never does, so they tell a framed document from a plain one.
+const GZIP_MAGIC: [u8; 2] = [0x1f, 0x8b];
+
+/// Serve the run-tree file `file_name`, a JSON document travelling gzipped, as
+/// `application/json` with a gzip content encoding, so a browser or an HTTP
+/// client inflates the body before reading it.
+///
+/// The labels come from the `.json.gz` name, but a tree uploaded with the
+/// document left plain is served truthfully rather than mislabelled: the body's
+/// first two bytes decide whether the encoding is declared. A finished run's
+/// documents never change, so they are cached as the logs are.
+async fn serve_gzipped_json(
+    state: &AppState,
+    id: &str,
+    file_name: &str,
+) -> Result<Response, ApiError> {
+    let tree = state.store.run_tree(id).await.map_err(map_store_error)?;
+    let object = tree
+        .get(file_name)
+        .await
+        .map_err(map_store_error)?
+        .ok_or_else(|| ApiError::not_found(format!("run `{id}` has no recorded `{file_name}`")))?;
+    let length = object.properties.content_length;
+    let (head, rest) = peek(object.body, GZIP_MAGIC.len())
+        .await
+        .map_err(|err| map_store_error(StoreError::Body(err)))?;
+    let labels = test_cabinet_suites::content_labels::for_gz(file_name);
+    let encoding = if head.starts_with(&GZIP_MAGIC) {
+        labels.content_encoding
+    } else {
+        None
+    };
+    let body: crate::object::ObjectBody =
+        Box::pin(futures_util::stream::iter((!head.is_empty()).then(|| Ok(head))).chain(rest));
+    let mut response = media_response(Served {
+        content_type: labels.content_type,
+        content_encoding: encoding,
+        content_length: Some(length),
+        body,
+    });
+    response.headers_mut().insert(
+        header::CACHE_CONTROL,
+        header::HeaderValue::from_static("public, max-age=31536000, immutable"),
+    );
+    Ok(response)
+}
+
+/// Read at least `want` bytes off the front of `body` (fewer when the body is
+/// shorter), answering them and the rest of the body.
+async fn peek(
+    mut body: crate::object::ObjectBody,
+    want: usize,
+) -> std::io::Result<(Bytes, crate::object::ObjectBody)> {
+    let mut head = BytesMut::new();
+    while head.len() < want {
+        match body.next().await {
+            Some(chunk) => head.extend_from_slice(&chunk?),
+            None => break,
+        }
+    }
+    Ok((head.freeze(), body))
+}
+
+/// `POST /runs/{id}/publish-media` — copy run `{id}`'s publishable media from its
+/// stored tree into the public store under `media/runs/<id>/`, and answer the key
+/// each file was published under (see [`publish_run_media`]).
+///
+/// The backend calls it when a run publishes, with the shared control-plane
+/// service token; with no token configured every caller is refused (`401`). It is
+/// idempotent: a key the public store already holds is left in place and named
+/// again. `200 OK` with
+/// `{ "proofMedia": [{ "id", "kind", "key" }], "validationMedia": [{ "file", "key" }],
+/// "assetMedia": [...], "showcaseMedia": [...] }`; `404` for a run with no stored
+/// tree or no run record.
+#[tracing::instrument(name = "artifacts.publish_media", skip(state, headers), fields(run.id = %id), err(Debug))]
+async fn publish_media(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    headers: axum::http::HeaderMap,
+) -> Result<Response, ApiError> {
+    crate::auth::verify_service_token(
+        &headers,
+        state.service_token.as_deref().map(String::as_str),
+    )?;
+    let tree = state.store.run_tree(&id).await.map_err(map_store_error)?;
+    let published = publish_run_media(&tree, state.public.as_ref(), state.transcoder.as_ref())
+        .await
+        .map_err(|err| match err {
+            PublishError::NoRecord(_) => ApiError::not_found(err.to_string()),
+            PublishError::Store(err) => map_store_error(err),
+            PublishError::BadRecord { .. } | PublishError::Public(_) | PublishError::Staging(_) => {
+                ApiError::internal(err.to_string())
+            }
+        })?;
+    Ok((StatusCode::OK, Json(published)).into_response())
+}
+
+/// The [`put_public`] response body.
+#[derive(serde::Serialize)]
+struct PublicWriteOut {
+    /// The key written.
+    key: String,
+    /// The number of bytes written.
+    bytes: u64,
+}
+
+/// `PUT /public/{key}` — write one object of the public dataset at `key`, whole,
+/// with the request's body, its `Content-Type`, and its `Content-Encoding` when it
+/// carries one.
+///
+/// The backend writes a run's document, the index objects and the `index.json`
+/// pointer with it, presenting the service token; the CLI writes an
+/// asset-generation case's reference frames with it through the edge, presenting
+/// an Access service token. A person's assertion is refused (`403`, see
+/// [`authorize_public_write`]).
+///
+/// The key is stored as given, so one that does not name a single object plainly
+/// is refused (`400`, see [`check_public_key`]), as is a request with no
+/// `Content-Type`. The body is streamed into the store, which commits it whole, so
+/// a reader sees the previous object or the new one; a body over the upload limit
+/// is refused (`413`) and leaves the previous object in place. `201 Created` with
+/// `{ "key", "bytes" }`.
+#[tracing::instrument(name = "artifacts.put_public", skip(state, identity, headers, body), fields(key = %key, bytes = tracing::field::Empty), err(Debug))]
+async fn put_public(
+    State(state): State<AppState>,
+    identity: Option<Extension<Identity>>,
+    Path(key): Path<String>,
+    headers: axum::http::HeaderMap,
+    body: Body,
+) -> Result<Response, ApiError> {
+    authorize_public_write(identity.as_ref().map(|Extension(identity)| identity))?;
+    check_public_key(&key)
+        .map_err(|reason| ApiError::bad_request(format!("key `{key}`: {reason}")))?;
+    let content_type = header_text(&headers, header::CONTENT_TYPE)?
+        .ok_or_else(|| ApiError::bad_request("a public write carries a `Content-Type`"))?;
+    let content_encoding = header_text(&headers, header::CONTENT_ENCODING)?;
+
+    let limit = state.upload_limit;
+    if let Some(length) =
+        header_text(&headers, header::CONTENT_LENGTH)?.and_then(|length| length.parse::<u64>().ok())
+        && length > limit
+    {
+        return Err(ApiError::payload_too_large(format!(
+            "the body is {length} bytes, over the {limit}-byte limit"
+        )));
+    }
+
+    // The cap is applied as the body is read, and a body that fails — too long, or
+    // broken off by the client — fails the write before the store commits it.
+    let outcome = Arc::new(std::sync::Mutex::new(BodyOutcome::Whole));
+    let body = capped_body(body, limit, Arc::clone(&outcome));
+    let written = state
+        .public
+        .put(&key, body, &content_type, content_encoding.as_deref())
+        .await;
+    let written = match written {
+        Ok(written) => written,
+        Err(err) => {
+            let outcome = *outcome
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            return Err(match outcome {
+                BodyOutcome::TooLarge => {
+                    ApiError::payload_too_large(format!("the body is over the {limit}-byte limit"))
+                }
+                BodyOutcome::Broken => {
+                    ApiError::bad_request(format!("the body did not arrive whole: {err}"))
+                }
+                BodyOutcome::Whole => ApiError::internal(err.to_string()),
+            });
+        }
+    };
+    tracing::Span::current().record("bytes", written);
+    tracing::info!(key = %key, bytes = written, "wrote a public object");
+    Ok((
+        StatusCode::CREATED,
+        Json(PublicWriteOut {
+            key,
+            bytes: written,
+        }),
+    )
+        .into_response())
+}
+
+/// How a capped request body ended, recorded as it is read.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum BodyOutcome {
+    /// It arrived whole within the cap (or has not failed yet).
+    Whole,
+    /// It ran past the cap.
+    TooLarge,
+    /// The client's body failed.
+    Broken,
+}
+
+/// `body` as an [`ObjectBody`](crate::object::ObjectBody) that fails once more than
+/// `limit` bytes have been read, or when the client's body fails, recording which
+/// in `outcome`.
+fn capped_body(
+    body: Body,
+    limit: u64,
+    outcome: Arc<std::sync::Mutex<BodyOutcome>>,
+) -> crate::object::ObjectBody {
+    let mut read = 0u64;
+    Box::pin(body.into_data_stream().map(move |chunk| {
+        let record = |ended: BodyOutcome| {
+            *outcome
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner) = ended;
+        };
+        match chunk {
+            Ok(chunk) => {
+                read = read.saturating_add(chunk.len() as u64);
+                if read > limit {
+                    record(BodyOutcome::TooLarge);
+                    Err(std::io::Error::other("the body is over the limit"))
+                } else {
+                    Ok(chunk)
+                }
+            }
+            Err(err) => {
+                record(BodyOutcome::Broken);
+                Err(std::io::Error::other(err))
+            }
+        }
+    }))
+}
+
+/// The value of header `name` as trimmed text, `None` when absent or empty; a
+/// value that is not visible ASCII is a `400`.
+fn header_text(
+    headers: &axum::http::HeaderMap,
+    name: header::HeaderName,
+) -> Result<Option<String>, ApiError> {
+    let Some(value) = headers.get(&name) else {
+        return Ok(None);
+    };
+    let text = value
+        .to_str()
+        .map_err(|_| ApiError::bad_request(format!("the `{name}` header is not plain text")))?
+        .trim();
+    Ok((!text.is_empty()).then(|| text.to_string()))
+}
+
 /// Map a [`StoreError`] onto the HTTP envelope: what the caller sent wrong is a
 /// `400` (a traversal entry or unsafe id, an unusable archive, a body that failed
 /// to arrive) or a `413` (a body over the limit); a read of an unknown run's tree is
@@ -907,3 +1209,7 @@ mod replace_tests;
 #[cfg(test)]
 #[path = "api.stream.test.rs"]
 mod stream_tests;
+
+#[cfg(test)]
+#[path = "api.publish.test.rs"]
+mod publish_tests;

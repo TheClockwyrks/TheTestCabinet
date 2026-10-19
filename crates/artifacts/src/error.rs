@@ -41,6 +41,12 @@ impl ApiError {
         Self::new(StatusCode::UNAUTHORIZED, "unauthorized", message)
     }
 
+    /// `403 Forbidden` with code `forbidden` — a verified caller whose identity
+    /// the route does not admit (a person's assertion on a service write).
+    pub fn forbidden(message: impl Into<String>) -> Self {
+        Self::new(StatusCode::FORBIDDEN, "forbidden", message)
+    }
+
     /// `400 Bad Request` with code `bad_request` — a malformed upload (a path that
     /// escapes the run directory, an unreadable tarball).
     pub fn bad_request(message: impl Into<String>) -> Self {

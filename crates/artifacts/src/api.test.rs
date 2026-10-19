@@ -137,6 +137,8 @@ pub(super) async fn app_with_limit(
         http: reqwest::Client::new(),
         service_token: service_token.map(|t| Arc::new(t.to_string())),
         access: None,
+        public: Arc::new(crate::public::MemoryPublicStore::new()),
+        transcoder: Arc::new(crate::publish::testing::FakeTranscoder::working()),
     };
     (router(state), store, objects)
 }
