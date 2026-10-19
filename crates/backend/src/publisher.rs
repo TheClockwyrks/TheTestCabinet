@@ -32,7 +32,7 @@ use crate::db::Db;
 use crate::error::{BackendError, Result};
 use crate::snapshot::SnapshotBuilder;
 use crate::store::DefinitionStore;
-use test_cabinet_core::r2::R2Client;
+use test_cabinet_artifacts::r2::R2Client;
 
 /// The outcome of a forced refresh (`POST /snapshot/refresh`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -356,7 +356,7 @@ async fn run_refresh(inner: &PublisherInner) -> Result<RefreshOutcome> {
         .store
         .read_test_case_groups()?
         .into_iter()
-        .map(crate::api::TestCaseGroupOut::from)
+        .map(crate::api::test_case_group_out)
         .collect();
 
     let snapshot = SnapshotBuilder::new(runs, cases, inner.store.clone())

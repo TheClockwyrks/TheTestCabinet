@@ -108,7 +108,7 @@ impl<T: FaultedRun> FaultedRun for Arc<T> {
     }
 }
 
-/// The terminal [`SessionEnded`](test_cabinet_core::gg::GgTelemetryKind::SessionEnded) status an
+/// The terminal [`SessionEnded`](test_cabinet_contracts::gg::GgTelemetryKind::SessionEnded) status an
 /// agent's loop ends under, **after** the run's [fault latch](FaultLatch) has had its say.
 ///
 /// Constructed only by [`attributed`](Self::attributed), which is what makes the attribution

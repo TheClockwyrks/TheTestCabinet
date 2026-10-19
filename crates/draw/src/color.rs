@@ -104,3 +104,7 @@ impl Background {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "color.suites.test.rs"]
+mod suites_tests;

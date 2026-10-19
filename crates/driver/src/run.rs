@@ -6,7 +6,7 @@
 //! `test-cases/` checkout), only here the live events and preview frames flow
 //! through the backend-streaming [`sink`](crate::sink) rather than onto a job. It
 //! re-implements **none** of a run's behavior; the record it produces is the one
-//! core writes, identical to a local run's.
+//! the engine writes, identical to a local run's.
 //!
 //! The outcome is *not* recorded locally (the pod is ephemeral): [`drive`] returns
 //! it so `crate::main` can stream the terminal status — carrying the produced or
@@ -19,17 +19,17 @@ mod tests;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use test_cabinet_code_analysis::StaticCodeAnalyzer;
-use test_cabinet_core::ToolchainStage;
-use test_cabinet_core::gg_session_assembly::GgSessionAssembler;
-use test_cabinet_core::{
-    ArtifactCollector, BackendClient, CliArtifactCollector, CliContainerRuntime, ContainerRuntime,
-    CredBytesSource, DefaultHarnessRegistry, DispatchValidator, EngineCatalog,
-    EngineCatalogExt as _, Error, FsRepoSeeder, HttpBackendClient, OrchestratorCatalog,
-    PrerenderedReferenceRenderer, PriorGameJamEntry, RenderedReference, RunCancellation, RunEngine,
-    RunRecord, RunRequest, RunState, RunStateExt, TestCaseCatalog, TestCaseVersion, TestType,
-    materialize_version,
+use crate::ToolchainStage;
+use crate::analyzer::StaticCodeAnalyzer;
+use crate::gg_session_assembly::GgSessionAssembler;
+use crate::{
+    ArtifactCollector, CliArtifactCollector, CliContainerRuntime, ContainerRuntime,
+    CredBytesSource, DefaultHarnessRegistry, DispatchValidator, Error, FsRepoSeeder,
+    OrchestratorCatalog, PrerenderedReferenceRenderer, PriorGameJamEntry, RenderedReference,
+    RunCancellation, RunEngine, RunRecord, RunRequest, RunState, RunStateExt, TestCaseCatalog,
+    TestCaseVersion, TestType, materialize_version,
 };
+use test_cabinet_backend_client::{BackendClient, HttpBackendClient};
 use tokio::sync::mpsc::UnboundedSender;
 
 use crate::client::JobClient;
@@ -115,7 +115,7 @@ impl RunFailure {
 /// `run_id` is minted by the caller and handed to the engine, so the run tree the
 /// engine writes — including a hung run's salvaged session record — is keyed by the same
 /// id the caller's own failure/cancellation record will carry. See
-/// [`RunEngine::run_resolved`](test_cabinet_core::RunEngine::run_resolved).
+/// [`RunEngine::run_resolved`](crate::RunEngine::run_resolved).
 pub async fn drive(
     config: &Config,
     run_id: &str,
@@ -127,7 +127,7 @@ pub async fn drive(
 ) -> Result<RunRecord, RunFailure> {
     // When the run requests an explicit auth mode, lock it for the engine by
     // setting `TCAB_AUTH_MODE` before resolution — the driver does not select the
-    // mode itself, it only hands core the request's preference. Default (no
+    // mode itself, it only hands the engine the request's preference. Default (no
     // `auth_mode`) leaves the engine's API-key-preferring selection unchanged. A
     // driver pod runs exactly one run, so mutating its own process env here is
     // safe (there is no concurrent run to race).
@@ -139,7 +139,7 @@ pub async fn drive(
 
     // Make subscription auth available from the mounted Secret, when configured.
     // This is the cluster analogue of a signed-in host home: the bytes come from
-    // the operator-provided Secret the dispatcher mounted, never from `~`. Core
+    // the operator-provided Secret the dispatcher mounted, never from `~`. The engine
     // still decides whether subscription is the selected mode.
     let creds: Option<Box<dyn CredBytesSource + Send + Sync>> =
         config.subscription_dir.as_deref().map(|dir| {
@@ -319,7 +319,7 @@ async fn drive_engine<R, C>(
     outbound: &UnboundedSender<Outbound>,
     client: &JobClient,
     cancel: &RunCancellation,
-) -> Result<RunRecord, test_cabinet_core::Error>
+) -> Result<RunRecord, crate::Error>
 where
     R: ContainerRuntime,
     C: ArtifactCollector,
@@ -331,7 +331,7 @@ where
         // `run_resolved` does not consult the catalog (the version is resolved by
         // the caller), but the struct still carries one; the driver has no
         // checkout, so point it at a placeholder that is never read.
-        catalog: TestCaseCatalog::new(catalog_placeholder()),
+        catalog: TestCaseCatalog::new(catalog_placeholder(), crate::engine::built_in_catalog()),
         seeder: FsRepoSeeder::new(seed_dir),
         collector,
         runtime,
@@ -341,7 +341,7 @@ where
         // resolve a run's engine at all: the pod has no checkout to read an
         // `engines/` directory out of, and the engine gate runs before the sandbox
         // is created.
-        engines: EngineCatalog::new(),
+        engines: crate::engine::built_in_catalog(),
         renderer: Box::new(PrerenderedReferenceRenderer::new(references)),
         // gg's capture journal is folded into the run tree's `replay.json.gz` here,
         // on the host, after the tree is collected and before validation — so a
@@ -372,7 +372,7 @@ where
         // for a non-game-jam run or a jam's first run. The engine seeds them and adds
         // the prompt's distinctness section.
         prior_game_jam_entries,
-        clock: std::sync::Arc::new(test_cabinet_core::SystemClock),
+        clock: std::sync::Arc::new(crate::SystemClock),
     };
 
     let mut events = BackendEventSink::new(outbound.clone());

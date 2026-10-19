@@ -7,13 +7,13 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use serde_json::json;
 use tempfile::TempDir;
-use test_cabinet_core::gg::{GgAgentStatus, GgCapabilitySet, GgContextSource};
-use test_cabinet_core::gg_session_journal::GG_SESSION_JOURNAL_PATH;
-use test_cabinet_core::gg_session_record::{
+use test_cabinet_contracts::gg::{GgAgentStatus, GgCapabilitySet, GgContextSource};
+use test_cabinet_contracts::gg_session_journal::GG_SESSION_JOURNAL_PATH;
+use test_cabinet_contracts::gg_session_record::{
     GG_SESSION_FORMAT_VERSION, GG_SESSION_STREAM_MAX_BYTES, GG_SESSION_TOOL_MAX_BYTES,
     GgSessionAgentOrigin, GgSessionPools, fingerprint_exact,
 };
-use test_cabinet_core::metrics::TokenCounts;
+use test_cabinet_contracts::metrics::TokenCounts;
 
 use super::*;
 use crate::context::{ContextModel, FileRegion, HeuristicTokenEstimator, UsageSignalOptions};
@@ -340,7 +340,7 @@ fn recorded_seed<'a>(prompt: &'a str, vision: bool) -> RecordedSeed<'a> {
         model_windows: BTreeMap::from([("mock/echo".to_string(), 128_000)]),
         model_providers: BTreeMap::from([(
             "mock/echo".to_string(),
-            vec![test_cabinet_core::gg::GgProviderCandidate::new(
+            vec![test_cabinet_contracts::gg::GgProviderCandidate::new(
                 "mock", "fp8",
             )],
         )]),

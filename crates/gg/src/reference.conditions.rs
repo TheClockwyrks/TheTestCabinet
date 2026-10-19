@@ -40,7 +40,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::OnceLock;
 
-use test_cabinet_core::gg::{
+use test_cabinet_contracts::gg::{
     CAPABILITY_AGENT_MANAGED_CONTEXT, CAPABILITY_COMPACTION, CAPABILITY_EDIT_FILE, CAPABILITY_EXEC,
     CAPABILITY_FORK, CAPABILITY_LIST_DIR, CAPABILITY_MEMORIES, CAPABILITY_PROJECT_MANAGEMENT,
     CAPABILITY_READ_FILE, CAPABILITY_RESPONSES_AS_CODE, CAPABILITY_SEARCH, CAPABILITY_SHELL,
@@ -49,7 +49,7 @@ use test_cabinet_core::gg::{
     COMPACTION_STRATEGY_MEMORY, COMPACTION_STRATEGY_SELF_COMPACTION,
     COMPACTION_STRATEGY_SELF_SUMMARIZATION,
 };
-use test_cabinet_core::gg_reference::GgToolCondition;
+use test_cabinet_contracts::gg_reference::GgToolCondition;
 
 use super::tools::{Configuration, base_configurations, registry_definitions};
 use crate::compaction::CompactionStrategy;
@@ -65,7 +65,7 @@ use crate::tools::ALL_TOOL_NAMES;
 /// [`responses-as-code`](CAPABILITY_RESPONSES_AS_CODE), which contributes nothing of its own and is
 /// half of the condition on `compact`.
 ///
-/// [`fsm`](test_cabinet_core::gg::CAPABILITY_FSM) is deliberately absent, and its absence is the
+/// [`fsm`](test_cabinet_contracts::gg::CAPABILITY_FSM) is deliberately absent, and its absence is the
 /// substance of `transition_state`'s condition: that capability is declared on the *shell* profile
 /// driving a machine, never on the agent's own, so an agent's capability set is not where the
 /// question is asked. The [machine axis](Axis::Machine) is.

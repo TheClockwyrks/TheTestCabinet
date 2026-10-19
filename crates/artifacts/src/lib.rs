@@ -19,9 +19,13 @@
 //! - [`api`] — the HTTP surface: the driver's upload (per-job-token), the
 //!   publisher's source-tree pull (per-publish-job token), the backend's tree
 //!   management (service token), and the reviewer's build/media reads, the reads
-//!   built on the **shared core resolvers** so serving logic is reused, not
-//!   reinvented. Every route is served at the root and under the edge's
-//!   `/artifacts` prefix.
+//!   built on the [`playable`] resolvers. Every route is served at the root and
+//!   under the edge's `/artifacts` prefix.
+//! - [`playable`] — resolving a run's build, proof, validation, showcase and
+//!   asset files for serving.
+//! - [`r2`] — the R2 object-store client. The backend's snapshot writes and the
+//!   CLI's `tcab publish-asset-reference` still call it directly, an interim edge
+//!   until those writes go through this service.
 //! - [`auth`] — who is calling: the Access assertion every edge request carries
 //!   (checked by [`access`]), or one of the in-cluster tokens, with no route
 //!   reachable without one but the health probe.
@@ -33,6 +37,8 @@ pub mod api;
 pub mod auth;
 pub mod config;
 pub mod error;
+pub mod playable;
+pub mod r2;
 pub mod store;
 
 use std::sync::Arc;

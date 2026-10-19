@@ -66,7 +66,7 @@ use std::sync::OnceLock;
 
 use async_trait::async_trait;
 use serde_json::Value;
-use test_cabinet_core::gg::{
+use test_cabinet_contracts::gg::{
     CAPABILITY_COMPACTION, COMPACTION_PARAM_MODEL, COMPACTION_PARAM_MODEL_SLOT,
     COMPACTION_STRATEGY_HANDOFF_COMPACTION, COMPACTION_STRATEGY_HANDOFF_SUMMARIZATION,
     COMPACTION_STRATEGY_MEMORY, COMPACTION_STRATEGY_SELF_COMPACTION,
@@ -160,11 +160,11 @@ fn memory_compaction_summary() -> &'static str {
 
 /// **Who** condenses a thread at a compaction boundary, and **what** the restarted context is
 /// rebuilt from — the compaction capability's one experimental variable, selected by its
-/// [`implementation`](test_cabinet_core::gg::GgCapabilityConfig::implementation).
+/// [`implementation`](test_cabinet_contracts::gg::GgCapabilityConfig::implementation).
 ///
 /// The five differ along two axes. *Who*: the working agent itself in its own thread, or a
 /// separate handoff model out of band. *What*: free prose, a [`compact`](COMPACT_TOOL) call that
-/// also names the files to re-read, or [memories](test_cabinet_core::gg::CAPABILITY_MEMORIES)
+/// also names the files to re-read, or [memories](test_cabinet_contracts::gg::CAPABILITY_MEMORIES)
 /// instead of a summary at all.
 ///
 /// An enabled compaction **names one**, and a run that names a strategy gg does not offer — or
@@ -181,14 +181,14 @@ pub enum CompactionStrategy {
     /// A separate model answers with a [`compact`](COMPACT_TOOL) call — summary plus files.
     HandoffCompaction,
     /// The agent writes its working state to
-    /// [memories](test_cabinet_core::gg::CAPABILITY_MEMORIES), which are pinned and so cross the
+    /// [memories](test_cabinet_contracts::gg::CAPABILITY_MEMORIES), which are pinned and so cross the
     /// boundary verbatim; there is no prose summary.
     Memory,
 }
 
 impl CompactionStrategy {
     /// Every strategy gg offers, in the order the documentation lists them — the vocabulary an
-    /// [`implementation`](test_cabinet_core::gg::GgCapabilityConfig::implementation) is read
+    /// [`implementation`](test_cabinet_contracts::gg::GgCapabilityConfig::implementation) is read
     /// against, and what a refusal offers the operator back.
     pub const ALL: [Self; 5] = [
         Self::SelfSummarization,
@@ -217,7 +217,7 @@ impl CompactionStrategy {
     /// anything would be a fallback wearing a placeholder's name.
     pub const NO_COMPACTION: Self = Self::SelfSummarization;
 
-    /// The strategy an [implementation](test_cabinet_core::gg::GgCapabilityConfig::implementation)
+    /// The strategy an [implementation](test_cabinet_contracts::gg::GgCapabilityConfig::implementation)
     /// string names.
     ///
     /// A name gg does not offer is reported into `report` and refuses the launch, because the
@@ -299,7 +299,7 @@ impl CompactionStrategy {
     /// the run.
     ///
     /// It is also true for [self-summarization](Self::SelfSummarization) under
-    /// [responses-as-code](test_cabinet_core::gg::CAPABILITY_RESPONSES_AS_CODE), and that is not a
+    /// [responses-as-code](test_cabinet_contracts::gg::CAPABILITY_RESPONSES_AS_CODE), and that is not a
     /// special case so much as the only coherent reading of the strategy there. Self-summarization
     /// asks the agent for a summary; a tool-calling agent answers in prose, but a code agent has no
     /// prose to answer in — every reply it sends is a program. Asking one to stop writing programs
@@ -431,7 +431,7 @@ impl PendingCompaction {
     ///
     /// `language` — the agent's [program language](ProgramLanguage), or `None` when it calls tools —
     /// is the one thing that changes the wording: under
-    /// [responses-as-code](test_cabinet_core::gg::CAPABILITY_RESPONSES_AS_CODE) every reply is a
+    /// [responses-as-code](test_cabinet_contracts::gg::CAPABILITY_RESPONSES_AS_CODE) every reply is a
     /// program and every call is a function on an API object, so the instruction has to name the
     /// call the way that run's model actually makes it. For [`Summary`](Self::Summary) it changes
     /// more than the wording: a code run has no prose reply to summarize *in*, so its summary is
@@ -1342,13 +1342,13 @@ pub fn restore_docviews(context: &ContextModel, docs: &DocsRuntime) -> Vec<Resto
 /// # Text views do not survive the boundary, and documentation does
 ///
 /// A [text view](GgContextSource::TextView) — material a
-/// [responses-as-code](test_cabinet_core::gg::CAPABILITY_RESPONSES_AS_CODE) program composed for
+/// [responses-as-code](test_cabinet_contracts::gg::CAPABILITY_RESPONSES_AS_CODE) program composed for
 /// itself — is an ordinary ephemeral item, so it is dropped here with everything else, and the
 /// request carries **`files` only**: there is no way for a model to name a view it wants carried
 /// across. That is deliberate rather than an oversight. The window is a text view's only copy, so
 /// carrying one across would mean re-seeding bytes the boundary exists to reclaim, and the material
 /// a model wants to outlive a compaction has two homes that already survive one — a file it can
-/// name in `files`, or a [memory](test_cabinet_core::gg::CAPABILITY_MEMORIES). A file view *is*
+/// name in `files`, or a [memory](test_cabinet_contracts::gg::CAPABILITY_MEMORIES). A file view *is*
 /// carried across when the model names its path, because re-reading it is cheap and truthful.
 ///
 /// A [documentation view](GgContextSource::DocsView) is carried across too, and unlike a file it is

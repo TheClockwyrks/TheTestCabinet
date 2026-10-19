@@ -14,7 +14,7 @@
 //! baseline `references/<id>.wasm`, a pushed run's `controller.wasm`, the
 //! pushed-controller listing) and persists finished tournaments + their per-match
 //! replays back to the backend — all through the shared
-//! [`HttpBackendClient`](test_cabinet_core::HttpBackendClient) against the existing
+//! [`HttpBackendClient`](test_cabinet_backend_client::HttpBackendClient) against the existing
 //! backend endpoints. No new backend routes.
 //!
 //! The pieces:

@@ -91,7 +91,7 @@ check_equal "and says so" "gg-version-gate: gg 0.7.0 matches v0.7.0" "$out"
 out="$(run "$tmp/gg" refs/tags/v0.7.1)"
 check_equal "a tag gg does not report fails" "1" "$?"
 check_contains "naming both versions" "gg reports version '0.7.0' but the tag is 'v0.7.1'." "$out"
-check_contains "and what to bump" "Bump the version of crates/gg and crates/core to 0.7.1" "$out"
+check_contains "and what to bump" "Bump the version of crates/gg to 0.7.1" "$out"
 
 out="$(run "$tmp/gg" refs/tags/v0.7.0-rc.1)"
 check_equal "a pre-release tag must match exactly" "1" "$?"

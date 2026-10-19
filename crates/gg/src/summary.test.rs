@@ -8,11 +8,11 @@ use std::collections::BTreeMap;
 use super::*;
 // `GgTurnOutcome` is the one contract type these tests construct that the module under test never
 // names: the fold keys on the error *kind*, which is what keeps `errors` the sum of its parts.
-use test_cabinet_core::gg::{
+use test_cabinet_contracts::gg::{
     GgBoardIssue, GgCallFailure, GgCapabilitySet, GgContextSourceUsage, GgLimitKind,
     GgTurnErrorType, GgTurnOutcome, ROOT_PROFILE_ID,
 };
-use test_cabinet_core::metrics::{Cost, TokenCounts};
+use test_cabinet_contracts::metrics::{Cost, TokenCounts};
 
 /// A board issue with the given id and status (the scope/description fields are irrelevant to
 /// the summary, which keys only on id and status).
@@ -39,7 +39,7 @@ fn issue(id: &str, status: GgIssueStatus) -> GgBoardIssue {
 fn breakdown(fullness: f64) -> GgTelemetryKind {
     GgTelemetryKind::ContextBreakdown {
         by_source: vec![GgContextSourceUsage {
-            source: test_cabinet_core::gg::GgContextSource::History,
+            source: test_cabinet_contracts::gg::GgContextSource::History,
             tokens: 100,
         }],
         total_tokens: 100,
@@ -251,7 +251,7 @@ fn counts_compactions_and_context_overflow() {
             before_tokens: 1000,
             after_tokens: 200,
             summary_tokens: 120,
-            retained: test_cabinet_core::gg::GgRetainedState {
+            retained: test_cabinet_contracts::gg::GgRetainedState {
                 skills: 0,
                 tasks: 0,
                 memories: 0,

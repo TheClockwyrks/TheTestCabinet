@@ -1,5 +1,5 @@
 //! The **gg analysis query** endpoints (`/gg/query`, `/gg/query/batch`,
-//! `/gg/fields`) — the backend half of [TCQ](test_cabinet_core::gg_query).
+//! `/gg/fields`) — the backend half of [TCQ](crate::gg_query).
 //!
 //! The division of labour is deliberate and total: **core owns the language**
 //! (the document model, the evaluator, the field catalog) and this module owns
@@ -24,9 +24,8 @@ use std::sync::Arc;
 
 use axum::Json;
 use axum::extract::State;
-use serde::{Deserialize, Serialize};
 
-use test_cabinet_core::gg_query::{
+use crate::gg_query::{
     GgFieldCatalog, GgQuery, GgQueryResponse, GgRunDoc, evaluate, field_catalog,
 };
 
@@ -35,6 +34,8 @@ use crate::error::ApiError;
 use crate::gg_docs::CatalogScores;
 
 use super::AppState;
+
+pub use test_cabinet_contracts::backend_api::gg::{GgQueryBatch, GgQueryBatchResponse};
 
 /// The most rows — documents or buckets — a single query may return.
 ///
@@ -54,34 +55,6 @@ pub const GG_QUERY_MAX_ROWS: u32 = 1_000;
 /// unbounded amount of evaluation, and it is a hard rejection rather than a silent
 /// truncation because a dropped panel renders as an empty chart with no explanation.
 pub const GG_QUERY_MAX_BATCH: usize = 32;
-
-/// The body of `POST /gg/query/batch`: several queries answered from **one** read of
-/// the document index.
-///
-/// A dashboard's panels almost always share a filter and differ only in their
-/// aggregation, so answering them one request at a time re-resolves the same corpus
-/// N times and — because the index refreshes on a timer — can even answer two panels
-/// of the same board from two different corpora, which reads as a data bug. One
-/// batch, one snapshot, one consistent board.
-#[derive(Debug, Clone, Default, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub struct GgQueryBatch {
-    /// The queries to evaluate, at most [`GG_QUERY_MAX_BATCH`] of them.
-    #[serde(default)]
-    pub queries: Vec<GgQuery>,
-}
-
-/// The response to `POST /gg/query/batch`.
-#[derive(Debug, Clone, Default, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub struct GgQueryBatchResponse {
-    /// One result per requested query, **in request order** — the only binding
-    /// between a panel and its answer, so the list is never filtered or reordered.
-    #[serde(default)]
-    pub results: Vec<GgQueryResponse>,
-}
 
 /// `POST /gg/query` — evaluate one TCQ query over every gg run this deployment
 /// holds. Takes a person's assertion, the same gate as the other gg endpoints.

@@ -37,8 +37,8 @@
 
 use std::collections::BTreeSet;
 
-use test_cabinet_core::gg::GgProgramLanguage;
-use test_cabinet_core::gg_reference::{
+use test_cabinet_contracts::gg::GgProgramLanguage;
+use test_cabinet_contracts::gg_reference::{
     GgReferenceApi, GgReferenceEntry, GgReferenceEntryKind, GgReferenceModule,
 };
 

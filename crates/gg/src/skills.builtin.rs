@@ -39,7 +39,7 @@
 use std::collections::BTreeSet;
 
 use serde_json::Value;
-use test_cabinet_core::gg::{CAPABILITY_SKILLS, GgAgentConfig, GgProgramLanguage};
+use test_cabinet_contracts::gg::{CAPABILITY_SKILLS, GgAgentConfig, GgProgramLanguage};
 
 use super::{CodeFiles, Skill, parse_skill};
 use crate::ending::EndingRole;
@@ -53,7 +53,7 @@ use crate::sandbox::OperationId;
 /// declaration that offers every family. Required of an enabled capability: an absent `builtIns`
 /// would be gg deciding which of its own manuals an agent gets, and the arm of a skills study that
 /// withheld none is a thing an operator writes rather than a thing gg assumes.
-pub use test_cabinet_core::gg::PARAM_BUILT_INS;
+pub use test_cabinet_contracts::gg::PARAM_BUILT_INS;
 
 /// One family gg ships a skill for: what the skill is called, what it is for, and how to tell
 /// whether this agent has any of it.

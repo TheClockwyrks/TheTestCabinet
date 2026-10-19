@@ -19,15 +19,15 @@
 //! or — when a mutation would breach a [limit](crate::memories::MemoryCaps) — an **error
 //! outcome carrying the store's revise-evict-or-delete guidance**, never a silent truncation. The
 //! loop owns everything downstream: after a successful mutation it emits the
-//! [`MemoryRevision`](test_cabinet_core::gg::GgTelemetryKind::MemoryRevision) the store recorded
-//! and the [`MemoryState`](test_cabinet_core::gg::GgTelemetryKind::MemoryState) it is left in. The
-//! pinned [`Memory`](test_cabinet_core::gg::GgContextSource::Memory) block (the memories
+//! [`MemoryRevision`](test_cabinet_contracts::gg::GgTelemetryKind::MemoryRevision) the store recorded
+//! and the [`MemoryState`](test_cabinet_contracts::gg::GgTelemetryKind::MemoryState) it is left in. The
+//! pinned [`Memory`](test_cabinet_contracts::gg::GgContextSource::Memory) block (the memories
 //! themselves, or the index, depending on the strategy) is *not* touched here — it is rebuilt at a
 //! [compaction](crate::compaction) boundary, since until then the model can read what it wrote in
 //! the thread.
 //!
 //! The tools are contributed to the registry only when the
-//! [`memories`](test_cabinet_core::gg::CAPABILITY_MEMORIES) capability is enabled; when it
+//! [`memories`](test_cabinet_contracts::gg::CAPABILITY_MEMORIES) capability is enabled; when it
 //! is off, none are offered.
 
 use async_trait::async_trait;

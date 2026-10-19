@@ -23,7 +23,7 @@ use super::substrate::{
     prepare, trap,
 };
 use crate::ending::{Ending, EndingRole};
-use test_cabinet_core::gg::{
+use test_cabinet_contracts::gg::{
     CAPABILITY_AGENT_MANAGED_CONTEXT, CAPABILITY_DOCVIEW_CLOSE, CAPABILITY_EXEC, CAPABILITY_FORK,
     CAPABILITY_PROJECT_MANAGEMENT, CAPABILITY_READ_FILE,
 };

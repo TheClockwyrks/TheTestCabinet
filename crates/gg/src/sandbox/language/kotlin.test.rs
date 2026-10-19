@@ -13,7 +13,7 @@
 //! pair measures is the *language* only to the extent that the two surfaces really differ. Each
 //! assertion below that names Java is one of the places they are meant to.
 
-use test_cabinet_core::gg::GgProgramLanguage;
+use test_cabinet_contracts::gg::GgProgramLanguage;
 
 use crate::sandbox::FileWindow;
 

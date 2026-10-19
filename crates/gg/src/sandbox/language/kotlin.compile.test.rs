@@ -444,5 +444,5 @@ fn the_entry_class_calls_the_model_s_own_main_and_carries_nothing_else() {
 /// under `Compiler error`, over a program that compiles and a file the model never wrote.
 #[test]
 fn a_code_module_refused_beside_a_program_is_ggs_failure() {
-    crate::sandbox::language::rebuilds::gate(test_cabinet_core::gg::GgProgramLanguage::Kotlin);
+    crate::sandbox::language::rebuilds::gate(test_cabinet_contracts::gg::GgProgramLanguage::Kotlin);
 }

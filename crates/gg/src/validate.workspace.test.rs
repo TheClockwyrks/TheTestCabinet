@@ -16,7 +16,7 @@ use std::path::{Path, PathBuf};
 
 use serde_json::json;
 use tempfile::TempDir;
-use test_cabinet_core::gg::{
+use test_cabinet_contracts::gg::{
     CAPABILITY_AUTOLOAD_SPECS, CAPABILITY_SKILLS, GgCapabilityConfig, GgCapabilitySet,
     PARAM_SKILLS_DIR,
 };
@@ -24,7 +24,7 @@ use test_cabinet_core::gg::{
 use super::*;
 
 /// A workspace as the session hands it to this gate: gg's own
-/// [skills library](test_cabinet_core::gg::GG_WORKSPACE_SKILLS_DIR) stood up and empty.
+/// [skills library](test_cabinet_contracts::gg::GG_WORKSPACE_SKILLS_DIR) stood up and empty.
 ///
 /// The session creates it before it reads the workspace, because everything under `.gg` is gg's
 /// rather than the seeder's, and it is the directory a freshly authored skills capability names. A
@@ -34,7 +34,7 @@ fn seeded() -> TempDir {
     let dir = TempDir::new().unwrap();
     std::fs::create_dir_all(
         dir.path()
-            .join(test_cabinet_core::gg::GG_WORKSPACE_SKILLS_DIR),
+            .join(test_cabinet_contracts::gg::GG_WORKSPACE_SKILLS_DIR),
     )
     .unwrap();
     dir
@@ -54,7 +54,7 @@ fn invocation(dir: &Path, set: GgCapabilitySet) -> GgInvocation {
             let provider = id.split(['/', ':']).next().unwrap_or(id);
             (
                 id.to_string(),
-                vec![test_cabinet_core::gg::GgProviderCandidate::new(
+                vec![test_cabinet_contracts::gg::GgProviderCandidate::new(
                     provider, "fp8",
                 )],
             )
@@ -102,7 +102,7 @@ fn set_with(capability: &str, params: serde_json::Value) -> GgCapabilitySet {
 // ---------------------------------------------------------------------------
 
 /// **A workspace that authored no skills launches.** The `dir` a fresh capability set is authored
-/// with is [gg's own](test_cabinet_core::gg::GG_WORKSPACE_SKILLS_DIR), stood up by the session and
+/// with is [gg's own](test_cabinet_contracts::gg::GG_WORKSPACE_SKILLS_DIR), stood up by the session and
 /// left empty, so an empty library is the ordinary case and not a value gg failed to honour. This is
 /// the test that keeps the gate from refusing every run there is.
 #[test]
@@ -115,12 +115,12 @@ fn the_authored_skills_directory_is_the_one_gg_stands_up() {
             .capability(CAPABILITY_SKILLS)
             .and_then(|capability| capability.params.get(PARAM_SKILLS_DIR))
             .and_then(serde_json::Value::as_str),
-        Some(test_cabinet_core::gg::GG_WORKSPACE_SKILLS_DIR),
+        Some(test_cabinet_contracts::gg::GG_WORKSPACE_SKILLS_DIR),
         "an authored skills capability names gg's own directory"
     );
     std::fs::create_dir_all(
         dir.path()
-            .join(test_cabinet_core::gg::GG_WORKSPACE_SKILLS_DIR),
+            .join(test_cabinet_contracts::gg::GG_WORKSPACE_SKILLS_DIR),
     )
     .expect("the session stands this directory up before the gate reads it");
     let invocation = invocation(dir.path(), set);

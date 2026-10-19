@@ -127,17 +127,17 @@ check_equals "the remote still has one commit" "1" "$(git -C "$base/remotes/cont
 
 # --- An application's first commit carries its lock file --------------------
 if command -v cargo >/dev/null 2>&1; then
-	base="$(fresh_superrepo platform)"
-	printf 'name = "platform"\nkind = "application"\n' >"$base/super/platform/.test-cabinet-repo.toml"
-	printf '[package]\nname = "platform"\nversion = "0.0.0"\nedition = "2024"\n' >"$base/super/platform/Cargo.toml"
-	mkdir -p "$base/super/platform/src"
-	printf 'fn main() {}\n' >"$base/super/platform/src/main.rs"
-	out="$(run_bootstrap "$base" platform)"
+	base="$(fresh_superrepo microservice-arena)"
+	printf 'name = "microservice-arena"\nkind = "application"\n' >"$base/super/microservice-arena/.test-cabinet-repo.toml"
+	printf '[package]\nname = "microservice-arena"\nversion = "0.0.0"\nedition = "2024"\n' >"$base/super/microservice-arena/Cargo.toml"
+	mkdir -p "$base/super/microservice-arena/src"
+	printf 'fn main() {}\n' >"$base/super/microservice-arena/src/main.rs"
+	out="$(run_bootstrap "$base" microservice-arena)"
 	status=$?
 	check_passed "bootstrap succeeds on an application" "$status" "$out"
-	check_contains "it resolves the lock file" "resolved the lock file of platform" "$out"
-	check_equals "the scaffold commit carries Cargo.lock" "Cargo.lock" "$(git -C "$base/remotes/platform" ls-tree --name-only master Cargo.lock)"
-	out="$(run_bootstrap "$base" platform)"
+	check_contains "it resolves the lock file" "resolved the lock file of microservice-arena" "$out"
+	check_equals "the scaffold commit carries Cargo.lock" "Cargo.lock" "$(git -C "$base/remotes/microservice-arena" ls-tree --name-only master Cargo.lock)"
+	out="$(run_bootstrap "$base" microservice-arena)"
 	status=$?
 	check_passed "a second run on the application succeeds" "$status" "$out"
 else

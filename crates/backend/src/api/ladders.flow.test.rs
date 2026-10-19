@@ -9,14 +9,17 @@
 //! test is the wiring between the gate, the board, the scheduler and the queue rather
 //! than any one of them alone.
 
-use test_cabinet_core::review::Rating;
-use test_cabinet_core::run_record::{RunRecord, RunState};
+use crate::review::Rating;
+use test_cabinet_contracts::run_record::{RunRecord, RunState};
 use test_cabinet_entities::job;
 
 use super::*;
+use std::collections::BTreeMap;
+
 use crate::api::flow_harness::*;
 use crate::db::tests::links;
 use sea_orm::EntityTrait;
+use test_cabinet_contracts::run_record::HarnessSlug;
 
 fn rung(slug: &str) -> LadderRungInput {
     LadderRungInput {
@@ -2152,8 +2155,8 @@ fn pinned_gg_combo() -> ReviewPlanCombo {
 }
 
 /// A one-agent set running `model` at its root.
-fn root_set(model: &str) -> test_cabinet_core::gg::GgCapabilitySet {
-    let mut set = test_cabinet_core::gg::GgCapabilitySet::minimal(model);
+fn root_set(model: &str) -> test_cabinet_contracts::gg::GgCapabilitySet {
+    let mut set = test_cabinet_contracts::gg::GgCapabilitySet::minimal(model);
     set.agents[0].id = Some("k-root".to_string());
     set
 }

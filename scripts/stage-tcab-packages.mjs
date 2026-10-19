@@ -44,7 +44,7 @@
 // adding it there would let a case request the engine through `packages`, which
 // is exactly what that allowlist exists to refuse. The validator harness is out of
 // that allowlist for a sharper reason still: nothing seeds it into a run repository
-// at all. It is read from this store AFTER the container is gone, by crates/core's
+// at all. It is read from this store AFTER the container is gone, by crates/driver's
 // vitest validator, which copies its sources into the staged validator project — so
 // a case able to name it through `packages` would put the tests it is measured by in
 // front of the model.

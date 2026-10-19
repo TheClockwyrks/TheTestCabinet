@@ -198,9 +198,11 @@ below.
    forgotten: the `match` is exhaustive and each arm checks its own position
    against `ALL` in a `const` block.
 9. Implement the trait in `crates/gg/src/sandbox/language/<id>.rs`, and add the
-   arm's segment to `system-code.hbs` and to `code-nothing-shown.hbs` in
-   `crates/gg/templates/`. A segment names no catalogued function of any arm,
-   because the shared template is judged against every arm's spellings at once.
+   arm's segment to `system-code.hbs`, in the contracts repository's
+   `crates/contracts/templates/gg/` (then a pin bump here), and to
+   `code-nothing-shown.hbs` in `crates/gg/templates/`. A segment names no
+   catalogued function of any arm, because the shared template is judged
+   against every arm's spellings at once.
 10. Install the run-time toolchain, if the arm needs one, in
     `containers/gg-toolchains/Dockerfile`. It installs under
     `/opt/gg/toolchains` and nowhere else, is relocatable across the Debian- and

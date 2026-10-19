@@ -8,8 +8,8 @@
 use std::fs;
 use std::path::Path;
 
-use test_cabinet_code_analysis::{AnalysisRequest, analyze};
-use test_cabinet_core::CodeTreeBasis;
+use test_cabinet_driver::CodeTreeBasis;
+use test_cabinet_driver::analyzer::{AnalysisRequest, analyze};
 
 use super::*;
 

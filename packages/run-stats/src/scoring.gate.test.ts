@@ -8,10 +8,10 @@ import {
   isToolchainGated,
 } from "./scoring";
 
-// The TypeScript mirror of the Rust core's `gated_*` helpers
-// (crates/core/src/review.rs). The two must agree exactly — the console and the
+// The TypeScript mirror of the backend's `gated_*` helpers
+// (crates/backend/src/review.rs). The two must agree exactly — the console and the
 // backend derive the same badge from the same record — so this file asserts the
-// same properties as `crates/core/src/review.gate.test.rs`.
+// same properties as `crates/backend/src/review.gate.test.rs`.
 
 const toolchain = (ran: boolean, succeeded: boolean) => ({
   typecheck: { ran, succeeded },

@@ -1,30 +1,10 @@
 //! Tests for the crate's outermost surface: the identity this binary ships under.
 //!
-//! `gg`'s version is not decoration. `core` reads it out of the run container
+//! `gg`'s version is not decoration. The driver reads it out of the run container
 //! (`gg --version`) and records it as a run's
-//! [`harness_version`](test_cabinet_core::run_record::RunSubject::harness_version) —
-//! the only field that says which harness build produced a result — and, in a cluster
-//! run, `core` also *downloads* a release named by its own version. Those two
-//! crates are versioned independently, nothing at the type level ties them together,
-//! and every way they can disagree fails silently. So the coupling is asserted here,
-//! from the side that knows what the binary really is.
-
-use test_cabinet_core::gg_exec::{
-    DEFAULT_RELEASE_BASE_URL, DEFAULT_RELEASE_VERSION, release_asset_url,
-};
-
-/// The version this binary reports — what lands in a run record — and what `core`
-/// will download must be the same string.
-///
-/// Drift is invisible until a cluster run: `core` would request a release that was
-/// never published (the run dies at gg's install step), or one that was published for a
-/// *different* build than the corpus is about to attribute its results to. Bumping one crate's
-/// `version` and not the other's is exactly the mistake this catches, at compile-and-test
-/// time rather than in production.
-#[test]
-fn the_default_release_version_matches_this_binary() {
-    assert_eq!(env!("CARGO_PKG_VERSION"), DEFAULT_RELEASE_VERSION);
-}
+//! [`harness_version`](test_cabinet_contracts::run_record::RunSubject::harness_version) —
+//! the only field that says which harness build produced a result. The release a
+//! deployment downloads is pinned in the driver, independently of this crate's version.
 
 /// The version must be a real one. `0.0.0` — the workspace default every member crate
 /// inherited before gg had a release pipeline — makes `harness_version` a constant
@@ -32,28 +12,6 @@ fn the_default_release_version_matches_this_binary() {
 #[test]
 fn this_binary_reports_a_real_version() {
     assert_ne!(env!("CARGO_PKG_VERSION"), "0.0.0");
-}
-
-/// The URL `core` resolves for a default cluster install names *this* build, under the
-/// `v{version}/` prefix and with the object name (`gg-{target}`) that the Azure
-/// pipeline's gg upload (`scripts/ci/publish-gg.sh`) publishes to the release container.
-///
-/// The publish leg cannot be exercised here, so this is the standing check that the
-/// download side still agrees with the publish side: if the upload's object layout
-/// changes, this string is what has to change with it.
-#[test]
-fn the_resolved_download_url_names_this_binarys_release_asset() {
-    assert_eq!(
-        release_asset_url(
-            DEFAULT_RELEASE_BASE_URL,
-            DEFAULT_RELEASE_VERSION,
-            "x86_64-unknown-linux-musl"
-        ),
-        format!(
-            "https://testcabinetartifacts.blob.core.windows.net/gg-releases/v{}/gg-x86_64-unknown-linux-musl",
-            env!("CARGO_PKG_VERSION")
-        )
-    );
 }
 
 /// gg's own code holds **no unordered map or set**.
@@ -341,7 +299,7 @@ fn string_literals(line: &str) -> Vec<&str> {
 ///
 /// Because only one of the two is something a model ever reads. An
 /// [operation id](crate::sandbox::OperationId) is gg's *internal* vocabulary — what a
-/// configuration's [allowlist](test_cabinet_core::gg::GgAgentConfig::operations) is written in and
+/// configuration's [allowlist](test_cabinet_contracts::gg::GgAgentConfig::operations) is written in and
 /// what a call is recorded under — and a `format!` that assembled one would have assembled something
 /// no model is ever shown. It is also a vocabulary that collides with the *other* surface's by
 /// design: gg's `shell` namespace and gg's `shell` tool are the same word for the same thing said on
@@ -440,7 +398,7 @@ fn the_command_line_definition_is_valid() {
 
 /// **`gg --config <PATH>` must keep working, forever.**
 ///
-/// This is the entire invocation contract `core` has ever used — `gg_exec` launches exactly
+/// This is the entire invocation contract the driver has ever used — its gg launch runs exactly
 /// `gg --config <path>` — so every released gg accepts it and every deployment's baked binary is
 /// invoked by it. Adding subcommands is only safe because the bare form stays an implied `run`; if
 /// this test ever fails, every cluster run whose driver and binary are a generation apart dies at
@@ -531,7 +489,7 @@ fn the_reference_subcommand_takes_an_output_directory() {
 /// this crate and read by `test-cabinet-backend`, which does not depend on it (and must not — see
 /// [`Command::Reference`]); no test can therefore run the real writer into the real reader. What
 /// closes the gap is that both sides take the filenames from
-/// [`test_cabinet_core::gg_reference`](test_cabinet_core::gg_reference::index_file) rather than
+/// [`test_cabinet_contracts::gg_reference`](test_cabinet_contracts::gg_reference::index_file) rather than
 /// spelling them, and this test runs the real writer and checks the directory it leaves behind
 /// against those same functions — with the backend's own loader checked against them from its side.
 ///
@@ -539,8 +497,10 @@ fn the_reference_subcommand_takes_an_output_directory() {
 /// a `GgReferenceApi` costs the reader that arm, silently, in a built image.
 #[test]
 fn writing_the_reference_leaves_the_documents_the_backend_reads() {
-    use test_cabinet_core::gg::GgProgramLanguage;
-    use test_cabinet_core::gg_reference::{GgReference, GgReferenceApi, document_file, index_file};
+    use test_cabinet_contracts::gg::GgProgramLanguage;
+    use test_cabinet_contracts::gg_reference::{
+        GgReference, GgReferenceApi, document_file, index_file,
+    };
 
     let dir = tempfile::tempdir().expect("a scratch directory");
     let out = dir.path().join("gg-reference");

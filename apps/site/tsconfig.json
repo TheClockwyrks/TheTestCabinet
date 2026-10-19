@@ -8,6 +8,6 @@
   "include": ["src"],
   "references": [
     { "path": "../../contracts/packages/run-record" },
-    { "path": "../../packages/backend-api" }
+    { "path": "../../contracts/packages/backend-api" }
   ]
 }

@@ -1,6 +1,6 @@
 //! `tcab harnesses` — list supported harnesses and their availability.
 
-use test_cabinet_core::{
+use test_cabinet_driver::{
     Availability, DefaultHarnessRegistry, HarnessRegistry, HarnessSlug, auth_readiness,
 };
 

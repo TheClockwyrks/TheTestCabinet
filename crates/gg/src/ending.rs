@@ -3,7 +3,7 @@
 //!
 //! Every agent gg drives has to say when it is done, and **saying it is always an explicit call**.
 //! There is no shape of reply that means "finished" by implication: a tool-calling turn that requests
-//! no tools is an error, and a [responses-as-code](test_cabinet_core::gg::CAPABILITY_RESPONSES_AS_CODE)
+//! no tools is an error, and a [responses-as-code](test_cabinet_contracts::gg::CAPABILITY_RESPONSES_AS_CODE)
 //! reply that is not a program is an error. One rule, both execution modes, no per-run variation.
 //!
 //! # Why an ending has a shape

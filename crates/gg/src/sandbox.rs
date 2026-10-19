@@ -52,7 +52,7 @@
 //! A program has exactly one channel for putting something in front of its **model**: a
 //! [view](crate::context::ViewKind) — `view.openText` for a value it computed, `view.openFile` for a
 //! file. `console.log` still works and is still captured, but it writes to the **operator**: the
-//! turn's [`CodeExecution`](test_cabinet_core::gg::GgTelemetryKind::CodeExecution) event carries
+//! turn's [`CodeExecution`](test_cabinet_contracts::gg::GgTelemetryKind::CodeExecution) event carries
 //! every line, which puts them on the run's stream, in the run record and on the console. A value a
 //! program hands back reaches nobody: on an arm whose program is a module the language itself has
 //! nowhere to hand one, and on an arm whose entry point carries a status the status is a *failure*
@@ -221,7 +221,7 @@ pub use limits::SandboxLimits;
 /// and not a source file: `responses-as-code` is one capability whose params happen to be resolved by
 /// two modules in here.
 pub fn check_launch(
-    profile: &test_cabinet_core::gg::GgAgentConfig,
+    profile: &test_cabinet_contracts::gg::GgAgentConfig,
     report: &mut crate::validate::LaunchReport,
 ) {
     language::check_launch(profile, report);
@@ -499,7 +499,7 @@ fn evaluate<A: OperationApi>(
     // library of its own programs.
     let library = capabilities
         .iter()
-        .any(|id| id == test_cabinet_core::gg::CAPABILITY_PROGRAM_LIBRARY);
+        .any(|id| id == test_cabinet_contracts::gg::CAPABILITY_PROGRAM_LIBRARY);
     // Either the language's embedded component, or — for an arm whose prepare step compiled the
     // program itself into one — this program's own. The wait is reported the same way for both.
     let (component, compile_wait) = match engine::program_component(language, prepared.component) {
@@ -720,7 +720,7 @@ fn bounded_store_on<A: OperationApi>(
 /// running anything — so the first code turn pays neither on its critical path.
 ///
 /// Best-effort and idempotent (the `OnceLock` makes a second call free): fired once when
-/// [responses-as-code](test_cabinet_core::gg::CAPABILITY_RESPONSES_AS_CODE) is enabled, never by a
+/// [responses-as-code](test_cabinet_contracts::gg::CAPABILITY_RESPONSES_AS_CODE) is enabled, never by a
 /// subagent. A failure is returned for logging, never propagated into the run — a run whose warm-up
 /// failed simply pays the compile on its first code turn, and fails there in a way the model is
 /// told about.

@@ -1,6 +1,6 @@
 //! Tests for [the documentation a loaded code module contributes](super::LoadedDocs).
 
-use test_cabinet_core::gg::GgProgramLanguage;
+use test_cabinet_contracts::gg::GgProgramLanguage;
 
 use super::*;
 use crate::sandbox::{ModuleExport, ModuleExportKind, language};

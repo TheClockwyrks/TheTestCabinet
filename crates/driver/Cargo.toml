@@ -14,15 +14,28 @@ name = "test_cabinet_driver"
 path = "src/lib.rs"
 
 [dependencies]
-test-cabinet-core = { path = "../core" }
-# The static code analyzer, wired into the engine's post-run seam. Pulled in *here*
-# rather than in core because it carries two parsers (`oxc`, `syn`); the driver is the
-# one host that runs test cases, so it is the one binary that should link them.
-test-cabinet-code-analysis = { path = "../code-analysis" }
+# The shapes: the run record and its parts, events, validation, the test case and
+# engine contracts, execution, the job API, the layout constants. The library
+# re-exports the modules it uses whole at its root (`gg`, `metrics`, `toolchain`,
+# `code_analysis`, `review`, `job_api`, ...).
+test-cabinet-contracts = { workspace = true }
+# The test-suite runtime and the manifest loaders: the `test_case`,
+# `test_case_group` and `test_suite` catalogs, the resolver, `prompt`, the validator
+# runners and the browser plumbing they use, the engine catalog and the content
+# digests.
+test-cabinet-suites = { workspace = true }
+# The backend's HTTP client, re-exported as `backend_client` beside the run engine's
+# extensions of it (`materialize_version` and the renderer of the backend's rendered
+# references).
+test-cabinet-backend-client = { workspace = true }
+# Secret scrubbing, re-exported as `redact`.
+test-cabinet-redact = { workspace = true }
+# The built-in engine catalog (`built_in_catalog`), re-exported as `engine::built_in_catalog`.
+test-cabinet-engines = { path = "../engines" }
 # The driver is a binary: it owns telemetry init, so it pulls the heavy `otlp`
-# feature (the propagation-only default is for libraries like `core`), exactly as
-# the worker's main does.
-test-cabinet-telemetry = { path = "../telemetry", features = ["otlp"] }
+# feature. The library itself only injects/extracts trace context through the
+# process global propagator the binary installs.
+test-cabinet-telemetry = { workspace = true, features = ["otlp"] }
 
 serde = { workspace = true }
 serde_json = { workspace = true }
@@ -32,9 +45,82 @@ tokio = { workspace = true }
 async-trait = { workspace = true }
 cuid2 = { workspace = true }
 time = { workspace = true }
+semver = { workspace = true }
+# Gzip framing for the run-tree analysis artifacts the engine assembles on the host
+# (`gg_session_assembly` writes `replay.json.gz`, the analyzer `code-analysis.json.gz`);
+# the same workspace codec the backend store's reader and the archive service use, so
+# one encoder decides the framing for the whole path.
+flate2 = { workspace = true }
+png = { workspace = true }
+which = { workspace = true }
+base64 = { workspace = true }
+toml = { workspace = true }
+# The audio stage's pack digests (`audio_stage`).
+hex = { workspace = true }
+# The audio staging contract: the staged-audio root, its `packs.json` shape, and the
+# rule that selects one pack out of a run's palette. The engine writes that tree and
+# the in-container audio binaries read it, so both link the one definition and cannot
+# disagree about what a run was staged with. Linked without the `cli` feature (no
+# clap/serde_json/toml of its own) — the engine needs the contract, not the loader.
+test-cabinet-audio-core = { path = "../audio-core", default-features = false }
+# The drawing tool for asset-generation cases. Only the library (not the `cli`
+# feature's clap/serde_json), to regenerate the scored image from a run's recorded
+# action log through the exact same logic the in-container binary used.
+test-cabinet-draw = { path = "../draw", default-features = false }
+# The voxel-sculpting tool for the two 3D asset-generation kinds (voxel-model /
+# voxel-animation). As with `test-cabinet-draw`, only the library, so the engine
+# regenerates the scored voxel data and isometric preview from a run's recorded
+# operation log through the exact same logic the in-container `voxel` / `voxel-anim`
+# binaries used. The cube domain (`VoxelSet`, `Operation`, `render`, the rasterizer)
+# lives here; the generic model types (rig, color) live in `test-cabinet-model-core`,
+# which the voxel crate re-exports and the engine also links directly.
+test-cabinet-voxel = { path = "../voxel", default-features = false }
+# The signed-distance meshing domain for the six surface-meshed kinds
+# (mc/sn/dc + `-anim`). Only the pure library (not the `cli` feature's
+# serde_json/renderer), to deserialize and well-formedness-check the `Mesh`
+# (`PartMesh`) each meshing binary emits to a per-part `.glb`; it never re-meshes.
+test-cabinet-voxel-mesh = { path = "../voxel-mesh", default-features = false }
+# The generic voxel-family model core: the rig/animation model and the opaque-RGB
+# color type the engine reads the produced `rig.json` and `[voxel] background` through.
+# Linked without the `cli` feature (no clap/serde_json), the same as the voxel dep.
+test-cabinet-model-core = { path = "../model-core", default-features = false }
+# The match runner over the Foray and Lattice wasm hosts. The `AdversarialValidator`
+# plays a submission against the committed baselines through `play_match`, and the
+# `PerformanceValidator` runs a submission engine over each held-out case through
+# `performance::run_case`, so the validators, the arena and the `foray`/`lattice`
+# CLIs play through one runner over one host implementation. The wasmtime
+# dependency lives entirely in the hosts.
+test-cabinet-match-play = { path = "../match-play" }
+# The Foray rules and replay types the adversarial validator records a match from,
+# and the Lattice snapshot type the performance validator writes a case's produced
+# state in.
+foray-core = { path = "../foray-core" }
+lattice-core = { path = "../lattice-core", default-features = false }
+
+# The static code analyzer (`analyzer`). It carries two parsers (`oxc`, `syn`); the
+# driver is the one host that runs test cases, so it is the one binary that links
+# them.
+#
+# The `.gitignore`-honouring directory walk. A hardcoded list of output directory names is
+# both too narrow (a model-configured output directory, a framework cache) and
+# unnecessary, because a case's own ignore file already declares where its build output
+# goes — and the ignore files are content of the tree being measured, so honouring them
+# stays deterministic. `ignore` is the walker behind ripgrep and handles nested ignore
+# files, `.git/info/exclude` and the parent-directory rules for us.
+ignore = "0.4"
+# The TypeScript/JSX front end, pinned by the workspace; `ast_visit` adds the generated
+# `Visit` trait the analyzer walks the tree with.
+oxc = { workspace = true, features = ["ast_visit"] }
+# The Rust front end. `full` is required to parse whole files (items, expressions and
+# statements, not just the derive-macro subset); `visit` supplies the generated read-only
+# visitor; `extra-traits` is not needed. Line numbers come from `proc-macro2`'s
+# `span-locations`, which is what makes a span outside a proc-macro invocation carry a
+# real line and column.
+syn = { version = "2", features = ["full", "visit", "parsing", "printing"] }
+proc-macro2 = { version = "1", features = ["span-locations"] }
 tracing = { workspace = true }
 # The HTTP client the driver streams events/preview/status back to the backend
-# with. rustls (no system OpenSSL), `json` for the bodies — see `crates/core`.
+# with. rustls (no system OpenSSL), `json` for the bodies.
 reqwest = { workspace = true }
 
 # Kubernetes runtime (`src/kubernetes.rs`): under TCAB_DRIVER_RUNTIME=kubernetes the
@@ -54,6 +140,9 @@ k8s-openapi = { version = "0.28", features = ["latest"] }
 tar = "0.4"
 # The run-tree collection channel (`src/collect.rs`): the driver verifies the
 # SHA-256 digest the in-pod uploader sends after the archive before it accepts it.
+# Also the audio stage's pack digests and the analyzer's clone-window hashes:
+# `DefaultHasher` is explicitly not stable across releases or platforms, and the
+# analysis has to be a pure function of the tree's bytes.
 sha2 = { workspace = true }
 
 # Uploading the produced run tree (`src/artifacts.rs`). The tarball is built into an
@@ -67,7 +156,23 @@ tempfile = { workspace = true }
 tokio-util = { workspace = true }
 
 [dev-dependencies]
+# `test-util` enables paused/auto-advancing time so the runtime cap can be tested
+# without waiting out a real wall-clock timeout.
 tokio = { workspace = true, features = ["full", "test-util"] }
+# `test_browser`, what a test driving a real browser needs (`crate::test_browser`).
+test-cabinet-suites = { workspace = true, features = ["test-support"] }
+# The same audio contract crate the library links, with its `cli` feature: the audio
+# staging test reads the tree the engine wrote back through the exact reader the
+# in-container binaries use (`StagedPacks::load` and `sample::load_pack`), so what the
+# writer emits and what the reader accepts are held together by a test rather than by
+# two matching sets of constants.
+test-cabinet-audio-core = { path = "../audio-core" }
+# Assemble tiny engine submissions from inline WebAssembly text to exercise the
+# performance validator's scoring paths (correct + wrong-answer) without compiling
+# the reference engine crates, mirroring how `lattice-host`'s submission tests do
+# it. The oracle (`lattice-core::Engine`) computes the expected answer the correct
+# module echoes back, so the test stays self-contained and deterministic.
+wat = "1"
 
 [lints]
 workspace = true

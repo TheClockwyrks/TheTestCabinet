@@ -3,7 +3,7 @@
 //! Layer placement needs fractional math — a rotation matrix, a scale factor, the
 //! inverse map from a destination pixel back into a layer — but the drawing
 //! library has a hard requirement that floating point cannot meet: the image
-//! `crates/core` regenerates after a run must be **bit-identical** to the one the
+//! `crates/driver` regenerates after a run must be **bit-identical** to the one the
 //! in-container binary rendered, or the difference registers as
 //! [cheat divergence](../../apps/docs/src/content/docs/testing/asset-generation/evaluation.md).
 //! Container and host are separate builds, and `sin`/`cos` are not guaranteed

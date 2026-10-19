@@ -1,7 +1,7 @@
 use super::*;
 // `GgRunLimits` and `GgLimitBreach` already ride in on the glob; only the ceiling taxonomy the
 // emitter itself never names has to be named here.
-use test_cabinet_core::gg::{GgCapabilitySet, GgContextSource, GgLimitKind};
+use test_cabinet_contracts::gg::{GgCapabilitySet, GgContextSource, GgLimitKind};
 
 use crate::context::{PromptSlot, Retention};
 
@@ -386,7 +386,7 @@ fn log_prompt_carries_a_file_views_path_onto_its_pooled_definition() {
 #[tokio::test]
 async fn the_emitting_shell_decorator_reports_every_command() {
     use crate::tools::ShellRunner as _;
-    use test_cabinet_core::gg_session_record::{GgShellCwd, GgShellOrigin};
+    use test_cabinet_contracts::gg_session_record::{GgShellCwd, GgShellOrigin};
 
     let dir = tempfile::tempdir().expect("the agent's root");
     std::fs::create_dir_all(dir.path().join("web")).expect("the subdirectory");

@@ -61,8 +61,9 @@ mod test_cases;
 mod test_suites;
 mod tournaments;
 
-// Re-export the HTTP response contract types so the `api-codegen` generator can
-// name them (the handler modules themselves stay private).
+// Re-export the HTTP response contract types, which are the contracts crate's
+// (`test_cabinet_contracts::backend_api`), so the rest of the backend names them
+// here (the handler modules themselves stay private).
 pub use comparisons::ComparisonInput;
 // Reused by the snapshot publisher so a published comparison is folded into the
 // public snapshot with the exact computation the internal `/comparisons` API uses.
@@ -108,7 +109,7 @@ pub use models::{
     ModelConfigInput, ModelListingOut, ModelOut, ModelPricesOut, ModelSeedOut, compose_catalog,
 };
 pub use suite_reference_builds::ReferenceBuildOut;
-pub use test_case_groups::{TestCaseGroupOut, TestCaseGroupsResponse};
+pub use test_case_groups::{TestCaseGroupOut, TestCaseGroupsResponse, test_case_group_out};
 pub use test_cases::{
     CatalogCase, CatalogResponse, CatalogShowcaseOut, ShowcaseMediaOut, VersionResponse,
     VersionsResponse,
@@ -156,7 +157,7 @@ pub struct AppState {
     pub http: reqwest::Client,
     /// The OpenRouter reads: a model's list price, and the catalog facts observed
     /// when a run completes and on the periodic refresh.
-    pub prices: test_cabinet_core::OpenRouterPrices,
+    pub prices: crate::pricing::OpenRouterPrices,
     /// The in-memory gg [document index](crate::gg_docs::GgDocIndex) the analysis
     /// query endpoints run over. Loaded lazily on the first query and reconciled per
     /// id thereafter, so a deployment that never opens Discover never pays for it.

@@ -5,7 +5,7 @@
 //! frame is a **completely separate file** — its own action log and preview,
 //! never a region of one shared image. The model declares which frame an
 //! operation targets, and the binary appends to that frame's log and re-renders
-//! that frame's preview. After the run, `crates/core` regenerates and scores each
+//! that frame's preview. After the run, `crates/driver` regenerates and scores each
 //! frame independently from its own log.
 //!
 //! [Layers](test_cabinet_draw::layer) are the exception to all of that, and the

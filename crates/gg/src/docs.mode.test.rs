@@ -6,7 +6,7 @@
 //! for, and the three must actually differ in what they open on a real arm's catalogue.
 
 use serde_json::json;
-use test_cabinet_core::gg::{
+use test_cabinet_contracts::gg::{
     CAPABILITY_LIST_DIR, CAPABILITY_PROJECT_MANAGEMENT, CAPABILITY_READ_FILE,
     CAPABILITY_RESPONSES_AS_CODE, GgCapabilityConfig, GgProgramLanguage,
 };

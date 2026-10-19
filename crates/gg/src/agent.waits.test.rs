@@ -106,7 +106,7 @@ fn wait_results(events: &[GgTelemetryEvent]) -> Vec<(bool, String)> {
         .collect()
 }
 
-/// The [slug](test_cabinet_core::gg::GgAgentConfig::slug) of the second profile these boards dispatch
+/// The [slug](test_cabinet_contracts::gg::GgAgentConfig::slug) of the second profile these boards dispatch
 /// their issues to — what its roster entry, every issue's `agent`, and its telemetry name it by.
 const IMPLEMENTER: &str = "coder";
 

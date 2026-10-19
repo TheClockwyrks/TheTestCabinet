@@ -16,10 +16,10 @@ use tempfile::TempDir;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
 
-use test_cabinet_core::metrics::*;
-use test_cabinet_core::run_record::*;
-use test_cabinet_core::test_case::{MediaKind, SheetSpec};
-use test_cabinet_core::validation::*;
+use crate::metrics::*;
+use crate::run_record::*;
+use crate::test_case::{MediaKind, SheetSpec};
+use crate::validation::*;
 
 use super::{
     upload_adversarial_to_backend, upload_assets_to_backend, upload_code_analysis_to_backend,
@@ -180,7 +180,7 @@ fn record(adversarial: Option<AdversarialResult>) -> RunRecord {
         subject: RunSubject {
             test_case_slug: "adversarial-pacman".into(),
             test_case_version: "v1.0.0".into(),
-            test_type: test_cabinet_core::test_case::TestType::Adversarial,
+            test_type: crate::test_case::TestType::Adversarial,
             variant: "base".into(),
             harness_slug: HarnessSlug::Claude,
             harness_version: None,
@@ -820,7 +820,7 @@ async fn run_with_no_proofs_uploads_nothing() {
 /// the mirror computes itself.
 fn record_with_asset(asset: AssetGenResult) -> RunRecord {
     let mut rec = record(None);
-    rec.subject.test_type = test_cabinet_core::test_case::TestType::AssetGeneration;
+    rec.subject.test_type = crate::test_case::TestType::AssetGeneration;
     rec.validation.asset = Some(asset);
     rec
 }
@@ -1011,7 +1011,7 @@ async fn non_asset_run_uploads_no_asset_media() {
 fn write_replay_artifact(out_dir: &std::path::Path, bytes: &[u8]) {
     let path = out_dir
         .join("run-1")
-        .join(test_cabinet_core::gg_session_assembly::GG_SESSION_TREE_ARTIFACT);
+        .join(crate::gg_session_assembly::GG_SESSION_TREE_ARTIFACT);
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
     std::fs::write(path, bytes).unwrap();
 }
@@ -1066,7 +1066,7 @@ async fn a_run_that_assembled_no_replay_uploads_nothing() {
 fn write_code_analysis_artifact(out_dir: &std::path::Path, bytes: &[u8]) {
     let path = out_dir
         .join("run-1")
-        .join(test_cabinet_core::CODE_ANALYSIS_TREE_ARTIFACT);
+        .join(crate::CODE_ANALYSIS_TREE_ARTIFACT);
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
     std::fs::write(path, bytes).unwrap();
 }
@@ -1146,7 +1146,7 @@ async fn uploads_every_showcase_file_except_the_manifest() {
     write_impl_file(out.path(), "showcase/showcase.md", b"# My Game");
     write_impl_file(out.path(), "showcase/banner.png", b"png:banner");
     write_impl_file(out.path(), "showcase/showcase.toml", b"[[media]]");
-    let oversized = vec![0u8; (test_cabinet_core::MAX_SHOWCASE_MEDIA_FILE_BYTES + 1) as usize];
+    let oversized = vec![0u8; (crate::MAX_SHOWCASE_MEDIA_FILE_BYTES + 1) as usize];
     write_impl_file(out.path(), "showcase/huge.png", &oversized);
 
     upload_showcase_to_backend(&backend_url, TOKEN, &record_with_showcase(), out.path())

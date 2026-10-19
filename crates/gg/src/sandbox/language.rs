@@ -1,5 +1,5 @@
 //! **The program-language seam** — the one place gg says what a
-//! [responses-as-code](test_cabinet_core::gg::CAPABILITY_RESPONSES_AS_CODE) program is written in,
+//! [responses-as-code](test_cabinet_contracts::gg::CAPABILITY_RESPONSES_AS_CODE) program is written in,
 //! and everything that follows from the answer.
 //!
 //! gg used to have exactly one answer, spelled out in a dozen places: the type-strip was
@@ -116,7 +116,7 @@
 //! unit struct whose data is `const`/`static`/`OnceLock` at module scope, so
 //! `static TYPESCRIPT: TypeScript = TypeScript;` is the whole of the machinery.
 
-use test_cabinet_core::gg::{CAPABILITY_RESPONSES_AS_CODE, GgAgentConfig, GgProgramLanguage};
+use test_cabinet_contracts::gg::{CAPABILITY_RESPONSES_AS_CODE, GgAgentConfig, GgProgramLanguage};
 
 use crate::limits::TurnErrorType;
 
@@ -1042,7 +1042,7 @@ macro_rules! test_each_language {
             #[test]
             fn $test() {
                 $check($crate::sandbox::language::language(
-                    ::test_cabinet_core::gg::GgProgramLanguage::$id,
+                    ::test_cabinet_contracts::gg::GgProgramLanguage::$id,
                 ));
             }
         )*
@@ -1051,8 +1051,8 @@ macro_rules! test_each_language {
         /// tests above are generated from is the registry's own, or this fails.
         #[test]
         fn every_registered_language_has_a_test() {
-            let mut listed = vec![$(::test_cabinet_core::gg::GgProgramLanguage::$id),*];
-            let mut registered = ::test_cabinet_core::gg::GgProgramLanguage::ALL.to_vec();
+            let mut listed = vec![$(::test_cabinet_contracts::gg::GgProgramLanguage::$id),*];
+            let mut registered = ::test_cabinet_contracts::gg::GgProgramLanguage::ALL.to_vec();
             listed.sort_by_key(|id| format!("{id:?}"));
             registered.sort_by_key(|id| format!("{id:?}"));
             assert_eq!(listed, registered, "a registered language has no test here");
@@ -1366,7 +1366,7 @@ pub const PARAM_LANGUAGE: &str = "language";
 /// It is a placeholder rather than a default: no run is ever *driven* in it. A code agent that
 /// named no language is refused before its first turn, and a tool-calling agent's resolved
 /// language is discarded by the surface that asked for it
-/// ([`programLanguage`](test_cabinet_core::gg::GgTelemetryKind::AgentSurface) is absent for an agent
+/// ([`programLanguage`](test_cabinet_contracts::gg::GgTelemetryKind::AgentSurface) is absent for an agent
 /// that writes no programs). A concrete variant only because the resolver
 /// [stays total](crate::validate).
 const UNUSED: GgProgramLanguage = GgProgramLanguage::TypeScript;

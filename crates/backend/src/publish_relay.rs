@@ -23,7 +23,9 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
-use test_cabinet_core::{PublishProgress, PublishResult};
+use test_cabinet_contracts::publish_job_api::PublishProgress;
+
+use test_cabinet_contracts::publish_job_api::PublishResult;
 use tokio::sync::broadcast;
 
 /// The capacity of each publish job's live broadcast channel. A publish emits few

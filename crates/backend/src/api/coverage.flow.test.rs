@@ -6,7 +6,7 @@
 //! [`halt_plan`], [`retry_plan_cell`], [`plan_coverage`] and the finished-job feed — over
 //! the shared flow harness.
 
-use test_cabinet_core::run_record::RunState;
+use test_cabinet_contracts::run_record::RunState;
 
 use super::*;
 use crate::api::flow_harness::*;
@@ -642,7 +642,10 @@ async fn cancelling_a_filling_plans_run_by_hand_feeds_the_plan() {
         crate::api::jobs::cancel(State(state.clone()), owner(), Path(first[0].id.clone()))
             .await
             .unwrap();
-    assert_eq!(canceled.state, test_cabinet_core::JobState::Canceled);
+    assert_eq!(
+        canceled.state,
+        test_cabinet_contracts::job_api::JobState::Canceled
+    );
     wait_for_in_flight(&state, "pong", 1).await;
     let relaunched = in_flight(&state, "pong").await;
     assert_ne!(relaunched[0].id, first[0].id);
@@ -655,8 +658,8 @@ async fn report_lost(state: &AppState, job_id: &str) -> StatusCode {
         State(state.clone()),
         crate::auth::ServiceAuth,
         Path(job_id.to_string()),
-        Json(test_cabinet_core::StatusUpdate {
-            state: test_cabinet_core::DriverState::Failed,
+        Json(test_cabinet_contracts::job_api::StatusUpdate {
+            state: test_cabinet_contracts::job_api::DriverState::Failed,
             record: None,
             detail: Some("the driver Job no longer exists".to_string()),
         }),
@@ -710,8 +713,8 @@ async fn a_job_whose_driver_is_lost_fails_and_its_retry_keeps_the_plan_filling()
         State(state.clone()),
         crate::auth::ServiceAuth,
         Path(now[0].id.clone()),
-        Json(test_cabinet_core::StatusUpdate {
-            state: test_cabinet_core::DriverState::Succeeded,
+        Json(test_cabinet_contracts::job_api::StatusUpdate {
+            state: test_cabinet_contracts::job_api::DriverState::Succeeded,
             record: None,
             detail: None,
         }),
@@ -889,7 +892,7 @@ async fn a_cell_holds_the_first_runs_to_land_and_the_plan_never_reads_past_its_t
             .db
             .add_review(
                 run,
-                &crate::db::tests::review_by(OWNER, test_cabinet_core::review::Rating::Great),
+                &crate::db::tests::review_by(OWNER, crate::review::Rating::Great),
                 None,
                 None,
             )

@@ -33,7 +33,7 @@
 //!   fresh waiter, and only to a fresh waiter when no blocked agent is ready.
 //! - A slot may additionally be held under an **exclusivity key** ([`ExclusiveKey`]), which no two
 //!   running agents may hold at once. This is how a
-//!   [persistent](test_cabinet_core::gg::CAPABILITY_AGENT_PERSISTENCE) agent profile is capped at
+//!   [persistent](test_cabinet_contracts::gg::CAPABILITY_AGENT_PERSISTENCE) agent profile is capped at
 //!   one running instance: every instance takes the slot under the profile's name, so the second
 //!   one queues behind the first *within* the global pool rather than getting a pool of its own. A
 //!   key is held only while the agent is **running** — an agent that blocks releases it with its
@@ -54,15 +54,15 @@ use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use crate::ending::Ending;
-use test_cabinet_core::gg::{CAPABILITY_SUBAGENTS, GgCapabilitySet};
+use test_cabinet_contracts::gg::{CAPABILITY_SUBAGENTS, GgCapabilitySet};
 use tokio::sync::{mpsc, oneshot};
 
-/// The subagents capability's one param, [named by core](test_cabinet_core::gg) so the vocabulary a
+/// The subagents capability's one param, [named by the contracts](test_cabinet_contracts::gg) so the vocabulary a
 /// document is written in and the vocabulary gg reads it by are one declaration.
-pub(crate) use test_cabinet_core::gg::PARAM_MAX_DEPTH;
+pub(crate) use test_cabinet_contracts::gg::PARAM_MAX_DEPTH;
 
 /// The parallelism cap [`SubagentConfig::resolve`] hands back once it has reported that the run's
-/// [limits](test_cabinet_core::gg::GgRunLimits) name none, or name one gg cannot honour.
+/// [limits](test_cabinet_contracts::gg::GgRunLimits) name none, or name one gg cannot honour.
 ///
 /// `1` rather than `0`, because [the scheduler](Scheduler::new) clamps its cap to at least one and a
 /// placeholder gg would silently change is no placeholder at all. Nothing is conducted under it
@@ -86,7 +86,7 @@ const NO_SPAWN_CONSEQUENCE: &str = "a tree the root may not spawn into is the ca
      switched off by arithmetic, with every one of its tools still offered";
 
 /// The two bounds a run's delegation is governed by: the run-level
-/// [parallelism cap](test_cabinet_core::gg::GgRunLimits::max_parallel) and the subagents capability's depth cap.
+/// [parallelism cap](test_cabinet_contracts::gg::GgRunLimits::max_parallel) and the subagents capability's depth cap.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SubagentConfig {
     /// The single global cap on how many agents run at once (counting the root). A spawn beyond
@@ -101,10 +101,10 @@ impl SubagentConfig {
     /// Resolve the config from a [`GgCapabilitySet`].
     ///
     /// The parallelism cap is the run's own
-    /// [`limits.maxParallel`](test_cabinet_core::gg::GgRunLimits::max_parallel). It is a run-level
+    /// [`limits.maxParallel`](test_cabinet_contracts::gg::GgRunLimits::max_parallel). It is a run-level
     /// guardrail, so it is read whether or not any profile enables the
     /// [subagents](CAPABILITY_SUBAGENTS) capability — which matters for a run that delegates purely
-    /// through the [board](test_cabinet_core::gg::CAPABILITY_PROJECT_MANAGEMENT) — and it is
+    /// through the [board](test_cabinet_contracts::gg::CAPABILITY_PROJECT_MANAGEMENT) — and it is
     /// **required of every run**, because there is no reading of its absence a run could be
     /// conducted under: every run has a concurrency, and an unwritten one would be gg's.
     /// `max_depth` comes from the subagents capability alone (it bounds *that* capability's
@@ -123,7 +123,7 @@ impl SubagentConfig {
     }
 }
 
-/// The run's global parallelism cap, read off the set's [limits](test_cabinet_core::gg::GgRunLimits).
+/// The run's global parallelism cap, read off the set's [limits](test_cabinet_contracts::gg::GgRunLimits).
 ///
 /// Required of every run, so an absent one is reported at `limits.maxParallel` and hands back
 /// [`REFUSED_MAX_PARALLEL`], exactly as a `0` does.
@@ -203,7 +203,7 @@ fn resolve_max_depth(set: &GgCapabilitySet, report: &mut crate::validate::Launch
 
 /// The `limits` key naming the [parallelism cap](SubagentConfig::max_parallel).
 ///
-/// It lives on the run's [limits](test_cabinet_core::gg::GgRunLimits) rather than on this
+/// It lives on the run's [limits](test_cabinet_contracts::gg::GgRunLimits) rather than on this
 /// capability, and is resolved here, because it bounds the whole run's concurrency — including the
 /// top-level agents a board dispatches in a run where nothing has the subagents capability at all.
 pub(crate) const LIMIT_MAX_PARALLEL: &str = "maxParallel";
@@ -275,7 +275,7 @@ pub struct AgentCtx {
     /// The children this agent has spawned, in spawn order.
     pub children: Vec<ChildHandle>,
     /// The [exclusivity key](ExclusiveKey) this agent holds its running slot under, when it is an
-    /// instance of a [persistent](test_cabinet_core::gg::CAPABILITY_AGENT_PERSISTENCE) profile.
+    /// instance of a [persistent](test_cabinet_contracts::gg::CAPABILITY_AGENT_PERSISTENCE) profile.
     ///
     /// Carried here because a `wait_for_subagents` frees the agent's slot from deep inside the
     /// delegation code, which has this context in hand but not the agent's profile — and a slot
@@ -320,7 +320,7 @@ impl AgentCtx {
 /// hold at the same time, on top of the global [parallelism cap](SubagentConfig::max_parallel).
 ///
 /// `None` — the ordinary case — is a slot held under no key, which contends with nothing. `Some(name)`
-/// is how a [persistent](test_cabinet_core::gg::CAPABILITY_AGENT_PERSISTENCE) agent profile is capped
+/// is how a [persistent](test_cabinet_contracts::gg::CAPABILITY_AGENT_PERSISTENCE) agent profile is capped
 /// at one running instance: the name is the profile's, so every instance of it contends with every
 /// other instance and with nothing else.
 pub type ExclusiveKey<'a> = Option<&'a str>;
@@ -344,7 +344,7 @@ pub struct WaiterToken(u64);
 /// Returning it then is not a bookkeeping slip: it decrements the running count on the *other*
 /// agent's behalf, letting the run exceed its own parallelism cap, and frees an
 /// [exclusivity key](ExclusiveKey) a second instance of a
-/// [persistent](test_cabinet_core::gg::CAPABILITY_AGENT_PERSISTENCE) profile is running under —
+/// [persistent](test_cabinet_contracts::gg::CAPABILITY_AGENT_PERSISTENCE) profile is running under —
 /// which is the one thing that key exists to prevent.
 ///
 /// So the bit is flipped **by the scheduler**, inside the same lock as the release or the grant it
@@ -667,7 +667,7 @@ impl Scheduler {
     /// the one its next incarnation needs — without ever releasing the slot itself.
     ///
     /// A [succession](crate::agent) — an FSM transition, or an `exec` — replaces the running agent
-    /// with one under a *different* [profile](test_cabinet_core::gg::GgAgentConfig), and the
+    /// with one under a *different* [profile](test_cabinet_contracts::gg::GgAgentConfig), and the
     /// exclusivity key is derived from the profile id. The whole succession is one running slot by
     /// construction (a transition must not queue behind unrelated work), so the slot is kept and only
     /// the key changes.

@@ -15,7 +15,7 @@
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use test_cabinet_core::metrics::{Cost, TokenCounts};
+use test_cabinet_contracts::metrics::{Cost, TokenCounts};
 
 use crate::limits::TurnErrorType;
 use crate::telemetry::Emitter;
@@ -282,7 +282,7 @@ pub struct ModelResponse {
     /// generation that was paid for and thrown away, so the figures have to reach the turn loop
     /// somehow, and the answer that finally came back is the only thing the turn loop is handed.
     /// The loop logs them and counts them (see
-    /// [`GgErrorSummary::loop_aborts`](test_cabinet_core::gg::GgErrorSummary)).
+    /// [`GgErrorSummary::loop_aborts`](test_cabinet_contracts::gg::GgErrorSummary)).
     ///
     /// `#[serde(default)]` because a `ModelResponse` is `Deserialize` and nothing stores one today;
     /// a required field would be a silent trap for the first thing that does.
@@ -387,7 +387,7 @@ impl LoopAborts {
 /// one.
 ///
 /// The slot fields say which `(profile, model)` generated it, so a price read back lands on the
-/// [right slot](test_cabinet_core::gg::GgSlotCost) — a run spans several models and an abandoned
+/// [right slot](test_cabinet_contracts::gg::GgSlotCost) — a run spans several models and an abandoned
 /// reply's price belongs to the model that generated it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AbandonedReply {
@@ -400,7 +400,7 @@ pub struct AbandonedReply {
     pub words: u64,
     /// Characters of the same output, counted as characters rather than bytes.
     pub chars: u64,
-    /// The [agent profile](test_cabinet_core::gg::GgAgentConfig::id) (slot) whose request generated
+    /// The [agent profile](test_cabinet_contracts::gg::GgAgentConfig::id) (slot) whose request generated
     /// it — what a price read back is booked to.
     pub profile_id: String,
     /// The model that generated it, within that slot.
@@ -576,10 +576,10 @@ pub enum ModelError {
 /// provider's usage and cost as reported, and who served it. The price of a reply
 /// [gg could not read](ModelError::Parse) or [rejected whole](crate::limits::TurnErrorType::ModelLengthCapped)
 /// is still the run's spend, so it rides out on the request's
-/// [`Usage`](test_cabinet_core::gg::GgTelemetryKind::Usage) delta marked
-/// [`total`](test_cabinet_core::gg::GgUsageFigure::Total) — into the run's
-/// [total cost](test_cabinet_core::gg::GgSessionSummary::cost) and never its
-/// [work cost](test_cabinet_core::gg::GgSessionSummary::work_cost), since no program and no tool
+/// [`Usage`](test_cabinet_contracts::gg::GgTelemetryKind::Usage) delta marked
+/// [`total`](test_cabinet_contracts::gg::GgUsageFigure::Total) — into the run's
+/// [total cost](test_cabinet_contracts::gg::GgSessionSummary::cost) and never its
+/// [work cost](test_cabinet_contracts::gg::GgSessionSummary::work_cost), since no program and no tool
 /// call came of it.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ReplySpend {
@@ -695,7 +695,7 @@ impl ModelError {
 
 /// The slot-bound interface the [agent loop](crate::agent) calls to run a model turn.
 ///
-/// Implementations resolve a [slot binding](test_cabinet_core::gg::GgSlotBinding) to a
+/// Implementations resolve a [slot binding](test_cabinet_contracts::gg::GgSlotBinding) to a
 /// concrete provider/model; the loop only ever holds a `dyn ModelClient` and asks it
 /// to [`complete`](Self::complete) a conversation. `Send + Sync` so a boxed client can
 /// be shared across the async loop and passed to spawned subagents in later phases.

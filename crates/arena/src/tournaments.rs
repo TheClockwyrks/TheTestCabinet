@@ -16,7 +16,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use serde::Serialize;
-use test_cabinet_core::match_play::{MatchSummary, TournamentRecord};
+use test_cabinet_match_play::{MatchSummary, TournamentRecord};
 use tokio::sync::broadcast;
 
 /// Where a submitted tournament is in its lifecycle.

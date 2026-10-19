@@ -57,7 +57,7 @@
 //! it compiles comes from the **catalogue**, which is what a model is shown when it opens a
 //! documentation view, and which is untouched by any of that.
 
-use test_cabinet_core::gg::GgProgramLanguage;
+use test_cabinet_contracts::gg::GgProgramLanguage;
 
 use super::compile::compile_program;
 use crate::prompts::{

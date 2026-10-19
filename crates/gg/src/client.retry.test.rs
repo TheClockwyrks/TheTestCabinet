@@ -10,7 +10,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
-use test_cabinet_core::gg::GgTelemetryKind;
+use test_cabinet_contracts::gg::GgTelemetryKind;
 
 use super::*;
 use crate::model::{Message, ModelClient, ModelError};
@@ -78,7 +78,7 @@ const CONFIGURED_IDLE: Duration = Duration::from_secs(9);
 /// A schedule of `retries` retries against a `ceiling`-second delay ceiling, read the way a run's
 /// declared limits are.
 fn schedule(retries: u64, ceiling: u64) -> RetryPolicy {
-    crate::limits::declared_retry_policy(&test_cabinet_core::gg::GgRunLimits {
+    crate::limits::declared_retry_policy(&test_cabinet_contracts::gg::GgRunLimits {
         max_model_retries: Some(retries),
         model_retry_max_delay_secs: Some(ceiling),
         ..Default::default()

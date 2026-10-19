@@ -1,4 +1,4 @@
-// The **evaluator** — the mirrored half of `crates/core/src/gg_query.eval.rs`.
+// The **evaluator** — the mirrored half of `crates/backend/src/gg_query.eval.rs`.
 //
 // It exists twice because it runs in two places: on the backend for the console, and in
 // the browser for the public static site, which has no backend at all. Rust is

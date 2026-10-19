@@ -16,7 +16,7 @@
 
 use reqwest::Client;
 use serde::Deserialize;
-use test_cabinet_core::{PublishProgress, PublishResult};
+use test_cabinet_contracts::publish_job_api::{PublishProgress, PublishResult};
 
 /// A failure talking to the backend's publish-job API.
 #[derive(Debug, thiserror::Error)]

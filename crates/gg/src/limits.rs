@@ -10,7 +10,7 @@
 //!
 //! That sentence is deliberately about the turn's *declared work* rather than "did anything go
 //! wrong", because the entire premise of
-//! [responses-as-code](test_cabinet_core::gg::CAPABILITY_RESPONSES_AS_CODE) is that a program
+//! [responses-as-code](test_cabinet_contracts::gg::CAPABILITY_RESPONSES_AS_CODE) is that a program
 //! *expects* individual calls to fail and handles them: a tool call that failed inside a program
 //! which carried on is the typed surface working, and counting it would make the one capability
 //! that expects failures the one capability that cannot survive them. [`TurnOutcome`] is that rule
@@ -37,7 +37,7 @@
 //! `capabilitySet.limits`, not because any of them is an execution ceiling.
 //!
 //! Every ceiling, the turn ceiling and the wall-clock budget included, has one home, one
-//! [resolver](resolve_run_limits), one [breach record](test_cabinet_core::gg::GgLimitBreach) and
+//! [resolver](resolve_run_limits), one [breach record](test_cabinet_contracts::gg::GgLimitBreach) and
 //! one aggregation facet, rather than two vocabularies that drift.
 //!
 //! All five also share one run-wide answer, the [`CeilingLatch`]: a breach by any agent gives the
@@ -50,7 +50,7 @@
 //! a legitimate configuration rather than a runaway: gg's host (The Test Cabinet) enforces a
 //! wall-clock cap on every run it conducts, and that is the bound such a run is under. What keeps it
 //! auditable is that the run records the ceilings actually **in force**
-//! ([`GgSessionSummary::limits`](test_cabinet_core::gg::GgSessionSummary)) beside the breach, so
+//! ([`GgSessionSummary::limits`](test_cabinet_contracts::gg::GgSessionSummary)) beside the breach, so
 //! "what ceiling was this run under?" is answerable for every run — including the one whose honest
 //! answer is "none".
 //!
@@ -119,11 +119,11 @@ use crate::client::{
     DEFAULT_MODEL_CALL_TIMEOUT, DEFAULT_MODEL_RETRY_MAX_DELAY, DEFAULT_MODEL_STREAM_IDLE,
     DEFAULT_PROVIDER_CACHE_MISS_LIMIT, RetryPolicy,
 };
-use test_cabinet_core::gg::{
+use test_cabinet_contracts::gg::{
     GgCapabilitySet, GgLimitBreach, GgLimitKind, GgRunLimits, GgTurnErrorKind, GgTurnErrorType,
     GgTurnOutcome,
 };
-use test_cabinet_core::metrics::Cost;
+use test_cabinet_contracts::metrics::Cost;
 
 // ---------------------------------------------------------------------------------------------
 // The turn-outcome taxonomy
@@ -189,9 +189,9 @@ impl TurnOutcome {
     }
 
     /// This outcome as the contract publishes it: the
-    /// [wire outcome](test_cabinet_core::gg::GgTurnOutcome) and, on an error, the
-    /// [wire kind](test_cabinet_core::gg::GgTurnErrorKind) and the
-    /// [wire type](test_cabinet_core::gg::GgTurnErrorType) that say how.
+    /// [wire outcome](test_cabinet_contracts::gg::GgTurnOutcome) and, on an error, the
+    /// [wire kind](test_cabinet_contracts::gg::GgTurnErrorKind) and the
+    /// [wire type](test_cabinet_contracts::gg::GgTurnErrorType) that say how.
     ///
     /// Returned as one triple rather than three accessors so the pairing is unrepresentably wrong:
     /// the contract states that `error != null`, `errorType != null` and `outcome == "error"` are
@@ -242,7 +242,7 @@ impl TurnOutcome {
 ///
 /// Three of the five — [`Transpile`](Self::Transpile), [`ProgramFault`](Self::ProgramFault) and
 /// [`SandboxLimit`](Self::SandboxLimit) — are
-/// [responses-as-code](test_cabinet_core::gg::CAPABILITY_RESPONSES_AS_CODE)
+/// [responses-as-code](test_cabinet_contracts::gg::CAPABILITY_RESPONSES_AS_CODE)
 /// shapes, and that asymmetry is largely real rather than an oversight: a tool-calling turn whose
 /// requested calls are all dispatched and answered cannot declare work that is cut short. The one
 /// tool-calling error shape besides [`ModelApi`](Self::ModelApi) is
@@ -305,10 +305,10 @@ impl TurnErrorKind {
     /// failure after that client exhausted its own retry budget, which is a
     /// [`ModelApi`](Self::ModelApi) failure at this level. It is *not* lost, though — it is
     /// published one level down, as
-    /// [`ModelResponseLoop`](test_cabinet_core::gg::GgTurnErrorType::ModelResponseLoop). The
+    /// [`ModelResponseLoop`](test_cabinet_contracts::gg::GgTurnErrorType::ModelResponseLoop). The
     /// attempts it discarded on the way are published in their own right besides, with the size of
     /// the output they threw away, on the
-    /// [`loop_aborts`](test_cabinet_core::gg::GgTelemetryKind::TurnOutcome) field of the same event
+    /// [`loop_aborts`](test_cabinet_contracts::gg::GgTelemetryKind::TurnOutcome) field of the same event
     /// and the two beside it.
     pub fn wire(self) -> GgTurnErrorKind {
         match self {
@@ -360,8 +360,8 @@ pub enum TurnErrorType {
     ModelTimeout,
     /// The reply hit the provider's output cap (`finish_reason: length`) and was rejected whole —
     /// presumed a degenerate generation, kept out of the context and out of the run's
-    /// [work cost](test_cabinet_core::gg::GgSessionSummary::work_cost) (its price rides its
-    /// `Usage` delta into the [total](test_cabinet_core::gg::GgSessionSummary::cost) and its
+    /// [work cost](test_cabinet_contracts::gg::GgSessionSummary::work_cost) (its price rides its
+    /// `Usage` delta into the [total](test_cabinet_contracts::gg::GgSessionSummary::cost) and its
     /// rejection event), and retried on the same terms as [`ModelTimeout`](Self::ModelTimeout).
     ModelLengthCapped,
     /// The program is not valid source in its language.
@@ -624,7 +624,7 @@ pub fn declared_provider_cache_miss_limit(declared: &GgRunLimits) -> u64 {
     }
 }
 
-/// The resolved [execution ceilings](test_cabinet_core::gg::GgRunLimits) one run is bounded by.
+/// The resolved [execution ceilings](test_cabinet_contracts::gg::GgRunLimits) one run is bounded by.
 ///
 /// Every optional field is `None` for a ceiling the set left unarmed, and gg leaves unarmed every
 /// ceiling the set did not write: `None` here means the ceiling is **off**, never that gg chose a
@@ -1323,7 +1323,7 @@ impl AgentLimits {
     /// concurrently running agents interleave arbitrarily, so a reader folding the stream could
     /// only ever reconstruct a run-wide streak — an artefact of thread scheduling rather than a fact
     /// about any agent. Publishing this figure on each turn's own event is what makes
-    /// [`GgErrorSummary::max_consecutive`](test_cabinet_core::gg::GgErrorSummary::max_consecutive)
+    /// [`GgErrorSummary::max_consecutive`](test_cabinet_contracts::gg::GgErrorSummary::max_consecutive)
     /// a maximum over agents instead of a fiction.
     pub fn consecutive_errors(&self) -> u64 {
         u64::from(self.consecutive)
@@ -1459,7 +1459,7 @@ fn add_optional(a: Option<f64>, b: Option<f64>) -> Option<f64> {
 /// is then collected, scored, and — when it fails — retried, which spends a second run reaching the
 /// same bound on the same configuration.
 ///
-/// So a breach anywhere in the tree gives the process its own exit code, and `core` records the run
+/// So a breach anywhere in the tree gives the process its own exit code, and the driver records the run
 /// under a state of its own that is never retried.
 ///
 /// # Why a latch, and not a status carried up the spawn paths

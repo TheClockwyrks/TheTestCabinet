@@ -15,7 +15,7 @@
 # contradiction and is not: that list is the set of images a RUN RESOLVES, and nothing
 # resolves this one. The obstacle to listing it anyway is `build.sh` rather than the Rust
 # suite — `every_resolvable_image_is_one_the_build_publishes` in
-# `crates/core/src/harness.test.rs` keeps a `NOT_A_RUN_IMAGE` exception list, which already
+# `crates/driver/src/harness.test.rs` keeps a `NOT_A_RUN_IMAGE` exception list, which already
 # holds `base` for exactly this shape — but `build_one` dispatches on that list BY NAME, so
 # an entry here would send `./build.sh` (and `make run-images`) through `build_asset_image`
 # for something that is not one. That is why the manifest job fuses this image by name
@@ -36,7 +36,7 @@
 # and a model that found a Swift compiler on `PATH` in an end-to-end run would have been
 # handed a capability no other arm of that comparison has. `containers/gg/Dockerfile` is
 # the thin layer that puts this tree on top of a run image; `harness::gg_variant` in
-# `crates/core` is what resolves a gg run to it.
+# `crates/driver` is what resolves a gg run to it.
 #
 # What goes in it
 # ---------------

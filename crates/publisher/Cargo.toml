@@ -14,11 +14,18 @@ name = "tcab_publisher"
 path = "src/lib.rs"
 
 [dependencies]
-test-cabinet-core = { path = "../core" }
+# The run record, the run-tree layout and the publish-job wire types.
+test-cabinet-contracts = { workspace = true }
+# The collected implementation a release stages (`execution::ArtifactCollection`).
+test-cabinet-suites = { workspace = true }
+# Secret scrubbing of the staged tree and the built output before egress.
+test-cabinet-redact = { workspace = true }
+# The backend's HTTP client, from contracts.
+test-cabinet-backend-client = { workspace = true }
 # The publisher is a binary: it owns telemetry init, so it pulls the heavy `otlp`
-# feature (the propagation-only default is for libraries like `core`), exactly as
+# feature (the propagation-only default is for libraries), exactly as
 # the driver's main does.
-test-cabinet-telemetry = { path = "../telemetry", features = ["otlp"] }
+test-cabinet-telemetry = { workspace = true, features = ["otlp"] }
 
 serde = { workspace = true }
 serde_json = { workspace = true }
@@ -27,8 +34,10 @@ tokio = { workspace = true }
 tracing = { workspace = true }
 # The HTTP client the publisher downloads the run tree with and streams
 # progress/result back to the backend with. rustls (no system OpenSSL), `json`
-# for the bodies — see `crates/core`.
+# for the bodies.
 reqwest = { workspace = true }
+# The `CommandRunner` seam the release drives `gh`/`git`/`wrangler` through.
+async-trait = { workspace = true }
 # Untar the `application/x-tar` source tree the artifact service serves (pure
 # Rust, matching the driver's upload side which tars the same layout).
 tar = "0.4"
@@ -37,8 +46,6 @@ tar = "0.4"
 tempfile = { workspace = true }
 tokio = { workspace = true, features = ["full", "test-util"] }
 axum = { workspace = true }
-# Implementing the core `CommandRunner` trait for the test's stub runner.
-async-trait = { workspace = true }
 
 [lints]
 workspace = true

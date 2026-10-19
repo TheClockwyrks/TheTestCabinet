@@ -104,7 +104,7 @@ use std::collections::{BTreeMap, VecDeque};
 use std::fmt;
 use std::hash::{Hash, Hasher};
 
-use test_cabinet_core::gg::GgLoopDetection;
+use test_cabinet_contracts::gg::GgLoopDetection;
 
 // ---------------------------------------------------------------------------------------------
 // The knobs
@@ -714,7 +714,7 @@ pub fn resolve_loop_guard(
 /// a knob is refused against the agent that wrote it. The advisory warning is dropped here — the
 /// orchestrator emits it, once, on the root's stream.
 pub fn check_launch(
-    set: &test_cabinet_core::gg::GgCapabilitySet,
+    set: &test_cabinet_contracts::gg::GgCapabilitySet,
     report: &mut crate::validate::LaunchReport,
 ) {
     for agent in &set.agents {

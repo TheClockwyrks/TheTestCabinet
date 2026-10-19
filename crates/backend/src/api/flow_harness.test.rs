@@ -11,10 +11,10 @@ use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::{HeaderMap, StatusCode};
 use sea_orm::EntityTrait;
-use test_cabinet_core::job_api::{DriverState, StatusUpdate};
-use test_cabinet_core::run_record::{HarnessSlug, RunRecord, RunState};
-use test_cabinet_core::test_case::TestType;
+use test_cabinet_contracts::job_api::{DriverState, StatusUpdate};
+use test_cabinet_contracts::run_record::{HarnessSlug, RunRecord, RunState};
 use test_cabinet_entities::job;
+use test_cabinet_suites::test_case::TestType;
 
 use super::AppState;
 use super::coverage::ReviewPlanCombo;
@@ -65,7 +65,7 @@ pub(crate) async fn test_state() -> (tempfile::TempDir, AppState) {
         publish_relay: crate::publish_relay::PublishRelay::new(),
         config,
         http: reqwest::Client::new(),
-        prices: test_cabinet_core::OpenRouterPrices::with_endpoint("http://127.0.0.1:0/models"),
+        prices: crate::pricing::OpenRouterPrices::with_endpoint("http://127.0.0.1:0/models"),
         gg_docs: crate::gg_docs::GgDocIndex::new(),
     };
 

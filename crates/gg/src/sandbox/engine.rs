@@ -6,7 +6,7 @@ use std::sync::OnceLock;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
-use test_cabinet_core::gg::GgProgramLanguage;
+use test_cabinet_contracts::gg::GgProgramLanguage;
 use wasmtime::component::Component;
 use wasmtime::{Config, Engine, OptLevel, Store, WasmBacktraceDetails};
 use wasmtime_wasi::I32Exit;

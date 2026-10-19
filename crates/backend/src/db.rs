@@ -16,6 +16,11 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
+use crate::comparison::ComparisonConfig;
+use crate::review::{
+    AestheticRating, DomainAesthetic, DomainRating, Rating, ReviewDiff, ReviewRevision,
+    ReviewVerdict,
+};
 use sea_orm::ActiveValue::{NotSet, Set};
 use sea_orm::sea_query::{CaseStatement, Expr, Func, IntoCondition, OnConflict, SimpleExpr};
 use sea_orm::{
@@ -25,18 +30,12 @@ use sea_orm::{
     RelationTrait, Select, TransactionTrait,
 };
 use serde::{Deserialize, Serialize};
-use test_cabinet_core::comparison::ComparisonConfig;
-use test_cabinet_core::match_play::TournamentRecord;
-use test_cabinet_core::metrics::{Cost, TokenPrices};
-use test_cabinet_core::reference_lock::ReferenceBuildEntry;
-use test_cabinet_core::review::{
-    AestheticRating, DomainAesthetic, DomainRating, Rating, ReviewDiff, ReviewRevision,
-    ReviewVerdict,
-};
-use test_cabinet_core::run_record::{
+use test_cabinet_contracts::match_play::TournamentRecord;
+use test_cabinet_contracts::metrics::{Cost, TokenPrices};
+use test_cabinet_contracts::reference_lock::ReferenceBuildEntry;
+use test_cabinet_contracts::run_record::{
     HarnessFamily, HarnessSlug, PriorGameJamEntry, RunLinks, RunRecord,
 };
-use test_cabinet_core::test_case::{TestType, version_key};
 use test_cabinet_entities::{
     backfill_state, case_reference_build, case_reference_sheet, comparison, coverage_group,
     coverage_plan, coverage_plan_cell_retry, coverage_settings, gg_agent, gg_config, gg_dashboard,
@@ -45,6 +44,7 @@ use test_cabinet_entities::{
     model_probe_item, publish_job, review, review_plan, review_revision, run, run_link,
     snapshot_state, tournament,
 };
+use test_cabinet_suites::test_case::{TestType, version_key};
 use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
 
@@ -711,7 +711,7 @@ impl Db {
     /// `edit_note` (a non-empty explanation of what changed — otherwise
     /// [`Unprocessable`](crate::error::BackendError::Unprocessable)), preserves the
     /// original `reviewed_at`, stamps `edited_at`, and records the prior→new
-    /// [diff](test_cabinet_core::review::diff_reviews) as a `review_revision`. A
+    /// [diff](crate::review::diff_reviews) as a `review_revision`. A
     /// re-submission that changes nothing is a no-op (no note needed, no revision). A
     /// first submission needs no note.
     ///
@@ -764,14 +764,14 @@ impl Db {
                 // pre-migration row's legacy per-domain tiers are already collapsed
                 // to the one run-wide tier the diff compares.
                 let prior_review = stored_review(prior.clone())?;
-                let diff = test_cabinet_core::review::diff_reviews(
-                    test_cabinet_core::review::ReviewContent {
+                let diff = crate::review::diff_reviews(
+                    crate::review::ReviewContent {
                         ratings: &prior_review.ratings,
                         aesthetic: prior_review.aesthetic,
                         writeup: &prior_review.writeup,
                         checklist: &prior_review.checklist,
                     },
-                    test_cabinet_core::review::ReviewContent {
+                    crate::review::ReviewContent {
                         ratings: &review.ratings,
                         aesthetic: review.aesthetic,
                         writeup: &review.writeup,
@@ -869,7 +869,7 @@ impl Db {
         } else {
             match serde_json::from_str::<RunRecord>(&run.record_json).ok() {
                 Some(record) => lifted_rating(None, &record, &reviews),
-                None => test_cabinet_core::review::aggregate_rating(
+                None => crate::review::aggregate_rating(
                     reviews.iter().map(|review| review.ratings.as_slice()),
                 )
                 .map(|rating| rating.as_str().to_string()),
@@ -2146,7 +2146,7 @@ async fn gate_publishable<C: ConnectionTrait>(
 /// unranked still qualifies: its checklist verdicts are the machine's either way.
 pub(crate) fn auto_publishes(run_state: &str, validator_rated: bool) -> bool {
     validator_rated
-        && run_state == run_state_str(test_cabinet_core::run_record::RunState::Completed)
+        && run_state == run_state_str(test_cabinet_contracts::run_record::RunState::Completed)
 }
 
 /// What [`Db::enqueue_publish_job_once`] did for a run.
@@ -2293,7 +2293,7 @@ struct LiftedRunMetrics {
 }
 
 /// Lift the record-derived sort columns out of a run's record. Reuses the core
-/// [`TokenCounts::total`](test_cabinet_core::metrics::TokenCounts::total) so the
+/// [`TokenCounts::total`](test_cabinet_contracts::metrics::TokenCounts::total) so the
 /// lifted `total_tokens` matches the UI's headline figure exactly.
 fn lifted_run_metrics(record: &RunRecord) -> LiftedRunMetrics {
     LiftedRunMetrics {
@@ -2312,7 +2312,7 @@ fn lifted_run_metrics(record: &RunRecord) -> LiftedRunMetrics {
 /// analyzer produced the run's code figures, or `None`.
 ///
 /// Read straight off the record rather than from this build's
-/// [`CODE_ANALYZER_VERSION`](test_cabinet_core::CODE_ANALYZER_VERSION) constant, and the
+/// [`CODE_ANALYZER_VERSION`](test_cabinet_contracts::code_analysis::CODE_ANALYZER_VERSION) constant, and the
 /// distinction is the whole point: a backend redeployed with a newer analyzer must not
 /// restamp an older run's figures with a generation that did not compute them. The column
 /// describes the *stored result*, not the server.
@@ -2378,7 +2378,7 @@ fn lifted_gg_config_id(record: &RunRecord) -> Option<String> {
 /// configuration, so it has an id and a name of `None` while still binding models.)
 ///
 /// The string is asked of the contract
-/// ([`bound_model_key`](test_cabinet_core::gg::GgCapabilitySet::bound_model_key)) rather
+/// ([`bound_model_key`](test_cabinet_contracts::gg::GgCapabilitySet::bound_model_key)) rather
 /// than assembled here, because the enqueue lift writes the same value onto the job and
 /// a cell only counts while a queued run and the run it becomes agree to the byte.
 fn lifted_gg_models(record: &RunRecord) -> Option<String> {
@@ -2394,25 +2394,23 @@ fn lifted_gg_models(record: &RunRecord) -> Option<String> {
 
 /// A **legacy** run's functional rating: the aggregate review rating — the worst
 /// rating any reviewer gave any domain — or `None` when the run carries no reviews.
-/// Wraps the core [`aggregate_rating`](test_cabinet_core::review::aggregate_rating);
+/// Wraps the core [`aggregate_rating`](crate::review::aggregate_rating);
 /// [`functional_rating`] is the seam that picks between this and the
 /// validator-decided rating.
 ///
 /// The record is taken as well as the reviews because a run can be rated `broken`
 /// *without* any reviewer saying so: a case's gating `typecheck` that ran and failed
 /// disqualifies the run (see
-/// [`RunRecord::gated_broken`](test_cabinet_core::RunRecord::gated_broken)). The gate
+/// [`RunRecord::gated_broken`](test_cabinet_contracts::run_record::RunRecord::gated_broken)). The gate
 /// is composed over the reviews here, at the single seam that derives a run's one
 /// overall rating, rather than written into any reviewer's stored marks.
 pub(crate) fn aggregate_review_rating(
     record: &RunRecord,
     reviews: &[StoredReview],
-) -> Option<test_cabinet_core::review::Rating> {
-    test_cabinet_core::review::gated_rating(
+) -> Option<crate::review::Rating> {
+    crate::review::gated_rating(
         record.gated_broken(),
-        test_cabinet_core::review::aggregate_rating(
-            reviews.iter().map(|review| review.ratings.as_slice()),
-        ),
+        crate::review::aggregate_rating(reviews.iter().map(|review| review.ratings.as_slice())),
     )
 }
 
@@ -2433,10 +2431,10 @@ pub(crate) fn row_aesthetic(
 /// reviews — or `None` when no review rated the aesthetic channel (a legacy run,
 /// or a validator-rated run nobody has reviewed yet). The single source of truth
 /// for the lifted `run.aesthetic` column and the summary cards; wraps the core
-/// [`aggregate_aesthetic`](test_cabinet_core::review::aggregate_aesthetic).
+/// [`aggregate_aesthetic`](crate::review::aggregate_aesthetic).
 /// No gate composes over it: the toolchain gate is a functional verdict.
 pub(crate) fn aggregate_review_aesthetic(reviews: &[StoredReview]) -> Option<AestheticRating> {
-    test_cabinet_core::review::aggregate_aesthetic(reviews.iter().map(|review| review.aesthetic))
+    crate::review::aggregate_aesthetic(reviews.iter().map(|review| review.aesthetic))
 }
 
 /// **The run's functional rating** — the single seam every consumer derives it
@@ -2449,14 +2447,14 @@ pub(crate) fn aggregate_review_aesthetic(reviews: &[StoredReview]) -> Option<Aes
 /// capping its declared domains at its failure cap) **as overridden by the run's
 /// reviews**: each review's checklist overlays the validators' verdicts and the
 /// run takes the worst across the reviews' effective ratings
-/// ([`validator_aggregate_rating`](test_cabinet_core::review::validator_aggregate_rating));
+/// ([`validator_aggregate_rating`](crate::review::validator_aggregate_rating));
 /// with zero reviews the validators' own figure stands, so it is `Some` from the
 /// moment the run completes. Otherwise it is the legacy review aggregate
 /// ([`aggregate_review_rating`]), `None` while the run has no reviews. Both are
 /// composed with the toolchain gate.
 ///
 /// A run whose terminal state is not
-/// [scored](test_cabinet_core::run_record::RunState::is_scored) — a catastrophic
+/// [scored](test_cabinet_contracts::run_record::RunState::is_scored) — a catastrophic
 /// failure, a timeout, or any tier that released nothing — has no rating at all
 /// (`None`), whatever its case version. Its build never loaded, so no validator
 /// ran against it, and the validators' figure over an empty verdict set would
@@ -2478,9 +2476,8 @@ pub(crate) fn functional_rating(
                 &record.subject.engine_slug,
             );
             let domains = crate::snapshot::domains_for(manifest, variant);
-            let auto =
-                test_cabinet_core::comparison::automated_verdicts(&record.validation.debug_scripts);
-            test_cabinet_core::review::validator_aggregate_rating(
+            let auto = crate::comparison::automated_verdicts(&record.validation.debug_scripts);
+            crate::review::validator_aggregate_rating(
                 record.gated_broken(),
                 &domains,
                 &items,
@@ -2501,7 +2498,7 @@ pub(crate) fn functional_rating(
 /// The toolchain gate is composed on top, exactly as it is for the run's rating. `None`
 /// on a legacy version, when `manifest` is `None` (the store does not hold the version),
 /// and for a run whose terminal state is not
-/// [scored](test_cabinet_core::run_record::RunState::is_scored).
+/// [scored](test_cabinet_contracts::run_record::RunState::is_scored).
 pub(crate) fn validator_only_rating(
     manifest: Option<&StoredManifest>,
     record: &RunRecord,
@@ -3528,7 +3525,7 @@ impl Db {
     /// entry.
     ///
     /// The id a launch hands back is a **job** id, and the record its driver mints later
-    /// carries an id of its own ([`test_cabinet_core::mint_run_id`]). So a recorded job
+    /// carries an id of its own (the driver's `mint_run_id`). So a recorded job
     /// id is followed along `retried_by` to the last attempt (an attempt and its retry
     /// are one run), and that attempt along `record_id` to the run it stored. An id no
     /// job carries is read as a run id directly.
@@ -3689,7 +3686,7 @@ impl Db {
     ///
     /// A run counts when it ended `completed`, `catastrophic`, `timed_out`,
     /// `harness_error`, `limit_exceeded` or `hung`
-    /// ([`RunState::counts_as_model_result`](test_cabinet_core::run_record::RunState::counts_as_model_result)):
+    /// ([`RunState::counts_as_model_result`](test_cabinet_contracts::run_record::RunState::counts_as_model_result)):
     /// each is the model's result and uses one of the cell's runs. An `infrastructure`
     /// failure or a cancel says nothing about the model and never counts. Nor does the run of a job that was automatically retried
     /// ([`job::Model::retried_by`]): its retry takes its place, so one launch counts once.
@@ -4277,7 +4274,7 @@ type CellCountRow = (
 /// A nullable engine column as its [`CellKey`] segment: an absent engine is the `none`
 /// engine, because a launch that omits the key asks for the engineless run.
 fn cell_engine(engine: Option<String>) -> String {
-    engine.unwrap_or_else(|| test_cabinet_core::engine::NONE_SLUG.to_string())
+    engine.unwrap_or_else(|| test_cabinet_suites::engine::NONE_SLUG.to_string())
 }
 
 /// One of the nullable gg identity columns as its [`CellKey`] segment:
@@ -4296,7 +4293,7 @@ fn cell_gg_segment(column: impl ColumnTrait) -> SimpleExpr {
 fn cell_engine_segment(column: impl ColumnTrait) -> SimpleExpr {
     Func::coalesce([
         column.into_expr().into(),
-        Expr::val(test_cabinet_core::engine::NONE_SLUG).into(),
+        Expr::val(test_cabinet_suites::engine::NONE_SLUG).into(),
     ])
     .into()
 }
@@ -4435,7 +4432,7 @@ fn gg_dashboard_from_row(row: gg_dashboard::Model) -> Result<crate::api::GgDashb
     })
 }
 
-/// A saved [comparison](test_cabinet_core::comparison) as stored: the row fields
+/// A saved [comparison](crate::comparison) as stored: the row fields
 /// with `config_json` parsed back into its [`ComparisonConfig`]. The per-arm
 /// statistics are **not** stored — they are computed on read by the comparisons API
 /// from the arms' runs — so this is exactly the persisted configuration plus its
@@ -5591,14 +5588,14 @@ fn lifted_aesthetic(reviews: &[StoredReview]) -> Option<String> {
 }
 
 /// The test types graded automatically, which therefore never await a human
-/// review. A [`performance`](test_cabinet_core::TestType::Performance) run is
+/// review. A [`performance`](test_cabinet_suites::test_case::TestType::Performance) run is
 /// scored by its validator — correctness against a reference oracle, then the fuel
 /// a correct engine burned — and carries no reviewer checklist at all, so it would
 /// otherwise sit in the unreviewed worklist forever: `review_count` stays 0 because
 /// there is no review anyone can write. The unreviewed slices exclude these types
 /// for the same reason they exclude the failure tiers.
 ///
-/// Stored as the wire strings ([`TestType::as_str`](test_cabinet_core::TestType::as_str))
+/// Stored as the wire strings ([`TestType::as_str`](test_cabinet_suites::test_case::TestType::as_str))
 /// the lifted `test_type` column holds.
 const AUTO_GRADED_TEST_TYPES: [&str; 1] = ["performance"];
 
@@ -5656,7 +5653,7 @@ pub struct SummaryFilter {
     pub test_case: Option<String>,
     /// Restrict to a list of test-case slugs (`test_case_slug` ∈ the list) — the
     /// home page's group-leaderboard slice: one query covers a [test-case
-    /// group](test_cabinet_core::TestCaseGroup)'s member cases. Like every other
+    /// group](test_cabinet_suites::test_case_group::TestCaseGroup)'s member cases. Like every other
     /// filter it ANDs, [`Self::test_case`] included, so naming both narrows to
     /// their intersection (the semantic `api.md` documents and the console's
     /// `runQuery.ts` `matches` mirrors), and [`Self::latest_versions`] composes
@@ -6051,12 +6048,12 @@ fn model_identity_expr() -> SimpleExpr {
 }
 
 /// A SQL `CASE` mapping the `run.rating` text token to its tier ordinal (`0` best,
-/// larger worse), drawn from [`Rating::rank`](test_cabinet_core::review::Rating) so
+/// larger worse), drawn from [`Rating::rank`](crate::review::Rating) so
 /// the DB order matches the in-memory "worst wins" aggregate. Any unexpected/legacy
 /// non-null token ranks beyond the worst tier; genuine NULLs are separated out by
 /// the caller's null-group key before this is consulted.
 fn rating_rank_expr() -> SimpleExpr {
-    use test_cabinet_core::review::Rating;
+    use crate::review::Rating;
     let mut case = CaseStatement::new();
     for rating in Rating::ALL {
         case = case.case(
@@ -6071,11 +6068,11 @@ fn rating_rank_expr() -> SimpleExpr {
 /// timed-out, harness-error, limit-exceeded and hung — the slice every failures-only
 /// query and publish gate filters on.
 ///
-/// Derived from [`RunState::is_publishable_failure`](test_cabinet_core::run_record::RunState::is_publishable_failure) rather than written out, so a
+/// Derived from [`RunState::is_publishable_failure`](test_cabinet_contracts::run_record::RunState::is_publishable_failure) rather than written out, so a
 /// new failure tier cannot be added to the contract and silently missed here.
 /// `publishable_failure_states_match_the_contract` pins the two together.
 fn publishable_failure_states() -> Vec<&'static str> {
-    test_cabinet_core::run_record::RunState::ALL
+    test_cabinet_contracts::run_record::RunState::ALL
         .into_iter()
         .filter(|state| state.is_publishable_failure())
         .map(run_state_str)
@@ -6088,10 +6085,10 @@ fn publishable_failure_states() -> Vec<&'static str> {
 /// count toward their targets and a rung's gate reads as evidence.
 ///
 /// Derived from
-/// [`RunState::counts_as_model_result`](test_cabinet_core::run_record::RunState::counts_as_model_result)
+/// [`RunState::counts_as_model_result`](test_cabinet_contracts::run_record::RunState::counts_as_model_result)
 /// rather than written out, so the counting rule has one definition.
 pub(crate) fn counted_run_states() -> Vec<&'static str> {
-    test_cabinet_core::run_record::RunState::ALL
+    test_cabinet_contracts::run_record::RunState::ALL
         .into_iter()
         .filter(|state| state.counts_as_model_result())
         .map(run_state_str)
@@ -6102,7 +6099,7 @@ pub(crate) fn counted_run_states() -> Vec<&'static str> {
 /// [counted](counted_run_states) states less `harness_error`, for which an arm launches a
 /// replacement (docs/comparisons/experiments.md, "Which runs an arm holds").
 fn arm_counted_run_states() -> Vec<&'static str> {
-    use test_cabinet_core::run_record::RunState;
+    use test_cabinet_contracts::run_record::RunState;
     RunState::ALL
         .into_iter()
         .filter(|state| state.counts_as_model_result() && *state != RunState::HarnessError)
@@ -6126,8 +6123,8 @@ fn not_a_retried_attempt() -> SimpleExpr {
 }
 
 /// The wire string for a run state (matching the serde representation).
-fn run_state_str(state: test_cabinet_core::run_record::RunState) -> &'static str {
-    use test_cabinet_core::run_record::RunState;
+fn run_state_str(state: test_cabinet_contracts::run_record::RunState) -> &'static str {
+    use test_cabinet_contracts::run_record::RunState;
     match state {
         RunState::Completed => "completed",
         RunState::Catastrophic => "catastrophic",
@@ -6144,11 +6141,11 @@ fn run_state_str(state: test_cabinet_core::run_record::RunState) -> &'static str
 /// infrastructure failure (our fault, not a model result) and an operator-canceled
 /// run (a deliberate stop, not an outcome). Both are retained for inspection only.
 ///
-/// Derived from [`RunState::is_publishable`](test_cabinet_core::run_record::RunState::is_publishable) rather than written out, for the same
+/// Derived from [`RunState::is_publishable`](test_cabinet_contracts::run_record::RunState::is_publishable) rather than written out, for the same
 /// reason [`publishable_failure_states`] is: a new never-publishable state cannot be
 /// added to the contract and silently slip through the publish gate.
 fn never_publishable_states() -> Vec<&'static str> {
-    test_cabinet_core::run_record::RunState::ALL
+    test_cabinet_contracts::run_record::RunState::ALL
         .into_iter()
         .filter(|state| !state.is_publishable())
         .map(run_state_str)
@@ -6952,7 +6949,7 @@ impl Db {
     /// the driver posts that as its very first act and *then* takes the `started_at`
     /// its produced record's `startedAt` is measured from, so the stamp and the record
     /// name the same moment. What a duration ticked from it does and does not carry is
-    /// on [`test_cabinet_core::job_api::JobSummary::started_at`], which reports it to
+    /// on [`test_cabinet_contracts::job_api::JobSummary::started_at`], which reports it to
     /// the console. `dispatched` would wrongly bill the run for pod scheduling and the
     /// image pull; `running` would wrongly omit setup, which is inside
     /// `run_time_seconds`. `running` is nonetheless a fallback anchor for a driver that
@@ -7795,7 +7792,7 @@ impl Db {
         model_id: &str,
         harness: HarnessSlug,
     ) -> Result<std::result::Result<TokenPrices, String>> {
-        let canonical = test_cabinet_core::model_id::canonical_model_id(model_id, harness);
+        let canonical = crate::model_id::canonical_model_id(model_id, harness);
         let Some(alias) = model_alias::Entity::find()
             .filter(model_alias::Column::Alias.eq(&canonical))
             .one(&self.conn())
@@ -8171,7 +8168,7 @@ impl Db {
     /// tens of kilobytes of `record_json` apiece, on every boot, before the router is
     /// built — an unbounded startup cost in a service whose availability incidents have
     /// been single-replica ones. `codeAnalysis` is
-    /// [omitted from the blob when absent](test_cabinet_core::run_record::RunRecord::code_analysis),
+    /// [omitted from the blob when absent](test_cabinet_contracts::run_record::RunRecord::code_analysis),
     /// so the substring is a sound over-approximation of "has an analysis": it can only
     /// fail toward including a row, never toward skipping one that needed the lift. A
     /// spurious match — the string occurring somewhere else in the record — parses, finds
@@ -8356,7 +8353,7 @@ impl Db {
             let Some(json) = row.gg_config_json.as_deref() else {
                 continue;
             };
-            let Ok(set) = serde_json::from_str::<test_cabinet_core::gg::GgCapabilitySet>(json)
+            let Ok(set) = serde_json::from_str::<test_cabinet_contracts::gg::GgCapabilitySet>(json)
             else {
                 continue;
             };
@@ -8392,8 +8389,9 @@ impl Db {
             .await?;
         let mut backfilled = 0usize;
         for row in rows {
-            let Ok(body) = serde_json::from_str::<test_cabinet_core::LaunchBody>(&row.request_json)
-            else {
+            let Ok(body) = serde_json::from_str::<test_cabinet_contracts::job_api::LaunchBody>(
+                &row.request_json,
+            ) else {
                 continue;
             };
             let Some(engine) = body.engine.filter(|slug| !slug.trim().is_empty()) else {
@@ -8418,7 +8416,7 @@ impl Db {
     /// account's configurations are then matched by name.
     ///
     /// A resolved row is written in **both** places the id lives: the record's
-    /// [`preset_id`](test_cabinet_core::gg::GgCapabilitySet::preset_id) and the column
+    /// [`preset_id`](test_cabinet_contracts::gg::GgCapabilitySet::preset_id) and the column
     /// lifted from it. The column is what the grouped counts read and the record is what a
     /// cell's review queue matches a run against, so filling one alone would produce a run
     /// that counts toward a cell and can never be offered for review in it — a run no
@@ -8680,7 +8678,7 @@ impl Db {
         let mut backfilled = 0usize;
         for row in rows {
             let set = row.gg_config_json.as_deref().and_then(|json| {
-                serde_json::from_str::<test_cabinet_core::gg::GgCapabilitySet>(json).ok()
+                serde_json::from_str::<test_cabinet_contracts::gg::GgCapabilitySet>(json).ok()
             });
             let Some(mut set) = set else {
                 continue;
@@ -8882,7 +8880,7 @@ impl Db {
 /// committed reference-builds lockfile. There is no lockfile here — a published
 /// asset reference is discovered by listing the snapshot bucket (see the `/ingest`
 /// handler's `reconcile_reference_sheets`) — so the entry type is defined with the
-/// store that consumes it rather than in `core`'s lockfile module.
+/// store that consumes it rather than in the driver's lockfile module.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ReferenceSheetEntry {
     /// The test-case slug.
@@ -8939,7 +8937,7 @@ fn decode_frames(encoded: &str) -> Vec<u32> {
 /// The asset-generation analogue of the reference-build store above. Rows are
 /// written **out-of-band**: `tcab publish-reference` runs a variant's `draw.sh` and
 /// uploads the frames it produced under the deterministic keys
-/// [`test_cabinet_core::asset_reference`] defines, and the backend reconciles this
+/// [`test_cabinet_contracts::asset_reference`] defines, and the backend reconciles this
 /// table to what it finds in the bucket at ingest. Nothing here is resolved from a
 /// manifest and nothing is seeded into a run. Reads feed
 /// `GET /test-cases/{slug}/versions/{version}` and the public snapshot, which fold

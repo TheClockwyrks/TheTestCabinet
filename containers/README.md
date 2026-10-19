@@ -126,7 +126,7 @@ command (see [`../harnesses/README.md`](../harnesses/README.md)). Installing at
 run time is what lets a run always pick up the harness's most recently published
 version, rather than whatever was current when an image was last built. The
 runner picks the image by test type, asset kind, and asset dimension via
-[`harness::resolve_run_image`](../crates/core/src/harness.rs).
+[`harness::resolve_run_image`](../crates/driver/src/harness.rs).
 
 ## The exception: the `-gg` variants
 
@@ -152,7 +152,7 @@ one `COPY` on top of its parent
 - **Every image has one, and the name is derived.** A program's language is resolved
   per agent, so a gg run of _any_ kind — an asset-generation case, an adversarial
   case — may drive a compiled-language agent, and an image with no toolchains would
-  fail every one of that agent's programs. `ImageSpec::gg_variant` in `crates/core`
+  fail every one of that agent's programs. `ImageSpec::gg_variant` in `crates/driver`
   appends the suffix rather than consulting a list, [`image-names.sh`](image-names.sh)
   publishes one per name, and `every_resolvable_image_is_one_the_build_publishes`
   fails the build if what Rust resolves and what the build publishes disagree. It
@@ -385,7 +385,7 @@ dependency into the seeded workspace's `package.json`. The version of the staged
 engine package is read at seed time and recorded on the run.
 
 **The lockstep rule** is the same one the baked binaries carry: the staged
-package format must match what `crates/core` and the review UI expect, so **build
+package format must match what `crates/driver` and the review UI expect, so **build
 the base image from the same commit as the orchestrator**. The two lists differ by
 design: the script's shippable list is everything staged into the store, while the
 `SHIPPABLE_PACKAGES` allowlist in
@@ -524,15 +524,16 @@ excluded, so the mistake is caught at commit time rather than the next time
 someone needs a run container. Run it after adding a `COPY`.
 
 **And after baking a new tree into a binary with `include_str!`**, which is the same
-mistake with a different corpse. `crates/core` embeds the built-in orchestrators, the
-harness manifests and the engine manifests from directories its `include_str!` paths
-climb out of `crates/` to reach, and the whole-context `COPY` those builds do succeeds
-whatever the allowlist admits — so a tree that was never re-included fails minutes later
-as ``error: couldn't read `crates/core/src/../../../engines/none/engine.toml` ``, which
+mistake with a different corpse. `crates/driver` embeds the built-in orchestrators and
+the harness manifests, and `crates/engines` the engine manifests, from directories
+their `include_str!` paths climb out of `crates/` to reach, and the whole-context
+`COPY` those builds do succeeds whatever the allowlist admits — so a tree that was
+never re-included fails minutes later as
+``error: couldn't read `crates/engines/src/../../../engines/none/engine.toml` ``, which
 reads as a broken checkout. That is how `!/engines` came to be missing when engines
-landed, taking every service image (all six compile `test-cabinet-core`) and `make
-local-up` with it. The gate reads those paths out of the Rust sources now, so the list
-cannot fall behind.
+landed, taking every service image (all six are built by the one cargo stage that
+compiles `test-cabinet-engines`) and `make local-up` with it. The gate reads those
+paths out of the Rust sources now, so the list cannot fall behind.
 
 **And after adding a `packages/gg-sandbox*` package**, which is the same mistake
 without a `COPY` to point at. The driver image's gg stage copies the whole context
@@ -1158,4 +1159,4 @@ $FORAY_HOME/maps/mirror-32x16.toml --out replay.json` runs as `node`. Validating
 [install command](../harnesses/README.md) lands a working CLI on `PATH`, the
 exact non-interactive flags, its token/usage reporting format, and which
 environment variable carries the provider API key — is tracked alongside the
-harness manifests and the adapters in `crates/core/src/harness_registry.rs`.
+harness manifests and the adapters in `crates/driver/src/harness_registry.rs`.

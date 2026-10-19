@@ -16,16 +16,14 @@ use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
 
-use test_cabinet_core::match_play::{ControllerKind, ControllerRef};
-use test_cabinet_core::review::{
-    AestheticRating, DomainRating, Rating, ReviewRevision, ReviewVerdict,
-};
-use test_cabinet_core::run_record::RunRecord;
+use crate::review::{AestheticRating, DomainRating, Rating, ReviewRevision, ReviewVerdict};
+use test_cabinet_contracts::match_play::{ControllerKind, ControllerRef};
+use test_cabinet_contracts::run_record::RunRecord;
 
 use crate::auth::{Person, Reviewer as ReviewerIdentity, ServiceCaller};
 use crate::db::{SortDir, StoredReview, StoredRun, SummaryFilter, SummarySort, SummaryState};
 use crate::error::ApiError;
-use crate::snapshot::{RunSummary, run_summary_score};
+use crate::snapshot::{RunSummary, RunSummaryExt, run_summary_score};
 use crate::store::{CaseNames, DefinitionStore, StoredManifest, case_display_name};
 
 use super::AppState;
@@ -159,7 +157,7 @@ pub async fn add_review(
 /// is a `422` naming what is wrong.
 fn validate_validator_rated_review(
     request: &ReviewRequest,
-    items: &[test_cabinet_core::ReviewItem],
+    items: &[test_cabinet_suites::test_case::ReviewItem],
 ) -> Result<(), ApiError> {
     if !request.ratings.is_empty() {
         return Err(ApiError::unprocessable(

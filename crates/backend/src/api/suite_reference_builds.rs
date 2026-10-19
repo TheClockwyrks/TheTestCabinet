@@ -20,7 +20,6 @@ use axum::extract::{Path, State};
 use axum::http::{StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use futures_util::StreamExt;
-use serde::{Deserialize, Serialize};
 use tokio::io::AsyncWriteExt;
 
 use crate::auth::ServiceCaller;
@@ -30,6 +29,8 @@ use crate::suite_store::StoredSuite;
 use crate::suite_store::reference_builds::require_segment;
 
 use super::AppState;
+
+pub use test_cabinet_contracts::backend_api::test_suites::ReferenceBuildOut;
 
 /// The most bytes an uploaded (compressed) build archive may carry.
 pub const MAX_REFERENCE_BUILD_UPLOAD_BYTES: usize = 512 * 1024 * 1024;
@@ -233,26 +234,12 @@ fn serve(
         )));
     }
     let base_href = reference_build_url(slug, version, engine);
-    let file =
-        test_cabinet_core::playable::serve_build_file(&dir, path, &base_href).ok_or_else(|| {
+    let file = test_cabinet_contracts::layout::serve_build_file(&dir, path, &base_href)
+        .ok_or_else(|| {
             ApiError::not_found(format!(
                 "no file `{path}` in the `{engine}` reference build of test suite \
                  `{slug}@{version}`"
             ))
         })?;
     Ok(([(header::CONTENT_TYPE, file.content_type)], file.body).into_response())
-}
-
-// --- Wire shapes ------------------------------------------------------------
-
-/// `PUT /suites/{slug}/versions/{version}/reference-builds/{engine}` — the stored
-/// build.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub struct ReferenceBuildOut {
-    /// The engine the build was uploaded for.
-    pub engine: String,
-    /// The URL the build is played at, relative to the backend.
-    pub url: String,
 }

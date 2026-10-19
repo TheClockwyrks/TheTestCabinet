@@ -3,14 +3,14 @@
 //! Resolves its configuration from the environment the dispatcher set, downloads the
 //! reviewed run's source tree from the artifact service, performs the GitHub-repo +
 //! Cloudflare Pages release (the same two steps a local `tcab publish` drives, via
-//! [`test_cabinet_core::BackendPublisher`]) while streaming progress lines to the
+//! [`tcab_publisher::release::BackendPublisher`]) while streaming progress lines to the
 //! backend, then reports the terminal [`PublishResult`] — carrying the produced links
 //! on success or the reason on failure — and exits. There is no server and no flags;
 //! everything arrives through `TCAB_*` env (see [`tcab_publisher::config`]).
 
 use std::process::ExitCode;
 
-use test_cabinet_core::{PublishResult, PublishState};
+use test_cabinet_contracts::publish_job_api::{PublishResult, PublishState};
 
 use tcab_publisher::client::PublishJobClient;
 use tcab_publisher::config::Config;

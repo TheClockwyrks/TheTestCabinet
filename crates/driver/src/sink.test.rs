@@ -10,10 +10,10 @@
 use std::sync::Arc;
 use std::sync::Mutex;
 
-use test_cabinet_core::EventSink;
-use test_cabinet_core::PreviewSink;
-use test_cabinet_core::event::{HarnessEvent, HarnessEventExt, SystemStage, SystemStatus};
-use test_cabinet_core::preview::AssetPreview;
+use crate::EventSink;
+use crate::PreviewSink;
+use crate::event::{HarnessEvent, HarnessEventExt, SystemStage, SystemStatus};
+use crate::preview::AssetPreview;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
 

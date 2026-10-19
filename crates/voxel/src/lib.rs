@@ -5,7 +5,7 @@
 //! (rigged) binary; the recorded list of operations — not the voxels left on disk —
 //! is the authoritative output of a run. [`render`] turns that list back into a
 //! voxel volume, and it is the **one** sculpting implementation: the binary calls
-//! it to re-render the isometric preview after every operation, and `crates/core`
+//! it to re-render the isometric preview after every operation, and `crates/driver`
 //! calls it to replay the recorded log — validating it and counting occupied voxels.
 //! Because both go through the same code, a volume produced by any other means
 //! cannot match the regeneration — which is what makes the constrained sculpting
@@ -19,7 +19,7 @@ pub mod ops;
 
 // The generic model types live in `test-cabinet-model-core`. Re-export them (and
 // their modules) here so this crate's public surface — and its downstream consumers
-// like `crates/core`, which reach them as `test_cabinet_voxel::Rig`,
+// like `crates/driver`, which reach them as `test_cabinet_voxel::Rig`,
 // `test_cabinet_voxel::rig::Keyframe`, `test_cabinet_voxel::color::Rgb`, etc. — is
 // unchanged by the split.
 pub use test_cabinet_model_core::{axis, color, rig};

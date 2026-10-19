@@ -8,7 +8,7 @@
 
 use std::sync::Arc;
 
-use test_cabinet_core::gg::GgProgramLanguage;
+use test_cabinet_contracts::gg::GgProgramLanguage;
 
 use super::*;
 use crate::context::HeuristicTokenEstimator;
@@ -418,7 +418,7 @@ export const DELIMITER = \",\";
         context
             .items()
             .iter()
-            .filter(|item| item.source() == test_cabinet_core::gg::GgContextSource::History)
+            .filter(|item| item.source() == test_cabinet_contracts::gg::GgContextSource::History)
             .count(),
         1,
         "and exactly one page was retired: the one whose text changed"

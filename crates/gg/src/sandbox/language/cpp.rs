@@ -146,7 +146,7 @@
 
 use std::sync::OnceLock;
 
-use test_cabinet_core::gg::GgProgramLanguage;
+use test_cabinet_contracts::gg::GgProgramLanguage;
 
 use crate::sandbox::signatures::SignatureCatalogue;
 

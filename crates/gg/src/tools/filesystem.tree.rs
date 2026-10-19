@@ -1,6 +1,6 @@
 //! The `tree` tool: the directory tree beneath a root, bounded by a depth, under the ignore files.
 //!
-//! The [list-dir](test_cabinet_core::gg::CAPABILITY_LIST_DIR) capability's second call, and the one
+//! The [list-dir](test_cabinet_contracts::gg::CAPABILITY_LIST_DIR) capability's second call, and the one
 //! that answers *what is in this workspace* in a single call rather than in a directory's worth of
 //! them. It reaches the model on both surfaces: as the `tree` tool here, and as `files.tree` through
 //! the [membrane](crate::sandbox).
@@ -42,7 +42,7 @@ use super::{
 };
 
 /// The `tree` tool's name — the one the [tool vocabulary](crate::tools::ALL_TOOL_NAMES) and the
-/// [list-dir capability](test_cabinet_core::gg::CAPABILITY_LIST_DIR) name.
+/// [list-dir capability](test_cabinet_contracts::gg::CAPABILITY_LIST_DIR) name.
 pub const TREE_TOOL: &str = "tree";
 
 /// How deep a tree that names no `depth` of its own is walked. Two levels answer *what does this

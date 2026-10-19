@@ -6,7 +6,7 @@ use test_cabinet_entities::model;
 /// test. Its price source is an unconnectable loopback port, so a price lookup
 /// fails fast instead of reaching OpenRouter's live catalog.
 async fn test_state() -> (tempfile::TempDir, AppState) {
-    test_state_with_prices(test_cabinet_core::OpenRouterPrices::with_endpoint(
+    test_state_with_prices(crate::pricing::OpenRouterPrices::with_endpoint(
         "http://127.0.0.1:0/models",
     ))
     .await
@@ -15,7 +15,7 @@ async fn test_state() -> (tempfile::TempDir, AppState) {
 /// [`test_state`] with its OpenRouter price source pointed at `prices`, for a path that
 /// must reach a (fake) listing.
 async fn test_state_with_prices(
-    prices: test_cabinet_core::OpenRouterPrices,
+    prices: crate::pricing::OpenRouterPrices,
 ) -> (tempfile::TempDir, AppState) {
     // nextest runs each test in its own process, so this environment is this
     // test's alone (the same reasoning `api.test.rs`'s harness gives).
@@ -839,7 +839,7 @@ async fn a_harness_member_without_a_list_price_is_unlaunchable_before_the_launch
 
 /// Serve `endpoints` as every model's `/models/{id}/endpoints` body on a loopback port,
 /// and return a price source pointed at it.
-async fn endpoints_listing(endpoints: serde_json::Value) -> test_cabinet_core::OpenRouterPrices {
+async fn endpoints_listing(endpoints: serde_json::Value) -> crate::pricing::OpenRouterPrices {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     let body = serde_json::json!({ "data": { "name": "Some: Model", "endpoints": endpoints } });
@@ -850,7 +850,7 @@ async fn endpoints_listing(endpoints: serde_json::Value) -> test_cabinet_core::O
     tokio::spawn(async move {
         axum::serve(listener, app).await.unwrap();
     });
-    test_cabinet_core::OpenRouterPrices::with_endpoint(format!("http://{addr}/models"))
+    crate::pricing::OpenRouterPrices::with_endpoint(format!("http://{addr}/models"))
 }
 
 /// A launch pass fills a harness member's missing list price from OpenRouter when it resolves

@@ -14,7 +14,7 @@
 
 use std::path::PathBuf;
 
-use test_cabinet_core::TestCaseCatalog;
+use test_cabinet_driver::TestCaseCatalog;
 
 use super::*;
 
@@ -22,7 +22,7 @@ use super::*;
 /// it declares no `engines` and supports exactly the engineless run.
 fn engineless_case() -> TestCaseVersion {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("testdata/definitions/test-cases");
-    TestCaseCatalog::new(root)
+    TestCaseCatalog::new(root, test_cabinet_driver::engine::built_in_catalog())
         .resolve("carom", "v2.1.0")
         .expect("the fixture copy of carom v2.1.0 resolves")
 }

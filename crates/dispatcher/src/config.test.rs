@@ -55,7 +55,7 @@ const ALL_VARS: &[&str] = &[
 
 fn clear_all() {
     for var in ALL_VARS.iter().copied().chain(
-        test_cabinet_core::harness::RUN_IMAGE_OVERRIDE_ENVS
+        test_cabinet_contracts::harness::RUN_IMAGE_OVERRIDE_ENVS
             .iter()
             .map(String::as_str),
     ) {

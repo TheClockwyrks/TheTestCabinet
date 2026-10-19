@@ -92,14 +92,14 @@ struct Harness {
 /// price path fails fast instead of reaching OpenRouter's live catalog; a test
 /// that needs prices passes a fake listing to [`harness_with_prices`].
 async fn harness() -> Harness {
-    harness_with_prices(test_cabinet_core::OpenRouterPrices::with_endpoint(
+    harness_with_prices(crate::pricing::OpenRouterPrices::with_endpoint(
         "http://127.0.0.1:0/models",
     ))
     .await
 }
 
 /// [`harness`], with the OpenRouter price source pointed at `prices`.
-async fn harness_with_prices(prices: test_cabinet_core::OpenRouterPrices) -> Harness {
+async fn harness_with_prices(prices: crate::pricing::OpenRouterPrices) -> Harness {
     let (internal_url, internal) = spawn_artifacts().await;
     let dir = tempfile::tempdir().unwrap();
 
@@ -577,13 +577,13 @@ async fn a_suite_reference_build_is_uploaded_listed_played_and_replaced() {
 /// Serve `endpoints` as every OpenRouter read's body on a loopback port, and return a price
 /// source pointed at it. Only the per-model endpoints read parses it; the catalog reads a save
 /// makes fail to parse, which they treat as best-effort.
-async fn endpoints_listing(endpoints: serde_json::Value) -> test_cabinet_core::OpenRouterPrices {
+async fn endpoints_listing(endpoints: serde_json::Value) -> crate::pricing::OpenRouterPrices {
     let body = serde_json::json!({ "data": { "name": "Z.AI: GLM 5.3", "endpoints": endpoints } });
     let app = Router::new().fallback(move || {
         let body = body.clone();
         async move { axum::Json(body) }
     });
-    test_cabinet_core::OpenRouterPrices::with_endpoint(format!("{}/models", serve(app).await))
+    crate::pricing::OpenRouterPrices::with_endpoint(format!("{}/models", serve(app).await))
 }
 
 /// Serve `endpoints` as every model's endpoints listing and a models listing carrying
@@ -592,7 +592,7 @@ async fn endpoints_listing(endpoints: serde_json::Value) -> test_cabinet_core::O
 async fn endpoints_and_models_listing(
     endpoints: serde_json::Value,
     pricing: Option<serde_json::Value>,
-) -> test_cabinet_core::OpenRouterPrices {
+) -> crate::pricing::OpenRouterPrices {
     let endpoints =
         serde_json::json!({ "data": { "name": "Z.AI: GLM 5.3", "endpoints": endpoints } });
     let entries: Vec<serde_json::Value> = pricing
@@ -608,7 +608,7 @@ async fn endpoints_and_models_listing(
         };
         async move { axum::Json(body) }
     });
-    test_cabinet_core::OpenRouterPrices::with_endpoint(format!("{}/models", serve(app).await))
+    crate::pricing::OpenRouterPrices::with_endpoint(format!("{}/models", serve(app).await))
 }
 
 /// One fp8 endpoint priced per million tokens, with a cache-read price and tool support.
@@ -1086,7 +1086,7 @@ async fn the_candidates_read_reports_the_list_the_next_enqueue_would_build() {
     assert_eq!(body["candidates"], serde_json::json!([]));
     assert_eq!(
         body["refusal"],
-        test_cabinet_core::pricing::CandidateRefusal::AllBanned.to_string()
+        crate::pricing::CandidateRefusal::AllBanned.to_string()
     );
 }
 

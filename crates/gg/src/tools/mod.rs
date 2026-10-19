@@ -12,7 +12,7 @@
 //!
 //! An agent answers a turn either by emitting a tool call or by writing a
 //! [program](crate::sandbox) — its
-//! [execution mode](test_cabinet_core::gg::CAPABILITY_RESPONSES_AS_CODE) — and it has exactly one
+//! [execution mode](test_cabinet_contracts::gg::CAPABILITY_RESPONSES_AS_CODE) — and it has exactly one
 //! of the two, never both. Everything in this module is the first of them. A program never reaches
 //! a [`Tool`]: it calls a typed API function, which calls the same *implementation* a tool's
 //! `invoke` calls (`ReadFileTool::read` and friends), so the two surfaces share their final
@@ -26,7 +26,7 @@
 //! [`invoke`](Tool::invoke), which receives the parsed arguments and a
 //! [`ToolContext`] (the workspace root the call is rooted at) and returns a
 //! [`ToolOutcome`] — the `output` string fed back to the model as the tool result
-//! plus a short `summary` for the [`ToolResult`](test_cabinet_core::gg::GgTelemetryKind::ToolResult)
+//! plus a short `summary` for the [`ToolResult`](test_cabinet_contracts::gg::GgTelemetryKind::ToolResult)
 //! telemetry event.
 //!
 //! An outcome also carries a **typed sidecar**: the [`ApiData`] a successful call produced and the
@@ -43,12 +43,12 @@
 //! capability is on — so the model is never shown their schemas and never sees
 //! them in a prompt. The Phase 0
 //! toolset is what the core loop needs to build a test case:
-//! [`shell`](test_cabinet_core::gg::CAPABILITY_SHELL) (run commands in the run
+//! [`shell`](test_cabinet_contracts::gg::CAPABILITY_SHELL) (run commands in the run
 //! container) plus one capability per filesystem primitive —
-//! [`read-file`](test_cabinet_core::gg::CAPABILITY_READ_FILE),
-//! [`write-file`](test_cabinet_core::gg::CAPABILITY_WRITE_FILE),
-//! [`edit-file`](test_cabinet_core::gg::CAPABILITY_EDIT_FILE), and
-//! [`list-dir`](test_cabinet_core::gg::CAPABILITY_LIST_DIR). They are separate
+//! [`read-file`](test_cabinet_contracts::gg::CAPABILITY_READ_FILE),
+//! [`write-file`](test_cabinet_contracts::gg::CAPABILITY_WRITE_FILE),
+//! [`edit-file`](test_cabinet_contracts::gg::CAPABILITY_EDIT_FILE), and
+//! [`list-dir`](test_cabinet_contracts::gg::CAPABILITY_LIST_DIR). They are separate
 //! capabilities rather than one umbrella so each carries its own implementation and
 //! params: `read_file`'s implementation, for instance, selects its
 //! [line-cap mode](ReadPolicy).
@@ -76,7 +76,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use test_cabinet_core::gg::{
+use test_cabinet_contracts::gg::{
     CAPABILITY_AGENT_MANAGED_CONTEXT, CAPABILITY_COMPACTION, CAPABILITY_EDIT_FILE, CAPABILITY_EXEC,
     CAPABILITY_FORK, CAPABILITY_FSM, CAPABILITY_LIST_DIR, CAPABILITY_MEMORIES,
     CAPABILITY_PROJECT_MANAGEMENT, CAPABILITY_READ_FILE, CAPABILITY_RESPONSES_AS_CODE,
@@ -225,15 +225,15 @@ pub struct AgentFacts<'a> {
     /// it may name.
     pub fsm: Option<&'a FsmPosition>,
     /// The profiles this agent may **spawn**, resolved by the caller from the whole set
-    /// ([`test_cabinet_core::gg::GgCapabilitySet::roster`]). Each carries the id a call names it
+    /// ([`test_cabinet_contracts::gg::GgCapabilitySet::roster`]). Each carries the id a call names it
     /// by and the name that makes the menu read as prose.
     pub spawnable: &'a [GgRosterEntry],
     /// The profiles this agent may assign a board [issue](crate::board) to — its roster's
-    /// [implementer](test_cabinet_core::gg::GgSubagentScope::Implementer) scope, resolved by the
+    /// [implementer](test_cabinet_contracts::gg::GgSubagentScope::Implementer) scope, resolved by the
     /// caller for the same reason [`spawnable`](Self::spawnable) is.
     pub implementers: &'a [GgRosterEntry],
     /// The profiles this agent may name as a board [issue](crate::board)'s reviewers — its roster's
-    /// [reviewer](test_cabinet_core::gg::GgSubagentScope::Reviewer) scope.
+    /// [reviewer](test_cabinet_contracts::gg::GgSubagentScope::Reviewer) scope.
     pub reviewers: &'a [GgRosterEntry],
 }
 
@@ -405,7 +405,7 @@ pub fn shell_offload(
 ///
 /// gg runs *inside* the run container, so tools operate on the local filesystem and
 /// shell; every path a tool touches is resolved relative to
-/// [`workspace_dir`](Self::workspace_dir) (the seeded workspace `core` prepared) and
+/// [`workspace_dir`](Self::workspace_dir) (the seeded workspace the driver prepared) and
 /// prevented from escaping it.
 ///
 /// It is also where the **shell seam** lives. Three call paths reach a command line — the
@@ -540,7 +540,7 @@ impl ToolContext {
 ///
 /// [`output`](Self::output) is the full text handed back to the model as the tool
 /// result (the model reasons over it), while [`summary`](Self::summary) is the short
-/// line recorded on the [`ToolResult`](test_cabinet_core::gg::GgTelemetryKind::ToolResult)
+/// line recorded on the [`ToolResult`](test_cabinet_contracts::gg::GgTelemetryKind::ToolResult)
 /// telemetry event for the console. [`ok`](Self::ok) reports whether the call
 /// succeeded — it maps straight onto that event's `ok` field and lets the loop
 /// distinguish a productive call from a failed one.
@@ -566,7 +566,7 @@ pub struct ToolOutcome {
     pub images: Vec<ImageContent>,
     /// The structured facts about this outcome, for a caller that wants data rather than prose —
     /// today a program written under
-    /// [responses-as-code](test_cabinet_core::gg::CAPABILITY_RESPONSES_AS_CODE), which branches on
+    /// [responses-as-code](test_cabinet_contracts::gg::CAPABILITY_RESPONSES_AS_CODE), which branches on
     /// them. `None` for a tool whose result is a bare confirmation. The native tool-calling path is
     /// untouched: it keeps reading [`output`](Self::output).
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -635,7 +635,7 @@ impl ToolOutcome {
     }
 
     /// The [failure class](GgCallFailure) this outcome is recorded with on its
-    /// [`ToolResult`](test_cabinet_core::gg::GgTelemetryKind::ToolResult) telemetry — `None` on a
+    /// [`ToolResult`](test_cabinet_contracts::gg::GgTelemetryKind::ToolResult) telemetry — `None` on a
     /// success, `Some` on every failure.
     ///
     /// A failure the raising tool did not classify becomes
@@ -1034,7 +1034,7 @@ impl ToolRegistry {
     /// The names of the offered tools, in registration order — the run's **effective toolset** after
     /// capability gating and the [allowlist](GgAgentConfig::tools).
     ///
-    /// Recorded on the run's [session summary](test_cabinet_core::gg::GgSessionSummary::effective_tools)
+    /// Recorded on the run's [session summary](test_cabinet_contracts::gg::GgSessionSummary::effective_tools)
     /// so the exact set of tools a run offered is a durable, sliceable fact — the ground
     /// truth "which tools actually mattered?" queries read, rather than re-deriving the toolset from
     /// the capability set.
@@ -1170,7 +1170,7 @@ fn invalid_argument(message: impl Into<String>) -> ToolOutcome {
 }
 
 /// **The capability `id` names, authored the way a document authors one, with `params` merged over
-/// what the [catalog](test_cabinet_core::gg::gg_authoring_catalog) wrote** — the shape a fixture
+/// what the [catalog](test_cabinet_contracts::gg::gg_authoring_catalog) wrote** — the shape a fixture
 /// wants whenever it varies *some* of a capability's configuration.
 ///
 /// Merged rather than replaced, and that is the whole of why it exists. An enabled capability is
@@ -1185,8 +1185,8 @@ fn invalid_argument(message: impl Into<String>) -> ToolOutcome {
 pub(crate) fn configured(
     id: &str,
     params: serde_json::Value,
-) -> test_cabinet_core::gg::GgCapabilityConfig {
-    let mut capability = test_cabinet_core::gg::GgCapabilityConfig::enabled(id);
+) -> test_cabinet_contracts::gg::GgCapabilityConfig {
+    let mut capability = test_cabinet_contracts::gg::GgCapabilityConfig::enabled(id);
     let Some(overrides) = params.as_object() else {
         capability.params = params;
         return capability;
@@ -1215,7 +1215,7 @@ pub(crate) fn grant(profile: &mut GgAgentConfig, capability: &str) {
     if !profile.is_enabled(capability) {
         grant_configured(
             profile,
-            test_cabinet_core::gg::GgCapabilityConfig::enabled(capability),
+            test_cabinet_contracts::gg::GgCapabilityConfig::enabled(capability),
         );
         return;
     }
@@ -1236,17 +1236,17 @@ pub(crate) fn grant(profile: &mut GgAgentConfig, capability: &str) {
 #[cfg(test)]
 pub(crate) fn grant_configured(
     profile: &mut GgAgentConfig,
-    capability: test_cabinet_core::gg::GgCapabilityConfig,
+    capability: test_cabinet_contracts::gg::GgCapabilityConfig,
 ) {
     let mut capability = capability;
-    if capability.id == test_cabinet_core::gg::CAPABILITY_RESPONSES_AS_CODE
+    if capability.id == test_cabinet_contracts::gg::CAPABILITY_RESPONSES_AS_CODE
         && capability.enabled
         && let Some(params) = capability.params.as_object_mut()
     {
         params
-            .entry(test_cabinet_core::gg::PARAM_LANGUAGE)
+            .entry(test_cabinet_contracts::gg::PARAM_LANGUAGE)
             .or_insert_with(|| {
-                serde_json::json!(test_cabinet_core::gg::GgProgramLanguage::TypeScript.id())
+                serde_json::json!(test_cabinet_contracts::gg::GgProgramLanguage::TypeScript.id())
             });
     }
     let id = capability.id.clone();

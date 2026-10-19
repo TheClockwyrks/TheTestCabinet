@@ -2,14 +2,14 @@
 //!
 //! Unlike `read_file`, `read_skill` takes a skill **name** (not a path), returns the
 //! skill's body with its front matter stripped, and — crucially — the loop records the
-//! result as a [`Skill`](test_cabinet_core::gg::GgContextSource)-sourced, **pinned**
+//! result as a [`Skill`](test_cabinet_contracts::gg::GgContextSource)-sourced, **pinned**
 //! context item so it is retained across a compaction boundary (see
 //! [`crate::agent`]). The tool itself only resolves the name to a body; the pinning and
 //! the "already read, do not duplicate" bookkeeping live in the loop, which owns the
 //! context model and the [`SkillsRuntime`](crate::skills::SkillsRuntime).
 //!
 //! The tool is contributed to the registry only when the
-//! [`skills`](test_cabinet_core::gg::CAPABILITY_SKILLS) capability is enabled **and** the
+//! [`skills`](test_cabinet_contracts::gg::CAPABILITY_SKILLS) capability is enabled **and** the
 //! run's [`SkillLibrary`] actually holds skills — a run with no skills offers no
 //! `read_skill` tool at all.
 

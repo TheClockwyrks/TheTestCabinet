@@ -19,7 +19,7 @@ path = "src/lib.rs"
 [features]
 # `cli` pulls in clap (the value enums the authoring subcommands parse), serde_json
 # (config + op-log I/O), and toml (the baked sample-pack / instrument-bank manifest
-# the library loader reads). A `default-features = false` consumer (e.g. `crates/core`)
+# the library loader reads). A `default-features = false` consumer (e.g. `crates/driver`)
 # links only the pure DSP, mixer, encoders, and renderers.
 default = ["cli"]
 cli = ["dep:clap", "dep:serde_json", "dep:toml"]

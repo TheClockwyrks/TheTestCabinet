@@ -32,7 +32,7 @@
 //! `cloudflared` forwards unchanged. [`crate::auth::identify`] runs in front of all
 //! of them; `/healthz` alone is served without an identity.
 //!
-//! The serve handlers **reuse the core resolvers**
+//! The serve handlers **reuse the [`playable`](crate::playable) resolvers**
 //! ([`find_build_output`], [`serve_build_file`], [`serve_proof_file`],
 //! [`serve_asset_file`]) exactly as the
 //! worker did, only reading from the artifact store's per-run root instead of the
@@ -58,7 +58,7 @@ use tower_http::compression::predicate::{DefaultPredicate, NotForContentType, Pr
 use tower_http::cors::{AllowHeaders, CorsLayer};
 use tower_http::trace::TraceLayer;
 
-use test_cabinet_core::{
+use crate::playable::{
     find_build_output, serve_asset_file, serve_build_file, serve_proof_file, serve_showcase_file,
     serve_validation_file,
 };

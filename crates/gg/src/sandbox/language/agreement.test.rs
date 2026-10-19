@@ -19,7 +19,7 @@
 //!   `const` that nothing could ever be observed rejecting.
 
 use serde_json::{Value, json};
-use test_cabinet_core::gg::{
+use test_cabinet_contracts::gg::{
     CAPABILITY_PROGRAM_LIBRARY, CAPABILITY_READ_FILE, CAPABILITY_WRITE_FILE, GgProgramLanguage,
 };
 

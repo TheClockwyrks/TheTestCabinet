@@ -11,7 +11,7 @@
 //!
 //! The pure model types (`axis`, `color`, `rig`) are always available; the
 //! `config`/`record`/`render`/`pose` CLI plumbing is behind the `cli` feature (on by
-//! default) so a library consumer such as `crates/core` can link this crate with
+//! default) so a library consumer such as `crates/driver` can link this crate with
 //! `default-features = false` and pull in only the model types.
 
 pub mod axis;

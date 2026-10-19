@@ -4,7 +4,7 @@
 //! Like them it is NOT a gg tool: nothing dispatches it by name, so it has its own WIT interface and
 //! the one-to-one correspondence the tool interfaces hold with
 //! [`ALL_TOOL_NAMES`](crate::tools::ALL_TOOL_NAMES) is undisturbed. Unlike them it is gated by a
-//! [capability](test_cabinet_core::gg::CAPABILITY_PROGRAM_LIBRARY) rather than being bound
+//! [capability](test_cabinet_contracts::gg::CAPABILITY_PROGRAM_LIBRARY) rather than being bound
 //! unconditionally or by a role.
 //!
 //! **The three calls below carry no capability check of their own.** Every arm's SDK is static —

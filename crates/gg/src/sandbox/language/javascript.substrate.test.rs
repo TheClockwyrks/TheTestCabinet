@@ -35,14 +35,14 @@
 //! [`javascript.feedback.test.rs`](super::feedback).
 
 use serde_json::json;
-use test_cabinet_core::gg::GgProgramLanguage;
+use test_cabinet_contracts::gg::GgProgramLanguage;
 
 use super::super::g8::{self, Answered, Case, Located, Shape};
 use crate::limits::TurnErrorType;
 
 use crate::context::ViewKind;
 use crate::ending::EndingRole;
-use test_cabinet_core::gg::CAPABILITY_DOCVIEW_CLOSE;
+use test_cabinet_contracts::gg::CAPABILITY_DOCVIEW_CLOSE;
 
 use crate::sandbox::fake::{
     CallLog, FakeOperationApi, all_capabilities, all_operations, all_operations_without,

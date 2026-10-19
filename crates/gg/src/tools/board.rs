@@ -12,17 +12,17 @@
 //! [cycle](crate::board::BoardError::Cycle)) — an **error outcome carrying the store's
 //! guidance**, with the board left unchanged. The loop owns the telemetry consequences: after a
 //! successful mutation it re-emits the
-//! [`BoardState`](test_cabinet_core::gg::GgTelemetryKind::BoardState) telemetry.
+//! [`BoardState`](test_cabinet_contracts::gg::GgTelemetryKind::BoardState) telemetry.
 //!
 //! The tools are contributed to the registry only when the
-//! [`project-management`](test_cabinet_core::gg::CAPABILITY_PROJECT_MANAGEMENT) capability is enabled and
+//! [`project-management`](test_cabinet_contracts::gg::CAPABILITY_PROJECT_MANAGEMENT) capability is enabled and
 //! a store is bound; when it is off, none are offered.
 
 use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
 use serde_json::{Value, json};
-use test_cabinet_core::gg::GgRosterEntry;
+use test_cabinet_contracts::gg::GgRosterEntry;
 
 use super::{
     ApiData, ArgumentError, BoardNodeData, BoardUsageData, Tool, ToolContext, ToolFailure,

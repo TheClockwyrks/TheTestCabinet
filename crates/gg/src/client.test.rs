@@ -3,7 +3,7 @@ use crate::model::{
     FinishReason, ImageContent, Message, ModelClient, ModelError, ToolCall, ToolDefinition,
 };
 use serde_json::json;
-use test_cabinet_core::gg::{GgReasoning, GgReasoningEffort, GgSlotBinding, PRIMARY_SLOT};
+use test_cabinet_contracts::gg::{GgReasoning, GgReasoningEffort, GgSlotBinding, PRIMARY_SLOT};
 
 // ---------------------------------------------------------------------------
 // Request building
@@ -111,7 +111,7 @@ fn build_request_body_omits_tools_when_none() {
 #[test]
 fn build_request_body_pins_the_provider_and_refuses_fallbacks() {
     let key = RoutingKey::mint();
-    let candidate = test_cabinet_core::gg::GgProviderCandidate::new("openai", "fp8");
+    let candidate = test_cabinet_contracts::gg::GgProviderCandidate::new("openai", "fp8");
     let body = build_request_body(
         "openai/gpt-5.6",
         &[Message::user("hi")],

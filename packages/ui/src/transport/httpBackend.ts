@@ -1464,7 +1464,7 @@ function mapActiveState(state: string): InProgressRun["state"] {
 //
 // This MIRRORS the Rust helpers that write the objects — `reference_prefix` /
 // `reference_image_key` / `reference_actions_key` in
-// `crates/core/src/asset_reference.rs` — and must change with them. It is
+// `contracts/crates/contracts/src/asset_reference.rs` — and must change with them. It is
 // reconstructed here (rather than served per-frame) because the layout is
 // deterministic: the backend sends only which frame indices exist. The static
 // site's build-time plugin (`apps/site/vite-plugin-snapshot.ts`) reconstructs the

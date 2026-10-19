@@ -12,13 +12,13 @@
 use std::sync::Arc;
 
 use serde_json::json;
-use test_cabinet_core::gg::{
+use test_cabinet_contracts::gg::{
     CAPABILITY_COMPACTION, CAPABILITY_FSM, CAPABILITY_MEMORIES, CAPABILITY_PROJECT_MANAGEMENT,
     CAPABILITY_READ_FILE, CAPABILITY_SHELL, COMPACTION_STRATEGY_SELF_COMPACTION, FSM_PARAM_STATES,
     GgAgentConfig, GgCapabilityConfig, GgRosterEntry, GgSubagentRef, SHELL_OUTPUT_INLINE,
     SHELL_OUTPUT_OFFLOAD,
 };
-use test_cabinet_core::gg_reference::{GgRunDataStandIn, GgToolReference, GgToolVariant};
+use test_cabinet_contracts::gg_reference::{GgRunDataStandIn, GgToolReference, GgToolVariant};
 
 use super::conditions::{self, CAPABILITY_AXES, MODULE_AXES, ModuleAxis};
 use super::{PLACEHOLDER_AGENT, PLACEHOLDER_PROCESS, PLACEHOLDER_SKILL, category_of_tool};

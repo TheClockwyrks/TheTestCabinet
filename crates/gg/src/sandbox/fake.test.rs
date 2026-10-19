@@ -16,7 +16,7 @@ use std::time::Instant;
 
 use serde_json::{Value, json};
 
-use test_cabinet_core::gg::{
+use test_cabinet_contracts::gg::{
     CAPABILITY_DOCVIEW_CLOSE, CAPABILITY_PROGRAM_LIBRARY, GgCallFailure, GgProgramLanguage,
 };
 
@@ -500,7 +500,7 @@ impl FakeOperationApi {
     /// them.
     ///
     /// **What it leaves to the production api:** where the number comes from. A real run resolves
-    /// the retention out of the [library capability](test_cabinet_core::gg::CAPABILITY_PROGRAM_LIBRARY)'s
+    /// the retention out of the [library capability](test_cabinet_contracts::gg::CAPABILITY_PROGRAM_LIBRARY)'s
     /// params and refuses the launch over a `keep` it cannot read; that resolution is
     /// [`crate::programs`]'s, tested there, and this takes the resolved number as given.
     pub(crate) fn keeping(mut self, keep: usize) -> Self {
@@ -1632,7 +1632,7 @@ pub(crate) fn membrane_from_scope_in(
 }
 
 /// A membrane state for an agent whose
-/// [`docview-close`](test_cabinet_core::gg::CAPABILITY_DOCVIEW_CLOSE) capability is `docview_close`
+/// [`docview-close`](test_cabinet_contracts::gg::CAPABILITY_DOCVIEW_CLOSE) capability is `docview_close`
 /// — the one scope variation the documentation-close tests turn on, as the library flag is the one
 /// the program-library tests turn on.
 pub(crate) fn membrane_closing_docs(
@@ -1718,7 +1718,7 @@ pub(crate) fn all_operations() -> Vec<OperationId> {
 pub(crate) fn granted_operations(operations: &[OperationId], library: bool) -> Vec<OperationId> {
     let mut granted = operations.to_vec();
     if library {
-        for id in capability_operations([test_cabinet_core::gg::CAPABILITY_PROGRAM_LIBRARY]) {
+        for id in capability_operations([test_cabinet_contracts::gg::CAPABILITY_PROGRAM_LIBRARY]) {
             if !granted.contains(&id) {
                 granted.push(id);
             }

@@ -1,6 +1,6 @@
 //! Subcommand handlers.
 //!
-//! Each handler is a stub that calls into [`test_cabinet_core`] where the surface
+//! Each handler is a stub that calls into [`test_cabinet_driver`]'s run engine where the surface
 //! exists and otherwise reports that the orchestration is not implemented yet.
 
 pub mod analyze;

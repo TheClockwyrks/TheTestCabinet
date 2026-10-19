@@ -2,7 +2,7 @@
 //! whether every request that client sends carries the unified `reasoning` object, read from the
 //! request exactly as it would have gone out.
 
-use test_cabinet_core::gg::{GgReasoning, GgReasoningEffort, GgSlotBinding, PRIMARY_SLOT};
+use test_cabinet_contracts::gg::{GgReasoning, GgReasoningEffort, GgSlotBinding, PRIMARY_SLOT};
 
 use super::routing_tests::{ANSWER, recorded};
 use super::*;

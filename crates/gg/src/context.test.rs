@@ -8,7 +8,7 @@ use serde_json::json;
 
 use super::*;
 use crate::model::{ImageContent, Role};
-use test_cabinet_core::gg::GgContextSource;
+use test_cabinet_contracts::gg::GgContextSource;
 
 /// A model measuring with the deterministic heuristic estimator (chars/4 + framing) and
 /// a fixed window, so token counts in these tests are exact and fast.
@@ -20,7 +20,7 @@ fn model(window_limit: Option<u64>) -> ContextModel {
     )
 }
 
-/// Like [`model`] but in [responses-as-code](test_cabinet_core::gg::CAPABILITY_RESPONSES_AS_CODE)
+/// Like [`model`] but in [responses-as-code](test_cabinet_contracts::gg::CAPABILITY_RESPONSES_AS_CODE)
 /// mode, where synthesized `user` messages carry a [heading](code_heading).
 fn code_model(window_limit: Option<u64>) -> ContextModel {
     ContextModel::new(Arc::new(HeuristicTokenEstimator::new()), window_limit, true)

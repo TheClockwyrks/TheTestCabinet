@@ -14,7 +14,7 @@
 use std::sync::Arc;
 
 use serde_json::{Value, json};
-use test_cabinet_core::gg::{
+use test_cabinet_contracts::gg::{
     CAPABILITY_MEMORIES, CAPABILITY_SUBAGENTS, GgAgentConfig, GgCapabilityConfig, GgCapabilitySet,
     GgSubagentRef, GgTelemetryKind, MEMORY_PARAM_SCOPE, ROOT_PROFILE_ID,
 };

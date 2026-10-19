@@ -1,7 +1,7 @@
 //! `tcab analyze` — run the static code analyzer over a directory and print what it found.
 //!
 //! This is the analyzer with everything else taken away. The [same
-//! analysis](test_cabinet_code_analysis::analyze) that runs as a post-run stage over a
+//! analysis](test_cabinet_driver::analyzer::analyze) that runs as a post-run stage over a
 //! finished run's produced tree also runs, unchanged, over any directory on disk — so the
 //! figures a run reports can be reproduced, questioned and improved without a run, a
 //! container, an API key or a backend. It is also the fastest way to answer "what does this
@@ -29,9 +29,9 @@ use std::time::{Duration, Instant};
 
 use anstyle::{AnsiColor, Color, Style};
 use serde_json::Value;
-use test_cabinet_code_analysis::walk::RootSeeding;
-use test_cabinet_code_analysis::{AnalysisRequest, analyze};
-use test_cabinet_core::{
+use test_cabinet_driver::analyzer::walk::RootSeeding;
+use test_cabinet_driver::analyzer::{AnalysisRequest, analyze};
+use test_cabinet_driver::{
     CODE_METRICS, CodeAnalysisDocument, CodeAuthoredBasis, CodeMetricUnit, CodeTreeBasis,
     CodeTruncationCap,
 };

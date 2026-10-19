@@ -1,6 +1,6 @@
 // The `[audio] packs` repository lint's pure core.
 //
-// Manifest resolution (crates/core) checks a declaration's *shape*: that every ref
+// Manifest resolution (the suites crate, in contracts) checks a declaration's *shape*: that every ref
 // is a pinned `name@version`, that no pack is named twice, and that the count suits
 // the case's `asset_kind`. It cannot check the refs against the pack registry,
 // because it also runs at backend ingest, where `containers/sample-packs/` is not

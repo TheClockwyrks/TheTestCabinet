@@ -10,7 +10,7 @@
 use std::time::Duration;
 
 use serde_json::json;
-use test_cabinet_core::gg::{CAPABILITY_RESPONSES_AS_CODE, GgAgentConfig, GgCapabilityConfig};
+use test_cabinet_contracts::gg::{CAPABILITY_RESPONSES_AS_CODE, GgAgentConfig, GgCapabilityConfig};
 use wasmtime::ResourceLimiter;
 
 use super::*;

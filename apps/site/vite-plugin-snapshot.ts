@@ -1527,10 +1527,10 @@ async function loadSnapshot(
   //
   // This MIRRORS the Rust helpers that write them (`reference_prefix` /
   // `reference_image_key` / `reference_actions_key` in
-  // `crates/core/src/asset_reference.rs`) and the console's `referenceMediaKey` in
-  // `packages/ui/src/transport/httpBackend.ts`; all three must change together. The
-  // console's helper is not imported here because this build-time plugin must not
-  // pull in the React UI package.
+  // `contracts/crates/contracts/src/asset_reference.rs`) and the console's
+  // `referenceMediaKey` in `packages/ui/src/transport/httpBackend.ts`; all three
+  // must change together. The console's helper is not imported here because this
+  // build-time plugin must not pull in the React UI package.
   for (const file of caseFiles) {
     for (const variant of file.variants) {
       const frames = variant.referenceSheet?.frames;

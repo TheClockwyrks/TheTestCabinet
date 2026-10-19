@@ -7,11 +7,11 @@
 //! [cycle](crate::tasks::TaskError::Cycle)) — an **error outcome carrying the store's
 //! guidance**, with the list left unchanged. The loop owns the context-window consequences:
 //! after a successful mutation it re-emits the
-//! [`TasksState`](test_cabinet_core::gg::GgTelemetryKind::TasksState) telemetry and rebuilds
-//! the pinned [`TaskList`](test_cabinet_core::gg::GgContextSource::TaskList) block.
+//! [`TasksState`](test_cabinet_contracts::gg::GgTelemetryKind::TasksState) telemetry and rebuilds
+//! the pinned [`TaskList`](test_cabinet_contracts::gg::GgContextSource::TaskList) block.
 //!
 //! The tools are contributed to the registry only when the
-//! [`tasks`](test_cabinet_core::gg::CAPABILITY_TASKS) capability is enabled and a store is
+//! [`tasks`](test_cabinet_contracts::gg::CAPABILITY_TASKS) capability is enabled and a store is
 //! bound; when it is off, none are offered.
 
 use std::sync::{Arc, Mutex};

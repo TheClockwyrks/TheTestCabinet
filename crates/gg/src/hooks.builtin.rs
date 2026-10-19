@@ -1,10 +1,10 @@
 //! The **hook scripts gg ships** — the sources behind
-//! [`GgHookAction::BuiltIn`](test_cabinet_core::gg::GgHookAction::BuiltIn).
+//! [`GgHookAction::BuiltIn`](test_cabinet_contracts::gg::GgHookAction::BuiltIn).
 //!
 //! Three of them, and the list is meant to stay short. A built-in earns its place where what it
 //! knows is genuinely gg's — the shape of an event payload — rather than where it saves an operator
 //! from writing a script; anything that depends on a particular workspace belongs in a
-//! [custom](test_cabinet_core::gg::GgHookAction::Custom) hook, which runs by exactly the same
+//! [custom](test_cabinet_contracts::gg::GgHookAction::Custom) hook, which runs by exactly the same
 //! contract.
 //!
 //! That contract is why these are written the way they are. Each is a POSIX shell script with a

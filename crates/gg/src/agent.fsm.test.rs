@@ -26,7 +26,7 @@ use crate::client::{
 };
 use crate::model::ModelClient;
 use crate::telemetry::{CollectingSink, Emitter};
-use test_cabinet_core::gg::{
+use test_cabinet_contracts::gg::{
     CAPABILITY_FSM, CAPABILITY_TASKS, FSM_PARAM_STATES, GgAgentConfig, GgAgentModule,
     GgAgentTransitionKind, GgCapabilityConfig, GgCapabilitySet, GgContextSource,
     GgModuleDisposition, GgModuleKind, GgModuleOrigin, GgSlotBinding, GgTelemetryEvent,

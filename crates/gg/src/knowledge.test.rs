@@ -1,7 +1,7 @@
 //! Tests for [`KnowledgeModules`] — the per-agent registry of loaded code and queued on-use
 //! scripts.
 
-use test_cabinet_core::gg::GgProgramLanguage;
+use test_cabinet_contracts::gg::GgProgramLanguage;
 
 use super::*;
 use crate::sandbox::{export_names, fixture};

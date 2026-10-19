@@ -28,7 +28,7 @@ use serde_json::{Value, json};
 
 use super::substrate::{evaluate, evaluate_closing_docviews, evaluate_with_api, logs, prepare};
 use crate::ending::{Ending, EndingRole};
-use test_cabinet_core::gg::{
+use test_cabinet_contracts::gg::{
     CAPABILITY_AGENT_MANAGED_CONTEXT, CAPABILITY_DOCVIEW_CLOSE, CAPABILITY_PROGRAM_LIBRARY,
     GgProgramLanguage,
 };
@@ -51,7 +51,7 @@ use crate::tools::{
 /// Deliberately, because the parsed reading is a *projection* and a field the parser does not model
 /// is one these tests could not notice was missing. Necessarily, because this arm is not
 /// [registered](super::super::ProgramLanguage) yet: `language: "cpp"` is not a
-/// [`GgProgramLanguage`](test_cabinet_core::gg::GgProgramLanguage) anything can deserialise into
+/// [`GgProgramLanguage`](test_cabinet_contracts::gg::GgProgramLanguage) anything can deserialise into
 /// until it is, and the catalogue lands first so the surface it describes can be reviewed before it
 /// is switched on.
 const SIGNATURES: &str = include_str!(concat!(env!("OUT_DIR"), "/signatures/cpp.signatures.json"));

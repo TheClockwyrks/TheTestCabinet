@@ -26,7 +26,7 @@
 use std::time::Instant;
 
 use serde_json::{Value, json};
-use test_cabinet_core::gg::GgProgramLanguage;
+use test_cabinet_contracts::gg::GgProgramLanguage;
 
 use super::super::g8::{self, Answered, Case, Located, Shape};
 use crate::limits::TurnErrorType;
@@ -35,7 +35,7 @@ use wasmtime::component::Component;
 use super::COMPONENT;
 use super::compile::{compile_module, compile_program};
 use crate::ending::{Ending, EndingRole};
-use test_cabinet_core::gg::{
+use test_cabinet_contracts::gg::{
     CAPABILITY_AGENT_MANAGED_CONTEXT, CAPABILITY_DOCVIEW_CLOSE, CAPABILITY_PROGRAM_LIBRARY,
     CAPABILITY_READ_FILE,
 };

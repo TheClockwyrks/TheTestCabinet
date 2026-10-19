@@ -5,10 +5,12 @@ use serde_json::json;
 use super::*;
 use crate::model::ToolDefinition;
 use crate::sandbox::{FILES_READ_FILE, FILES_WRITE_FILE, capability_operations};
-use test_cabinet_core::gg::{CAPABILITY_PROGRAM_LIBRARY, CAPABILITY_READ_FILE, GgCapabilityConfig};
+use test_cabinet_contracts::gg::{
+    CAPABILITY_PROGRAM_LIBRARY, CAPABILITY_READ_FILE, GgCapabilityConfig,
+};
 
 /// A profile whose skills capability is **on** and **fully specified**: the params the
-/// [authoring catalog](test_cabinet_core::gg::gg_authoring_catalog) writes, with `params`' own keys
+/// [authoring catalog](test_cabinet_contracts::gg::gg_authoring_catalog) writes, with `params`' own keys
 /// written over them.
 ///
 /// The one shape a built-in catalogue is built for, and it is authored rather than completed — the

@@ -47,7 +47,7 @@
 
 use std::sync::Arc;
 
-use test_cabinet_core::gg::{
+use test_cabinet_contracts::gg::{
     GgContextSource, GgContextSourceUsage, GgProgramLanguage, GgTelemetryKind,
 };
 
@@ -285,7 +285,7 @@ impl FileRegion {
 /// the [region](FileRegion) of it the read covered.
 ///
 /// What [`ContextModel::open_file_views`] reports and what
-/// [agent persistence](test_cabinet_core::gg::CAPABILITY_AGENT_PERSISTENCE) records against a profile
+/// [agent persistence](test_cabinet_contracts::gg::CAPABILITY_AGENT_PERSISTENCE) records against a profile
 /// — deliberately the *reference* to a read rather than the bytes it returned, so re-opening it reads
 /// the file as it stands then instead of replaying a stale copy of it.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -757,7 +757,7 @@ pub struct ContextModel {
     ///
     /// It is the *usable* window rather than the model's raw one, resolved once per agent by
     /// [`resolve_window_limit`](crate::agent::resolve_window_limit): the model's catalogue window,
-    /// narrowed by any [context-window override](test_cabinet_core::gg::CAPABILITY_CONTEXT_WINDOW_OVERRIDE),
+    /// narrowed by any [context-window override](test_cabinet_contracts::gg::CAPABILITY_CONTEXT_WINDOW_OVERRIDE),
     /// less the [headroom](crate::compaction::CompactionPolicy::working_window) an armed compaction
     /// holds back for its summarization call. A run with no compaction reserves nothing and this is
     /// the whole window.
@@ -766,7 +766,7 @@ pub struct ContextModel {
     /// own threshold both measure against this figure, so neither can be measuring a run against a
     /// window the other is not.
     window_limit: Option<u64>,
-    /// Whether this run is in [responses-as-code](test_cabinet_core::gg::CAPABILITY_RESPONSES_AS_CODE)
+    /// Whether this run is in [responses-as-code](test_cabinet_contracts::gg::CAPABILITY_RESPONSES_AS_CODE)
     /// mode, where every user message gg synthesizes is prefixed with a [heading](code_heading) so a
     /// model reading a plain-text transcript can tell the task from the program's output from a
     /// rebuilt state block. Off on the tool-calling path, where those distinctions are carried by the
@@ -1678,7 +1678,7 @@ impl ContextModel {
     /// agent has read and still has in front of it, with the [region](FileRegion) the read covered —
     /// in the order they were opened, with exact duplicates collapsed.
     ///
-    /// What [agent persistence](test_cabinet_core::gg::CAPABILITY_AGENT_PERSISTENCE) records against a
+    /// What [agent persistence](test_cabinet_contracts::gg::CAPABILITY_AGENT_PERSISTENCE) records against a
     /// profile when one of its instances finishes, so the next instance can re-open the same desk.
     /// Two deliberate exclusions:
     ///
@@ -1712,7 +1712,7 @@ impl ContextModel {
     /// their tokens — safe because the agent can re-read a file at any time. With `path`
     /// `Some`, only views of that workspace path are removed; with `None`, **every** file view
     /// is removed. Returns what was reclaimed (count, tokens, and the distinct paths), for the
-    /// tool result and the [`ContextManaged`](test_cabinet_core::gg::GgTelemetryKind::ContextManaged)
+    /// tool result and the [`ContextManaged`](test_cabinet_contracts::gg::GgTelemetryKind::ContextManaged)
     /// telemetry. The next [breakdown](Self::breakdown_event) shows the file-view band drop.
     ///
     /// A [`Pinned`](Retention::Pinned) file view — a **locked**
@@ -1829,8 +1829,8 @@ impl ContextModel {
     /// Close [`TextView`](GgContextSource::TextView) items from the live window, reclaiming their
     /// tokens. With `label` `Some`, only the view keyed by that label is closed; with `None`,
     /// **every** text view is. Returns what was reclaimed, for the tool result and the
-    /// [`ContextManaged`](test_cabinet_core::gg::GgTelemetryKind::ContextManaged) telemetry, which
-    /// reports it as [`CloseTextViews`](test_cabinet_core::gg::GgContextAction::CloseTextViews).
+    /// [`ContextManaged`](test_cabinet_contracts::gg::GgTelemetryKind::ContextManaged) telemetry, which
+    /// reports it as [`CloseTextViews`](test_cabinet_contracts::gg::GgContextAction::CloseTextViews).
     ///
     /// The mirror of [`evict_file_views`](Self::evict_file_views) — the same removal, the same
     /// sparing of [`Pinned`](Retention::Pinned) items, over the other band — but **not** the same
@@ -2395,7 +2395,7 @@ impl ContextModel {
 }
 
 /// The model-facing **heading** a synthesized `user` message of `source` carries under
-/// [responses-as-code](test_cabinet_core::gg::CAPABILITY_RESPONSES_AS_CODE), or `None` for a source
+/// [responses-as-code](test_cabinet_contracts::gg::CAPABILITY_RESPONSES_AS_CODE), or `None` for a source
 /// whose messages are never headed.
 ///
 /// On the code path every model reply is a program and everything gg says back is plain-text `user`

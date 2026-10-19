@@ -2,7 +2,7 @@ use std::collections::BTreeSet;
 
 use super::*;
 use crate::sandbox::all_languages;
-use test_cabinet_core::gg::GgProgramLanguage;
+use test_cabinet_contracts::gg::GgProgramLanguage;
 
 /// Every arm, with the document the page serves for it — the fixture almost every test here walks,
 /// because the property being asserted is nearly always "on *every* arm".

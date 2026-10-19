@@ -23,7 +23,7 @@
 # EVERY run image has one. A program's language is resolved per agent, so a gg run on
 # any case at all may drive a compiled-language agent, and there is no combination of
 # test type, asset kind, and asset dimension for which gg may be handed an image with no
-# compilers in it. `ImageSpec::gg_variant` in crates/core derives the name the same way
+# compilers in it. `ImageSpec::gg_variant` in crates/driver derives the name the same way
 # rather than consulting a list, and `every_resolvable_image_is_one_the_build_publishes`
 # fails the build if what it resolves and what this publishes ever disagree — so a new
 # run image is TWO lines here, its own and its variant's.

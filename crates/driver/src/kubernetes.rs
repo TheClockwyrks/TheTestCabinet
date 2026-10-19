@@ -2,7 +2,7 @@
 //!
 //! This is the deployment-grade [`ContainerRuntime`] the driver uses when it runs
 //! inside a cluster (`TCAB_DRIVER_RUNTIME=kubernetes`). Where the
-//! [`CliContainerRuntime`](test_cabinet_core::CliContainerRuntime) shells out to a
+//! [`CliContainerRuntime`](crate::CliContainerRuntime) shells out to a
 //! host Docker/Podman, this one talks to the **Kubernetes API**: it creates a pod
 //! per run, copies the seeded working tree in and the produced tree out over the
 //! pod `exec` API (tar streamed through `exec`, the same mechanism `kubectl cp`
@@ -42,12 +42,12 @@ use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::time::{Instant, sleep, sleep_until};
 use tracing::instrument;
 
-use test_cabinet_core::exec_stream::drain_with_idle_timeout;
-use test_cabinet_core::execution::{
+use crate::exec_stream::drain_with_idle_timeout;
+use crate::execution::{
     ArtifactCollection, ArtifactCollector, ContainerDir, ContainerFile, ContainerHandle,
     ContainerRuntime, ContainerSpec, ContainerStart, ExecOutput, OutputSink,
 };
-use test_cabinet_core::{Error, Result, SKIPPED_DIRS};
+use crate::{Error, Result, SKIPPED_DIRS};
 
 use crate::collect::{CollectListener, Received, uploader_command};
 

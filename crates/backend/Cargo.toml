@@ -14,13 +14,25 @@ name = "test_cabinet_backend"
 path = "src/lib.rs"
 
 [dependencies]
-test-cabinet-core = { path = "../core" }
+# The API wire types the backend serves, generated into `@clockwyrks/backend-api`,
+# and the run record, run-tree layout and harness contract it stores and serves.
+test-cabinet-contracts = { workspace = true }
+# The suite runtime and manifest loaders, whose error the catalogs return.
+test-cabinet-suites = { workspace = true }
+# The built-in engine catalog ingest resolves a version's engines against.
+test-cabinet-engines = { path = "../engines" }
+# Secret scrubbing of the documents the snapshot publishes.
+test-cabinet-redact = { workspace = true }
+# The R2 client the snapshot refresh and ingest write and list the public bucket
+# with. An interim edge onto the artifacts service's crate: the dataset writes move
+# behind the artifacts service's API, after which the backend reaches it over HTTP.
+test-cabinet-artifacts = { path = "../artifacts" }
 # Passwordless (Microsoft Entra managed-identity) auth for the managed-PostgreSQL
 # deployments — mints a token as the Postgres password and rotates the pool.
 # Engaged only when `TCAB_BACKEND_DB_AZURE_AD` is truthy; the default password /
 # SQLite path never touches it.
 test-cabinet-db-auth = { path = "../db-auth" }
-test-cabinet-telemetry = { path = "../telemetry", features = ["otlp"] }
+test-cabinet-telemetry = { workspace = true, features = ["otlp"] }
 test-cabinet-entities = { workspace = true }
 test-cabinet-migration = { workspace = true }
 
@@ -60,27 +72,12 @@ flate2 = { workspace = true }
 # Unpacks the gzipped tar of a static build uploaded as a suite reference build.
 tar = "0.4"
 
-# Contract codegen for the backend HTTP API + snapshot wire types. See
-# `crates/core`'s `contract` feature; this turns on core's too so the shared
-# run-record types derive as well.
-ts-rs = { workspace = true, optional = true }
-schemars = { workspace = true, optional = true }
-
-[features]
-# Derive `ts_rs::TS` + `schemars::JsonSchema` on the backend API + snapshot wire
-# types for the `api-codegen` generator. Never enabled by a normal build.
-contract = ["dep:ts-rs", "dep:schemars", "test-cabinet-core/contract"]
 
 [dev-dependencies]
 tempfile = { workspace = true }
 # Decodes the fixed test keys the Access tests sign assertions with.
 base64 = { workspace = true }
 tokio = { workspace = true, features = ["full", "test-util"] }
-# Tests only. A `CodeAnalysisSummary` has ~95 required leaves, so the honest way to get
-# one for a fixture is to run the real analyzer over a two-line tree rather than to write
-# out a literal that would drift from the contract on the next field added. The backend
-# itself never analyses anything — the driver does, at the post-run seam.
-test-cabinet-code-analysis = { path = "../code-analysis" }
 
 [lints]
 workspace = true

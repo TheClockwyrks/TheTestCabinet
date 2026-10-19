@@ -1,6 +1,6 @@
 // Model-id canonicalization: how a run record's `subject.modelId` is normalized
 // before it is displayed, grouped, or matched against the catalog. Mirrors the
-// authoritative Rust logic in `crates/core/src/model_id.rs`.
+// authoritative Rust logic in `crates/backend/src/model_id.rs`.
 //
 // A few harnesses route through OpenRouter and report the model with an
 // `openrouter/` provider prefix — OpenCode and Kilo Code report

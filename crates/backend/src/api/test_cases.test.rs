@@ -1,5 +1,5 @@
 use super::*;
-use test_cabinet_core::engine::EngineCatalogExt as _;
+use test_cabinet_suites::test_case::{AssetDimension, AssetKind, TestType};
 
 use std::collections::HashMap;
 
@@ -38,8 +38,8 @@ fn manifest() -> StoredManifest {
         changelog: "Introduced.".to_string(),
         max_runtime_seconds: 1800,
         test_type: TestType::EndToEnd,
-        engines: vec![test_cabinet_core::EngineSupport::unbounded(
-            test_cabinet_core::engine::NONE_SLUG,
+        engines: vec![test_cabinet_suites::test_case::EngineSupport::unbounded(
+            test_cabinet_suites::engine::NONE_SLUG,
         )],
         experimental: false,
         build: Some(StoredBuild {
@@ -196,13 +196,13 @@ fn a_performance_case_scored_set_reaches_the_resolved_version() {
             input: "cases/small.json".to_string(),
             expected: "cases/small.out".to_string(),
             fuel_ceiling: 5_000_000_000,
-            kind: test_cabinet_core::validation::PerformanceCaseKind::Stress,
+            kind: test_cabinet_contracts::validation::PerformanceCaseKind::Stress,
         },
         StoredCase {
             input: "cases/large.json".to_string(),
             expected: "cases/large.out".to_string(),
             fuel_ceiling: 5_000_000_000,
-            kind: test_cabinet_core::validation::PerformanceCaseKind::Stress,
+            kind: test_cabinet_contracts::validation::PerformanceCaseKind::Stress,
         },
     ];
 
@@ -270,8 +270,8 @@ fn the_declared_engines_are_folded_into_the_version_response() {
     // a pinned one carries its bounds.
     let mut manifest = manifest();
     manifest.engines = vec![
-        test_cabinet_core::EngineSupport::unbounded("none"),
-        test_cabinet_core::EngineSupport {
+        test_cabinet_suites::test_case::EngineSupport::unbounded("none"),
+        test_cabinet_suites::test_case::EngineSupport {
             slug: "simple-2d".to_string(),
             min_version: Some("1.0.0".parse().expect("a valid version")),
             max_version: Some("2.0.0".parse().expect("a valid version")),
@@ -296,7 +296,7 @@ fn errata_are_folded_into_the_version_response() {
         id: "cue-clips-rail".to_string(),
         title: "Cue ball clips the rail".to_string(),
         date: Some("2026-07-17".to_string()),
-        severity: test_cabinet_core::test_case::ErratumSeverity::Major,
+        severity: test_cabinet_suites::test_case::ErratumSeverity::Major,
         affects_scoring: true,
         exclude_from_score: false,
         body: "Known tunnelling at high speed.".to_string(),
@@ -668,7 +668,7 @@ fn stored_showcase(file: &str) -> StoredShowcase {
         media: vec![StoredShowcaseMedia {
             file: file.to_string(),
             name: "The title screen".to_string(),
-            kind: test_cabinet_core::MediaKind::Image,
+            kind: test_cabinet_suites::test_case::MediaKind::Image,
             key: format!("showcase/base/{file}"),
         }],
     }
@@ -692,7 +692,10 @@ fn a_variant_showcase_is_folded_onto_the_resolved_version() {
     assert_eq!(showcase.media.len(), 1);
     assert_eq!(showcase.media[0].file, "title.png");
     assert_eq!(showcase.media[0].name, "The title screen");
-    assert_eq!(showcase.media[0].kind, test_cabinet_core::MediaKind::Image);
+    assert_eq!(
+        showcase.media[0].kind,
+        test_cabinet_suites::test_case::MediaKind::Image
+    );
     let serialized = serde_json::to_value(&showcase.media[0]).unwrap();
     assert!(
         serialized.get("key").is_none(),
@@ -750,8 +753,10 @@ fn engine_aware_manifest() -> StoredManifest {
     StoredManifest {
         prompt_template: "Built on {{engine.name}} ({{engine.slug}}).".to_string(),
         engines: vec![
-            test_cabinet_core::EngineSupport::unbounded(test_cabinet_core::engine::NONE_SLUG),
-            test_cabinet_core::EngineSupport::unbounded("simple-2d"),
+            test_cabinet_suites::test_case::EngineSupport::unbounded(
+                test_cabinet_suites::engine::NONE_SLUG,
+            ),
+            test_cabinet_suites::test_case::EngineSupport::unbounded("simple-2d"),
         ],
         ..manifest()
     }
@@ -760,7 +765,7 @@ fn engine_aware_manifest() -> StoredManifest {
 /// A resolved engine, read from an empty package store: the manifest is baked in,
 /// and the staged version a store would supply plays no part in rendering.
 fn resolved(slug: &str) -> ResolvedEngine {
-    test_cabinet_core::EngineCatalog::with_package_store("/nonexistent")
+    test_cabinet_engines::built_in_catalog_in("/nonexistent")
         .resolve(&EngineSelection::new(slug))
         .unwrap()
 }
@@ -804,7 +809,7 @@ fn no_engine_renders_the_engineless_prompt() {
 fn an_explicit_engineless_run_reads_exactly_as_no_engine() {
     // A run that recorded `none` and a surface that named no engine are the same
     // text, so a caller never has to special-case the sentinel to get it right.
-    let engine = resolved(test_cabinet_core::engine::NONE_SLUG);
+    let engine = resolved(test_cabinet_suites::engine::NONE_SLUG);
     let manifest = engine_aware_manifest();
     let explicit = version_response(
         &manifest,
@@ -853,8 +858,8 @@ fn an_unknown_engine_is_refused_rather_than_rendered_engineless() {
 
 #[test]
 fn a_version_response_carries_the_engine_format_and_each_points_cap_and_domains() {
+    use crate::review::FailureCap;
     use crate::store::StoredSubReviewItem;
-    use test_cabinet_core::review::FailureCap;
     let mut manifest = manifest();
     manifest.engine_format = true;
     manifest.common_review_items = vec![
@@ -966,9 +971,9 @@ fn suite_run_prompt(
 ) -> String {
     let resolved = suite.resolve(version);
     let variant = resolved
-        .variant(test_cabinet_core::test_suite::SUITE_VARIANT_SLUG)
+        .variant(test_cabinet_suites::test_suite::SUITE_VARIANT_SLUG)
         .expect("the implicit variant");
-    test_cabinet_core::render_case_prompt(&resolved, variant, &[], engine)
+    test_cabinet_suites::prompt::render_case_prompt(&resolved, variant, &[], engine)
         .expect("the run renders the prompt")
 }
 

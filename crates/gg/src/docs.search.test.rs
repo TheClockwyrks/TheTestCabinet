@@ -1,7 +1,7 @@
 //! Tests for the [documentation search](super) — the matching, the tiers, the filters, the page,
 //! and the permission filter that decides what a search may even see.
 
-use test_cabinet_core::gg::{
+use test_cabinet_contracts::gg::{
     CAPABILITY_AGENT_MANAGED_CONTEXT, CAPABILITY_PROGRAM_LIBRARY, CAPABILITY_READ_FILE,
     CAPABILITY_SHELL, GgProgramLanguage,
 };

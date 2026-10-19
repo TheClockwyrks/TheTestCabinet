@@ -1,11 +1,11 @@
 //! The saved **harness comparison** (A/B) endpoints (`/comparisons`).
 //!
 //! A comparison holds every run variable constant and varies one — the harness, a
-//! [gg configuration](test_cabinet_core::gg::GgCapabilitySet), or the model — into
+//! [gg configuration](test_cabinet_contracts::gg::GgCapabilitySet), or the model — into
 //! `N`-run arms, then presents the cost/token/score distributions side by side. Only
-//! the [configuration](test_cabinet_core::comparison::ComparisonConfig) is stored;
+//! the [configuration](crate::comparison::ComparisonConfig) is stored;
 //! the per-arm statistics and diagnostics are **computed on read** from the arms'
-//! runs (see [`test_cabinet_core::comparison_aggregate`]), so a comparison always
+//! runs (see [`crate::comparison_aggregate`]), so a comparison always
 //! reflects whatever runs have since landed.
 //!
 //! Everything is per-account (attributed to the caller's email via [`Person`])
@@ -23,19 +23,21 @@ use std::collections::{BTreeMap, BTreeSet};
 use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
 
-use test_cabinet_core::comparison::{Comparison, ComparisonConfig, carry_run_ids, is_complete};
-use test_cabinet_core::comparison_aggregate::aggregate_comparison;
-use test_cabinet_core::run_record::{HarnessSlug, RunRecord};
+use crate::comparison::{Comparison, ComparisonConfig, carry_run_ids, is_complete};
+use crate::comparison_aggregate::aggregate_comparison;
+use test_cabinet_contracts::run_record::{HarnessSlug, RunRecord};
 
 use crate::auth::Person;
 use crate::db::{ArmRunStatus, PublishEnqueue, StoredComparison};
 use crate::error::ApiError;
 
 use super::AppState;
+
+pub use test_cabinet_contracts::backend_api::comparisons::ComparisonInput;
 
 /// The longest a comparison's display name may be.
 const MAX_NAME_LEN: usize = 80;
@@ -54,21 +56,6 @@ const MAX_N: u32 = 50;
 /// The fewest arms a comparison may carry: a comparison of one configuration
 /// compares it against nothing.
 const MIN_ARMS: usize = 2;
-
-/// The create/update body for a comparison (the server assigns the id and
-/// timestamps, and owns the published state).
-#[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub struct ComparisonInput {
-    /// The operator-chosen display name.
-    pub name: String,
-    /// A one-line note on what is being compared and why.
-    #[serde(default)]
-    pub description: String,
-    /// The controls, varied dimension, and arms to save.
-    pub config: ComparisonConfig,
-}
 
 /// `GET /comparisons` — every comparison the token account owns, most recently
 /// updated first, each with its per-arm results computed from its runs.
@@ -440,10 +427,10 @@ fn now() -> Result<String, ApiError> {
         .map_err(|e| ApiError::internal(format!("formatting timestamp: {e}")))
 }
 
-/// Hold the comparison's [engine](test_cabinet_core::engine) control against the
+/// Hold the comparison's [engine](test_cabinet_suites::engine) control against the
 /// engines its anchored case version declares support for, the same gate a run is
 /// held to before any container starts
-/// ([`test_cabinet_core::ensure_engine_supported`]) and worded the same way.
+/// (the driver's `ensure_engine_supported`) and worded the same way.
 ///
 /// The engine is a control, so every arm's runs launch under it and the review
 /// checklist `assemble_comparison` resolves is the one that engine carries. A

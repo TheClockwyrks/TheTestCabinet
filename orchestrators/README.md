@@ -18,7 +18,7 @@ orchestrators/
     └── runner.sh           # the runner entrypoint
 ```
 
-The built-in orchestrators are embedded into `crates/core` at build time, so a
+The built-in orchestrators are embedded into `crates/driver` at build time, so a
 backend-driven worker (which has no local checkout) resolves them the same way
 as the CLI. Because an orchestrator is just a directory of data, a custom one can
 also be supplied **entirely from outside this repository** at run time by

@@ -3,7 +3,7 @@
 //! How an agent declares it is done is **not** configurable and never was worth making so. Every
 //! agent ends its session with an explicit, typed call, in both execution modes: a tool-calling reply
 //! that requests no tools is an error, and a
-//! [responses-as-code](test_cabinet_core::gg::CAPABILITY_RESPONSES_AS_CODE) reply that makes no
+//! [responses-as-code](test_cabinet_contracts::gg::CAPABILITY_RESPONSES_AS_CODE) reply that makes no
 //! [`submit_program`](SUBMIT_PROGRAM_TOOL) call is an error. *Which* calls an agent has is decided by its [role](crate::ending::EndingRole)
 //! — see [`crate::ending`], which owns the shapes; this module owns how they reach a **tool-calling**
 //! model, as the [synthetic tool definitions](role_tool_definitions) the loop appends and intercepts.
@@ -14,7 +14,7 @@
 
 use serde_json::json;
 
-use test_cabinet_core::gg::GgProgramLanguage;
+use test_cabinet_contracts::gg::GgProgramLanguage;
 
 use crate::ending::EndingRole;
 use crate::model::{ToolCall, ToolDefinition};
@@ -97,7 +97,7 @@ pub(crate) fn missing_completion_feedback(role: EndingRole) -> String {
     prompts::render_completion_missing(role.tools())
 }
 
-/// The **one tool a [responses-as-code](test_cabinet_core::gg::CAPABILITY_RESPONSES_AS_CODE) turn
+/// The **one tool a [responses-as-code](test_cabinet_contracts::gg::CAPABILITY_RESPONSES_AS_CODE) turn
 /// offers** — and requires, via forced tool choice: the call whose `program` string **is** the
 /// turn's program.
 ///

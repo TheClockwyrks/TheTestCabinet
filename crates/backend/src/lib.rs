@@ -23,15 +23,21 @@ pub mod api;
 pub mod artifacts;
 pub mod auth;
 pub mod bootstrap;
+pub mod comparison;
+pub mod comparison_aggregate;
+pub mod comparison_stats;
 pub mod config;
 pub mod coverage;
 pub mod db;
 pub mod error;
 pub mod gg_docs;
+pub mod gg_query;
 pub mod ingest;
 pub mod logo;
 pub mod metrics;
+pub mod model_id;
 pub mod model_seed;
+pub mod pricing;
 pub mod probe;
 pub mod prompt;
 pub mod publish_relay;
@@ -39,6 +45,7 @@ pub mod publisher;
 pub mod readiness;
 pub mod relay;
 pub mod render;
+pub mod review;
 pub mod snapshot;
 pub mod stats;
 pub mod store;
@@ -51,7 +58,7 @@ use crate::config::Config;
 use crate::db::Db;
 use crate::publisher::Publisher;
 use crate::store::DefinitionStore;
-use test_cabinet_core::r2::R2Client;
+use test_cabinet_artifacts::r2::R2Client;
 
 /// A fully wired, runnable backend: the Axum router plus the spawned background
 /// refresher that keeps the snapshot up to date.
@@ -79,14 +86,14 @@ pub struct Backend {
 /// as `TCAB_CHROMIUM_EXECUTABLE` (the variable it reads), so ingest renders with
 /// that explicit Chromium.
 pub async fn build(config: Config) -> error::Result<Backend> {
-    build_with_prices(config, test_cabinet_core::OpenRouterPrices::new()).await
+    build_with_prices(config, crate::pricing::OpenRouterPrices::new()).await
 }
 
 /// [`build`], reading model prices from `prices` rather than OpenRouter's public
 /// catalog, so a test assembles a backend without reaching the network.
 async fn build_with_prices(
     config: Config,
-    prices: test_cabinet_core::OpenRouterPrices,
+    prices: crate::pricing::OpenRouterPrices,
 ) -> error::Result<Backend> {
     use test_cabinet_migration::MigratorTrait;
 

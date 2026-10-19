@@ -134,16 +134,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7f202df86484c868dbad7eaa557ef785d5c66295e41b460ef922eca0723b842c"
 
 [[package]]
-name = "api-codegen"
-version = "0.0.0"
-dependencies = [
- "anyhow",
- "contract-codegen",
- "test-cabinet-backend",
- "test-cabinet-core",
-]
-
-[[package]]
 name = "arbitrary"
 version = "1.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -691,18 +681,6 @@ name = "const-oid"
 version = "0.10.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a6ef517f0926dd24a1582492c791b6a4818a4d94e789a334894aa15b0d12f55c"
-
-[[package]]
-name = "contract-codegen"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "schemars",
- "serde",
- "serde_json",
- "test-cabinet-contracts",
- "ts-rs",
-]
 
 [[package]]
 name = "core-foundation"
@@ -5237,7 +5215,10 @@ dependencies = [
  "serde_json",
  "tar",
  "tempfile",
- "test-cabinet-core",
+ "test-cabinet-backend-client",
+ "test-cabinet-contracts",
+ "test-cabinet-redact",
+ "test-cabinet-suites",
  "test-cabinet-telemetry",
  "thiserror 2.0.18",
  "tokio",
@@ -5283,7 +5264,9 @@ dependencies = [
  "reqwest 0.12.28",
  "serde",
  "serde_json",
- "test-cabinet-core",
+ "test-cabinet-backend-client",
+ "test-cabinet-contracts",
+ "test-cabinet-match-play",
  "test-cabinet-telemetry",
  "thiserror 2.0.18",
  "time",
@@ -5303,15 +5286,20 @@ dependencies = [
  "dotenvy",
  "flate2",
  "futures-util",
+ "hex",
+ "hmac",
  "http",
  "jsonwebtoken",
+ "md-5",
  "opentelemetry",
  "reqwest 0.12.28",
  "serde",
  "serde_json",
+ "sha2",
  "tar",
  "tempfile",
- "test-cabinet-core",
+ "test-cabinet-contracts",
+ "test-cabinet-suites",
  "test-cabinet-telemetry",
  "thiserror 2.0.18",
  "time",
@@ -5352,18 +5340,20 @@ dependencies = [
  "libsqlite3-sys",
  "opentelemetry",
  "reqwest 0.12.28",
- "schemars",
  "sea-orm",
  "serde",
  "serde_json",
  "sha2",
  "tar",
  "tempfile",
- "test-cabinet-code-analysis",
- "test-cabinet-core",
+ "test-cabinet-artifacts",
+ "test-cabinet-contracts",
  "test-cabinet-db-auth",
+ "test-cabinet-engines",
  "test-cabinet-entities",
  "test-cabinet-migration",
+ "test-cabinet-redact",
+ "test-cabinet-suites",
  "test-cabinet-telemetry",
  "thiserror 2.0.18",
  "time",
@@ -5371,7 +5361,21 @@ dependencies = [
  "tower",
  "tower-http",
  "tracing",
- "ts-rs",
+]
+
+[[package]]
+name = "test-cabinet-backend-client"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "http",
+ "reqwest 0.12.28",
+ "serde",
+ "serde_json",
+ "test-cabinet-contracts",
+ "test-cabinet-telemetry",
+ "thiserror 2.0.18",
+ "tracing",
 ]
 
 [[package]]
@@ -5386,29 +5390,11 @@ dependencies = [
  "serde",
  "serde_json",
  "tempfile",
- "test-cabinet-code-analysis",
- "test-cabinet-core",
+ "test-cabinet-artifacts",
+ "test-cabinet-backend-client",
+ "test-cabinet-driver",
  "test-cabinet-telemetry",
  "tokio",
- "tracing",
-]
-
-[[package]]
-name = "test-cabinet-code-analysis"
-version = "0.0.0"
-dependencies = [
- "async-trait",
- "flate2",
- "ignore",
- "oxc",
- "proc-macro2",
- "serde_json",
- "sha2",
- "syn 2.0.117",
- "tempfile",
- "test-cabinet-core",
- "tokio",
- "toml",
  "tracing",
 ]
 
@@ -5418,7 +5404,6 @@ version = "0.1.0"
 dependencies = [
  "hex",
  "percent-encoding",
- "schemars",
  "semver",
  "serde",
  "serde_json",
@@ -5426,50 +5411,6 @@ dependencies = [
  "thiserror 2.0.18",
  "toml",
  "toml_edit 0.25.16+spec-1.1.0",
- "ts-rs",
-]
-
-[[package]]
-name = "test-cabinet-core"
-version = "0.7.0"
-dependencies = [
- "async-trait",
- "base64",
- "cuid2",
- "flate2",
- "foray-core",
- "foray-host",
- "hex",
- "hmac",
- "http",
- "lattice-core",
- "lattice-host",
- "md-5",
- "png",
- "reqwest 0.12.28",
- "schemars",
- "semver",
- "serde",
- "serde_json",
- "sha2",
- "tempfile",
- "test-cabinet-audio-core",
- "test-cabinet-contracts",
- "test-cabinet-draw",
- "test-cabinet-engines",
- "test-cabinet-model-core",
- "test-cabinet-suites",
- "test-cabinet-telemetry",
- "test-cabinet-voxel",
- "test-cabinet-voxel-mesh",
- "thiserror 2.0.18",
- "time",
- "tokio",
- "toml",
- "tracing",
- "ts-rs",
- "wat",
- "which",
 ]
 
 [[package]]
@@ -5521,7 +5462,7 @@ dependencies = [
  "reqwest 0.12.28",
  "serde",
  "serde_json",
- "test-cabinet-core",
+ "test-cabinet-contracts",
  "test-cabinet-telemetry",
  "thiserror 2.0.18",
  "time",
@@ -5537,6 +5478,7 @@ dependencies = [
  "png",
  "serde",
  "serde_json",
+ "test-cabinet-suites",
  "thiserror 2.0.18",
 ]
 
@@ -5546,30 +5488,56 @@ version = "0.0.0"
 dependencies = [
  "anyhow",
  "async-trait",
+ "base64",
  "cuid2",
+ "flate2",
+ "foray-core",
+ "hex",
+ "ignore",
  "k8s-openapi",
  "kube",
+ "lattice-core",
+ "oxc",
+ "png",
+ "proc-macro2",
  "reqwest 0.12.28",
+ "semver",
  "serde",
  "serde_json",
  "sha2",
+ "syn 2.0.117",
  "tar",
  "tempfile",
- "test-cabinet-code-analysis",
- "test-cabinet-core",
+ "test-cabinet-audio-core",
+ "test-cabinet-backend-client",
+ "test-cabinet-contracts",
+ "test-cabinet-draw",
+ "test-cabinet-engines",
+ "test-cabinet-match-play",
+ "test-cabinet-model-core",
+ "test-cabinet-redact",
+ "test-cabinet-suites",
  "test-cabinet-telemetry",
+ "test-cabinet-voxel",
+ "test-cabinet-voxel-mesh",
  "thiserror 2.0.18",
  "time",
  "tokio",
  "tokio-util",
+ "toml",
  "tracing",
+ "wat",
+ "which",
 ]
 
 [[package]]
 name = "test-cabinet-engines"
 version = "0.0.0"
 dependencies = [
+ "serde_json",
+ "tempfile",
  "test-cabinet-contracts",
+ "test-cabinet-suites",
 ]
 
 [[package]]
@@ -5613,7 +5581,7 @@ dependencies = [
  "sourcemap",
  "tar",
  "tempfile",
- "test-cabinet-core",
+ "test-cabinet-contracts",
  "thiserror 2.0.18",
  "tiktoken-rs",
  "time",
@@ -5622,6 +5590,21 @@ dependencies = [
  "wasmtime-wasi",
  "wit-component 0.248.0",
  "wit-parser 0.248.0",
+]
+
+[[package]]
+name = "test-cabinet-match-play"
+version = "0.0.0"
+dependencies = [
+ "foray-core",
+ "foray-host",
+ "lattice-core",
+ "lattice-host",
+ "serde_json",
+ "tempfile",
+ "test-cabinet-contracts",
+ "thiserror 2.0.18",
+ "wat",
 ]
 
 [[package]]
@@ -5669,6 +5652,7 @@ dependencies = [
  "pollster",
  "serde",
  "serde_json",
+ "test-cabinet-suites",
  "thiserror 2.0.18",
  "wgpu",
 ]
@@ -5734,6 +5718,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "test-cabinet-redact"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+ "test-cabinet-contracts",
+]
+
+[[package]]
 name = "test-cabinet-sfx-sample"
 version = "0.0.0"
 dependencies = [
@@ -5795,7 +5787,7 @@ dependencies = [
 
 [[package]]
 name = "test-cabinet-telemetry"
-version = "0.0.0"
+version = "0.1.0"
 dependencies = [
  "anyhow",
  "http",
@@ -6253,28 +6245,6 @@ name = "try-lock"
 version = "0.2.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e421abadd41a4225275504ea4d6566923418b7f05506fbc9c0fe86ba7396114b"
-
-[[package]]
-name = "ts-rs"
-version = "12.0.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "756050066659291d47a554a9f558125db17428b073c5ffce1daf5dcb0f7231d8"
-dependencies = [
- "thiserror 2.0.18",
- "ts-rs-macros",
-]
-
-[[package]]
-name = "ts-rs-macros"
-version = "12.0.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "38d90eea51bc7988ef9e674bf80a85ba6804739e535e9cab48e4bb34a8b652aa"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 2.0.117",
- "termcolor",
-]
 
 [[package]]
 name = "tungstenite"
@@ -7737,3 +7707,11 @@ name = "zmij"
 version = "1.0.21"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b8848ee67ecc8aedbaf3e4122217aff892639231befc6a1b58d29fff4c2cabaa"
+
+[[patch.unused]]
+name = "api-codegen"
+version = "0.1.0"
+
+[[patch.unused]]
+name = "contract-codegen"
+version = "0.1.0"

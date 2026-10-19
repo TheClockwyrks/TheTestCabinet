@@ -51,12 +51,13 @@ const DEFAULT_ARTIFACT_SWEEP_GRACE_HOURS: u64 = 24;
 /// The R2 (S3-compatible) credentials and bucket the public snapshot is uploaded
 /// to.
 ///
-/// Defined in `core` because `tcab publish-reference` writes the same bucket
-/// (an asset-generation reference sheet is regenerated and uploaded rather than
+/// Defined with the R2 client in the artifacts service's crate, the object-store
+/// writer, which `tcab publish-asset-reference` also writes the bucket through (an
+/// asset-generation reference sheet is regenerated and uploaded rather than
 /// committed, so it cannot travel through the backend's git checkout). Re-exported
 /// here so `Config`'s field type reads naturally alongside the rest of the
 /// backend's configuration.
-pub use test_cabinet_core::r2::R2Config;
+pub use test_cabinet_artifacts::r2::R2Config;
 
 /// The fully resolved backend configuration.
 #[derive(Debug, Clone)]

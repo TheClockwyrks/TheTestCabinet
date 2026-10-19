@@ -1,14 +1,14 @@
 //! `tcab` — the command line interface for The Test Cabinet.
 //!
-//! The CLI is a thin shell over [`test_cabinet_core`]. The core owns all
-//! orchestration (resolving a test case version, seeding a repository, executing
+//! The CLI is a thin shell over the run engine in [`test_cabinet_driver`]'s library,
+//! which owns all orchestration (resolving a test case version, seeding a repository, executing
 //! a run in a container, invoking the agent harness, collecting metrics, running
 //! validation, writing the run record, and publishing). The CLI exists so those
 //! capabilities can be scripted and so benchmark sweeps can be run in batch
 //! without a person driving the web console. See `docs/application.md`.
 //!
 //! Every subcommand here is a buildable stub: it parses its arguments faithfully
-//! and routes to a handler that calls into the core where the surface already
+//! and routes to a handler that calls into the run engine where the surface already
 //! exists and otherwise reports that the behavior is not implemented yet.
 
 mod catalog;
@@ -23,7 +23,7 @@ use tracing::Instrument;
 
 use crate::cli::{Cli, Command};
 
-/// Entry point. Async because orchestration in the core is async.
+/// Entry point. Async because orchestration in the run engine is async.
 ///
 /// Telemetry is initialized after the dotenv load so any OTLP configuration that
 /// lives in `.env.runner` is visible, and the returned guard is bound for the
@@ -55,7 +55,7 @@ async fn main() -> anyhow::Result<ExitCode> {
     let cli = Cli::parse();
 
     // Give the whole invocation a single root span named after the subcommand so
-    // a `tcab` run is one trace; the core adds the deeper spans beneath it.
+    // a `tcab` run is one trace; the run engine adds the deeper spans beneath it.
     let span = tracing::info_span!("tcab", command = command_name(&cli.command));
 
     dispatch(cli.command).instrument(span).await

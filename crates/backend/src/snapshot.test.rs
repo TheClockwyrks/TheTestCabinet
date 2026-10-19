@@ -5,16 +5,16 @@ use tempfile::TempDir;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
 
-use test_cabinet_core::MediaKind;
-use test_cabinet_core::metrics::RunMetrics;
-use test_cabinet_core::review::{DomainRating, Rating, ReviewVerdict};
-use test_cabinet_core::run_record::{
+use crate::review::{DomainRating, Rating, ReviewVerdict};
+use test_cabinet_contracts::metrics::RunMetrics;
+use test_cabinet_contracts::run_record::{
     HarnessSlug, RunEnvironment, RunLinks, RunState, RunStatus, RunSubject, RunTooling,
 };
-use test_cabinet_core::validation::{
+use test_cabinet_contracts::validation::{
     AssetFrameResult, AssetGenResult, DebugScriptOutput, DebugScriptResult, ProofResult,
     ValidationSummary,
 };
+use test_cabinet_suites::test_case::MediaKind;
 
 use crate::db::StoredReview;
 use crate::store::{
@@ -70,7 +70,7 @@ fn stored_run(id: &str, published_at: &str) -> StoredRun {
             subject: RunSubject {
                 test_case_slug: "pong".to_string(),
                 test_case_version: "v1.0.0".to_string(),
-                test_type: test_cabinet_core::TestType::EndToEnd,
+                test_type: test_cabinet_suites::test_case::TestType::EndToEnd,
                 variant: "base".to_string(),
                 harness_slug: HarnessSlug::Claude,
                 harness_version: Some("1.2.3".to_string()),
@@ -86,7 +86,7 @@ fn stored_run(id: &str, published_at: &str) -> StoredRun {
                 os: "Debian".to_string(),
                 container_image: "test-cabinet/claude:abcd".to_string(),
                 node_version: None,
-                auth_mode: test_cabinet_core::AuthMode::ApiKey,
+                auth_mode: test_cabinet_contracts::run_record::AuthMode::ApiKey,
             },
             metrics: RunMetrics::default(),
             validation: ValidationSummary {
@@ -142,7 +142,7 @@ fn stored_run(id: &str, published_at: &str) -> StoredRun {
 /// populated so the snapshot exports the run's media.
 fn asset_run(id: &str, published_at: &str) -> StoredRun {
     let mut run = stored_run(id, published_at);
-    run.record.subject.test_type = test_cabinet_core::TestType::AssetGeneration;
+    run.record.subject.test_type = test_cabinet_suites::test_case::TestType::AssetGeneration;
     run.record.validation.asset = Some(AssetGenResult {
         frames: vec![AssetFrameResult {
             index: 0,
@@ -172,9 +172,9 @@ fn manifest() -> StoredManifest {
         description: Some("## Carom".to_string()),
         changelog: "Introduced.".to_string(),
         max_runtime_seconds: 1800,
-        test_type: test_cabinet_core::TestType::EndToEnd,
-        engines: vec![test_cabinet_core::EngineSupport::unbounded(
-            test_cabinet_core::engine::NONE_SLUG,
+        test_type: test_cabinet_suites::test_case::TestType::EndToEnd,
+        engines: vec![test_cabinet_suites::test_case::EngineSupport::unbounded(
+            test_cabinet_suites::engine::NONE_SLUG,
         )],
         experimental: false,
         build: Some(StoredBuild {
@@ -191,8 +191,8 @@ fn manifest() -> StoredManifest {
         simulation: None,
         r#match: None,
         replay: None,
-        asset_kind: test_cabinet_core::AssetKind::Sprite,
-        asset_dimension: test_cabinet_core::AssetDimension::TwoD,
+        asset_kind: test_cabinet_suites::test_case::AssetKind::Sprite,
+        asset_dimension: test_cabinet_suites::test_case::AssetDimension::TwoD,
         sheet: None,
         voxel: None,
         model: None,
@@ -222,7 +222,7 @@ fn manifest() -> StoredManifest {
         }],
         common_references: vec![StoredReference {
             view: "gameplay".to_string(),
-            kind: test_cabinet_core::ReferenceKind::Rendered,
+            kind: test_cabinet_suites::test_case::ReferenceKind::Rendered,
             extension: "png".to_string(),
         }],
         common_proofs: vec![],
@@ -264,7 +264,7 @@ fn run_summary_from_stored_maps_fields_without_a_catalog() {
     assert_eq!(summary.case_name, "pong"); // slug fallback, not a catalog name
     assert_eq!(
         summary.subject.test_type,
-        test_cabinet_core::TestType::EndToEnd
+        test_cabinet_suites::test_case::TestType::EndToEnd
     );
     assert_eq!(summary.subject.test_case_slug, "pong");
     assert_eq!(summary.review_count, 1);
@@ -284,7 +284,7 @@ fn run_summary_from_stored_maps_fields_without_a_catalog() {
 
 #[test]
 fn run_summary_lifts_the_gg_configuration_name_onto_the_card() {
-    use test_cabinet_core::gg::GgCapabilitySet;
+    use test_cabinet_contracts::gg::GgCapabilitySet;
 
     // A third-party-harness run has no capability set at all, so its card names no
     // configuration and the run log falls back to showing its model.
@@ -318,7 +318,7 @@ fn run_summary_lifts_the_gg_configuration_name_onto_the_card() {
 
 #[test]
 fn run_summary_lifts_the_gg_configuration_id_beside_the_name() {
-    use test_cabinet_core::gg::GgCapabilitySet;
+    use test_cabinet_contracts::gg::GgCapabilitySet;
 
     // The id is what a listing narrowed to one configuration's runs matches on, so the
     // card carries it beside the name a person reads. Two cards may show one name; the
@@ -348,13 +348,13 @@ fn run_summary_lifts_the_gg_configuration_id_beside_the_name() {
 
 #[test]
 fn run_summary_lifts_performance_fuel_for_the_leaderboard() {
-    use test_cabinet_core::validation::PerformanceResult;
+    use test_cabinet_contracts::validation::PerformanceResult;
 
     // A correct performance run: the card carries the correctness gate and the
     // comparable total fuel, so a fuel leaderboard can rank it from the summary
     // set alone (no full record loaded).
     let mut correct = stored_run("p1", "2026-06-17T21:40:00Z");
-    correct.record.subject.test_type = test_cabinet_core::TestType::Performance;
+    correct.record.subject.test_type = test_cabinet_suites::test_case::TestType::Performance;
     correct.record.validation.performance = Some(PerformanceResult {
         correct: true,
         total_fuel: Some(1_234_567),
@@ -371,7 +371,7 @@ fn run_summary_lifts_performance_fuel_for_the_leaderboard() {
     // An incorrect run earns no fuel score: the gate is recorded but the total is
     // `None`, so it takes no leaderboard placement.
     let mut wrong = stored_run("p2", "2026-06-17T21:41:00Z");
-    wrong.record.subject.test_type = test_cabinet_core::TestType::Performance;
+    wrong.record.subject.test_type = test_cabinet_suites::test_case::TestType::Performance;
     wrong.record.validation.performance = Some(PerformanceResult {
         correct: false,
         total_fuel: None,
@@ -419,7 +419,7 @@ async fn snapshot_has_index_runs_per_run_and_case_objects() {
 #[tokio::test]
 async fn snapshot_emits_the_composed_model_catalog() {
     use crate::api::{AliasOut, ModelOut};
-    use test_cabinet_core::run_record::HarnessFamily;
+    use test_cabinet_contracts::run_record::HarnessFamily;
 
     let (_tmp, store) = empty_store();
     let model = ModelOut {
@@ -702,9 +702,9 @@ async fn per_run_file_exports_showcase_media_and_names_it_by_key() {
         .unwrap();
 
     let mut run = stored_run("s1", "2026-06-17T21:40:00Z");
-    run.record.showcase = Some(test_cabinet_core::RunShowcase {
+    run.record.showcase = Some(test_cabinet_contracts::run_record::RunShowcase {
         description: "# My Game\n![B](banner.png)".to_string(),
-        media: vec![test_cabinet_core::ShowcaseMedia {
+        media: vec![test_cabinet_contracts::run_record::ShowcaseMedia {
             file: "title.png".to_string(),
             name: "Title".to_string(),
             kind: MediaKind::Image,
@@ -781,9 +781,9 @@ async fn showcase_video_recorded_as_webm_is_transcoded_to_mp4() {
     store.write_run_showcase("s1", "clip.webm", &webm).unwrap();
 
     let mut run = stored_run("s1", "2026-06-17T21:40:00Z");
-    run.record.showcase = Some(test_cabinet_core::RunShowcase {
+    run.record.showcase = Some(test_cabinet_contracts::run_record::RunShowcase {
         description: "# My Game".to_string(),
-        media: vec![test_cabinet_core::ShowcaseMedia {
+        media: vec![test_cabinet_contracts::run_record::ShowcaseMedia {
             file: "clip.webm".to_string(),
             name: "Gameplay".to_string(),
             kind: MediaKind::Video,
@@ -822,9 +822,9 @@ async fn existing_showcase_media_is_referenced_without_rereading_the_store() {
     // the meta still names it.
     let (_tmp, store) = empty_store();
     let mut run = stored_run("s1", "2026-06-17T21:40:00Z");
-    run.record.showcase = Some(test_cabinet_core::RunShowcase {
+    run.record.showcase = Some(test_cabinet_contracts::run_record::RunShowcase {
         description: "# My Game".to_string(),
-        media: vec![test_cabinet_core::ShowcaseMedia {
+        media: vec![test_cabinet_contracts::run_record::ShowcaseMedia {
             file: "title.png".to_string(),
             name: "Title".to_string(),
             kind: MediaKind::Image,
@@ -859,7 +859,7 @@ async fn showcase_description_image_survives_a_wiped_store_via_the_record() {
     // reached the lookup.
     let (_tmp, store) = empty_store();
     let mut run = stored_run("s1", "2026-06-17T21:40:00Z");
-    run.record.showcase = Some(test_cabinet_core::RunShowcase {
+    run.record.showcase = Some(test_cabinet_contracts::run_record::RunShowcase {
         description: "# My Game\n![B](banner.png)".to_string(),
         media: vec![],
     });
@@ -893,7 +893,7 @@ async fn case_metadata_inlines_specs_and_description() {
         source: "spec/build.py".to_string(),
         dest: "build.py".to_string(),
         template: false,
-        kind: test_cabinet_core::SpecKind::Script,
+        kind: test_cabinet_suites::test_case::SpecKind::Script,
     }];
     // A declared runtime package: its UI-only description is looked up from core's
     // registry at snapshot time (never stored), so the static gallery's Inputs tab
@@ -946,7 +946,7 @@ async fn case_metadata_inlines_specs_and_description() {
     // The script role survives ingest → snapshot, so the Inputs tab tags it "Script".
     assert_eq!(parsed["variants"][0]["seededInputs"][1]["kind"], "script");
     // The declared package is carried with its UI-only description, looked up from
-    // core's registry at snapshot time.
+    // the suites crate's registry at snapshot time.
     assert_eq!(
         parsed["packages"][0]["name"],
         "@clockwyrks/particle-runtime"
@@ -955,7 +955,7 @@ async fn case_metadata_inlines_specs_and_description() {
         parsed["packages"][0]["description"]
             .as_str()
             .is_some_and(|d| !d.is_empty()),
-        "package description should be inlined from core's registry"
+        "package description should be inlined from the suites crate's registry"
     );
 }
 
@@ -1146,8 +1146,10 @@ async fn case_metadata_renders_the_prompt_and_specs_for_every_declared_engine() 
     let mut m = manifest();
     m.prompt_template = "Built on {{engine.name}}.".to_string();
     m.engines = vec![
-        test_cabinet_core::EngineSupport::unbounded(test_cabinet_core::engine::NONE_SLUG),
-        test_cabinet_core::EngineSupport::unbounded("simple-2d"),
+        test_cabinet_suites::test_case::EngineSupport::unbounded(
+            test_cabinet_suites::engine::NONE_SLUG,
+        ),
+        test_cabinet_suites::test_case::EngineSupport::unbounded("simple-2d"),
     ];
     m.common_specs = vec![crate::store::StoredSpec {
         source: "spec/field.md.hbs".to_string(),
@@ -1219,7 +1221,7 @@ async fn case_metadata_exports_reference_baselines_and_names_them_by_key() {
     let mut m = manifest();
     m.variants[0].references = vec![StoredReference {
         view: "title".to_string(),
-        kind: test_cabinet_core::ReferenceKind::Rendered,
+        kind: test_cabinet_suites::test_case::ReferenceKind::Rendered,
         extension: "png".to_string(),
     }];
 
@@ -1699,8 +1701,8 @@ async fn case_metadata_exports_validation_baselines_keyed_by_engine_variant_and_
     let (_tmp, store) = empty_store();
     let baseline_dir = store
         .version_dir(&m.slug, &m.version)
-        .join(test_cabinet_core::VALIDATION_BASELINE_DIR)
-        .join(test_cabinet_core::engine::NONE_SLUG)
+        .join(test_cabinet_contracts::layout::VALIDATION_BASELINE_DIR)
+        .join(test_cabinet_suites::engine::NONE_SLUG)
         .join("base");
     std::fs::create_dir_all(&baseline_dir).unwrap();
     std::fs::write(baseline_dir.join("spin__still.png"), b"png:baseline-still").unwrap();
@@ -1761,8 +1763,8 @@ async fn case_metadata_exports_the_baselines_shared_image_store_too() {
     let (_tmp, store) = empty_store();
     let baseline_dir = store
         .version_dir(&m.slug, &m.version)
-        .join(test_cabinet_core::VALIDATION_BASELINE_DIR)
-        .join(test_cabinet_core::engine::NONE_SLUG)
+        .join(test_cabinet_contracts::layout::VALIDATION_BASELINE_DIR)
+        .join(test_cabinet_suites::engine::NONE_SLUG)
         .join("base");
     std::fs::create_dir_all(&baseline_dir).unwrap();
     std::fs::write(baseline_dir.join("spin__serve.json.gz"), b"\x1f\x8bgz").unwrap();
@@ -2001,8 +2003,10 @@ async fn case_metadata_exports_workspace_files_engineless_and_per_engine() {
     // under the content-addressed files prefix with a text content type.
     let mut m = manifest();
     m.engines = vec![
-        test_cabinet_core::EngineSupport::unbounded(test_cabinet_core::engine::NONE_SLUG),
-        test_cabinet_core::EngineSupport::unbounded("simple-2d"),
+        test_cabinet_suites::test_case::EngineSupport::unbounded(
+            test_cabinet_suites::engine::NONE_SLUG,
+        ),
+        test_cabinet_suites::test_case::EngineSupport::unbounded("simple-2d"),
     ];
     m.workspace = StoredWorkspace(std::collections::BTreeMap::from([
         (
@@ -2635,7 +2639,7 @@ async fn case_media_already_in_the_bucket_is_referenced_without_re_uploading() {
     let mut m = manifest();
     m.variants[0].references = vec![StoredReference {
         view: "title".to_string(),
-        kind: test_cabinet_core::ReferenceKind::Rendered,
+        kind: test_cabinet_suites::test_case::ReferenceKind::Rendered,
         extension: "png".to_string(),
     }];
 
@@ -2647,8 +2651,8 @@ async fn case_media_already_in_the_bucket_is_referenced_without_re_uploading() {
     }
     let baseline_dir = store
         .version_dir(&m.slug, &m.version)
-        .join(test_cabinet_core::VALIDATION_BASELINE_DIR)
-        .join(test_cabinet_core::engine::NONE_SLUG)
+        .join(test_cabinet_contracts::layout::VALIDATION_BASELINE_DIR)
+        .join(test_cabinet_suites::engine::NONE_SLUG)
         .join("base");
     std::fs::create_dir_all(&baseline_dir).unwrap();
     std::fs::write(baseline_dir.join("spin__still.png"), b"png:baseline-still").unwrap();
@@ -2925,30 +2929,18 @@ async fn every_published_run_document_is_scrubbed_on_its_way_out() {
 
     let body = String::from_utf8(run_document(&snapshot, "r1").bytes.clone()).unwrap();
     assert!(!body.contains("sk-ant-api03-notreal-value"));
-    assert!(body.contains(test_cabinet_core::redact::PLACEHOLDER));
+    assert!(body.contains(test_cabinet_redact::PLACEHOLDER));
 }
 
-/// A real `CodeAnalysisSummary`, produced by pointing the real analyzer at a two-file
-/// tree. Cheaper and far more durable than a ninety-five-field literal, which would drift
-/// from the contract the moment a metric is added.
-fn code_analysis_summary() -> test_cabinet_core::CodeAnalysisSummary {
-    let tree = TempDir::new().expect("temp dir");
-    std::fs::create_dir_all(tree.path().join("src")).expect("a source directory");
-    std::fs::write(
-        tree.path().join("src/main.ts"),
-        "export function boot(): number {\n  return 1;\n}\n",
-    )
-    .expect("a source file");
-    test_cabinet_code_analysis::analyze(&test_cabinet_code_analysis::AnalysisRequest {
-        root: tree.path(),
-        seed_commit: None,
-        tree_basis: test_cabinet_core::CodeTreeBasis::PreValidation,
-        // A hand-built fixture tree with no run behind it, so nothing is known to have
-        // been seeded into its root and the floor removes only what the host owns
-        // outright.
-        root_seeding: test_cabinet_code_analysis::walk::RootSeeding::default(),
-    })
-    .summary
+/// A real `CodeAnalysisSummary`: the contract fixture the driver's analyzer produced
+/// over a two-file tree, and is held to by the driver's own test. Cheaper and far more
+/// durable than a ninety-five-field literal, which would drift from the contract the
+/// moment a metric is added.
+fn code_analysis_summary() -> test_cabinet_contracts::code_analysis::CodeAnalysisSummary {
+    serde_json::from_str(include_str!(
+        "../../../contracts/crates/contracts/fixtures/code-analysis/summary.json"
+    ))
+    .expect("the code-analysis summary fixture deserializes")
 }
 
 /// A published run that carries a real code analysis, plus its stored unbounded document.
@@ -2974,7 +2966,7 @@ fn analysed_run(store: &DefinitionStore, id: &str, document: serde_json::Value) 
 fn code_analysis_key(run_id: &str) -> String {
     format!(
         "media/runs/{run_id}/code-analysis/v{}.json",
-        test_cabinet_core::code_analysis::CODE_ANALYZER_VERSION
+        test_cabinet_contracts::code_analysis::CODE_ANALYZER_VERSION
     )
 }
 
@@ -3072,7 +3064,7 @@ async fn the_published_code_analysis_document_is_scrubbed() {
         !body.contains("sk-ant-api03-notreal-value"),
         "a leaked key reached R2 through the code-analysis object: {body}",
     );
-    assert!(body.contains(test_cabinet_core::redact::PLACEHOLDER));
+    assert!(body.contains(test_cabinet_redact::PLACEHOLDER));
 }
 
 #[tokio::test]
@@ -3234,8 +3226,8 @@ async fn an_analysed_run_whose_document_is_gone_still_publishes_its_summary() {
 
 /// A gg document with the given id and a couple of fields, standing in for what
 /// [`crate::gg_docs::public_documents`] hands the builder.
-fn gg_doc(id: &str) -> test_cabinet_core::gg_query::GgRunDoc {
-    let mut doc = test_cabinet_core::gg_query::GgRunDoc::default();
+fn gg_doc(id: &str) -> crate::gg_query::GgRunDoc {
+    let mut doc = crate::gg_query::GgRunDoc::default();
     doc.insert("id", id.to_string());
     doc.insert("case", "pong".to_string());
     doc.insert("metric.cost", 0.42);
@@ -3296,7 +3288,7 @@ async fn the_gg_corpus_passes_the_scrubber_like_every_other_public_object() {
         .expect("the gg corpus");
     let body = String::from_utf8(object.bytes.clone()).unwrap();
     assert!(!body.contains("sk-ant-api03-notreal-value"));
-    assert!(body.contains(test_cabinet_core::redact::PLACEHOLDER));
+    assert!(body.contains(test_cabinet_redact::PLACEHOLDER));
 }
 
 #[tokio::test]
@@ -3379,8 +3371,8 @@ async fn a_replay_record_never_reaches_the_public_snapshot_even_beside_the_gg_co
 /// (cap `broken`) and `hud` (cap `great`), both on the `gameplay` domain — so the
 /// version is validator-rated and its runs are scored by their validators alone.
 fn validator_manifest() -> StoredManifest {
+    use crate::review::FailureCap;
     use crate::store::{StoredReviewItem, StoredReviewValidation};
-    use test_cabinet_core::review::FailureCap;
     let point = |id: &str, cap: FailureCap| StoredReviewItem {
         id: id.to_string(),
         title: id.to_string(),
@@ -3414,7 +3406,7 @@ fn validator_manifest() -> StoredManifest {
 /// [`stored_run`] with one decided validator verdict per `(point, pass)` pair and
 /// no reviews at all — a validator-rated run the moment it completed.
 fn validator_run(id: &str, published_at: &str, verdicts: &[(&str, bool)]) -> StoredRun {
-    use test_cabinet_core::validation::AutoVerdict;
+    use test_cabinet_contracts::validation::AutoVerdict;
     let mut run = stored_run(id, published_at);
     run.reviews.clear();
     run.validator_rated = true;
@@ -3472,7 +3464,7 @@ fn run_summary_score_is_the_validator_score_on_a_validator_rated_version() {
 
 #[test]
 fn run_summary_score_folds_reviewer_overrides_on_a_validator_rated_version() {
-    use test_cabinet_core::review::VerdictStatus;
+    use crate::review::VerdictStatus;
     let manifest = validator_manifest();
     let mut run = validator_run(
         "r1",
@@ -3651,10 +3643,8 @@ fn a_stored_validator_s_engine_scoping_reaches_the_core_type() {
 
 /// A run-wide-aesthetic review carrying the given verdict `overrides`, for the
 /// override-folding score test.
-fn aesthetic_reviewer_review(
-    overrides: &[(&str, test_cabinet_core::review::VerdictStatus)],
-) -> StoredReview {
-    use test_cabinet_core::review::AestheticRating;
+fn aesthetic_reviewer_review(overrides: &[(&str, crate::review::VerdictStatus)]) -> StoredReview {
+    use crate::review::AestheticRating;
     StoredReview {
         reviewer: "ada@clockwyrks.com".to_string(),
         ratings: vec![],
@@ -3677,7 +3667,7 @@ fn aesthetic_reviewer_review(
 
 #[tokio::test]
 async fn a_validator_rated_run_is_summarized_by_its_validators_and_its_aesthetic_review() {
-    use test_cabinet_core::review::AestheticRating;
+    use crate::review::AestheticRating;
     let (_tmp, store) = empty_store();
     // `r1` is unreviewed; `r2` carries one aesthetic review.
     let unreviewed = validator_run(
@@ -3789,7 +3779,7 @@ async fn a_legacy_run_summary_omits_the_aesthetic_channel() {
 #[tokio::test]
 async fn case_metadata_renders_a_suite_defined_prompt_as_its_runs_receive_it() {
     use crate::prompt::fixture::{CASE, EXPORTED, IngestedSuite, engine};
-    use test_cabinet_core::test_suite::SUITE_VARIANT_SLUG;
+    use test_cabinet_suites::test_suite::SUITE_VARIANT_SLUG;
 
     let suite = IngestedSuite::new();
     // What a run of the version was handed, engineless and on simple-2d, off the
@@ -3800,7 +3790,7 @@ async fn case_metadata_renders_a_suite_defined_prompt_as_its_runs_receive_it() {
         .expect("the implicit variant");
     let simple = engine("simple-2d");
     let run_prompt = |engine| {
-        test_cabinet_core::render_case_prompt(&resolved, variant, &[], engine)
+        test_cabinet_suites::prompt::render_case_prompt(&resolved, variant, &[], engine)
             .expect("the run renders the prompt")
     };
     let (engineless, on_simple) = (run_prompt(None), run_prompt(Some(&simple)));

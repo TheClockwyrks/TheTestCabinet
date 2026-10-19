@@ -5,7 +5,7 @@
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use sea_orm::ConnectionTrait;
-use test_cabinet_core::run_record::RunState;
+use test_cabinet_contracts::run_record::RunState;
 
 use super::{AutoPublishCause, auto_publish_runs};
 use crate::api::flow_harness::*;
@@ -19,7 +19,7 @@ async fn launch_and_report(
     job_id: &str,
     slug: &str,
     origin: Option<&str>,
-    record: test_cabinet_core::run_record::RunRecord,
+    record: test_cabinet_contracts::run_record::RunRecord,
 ) {
     enqueue_other(state, job_id, slug, origin).await;
     report(state, job_id, record).await;
@@ -120,7 +120,7 @@ async fn a_legacy_run_is_never_published_automatically() {
         .db
         .add_review(
             "run-j",
-            &review_by("reviewer", test_cabinet_core::review::Rating::Great),
+            &review_by("reviewer", crate::review::Rating::Great),
             None,
             None,
         )

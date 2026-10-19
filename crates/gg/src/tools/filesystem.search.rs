@@ -1,7 +1,7 @@
 //! The `search` tool: content search over the workspace, under the ignore files.
 //!
 //! The fifth filesystem primitive, and the one that finds where to point the other four. It is its
-//! own [capability](test_cabinet_core::gg::CAPABILITY_SEARCH) for the same reason each of them is —
+//! own [capability](test_cabinet_contracts::gg::CAPABILITY_SEARCH) for the same reason each of them is —
 //! a study withholds or reconfigures one without disturbing the rest — and it reaches the model on
 //! both surfaces: as the `search` tool here, and as `files.search` through the
 //! [membrane](crate::sandbox).
@@ -47,7 +47,7 @@ use super::{
 use crate::tools::SearchMatchData;
 
 /// The `search` tool's name — the one the [tool vocabulary](crate::tools::ALL_TOOL_NAMES) and the
-/// [search capability](test_cabinet_core::gg::CAPABILITY_SEARCH) name.
+/// [search capability](test_cabinet_contracts::gg::CAPABILITY_SEARCH) name.
 pub const SEARCH_TOOL: &str = "search";
 
 /// How many matches a search that names no `limit` of its own returns.

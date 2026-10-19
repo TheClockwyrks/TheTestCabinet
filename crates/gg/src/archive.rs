@@ -17,7 +17,7 @@
 
 use std::sync::{Arc, Mutex};
 
-use test_cabinet_core::gg::{
+use test_cabinet_contracts::gg::{
     GgAgentConfig, GgArchiveEntry, GgContextSource, GgModuleOrigin, GgTelemetryKind,
 };
 
@@ -188,7 +188,7 @@ impl ArchiveStore {
 }
 
 /// The loop's live view of the thread archive: whether
-/// [agent-managed context](test_cabinet_core::gg::CAPABILITY_AGENT_MANAGED_CONTEXT) is on for this
+/// [agent-managed context](test_cabinet_contracts::gg::CAPABILITY_AGENT_MANAGED_CONTEXT) is on for this
 /// agent, and the shared [`ArchiveStore`] behind `archive_thread` / `search_archive`.
 ///
 /// It exists so the archive is a [module](crate::modules::Module) like every other piece of
@@ -395,7 +395,7 @@ impl Module for ArchiveRuntime {
         profile: &GgAgentConfig,
         ctx: &ModuleResolveCtx<'_>,
     ) -> Result<(), AdoptError> {
-        if !profile.is_enabled(test_cabinet_core::gg::CAPABILITY_AGENT_MANAGED_CONTEXT) {
+        if !profile.is_enabled(test_cabinet_contracts::gg::CAPABILITY_AGENT_MANAGED_CONTEXT) {
             return Err(AdoptError::Disabled);
         }
         self.enabled = true;

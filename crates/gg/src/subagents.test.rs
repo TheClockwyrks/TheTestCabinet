@@ -1,6 +1,6 @@
 use std::sync::atomic::Ordering;
 
-use test_cabinet_core::gg::{CAPABILITY_SUBAGENTS, GgCapabilityConfig, GgCapabilitySet};
+use test_cabinet_contracts::gg::{CAPABILITY_SUBAGENTS, GgCapabilityConfig, GgCapabilitySet};
 
 use crate::validate::{LaunchDefect, LaunchReport};
 

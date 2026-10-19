@@ -2,19 +2,19 @@
 //! `tcab publish-reference`.
 //!
 //! The build/capture path drives a real `sh` and a real browser and is exercised
-//! through `core`'s own `capture_baseline_media` tests; here we pin the pure
+//! through the driver library's own `capture_baseline_media` tests; here we pin the pure
 //! selection logic both commands route through — version resolution and variant
 //! targeting — and the two decisions that put the command's verdict in its exit
 //! status, leaving the clap surface to `cli.test.rs`.
 
-use test_cabinet_core::{AssetDimension, AssetKind, EngineSupport, NONE_SLUG, TestType};
+use test_cabinet_driver::{AssetDimension, AssetKind, EngineSupport, NONE_SLUG, TestType};
 
 use super::*;
 
 /// Build a catalog-free [`TestCaseVersion`] with the given variants, each either
 /// declaring a reference implementation or not, so the selection helpers can be
 /// exercised without a fixture tree on disk. Everything the selection path does
-/// not read is left empty (the same minimal-literal fixture style `core`'s
+/// not read is left empty (the same minimal-literal fixture style the driver library's
 /// validator tests use).
 fn test_case(variants: &[(&str, &[&str])]) -> TestCaseVersion {
     TestCaseVersion {
@@ -213,7 +213,10 @@ fn select_targets_rejects_a_case_with_no_references_at_all() {
 fn resolve_version_prefers_an_explicit_version() {
     // An explicit version short-circuits the catalog entirely, so this needs no
     // fixture tree — which is exactly the property that makes it worth pinning.
-    let catalog = TestCaseCatalog::new(PathBuf::from("does-not-exist"));
+    let catalog = TestCaseCatalog::new(
+        PathBuf::from("does-not-exist"),
+        test_cabinet_driver::engine::built_in_catalog(),
+    );
 
     let version =
         resolve_version(&catalog, "carom", Some("v1.0.1")).expect("an explicit version resolves");
@@ -230,7 +233,7 @@ fn baseline_dir_is_engine_and_variant_scoped_under_the_mirrored_cold_storage_pat
     assert_eq!(
         baseline_dir(&cold, &case, "none", "base").expect("the version is in the checkout"),
         PathBuf::from("cold-storage/test-cases/end-to-end/easy/carom/v1.0.0")
-            .join(test_cabinet_core::VALIDATION_BASELINE_DIR)
+            .join(test_cabinet_driver::VALIDATION_BASELINE_DIR)
             .join("none")
             .join("base")
     );

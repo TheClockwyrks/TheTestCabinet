@@ -43,13 +43,13 @@ use crate::sandbox::{
     VIEWS_OPEN_TEXT, all_languages, capability_operations, catalogue_functions, family_of_module,
     gating_capabilities, operation,
 };
-use test_cabinet_core::gg::{
+use test_cabinet_contracts::gg::{
     CAPABILITY_PROJECT_MANAGEMENT, CAPABILITY_READ_FILE, DEFAULT_OPENING_FUNCTIONS,
     DEFAULT_OPENING_MODULES, DEFAULT_OPENING_TREE_DEPTH, GgAgentConfig, GgCapabilitySet,
     GgContextSource, GgOpeningTree, GgOpeningTurn, GgProgramLanguage, MAX_OPENING_TREE_DEPTH,
 };
 
-/// A window in [code mode](test_cabinet_core::gg::CAPABILITY_RESPONSES_AS_CODE) — the only mode the
+/// A window in [code mode](test_cabinet_contracts::gg::CAPABILITY_RESPONSES_AS_CODE) — the only mode the
 /// bootstrap fires in, since the tool-calling arm has no program to synthesize.
 fn code_model() -> ContextModel {
     ContextModel::new(
@@ -1228,7 +1228,7 @@ async fn entries_are_taken_in_the_order_written() {
 /// **The default opening turn is in gg's vocabulary**, and every function on it is one a
 /// configuration can promise: bound by a capability or by every program, never by role or placement.
 ///
-/// The list is written by hand in `core`, and a module id no operation is namespaced on, or an
+/// The list is written by hand in the contracts, and a module id no operation is namespaced on, or an
 /// operation id gg has no row for, would be a default every fresh profile refused the launch over.
 #[test]
 fn the_default_opening_turn_is_in_ggs_vocabulary() {

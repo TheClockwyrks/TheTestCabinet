@@ -38,31 +38,32 @@ fn parse_comma_list_yields_none_for_absent_or_empty_input() {
 
 // --- The validator-rated review gate ---------------------------------------------
 
+use crate::review::VerdictStatus;
 use axum::http::StatusCode;
-use test_cabinet_core::review::VerdictStatus;
-use test_cabinet_core::test_case::SubReviewItem;
+use test_cabinet_suites::test_case::SubReviewItem;
 
 /// The run's effective checklist for the gate tests: `serve` graded as a whole
 /// and a `combat` category with two sub-points (`hit`, `block`), so both plain
 /// and composite verdict ids are declared.
-fn declared_items() -> Vec<test_cabinet_core::ReviewItem> {
-    let item = |id: &str, sub_items: Vec<SubReviewItem>| test_cabinet_core::ReviewItem {
-        id: id.to_string(),
-        title: id.to_string(),
-        text: format!("The build satisfies {id}."),
-        reference: None,
-        proof: None,
-        sequences: vec![],
-        frames: vec![],
-        weight: 1,
-        graded: false,
-        domain: None,
-        sub_items,
-        scored: true,
-        validation: None,
-        failure_cap: None,
-        domains: vec![],
-    };
+fn declared_items() -> Vec<test_cabinet_suites::test_case::ReviewItem> {
+    let item =
+        |id: &str, sub_items: Vec<SubReviewItem>| test_cabinet_suites::test_case::ReviewItem {
+            id: id.to_string(),
+            title: id.to_string(),
+            text: format!("The build satisfies {id}."),
+            reference: None,
+            proof: None,
+            sequences: vec![],
+            frames: vec![],
+            weight: 1,
+            graded: false,
+            domain: None,
+            sub_items,
+            scored: true,
+            validation: None,
+            failure_cap: None,
+            domains: vec![],
+        };
     let sub = |id: &str| SubReviewItem {
         id: id.to_string(),
         title: id.to_string(),
@@ -166,7 +167,7 @@ fn a_validator_rated_review_accepts_a_partial_checklist_of_binary_overrides() {
 /// A minimal completed `pong@v1.0.0` record on the `base` variant, with one decided
 /// validator verdict per `(point, pass)` pair.
 fn detail_record(verdicts: &[(&str, bool)]) -> RunRecord {
-    use test_cabinet_core::validation::{AutoVerdict, DebugScriptResult};
+    use test_cabinet_contracts::validation::{AutoVerdict, DebugScriptResult};
     let mut record: RunRecord = serde_json::from_value(serde_json::json!({
         "id": "r1",
         "startedAt": "2026-06-17T20:40:00Z",

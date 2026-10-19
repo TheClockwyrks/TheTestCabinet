@@ -40,7 +40,7 @@ vi.mock("../../../data/galleryContext", () => ({
 }));
 
 // Resolve reference media the way a configured host does: the deterministic layout
-// from `crates/core/src/asset_reference.rs`, rooted at a snapshot base.
+// from `contracts/crates/contracts/src/asset_reference.rs`, rooted at a snapshot base.
 const referenceMediaUrl = (
   slug: string,
   version: string,

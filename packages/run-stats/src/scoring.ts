@@ -10,11 +10,11 @@
 // (labels, emoji, prose descriptions) is presentation and stays in the UI, which
 // re-exports this module so its existing consumers are unaffected.
 //
-// Every function here mirrors a counterpart in the Rust core
-// (`crates/core/src/review.rs`); the mirrors are named per function and must be
+// Every function here mirrors a counterpart in the backend's review module
+// (`crates/backend/src/review.rs`); the mirrors are named per function and must be
 // kept in lockstep, since the backend and these clients score the same runs. The
 // shared goldens in `contracts/crates/contracts/fixtures/scoring/` hold the two to the same
-// cases (`scoring.goldens.test.ts` here, `review.goldens.test.rs` in the core).
+// cases (`scoring.goldens.test.ts` here, `review.goldens.test.rs` in the backend).
 
 import type { DebugScriptResult } from "@clockwyrks/run-record";
 import type {
@@ -684,7 +684,7 @@ export function isToolchainGated(
  *   is a clean run that emitted no verdict.
  *
  * The ids of the returned verdicts are exactly the auto-covered points. Mirrors
- * `automated_verdicts` in the Rust core (crates/core/src/comparison.rs).
+ * `automated_verdicts` in the backend (crates/backend/src/comparison.rs).
  */
 export function automatedVerdicts(
   debugScripts: readonly DebugScriptResult[],
@@ -715,7 +715,7 @@ export function automatedVerdicts(
  * drop the human-only points (a Carom run whose 68 automated points all pass reads
  * 68/68, not 68/70). `items` must already be the run's **effective** checklist. A
  * thin wrapper over {@link coveredScore} on the {@link automatedVerdicts}. Mirrors
- * `automated_only_score` in the Rust core (crates/core/src/comparison.rs).
+ * `automated_only_score` in the backend (crates/backend/src/comparison.rs).
  */
 export function automatedOnlyScore(
   items: readonly WeightedItem[],
@@ -734,7 +734,7 @@ export function automatedOnlyScore(
  * {@link effectiveVerdicts | effective checklist} — the validators' verdicts
  * overlaid with the reviewer's overrides — scores through the identical rule (see
  * {@link validatorReviewScore}). Mirrors `covered_score` in the Rust core
- * (crates/core/src/comparison.rs).
+ * (crates/backend/src/comparison.rs).
  */
 export function coveredScore(
   items: readonly WeightedItem[],
@@ -749,7 +749,7 @@ export function coveredScore(
  * denominator is exactly the covered weight. A binary or graded item is kept iff
  * its own id is covered; a category keeps only its covered sub-items and is
  * dropped entirely when none are covered. Mirrors `restrict_items_to_covered` in
- * the Rust core (crates/core/src/comparison.rs).
+ * the backend (crates/backend/src/comparison.rs).
  */
 function restrictItemsToCovered(
   items: readonly WeightedItem[],

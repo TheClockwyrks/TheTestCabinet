@@ -1,5 +1,5 @@
 //! The in-memory **gg document index**: one [`GgRunDoc`] per stored gg run, kept
-//! fresh by a per-id reconcile, and the corpus every [TCQ](test_cabinet_core::gg_query)
+//! fresh by a per-id reconcile, and the corpus every [TCQ](crate::gg_query)
 //! query on this backend runs over. The same parse pass extracts a compact
 //! [`GgRunFacts`] per run for the [`/stats` folds](crate::stats), so the two
 //! consumers share one ledger, one freshness rule, and one deserialization of
@@ -60,7 +60,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use test_cabinet_core::gg_query::{GgDocLifecycle, GgRunDoc, build_run_doc, redacted_for_public};
+use crate::gg_query::{GgDocLifecycle, GgRunDoc, build_run_doc, redacted_for_public};
 
 use crate::db::{Db, StoredRun};
 use crate::error::Result;
@@ -466,7 +466,7 @@ impl<'a> CatalogScores<'a> {
     /// The run's score fraction, or `None` when it has no reviews, its case is not
     /// ingested, or that case declares no weighted checklist at all (a zero
     /// denominator is an absent score, never a zero one — see
-    /// [rule 1](test_cabinet_core::gg_query#the-seven-semantic-rules), which a
+    /// [rule 1](crate::gg_query#the-seven-semantic-rules), which a
     /// stored `0` would violate by dragging every average down).
     pub fn score(&mut self, run: &StoredRun) -> Option<f64> {
         let manifest = self.manifest(run)?;

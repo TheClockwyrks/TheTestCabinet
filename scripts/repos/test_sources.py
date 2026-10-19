@@ -89,10 +89,12 @@ def _workspace(root: Path, repo: str, packages: dict[str, dict[str, object]]) ->
 
 def test_the_package_links_name_what_each_checked_out_workspace_produces(tmp_path: Path) -> None:
     _workspace(tmp_path, "contracts", {"run-record": {"name": "@clockwyrks/run-record"}})
-    _workspace(tmp_path, "web", {"ui": {"name": "@clockwyrks/ui", "dependencies": {"@clockwyrks/run-record": "0.1.0"}}})
+    _workspace(
+        tmp_path, "ui-common", {"ui": {"name": "@clockwyrks/ui", "dependencies": {"@clockwyrks/run-record": "0.1.0"}}}
+    )
     assert sources.package_links(tmp_path) == {
         "contracts": {"@clockwyrks/run-record": "packages/run-record"},
-        "web": {"@clockwyrks/ui": "packages/ui"},
+        "ui-common": {"@clockwyrks/ui": "packages/ui"},
     }
     # The plan is read from the written table, as link-packages.sh writes it first.
     (tmp_path / sources.links.TABLE).write_text(
@@ -101,7 +103,7 @@ def test_the_package_links_name_what_each_checked_out_workspace_produces(tmp_pat
     assert sources.link_plan(tmp_path) == [
         "install\tcontracts",
         "build\tcontracts",
-        "install\tweb\tcontracts/packages/run-record",
+        "install\tui-common\tcontracts/packages/run-record",
     ]
 
 

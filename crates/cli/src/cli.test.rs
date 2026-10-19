@@ -318,7 +318,7 @@ fn run_rejects_unknown_harness() {
 
 #[test]
 fn every_harness_slug_is_accepted() {
-    use test_cabinet_core::run_record::HarnessSlug;
+    use test_cabinet_driver::run_record::HarnessSlug;
 
     for slug in HarnessSlug::ALL {
         let cli = Cli::try_parse_from([

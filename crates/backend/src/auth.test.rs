@@ -58,7 +58,7 @@ async fn backend(access: AccessMode) -> (tempfile::TempDir, AppState, Router) {
         publish_relay: crate::publish_relay::PublishRelay::new(),
         config,
         http: reqwest::Client::new(),
-        prices: test_cabinet_core::OpenRouterPrices::with_endpoint("http://127.0.0.1:0/models"),
+        prices: crate::pricing::OpenRouterPrices::with_endpoint("http://127.0.0.1:0/models"),
         gg_docs: crate::gg_docs::GgDocIndex::new(),
     };
     db.push(&record("r1"), &links(), None, None).await.unwrap();

@@ -11,7 +11,7 @@
 # has no compiler on its turn path at all, so a run it drives must not pull gigabytes it
 # cannot use — and must not offer a model a compiler no other arm of its comparison has.
 # `containers/gg-toolchains/Dockerfile` is where the tree is assembled and where the
-# constraints on adding one are written down; `harness::gg_variant` in `crates/core` is
+# constraints on adding one are written down; `harness::gg_variant` in `crates/driver` is
 # what resolves a gg run to the variant.
 #
 # Nothing else is added. A gg variant is the same run image with the same binaries, the

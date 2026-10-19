@@ -5,7 +5,7 @@
 //! classification itself: a gate whose verdict nothing has ever exercised is a gate nobody knows
 //! reports the truth, and this one decides whether an arm is recorded as a defect.
 
-use test_cabinet_core::gg::GgProgramLanguage;
+use test_cabinet_contracts::gg::GgProgramLanguage;
 
 use super::{Did, Half, Loaded, UNCONVERTED, audit, classify, maps_back};
 

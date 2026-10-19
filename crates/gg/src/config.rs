@@ -1,9 +1,9 @@
-//! Loading the gg **invocation file**: the JSON document `core` hands the `gg`
+//! Loading the gg **invocation file**: the JSON document the driver hands the `gg`
 //! binary via `--config <PATH>`.
 //!
 //! The invocation type itself — [`GgInvocation`] — is the shared launch contract and
-//! lives in [`core`](test_cabinet_core::gg) so both sides of the process boundary use
-//! one definition (`core` constructs the file, gg reads it). It is re-exported here
+//! lives in the [contracts](test_cabinet_contracts::gg) so both sides of the process boundary use
+//! one definition (the driver constructs the file, gg reads it). It is re-exported here
 //! for the binary's convenience; this module only owns the on-disk [`load`] step.
 //!
 //! The one field that is *not* in the file is the model credential: the client reads
@@ -14,7 +14,7 @@ use std::path::Path;
 
 use anyhow::{Context, Result};
 
-pub use test_cabinet_core::gg::GgInvocation;
+pub use test_cabinet_contracts::gg::GgInvocation;
 
 /// Read and parse the [`GgInvocation`] file at `path`.
 ///

@@ -45,8 +45,8 @@
 //! | `TCAB_K8S_POD_SCHEDULE_TIMEOUT_SECONDS` | How long the driver lets a sandbox pod sit unscheduled (queued for capacity) before giving up. Unset/`0` waits forever, so a busy cluster makes runs queue rather than fail. |
 //! | `TCAB_K8S_RUN_ACTIVE_DEADLINE_SECONDS` | `activeDeadlineSeconds` on each sandbox pod — the last-resort backstop that stops a sandbox outliving every cleanup path. `0` disables it. |
 //! | `TCAB_K8S_RUN_POD_PREFIX` | Name prefix for sandbox pods. |
-//! | `TCAB_CONTAINER_REGISTRY` / `TCAB_CONTAINER_TAG` | The registry/namespace and tag the driver resolves the run-container image from (`core::harness::resolve_run_image`); unset uses the compiled defaults (`testcabinet.azurecr.io` / `latest`). The Azure pipeline's deploy sets both to the ACR and the commit being deployed, pinning the run images to the same `<git-sha>` as the service images. |
-//! | `TCAB_CONTAINER_IMAGE_*` (one per run image — `_BASE_WASM`, `_FULL_STACK_2D`, `_FULL_STACK_3D`, `_SPRITE`, `_VOXEL`, …, `_BLENDER`, `_ADVERSARIAL`, `_PERFORMANCE`; the full set is `core::harness::RUN_IMAGE_OVERRIDE_ENVS`) | Full per-image ref overrides (registry+name+tag) that bypass the registry/tag composition for one run image; unset composes from the registry/tag above. |
+//! | `TCAB_CONTAINER_REGISTRY` / `TCAB_CONTAINER_TAG` | The registry/namespace and tag the driver resolves the run-container image from (the driver's `harness::resolve_run_image`); unset uses the compiled defaults (`testcabinet.azurecr.io` / `latest`). The Azure pipeline's deploy sets both to the ACR and the commit being deployed, pinning the run images to the same `<git-sha>` as the service images. |
+//! | `TCAB_CONTAINER_IMAGE_*` (one per run image — `_BASE_WASM`, `_FULL_STACK_2D`, `_FULL_STACK_3D`, `_SPRITE`, `_VOXEL`, …, `_BLENDER`, `_ADVERSARIAL`, `_PERFORMANCE`; the full set is `test_cabinet_contracts::harness::RUN_IMAGE_OVERRIDE_ENVS`) | Full per-image ref overrides (registry+name+tag) that bypass the registry/tag composition for one run image; unset composes from the registry/tag above. |
 //! | `TCAB_ARTIFACTS_URL` | The artifact service the driver uploads the produced run tree to before reporting terminal status; unset skips the upload (see the driver's `Config`). |
 //! | `OTEL_EXPORTER_OTLP_ENDPOINT` / `OTEL_EXPORTER_OTLP_HEADERS` / `OTEL_EXPORTER_OTLP_PROTOCOL` | Observability: forwarded so each driver `Job` exports its run/driver spans to the same OTLP collector as the services; unset leaves the driver on stdout-only logging. `OTEL_SERVICE_NAME` is **not** forwarded (the driver keeps its own `tcab-driver` name). |
 //! | `TCAB_ENV` | Tags the driver's telemetry with the same `deployment.environment.name` as the rest of the deployment. |
@@ -196,14 +196,14 @@ pub const PASSTHROUGH_K8S_VARS: &[&str] = &[
     "TCAB_K8S_RUN_ACTIVE_DEADLINE_SECONDS",
     "TCAB_K8S_RUN_POD_PREFIX",
     // The run-container image the driver resolves for each sandbox pod
-    // (`core::harness::resolve_run_image`, which reads these from the driver's own
+    // (the driver's `harness::resolve_run_image`, which reads these from the driver's own
     // env). Forwarded so a deployment can pin the run images by `:<git-sha>` —
     // setting `TCAB_CONTAINER_TAG` on the dispatcher — the same way the pipeline's
     // deploy pins the service `image:` tags. Without this passthrough the driver
     // always falls back to the compiled defaults (`testcabinet.azurecr.io` /
     // `latest`), and the pipeline never pushes `:latest`. The per-image
     // `TCAB_CONTAINER_IMAGE_*` full-ref overrides are forwarded too — but NOT listed
-    // here: they come from `test_cabinet_core::harness::RUN_IMAGE_OVERRIDE_ENVS`
+    // here: they come from `test_cabinet_contracts::harness::RUN_IMAGE_OVERRIDE_ENVS`
     // (chained in at the use site below) so the forwarded set is the SAME canonical
     // list `resolve_run_image` consults and can never drift behind a newly-added asset
     // kind or full-stack asset dimension. All are "forward only if set".
@@ -223,7 +223,7 @@ pub const PASSTHROUGH_K8S_VARS: &[&str] = &[
     "OTEL_EXPORTER_OTLP_HEADERS",
     "OTEL_EXPORTER_OTLP_PROTOCOL",
     "TCAB_ENV",
-    // gg harness install controls (`core::gg_exec::resolve_install`, which reads these
+    // gg harness install controls (the driver's `gg_exec::resolve_install`, which reads these
     // from the driver's own env). Forwarded so a deployment can pin how a gg run gets
     // its binary: `TCAB_GG_INSTALL=local`/`release`, an explicit `TCAB_GG_BINARY` path,
     // and the release coordinates (`_VERSION`/`_URL`/`_TARGET`). Unset, the driver
@@ -250,7 +250,7 @@ pub const PUBLISHER_PASSTHROUGH_VARS: &[&str] = &[
     // single-box dev cluster with no artifact service) leaves the publisher with no
     // tree to release — the publish path is only enabled in a full deployment.
     "TCAB_ARTIFACTS_URL",
-    // The publisher's `core::publish::PublishConfig::from_env` reads these to choose
+    // The publisher's `PublishConfig::from_env` reads these to choose
     // the GitHub org the public per-run repo lands in and the Cloudflare Pages
     // project the playable build deploys to. Both are required there (no compiled-in
     // fallback), so every deployment's overlay sets them explicitly; the dispatcher
@@ -518,7 +518,7 @@ impl Config {
         let driver_auth_mode = non_empty("TCAB_DISPATCHER_DRIVER_AUTH_MODE");
 
         // Forward the fixed sandbox/observability vars plus EVERY per-image run-image
-        // override — the canonical `RUN_IMAGE_OVERRIDE_ENVS` from core (each run image's
+        // override — the canonical `RUN_IMAGE_OVERRIDE_ENVS` from the contracts crate (each run image's
         // own and its gg variant's `_GG` counterpart), so the set the driver can resolve
         // and the set the dispatcher forwards stay identical as asset kinds are added.
         // Each is forwarded only when set.
@@ -526,7 +526,7 @@ impl Config {
             .iter()
             .copied()
             .chain(
-                test_cabinet_core::harness::RUN_IMAGE_OVERRIDE_ENVS
+                test_cabinet_contracts::harness::RUN_IMAGE_OVERRIDE_ENVS
                     .iter()
                     .map(String::as_str),
             )

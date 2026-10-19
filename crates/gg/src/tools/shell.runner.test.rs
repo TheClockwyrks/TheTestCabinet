@@ -6,7 +6,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use serde_json::json;
-use test_cabinet_core::gg_session_record::GgShellOrigin;
+use test_cabinet_contracts::gg_session_record::GgShellOrigin;
 
 use super::{RealShellRunner, ShellRequest, ShellRunner, ShellStatus, StubShellRunner, real_shell};
 use crate::tools::shell::ShellTool;

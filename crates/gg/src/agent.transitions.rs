@@ -48,7 +48,7 @@ use super::*;
 
 use std::collections::BTreeSet;
 
-use test_cabinet_core::gg::{
+use test_cabinet_contracts::gg::{
     CAPABILITY_EXEC, CAPABILITY_FORK, GgRosterEntry, GgSubagentScope, GgTelemetryKind,
 };
 
@@ -646,7 +646,7 @@ fn succession_message(call: &ToolCall, key: &str) -> Option<String> {
 ///
 /// It does not disturb the append-only rule the band otherwise keeps. That rule is about *a
 /// session* — nothing inside one may take a page away from a model except the
-/// [`docview-close`](test_cabinet_core::gg::CAPABILITY_DOCVIEW_CLOSE) call it makes itself — and
+/// [`docview-close`](test_cabinet_contracts::gg::CAPABILITY_DOCVIEW_CLOSE) call it makes itself — and
 /// this runs once, before the arriving instance has taken a turn, on a window it has not yet read.
 ///
 /// Returns how many went, for the operator: a copy that quietly lost half its manual is worth a line

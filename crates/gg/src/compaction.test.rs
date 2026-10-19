@@ -12,7 +12,7 @@ use super::*;
 use crate::client::{MOCK_COMPACTION_SUMMARY, MockClient};
 use crate::context::{ContextModel, HeuristicTokenEstimator, Retention};
 use crate::model::Message;
-use test_cabinet_core::gg::{GgContextSource, GgContextSourceUsage};
+use test_cabinet_contracts::gg::{GgContextSource, GgContextSourceUsage};
 
 /// The token count of one source band in a per-source usage vec (`0` if absent, though gg
 /// always emits every band). Keeps the pre/post composition assertions readable.
@@ -132,7 +132,7 @@ fn trigger_fullness_is_derived_from_the_headroom() {
 
 #[test]
 fn setup_resolves_from_the_capability_set() {
-    use test_cabinet_core::gg::{CAPABILITY_COMPACTION, GgCapabilityConfig, GgCapabilitySet};
+    use test_cabinet_contracts::gg::{CAPABILITY_COMPACTION, GgCapabilityConfig, GgCapabilitySet};
 
     // Absent: the setup that says so. Nothing is read, nothing is required, and the two
     // placeholders beside `enabled` are what the loop never looks at.
@@ -222,7 +222,7 @@ fn an_absent_summary_headroom_is_refused() {
 /// …and it refuses the whole launch, once, at that key's own locus.
 #[test]
 fn a_compaction_with_no_headroom_refuses_the_launch() {
-    use test_cabinet_core::gg::{CAPABILITY_COMPACTION, GgCapabilityConfig, GgCapabilitySet};
+    use test_cabinet_contracts::gg::{CAPABILITY_COMPACTION, GgCapabilityConfig, GgCapabilitySet};
 
     let mut set = GgCapabilitySet::minimal("mock/x");
     crate::tools::grant_configured(
@@ -320,7 +320,7 @@ fn policy_working_window_reserves_the_headroom() {
 /// which is why an off arm may write none.
 #[test]
 fn working_window_only_reserves_when_compaction_is_on() {
-    use test_cabinet_core::gg::{CAPABILITY_COMPACTION, GgCapabilityConfig, GgCapabilitySet};
+    use test_cabinet_contracts::gg::{CAPABILITY_COMPACTION, GgCapabilityConfig, GgCapabilitySet};
 
     let off = GgCapabilitySet::minimal("mock/x");
     assert_eq!(
@@ -391,7 +391,7 @@ fn working_window_only_reserves_when_compaction_is_on() {
 /// against a window its profile never narrowed.
 #[test]
 fn working_window_is_read_off_the_agents_own_profile() {
-    use test_cabinet_core::gg::{
+    use test_cabinet_contracts::gg::{
         CAPABILITY_COMPACTION, GgAgentConfig, GgCapabilityConfig, GgCapabilitySet,
     };
 
@@ -990,10 +990,10 @@ fn the_documentation_an_agent_had_open_crosses_the_boundary() {
     ctx.push_assistant(Some("ephemeral chatter ".repeat(10)), Vec::new());
 
     let docs = DocsRuntime::new(
-        vec![test_cabinet_core::gg::CAPABILITY_READ_FILE.to_string()],
+        vec![test_cabinet_contracts::gg::CAPABILITY_READ_FILE.to_string()],
         crate::ending::EndingRole::Standard,
-        &crate::sandbox::capability_operations([test_cabinet_core::gg::CAPABILITY_READ_FILE]),
-        test_cabinet_core::gg::GgProgramLanguage::TypeScript,
+        &crate::sandbox::capability_operations([test_cabinet_contracts::gg::CAPABILITY_READ_FILE]),
+        test_cabinet_contracts::gg::GgProgramLanguage::TypeScript,
     );
     ctx.open_docview(
         "readFile".to_string(),

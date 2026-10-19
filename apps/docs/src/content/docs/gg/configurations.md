@@ -54,14 +54,14 @@ group.
 
 Max parallel agents and the session journal's size are required: gg runs under
 both on every run, and neither has an off it could take instead. The model-call
-timeout is bounded on every run too, and an emptied field is conducted under 900
-seconds. So is the stream idle bound, whose emptied field is conducted under 60
+timeout is bounded on every run too, and an emptied field is conducted under
+1800 seconds. So is the stream idle bound, whose emptied field is conducted under 60
 seconds, and the retry schedule, whose emptied fields are conducted under 10
 retries and a 60-second delay ceiling. Turns per agent, wall-clock seconds,
 cost, consecutive errors, and the error rate with its window are each armed by
 writing a figure and unarmed by leaving the field empty.
 
-A fresh configuration seeds the model-call timeout at 900 seconds, the stream
+A fresh configuration seeds the model-call timeout at 1800 seconds, the stream
 idle bound at 60 seconds, the retry schedule at 10 retries against a 60-second
 delay ceiling, and the error ceilings at 5 consecutive errors and a 0.2 rate
 over 50 turns, for the operator to keep, change, or clear; gg itself arms no

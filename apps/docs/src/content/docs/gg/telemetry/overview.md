@@ -62,6 +62,13 @@ The telemetry must let a console display:
   line, naming which of the three command paths issued it, where it ran, its
   exit code, and the capped tails of its streams. See
   [shell commands](/gg/telemetry/shell-commands/).
+- That the run is alive while nothing else is being emitted: one `heartbeat`
+  per agent at most every 60 seconds of a wait, whether on a model request, a
+  tool call, a program's execution or a subagent. It carries what the agent is
+  waiting on and how long it has waited. A run that has emitted nothing for
+  longer than the host's idle window has stopped, and the host records it so;
+  the heartbeat is what makes that reading exact. See
+  [runtime limits](/components/driver/execution/#runtime-limits).
 - The message log: the exact request each turn sent and the reply it got,
   streamed as a de-duplicated pool of message bodies (`context_message`) plus one
   pointer list per turn (`prompt`), so a console reconstructs every prompt

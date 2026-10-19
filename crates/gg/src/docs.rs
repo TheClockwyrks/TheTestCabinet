@@ -22,7 +22,7 @@
 //! *does* have. So this runtime is created for every code-mode agent, not gated on a capability.
 //!
 //! Taking a documentation view back **out** of the window is the exception, and it is gated on
-//! [`docview-close`](test_cabinet_core::gg::CAPABILITY_DOCVIEW_CLOSE) — refused at the
+//! [`docview-close`](test_cabinet_contracts::gg::CAPABILITY_DOCVIEW_CLOSE) — refused at the
 //! [membrane](crate::sandbox) rather than answered here, since this runtime describes the surface
 //! and does not touch the window. Nothing about that reaches this file; it is named because the
 //! asymmetry is otherwise surprising. Opening only ever appends to the prompt, closing rewrites its
@@ -31,7 +31,7 @@
 //! # Why the host, and not the guest
 //!
 //! Both answers depend on facts only gg holds: which capabilities this agent's profile switches on,
-//! which of the operations they offer its [allowlist](test_cabinet_core::gg::GgAgentConfig::operations)
+//! which of the operations they offer its [allowlist](test_cabinet_contracts::gg::GgAgentConfig::operations)
 //! names, and which [ending role](EndingRole) it was dispatched in. A search index baked into the
 //! guest would return functions the grant did not cover, which is the one thing a search must never
 //! do.
@@ -44,7 +44,7 @@
 //! # Whose spellings it answers in
 //!
 //! Which functions exist, and which of them this agent binds, are the same in every
-//! [program language](test_cabinet_core::gg::GgProgramLanguage) — that is what makes a
+//! [program language](test_cabinet_contracts::gg::GgProgramLanguage) — that is what makes a
 //! cross-language study a measurement of the language rather than of the surface. What differs is
 //! how each is **spelled**, and a signature is nothing but a spelling. So a runtime is built for one
 //! language and reads that language's catalogue alone: an answer in a language the model is not
@@ -102,12 +102,12 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use serde_json::{Map, Value};
-use test_cabinet_core::gg::{CAPABILITY_RESPONSES_AS_CODE, GgAgentConfig, GgProgramLanguage};
+use test_cabinet_contracts::gg::{CAPABILITY_RESPONSES_AS_CODE, GgAgentConfig, GgProgramLanguage};
 
 /// The param this module reads, re-exported from the crate that owns gg's configuration
 /// vocabulary: the spelling a document is written in and the spelling gg reads it by are one
 /// constant, so a key cannot be renamed on one side of the wire alone.
-pub use test_cabinet_core::gg::PARAM_DOC_VIEW_TYPES;
+pub use test_cabinet_contracts::gg::PARAM_DOC_VIEW_TYPES;
 
 use crate::ending::EndingRole;
 use crate::sandbox::{
@@ -493,7 +493,7 @@ pub struct DocsRuntime {
     /// permitted what this runtime would not describe (or the reverse) would be lying to the model
     /// in one direction or the other. One type, one reading, both readers.
     grants: Grants,
-    /// The [program language](test_cabinet_core::gg::GgProgramLanguage) this agent writes in.
+    /// The [program language](test_cabinet_contracts::gg::GgProgramLanguage) this agent writes in.
     ///
     /// It is not a gate — every language offers the same functions under the same gates — but it
     /// decides how each of them is **spelled**, and a directory or a lookup that answered in a
@@ -1211,7 +1211,7 @@ impl DocsRuntime {
     /// directory must never do. `every_catalogued_function_has_an_operation` proves the case
     /// unreachable for every registered language.
     ///
-    /// Public because the [agent surface](test_cabinet_core::gg::GgTelemetryKind::AgentSurface)
+    /// Public because the [agent surface](test_cabinet_contracts::gg::GgTelemetryKind::AgentSurface)
     /// reports the very same set and answers it through this predicate. Two copies of "may this
     /// agent call X" is one copy too many the moment either grows a gate.
     pub fn bound(&self, function: &CatalogueFunction) -> bool {

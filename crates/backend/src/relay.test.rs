@@ -1,6 +1,6 @@
 use super::*;
 
-use test_cabinet_core::JobState;
+use test_cabinet_contracts::job_api::JobState;
 use tokio::sync::broadcast::error::TryRecvError;
 
 fn summary() -> JobSummary {

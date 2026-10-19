@@ -10,7 +10,7 @@
 
 // `GgTurnOutcome` and `GgTurnErrorKind` arrive through the `super::*` glob below — the module under
 // test imports them for its own wire mapping.
-use test_cabinet_core::gg::{
+use test_cabinet_contracts::gg::{
     AUTHORED_REPLAY_MAX_BYTES, GgAgentConfig, GgCapabilityConfig, GgCapabilitySet, GgRunLimits,
 };
 

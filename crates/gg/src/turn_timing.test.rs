@@ -4,7 +4,7 @@
 //! here hands the timer a clock it steps by hand and asserts the exact milliseconds that come out.
 //! Nothing in this file depends on how fast, or how busy, the machine running it is.
 
-use test_cabinet_core::gg::GgTelemetryEvent;
+use test_cabinet_contracts::gg::GgTelemetryEvent;
 
 use crate::telemetry::CollectingSink;
 

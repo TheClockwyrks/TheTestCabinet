@@ -7,7 +7,7 @@ publish.workspace = true
 
 # The drawing tool for asset-generation test cases. The library is the single
 # source of the drawing logic: the `draw` binary uses it in the run container to
-# turn the model's operations into pixels, and `crates/core` links the same
+# turn the model's operations into pixels, and `crates/driver` links the same
 # library to regenerate the scored image from the recorded action log. One
 # implementation means the in-container preview and the post-run regeneration can
 # never diverge — which is what makes cheat detection meaningful.
@@ -18,7 +18,7 @@ path = "src/lib.rs"
 # The CLIs the model invokes inside the run container: `draw` for a single
 # sprite, `draw-sheet` for a sprite sheet (one separate file per frame). Both
 # share this crate's library and its `cli` module. Gated behind the `cli` feature
-# (on by default) so that `crates/core`, which depends on this crate with
+# (on by default) so that `crates/driver`, which depends on this crate with
 # `default-features = false`, links only the pure drawing library and never pulls
 # in clap or serde_json.
 [[bin]]
@@ -46,6 +46,9 @@ serde_json = { workspace = true, optional = true }
 
 [dev-dependencies]
 serde_json = { workspace = true }
+# The manifest check a case's `[canvas] background` is refused by, held to this
+# crate's parser (`color.suites.test.rs`).
+test-cabinet-suites = { workspace = true }
 
 [lints]
 workspace = true

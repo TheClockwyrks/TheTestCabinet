@@ -43,7 +43,7 @@ use std::time::Duration;
 
 use tokio::runtime::Handle;
 
-use test_cabinet_core::gg_session_record::GgShellOrigin;
+use test_cabinet_contracts::gg_session_record::GgShellOrigin;
 
 use crate::board::BOARD_MUTATIONS;
 use crate::context::{
@@ -1380,7 +1380,7 @@ pub(super) struct CodeTurn<'a> {
     /// The operation half of the grant above.
     pub(super) operations: &'a [OperationId],
     /// The agents this one may become — its own
-    /// [roster](test_cabinet_core::gg::GgAgentConfig::subagents), which is what an `exec` target is
+    /// [roster](test_cabinet_contracts::gg::GgAgentConfig::subagents), which is what an `exec` target is
     /// checked against. Empty when it has none, which is also when the call is not bound.
     pub(super) exec_roster: &'a [GgRosterEntry],
 }
@@ -2190,7 +2190,7 @@ pub(super) struct LoopOperationApi {
     /// [`CodeTurnState::forks_requested`].
     pub(super) forks_requested: Vec<PendingFork>,
     /// The agents this one may become, for `exec`'s target check. Its own
-    /// [roster](test_cabinet_core::gg::GgSubagentRef), which the loop holds and the api does not
+    /// [roster](test_cabinet_contracts::gg::GgSubagentRef), which the loop holds and the api does not
     /// otherwise see.
     exec_roster: Vec<GgRosterEntry>,
     /// How many calls this program made while a compaction was in flight.
@@ -3824,7 +3824,7 @@ impl OperationApi for LoopOperationApi {
     /// and report how many went.
     ///
     /// The gate is the membrane's: an agent without
-    /// [`docview-close`](test_cabinet_core::gg::CAPABILITY_DOCVIEW_CLOSE) never reaches here. What
+    /// [`docview-close`](test_cabinet_contracts::gg::CAPABILITY_DOCVIEW_CLOSE) never reaches here. What
     /// this owns is the removal and its record, and the record carries **where** the earliest
     /// removed item sat as well as what it reclaimed — because the documentation band is otherwise
     /// append-only, so this call is the only thing in a session that can invalidate a cached prompt
@@ -3960,8 +3960,8 @@ impl OperationApi for LoopOperationApi {
     /// decision rather than a side effect of tidying: it is the one close that rewrites the middle
     /// of the prompt instead of appending to the end, so it costs the run every cached token after
     /// the view it took away, and it is bought by
-    /// [`docview-close`](test_cabinet_core::gg::CAPABILITY_DOCVIEW_CLOSE) where this call is bought
-    /// by [`agent-managed-context`](test_cabinet_core::gg::CAPABILITY_AGENT_MANAGED_CONTEXT) — the
+    /// [`docview-close`](test_cabinet_contracts::gg::CAPABILITY_DOCVIEW_CLOSE) where this call is bought
+    /// by [`agent-managed-context`](test_cabinet_contracts::gg::CAPABILITY_AGENT_MANAGED_CONTEXT) — the
     /// membrane has already asked that gate by the time this runs. A sweep that reached the
     /// documentation band would therefore have to either spend a second capability the caller did
     /// not ask about or silently do nothing for an agent that lacks it — and a call that answers

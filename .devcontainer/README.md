@@ -456,7 +456,7 @@ them together and the gate runs it on every commit.
 ## Where cargo builds
 
 cargo builds into the checkout's `target/`, where `make clean` reaches it and
-where `crates/core` looks for a locally built gg (`target/debug/gg`,
+where `crates/driver` looks for a locally built gg (`target/debug/gg`,
 `target/release/gg`). Every machine in the fleet runs Podman with the checkout
 bound in directly, so nothing moves the directory elsewhere; a developer who
 wants it elsewhere sets `CARGO_TARGET_DIR`, which the scripts that look for a

@@ -8,13 +8,16 @@
 //! against, which are exactly the shapes a wrong sanitization would break silently.
 
 use super::*;
+use std::collections::BTreeMap;
+
+use test_cabinet_contracts::run_record::HarnessSlug;
 
 use super::super::coverage::gg_member_defect;
 use super::super::coverage::{cell_key, resolve_member};
-use test_cabinet_core::gg::{
+use crate::review::Rating;
+use test_cabinet_contracts::gg::{
     GgAgentConfig, GgCapabilitySet, GgConfigSlot, GgModelSlot, GgSlotTarget,
 };
-use test_cabinet_core::review::Rating;
 
 use crate::coverage::gate::GateOutcome;
 

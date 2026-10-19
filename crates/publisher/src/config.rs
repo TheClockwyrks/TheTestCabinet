@@ -15,7 +15,7 @@
 //! | `TCAB_WORK_DIR` | no | Ephemeral scratch directory the downloaded tree is untarred into. The pod is disposable, so this is lost on exit. | `./.tcab-publisher` |
 //!
 //! `TCAB_GITHUB_ORG` / `TCAB_PAGES_PROJECT` are **not** parsed here — they are read
-//! directly by [`PublishConfig::from_env`](test_cabinet_core::PublishConfig::from_env)
+//! directly by [`PublishConfig::from_env`](crate::release::PublishConfig::from_env)
 //! when the release runs. `GH_TOKEN` / `CLOUDFLARE_API_TOKEN` arrive via the Job's
 //! `envFrom` and are consumed by `gh`/`wrangler` directly; the binary never reads
 //! them.

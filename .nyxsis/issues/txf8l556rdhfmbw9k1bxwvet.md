@@ -6,8 +6,9 @@ zone: REPOS
 number: 1
 title: Dissolve the core crate into its owning repositories
 type: generic
-state: open
+state: done
 created: 2026-10-13T21:11:34.211847136Z
+done: 2026-10-18T22:14:12.17846493Z
 ---
 
 `crates/core` still exists in the superrepo, and `crates/gg` depends on it by

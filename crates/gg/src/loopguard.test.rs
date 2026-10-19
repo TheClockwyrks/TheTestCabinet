@@ -17,7 +17,7 @@
 //!   *does* saturate the detector's window, for well over a thousand consecutive words, and is saved
 //!   only by the sustained-run term.
 
-use test_cabinet_core::gg::GgLoopDetection;
+use test_cabinet_contracts::gg::GgLoopDetection;
 
 use crate::validate::{LaunchDefect, LaunchReport};
 

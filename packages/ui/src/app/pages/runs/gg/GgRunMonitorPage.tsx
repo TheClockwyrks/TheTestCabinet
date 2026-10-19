@@ -219,7 +219,7 @@ function statusPhase(
     return {
       label: "Setting up",
       // The orchestrator's own phrasing for the stage at its status, carried verbatim
-      // from the event (`SystemStage::describe` in crates/core) so this reads the same
+      // from the event (`SystemStage::describe` in crates/driver) so this reads the same
       // as the setup rows in the feed beneath it.
       detail: setupStage.message,
       // A failed stage is terminal in effect — the run does not proceed past it — so it

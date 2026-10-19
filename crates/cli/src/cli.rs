@@ -4,9 +4,9 @@
 //! easy to test in isolation (see `cli.test.rs`).
 
 use clap::{Args, Parser, Subcommand, ValueEnum};
-use test_cabinet_core::run_record::HarnessSlug;
-use test_cabinet_core::test_suite::SUITE_VARIANT_SLUG;
-use test_cabinet_core::{CodeTreeBasis, NONE_SLUG};
+use test_cabinet_driver::run_record::HarnessSlug;
+use test_cabinet_driver::test_suite::SUITE_VARIANT_SLUG;
+use test_cabinet_driver::{CodeTreeBasis, NONE_SLUG};
 
 /// The variant `seed`, `prompt`, `validate` and `run` select when none is named.
 ///
@@ -19,7 +19,7 @@ const DEFAULT_VARIANT: &str = SUITE_VARIANT_SLUG;
 
 /// The Test Cabinet command line interface.
 ///
-/// `tcab` exposes the headless core so runs can be scripted and benchmark sweeps
+/// `tcab` exposes the headless run engine so runs can be scripted and benchmark sweeps
 /// run in batch.
 #[derive(Debug, Parser)]
 #[command(
@@ -34,7 +34,7 @@ pub struct Cli {
     pub command: Command,
 }
 
-/// Top-level subcommands, each mapping onto a core capability.
+/// Top-level subcommands, each mapping onto a run-engine capability.
 #[derive(Debug, Subcommand)]
 pub enum Command {
     /// Launch a run: select a test case version, harness, and model.
@@ -101,7 +101,7 @@ pub enum Command {
 
 /// The agent harness to drive, selectable on the command line.
 ///
-/// This mirrors [`HarnessSlug`] from the core so the CLI's accepted values stay
+/// This mirrors [`HarnessSlug`] from the run engine so the CLI's accepted values stay
 /// in lockstep with the canonical slugs used in run records and on the site.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
 #[value(rename_all = "snake_case")]

@@ -1,11 +1,11 @@
 //! The **program library**: the source of every program one agent has run, and the retention that
 //! bounds it.
 //!
-//! Under [responses-as-code](test_cabinet_core::gg::CAPABILITY_RESPONSES_AS_CODE) a reply is a whole
+//! Under [responses-as-code](test_cabinet_contracts::gg::CAPABILITY_RESPONSES_AS_CODE) a reply is a whole
 //! program, which is why the protocol pays for itself — far more work lands per turn — and also why
 //! its retries are so expensive: a sixty-line program with one wrong identifier is sixty lines the
 //! model has to write again to change one of them. The
-//! [program-library](test_cabinet_core::gg::CAPABILITY_PROGRAM_LIBRARY) capability makes the retry
+//! [program-library](test_cabinet_contracts::gg::CAPABILITY_PROGRAM_LIBRARY) capability makes the retry
 //! proportional to the mistake. gg keeps what it ran, the agent fetches it back, patches it with
 //! ordinary string work, and hands it over to be run.
 //!
@@ -55,14 +55,14 @@ use std::fmt;
 use std::sync::Arc;
 
 use serde_json::Value;
-use test_cabinet_core::gg::{CAPABILITY_PROGRAM_LIBRARY, GgAgentConfig};
+use test_cabinet_contracts::gg::{CAPABILITY_PROGRAM_LIBRARY, GgAgentConfig};
 
 use crate::tools::ToolFailure;
 
 /// The params this module reads, re-exported from the crate that owns gg's configuration
 /// vocabulary: the spelling a document is written in and the spelling gg reads it by are one
 /// constant, so a key cannot be renamed on one side of the wire alone.
-pub use test_cabinet_core::gg::{PARAM_ID_LENGTH, PARAM_KEEP};
+pub use test_cabinet_contracts::gg::{PARAM_ID_LENGTH, PARAM_KEEP};
 
 /// The shortest id an agent may be configured to mint. One character is thirty-six ids for a
 /// session, which the re-roll bound would exhaust inside an ordinary run.

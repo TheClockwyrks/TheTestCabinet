@@ -130,7 +130,7 @@ endif
 # overlay's `tcab-<svc>:local` image names resolve to, so the manifests match.
 REGISTRY_PREFIX ?= docker.io/library
 
-# The provenance commit stamped into the service binaries (crates/core/build.rs →
+# The provenance commit stamped into the service binaries (crates/driver/build.rs →
 # the run record's testCabinetCommit). The build context omits `.git` — the
 # repo-root .dockerignore is an allowlist that never re-includes it — so the
 # Dockerfiles can't resolve the commit from git themselves; we resolve it here on
@@ -461,7 +461,7 @@ endef
 # Build the AUDIO STORE the driver image is given, out of THIS checkout — never pulled.
 #
 # The driver stages each run's declared `[audio] packs` into its run container out of a
-# host store at /opt/tcab-audio (crates/core `audio_stage`), and the driver IMAGE is what
+# host store at /opt/tcab-audio (crates/driver `audio_stage`), and the driver IMAGE is what
 # carries that store in a deployment: services.Dockerfile has a
 # `FROM ${AUDIO_STORE_IMAGE}` stage it copies the tree from. A local build passes a
 # store built from the checkout rather than the published one — see AUDIO_STORE_IMG

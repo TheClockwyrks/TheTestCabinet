@@ -32,9 +32,8 @@ mod tests;
 use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
-use serde::{Deserialize, Serialize};
 
-use test_cabinet_core::gg::{GgAgentConfig, is_valid_agent_slug};
+use test_cabinet_contracts::gg::is_valid_agent_slug;
 
 use crate::auth::Person;
 use crate::error::ApiError;
@@ -42,44 +41,7 @@ use crate::error::ApiError;
 use super::AppState;
 use super::gg_config::{MAX_DESCRIPTION_LEN, MAX_NAME_LEN, new_id, now};
 
-/// An operator's saved, reusable agent profile: one agent authored on its own, ready to
-/// be imported into any number of gg configurations.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub struct GgSavedAgent {
-    /// The saved agent's opaque id (minted on create). This is what an importing
-    /// configuration points at, so renaming the agent never breaks an import.
-    pub id: String,
-    /// The profile's name — the agent's own [`name`](GgAgentConfig::name), lifted out so
-    /// the library can be listed and ordered by it. Display text: two saved agents may
-    /// carry one name, and the [id](Self::id) is what tells them apart. There is
-    /// deliberately no second name: the thing an operator names in the editor is the
-    /// agent.
-    pub name: String,
-    /// A one-line note on what the agent is for. Empty when unset. The library's own
-    /// note — not the caller-scoped description a roster entry carries, which says when
-    /// *one particular* agent should put this one to work.
-    pub description: String,
-    /// The profile itself, in exactly the form a configuration's agent list holds,
-    /// including the [model slots](GgAgentConfig::model_slots) its bindings defer to.
-    pub agent: GgAgentConfig,
-    /// RFC 3339 of when the agent was last saved.
-    pub updated_at: String,
-}
-
-/// The create/update body for a saved agent (the server assigns `id` and `updatedAt`,
-/// and lifts `name` off the agent itself).
-#[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub struct GgSavedAgentInput {
-    /// A one-line note on what the agent is for.
-    #[serde(default)]
-    pub description: String,
-    /// The profile to save. Its `name` becomes the library entry's name.
-    pub agent: GgAgentConfig,
-}
+pub use test_cabinet_contracts::backend_api::gg::{GgSavedAgent, GgSavedAgentInput};
 
 /// `GET /gg/agents` — every saved agent the token account owns, by name.
 pub async fn list_agents(

@@ -5,7 +5,7 @@
 //! Instead, the dispatcher mounts an operator-provided Secret (one shared
 //! subscription per deployment) into the driver pod as a read-only volume, and the
 //! driver turns that mount into a [`MapCreds`] keyed by each credential's full
-//! container path. Core's [`resolve_auth_with`] then draws the subscription bytes
+//! container path. The engine's [`resolve_auth_with`] then draws the subscription bytes
 //! from this map instead of the host filesystem, with the *same* mode-selection
 //! policy — the driver never decides the mode.
 //!
@@ -23,24 +23,24 @@
 //! it still succeeds purely from the mount).
 //!
 //! Required-ness is **not** enforced here: an absent file is simply not added to
-//! the map, and core fails the run if a *required* credential is missing — keeping
+//! the map, and the engine fails the run if a *required* credential is missing — keeping
 //! a single source of truth for which files a subscription needs.
 //!
-//! [`resolve_auth_with`]: test_cabinet_core::resolve_auth_with
-//! [`CredFile::container_path`]: test_cabinet_core::CredFile
+//! [`resolve_auth_with`]: crate::resolve_auth_with
+//! [`CredFile::container_path`]: crate::CredFile
 
 use std::path::Path;
 
-use test_cabinet_core::run_record::HarnessSlug;
-use test_cabinet_core::{DefaultHarnessRegistry, HarnessRegistry, MapCreds};
+use crate::run_record::HarnessSlug;
+use crate::{DefaultHarnessRegistry, HarnessRegistry, MapCreds};
 
 /// Build a [`MapCreds`] for `harness_slug` from the subscription Secret mounted at
 /// `dir`. Each of the harness's subscription credential files is read from
 /// `dir.join(basename(container_path))` when present and keyed in the map by its
-/// full `container_path`; an absent file is skipped (core enforces required-ness).
+/// full `container_path`; an absent file is skipped (the engine enforces required-ness).
 ///
 /// Reads only `dir` — never the host home — so a missing or non-subscription
-/// harness simply yields an empty map (and core then reports the run as
+/// harness simply yields an empty map (and the engine then reports the run as
 /// unavailable when subscription auth is required).
 pub fn mounted_creds(dir: &Path, harness_slug: HarnessSlug) -> MapCreds {
     let registry = DefaultHarnessRegistry::new();
@@ -62,10 +62,10 @@ pub fn mounted_creds(dir: &Path, harness_slug: HarnessSlug) -> MapCreds {
                 by_container_path.insert(file.container_path.to_string(), bytes);
             }
             // An absent file (the operator did not include this optional key, or
-            // the Secret is absent entirely) is skipped; core decides whether a
+            // the Secret is absent entirely) is skipped; the engine decides whether a
             // required credential being missing fails the run.
             Err(err) if err.kind() == std::io::ErrorKind::NotFound => {}
-            // A present-but-unreadable file is also skipped here (core then reports
+            // A present-but-unreadable file is also skipped here (the engine then reports
             // the subscription as unavailable). This is an unexpected state — a
             // mounted-but-unreadable credential usually means a permissions
             // mismatch (e.g. a root-owned Secret volume the non-root driver cannot
