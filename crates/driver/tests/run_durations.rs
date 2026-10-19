@@ -151,6 +151,11 @@ struct GgRuntime {
 /// the run needs no OpenRouter price lookup and this test needs no network.
 const GG_USAGE_LINE: &str = r#"{"timestamp":"2026-07-30T00:00:02Z","sessionId":"run-1","type":"usage","profileId":"root","modelId":"mock/echo","tokens":{"uncachedInput":100,"cachedInput":null,"output":20,"reasoning":null},"cost":{"comparable":0.01,"actual":0.01}}"#;
 
+/// The event gg emits before every exit. A session that exits `0` without one was
+/// ended by the platform and is recorded `infrastructure` without validation, so the
+/// session here closes with it to walk the whole lifecycle.
+const GG_SESSION_ENDED_LINE: &str = r#"{"timestamp":"2026-07-30T00:00:03Z","sessionId":"run-1","type":"session_ended","status":"completed"}"#;
+
 #[async_trait::async_trait]
 impl ContainerRuntime for GgRuntime {
     async fn start(&self, _spec: &ContainerSpec) -> CoreResult<ContainerStart> {
@@ -183,6 +188,7 @@ impl ContainerRuntime for GgRuntime {
     ) -> CoreResult<ExecOutput> {
         self.clock.advance(SESSION);
         sink.on_line(OutputStream::Stdout, GG_USAGE_LINE);
+        sink.on_line(OutputStream::Stdout, GG_SESSION_ENDED_LINE);
         Ok(ExecOutput {
             exit_code: 0,
             stdout: String::new(),

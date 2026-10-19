@@ -20,7 +20,7 @@ use crate::error::{Error, Result};
 use crate::exec_stream::drain_with_idle_timeout;
 use crate::execution::{
     ArtifactCollection, ArtifactCollector, ContainerDir, ContainerFile, ContainerHandle,
-    ContainerRuntime, ContainerSpec, ContainerStart, ExecOutput, OutputSink,
+    ContainerRuntime, ContainerSpec, ContainerStart, ExecOutput, OutputSink, SandboxState,
 };
 
 /// The container working directory the seeded repository is copied into. Matches
@@ -730,6 +730,32 @@ impl ContainerRuntime for CliContainerRuntime {
         Ok(())
     }
 
+    async fn sandbox_state(&self, container: &ContainerHandle) -> SandboxState {
+        let args = vec![
+            "container".to_string(),
+            "inspect".to_string(),
+            "--format".to_string(),
+            SANDBOX_STATE_FORMAT.to_string(),
+            container.id.clone(),
+        ];
+        match self.run(&args).await {
+            Ok(output) => sandbox_state_from_inspect(
+                output.status.success(),
+                &String::from_utf8_lossy(&output.stdout),
+                &String::from_utf8_lossy(&output.stderr),
+            ),
+            Err(err) => {
+                tracing::warn!(
+                    container = %container.id,
+                    error = %err,
+                    "inspecting the sandbox after its session failed; attributing the end by \
+                     the exit status"
+                );
+                SandboxState::Unknown
+            }
+        }
+    }
+
     async fn pull(&self, image: &str) -> Result<()> {
         // Already present (a prior run pulled it, or it is a local build with no
         // registry behind it): nothing to do. This keeps the pull idempotent and
@@ -769,6 +795,57 @@ impl ContainerRuntime for CliContainerRuntime {
         }
         let digest = String::from_utf8_lossy(&output.stdout).trim().to_string();
         Ok((!digest.is_empty()).then_some(digest))
+    }
+}
+
+/// The `container inspect` template [`sandbox_state`] reads: the container's
+/// status, whether it was OOM-killed, and its main process's exit code, joined by
+/// `|`. Docker and Podman both answer it.
+///
+/// [`sandbox_state`]: ContainerRuntime::sandbox_state
+const SANDBOX_STATE_FORMAT: &str = "{{.State.Status}}|{{.State.OOMKilled}}|{{.State.ExitCode}}";
+
+/// The [`SandboxState`] a `container inspect` answered with.
+///
+/// An inspect that fails because the container does not exist (Docker's `No such
+/// container`, Podman's `no such container`, and the `no such object` both print
+/// for a bare `inspect`) is [`Gone`](SandboxState::Gone): it was removed out from
+/// under the session. A container being removed, or one that has stopped (the
+/// sandbox's PID 1 is `sleep infinity`, so only something outside it stops it),
+/// is gone too, with its status, the OOM kill and its exit code as the reason. A
+/// running or paused container is [`Running`](SandboxState::Running), and
+/// anything else, an inspect that failed for another reason included, is
+/// [`Unknown`](SandboxState::Unknown).
+fn sandbox_state_from_inspect(success: bool, stdout: &str, stderr: &str) -> SandboxState {
+    if !success {
+        let stderr = stderr.to_ascii_lowercase();
+        if stderr.contains("no such container") || stderr.contains("no such object") {
+            return SandboxState::Gone {
+                reason: "deleted".to_string(),
+            };
+        }
+        return SandboxState::Unknown;
+    }
+    let mut fields = stdout.trim().split('|');
+    let status = fields.next().unwrap_or_default().trim();
+    let oom_killed = fields.next().is_some_and(|field| field.trim() == "true");
+    let exit_code = fields.next().map(str::trim).filter(|code| !code.is_empty());
+    match status {
+        "running" | "paused" => SandboxState::Running,
+        "removing" => SandboxState::Gone {
+            reason: "being removed".to_string(),
+        },
+        "exited" | "dead" | "stopped" | "stopping" => {
+            let mut reason = status.to_string();
+            if oom_killed {
+                reason.push_str(": OOMKilled");
+            }
+            if let Some(code) = exit_code {
+                reason.push_str(&format!(" (exit {code})"));
+            }
+            SandboxState::Gone { reason }
+        }
+        _ => SandboxState::Unknown,
     }
 }
 

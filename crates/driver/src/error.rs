@@ -208,6 +208,53 @@ pub enum Error {
         seconds: u64,
     },
 
+    /// The container session log holds a session without its closing marker: the
+    /// connection carrying the harness session was lost while the harness was still
+    /// running, whatever exit status the platform reported for the exec.
+    ///
+    /// The in-container `tcab-session` wrapper appends a session's closing marker
+    /// after the harness exits, whatever its status, so a session the log holds
+    /// without one is a harness that had not exited when the exec returned. The log
+    /// is believed over the exit status, and the run is the Test Cabinet's
+    /// [`Infrastructure`](crate::run_record::RunState::Infrastructure) failure: the
+    /// tree it left is a half-written build rather than the model's result, so it is
+    /// neither validated nor scored. See [Attributing an
+    /// end](https://docs.testcabinet.ai/components/driver/execution/#attributing-an-end).
+    #[error(
+        "{slug} harness session lost before the harness exited ({unfinished} of {total} \
+         logged sessions unclosed, exit code {exit_code})"
+    )]
+    HarnessSessionLost {
+        /// The harness slug whose session was cut off.
+        slug: String,
+        /// How many sessions the log holds without their closing marker.
+        unfinished: usize,
+        /// How many sessions the log holds in all.
+        total: usize,
+        /// The exit status the platform reported for the session's exec.
+        exit_code: i32,
+    },
+
+    /// The platform, not the harness, ended the harness session: the sandbox pod
+    /// was gone or carried a `DisruptionTarget` condition when the exec returned,
+    /// the harness died on a signal (an exit code above 128), the exec returned no
+    /// status (`-1`, a lost exec stream), or a [gg](crate::gg) session exited `0`
+    /// without its `session_ended` event.
+    ///
+    /// Like [`HarnessSessionLost`](Self::HarnessSessionLost) it is the Test
+    /// Cabinet's [`Infrastructure`](crate::run_record::RunState::Infrastructure)
+    /// failure, and the run is neither validated nor scored. The detail names the
+    /// condition with its figures: the exit code and the sandbox's reason. See
+    /// [Attributing an
+    /// end](https://docs.testcabinet.ai/components/driver/execution/#attributing-an-end).
+    #[error("{slug} harness session ended by the platform{}", parenthesized(.detail))]
+    HarnessEndedByPlatform {
+        /// The harness slug whose session the platform ended.
+        slug: String,
+        /// The condition and its figures.
+        detail: String,
+    },
+
     /// The harness session ran past the run's maximum runtime and was stopped.
     ///
     /// Every run is bounded by a maximum wall-clock duration so a session can

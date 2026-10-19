@@ -43,10 +43,11 @@ use crate::execution::{
     ContainerHandle, ContainerRuntime, OutputSink, OutputStream, RawOutputLine,
 };
 use crate::gg::{GgInvocation, GgSessionSummary, GgTelemetryEvent, GgTelemetryKind};
-use crate::harness::{HarnessOutcome, Usage};
+use crate::harness::{HarnessOutcome, PlatformEnd, Usage};
 use crate::metrics::TokenCounts;
 use crate::orchestrator::write_container_file;
 use crate::run_cancellation::RunCancellation;
+use crate::session_end::{SessionAccount, SessionEnd, platform_end};
 
 /// The slug gg's errors and timeouts are attributed to (its
 /// [`HarnessSlug`](crate::run_record::HarnessSlug) rendered), so a gg failure reads
@@ -583,7 +584,7 @@ pub(crate) async fn run_gg_session(
         tokens,
         reported_cost,
         raw_output,
-        translated_events,
+        mut translated_events,
         terminal_status,
         gg_summary,
         error_logs,
@@ -612,6 +613,7 @@ pub(crate) async fn run_gg_session(
                 gg_summary,
                 tool_calls: BTreeMap::new(),
                 canceled: true,
+                platform_end: None,
             });
         }
     };
@@ -666,10 +668,57 @@ pub(crate) async fn run_gg_session(
     //      model caused (a reply loop detection discarded on every attempt) and one a
     //      subagent met, both collected and scored; the provider failing the root is the
     //      exit-1 case above.
+    //
+    //    None of the exit codes above is read until the platform is ruled out (see
+    //    "Attributing an end" in the driver's execution page). After the idle watchdog,
+    //    the sandbox is read and the session's own account consulted: a sandbox that is
+    //    gone or disrupted, an exit `0` with no `session_ended` (gg emits one before
+    //    every exit, so a `0` without it is the platform's report, not gg's), a code
+    //    above 128 (a signal from outside gg) or no status at all (`-1`, a lost exec
+    //    stream) is an end the platform caused, whatever the code says.
     if output.idle_timed_out {
         return Err(Error::HarnessHung {
             slug: GG_SLUG.to_string(),
             seconds: HARNESS_IDLE_TIMEOUT.as_secs(),
+        });
+    }
+    let sandbox_state = runtime.sandbox_state(handle).await;
+    if let Some(error) = platform_end(&SessionEnd {
+        slug: GG_SLUG,
+        sandbox: &handle.id,
+        sandbox_state: &sandbox_state,
+        account: SessionAccount::Gg {
+            session_ended: terminal_status.is_some(),
+        },
+        exit_code: output.exit_code,
+    }) {
+        // A platform end is not the session's failure, so it is not an `Err`: the run
+        // keeps the usage, cost, summary and telemetry gathered so far, and the engine
+        // records it `infrastructure` without collecting or validating the tree. The
+        // detail goes onto the run's event stream too, where an operator reading the
+        // feed meets it.
+        let platform_end = PlatformEnd::from_error(&error);
+        tracing::warn!(detail = %platform_end.detail, "gg session ended by the platform");
+        let event = HarnessEvent {
+            timestamp: crate::event::now_timestamp(),
+            session_id: None,
+            kind: EventKind::Error {
+                message: platform_end.detail.clone(),
+                code: None,
+            },
+        };
+        events.emit(&event);
+        translated_events.push(event);
+        return Ok(HarnessOutcome {
+            usage: Usage { tokens },
+            harness_version,
+            reported_cost,
+            raw_output,
+            translated_events,
+            gg_summary,
+            tool_calls: BTreeMap::new(),
+            canceled: false,
+            platform_end: Some(platform_end),
         });
     }
     if output.exit_code != 0 {
@@ -700,6 +749,7 @@ pub(crate) async fn run_gg_session(
         tool_calls: BTreeMap::new(),
         // This session ended on its own terms; the cancellation path returns above.
         canceled: false,
+        platform_end: None,
     })
 }
 

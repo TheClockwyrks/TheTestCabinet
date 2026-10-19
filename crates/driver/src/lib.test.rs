@@ -1069,6 +1069,7 @@ fn ready_outcome() -> HarnessOutcome {
         gg_summary: None,
         tool_calls: Default::default(),
         canceled: false,
+        platform_end: None,
     }
 }
 
@@ -1848,4 +1849,179 @@ fn a_gg_run_is_scored_at_its_primary_models_list_price() {
     );
 
     assert_eq!(request.list_prices(), list_prices());
+}
+
+// --- a session the platform ended -------------------------------------------
+
+/// A collector that fails the test if it is asked for the tree: a session the
+/// platform ended leaves a half-written build, which is never collected.
+struct RefusingCollector;
+
+#[async_trait::async_trait]
+impl super::ArtifactCollector for RefusingCollector {
+    async fn collect(&self, _container: &ContainerHandle) -> Result<super::ArtifactCollection> {
+        panic!("a session the platform ended is never collected")
+    }
+}
+
+/// A validator that fails the test if it is asked to judge anything: a session the
+/// platform ended is never validated.
+struct RefusingValidator;
+
+impl crate::validation::Validator for RefusingValidator {
+    fn validate(
+        &self,
+        _test_case: &TestCaseVersion,
+        _variant: &crate::test_case::Variant,
+        _artifacts: &super::ArtifactCollection,
+        _references: &[crate::reference::RenderedReference],
+        _proofs: &[crate::test_case::ProofFile],
+    ) -> Result<ValidationSummary> {
+        panic!("a session the platform ended is never validated")
+    }
+}
+
+#[tokio::test]
+async fn a_session_the_platform_ended_is_recorded_as_infrastructure_with_its_metrics() {
+    use crate::event::HarnessEventExt;
+    use crate::run_record::RunStateExt;
+
+    let out = tempfile::tempdir().expect("output dir");
+    // The session ended five seconds in, after one of setup, and the teardown took
+    // one more.
+    let clock = crate::clock::ManualClock::new();
+    clock.advance(Duration::from_secs(6));
+    let engine = super::RunEngine {
+        catalog: crate::test_case::TestCaseCatalog::new(
+            "/nonexistent",
+            crate::engine::built_in_catalog(),
+        ),
+        seeder: NoopSeeder,
+        runtime: ScriptedRuntime::new(Vec::new()),
+        collector: RefusingCollector,
+        harnesses: Box::new(super::DefaultHarnessRegistry::new()),
+        orchestrators: super::OrchestratorCatalog::new(),
+        engines: crate::engine::built_in_catalog(),
+        renderer: Box::new(crate::reference::BrowserRenderer::new()),
+        session_assembler: None,
+        analyzer: None,
+        toolchain: None,
+        validator: RefusingValidator,
+        output_dir: out.path().to_path_buf(),
+        creds: None,
+        prior_game_jam_entries: Vec::new(),
+        clock: std::sync::Arc::new(clock),
+    };
+    let lost = Error::HarnessEndedByPlatform {
+        slug: "claude".to_string(),
+        detail: "sandbox `run-container` gone: deleted, exit code 137".to_string(),
+    };
+    let mut outcome = outcome_with_usage(None);
+    outcome.platform_end = Some(super::PlatformEnd::from_error(&lost));
+    outcome.translated_events = vec![HarnessEvent::system(
+        crate::event::SystemStage::Teardown,
+        crate::event::SystemStatus::Started,
+    )];
+    let end = outcome.platform_end.clone().expect("set above");
+    let case = version_with_cap(1800);
+    let variant = crate::test_case::Variant {
+        slug: "base".to_string(),
+        name: "Base".to_string(),
+        description: None,
+        specs: vec![],
+        workspace: None,
+        references: vec![],
+        proofs: vec![],
+        review_items: vec![],
+        domains: vec![],
+        voxel: None,
+        reference_impls: Default::default(),
+        showcase: None,
+    };
+    let seeded = super::SeededRepo {
+        path: PathBuf::from("/nonexistent/seeded"),
+        initial_commit: "abc123".to_string(),
+        engine_version: None,
+    };
+    let request = request_with_override(None);
+    let cancel = crate::RunCancellation::new();
+    let mut sink = CollectingSink::default();
+    let environment = super::RunEnvironment {
+        os: "linux".to_string(),
+        container_image: "run-image".to_string(),
+        node_version: None,
+        auth_mode: super::AuthMode::ApiKey,
+    };
+
+    let record = engine
+        .record_platform_end(
+            super::PlatformEndedSession {
+                handle: handle(),
+                outcome: outcome.clone(),
+                environment,
+                end,
+            },
+            super::PlatformEndContext {
+                run_id: "run-lost",
+                test_case: &case,
+                variant: &variant,
+                seeded: &seeded,
+                request: &request,
+                orchestrator_slug: "one-shot",
+                engine_slug: NONE_SLUG,
+                cancel: &cancel,
+                events: &mut sink,
+            },
+            super::PlatformEndTimes {
+                started_at: OffsetDateTime::now_utc(),
+                run_started: Duration::ZERO,
+                before_teardown: Duration::from_secs(5),
+                session_elapsed: Duration::from_secs(4),
+                scheduling_wait: Duration::ZERO,
+            },
+        )
+        .await
+        .expect("the record is written");
+
+    assert_eq!(record.status.state, RunState::Infrastructure);
+    assert_eq!(
+        record.status.state,
+        RunState::classify_failure(&lost),
+        "a platform end is recorded as the state its error classifies to",
+    );
+    assert_eq!(
+        record.status.detail.as_deref(),
+        Some(
+            "run failed: claude harness session ended by the platform (sandbox `run-container` \
+             gone: deleted, exit code 137)"
+        ),
+    );
+    assert_eq!(record.validation, ValidationSummary::default());
+    assert_eq!(record.metrics.tokens, outcome.usage.tokens);
+    assert_eq!(record.metrics.setup_seconds, Some(1.0));
+    assert_eq!(record.metrics.session_seconds, Some(4.0));
+    assert_eq!(record.metrics.teardown_seconds, Some(1.0));
+    assert!(record.metrics.validation_seconds.is_none());
+    assert_eq!(record.subject.engine_slug, NONE_SLUG);
+    assert_eq!(record.seed_commit.as_deref(), Some("abc123"));
+    assert_eq!(record.environment.container_image, "run-image");
+
+    let run_dir = out.path().join("run-lost");
+    let written: super::RunRecord = serde_json::from_str(
+        &std::fs::read_to_string(run_dir.join("run-record.json")).expect("record file"),
+    )
+    .expect("record json");
+    assert_eq!(written, record);
+    assert_eq!(
+        std::fs::read_to_string(run_dir.join("events.jsonl"))
+            .expect("events file")
+            .lines()
+            .count(),
+        1,
+        "the session's translated events are kept beside the record",
+    );
+    assert!(
+        !run_dir.join("implementation").exists(),
+        "no tree was collected, so none is copied beside the record",
+    );
 }

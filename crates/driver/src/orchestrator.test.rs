@@ -6,7 +6,9 @@ use std::time::Duration;
 
 use super::*;
 use crate::event::{EventFormat, NoopEventSink};
-use crate::execution::{ContainerSpec, ContainerStart, OutputSink, OutputStream, RawOutputLine};
+use crate::execution::{
+    ContainerSpec, ContainerStart, OutputSink, OutputStream, RawOutputLine, SandboxState,
+};
 use crate::harness::{Availability, HarnessInvocation};
 use crate::metrics::TokenCounts;
 
@@ -428,6 +430,15 @@ struct HostShellRuntime {
     /// The command still runs and still exits zero — only the stream is short,
     /// which is exactly the shape of the failure this guards against.
     stream_tail_dropped: usize,
+    /// When set, a streamed exec returns with the session log's last session left
+    /// open, standing in for a connection that was lost while the harness was
+    /// still running and that the platform reported as the runner's own exit.
+    loses_the_connection: bool,
+    /// When set, the session log cannot be read back (its `cat` fails), so the
+    /// streamed copy stands in for it.
+    log_unreadable: bool,
+    /// What the runtime reports of the sandbox once the runner's exec returned.
+    sandbox: SandboxState,
 }
 
 impl HostShellRuntime {
@@ -439,7 +450,32 @@ impl HostShellRuntime {
             path,
             hangs_when_streamed: false,
             stream_tail_dropped: 0,
+            loses_the_connection: false,
+            log_unreadable: false,
+            sandbox: SandboxState::Running,
         }
+    }
+
+    /// A runtime whose streamed exec reports the runner's exit for a session whose
+    /// harness has not exited: the log holds the session without its closing
+    /// sentinel, and the stream is cut at the same point.
+    fn losing_the_connection(home: PathBuf) -> Self {
+        Self {
+            loses_the_connection: true,
+            ..Self::new(home)
+        }
+    }
+
+    /// Reopen the last session in the session log by removing its closing
+    /// sentinel, as the log reads while the harness is still running.
+    fn reopen_the_last_logged_session(&self) {
+        let log_path = self.home.join(".tcab/sessions.log");
+        let log = std::fs::read_to_string(&log_path).expect("read the session log");
+        let reopened = log
+            .trim_end()
+            .strip_suffix(SESSION_END)
+            .expect("the log ends on a closing sentinel");
+        std::fs::write(&log_path, reopened).expect("rewrite the session log");
     }
 
     /// A runtime whose streamed exec drops the last `lines` lines on the floor.
@@ -467,6 +503,14 @@ impl ContainerRuntime for HostShellRuntime {
     }
 
     async fn exec(&self, _container: &ContainerHandle, command: &[String]) -> Result<ExecOutput> {
+        if self.log_unreadable && command.iter().any(|arg| arg.contains("sessions.log")) {
+            return Ok(ExecOutput {
+                exit_code: 1,
+                stdout: String::new(),
+                stderr: "cat: sessions.log: Permission denied".to_string(),
+                idle_timed_out: false,
+            });
+        }
         let output = Command::new(&command[0])
             .args(&command[1..])
             .env("HOME", &self.home)
@@ -491,7 +535,13 @@ impl ContainerRuntime for HostShellRuntime {
         if !self.hangs_when_streamed {
             let output = self.exec(container, command).await?;
             let lines: Vec<&str> = output.stdout.lines().collect();
-            let delivered = lines.len().saturating_sub(self.stream_tail_dropped);
+            let dropped = if self.loses_the_connection {
+                self.reopen_the_last_logged_session();
+                1
+            } else {
+                self.stream_tail_dropped
+            };
+            let delivered = lines.len().saturating_sub(dropped);
             for line in &lines[..delivered] {
                 sink.on_line(OutputStream::Stdout, line);
             }
@@ -509,6 +559,10 @@ impl ContainerRuntime for HostShellRuntime {
 
     async fn stop(&self, _container: &ContainerHandle) -> Result<()> {
         Ok(())
+    }
+
+    async fn sandbox_state(&self, _container: &ContainerHandle) -> SandboxState {
+        self.sandbox.clone()
     }
 }
 
@@ -1025,5 +1079,239 @@ async fn nonzero_runner_exit_before_the_deadline_is_a_harness_error() {
     match drive_failing(NO_DEADLINE).await {
         Error::HarnessInvocation { .. } => {}
         other => panic!("expected a harness error before the deadline, got {other:?}"),
+    }
+}
+
+/// Drive the given orchestrator against `runtime`, with the recording harness
+/// marking itself done after `sessions_before_marker` sessions and no deadline in
+/// sight, and return what the drive returned.
+async fn drive_against(
+    runtime: impl FnOnce(PathBuf) -> HostShellRuntime,
+    under_test: UnderTest,
+    sessions_before_marker: u32,
+) -> Result<HarnessOutcome> {
+    let root = tempfile::tempdir().expect("temp dir");
+    let home = root.path().join("home");
+    let workspace = root.path().join("work");
+    let capture = root.path().join("captures");
+    for dir in [&home, &workspace, &capture] {
+        std::fs::create_dir_all(dir).expect("create dir");
+    }
+    let selection = match under_test {
+        UnderTest::BuiltIn(slug) => OrchestratorSelection::builtin(slug),
+        UnderTest::MultiSession => write_multi_session_orchestrator(&root.path().join("looper")),
+    };
+    let orchestrator = OrchestratorCatalog::new()
+        .resolve(&selection)
+        .expect("orchestrator resolves");
+    let marker_file = orchestrator
+        .manifest
+        .params
+        .get("marker_file")
+        .map(|rel| workspace.join(rel))
+        .unwrap_or_else(|| workspace.join(".vendor/unused-marker"));
+    let harness = RecordingHarness {
+        count_file: root
+            .path()
+            .join("session-count")
+            .to_string_lossy()
+            .into_owned(),
+        capture_dir: capture.to_string_lossy().into_owned(),
+        marker_file: marker_file.to_string_lossy().into_owned(),
+        sessions_before_marker,
+    };
+    let runtime = runtime(home);
+    let container = ContainerHandle {
+        id: "fake".to_string(),
+    };
+    let mut events = NoopEventSink;
+    drive_orchestrator(
+        &runtime,
+        &container,
+        &harness,
+        &orchestrator,
+        HarnessSlug::Claude,
+        "fake-model",
+        "Build it.",
+        &workspace.to_string_lossy(),
+        NO_DEADLINE,
+        TEST_MAX_RUNTIME,
+        &mut events,
+    )
+    .await
+}
+
+/// Drive the given orchestrator against a runtime that reports the runner's exit
+/// for a session whose harness has not exited, and return the platform end the
+/// outcome carries with the outcome.
+async fn drive_losing_the_connection(
+    under_test: UnderTest,
+    sessions_before_marker: u32,
+) -> (HarnessOutcome, PlatformEnd) {
+    let outcome = drive_against(
+        HostShellRuntime::losing_the_connection,
+        under_test,
+        sessions_before_marker,
+    )
+    .await
+    .expect("a platform end is an outcome, not an error");
+    let end = outcome
+        .platform_end
+        .clone()
+        .expect("a session the log leaves open is the platform's end");
+    (outcome, end)
+}
+
+#[tokio::test]
+async fn a_session_the_log_leaves_open_fails_the_run_despite_a_clean_exit() {
+    // The platform can report a runner as finished when the connection carrying
+    // its exec was lost and the harness is still at work. The exit status reads
+    // zero, so nothing but the log tells the two apart: the wrapper writes the
+    // closing sentinel there only once the harness has exited. Trusting the exit
+    // status collected a half-written tree and scored it as the model's result.
+    let (outcome, end) = drive_losing_the_connection(UnderTest::BuiltIn(ONE_SHOT_SLUG), 99).await;
+    let lost = Error::HarnessSessionLost {
+        slug: "claude".to_string(),
+        unfinished: 1,
+        total: 1,
+        exit_code: 0,
+    };
+    assert_eq!(end, PlatformEnd::from_error(&lost));
+    assert_eq!(
+        <crate::run_record::RunState as crate::run_record::RunStateExt>::classify_failure(&lost),
+        crate::run_record::RunState::Infrastructure
+    );
+    // The usage the session reported before the connection went is kept.
+    assert_eq!(outcome.usage.tokens.uncached_input, Some(10));
+    assert_eq!(outcome.usage.tokens.output, Some(5));
+    // The detail rides the run's own event stream as well.
+    assert!(
+        outcome.translated_events.iter().any(|event| matches!(
+            &event.kind,
+            crate::event::EventKind::Error { message, .. } if *message == end.detail
+        )),
+        "the platform end is on the run's events: {:?}",
+        outcome.translated_events
+    );
+}
+
+#[tokio::test]
+async fn a_lost_session_counts_only_the_sessions_left_open() {
+    // A multi-session run cut off in its second session: the first closed in the
+    // log and is not held against the run, the second is the one that was lost.
+    let (outcome, end) = drive_losing_the_connection(UnderTest::MultiSession, 2).await;
+    let lost = Error::HarnessSessionLost {
+        slug: "claude".to_string(),
+        unfinished: 1,
+        total: 2,
+        exit_code: 0,
+    };
+    assert_eq!(end, PlatformEnd::from_error(&lost));
+    assert_eq!(outcome.usage.tokens.uncached_input, Some(20));
+}
+
+#[tokio::test]
+async fn a_session_the_stream_leaves_open_is_only_a_warning_when_the_log_is_unread() {
+    // The stream can lose its last lines as a session exits, so a session it holds
+    // without its closing sentinel says nothing about whether the harness finished.
+    // With the log unreadable the end is left to the sandbox and the exit status,
+    // which here are the harness's own: the run stands.
+    let outcome = drive_against(
+        |home| HostShellRuntime {
+            stream_tail_dropped: 1,
+            log_unreadable: true,
+            ..HostShellRuntime::new(home)
+        },
+        UnderTest::BuiltIn(ONE_SHOT_SLUG),
+        99,
+    )
+    .await
+    .expect("the run stands");
+    assert_eq!(outcome.platform_end, None);
+}
+
+#[tokio::test]
+async fn a_gone_sandbox_ends_a_cleanly_exited_runner_as_the_platforms() {
+    // A pod deleted under the run: the exec may still report the runner's exit as
+    // zero, but the sandbox is read before the exit status.
+    let outcome = drive_against(
+        |home| HostShellRuntime {
+            sandbox: SandboxState::Gone {
+                reason: "deleted".to_string(),
+            },
+            ..HostShellRuntime::new(home)
+        },
+        UnderTest::BuiltIn(ONE_SHOT_SLUG),
+        99,
+    )
+    .await
+    .expect("a platform end is an outcome");
+    let end = outcome.platform_end.expect("the platform's end");
+    assert_eq!(
+        end.detail,
+        "run failed: claude harness session ended by the platform (sandbox `fake` gone: \
+         deleted, exit code 0)"
+    );
+}
+
+/// Drive the one-shot runner with a failing session against a runtime reporting
+/// `sandbox`, and return what the drive returned.
+async fn drive_failing_against(sandbox: SandboxState) -> Result<HarnessOutcome> {
+    let root = tempfile::tempdir().expect("temp dir");
+    let home = root.path().join("home");
+    let workspace = root.path().join("work");
+    for dir in [&home, &workspace] {
+        std::fs::create_dir_all(dir).expect("create dir");
+    }
+    let orchestrator = OrchestratorCatalog::new()
+        .resolve(&OrchestratorSelection::builtin(ONE_SHOT_SLUG))
+        .expect("orchestrator resolves");
+    let runtime = HostShellRuntime {
+        sandbox,
+        ..HostShellRuntime::new(home)
+    };
+    let container = ContainerHandle {
+        id: "fake".to_string(),
+    };
+    let mut events = NoopEventSink;
+    drive_orchestrator(
+        &runtime,
+        &container,
+        &FailingHarness,
+        &orchestrator,
+        HarnessSlug::Claude,
+        "fake-model",
+        "Build it.",
+        &workspace.to_string_lossy(),
+        NO_DEADLINE,
+        TEST_MAX_RUNTIME,
+        &mut events,
+    )
+    .await
+}
+
+#[tokio::test]
+async fn a_disrupted_sandbox_ends_a_failed_runner_as_the_platforms() {
+    // The harness's non-zero exit is not its own when the pod was being evicted.
+    let outcome = drive_failing_against(SandboxState::Disrupted {
+        reason: "EvictionByEvictionAPI".to_string(),
+    })
+    .await
+    .expect("a platform end is an outcome");
+    let end = outcome.platform_end.expect("the platform's end");
+    assert!(
+        end.detail
+            .contains("sandbox `fake` disrupted: EvictionByEvictionAPI")
+            && end.detail.ends_with("exit code 1)"),
+        "{}",
+        end.detail
+    );
+}
+
+#[tokio::test]
+async fn a_failed_runner_in_a_live_sandbox_is_still_the_harnesss_error() {
+    match drive_failing_against(SandboxState::Running).await {
+        Err(Error::HarnessInvocation { .. }) => {}
+        other => panic!("expected a harness error, got {other:?}"),
     }
 }

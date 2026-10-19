@@ -847,3 +847,145 @@ fn sandbox_pod_managed_by_matches_what_the_dispatcher_reaps_on() {
         Some("tcab-driver"),
     );
 }
+
+// ── pod_sandbox_state ────────────────────────────────────────────────────────
+
+fn pod_with_status(status: PodStatus) -> Pod {
+    Pod {
+        status: Some(status),
+        ..Default::default()
+    }
+}
+
+fn running_pod() -> Pod {
+    pod_with_status(PodStatus {
+        phase: Some("Running".to_string()),
+        ..Default::default()
+    })
+}
+
+fn disruption(status: &str, reason: Option<&str>, message: Option<&str>) -> PodCondition {
+    PodCondition {
+        type_: "DisruptionTarget".to_string(),
+        status: status.to_string(),
+        reason: reason.map(str::to_string),
+        message: message.map(str::to_string),
+        ..Default::default()
+    }
+}
+
+#[test]
+fn a_running_pod_with_no_conditions_is_running() {
+    assert_eq!(pod_sandbox_state(&running_pod()), SandboxState::Running);
+    // A pod whose status was never filled in has nothing that says it ended.
+    assert_eq!(pod_sandbox_state(&Pod::default()), SandboxState::Running);
+}
+
+#[test]
+fn a_pod_marked_for_deletion_is_gone() {
+    let mut pod = running_pod();
+    pod.metadata.deletion_timestamp = Some(k8s_openapi::apimachinery::pkg::apis::meta::v1::Time(
+        k8s_openapi::jiff::Timestamp::UNIX_EPOCH,
+    ));
+    assert_eq!(
+        pod_sandbox_state(&pod),
+        SandboxState::Gone {
+            reason: "being deleted".to_string()
+        }
+    );
+}
+
+#[test]
+fn a_true_disruption_target_marks_the_pod_disrupted_with_its_reason() {
+    let pod = pod_with_status(PodStatus {
+        phase: Some("Running".to_string()),
+        conditions: Some(vec![disruption(
+            "True",
+            Some("EvictionByEvictionAPI"),
+            Some("Eviction API: evicting"),
+        )]),
+        ..Default::default()
+    });
+    assert_eq!(
+        pod_sandbox_state(&pod),
+        SandboxState::Disrupted {
+            reason: "EvictionByEvictionAPI: Eviction API: evicting".to_string()
+        }
+    );
+}
+
+#[test]
+fn a_disruption_is_read_before_the_deletion_it_leads_to() {
+    let mut pod = pod_with_status(PodStatus {
+        conditions: Some(vec![disruption(
+            "True",
+            Some("PreemptionByScheduler"),
+            None,
+        )]),
+        ..Default::default()
+    });
+    pod.metadata.deletion_timestamp = Some(k8s_openapi::apimachinery::pkg::apis::meta::v1::Time(
+        k8s_openapi::jiff::Timestamp::UNIX_EPOCH,
+    ));
+    assert_eq!(
+        pod_sandbox_state(&pod),
+        SandboxState::Disrupted {
+            reason: "PreemptionByScheduler".to_string()
+        }
+    );
+}
+
+#[test]
+fn a_false_disruption_target_leaves_the_pod_running() {
+    let pod = pod_with_status(PodStatus {
+        phase: Some("Running".to_string()),
+        conditions: Some(vec![disruption(
+            "False",
+            Some("EvictionByEvictionAPI"),
+            None,
+        )]),
+        ..Default::default()
+    });
+    assert_eq!(pod_sandbox_state(&pod), SandboxState::Running);
+}
+
+#[test]
+fn a_failed_pod_is_gone_with_its_container_reason() {
+    let pod = pod_with_status(PodStatus {
+        phase: Some("Failed".to_string()),
+        container_statuses: Some(vec![ContainerStatus {
+            name: RUN_CONTAINER.to_string(),
+            state: Some(ContainerState {
+                terminated: Some(k8s_openapi::api::core::v1::ContainerStateTerminated {
+                    reason: Some("OOMKilled".to_string()),
+                    exit_code: 137,
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }),
+            ..Default::default()
+        }]),
+        ..Default::default()
+    });
+    assert_eq!(
+        pod_sandbox_state(&pod),
+        SandboxState::Gone {
+            reason: "phase Failed: OOMKilled (exit 137)".to_string()
+        }
+    );
+}
+
+#[test]
+fn an_evicted_pod_is_gone_with_the_pod_reason() {
+    let pod = pod_with_status(PodStatus {
+        phase: Some("Failed".to_string()),
+        reason: Some("Evicted".to_string()),
+        ..Default::default()
+    });
+    assert_eq!(
+        pod_sandbox_state(&pod),
+        SandboxState::Gone {
+            reason: "phase Failed: Evicted".to_string()
+        }
+    );
+}

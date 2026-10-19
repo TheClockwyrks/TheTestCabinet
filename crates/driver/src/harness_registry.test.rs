@@ -319,3 +319,140 @@ fn gg_is_registered_directly_with_openrouter_key_and_no_install() {
     assert_eq!(gg.install_command(), None);
     assert!(gg.subscription_spec().is_none());
 }
+
+// --- attributing a direct session's end -------------------------------------
+
+/// A runtime whose streamed exec replays `lines` and reports `exit_code`, and
+/// which reports `sandbox` once the exec returned.
+struct ScriptedRuntime {
+    lines: Vec<&'static str>,
+    exit_code: i32,
+    sandbox: crate::execution::SandboxState,
+}
+
+#[async_trait::async_trait]
+impl ContainerRuntime for ScriptedRuntime {
+    async fn start(
+        &self,
+        _spec: &crate::execution::ContainerSpec,
+    ) -> Result<crate::execution::ContainerStart> {
+        unreachable!("invoke runs in an already-started container")
+    }
+
+    async fn exec(&self, _container: &ContainerHandle, _command: &[String]) -> Result<ExecOutput> {
+        unreachable!("invoke streams its session")
+    }
+
+    async fn exec_streamed(
+        &self,
+        _container: &ContainerHandle,
+        _command: &[String],
+        _idle_timeout: Option<Duration>,
+        sink: &mut dyn OutputSink,
+    ) -> Result<ExecOutput> {
+        for line in &self.lines {
+            sink.on_line(OutputStream::Stdout, line);
+        }
+        Ok(ExecOutput {
+            exit_code: self.exit_code,
+            stdout: self.lines.join("\n"),
+            stderr: String::new(),
+            idle_timed_out: false,
+        })
+    }
+
+    async fn stop(&self, _container: &ContainerHandle) -> Result<()> {
+        Ok(())
+    }
+
+    async fn sandbox_state(&self, _container: &ContainerHandle) -> crate::execution::SandboxState {
+        self.sandbox.clone()
+    }
+}
+
+/// A Claude Code session's closing usage line.
+const CLAUDE_RESULT: &str = r#"{"type":"result","usage":{"input_tokens":100,"output_tokens":25}}"#;
+
+/// Invoke Claude Code directly against a session that ends with `exit_code` in a
+/// sandbox reported as `sandbox`.
+async fn invoke_ending(
+    exit_code: i32,
+    sandbox: crate::execution::SandboxState,
+) -> Result<HarnessOutcome> {
+    let registry = DefaultHarnessRegistry::new();
+    let harness = registry.get(HarnessSlug::Claude).expect("claude resolves");
+    let runtime = ScriptedRuntime {
+        lines: vec![CLAUDE_RESULT],
+        exit_code,
+        sandbox,
+    };
+    let container = ContainerHandle {
+        id: "sandbox-1".to_string(),
+    };
+    let mut events = crate::event::NoopEventSink;
+    harness
+        .invoke(
+            &runtime,
+            &container,
+            &HarnessInvocation {
+                slug: HarnessSlug::Claude,
+                model_id: "fake-model".to_string(),
+                prompt: "Build it.".to_string(),
+            },
+            &mut events,
+        )
+        .await
+}
+
+#[tokio::test]
+async fn a_direct_session_the_platform_ended_is_an_outcome_carrying_the_end() {
+    use crate::execution::SandboxState;
+    let cases = [
+        (
+            0,
+            SandboxState::Gone {
+                reason: "deleted".to_string(),
+            },
+            "sandbox `sandbox-1` gone: deleted, exit code 0",
+        ),
+        (
+            1,
+            SandboxState::Disrupted {
+                reason: "PreemptionByScheduler".to_string(),
+            },
+            "sandbox `sandbox-1` disrupted: PreemptionByScheduler, exit code 1",
+        ),
+        (137, SandboxState::Running, "signal 9, exit code 137"),
+        (143, SandboxState::Unknown, "signal 15, exit code 143"),
+        (-1, SandboxState::Running, "exec stream lost, exit code -1"),
+    ];
+    for (code, sandbox, detail) in cases {
+        let outcome = invoke_ending(code, sandbox)
+            .await
+            .expect("a platform end is an outcome, not an error");
+        let end = outcome.platform_end.expect("the platform's end");
+        assert_eq!(
+            end.detail,
+            format!("run failed: claude harness session ended by the platform ({detail})")
+        );
+        // The usage the session reported is kept for the record's metrics.
+        assert_eq!(outcome.usage.tokens.uncached_input, Some(100));
+        assert_eq!(outcome.usage.tokens.output, Some(25));
+        assert!(outcome.translated_events.iter().any(|event| matches!(
+            &event.kind,
+            EventKind::Error { message, .. } if *message == end.detail
+        )));
+    }
+}
+
+#[tokio::test]
+async fn a_direct_session_that_failed_in_a_live_sandbox_is_the_harnesss_error() {
+    match invoke_ending(1, crate::execution::SandboxState::Running).await {
+        Err(Error::HarnessInvocation { .. }) => {}
+        other => panic!("expected a harness error, got {other:?}"),
+    }
+    let outcome = invoke_ending(0, crate::execution::SandboxState::Running)
+        .await
+        .expect("a clean session");
+    assert_eq!(outcome.platform_end, None);
+}

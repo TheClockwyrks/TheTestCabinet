@@ -53,3 +53,32 @@ fn classify_failure_only_runtime_cap_is_a_timeout() {
         RunState::Infrastructure
     );
 }
+
+/// A session the container session log leaves open is the platform's end, not the
+/// model's: whatever the harness managed before the connection dropped is not its
+/// result, so the run is the Test Cabinet's infrastructure failure.
+#[test]
+fn a_lost_session_is_an_infrastructure_failure() {
+    assert_eq!(
+        RunState::classify_failure(&crate::Error::HarnessSessionLost {
+            slug: "claude".to_string(),
+            unfinished: 1,
+            total: 1,
+            exit_code: 0,
+        }),
+        RunState::Infrastructure
+    );
+}
+
+/// Every other end the platform caused — a gone or disrupted sandbox, a signal exit,
+/// a lost exec stream, a gg exit `0` with no `session_ended` — is infrastructure too.
+#[test]
+fn a_session_the_platform_ended_is_an_infrastructure_failure() {
+    assert_eq!(
+        RunState::classify_failure(&crate::Error::HarnessEndedByPlatform {
+            slug: "gg".to_string(),
+            detail: "exit code 137".to_string(),
+        }),
+        RunState::Infrastructure
+    );
+}
