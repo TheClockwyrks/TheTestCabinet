@@ -53,6 +53,7 @@ mod model_candidates;
 mod model_probes;
 mod models;
 mod publish_jobs;
+mod publish_retry;
 mod runs;
 mod stats;
 mod suite_reference_builds;
@@ -99,6 +100,7 @@ pub use ladders::{
     LadderStopInput, LadderSummary, RungTally, SlotCounts, SlotStatus,
 };
 pub(crate) use launch::spawn_startup_passes;
+// The backend retries failed publishes in the background for its whole life.
 pub use model_candidates::{CandidateOut, ModelCandidatesOut};
 pub use model_probes::{
     ModelProbeDetailResponse, ModelProbeItemOut, ModelProbeOut, ModelProbesResponse,
@@ -108,6 +110,7 @@ pub use models::{
     AliasInput, AliasOut, ListPriceRefreshOut, LogoFetchInput, LogoFetchOut, ModelCatalogResponse,
     ModelConfigInput, ModelListingOut, ModelOut, ModelPricesOut, ModelSeedOut, compose_catalog,
 };
+pub(crate) use publish_retry::spawn_failed_publish_retry;
 pub use suite_reference_builds::ReferenceBuildOut;
 pub use test_case_groups::{TestCaseGroupOut, TestCaseGroupsResponse, test_case_group_out};
 pub use test_cases::{

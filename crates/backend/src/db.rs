@@ -7667,9 +7667,10 @@ impl Db {
     /// is the attempt that stands rather than one a retry replaced, and **no
     /// publish job has ever been enqueued for it**, in any state. The last clause
     /// is what bounds automatic publishing to one attempt per run: a release that
-    /// is queued or running is left alone, and one that failed is left for a
-    /// person to retry, so a caller that asks on every pass never loops on a run
-    /// whose publish keeps failing.
+    /// is queued or running is left alone, and one that failed is left to the
+    /// [retry of failed publishes](crate::publish_retry), which waits between its
+    /// attempts and ends them, so a caller that asks on every pass never loops on
+    /// a run whose publish keeps failing.
     pub async fn auto_publishable_among(&self, run_ids: &[String]) -> Result<Vec<String>> {
         if run_ids.is_empty() {
             return Ok(Vec::new());
@@ -7884,6 +7885,23 @@ impl Db {
             }
         }
         Ok(swept)
+    }
+
+    /// Every publish job of every run the retry of failed publishes may take up, in
+    /// no particular order: the unpublished runs that are not attempts an automatic
+    /// retry replaced. Which of those runs are due a retry is
+    /// [`crate::publish_retry::failed_runs`]'s to say, from these rows.
+    pub async fn publish_jobs_of_retryable_runs(&self) -> Result<Vec<publish_job::Model>> {
+        let retryable = sea_orm::sea_query::Query::select()
+            .column(run::Column::Id)
+            .from(run::Entity)
+            .and_where(run::Column::Published.eq(false))
+            .and_where(not_a_retried_attempt())
+            .to_owned();
+        Ok(publish_job::Entity::find()
+            .filter(publish_job::Column::RunId.in_subquery(retryable))
+            .all(&self.conn())
+            .await?)
     }
 
     /// Fetch one publish job by id.
