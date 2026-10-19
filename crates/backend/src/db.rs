@@ -6857,6 +6857,10 @@ impl Db {
         active.state = Set("canceled".to_string());
         active.updated_at = Set(now.to_string());
         active.detail = Set(Some(detail.to_string()));
+        // `canceled` is terminal, so it ends the hold like any other terminal state: a
+        // canceled job is never finished from a held record.
+        active.held_record = Set(None);
+        active.held_detail = Set(None);
         let updated = active.update(&txn).await?;
         txn.commit().await?;
         Ok(Some(updated))
@@ -6898,6 +6902,8 @@ impl Db {
         let mut active = model.into_active_model();
         active.record_id = Set(Some(record_id.to_string()));
         active.updated_at = Set(now.to_string());
+        active.held_record = Set(None);
+        active.held_detail = Set(None);
         let updated = active.update(&txn).await?;
         txn.commit().await?;
         Ok(Some(updated))
@@ -6944,6 +6950,8 @@ impl Db {
             .col_expr(job::Column::State, Expr::value("canceled"))
             .col_expr(job::Column::UpdatedAt, Expr::value(now))
             .col_expr(job::Column::Detail, Expr::value(detail))
+            .col_expr(job::Column::HeldRecord, Expr::value(Option::<String>::None))
+            .col_expr(job::Column::HeldDetail, Expr::value(Option::<String>::None))
             .filter(job::Column::State.is_in(states));
         if let Some(origin) = filter.origin {
             update = update.filter(origin.condition());
@@ -7129,6 +7137,8 @@ impl Db {
             active.state = Set("canceled".to_string());
             active.updated_at = Set(now.to_string());
             active.detail = Set(Some(detail.to_string()));
+            active.held_record = Set(None);
+            active.held_detail = Set(None);
             WithdrawnRetry::Canceled(active.update(&txn).await?)
         } else {
             txn.commit().await?;

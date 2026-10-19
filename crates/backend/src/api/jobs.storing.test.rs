@@ -211,6 +211,75 @@ async fn a_storing_job_can_be_canceled() {
 }
 
 #[tokio::test]
+async fn canceling_a_storing_job_ends_the_hold_and_its_canceled_report_attaches_the_record() {
+    let (_dir, state) = test_state().await;
+    running_job(&state, "j").await;
+    let record = run_of("run-j", "pong", GREAT);
+    accepted(
+        &state,
+        "j",
+        update(DriverState::Storing, Some(record.clone()), Some(FAILURE)),
+    )
+    .await;
+
+    state
+        .db
+        .cancel_job("j", "2026-10-02T00:00:00Z", "canceled by operator")
+        .await
+        .unwrap()
+        .unwrap();
+    let canceled = job(&state, "j").await;
+    assert_eq!(canceled.held_record, None);
+    assert_eq!(canceled.held_detail, None);
+
+    accepted(
+        &state,
+        "j",
+        update(DriverState::Canceled, Some(record), None),
+    )
+    .await;
+    let attached = job(&state, "j").await;
+    assert_eq!(attached.state, "canceled");
+    assert_eq!(attached.record_id.as_deref(), Some("run-j"));
+    assert_eq!(attached.held_record, None);
+    assert_eq!(attached.held_detail, None);
+}
+
+#[tokio::test]
+async fn a_bulk_cancel_of_a_storing_job_ends_the_hold() {
+    let (_dir, state) = test_state().await;
+    running_job(&state, "j").await;
+    accepted(
+        &state,
+        "j",
+        update(
+            DriverState::Storing,
+            Some(run_of("run-j", "pong", GREAT)),
+            Some(FAILURE),
+        ),
+    )
+    .await;
+
+    let canceled = state
+        .db
+        .cancel_jobs(
+            &crate::db::JobCancelFilter {
+                states: &crate::db::CANCELABLE_ACTIVE_STATES,
+                ..crate::db::JobCancelFilter::default()
+            },
+            "2026-10-02T00:00:00Z",
+            "stopped",
+        )
+        .await
+        .unwrap();
+    assert_eq!(canceled, 1);
+    let job = job(&state, "j").await;
+    assert_eq!(job.state, "canceled");
+    assert_eq!(job.held_record, None);
+    assert_eq!(job.held_detail, None);
+}
+
+#[tokio::test]
 async fn a_job_lost_after_its_held_report_is_recorded_from_it_with_no_retry() {
     let (_dir, state) = test_state().await;
     running_job(&state, "j").await;
