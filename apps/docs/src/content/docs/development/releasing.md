@@ -163,7 +163,7 @@ registry and a full commit.
 
 ## Static-site topology
 
-The project deploys four static sites, all on Cloudflare Pages. Each is its own
+The project deploys five static sites, all on Cloudflare Pages. Each is its own
 Pages project under its own domain, built elsewhere and pushed with `wrangler`
 as a Direct Upload.
 
@@ -173,6 +173,7 @@ as a Direct Upload.
 | [Docs](/components/docs/overview/) (`apps/docs`) | `test-cabinet-docs` | `docs.testcabinet.ai` | the superrepo pipeline's `docs` stage (`scripts/ci/deploy-docs.sh`) |
 | Per-run playable builds | `test-cabinet-runs` | a per-run `*.pages.dev` URL | the [publisher](/components/backend/results/#publish) Job |
 | [Reference implementations](/components/backend/results/#reference-implementations) | `test-cabinet-references` | a per-variant `*.pages.dev` URL | `tcab publish-reference` |
+| [gg's public site](#ggrocks-cloudflare-pages-one-time) (`gg.rocks`) | `gg-rocks` | `gg.rocks` (apex) | the `gg.rocks` pipeline, on `master` |
 
 The gallery reads the published dataset from the public bucket at runtime, so
 a publish is an upload to the bucket and never a site build. Two Workers sit
@@ -239,6 +240,28 @@ static build with no Rust step.
 - Create a Cloudflare API token with the "Cloudflare Pages: Edit" permission and
   note the account ID. Set both on the superrepo pipeline as the secret
   variables `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`.
+
+## gg.rocks (Cloudflare Pages, one-time)
+
+gg's public site is the `gg.rocks` repository, a site the kit renders that
+depends on nothing of the project at build time. It presents gg from the `gg`
+repository's documentation pages, read at the gg version it pins, and its
+pipeline's `deploy` stage builds it and uploads it with `wrangler pages deploy`
+on every `master` and `staging` build that passed the gates stage: `master` to
+`gg-rocks`, served at `gg.rocks`, and `staging` to `gg-rocks-staging`, served
+at `staging.gg.rocks`.
+
+In the Cloudflare dashboard:
+
+- Create two Direct Upload Pages projects, `gg-rocks` with `master` as its
+  production branch and `gg-rocks-staging` with `staging`. The pipeline passes
+  the branch to `wrangler` as `--branch`, so each upload is its project's
+  production deployment.
+- Add `gg.rocks` as a custom domain on `gg-rocks` and `staging.gg.rocks` on the
+  staging project, each with a proxied CNAME in the `gg.rocks` zone pointing at
+  its project's `pages.dev` host.
+- Set `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` on the `gg.rocks`
+  pipeline as secret variables, a token holding "Cloudflare Pages: Edit".
 
 ## Per-run builds (Cloudflare Pages)
 
