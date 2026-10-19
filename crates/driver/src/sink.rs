@@ -22,6 +22,12 @@
 //! answer. Either leaves the stored stream incomplete, which the relay reports
 //! as [`RelayOutcome::Undelivered`].
 //!
+//! Every batch is bounded by a [`BatchLimit`], in events and in serialized
+//! bytes, well under the backend's request body limit. A backlog larger than
+//! that (the events that piled up while a batch was being resent through an
+//! outage) is posted as several batches, contiguous in sequence, one at a time,
+//! so its size can never earn a refusal that would leave the stream incomplete.
+//!
 //! Preview frames travel outside the sequence: each is posted once, best-effort,
 //! after the events queued before it, and never stored.
 //!
@@ -43,6 +49,42 @@ use crate::job_api::EventBatch;
 use crate::preview::AssetPreview;
 use crate::retry::{RetryEnd, RetryPolicy, retry_call};
 use crate::sigterm::{Stage, StageCell};
+
+/// The bound on one event batch. A batch is closed before the event that would
+/// take it past either bound; an event that alone exceeds `bytes` is posted as a
+/// batch of its own.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct BatchLimit {
+    /// The most events one batch carries.
+    pub events: usize,
+    /// The most bytes one batch's JSON body takes.
+    pub bytes: usize,
+}
+
+impl BatchLimit {
+    /// The relay's bound: 1,000 events or 1 MiB of JSON, half of the 2 MB request
+    /// body the backend's events route accepts.
+    pub const DEFAULT: Self = Self {
+        events: 1_000,
+        bytes: 1 << 20,
+    };
+}
+
+/// axum's default request body limit, which the backend's events route keeps.
+const BACKEND_BODY_LIMIT: usize = 2 * 1024 * 1024;
+
+// The default bound stays well under what the backend accepts.
+const _: () = assert!(BatchLimit::DEFAULT.bytes <= BACKEND_BODY_LIMIT / 2);
+
+impl Default for BatchLimit {
+    fn default() -> Self {
+        Self::DEFAULT
+    }
+}
+
+/// The bytes an [`EventBatch`]'s JSON takes beside its events: the braces, both
+/// keys, the widest sequence number and the array's brackets.
+const BATCH_ENVELOPE_BYTES: usize = r#"{"sequence":18446744073709551615,"events":[]}"#.len();
 
 /// One item handed to the relay: a harness event or an asset-preview frame. They
 /// share one channel so the relay drains them in production order, then splits
@@ -265,18 +307,30 @@ impl crate::PreviewSink for BackendPreviewSink {
 /// else already queued (`try_recv`), so a burst of events coalesces into one
 /// batch rather than a request per event. A preview flushes the events queued
 /// before it, so order is kept, and is then posted once; a failed preview is
-/// logged and dropped. Each batch is delivered under `policy`, the driver's
-/// report wait, as the module documentation describes. The channel closes when
-/// every [`RelaySender`] drops; the task then flushes any final batch and returns.
+/// logged and dropped. The events drained are posted in batches no larger than
+/// [`BatchLimit::DEFAULT`], each delivered under `policy`, the driver's report
+/// wait, as the module documentation describes. The channel closes when every
+/// [`RelaySender`] drops; the task then flushes any final batch and returns.
 pub async fn relay_task(
     client: Arc<JobClient>,
     receiver: RelayReceiver,
     policy: RetryPolicy,
 ) -> RelayOutcome {
+    relay_task_with_limit(client, receiver, policy, BatchLimit::DEFAULT).await
+}
+
+/// [`relay_task`] with each batch bounded by `limit` rather than the default.
+pub async fn relay_task_with_limit(
+    client: Arc<JobClient>,
+    receiver: RelayReceiver,
+    policy: RetryPolicy,
+    limit: BatchLimit,
+) -> RelayOutcome {
     let RelayReceiver { mut rx, progress } = receiver;
     let mut relay = Relay {
         client,
         policy,
+        limit,
         progress,
         next_sequence: 0,
         undelivered: false,
@@ -331,6 +385,7 @@ pub async fn settle(tx: RelaySender, task: tokio::task::JoinHandle<RelayOutcome>
 struct Relay {
     client: Arc<JobClient>,
     policy: RetryPolicy,
+    limit: BatchLimit,
     progress: Arc<RelayProgress>,
     /// The sequence of the next event to be batched.
     next_sequence: u64,
@@ -339,11 +394,38 @@ struct Relay {
 }
 
 impl Relay {
+    /// Deliver `events` in order, as consecutive batches each within the relay's
+    /// [`BatchLimit`], each settled before the next is posted.
+    async fn deliver(&mut self, events: Vec<HarnessEvent>) {
+        let mut batch: Vec<HarnessEvent> = Vec::new();
+        let mut bytes = BATCH_ENVELOPE_BYTES;
+        for event in events {
+            // An event that cannot be serialized fails the batch's own
+            // serialization too; counting it as empty keeps it in a batch, whose
+            // post then reports the error.
+            let size = serde_json::to_vec(&event).map_or(0, |json| json.len());
+            // The comma that separates it from the event before it.
+            let added = size + usize::from(!batch.is_empty());
+            if !batch.is_empty()
+                && (batch.len() >= self.limit.events || bytes + added > self.limit.bytes)
+            {
+                self.deliver_batch(std::mem::take(&mut batch)).await;
+                bytes = BATCH_ENVELOPE_BYTES;
+                batch.push(event);
+                bytes += size;
+            } else {
+                batch.push(event);
+                bytes += added;
+            }
+        }
+        self.deliver_batch(batch).await;
+    }
+
     /// Deliver `events` as one batch, numbered from the next sequence, holding it
     /// until the backend acknowledges it, refuses it or its wait passes. The
     /// sequence advances past the batch whatever its fate, so a batch the backend
     /// stored without the driver hearing so is never overwritten by later events.
-    async fn deliver(&mut self, events: Vec<HarnessEvent>) {
+    async fn deliver_batch(&mut self, events: Vec<HarnessEvent>) {
         if events.is_empty() {
             return;
         }

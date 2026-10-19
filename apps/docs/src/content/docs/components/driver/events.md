@@ -52,9 +52,11 @@ the backend fan the batch out to the job's live subscribers.
 The driver posts one batch at a time, in sequence order, and holds each batch
 until the backend acknowledges it. While the backend is unreachable or answers
 `5xx`, the driver sends the batch again with backoff, and events emitted in the
-meantime wait for the next batch. Every path that posts a terminal status,
-failure included, posts it only after every batch is acknowledged, so the
-stored stream is complete when the status arrives.
+meantime wait for the next batch. A batch is bounded in events and in bytes,
+well under the route's request body limit, so a backlog that piled up during
+an outage follows as several batches, contiguous in sequence. Every path that
+posts a terminal status, failure included, posts it only after every batch is
+acknowledged, so the stored stream is complete when the status arrives.
 
 The stored events of a job, in sequence order, are its recorded stream. A
 subscriber to the job's live stream is replayed them before the live tail, and

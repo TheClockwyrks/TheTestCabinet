@@ -23,7 +23,10 @@ use crate::client::JobClient;
 
 use crate::retry::RetryPolicy;
 
-use super::{BackendEventSink, BackendPreviewSink, Outbound, RelayOutcome, channel, relay_task};
+use super::{
+    BATCH_ENVELOPE_BYTES, BackendEventSink, BackendPreviewSink, BatchLimit, Outbound, RelayOutcome,
+    channel, relay_task, relay_task_with_limit,
+};
 
 /// One request the stub backend received: the path's trailing segment
 /// (`events`/`preview`/`status`) and its JSON body.
@@ -429,4 +432,101 @@ async fn a_failed_preview_is_dropped_and_the_events_after_it_follow() {
     let kinds: Vec<&str> = calls.iter().map(|c| c.kind.as_str()).collect();
     assert_eq!(kinds, vec!["preview", "events"], "a preview is tried once");
     assert_eq!(calls[1].sequence(), 0, "previews take no sequence");
+}
+
+#[tokio::test]
+async fn a_backlog_larger_than_the_limit_is_posted_as_contiguous_batches() {
+    let (base, received) = scripted_backend("events", vec![503]).await;
+    let client = Arc::new(JobClient::new(base, "job-9", "tok"));
+    let limit = BatchLimit {
+        events: 3,
+        bytes: BatchLimit::DEFAULT.bytes,
+    };
+
+    let (tx, rx) = channel();
+    let progress = rx.progress();
+    let _ = tx.send(Outbound::Event(event()));
+    let relay = tokio::spawn(relay_task_with_limit(client, rx, fast_policy(), limit));
+
+    // The first batch is answered `503`; the backlog that piles up while it waits
+    // to be resent is larger than one batch may carry.
+    until_received(&received, 1).await;
+    for _ in 0..8 {
+        let _ = tx.send(Outbound::Event(event()));
+    }
+    drop(tx);
+
+    let outcome = tokio::time::timeout(Duration::from_secs(10), relay)
+        .await
+        .expect("the relay should finish")
+        .expect("relay");
+    assert_eq!(outcome, RelayOutcome::Delivered);
+    assert_eq!(progress.acknowledged_count(), 9);
+
+    let calls = received.lock().expect("lock").clone();
+    let batches: Vec<(u64, usize)> = calls
+        .iter()
+        .map(|c| (c.sequence(), c.event_count()))
+        .collect();
+    assert_eq!(
+        batches,
+        vec![(0, 1), (0, 1), (1, 3), (4, 3), (7, 2)],
+        "the backlog follows the resent batch in bounded, contiguous batches: {calls:?}"
+    );
+}
+
+/// An event whose JSON takes exactly `bytes` bytes.
+fn event_of_bytes(bytes: usize) -> HarnessEvent {
+    let mut event = event();
+    let base = serde_json::to_vec(&event).expect("serialize").len();
+    if let crate::event::EventKind::System { message, .. } = &mut event.kind {
+        message.push_str(&"x".repeat(bytes - base));
+    }
+    assert_eq!(serde_json::to_vec(&event).expect("serialize").len(), bytes);
+    event
+}
+
+#[tokio::test]
+async fn a_batch_is_closed_before_it_would_pass_the_byte_limit() {
+    let (base, received) = stub_backend().await;
+    let client = Arc::new(JobClient::new(base, "job-10", "tok"));
+    // Room for exactly two 1,000-byte events and the comma between them.
+    let limit = BatchLimit {
+        events: 100,
+        bytes: BATCH_ENVELOPE_BYTES + 2_001,
+    };
+
+    let (tx, rx) = channel();
+    for _ in 0..5 {
+        let _ = tx.send(Outbound::Event(event_of_bytes(1_000)));
+    }
+    // An event larger than the limit on its own still goes, alone.
+    let _ = tx.send(Outbound::Event(event_of_bytes(5_000)));
+    let _ = tx.send(Outbound::Event(event_of_bytes(1_000)));
+    drop(tx);
+
+    assert_eq!(
+        relay_task_with_limit(client, rx, fast_policy(), limit).await,
+        RelayOutcome::Delivered
+    );
+
+    let calls = received.lock().expect("lock").clone();
+    let batches: Vec<(u64, usize)> = calls
+        .iter()
+        .map(|c| (c.sequence(), c.event_count()))
+        .collect();
+    assert_eq!(
+        batches,
+        vec![(0, 2), (2, 2), (4, 1), (5, 1), (6, 1)],
+        "{calls:?}"
+    );
+    for call in &calls[..2] {
+        let body = serde_json::to_vec(&call.body).expect("serialize");
+        assert!(
+            body.len() <= limit.bytes,
+            "{} > {}",
+            body.len(),
+            limit.bytes
+        );
+    }
 }
