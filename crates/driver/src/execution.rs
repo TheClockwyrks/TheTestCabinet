@@ -267,6 +267,36 @@ pub trait OutputSink: Send {
     fn on_line(&mut self, stream: OutputStream, line: &str);
 }
 
+/// What a runtime can read of a run's sandbox once a session's exec has returned.
+///
+/// The exit status an exec reports is the platform's word for how the session
+/// ended, and the platform can report a session it ended itself as the harness's
+/// own exit. The sandbox's state is read after the exec returns so the driver can
+/// tell the two apart; see [Attributing an
+/// end](https://docs.testcabinet.ai/components/driver/execution/#attributing-an-end)
+/// and [`session_end`](crate::session_end).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SandboxState {
+    /// The sandbox is still running: the platform has not touched it.
+    Running,
+    /// The sandbox is gone: deleted, being deleted, or no longer running.
+    Gone {
+        /// Why, as a bare phrase carrying its figures (for example `deleted`, or
+        /// `Failed: OOMKilled (exit 137)`).
+        reason: String,
+    },
+    /// The sandbox is still present but the platform has marked it for disruption:
+    /// a Kubernetes pod carrying a `DisruptionTarget` condition with status `True`.
+    Disrupted {
+        /// The condition's reason and message (for example
+        /// `EvictionByEvictionAPI: Eviction API: evicting`).
+        reason: String,
+    },
+    /// The state could not be read, or the runtime cannot read it. The end is
+    /// attributed by the session's own account and the exit status alone.
+    Unknown,
+}
+
 /// Abstraction over a container runtime (Docker, Podman, or compatible).
 ///
 /// Hard-coding a single runtime is avoided so compatible runtimes can be swapped
@@ -321,6 +351,17 @@ pub trait ContainerRuntime: Send + Sync {
 
     /// Stop and remove the container.
     async fn stop(&self, container: &ContainerHandle) -> Result<()>;
+
+    /// The state of the sandbox `container` names, read after a session's exec
+    /// returns so an end the platform caused is told apart from the harness's own.
+    ///
+    /// Never fails: a state that cannot be read is
+    /// [`Unknown`](SandboxState::Unknown), which leaves the attribution to the
+    /// session's account and the exit status. The default implementation reports
+    /// `Unknown`, for runtimes that cannot observe their sandbox.
+    async fn sandbox_state(&self, _container: &ContainerHandle) -> SandboxState {
+        SandboxState::Unknown
+    }
 
     /// Ensure `image` is present in local storage, fetching it from its registry
     /// if it is not already pulled.

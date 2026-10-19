@@ -304,3 +304,70 @@ fn detection_probes_in_order_and_stops_at_the_first_answer() {
 fn a_runtime_that_is_not_installed_does_not_answer() {
     assert!(!runtime_answers("tcab-no-such-container-runtime"));
 }
+
+// ── sandbox_state_from_inspect ───────────────────────────────────────────────
+
+#[test]
+fn a_container_the_runtime_no_longer_knows_is_gone() {
+    let gone = SandboxState::Gone {
+        reason: "deleted".to_string(),
+    };
+    // Docker, Podman, and the bare-`inspect` wording both runtimes print.
+    for stderr in [
+        "Error response from daemon: No such container: tcab-run-1",
+        "Error: no such container tcab-run-1",
+        "Error: No such object: tcab-run-1",
+    ] {
+        assert_eq!(
+            sandbox_state_from_inspect(false, "", stderr),
+            gone,
+            "{stderr}"
+        );
+    }
+}
+
+#[test]
+fn an_inspect_that_fails_for_another_reason_is_unknown() {
+    assert_eq!(
+        sandbox_state_from_inspect(false, "", "Cannot connect to the Docker daemon"),
+        SandboxState::Unknown
+    );
+}
+
+#[test]
+fn a_running_container_is_running() {
+    assert_eq!(
+        sandbox_state_from_inspect(true, "running|false|0\n", ""),
+        SandboxState::Running
+    );
+}
+
+#[test]
+fn a_stopped_container_is_gone_with_its_figures() {
+    assert_eq!(
+        sandbox_state_from_inspect(true, "exited|true|137\n", ""),
+        SandboxState::Gone {
+            reason: "exited: OOMKilled (exit 137)".to_string()
+        }
+    );
+    assert_eq!(
+        sandbox_state_from_inspect(true, "exited|false|143", ""),
+        SandboxState::Gone {
+            reason: "exited (exit 143)".to_string()
+        }
+    );
+    assert_eq!(
+        sandbox_state_from_inspect(true, "removing|false|0", ""),
+        SandboxState::Gone {
+            reason: "being removed".to_string()
+        }
+    );
+}
+
+#[test]
+fn an_unrecognized_status_is_unknown() {
+    assert_eq!(
+        sandbox_state_from_inspect(true, "created|false|0", ""),
+        SandboxState::Unknown
+    );
+}

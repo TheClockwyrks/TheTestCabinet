@@ -81,6 +81,7 @@ pub mod run_cancellation;
 pub mod run_record;
 pub mod salvage;
 pub mod seeding;
+pub mod session_end;
 pub mod toolchain_report;
 pub mod toolchain_stage;
 pub mod validation;
@@ -174,7 +175,7 @@ pub use event::{
 pub use execution::{
     ArtifactCollection, ArtifactCollector, ContainerFile, ContainerHandle, ContainerRuntime,
     ContainerSpec, ContainerStart, ExecOutput, OutputSink, OutputStream, PreparedInstall,
-    RawOutputLine, RepoSeeder, SeedRequest, SeededRepo, WORKSPACE_DIR,
+    RawOutputLine, RepoSeeder, SandboxState, SeedRequest, SeededRepo, WORKSPACE_DIR,
 };
 pub use harness::{
     AgentHarness, Availability, HarnessInvocation, HarnessOutcome, HarnessRegistry, Usage,

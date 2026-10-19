@@ -37,9 +37,15 @@ pub trait RunStateExt {
     /// ceilings is [`LimitExceeded`](RunState::LimitExceeded), which is held apart
     /// from a harness error because it must not be retried;
     /// a harness that went silent and was killed by the idle watchdog is
-    /// [`Hung`](RunState::Hung); every other error — the harness-install or
-    /// case-init timeouts and container/cluster faults — is the Test Cabinet's
-    /// [`Infrastructure`](RunState::Infrastructure).
+    /// [`Hung`](RunState::Hung); every end the platform caused rather than the
+    /// harness — a session the container session log holds without its closing
+    /// marker ([`HarnessSessionLost`](crate::Error::HarnessSessionLost)), and a
+    /// sandbox pod gone or disrupted, a signal exit above 128, a lost exec stream or
+    /// a gg exit `0` with no `session_ended`
+    /// ([`HarnessEndedByPlatform`](crate::Error::HarnessEndedByPlatform)) — is the
+    /// Test Cabinet's [`Infrastructure`](RunState::Infrastructure), as is every
+    /// other error: the harness-install or case-init timeouts and container/cluster
+    /// faults.
     ///
     /// [`Canceled`](RunState::Canceled) is reached by one error only, a run the
     /// engine refused to launch a session for because its operator had already
@@ -57,6 +63,10 @@ impl RunStateExt for RunState {
             crate::Error::HarnessLimitExceeded { .. } => RunState::LimitExceeded,
             crate::Error::HarnessHung { .. } => RunState::Hung,
             crate::Error::CanceledBeforeSession => RunState::Canceled,
+            // The platform ended the session, not the harness: named here rather than
+            // left to the fallback so a new harness-side variant can never absorb them.
+            crate::Error::HarnessSessionLost { .. }
+            | crate::Error::HarnessEndedByPlatform { .. } => RunState::Infrastructure,
             _ => RunState::Infrastructure,
         }
     }
