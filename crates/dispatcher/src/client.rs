@@ -20,6 +20,12 @@
 //! - **Lost** — `POST /jobs/{id}/lost` (service token) to fail a job past
 //!   `dispatched` whose lease lapsed. The service token, because a dispatcher that
 //!   restarted holds no per-job token for the jobs an earlier process dispatched.
+//! - **Publish leases** — `POST /publish-jobs/leases` (service token) to renew, in
+//!   one call, the claim lease of every publish job whose publisher `Job` is live,
+//!   and `GET /publish-jobs/active` (service token) to read each `queued` or
+//!   `dispatched` publish job beside its lease expiry.
+//! - **Publish lost** — `POST /publish-jobs/{id}/lost` (service token) to fail a
+//!   `dispatched` publish job whose lease lapsed with no active publisher `Job`.
 //!
 //! The dispatcher never enqueues, streams events, or pushes records: those are the
 //! console's and the driver's jobs.
@@ -28,7 +34,9 @@ use reqwest::{Client, StatusCode};
 use serde::Deserialize;
 
 use test_cabinet_contracts::job_api::{ClaimedJob, DriverState, LeaseRenewal, StatusUpdate};
-use test_cabinet_contracts::publish_job_api::PublishClaim;
+use test_cabinet_contracts::publish_job_api::{
+    PublishClaim, PublishJobState, PublishResult, PublishState,
+};
 
 /// A failure talking to the backend's job API.
 #[derive(Debug, thiserror::Error)]
@@ -141,6 +149,24 @@ pub struct ActiveJob {
     /// When the job's claim lease lapses (RFC 3339), absent for a job never claimed
     /// or one whose lease the backend has cleared. An absent lease on a driven job
     /// counts as lapsed.
+    #[serde(default)]
+    pub lease_expires_at: Option<String>,
+}
+
+/// One `GET /publish-jobs/active` row: a `queued` or `dispatched` publish job with
+/// its claim lease. Mirrors the backend's server-side row for the fields the
+/// dispatcher reads.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ActivePublishJob {
+    /// The publish job id.
+    pub id: String,
+    /// The run the publish releases.
+    pub run_id: String,
+    /// Where the publish job is in its lifecycle.
+    pub state: PublishJobState,
+    /// When the publish job's claim lease lapses (RFC 3339), absent before the
+    /// claim. An absent lease on a `dispatched` job counts as lapsed.
     #[serde(default)]
     pub lease_expires_at: Option<String>,
 }
@@ -370,6 +396,106 @@ impl BackendClient {
         let body = response.text().await.unwrap_or_default();
         Err(ClientError::Status {
             what: "lost report",
+            status,
+            body,
+        })
+    }
+
+    /// Renew the claim lease of each listed publish job (`POST /publish-jobs/leases`,
+    /// service token). The backend extends each one still `dispatched` to two minutes
+    /// past the call and ignores the rest.
+    pub async fn renew_publish_leases(&self, job_ids: &[String]) -> Result<(), ClientError> {
+        let body = LeaseRenewal {
+            job_ids: job_ids.to_vec(),
+        };
+        let response = self
+            .http
+            .post(format!("{}/publish-jobs/leases", self.base_url))
+            .bearer_auth(&self.service_token)
+            .json(&body)
+            .send()
+            .await
+            .map_err(|source| ClientError::Transport {
+                what: "publish lease renewal",
+                source,
+            })?;
+        let status = response.status();
+        if status.is_success() {
+            return Ok(());
+        }
+        let body = response.text().await.unwrap_or_default();
+        Err(ClientError::Status {
+            what: "publish lease renewal",
+            status,
+            body,
+        })
+    }
+
+    /// The publish jobs the backend still has in flight (`GET /publish-jobs/active`,
+    /// service token), `queued` and `dispatched`, each with its lease expiry.
+    pub async fn active_publish_jobs(&self) -> Result<Vec<ActivePublishJob>, ClientError> {
+        let response = self
+            .http
+            .get(format!("{}/publish-jobs/active", self.base_url))
+            .bearer_auth(&self.service_token)
+            .send()
+            .await
+            .map_err(|source| ClientError::Transport {
+                what: "active publish jobs",
+                source,
+            })?;
+        let status = response.status();
+        if !status.is_success() {
+            let body = response.text().await.unwrap_or_default();
+            return Err(ClientError::Status {
+                what: "active publish jobs",
+                status,
+                body,
+            });
+        }
+        response
+            .json::<Vec<ActivePublishJob>>()
+            .await
+            .map_err(|source| ClientError::Decode {
+                what: "active publish jobs",
+                source,
+            })
+    }
+
+    /// Report a publish job whose publisher is gone without having reported
+    /// (`POST /publish-jobs/{id}/lost`, service token), as a `failed` publish result
+    /// whose `detail` says what the dispatcher found. The backend fails the job only
+    /// while it is still `dispatched`, so a report racing the publisher's own result
+    /// is harmless.
+    pub async fn report_publish_lost(
+        &self,
+        job_id: &str,
+        detail: impl Into<String>,
+    ) -> Result<(), ClientError> {
+        let result = PublishResult {
+            state: PublishState::Failed,
+            source_repo: None,
+            playable_build: None,
+            detail: Some(detail.into()),
+        };
+        let response = self
+            .http
+            .post(format!("{}/publish-jobs/{job_id}/lost", self.base_url))
+            .bearer_auth(&self.service_token)
+            .json(&result)
+            .send()
+            .await
+            .map_err(|source| ClientError::Transport {
+                what: "publish lost report",
+                source,
+            })?;
+        let status = response.status();
+        if status.is_success() {
+            return Ok(());
+        }
+        let body = response.text().await.unwrap_or_default();
+        Err(ClientError::Status {
+            what: "publish lost report",
             status,
             body,
         })

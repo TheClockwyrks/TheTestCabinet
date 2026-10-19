@@ -53,6 +53,7 @@ mod model_candidates;
 mod model_probes;
 mod models;
 mod publish_jobs;
+mod publish_retry;
 mod runs;
 mod stats;
 mod suite_reference_builds;
@@ -108,6 +109,7 @@ pub use models::{
     AliasInput, AliasOut, ListPriceRefreshOut, LogoFetchInput, LogoFetchOut, ModelCatalogResponse,
     ModelConfigInput, ModelListingOut, ModelOut, ModelPricesOut, ModelSeedOut, compose_catalog,
 };
+pub(crate) use publish_retry::spawn_failed_publish_retry;
 pub use suite_reference_builds::ReferenceBuildOut;
 pub use test_case_groups::{TestCaseGroupOut, TestCaseGroupsResponse, test_case_group_out};
 pub use test_cases::{
@@ -680,13 +682,22 @@ fn routes() -> Router<AppState> {
         // pod streams progress and the terminal result back
         // (`POST /publish-jobs/{id}/events|result`, per-job token). The console
         // observes it via the live NDJSON stream, which ends with the result.
-        // `/publish-jobs/next` is static, so it outranks the `/publish-jobs/{id}`
-        // dynamic route regardless of registration order.
+        // `/publish-jobs/next`, `/publish-jobs/active` and `/publish-jobs/leases` are
+        // static, so they outrank the `/publish-jobs/{id}` dynamic route regardless of
+        // registration order.
         .route("/publish-jobs/next", post(publish_jobs::claim))
+        // The dispatcher's renewal of the claim leases of the publish jobs whose
+        // publisher `Job` is live, and its read of the in-flight publish jobs it judges
+        // lapsed leases from (both service-token).
+        .route("/publish-jobs/leases", post(publish_jobs::renew_leases))
+        .route("/publish-jobs/active", get(publish_jobs::active))
         .route("/publish-jobs/{id}", get(publish_jobs::status))
         .route("/publish-jobs/{id}/live", get(publish_jobs::live))
         .route("/publish-jobs/{id}/events", post(publish_jobs::ingest_events))
         .route("/publish-jobs/{id}/result", post(publish_jobs::report_result))
+        // The dispatcher's report of a publish job whose publisher is gone without
+        // reporting (service token): it records the job failed.
+        .route("/publish-jobs/{id}/lost", post(publish_jobs::report_lost))
         // The artifact service's internal publish-job-token verify call: it forwards
         // the publisher's per-job token here (the backend is the token authority)
         // before serving the run's `tree.tar`. The presented token is the secret, so

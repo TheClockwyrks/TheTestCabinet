@@ -725,6 +725,24 @@ records the run from the report and withdraws the automatic retry the lost
 outcome enqueued: a retry still queued is removed, and one already claimed is
 canceled.
 
+Publish jobs are leased and reported lost the same way, by their own routes.
+`POST /publish-jobs/next` stores a lease expiry two minutes after the claim.
+`POST /publish-jobs/leases`, with the service token, takes a set of publish job
+ids and extends the lease of each one still `dispatched` to two minutes after
+the call, leaving the instant it was dispatched as it was. `GET
+/publish-jobs/active`, with the service token, lists the `queued` and
+`dispatched` publish jobs, each with its run, its state and its lease expiry.
+`POST /publish-jobs/{id}/lost` is the dispatcher's report of a `dispatched`
+publish job whose lease lapsed with no active publisher Job. It requires the
+service token and takes a `failed` publish result with a detail (`422`
+otherwise; `404` for an unknown publish job). The backend records the job failed
+with that detail, raises the publish-failed notification and ends the job's live
+stream, as it does for the publisher's own failed report, and the failure is
+[retried](/components/backend/results/#retrying-a-failed-publish) like any
+other. A publish job in any other state is left alone. Either way the answer is
+`204`. See [a publisher that
+stops](/components/backend/results/#a-publisher-that-stops).
+
 ### `POST /runs/{id}/reviews`
 
 Submit a [review](/components/backend/results/#reviews) for a produced run: the

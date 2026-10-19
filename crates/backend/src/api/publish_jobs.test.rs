@@ -94,6 +94,7 @@ fn terminal_from_row_reconstructs_succeeded_and_failed() {
         detail: None,
         created_at: "2026-06-27T00:00:00Z".to_string(),
         updated_at: "2026-06-27T00:01:00Z".to_string(),
+        lease_expires_at: None,
     };
     let result = terminal_from_row(&succeeded);
     assert_eq!(result.state, PublishState::Succeeded);
@@ -335,4 +336,357 @@ async fn a_second_job_for_a_published_run_is_accepted_and_keeps_the_publication_
         assert_eq!(job.source_repo, result_links().source_repo);
         assert_eq!(job.playable_build, result_links().playable_build);
     }
+}
+
+// --- Leases, the in-flight list and lost reports ---------------------------------
+
+/// Send `method uri` through the router with `json` as the body, presenting `bearer`
+/// when given, and return the status and the body parsed as JSON (`Null` when empty).
+async fn call(
+    router: &axum::Router,
+    method: &str,
+    uri: &str,
+    bearer: Option<&str>,
+    json: Option<serde_json::Value>,
+) -> (StatusCode, serde_json::Value) {
+    use tower::ServiceExt;
+    let mut request = axum::http::Request::builder().method(method).uri(uri);
+    if let Some(token) = bearer {
+        request = request.header("Authorization", format!("Bearer {token}"));
+    }
+    let body = match json {
+        Some(json) => {
+            request = request.header("Content-Type", "application/json");
+            Body::from(serde_json::to_vec(&json).unwrap())
+        }
+        None => Body::empty(),
+    };
+    let response = router
+        .clone()
+        .oneshot(request.body(body).unwrap())
+        .await
+        .unwrap();
+    let status = response.status();
+    let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let value = if bytes.is_empty() {
+        serde_json::Value::Null
+    } else {
+        serde_json::from_slice(&bytes).unwrap()
+    };
+    (status, value)
+}
+
+const SERVICE: Option<&str> = Some("service-secret");
+
+/// A `failed` lost report carrying `detail`.
+fn lost_body(detail: &str) -> serde_json::Value {
+    serde_json::json!({ "state": "failed", "detail": detail })
+}
+
+/// Claim the oldest queued publish job at `now`, returning its id.
+async fn claim_at(state: &AppState, now: &str) -> String {
+    state
+        .db
+        .claim_next_publish_job(now)
+        .await
+        .unwrap()
+        .expect("a queued publish job to claim")
+        .id
+}
+
+/// Each of the dispatcher's three publish-lease routes takes the service token alone:
+/// a request with no token, or with the publish job's own token, is refused and
+/// changes nothing.
+#[tokio::test]
+async fn the_lease_routes_require_the_service_token() {
+    let (_dir, state, router) = publish_backend(no_links()).await;
+    claim_at(&state, "2026-10-19T00:00:00Z").await;
+    let routes = [
+        (
+            "POST",
+            "/publish-jobs/leases",
+            Some(serde_json::json!({ "jobIds": ["p1"] })),
+        ),
+        ("GET", "/publish-jobs/active", None),
+        ("POST", "/publish-jobs/p1/lost", Some(lost_body("gone"))),
+    ];
+    for (method, uri, body) in routes {
+        for bearer in [None, Some("token-p1")] {
+            let (status, _) = call(&router, method, uri, bearer, body.clone()).await;
+            assert!(
+                status == StatusCode::UNAUTHORIZED || status == StatusCode::FORBIDDEN,
+                "{method} {uri} with {bearer:?}: {status}"
+            );
+        }
+    }
+    let job = state.db.get_publish_job("p1").await.unwrap().unwrap();
+    assert_eq!(job.state, "dispatched", "no refused report touched the job");
+}
+
+/// The in-flight list names each queued and dispatched publish job with its run,
+/// state and lease, and a renewal extends a dispatched job's lease without moving its
+/// dispatch instant; a terminal job is neither listed nor renewed.
+#[tokio::test]
+async fn a_renewal_extends_a_dispatched_lease_and_the_active_list_shows_it() {
+    let (_dir, state, router) = publish_backend(no_links()).await;
+    claim_at(&state, "2026-10-19T00:00:00Z").await;
+    let claimed = state.db.get_publish_job("p1").await.unwrap().unwrap();
+    let first_lease = claimed
+        .lease_expires_at
+        .clone()
+        .expect("a claim leases the job");
+
+    let (status, active) = call(&router, "GET", "/publish-jobs/active", SERVICE, None).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(
+        active,
+        serde_json::json!([{
+            "id": "p1",
+            "runId": "r1",
+            "state": "dispatched",
+            "leaseExpiresAt": first_lease,
+        }])
+    );
+
+    let (status, _) = call(
+        &router,
+        "POST",
+        "/publish-jobs/leases",
+        SERVICE,
+        Some(serde_json::json!({ "jobIds": ["p1", "unknown"] })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    let renewed = state.db.get_publish_job("p1").await.unwrap().unwrap();
+    let renewed_lease = renewed.lease_expires_at.clone().unwrap();
+    assert!(
+        OffsetDateTime::parse(&renewed_lease, &Rfc3339).unwrap()
+            > OffsetDateTime::parse(&first_lease, &Rfc3339).unwrap(),
+        "{renewed_lease} extends {first_lease}"
+    );
+    assert_eq!(
+        renewed.updated_at, claimed.updated_at,
+        "the dispatch instant stays"
+    );
+
+    let (_, active) = call(&router, "GET", "/publish-jobs/active", SERVICE, None).await;
+    assert_eq!(active[0]["leaseExpiresAt"], renewed_lease.as_str());
+
+    // A terminal job leaves the list, and a renewal of it changes nothing.
+    assert_eq!(
+        report(&router, "p1", &success_result()).await,
+        StatusCode::NO_CONTENT
+    );
+    enqueue(&state, "p2").await;
+    let (status, _) = call(
+        &router,
+        "POST",
+        "/publish-jobs/leases",
+        SERVICE,
+        Some(serde_json::json!({ "jobIds": ["p1", "p2"] })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    let (_, active) = call(&router, "GET", "/publish-jobs/active", SERVICE, None).await;
+    assert_eq!(
+        active,
+        serde_json::json!([{
+            "id": "p2",
+            "runId": "r1",
+            "state": "queued",
+            "leaseExpiresAt": null,
+        }])
+    );
+}
+
+/// A lost report on a dispatched publish job records it failed with the dispatcher's
+/// detail, raises the publish-failed notification and closes the live stream with a
+/// failed result carrying that detail.
+#[tokio::test]
+async fn a_lost_dispatched_publish_is_recorded_failed_announced_and_closed() {
+    let (_dir, state, router) = publish_backend(no_links()).await;
+    claim_at(&state, "2026-10-19T00:00:00Z").await;
+    let mut feed = state.relay.notifier().open_stream();
+    let live = state.publish_relay.live("p1");
+
+    let detail = "the publisher's Kubernetes Job no longer exists";
+    let (status, _) = call(
+        &router,
+        "POST",
+        "/publish-jobs/p1/lost",
+        SERVICE,
+        Some(lost_body(detail)),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+
+    let job = state.db.get_publish_job("p1").await.unwrap().unwrap();
+    assert_eq!(job.state, "failed");
+    assert_eq!(job.detail.as_deref(), Some(detail));
+    assert_eq!(job.lease_expires_at, None);
+
+    let crate::relay::StreamMessage::Notification(notification) = feed.receiver.try_recv().unwrap()
+    else {
+        panic!("a notification is raised");
+    };
+    let notification = serde_json::to_value(&notification).unwrap();
+    assert_eq!(notification["kind"], "publish-failed", "{notification}");
+    assert_eq!(notification["jobId"], "p1", "{notification}");
+    assert_eq!(notification["message"], detail, "{notification}");
+
+    let lines = drain(publish_stream(live, None)).await;
+    assert_eq!(lines.len(), 1, "{lines:?}");
+    assert_eq!(lines[0]["type"], "result");
+    assert_eq!(lines[0]["state"], "failed");
+    assert_eq!(lines[0]["detail"], detail);
+
+    // A second report finds the job terminal and changes nothing.
+    let (status, _) = call(
+        &router,
+        "POST",
+        "/publish-jobs/p1/lost",
+        SERVICE,
+        Some(lost_body("again")),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    let job = state.db.get_publish_job("p1").await.unwrap().unwrap();
+    assert_eq!(job.detail.as_deref(), Some(detail));
+    assert!(feed.receiver.try_recv().is_err(), "no second notification");
+}
+
+/// A lost report on a publish job that is not dispatched — still queued, or already
+/// succeeded or failed — answers `204` and leaves the job and the feed as they were.
+#[tokio::test]
+async fn a_lost_report_on_a_job_not_dispatched_changes_nothing() {
+    let (_dir, state, router) = publish_backend(no_links()).await;
+
+    // Queued.
+    let mut feed = state.relay.notifier().open_stream();
+    let (status, _) = call(
+        &router,
+        "POST",
+        "/publish-jobs/p1/lost",
+        SERVICE,
+        Some(lost_body("x")),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    assert_eq!(
+        state.db.get_publish_job("p1").await.unwrap().unwrap().state,
+        "queued"
+    );
+
+    // Succeeded.
+    claim_at(&state, "2026-10-19T00:00:00Z").await;
+    assert_eq!(
+        report(&router, "p1", &success_result()).await,
+        StatusCode::NO_CONTENT
+    );
+    let (status, _) = call(
+        &router,
+        "POST",
+        "/publish-jobs/p1/lost",
+        SERVICE,
+        Some(lost_body("x")),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    let job = state.db.get_publish_job("p1").await.unwrap().unwrap();
+    assert_eq!(job.state, "succeeded");
+    assert_eq!(job.detail, None);
+
+    // Failed by its own publisher.
+    enqueue(&state, "p2").await;
+    claim_at(&state, "2026-10-19T00:10:00Z").await;
+    let failed = PublishResult {
+        state: PublishState::Failed,
+        source_repo: None,
+        playable_build: None,
+        detail: Some("wrangler exploded".to_string()),
+    };
+    assert_eq!(report(&router, "p2", &failed).await, StatusCode::NO_CONTENT);
+    while feed.receiver.try_recv().is_ok() {}
+    let (status, _) = call(
+        &router,
+        "POST",
+        "/publish-jobs/p2/lost",
+        SERVICE,
+        Some(lost_body("x")),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    let job = state.db.get_publish_job("p2").await.unwrap().unwrap();
+    assert_eq!(job.state, "failed");
+    assert_eq!(job.detail.as_deref(), Some("wrangler exploded"));
+    assert!(
+        feed.receiver.try_recv().is_err(),
+        "no notification for a lost report"
+    );
+}
+
+/// A lost report must be `failed` (`422` otherwise, the job untouched), and one for an
+/// unknown publish job is a `404`.
+#[tokio::test]
+async fn a_lost_report_must_be_failed_and_name_a_known_job() {
+    let (_dir, state, router) = publish_backend(no_links()).await;
+    claim_at(&state, "2026-10-19T00:00:00Z").await;
+
+    let (status, _) = call(
+        &router,
+        "POST",
+        "/publish-jobs/p1/lost",
+        SERVICE,
+        Some(serde_json::to_value(success_result()).unwrap()),
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(
+        state.db.get_publish_job("p1").await.unwrap().unwrap().state,
+        "dispatched"
+    );
+
+    let (status, _) = call(
+        &router,
+        "POST",
+        "/publish-jobs/nope/lost",
+        SERVICE,
+        Some(lost_body("gone")),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+}
+
+/// The publisher's own `failed` report keeps its behaviour through the shared failure
+/// path: the job is recorded failed, the notification raised, and the live stream
+/// closed with the exact result the publisher sent.
+#[tokio::test]
+async fn a_publishers_failed_report_is_recorded_announced_and_closed() {
+    let (_dir, state, router) = publish_backend(no_links()).await;
+    claim_at(&state, "2026-10-19T00:00:00Z").await;
+    let mut feed = state.relay.notifier().open_stream();
+    let live = state.publish_relay.live("p1");
+    let failed = PublishResult {
+        state: PublishState::Failed,
+        source_repo: Some("https://github.com/x/y".to_string()),
+        playable_build: None,
+        detail: None,
+    };
+
+    assert_eq!(report(&router, "p1", &failed).await, StatusCode::NO_CONTENT);
+    let job = state.db.get_publish_job("p1").await.unwrap().unwrap();
+    assert_eq!(job.state, "failed");
+    assert_eq!(job.detail.as_deref(), Some("publish failed"));
+    let crate::relay::StreamMessage::Notification(notification) = feed.receiver.try_recv().unwrap()
+    else {
+        panic!("a notification is raised");
+    };
+    let notification = serde_json::to_value(&notification).unwrap();
+    assert_eq!(notification["message"], "publish failed", "{notification}");
+    let lines = drain(publish_stream(live, None)).await;
+    assert_eq!(lines.len(), 1);
+    assert_eq!(lines[0]["state"], "failed");
+    assert_eq!(lines[0]["sourceRepo"], "https://github.com/x/y");
 }

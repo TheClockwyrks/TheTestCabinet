@@ -18,9 +18,10 @@ The dispatcher runs one loop forever. Each tick:
 1. Reconcile against the live cluster: list the `Job`s this dispatcher owns
    (selected by their `app.kubernetes.io/managed-by` label), count the
    non-terminal ones of each kind as that kind's in-flight total, renew the
-   [lease](#claim-leases) of every run whose driver `Job` is live, report any
-   driver-pod death the driver itself could not, resolve every lapsed lease,
-   and reap the sandbox pods a dead driver orphaned (see
+   [lease](#claim-leases) of every run whose driver `Job` is live and, while
+   publishing is enabled, of every publish job whose publisher `Job` is live,
+   report any driver-pod death the driver itself could not, resolve every
+   lapsed lease, and reap the sandbox pods a dead driver orphaned (see
    [Sandbox reaping](#sandbox-reaping)). Counting from the cluster rather
    than from an in-memory tally is what makes a restart safe.
 2. Admit through the two [lanes](#admission-lanes), one driver `Job` and one
@@ -219,8 +220,29 @@ backend after the job was reported lost supersedes the lost outcome and
 withdraws its retry (see [Late terminal
 reports](/components/driver/overview/#late-terminal-reports)).
 
-A publisher that dies surfaces as a stuck `dispatched` publish job or is reaped
-by its TTL.
+### Lost publishers
+
+The same coverage extends to publisher `Job`s while publishing is enabled, by
+the three bounds of [a publisher that
+stops](/components/backend/results/#a-publisher-that-stops). A claimed publish
+job carries a lease as a claimed run does, and each tick the dispatcher renews,
+in one call (`POST /publish-jobs/leases` with the service token), the lease of
+every publish job whose publisher `Job` exists and has not finished. After
+renewing it reads the publish jobs in flight (`GET /publish-jobs/active`) and
+reports each `dispatched` publish job whose lease has lapsed with
+`POST /publish-jobs/{id}/lost`, a `failed` publish result whose detail names
+what the cluster shows: the dead publisher pod's reason, a publisher that
+exited without its result landing, or a `Job` that no longer exists. A publish
+job held `dispatched` with no active publisher `Job` for two minutes is
+therefore reported lost, and the backend records it failed and
+[retries](/components/backend/results/#retrying-a-failed-publish) it. As with
+runs, the dispatcher judges nothing on a tick whose publish renewal failed and
+never reports a publish job whose publisher `Job` is still active.
+
+Every publisher `Job` carries an `activeDeadlineSeconds` of 45 minutes, which
+ends a publisher that has hung. Its `Job` then fails, and the publish job is
+reported lost the same way. Behind both, the backend itself records failed a
+publish job that has been `dispatched` for an hour with no result.
 
 ## Sandbox reaping
 

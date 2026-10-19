@@ -23,6 +23,16 @@
 //!    the rest. A lapsed `dispatched` job is not the dispatcher's to judge: the
 //!    backend's next claim returns it to the queue at its original position with a
 //!    fresh per-job token, which is how a claim whose `Job` creation failed recovers.
+//!
+//!    When publishing is enabled the publish lane is reconciled the same way, on its
+//!    own: **renew**, in one `POST /publish-jobs/leases`, the claim lease of every
+//!    publish job whose publisher `Job` is live (see [`publish_lease_renewals`]),
+//!    then read `GET /publish-jobs/active` and report every `dispatched` publish job
+//!    whose lease has lapsed as **lost** (see [`publish_lapsed`]) through the
+//!    service-token `POST /publish-jobs/{id}/lost`. A publish job held `dispatched`
+//!    with no active publisher `Job` for the two minutes of its lease is therefore
+//!    reported lost, and the backend records it failed. Each lane judges only on a
+//!    tick whose own renewal succeeded.
 //! 2. **Admit** through two independent lanes (see [`admission`]). The **run**
 //!    lane claims the oldest queued run job and creates one driver `Job` for it
 //!    while fewer than `max_inflight` driver `Job`s are active. The **publish** lane
@@ -34,9 +44,13 @@
 //!    reverse. A tick admits at most one `Job` per lane; one that admits nothing
 //!    backs off for the poll interval.
 //!
-//! Publish `Job`s carry no lease and no bespoke death detection: a publisher that
-//! dies before reporting either surfaces as a stuck `dispatched` publish job or is
-//! reaped by its TTL.
+//! A publisher reports its own result over its per-job token, so the dispatcher
+//! retains no token for a publish job and reports no publisher death through the
+//! token path: a publisher that ends without reporting is caught by its lapsed lease
+//! alone. Every publisher `Job` also carries an `activeDeadlineSeconds` of 45 minutes
+//! (see [`PUBLISH_ACTIVE_DEADLINE_SECONDS`](crate::job::PUBLISH_ACTIVE_DEADLINE_SECONDS)),
+//! which ends one that has hung; its `Job` then fails and is reported lost the same
+//! way.
 //!
 //! The leases live in Postgres, so a restarted dispatcher judges each job against
 //! the expiry its predecessor last set; it keeps no clock of its own. The only
@@ -55,7 +69,9 @@ use tokio::time::sleep;
 use test_cabinet_contracts::job_api::ClaimedJob;
 use test_cabinet_contracts::publish_job_api::PublishClaim;
 
-use crate::client::{ActiveJob, BackendClient, JobState};
+use test_cabinet_contracts::publish_job_api::PublishJobState;
+
+use crate::client::{ActiveJob, ActivePublishJob, BackendClient, JobState};
 use crate::config::Config;
 use crate::job::{JobKind, build_driver_job, build_publish_job};
 use crate::kubernetes::{Cluster, JobPhase, Kube, ManagedJob};
@@ -97,8 +113,9 @@ pub fn admission(
 }
 
 /// The backend job ids whose claim leases this tick renews: every run whose driver
-/// `Job` exists and has not finished. Publish `Job`s carry no lease, and a `Job`
-/// without a job-id label names nothing to renew. Pure, so it is unit-tested without
+/// `Job` exists and has not finished. A publish `Job` belongs to the publish lane's
+/// renewal (see [`publish_lease_renewals`]), and a `Job` without a job-id label names
+/// nothing to renew. Pure, so it is unit-tested without
 /// a cluster.
 pub fn lease_renewals(managed: &[ManagedJob]) -> Vec<String> {
     managed
@@ -122,14 +139,42 @@ pub fn lapsed(jobs: &[ActiveJob], now: OffsetDateTime) -> Vec<String> {
                 JobState::Starting | JobState::Running | JobState::Storing
             )
         })
-        .filter(|job| {
-            job.lease_expires_at
-                .as_deref()
-                .and_then(|expiry| OffsetDateTime::parse(expiry, &Rfc3339).ok())
-                .is_none_or(|expiry| expiry < now)
-        })
+        .filter(|job| lease_lapsed(job.lease_expires_at.as_deref(), now))
         .map(|job| job.run_id.clone())
         .collect()
+}
+
+/// The publish job ids whose claim leases this tick renews: every publish job whose
+/// publisher `Job` exists and has not finished. A driver `Job` belongs to the run
+/// lane's renewal, and a `Job` without a job-id label names nothing to renew. Pure,
+/// so it is unit-tested without a cluster.
+pub fn publish_lease_renewals(managed: &[ManagedJob]) -> Vec<String> {
+    managed
+        .iter()
+        .filter(|job| job.kind == JobKind::Publish && job.phase == JobPhase::Active)
+        .filter_map(|job| job.job_id.clone())
+        .collect()
+}
+
+/// The publish jobs the dispatcher judges lost as of `now`: each `dispatched` publish
+/// job whose lease has lapsed. A lease the backend reports none of, or one that does
+/// not parse, counts as lapsed. A `queued` publish job has no publisher to lose. The
+/// expiries are compared as instants, never as strings. Pure, so it is unit-tested
+/// without a backend.
+pub fn publish_lapsed(jobs: &[ActivePublishJob], now: OffsetDateTime) -> Vec<String> {
+    jobs.iter()
+        .filter(|job| job.state == PublishJobState::Dispatched)
+        .filter(|job| lease_lapsed(job.lease_expires_at.as_deref(), now))
+        .map(|job| job.id.clone())
+        .collect()
+}
+
+/// Whether a lease expiry has lapsed as of `now`. An absent or unparseable expiry
+/// counts as lapsed, as it does at the backend.
+fn lease_lapsed(expiry: Option<&str>, now: OffsetDateTime) -> bool {
+    expiry
+        .and_then(|expiry| OffsetDateTime::parse(expiry, &Rfc3339).ok())
+        .is_none_or(|expiry| expiry < now)
 }
 
 /// The running dispatcher: its config, the backend client, the cluster, and the
@@ -210,6 +255,12 @@ impl<C: Cluster> Dispatcher<C> {
         if renewed {
             self.detect_lost(&managed).await;
         }
+        // The publish lane's leases are renewed and judged only while publishing is
+        // enabled: with no publisher image the dispatcher never touches the publish
+        // queue, and so has no publisher `Job`s to vouch for.
+        if self.config.publishing_enabled() && self.renew_publish_leases(&managed).await {
+            self.detect_lost_publishes(&managed).await;
+        }
 
         let lanes = admission(
             &managed,
@@ -276,9 +327,10 @@ impl<C: Cluster> Dispatcher<C> {
     }
 
     /// Create one `tcab-publisher` `Job` for a claimed publish job. Unlike a driver
-    /// dispatch this retains no token: the publish path has no dispatcher-side death
-    /// detection (the publisher reports its own terminal result, and a publisher that
-    /// dies surfaces as a stuck `dispatched` publish job or is reaped by its TTL).
+    /// dispatch this retains no token: the publisher reports its own terminal result,
+    /// and one that ends without reporting is caught by its lapsed claim lease (see
+    /// [`detect_lost_publishes`](Self::detect_lost_publishes)), which needs only the
+    /// service token. A claim whose `Job` creation fails is caught the same way.
     async fn dispatch_publish(&mut self, claim: PublishClaim) -> anyhow::Result<()> {
         let job = build_publish_job(&claim, &self.config);
         self.cluster.create_job(&job).await?;
@@ -420,6 +472,74 @@ impl<C: Cluster> Dispatcher<C> {
         }
     }
 
+    /// Renew the claim lease of every publish job whose publisher `Job` is live, in
+    /// one call. Answers whether the publish leases may be judged this tick: `false`
+    /// when the renewal failed, since a lease it should have extended may read as
+    /// lapsed. With no live publisher `Job` there is nothing to renew, and no call is
+    /// made.
+    async fn renew_publish_leases(&self, managed: &[ManagedJob]) -> bool {
+        let renewals = publish_lease_renewals(managed);
+        if renewals.is_empty() {
+            return true;
+        }
+        match self.backend.renew_publish_leases(&renewals).await {
+            Ok(()) => true,
+            Err(err) => {
+                tracing::warn!(
+                    error = %err,
+                    jobs = renewals.len(),
+                    "renewing the publish leases failed; judging no publish lease this tick"
+                );
+                false
+            }
+        }
+    }
+
+    /// Report every `dispatched` publish job whose lease has lapsed (see
+    /// [`publish_lapsed`]) lost, with what the cluster says about its publisher as the
+    /// detail. Reads the backend's publish jobs in flight, so it must run after this
+    /// tick's publish renewal. Best-effort: a report that fails is made again on the
+    /// next tick, as the lease stays lapsed.
+    async fn detect_lost_publishes(&self, managed: &[ManagedJob]) {
+        let jobs = match self.backend.active_publish_jobs().await {
+            Ok(jobs) => jobs,
+            Err(err) => {
+                tracing::warn!(error = %err, "could not read the backend's publish jobs in flight to judge their leases");
+                return;
+            }
+        };
+        for job_id in publish_lapsed(&jobs, OffsetDateTime::now_utc()) {
+            let found = managed.iter().find(|job| {
+                job.kind == JobKind::Publish && job.job_id.as_deref() == Some(job_id.as_str())
+            });
+            let detail = match found {
+                // Renewed on this very tick, so its lapse is a clock disagreement
+                // between the dispatcher and the backend, not a lost publisher.
+                Some(job) if job.phase == JobPhase::Active => {
+                    tracing::debug!(
+                        job_id,
+                        "a publish lease renewed this tick reads as lapsed; leaving it"
+                    );
+                    continue;
+                }
+                Some(job) if job.phase == JobPhase::Failed => {
+                    self.cluster.failure_detail(&job.name).await
+                }
+                Some(_) => {
+                    // Complete: the publisher exited, its result undelivered.
+                    "the publisher exited without its result reaching the backend".to_string()
+                }
+                None => "the publisher's Kubernetes Job no longer exists, so the publish \
+                         ended without reporting a result"
+                    .to_string(),
+            };
+            tracing::warn!(job_id, detail = %detail, "a publish job's lease lapsed; reporting it lost");
+            if let Err(err) = self.backend.report_publish_lost(&job_id, detail).await {
+                tracing::warn!(job_id, error = %err, "reporting a lost publish job to the backend failed");
+            }
+        }
+    }
+
     /// Delete the sandbox pods left behind by a driver that died before its own
     /// teardown could run, at most once per job id.
     ///
@@ -472,3 +592,7 @@ mod tests;
 #[cfg(test)]
 #[path = "controller.leases.test.rs"]
 mod lease_tests;
+
+#[cfg(test)]
+#[path = "controller.publish.test.rs"]
+mod publish_tests;

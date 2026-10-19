@@ -39,8 +39,15 @@ pub struct Model {
     pub detail: Option<String>,
     /// RFC 3339 of when the publish job was enqueued (the claim ordering key).
     pub created_at: String,
-    /// RFC 3339 of the last state transition.
+    /// RFC 3339 of the last state transition. A lease renewal is not a transition
+    /// and leaves it alone, so on a `dispatched` job it is the dispatch instant.
     pub updated_at: String,
+    /// RFC 3339 UTC instant (whole seconds) at which the claim lease lapses: set two
+    /// minutes past the claim and renewed by the dispatcher while the publisher `Job`
+    /// is live. `NULL` before the first claim and once the job has failed as lost or
+    /// abandoned, which reads as lapsed.
+    #[sea_orm(nullable)]
+    pub lease_expires_at: Option<String>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

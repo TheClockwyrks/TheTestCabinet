@@ -226,19 +226,23 @@ pub const REAPED_DETAIL: &str = "interrupted: the backend restarted while this r
 /// every invocation), so a duplicate job leaves an orphaned public build behind.
 /// The `gh` side hides the problem by reusing an existing repo, which is why the
 /// duplication only ever shows up as extra Pages deployments.
+///
+/// A `dispatched` job leaves these states when its publisher reports, when the
+/// dispatcher reports it lost ([`Db::mark_publish_job_lost`]), or when it has been
+/// `dispatched` for [`PUBLISH_JOB_ABANDONED_AFTER`] and the sweep records it failed
+/// ([`Db::fail_abandoned_publish_jobs`]), so none stays here forever.
 const ACTIVE_PUBLISH_STATES: [&str; 2] = ["queued", "dispatched"];
 
-/// How long a `dispatched` publish job may go without an update before it stops
-/// blocking a fresh publish.
-///
-/// Nothing reaps a publish job whose publisher pod died before reporting — the run
-/// queue relies on the dispatcher's death detection, which the publish queue has no
-/// equivalent of — so such a job sits in `dispatched` forever. Without this
-/// cutoff the enqueue-time dedup would wedge that run's publishing permanently,
-/// which is a worse failure than the duplicate deploy it prevents. A real publish
-/// takes minutes, so an hour only ever releases a job whose publisher is genuinely
-/// gone.
-const PUBLISH_JOB_STALE_AFTER: time::Duration = time::Duration::hours(1);
+/// How long a publish job may stay `dispatched` with no result before the backend
+/// records it failed as abandoned (the backend results page's "A publisher that
+/// stops"). It outlasts the publisher Job's 45-minute `activeDeadlineSeconds`, so the
+/// sweep never fails a job whose publisher is still running.
+pub const PUBLISH_JOB_ABANDONED_AFTER: time::Duration = time::Duration::hours(1);
+
+/// The failure reason the sweep records on a publish job abandoned for
+/// [`PUBLISH_JOB_ABANDONED_AFTER`]: its publisher never reported.
+pub const PUBLISHER_NEVER_REPORTED: &str =
+    "the publisher did not report a result within an hour of being dispatched";
 
 /// The generation of the run-record contract this build reads.
 ///
@@ -2304,26 +2308,15 @@ async fn run_has_auto_verdicts<C: ConnectionTrait>(conn: &C, run_id: &str) -> Re
         .any(|script| !script.verdicts.is_empty()))
 }
 
-/// Whether a publish job has gone quiet long enough to be treated as **abandoned**
-/// — its publisher died without ever reporting a terminal result, so it must stop
-/// blocking new publishes for its run (see [`PUBLISH_JOB_STALE_AFTER`]).
-///
-/// Only a `dispatched` job can be abandoned: a `queued` one has no publisher yet and
-/// the dispatcher will claim it, however long it has waited. A timestamp that does
-/// not parse is treated as *not* abandoned, so a malformed row fails closed —
-/// blocking a duplicate publish rather than silently permitting one.
-fn is_abandoned_publish_job(job: &publish_job::Model, now: &str) -> bool {
-    if job.state != "dispatched" {
-        return false;
-    }
-    use time::format_description::well_known::Rfc3339;
-    let (Ok(updated), Ok(now)) = (
-        time::OffsetDateTime::parse(&job.updated_at, &Rfc3339),
-        time::OffsetDateTime::parse(now, &Rfc3339),
-    ) else {
-        return false;
-    };
-    now - updated > PUBLISH_JOB_STALE_AFTER
+/// The instant a `dispatched` publish job counts as abandoned: its dispatch instant
+/// (`updated_at`, which a claim sets and a lease renewal leaves alone) plus
+/// [`PUBLISH_JOB_ABANDONED_AFTER`]. `None` when the stored instant does not parse; such
+/// a row is never swept, failing closed rather than recording a failure at an
+/// instant nobody can state.
+fn publish_job_abandoned_at(job: &publish_job::Model) -> Option<OffsetDateTime> {
+    OffsetDateTime::parse(&job.updated_at, &Rfc3339)
+        .ok()
+        .map(|dispatched| dispatched + PUBLISH_JOB_ABANDONED_AFTER)
 }
 
 /// Decode a `review` row into the in-memory [`StoredReview`], parsing its
@@ -7556,9 +7549,8 @@ impl Db {
         .await
     }
 
-    /// The publish job already releasing `run_id` — one that is `queued`, or
-    /// `dispatched` recently enough that its publisher may still be running — or
-    /// `None` when the run has no release under way.
+    /// The publish job already releasing `run_id` — one that is `queued` or
+    /// `dispatched` — or `None` when the run has no release under way.
     ///
     /// This is the enqueue-time idempotency check: `POST /runs/{id}/publish` answers
     /// with the job this finds instead of inserting a second one, so a double-click,
@@ -7567,28 +7559,23 @@ impl Db {
     /// because each publish job deploys a *new* Cloudflare Pages deployment, so a
     /// duplicate leaves an orphaned public build behind.
     ///
-    /// Terminal (`succeeded`/`failed`) jobs never block — a failed publish must stay
-    /// retryable — and neither does a `dispatched` job gone quiet long enough to be
-    /// treated as abandoned, since nothing reaps one whose publisher died before
-    /// reporting. `now` is the RFC 3339 instant that staleness is measured against.
-    /// The oldest still-live job wins, so the caller re-attaches to the publish that
-    /// started first.
+    /// Terminal (`succeeded`/`failed`) jobs never block, so a failed publish stays
+    /// retryable. A `dispatched` job whose publisher died blocks until it is reported
+    /// lost or swept as abandoned ([`Self::fail_abandoned_publish_jobs_for_run`],
+    /// which [`Self::enqueue_publish_job_once`] runs first), so a run never has two
+    /// jobs in flight. The oldest live job wins, so the caller re-attaches to the
+    /// publish that started first.
     pub async fn active_publish_job_for_run(
         &self,
         run_id: &str,
-        now: &str,
     ) -> Result<Option<publish_job::Model>> {
-        let candidates = publish_job::Entity::find()
+        Ok(publish_job::Entity::find()
             .filter(publish_job::Column::RunId.eq(run_id))
             .filter(publish_job::Column::State.is_in(ACTIVE_PUBLISH_STATES))
             .order_by_asc(publish_job::Column::CreatedAt)
             .order_by_asc(publish_job::Column::Id)
-            .all(&self.conn())
-            .await?;
-
-        Ok(candidates
-            .into_iter()
-            .find(|job| !is_abandoned_publish_job(job, now)))
+            .one(&self.conn())
+            .await?)
     }
 
     /// Enqueue a publish job: insert it in the `queued` state for the dispatcher to
@@ -7609,6 +7596,7 @@ impl Db {
             detail: Set(None),
             created_at: Set(new.created_at.clone()),
             updated_at: Set(new.created_at),
+            lease_expires_at: Set(None),
         })
         .exec(&self.conn())
         .await?;
@@ -7626,15 +7614,22 @@ impl Db {
     /// with one job. An insert that fails with no live job to attach to is a real
     /// error and is returned.
     ///
+    /// Before looking, it records the run's publish job abandoned at `now`, if any,
+    /// failed ([`Self::fail_abandoned_publish_jobs_for_run`]), so a publisher that
+    /// died never wedges the run's publishing. A caller that raises the
+    /// publish-failed notification for a swept job runs that sweep itself first; this
+    /// one then finds nothing left to sweep.
+    ///
     /// The caller applies its own gate first; this checks only for a live job.
-    /// `now` is the RFC 3339 enqueue instant, also what staleness is measured
-    /// against.
+    /// `now` is the RFC 3339 enqueue instant. `BadRequest` when it is not one.
     pub async fn enqueue_publish_job_once(
         &self,
         run_id: &str,
         now: &str,
     ) -> Result<PublishEnqueue> {
-        if let Some(existing) = self.active_publish_job_for_run(run_id, now).await? {
+        self.fail_abandoned_publish_jobs_for_run(run_id, now)
+            .await?;
+        if let Some(existing) = self.active_publish_job_for_run(run_id).await? {
             return Ok(PublishEnqueue::Attached(existing.id));
         }
         let id = cuid2::create_id();
@@ -7648,7 +7643,7 @@ impl Db {
             .await;
         match inserted {
             Ok(()) => Ok(PublishEnqueue::Enqueued(id)),
-            Err(error) => match self.active_publish_job_for_run(run_id, now).await? {
+            Err(error) => match self.active_publish_job_for_run(run_id).await? {
                 Some(existing) => Ok(PublishEnqueue::Attached(existing.id)),
                 None => Err(error),
             },
@@ -7672,9 +7667,10 @@ impl Db {
     /// is the attempt that stands rather than one a retry replaced, and **no
     /// publish job has ever been enqueued for it**, in any state. The last clause
     /// is what bounds automatic publishing to one attempt per run: a release that
-    /// is queued or running is left alone, and one that failed is left for a
-    /// person to retry, so a caller that asks on every pass never loops on a run
-    /// whose publish keeps failing.
+    /// is queued or running is left alone, and one that failed is left to the
+    /// [retry of failed publishes](crate::publish_retry), which waits between its
+    /// attempts and ends them, so a caller that asks on every pass never loops on
+    /// a run whose publish keeps failing.
     pub async fn auto_publishable_among(&self, run_ids: &[String]) -> Result<Vec<String>> {
         if run_ids.is_empty() {
             return Ok(Vec::new());
@@ -7720,7 +7716,13 @@ impl Db {
     /// `dispatched`, and return it (or `None` when the queue is empty). The
     /// select-then-update runs in one transaction, exactly like
     /// [`Db::claim_next_job`], so two dispatchers cannot claim the same publish job.
+    ///
+    /// The claimed job's **lease** is set [`JOB_LEASE`] past `now`, like a claimed
+    /// run's; the dispatcher renews it while the publisher `Job` is live
+    /// ([`Db::renew_publish_leases`]). `now` is also the dispatch instant the
+    /// abandonment sweep measures from. `BadRequest` when `now` is not RFC 3339.
     pub async fn claim_next_publish_job(&self, now: &str) -> Result<Option<publish_job::Model>> {
+        let lease = job_lease_expiry(now)?;
         let txn = self.conn().begin().await?;
         let candidate = publish_job::Entity::find()
             .filter(publish_job::Column::State.eq("queued"))
@@ -7735,9 +7737,171 @@ impl Db {
         let mut active = model.into_active_model();
         active.state = Set("dispatched".to_string());
         active.updated_at = Set(now.to_string());
+        active.lease_expires_at = Set(Some(lease));
         let updated = active.update(&txn).await?;
         txn.commit().await?;
         Ok(Some(updated))
+    }
+
+    /// Extend the claim lease of each listed publish job still `dispatched` to
+    /// [`JOB_LEASE`] past `now`: the dispatcher's renewal for every publish job whose
+    /// publisher `Job` is live. Unknown ids and jobs in any other state are ignored,
+    /// as [`Db::renew_job_leases`] ignores them. A renewal is not a state transition
+    /// and leaves `updated_at`, the dispatch instant, alone. Returns how many were
+    /// renewed. `BadRequest` when `now` is not an RFC 3339 instant.
+    pub async fn renew_publish_leases(&self, ids: &[String], now: &str) -> Result<u64> {
+        let lease = job_lease_expiry(now)?;
+        if ids.is_empty() {
+            return Ok(0);
+        }
+        let mut renewed = 0;
+        for chunk in ids.chunks(1000) {
+            renewed += publish_job::Entity::update_many()
+                .col_expr(
+                    publish_job::Column::LeaseExpiresAt,
+                    Expr::value(lease.clone()),
+                )
+                .filter(publish_job::Column::Id.is_in(chunk.iter().cloned()))
+                .filter(publish_job::Column::State.eq("dispatched"))
+                .exec(&self.conn())
+                .await?
+                .rows_affected;
+        }
+        Ok(renewed)
+    }
+
+    /// Every publish job in flight (`queued` or `dispatched`), oldest first: what the
+    /// dispatcher reads to judge which `dispatched` jobs' leases have lapsed.
+    pub async fn active_publish_jobs(&self) -> Result<Vec<publish_job::Model>> {
+        Ok(publish_job::Entity::find()
+            .filter(publish_job::Column::State.is_in(ACTIVE_PUBLISH_STATES))
+            .order_by_asc(publish_job::Column::CreatedAt)
+            .order_by_asc(publish_job::Column::Id)
+            .all(&self.conn())
+            .await?)
+    }
+
+    /// Record a publish job the dispatcher reported **lost** as `failed` with
+    /// `detail`, at `now`, and clear its lease. Only a `dispatched` job is failed: a
+    /// job in any other state (one whose result landed meanwhile, or one never
+    /// claimed) is left as it is and `None` is returned, as it is for an unknown id.
+    /// The state check is part of the update, so a result that lands concurrently is
+    /// never overwritten.
+    pub async fn mark_publish_job_lost(
+        &self,
+        id: &str,
+        now: &str,
+        detail: &str,
+    ) -> Result<Option<publish_job::Model>> {
+        let failed = publish_job::Entity::update_many()
+            .col_expr(publish_job::Column::State, Expr::value("failed"))
+            .col_expr(publish_job::Column::UpdatedAt, Expr::value(now))
+            .col_expr(publish_job::Column::Detail, Expr::value(detail))
+            .col_expr(
+                publish_job::Column::LeaseExpiresAt,
+                Expr::value(Option::<String>::None),
+            )
+            .filter(publish_job::Column::Id.eq(id))
+            .filter(publish_job::Column::State.eq("dispatched"))
+            .exec(&self.conn())
+            .await?
+            .rows_affected;
+        if failed == 0 {
+            return Ok(None);
+        }
+        self.get_publish_job(id).await
+    }
+
+    /// Record every publish job `dispatched` for [`PUBLISH_JOB_ABANDONED_AFTER`] or
+    /// more at `now` with no result as `failed`, with [`PUBLISHER_NEVER_REPORTED`]
+    /// (the backend results page's "A publisher that stops"). Each is recorded as
+    /// having failed at its dispatch instant plus that hour, not at `now`, so a job
+    /// abandoned long ago takes its place in the order of events. Returns the swept
+    /// jobs, oldest first, for the caller to raise their notifications.
+    /// `BadRequest` when `now` is not an RFC 3339 instant.
+    pub async fn fail_abandoned_publish_jobs(&self, now: &str) -> Result<Vec<publish_job::Model>> {
+        self.sweep_abandoned_publish_jobs(None, now).await
+    }
+
+    /// [`Self::fail_abandoned_publish_jobs`] for `run_id`'s publish jobs only.
+    pub async fn fail_abandoned_publish_jobs_for_run(
+        &self,
+        run_id: &str,
+        now: &str,
+    ) -> Result<Vec<publish_job::Model>> {
+        self.sweep_abandoned_publish_jobs(Some(run_id), now).await
+    }
+
+    /// The sweep behind [`Self::fail_abandoned_publish_jobs`], over one run's jobs or
+    /// every run's.
+    async fn sweep_abandoned_publish_jobs(
+        &self,
+        run_id: Option<&str>,
+        now: &str,
+    ) -> Result<Vec<publish_job::Model>> {
+        let now = parse_instant(now)?;
+        let mut query = publish_job::Entity::find()
+            .filter(publish_job::Column::State.eq("dispatched"))
+            .order_by_asc(publish_job::Column::CreatedAt)
+            .order_by_asc(publish_job::Column::Id);
+        if let Some(run_id) = run_id {
+            query = query.filter(publish_job::Column::RunId.eq(run_id));
+        }
+        let mut swept = Vec::new();
+        for job in query.all(&self.conn()).await? {
+            let Some(abandoned_at) = publish_job_abandoned_at(&job) else {
+                continue;
+            };
+            if abandoned_at > now {
+                continue;
+            }
+            let failed_at = abandoned_at.format(&Rfc3339).map_err(|e| {
+                BackendError::BadRequest(format!("formatting an abandonment instant: {e}"))
+            })?;
+            // Conditional on the row still being the dispatch the sweep read, so a
+            // result or a lost report landing meanwhile is never overwritten.
+            let failed = publish_job::Entity::update_many()
+                .col_expr(publish_job::Column::State, Expr::value("failed"))
+                .col_expr(publish_job::Column::UpdatedAt, Expr::value(failed_at))
+                .col_expr(
+                    publish_job::Column::Detail,
+                    Expr::value(PUBLISHER_NEVER_REPORTED),
+                )
+                .col_expr(
+                    publish_job::Column::LeaseExpiresAt,
+                    Expr::value(Option::<String>::None),
+                )
+                .filter(publish_job::Column::Id.eq(job.id.as_str()))
+                .filter(publish_job::Column::State.eq("dispatched"))
+                .filter(publish_job::Column::UpdatedAt.eq(job.updated_at.as_str()))
+                .exec(&self.conn())
+                .await?
+                .rows_affected;
+            if failed == 0 {
+                continue;
+            }
+            if let Some(row) = self.get_publish_job(&job.id).await? {
+                swept.push(row);
+            }
+        }
+        Ok(swept)
+    }
+
+    /// Every publish job of every run the retry of failed publishes may take up, in
+    /// no particular order: the unpublished runs that are not attempts an automatic
+    /// retry replaced. Which of those runs are due a retry is
+    /// [`crate::publish_retry::failed_runs`]'s to say, from these rows.
+    pub async fn publish_jobs_of_retryable_runs(&self) -> Result<Vec<publish_job::Model>> {
+        let retryable = sea_orm::sea_query::Query::select()
+            .column(run::Column::Id)
+            .from(run::Entity)
+            .and_where(run::Column::Published.eq(false))
+            .and_where(not_a_retried_attempt())
+            .to_owned();
+        Ok(publish_job::Entity::find()
+            .filter(publish_job::Column::RunId.in_subquery(retryable))
+            .all(&self.conn())
+            .await?)
     }
 
     /// Fetch one publish job by id.
@@ -9917,6 +10081,10 @@ mod lease_tests;
 #[cfg(test)]
 #[path = "db.probe_lease.test.rs"]
 mod probe_lease_tests;
+
+#[cfg(test)]
+#[path = "db.publish_lease.test.rs"]
+mod publish_lease_tests;
 
 #[cfg(test)]
 #[path = "db.job_events.test.rs"]
