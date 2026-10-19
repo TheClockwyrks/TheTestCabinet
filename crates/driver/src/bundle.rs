@@ -19,12 +19,13 @@
 //! wrote into `.git` (a hook, an `fsmonitor` command, a clean filter, an include)
 //! executes here.
 //!
-//! An upload is retried under the driver's [retry policy](RetryPolicy): `5`, `10`,
-//! `20` and `40` seconds and then `60` seconds between attempts, until
+//! An upload is retried under the driver's shared [retry policy](crate::retry):
+//! `5`, `10`, `20` and `40` seconds and then `60` seconds between attempts, until
 //! `TCAB_ARTIFACT_UPLOAD_WAIT_SECONDS` has passed since its first failure. A
 //! failure that is the run's own (the bundle cannot be written, or the service
-//! answers `400`, `413` or `422`) ends the upload at once. A bundle that is still
-//! not stored is logged by the caller and the run's record still reports.
+//! answers `400`, `413` or `422`) ends the upload at once, and an operator's
+//! cancellation ends it wherever it is. A bundle that is still not stored is logged
+//! by the caller and the run's record still reports.
 //!
 //! When `TCAB_REPOS_URL` is unset nothing here runs.
 
@@ -32,9 +33,10 @@ use std::path::Path;
 use std::process::Command;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use futures_util::StreamExt;
+use tokio::time::Instant;
 use tokio_util::io::ReaderStream;
 
 use crate::test_case::{TCAB_ENGINE_DIR, TCAB_VENDOR_DIR};
@@ -45,73 +47,9 @@ use test_cabinet_contracts::layout::VALIDATION_MEDIA_DIR;
 /// a bundle without it.
 pub const MAIN_BRANCH: &str = "main";
 
-/// The default of [`RetryPolicy::give_up_after`]: six hours, the documented default
-/// of `TCAB_ARTIFACT_UPLOAD_WAIT_SECONDS`.
-pub const DEFAULT_UPLOAD_WAIT: Duration = Duration::from_secs(6 * 60 * 60);
-
-/// The most a gg run that was already canceled when its finishing began waits on
-/// each upload, when the configured wait is longer.
-pub const CANCELED_RUN_UPLOAD_WAIT: Duration = Duration::from_secs(10 * 60);
-
-/// How long an attempt may go with the service taking none of the bundle and giving
-/// no answer before it is abandoned as stalled.
-pub const DEFAULT_STALL_LIMIT: Duration = Duration::from_secs(5 * 60);
-
-/// The waits between attempts: `5`, `10`, `20` and `40` seconds, then `60` seconds
-/// for every attempt after.
-const DEFAULT_DELAYS: [Duration; 5] = [
-    Duration::from_secs(5),
-    Duration::from_secs(10),
-    Duration::from_secs(20),
-    Duration::from_secs(40),
-    Duration::from_secs(60),
-];
-
-/// How an upload is retried.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct RetryPolicy {
-    /// How long, counted from the first failure, the upload keeps being retried.
-    /// `Duration::ZERO` makes a single attempt.
-    pub give_up_after: Duration,
-    /// The waits between attempts; the last one repeats for every later attempt.
-    pub delays: Vec<Duration>,
-    /// How long an attempt may make no progress before it is abandoned as stalled.
-    pub stall_limit: Duration,
-}
-
-impl Default for RetryPolicy {
-    fn default() -> Self {
-        Self::waiting_for(DEFAULT_UPLOAD_WAIT)
-    }
-}
-
-impl RetryPolicy {
-    /// The driver's policy, retrying for `give_up_after` from the first failure.
-    pub fn waiting_for(give_up_after: Duration) -> Self {
-        Self {
-            give_up_after,
-            delays: DEFAULT_DELAYS.to_vec(),
-            stall_limit: DEFAULT_STALL_LIMIT,
-        }
-    }
-
-    /// The policy for a run that was already canceled when its finishing began: the
-    /// same, waiting at most [`CANCELED_RUN_UPLOAD_WAIT`].
-    pub fn for_canceled_run(mut self) -> Self {
-        self.give_up_after = self.give_up_after.min(CANCELED_RUN_UPLOAD_WAIT);
-        self
-    }
-
-    /// The wait after the `failures`-th failed attempt (counted from one).
-    pub fn delay_after(&self, failures: u32) -> Duration {
-        let index = (failures.max(1) - 1) as usize;
-        self.delays
-            .get(index)
-            .or_else(|| self.delays.last())
-            .copied()
-            .unwrap_or_default()
-    }
-}
+pub use crate::retry::{
+    CANCELED_RUN_UPLOAD_WAIT, DEFAULT_STALL_LIMIT, DEFAULT_UPLOAD_WAIT, RetryPolicy,
+};
 
 /// A failure committing, bundling or uploading the run's implementation.
 #[derive(Debug, thiserror::Error)]
@@ -129,6 +67,9 @@ pub enum BundleError {
     /// The service took none of the bundle and gave no answer for the stall limit.
     #[error("the repos service stalled: no progress for {} seconds", .0.as_secs())]
     Stalled(Duration),
+    /// The run's job was canceled before the bundle was stored.
+    #[error("the run was canceled before its bundle was stored")]
+    Canceled,
     /// The repos service answered with a non-success status.
     #[error("the repos service refused the bundle: HTTP {status}{}", body_suffix(.body))]
     Status {
@@ -147,8 +88,14 @@ impl BundleError {
         match self {
             Self::Write(_) => true,
             Self::Status { status, .. } => matches!(status.as_u16(), 400 | 413 | 422),
-            Self::Transport(_) | Self::Read(_) | Self::Stalled(_) => false,
+            Self::Transport(_) | Self::Read(_) | Self::Stalled(_) | Self::Canceled => false,
         }
+    }
+}
+
+impl crate::retry::FinalFailure for BundleError {
+    fn is_final(&self) -> bool {
+        self.is_runs_own()
     }
 }
 
@@ -179,12 +126,15 @@ pub struct BundleTarget<'a> {
 ///
 /// Returns once the service acknowledged the bundle. A run's-own failure ends at
 /// once; any other failure is retried until the policy's wait has passed since the
-/// first failure, and the last failure is returned.
+/// first failure, and the last failure is returned. `canceled` resolving ends the
+/// upload wherever it is, with the last failure or [`BundleError::Canceled`] when
+/// none had happened; see [`retry_call`](crate::retry::retry_call).
 pub async fn store_bundle(
     target: BundleTarget<'_>,
     repo: &Path,
     scratch_dir: &Path,
     policy: &RetryPolicy,
+    canceled: impl std::future::Future<Output = ()>,
 ) -> Result<(), BundleError> {
     let repo_owned = repo.to_path_buf();
     let scratch_owned = scratch_dir.to_path_buf();
@@ -203,33 +153,11 @@ pub async fn store_bundle(
     .map_err(|join| BundleError::Write(format!("the bundle task failed: {join}")))??;
 
     let client = reqwest::Client::new();
-    let mut failures: u32 = 0;
-    let mut first_failure: Option<Instant> = None;
-    loop {
-        let err = match upload_once(&client, target, bundle.path(), policy.stall_limit).await {
-            Ok(()) => return Ok(()),
-            Err(err) => err,
-        };
-        if err.is_runs_own() {
-            return Err(err);
-        }
-        failures += 1;
-        let first = *first_failure.get_or_insert_with(Instant::now);
-        let elapsed = first.elapsed();
-        if elapsed >= policy.give_up_after {
-            return Err(err);
-        }
-        let remaining = policy.give_up_after - elapsed;
-        let delay = policy.delay_after(failures).min(remaining);
-        tracing::warn!(
-            run_id = target.run_id,
-            attempt = failures,
-            retry_in_seconds = delay.as_secs_f64(),
-            error = %err,
-            "the bundle upload failed; retrying",
-        );
-        tokio::time::sleep(delay).await;
-    }
+    crate::retry::retry_call(policy, "the bundle upload", canceled, || {
+        upload_once(&client, target, bundle.path(), policy.stall_limit)
+    })
+    .await
+    .map_err(|failure| failure.error.unwrap_or(BundleError::Canceled))
 }
 
 /// One attempt: stream the bundle at `path` to the service and read its answer,

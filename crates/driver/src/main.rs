@@ -18,7 +18,7 @@ use time::OffsetDateTime;
 use test_cabinet_driver::cancel::{
     CancelDisposition, CancelRace, cancel_disposition, race_cancellation,
 };
-use test_cabinet_driver::client::JobClient;
+use test_cabinet_driver::client::{JobClient, StoreFields};
 use test_cabinet_driver::config::{Config, DriverRuntime};
 use test_cabinet_driver::kubernetes::KubernetesContainerRuntime;
 use test_cabinet_driver::run::{RunFailure, drive};
@@ -343,7 +343,10 @@ async fn main() -> ExitCode {
                     state = ?record.status.state,
                     "canceled run wound down and produced a record; reporting canceled"
                 );
-                if let Err(err) = client.post_status_canceled(record).await {
+                if let Err(err) = client
+                    .post_status_canceled(record, StoreFields::default())
+                    .await
+                {
                     // The job is already terminal and the operator has their answer;
                     // failing the driver over the record post would only make the pod
                     // look broken. Log it and exit cleanly.
@@ -354,7 +357,10 @@ async fn main() -> ExitCode {
             }
 
             tracing::info!(run_id = %record.id, "run produced a record; reporting succeeded");
-            if let Err(err) = client.post_status_succeeded(record).await {
+            if let Err(err) = client
+                .post_status_succeeded(record, StoreFields::default())
+                .await
+            {
                 eprintln!("could not report `succeeded` to the backend: {err}");
                 return ExitCode::FAILURE;
             }
@@ -504,7 +510,10 @@ async fn report_canceled(
             return;
         }
     };
-    if let Err(err) = client.post_status_canceled(record).await {
+    if let Err(err) = client
+        .post_status_canceled(record, StoreFields::default())
+        .await
+    {
         tracing::warn!(error = %err, "could not report `canceled` to the backend");
     }
 }
@@ -618,7 +627,8 @@ async fn finalize_bundle(
     record: &test_cabinet_driver::RunRecord,
     already_canceled: bool,
 ) {
-    use test_cabinet_driver::bundle::{BundleTarget, RetryPolicy, store_bundle};
+    use test_cabinet_driver::bundle::{BundleTarget, store_bundle};
+    use test_cabinet_driver::retry::RetryPolicy;
     let Some(repos_url) = config.repos_url.as_deref() else {
         return;
     };
@@ -634,7 +644,7 @@ async fn finalize_bundle(
         job_id: &config.job_id,
         job_token: &config.job_token,
     };
-    match store_bundle(target, &repo, &out_dir, &policy).await {
+    match store_bundle(target, &repo, &out_dir, &policy, std::future::pending()).await {
         Ok(()) => {
             tracing::info!(run_id = %record.id, "uploaded the run's bundle to the repos service")
         }
@@ -914,7 +924,10 @@ async fn report_failure(
             None
         }
     };
-    if let Err(err) = client.post_status_failed(failure.detail, record).await {
+    if let Err(err) = client
+        .post_status_failed(failure.detail, record, StoreFields::default())
+        .await
+    {
         eprintln!("could not report `failed` to the backend: {err}");
         return ExitCode::FAILURE;
     }
