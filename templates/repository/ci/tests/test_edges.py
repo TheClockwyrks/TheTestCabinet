@@ -302,6 +302,43 @@ def test_installed_and_built_trees_are_not_judged(tmp_path: Path) -> None:
     assert edges.violations(tmp_path, "contracts") == []
 
 
+def test_a_content_repositorys_catalog_is_content_not_its_build(tmp_path: Path) -> None:
+    """A seeded workspace or a reference implementation is built in a run's tree, not by the repository."""
+    _write(
+        tmp_path,
+        "test-cases/adversarial/easy/foray/v1.0.0/workspaces/base/controller/Cargo.toml",
+        '[package]\nname = "controller"\n[dependencies]\nforay-core = { path = "../../../vendor/foray-core" }\n',
+    )
+    _package(
+        tmp_path,
+        "test-cases/end-to-end/easy/spectra/v2.0.0/references/none/base/package.json",
+        "spectra",
+        dependencies={"@clockwyrks/run-record": "0.1.0"},
+    )
+    _package(
+        tmp_path, "game-jams/trains/v1.0.0/workspaces/base/package.json", "jam", dependencies={"@clockwyrks/web": "1"}
+    )
+    _package(tmp_path, "test-suites/carom/versions/v1.0.0/package.json", "carom", dependencies={"@clockwyrks/web": "1"})
+    _package(tmp_path, "tools/designer/package.json", "@clockwyrks/designer", dependencies={"@clockwyrks/web": "1"})
+    assert edges.violations(tmp_path, "test-suites") == [
+        (
+            "tools/designer/package.json: [dependencies] @clockwyrks/web comes from console.testcabinet.ai,"
+            " which test-suites may not depend on"
+        )
+    ]
+
+
+def test_only_a_content_repository_leaves_those_trees_out(tmp_path: Path) -> None:
+    _package(tmp_path, "test-cases/x/package.json", "x", dependencies={"@clockwyrks/gg-sandbox": "1"})
+    assert edges.content_trees("contracts") == frozenset()
+    assert edges.violations(tmp_path, "contracts") == [
+        (
+            "test-cases/x/package.json: [dependencies] @clockwyrks/gg-sandbox comes from gg,"
+            " which contracts may not depend on"
+        )
+    ]
+
+
 def test_an_unknown_repository_is_refused() -> None:
     with pytest.raises(ValueError, match="unknown repository"):
         edges.edges_of("elsewhere")

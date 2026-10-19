@@ -144,6 +144,9 @@ NEXTEST_SCRIPT = "scripts/ci/install-nextest.sh"
 EXTRA_GATES: dict[str, dict[str, tuple[str, ...]]] = {
     "contracts": {"rust": ("contract-drift",)},
     "engines": {"checks": ("seeded-contract",)},
+    "test-suites": {
+        "checks": ("frozen-paths", "spec-prose", "spec-vocabulary", "audio-packs", "validators-typecheck"),
+    },
 }
 # The jobs of the gates stage an extra gate may name.
 GATE_JOBS = ("rust", "checks")

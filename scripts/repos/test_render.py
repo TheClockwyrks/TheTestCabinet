@@ -118,6 +118,10 @@ def test_the_windows_and_extra_gate_tables_name_repositories_carrying_a_crate() 
         own = [gate_id for ids in jobs.values() for gate_id in ids]
         assert not set(own) & kit_gates, f"{name} adds a gate the kit already renders"
     assert render.EXTRA_GATES["contracts"] == {"rust": ("contract-drift",)}
+    # The content gates the catalog brought with it run beside the kit's prose gates.
+    assert render.extra_gates("test-suites", "content") == {
+        "checks": ("frozen-paths", "spec-prose", "spec-vocabulary", "audio-packs", "validators-typecheck")
+    }
 
 
 def test_an_extra_gate_in_a_job_the_pipeline_lacks_is_refused(monkeypatch: pytest.MonkeyPatch) -> None:
