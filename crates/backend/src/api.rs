@@ -86,8 +86,8 @@ pub use gg_view::{
 };
 pub use jobs::{
     ActiveJobOut, BulkCancelOut, ClaimedJob, DriverState, JobState, JobStatusOut, LaunchAck,
-    LaunchBatchAck, LaunchBatchBody, LaunchBatchItem, LaunchBody, StatusUpdate, StreamOpened,
-    StreamResync, StreamTopicsBody,
+    LaunchBatchAck, LaunchBatchBody, LaunchBatchItem, LaunchBody, LeaseRenewal, StatusUpdate,
+    StreamOpened, StreamResync, StreamTopicsBody,
 };
 // The backend's boot runs a launch pass of every running ladder dispatch and every filling
 // plan, so a restart never strands one.
@@ -528,9 +528,9 @@ fn routes() -> Router<AppState> {
         // streams progress and the terminal record back
         // (`POST /jobs/{id}/events|preview|status`, per-job token). The console
         // observes it via the live stream, the status, and the active-run list.
-        // `/jobs/batch`, `/jobs/active`, `/jobs/next`, and the three `/jobs/cancel-*`
-        // controls are static, so they outrank the `/jobs/{id}` dynamic route
-        // regardless of registration order.
+        // `/jobs/batch`, `/jobs/active`, `/jobs/next`, `/jobs/leases`, and the three
+        // `/jobs/cancel-*` controls are static, so they outrank the `/jobs/{id}`
+        // dynamic route regardless of registration order.
         .route("/jobs", post(jobs::launch))
         .route("/jobs/batch", post(jobs::launch_batch))
         // The gg run mode's own enqueue surface (person-gated, the same gate as
@@ -647,6 +647,9 @@ fn routes() -> Router<AppState> {
         )
         .route("/jobs/active", get(jobs::active))
         .route("/jobs/next", post(jobs::claim))
+        // The dispatcher's renewal of the claim leases of the jobs whose driver `Job`
+        // is live (service-token), sent each tick before it judges any lease.
+        .route("/jobs/leases", post(jobs::renew_leases))
         // The Runs page's global stop controls, in increasing order of destruction:
         // clear the runs that have not started ("Clear pending"), kill the ones
         // already executing ("Kill active"), or both at once ("Stop all"). Global by
