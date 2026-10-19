@@ -349,8 +349,7 @@
 !/scripts/gg-signatures.sh
 !/scripts/ci
 # This image is also the one service Dockerfile that COPYs sibling files from its
-# own deployments/images/ directory (the nginx server block, the config.js
-# envsubst template, and the entrypoint that renders it) — the Rust images embed
+# own deployments/images/ directory (the nginx server block) — the Rust images embed
 # nothing from here. They live outside every path re-included above, so without
 # this the COPYs fail with "not found" against the allowlisted context.
 !/deployments/images/web

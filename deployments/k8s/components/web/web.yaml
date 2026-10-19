@@ -6,9 +6,9 @@
 # it; locally the console runs from source.
 #
 # The single tcab-web image is environment-agnostic (one build per git-sha, like the
-# publisher image), so the backend URL is injected at RUNTIME via env: the image's
-# entrypoint `envsubst`s a /config.js the SPA reads (window.__TCAB_CONFIG__). The
-# placeholder below is an empty default, which an overlay may patch.
+# publisher image) and takes no configuration: the console carries no service URL
+# and addresses /api, /artifacts and /arena of its own origin, which the edge routes
+# to the services. No overlay patches it beyond the image name.
 #
 # It is a DATA-plane peer like the other services: a ClusterIP Service is the only
 # in-cluster surface, and the edge, never a LoadBalancer here, is the boundary.
@@ -73,12 +73,6 @@ spec:
               memory: 256Mi
           ports:
             - containerPort: 8080
-          env:
-            # The console reads these at container start (the entrypoint emits
-            # /config.js from them). Empty by default so an unset env yields a valid
-            # (empty) config.
-            - name: TCAB_WEB_BACKEND_URL
-              value: ""
           readinessProbe:
             httpGet:
               path: /
@@ -95,6 +89,6 @@ spec:
           securityContext:
             runAsNonRoot: true
             allowPrivilegeEscalation: false
-            readOnlyRootFilesystem: false # nginx writes /config.js + its cache/run dirs
+            readOnlyRootFilesystem: false # nginx writes its pid and temp files, the base entrypoint its conf.d
             capabilities:
               drop: ["ALL"]
