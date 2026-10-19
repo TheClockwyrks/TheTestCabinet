@@ -6,11 +6,12 @@ zone: EDGE
 number: 3
 title: Point the console and tcab at the edge with Access credentials
 type: generic
-state: open
+state: done
 depends_on:
   - nxs3up9tm7pi706lpgt12xkm
   - ey5sbl6cm5bcwy5uvykmi6d1
 created: 2026-10-13T21:12:31.974188466Z
+done: 2026-10-19T07:39:52.068053407Z
 ---
 
 The console is served with a backend URL and signs in with the backend's own
