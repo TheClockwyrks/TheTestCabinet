@@ -300,8 +300,9 @@ impl BackendClient {
 
     /// Report a job whose driver is gone without having reported
     /// (`POST /jobs/{id}/lost`, service token). `detail` says what the dispatcher found.
-    /// The backend fails the job only while it is still `dispatched`, `starting` or
-    /// `running`, so a report racing the driver's own is harmless.
+    /// The backend finishes the job only while it is still `dispatched`, `starting`,
+    /// `running` or `storing` (from its held record when it holds one), so a report
+    /// racing the driver's own is harmless.
     pub async fn report_lost(
         &self,
         job_id: &str,

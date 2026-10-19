@@ -19,6 +19,7 @@ const ALL_VARS: &[&str] = &[
     "TCAB_DISPATCHER_MAX_PUBLISH_INFLIGHT",
     "TCAB_DISPATCHER_POLL_INTERVAL_SECONDS",
     "TCAB_DISPATCHER_JOB_TTL_SECONDS",
+    "TCAB_DISPATCHER_DRIVER_TERMINATION_GRACE_SECONDS",
     "TCAB_DISPATCHER_DRIVER_SECRETS",
     "TCAB_DISPATCHER_DRIVER_SUBSCRIPTION_SECRET",
     "TCAB_DISPATCHER_DRIVER_SUBSCRIPTION_DIR",
@@ -37,6 +38,7 @@ const ALL_VARS: &[&str] = &[
     "TCAB_ARTIFACTS_URL",
     "TCAB_REPOS_URL",
     "TCAB_ARTIFACT_UPLOAD_WAIT_SECONDS",
+    "TCAB_DRIVER_REPORT_WAIT_SECONDS",
     // Run-container image passthroughs — cleared for the same reason as the
     // observability vars below: a developer or CI machine may have these set (they
     // are the runner's own image-resolution env), and they must not leak into the
@@ -108,6 +110,7 @@ fn resolves_with_required_and_defaults() {
         assert_eq!(config.max_publish_inflight, 8);
         assert_eq!(config.poll_interval.as_secs(), 2);
         assert_eq!(config.job_ttl_seconds, 300);
+        assert_eq!(config.driver_termination_grace_seconds, 120);
         assert!(config.driver_service_account.is_none());
         assert!(config.driver_secrets.is_empty());
         // Subscription unset by default; the mount dir falls back to its default.
@@ -348,6 +351,56 @@ fn repos_url_and_upload_wait_are_passed_through_to_driver_jobs() {
             "TCAB_ARTIFACT_UPLOAD_WAIT_SECONDS".to_string(),
             "600".to_string()
         )));
+    });
+}
+
+#[test]
+fn report_wait_is_passed_through_to_driver_jobs() {
+    with_env(|| {
+        set_required();
+        set("TCAB_DRIVER_REPORT_WAIT_SECONDS", "900");
+
+        let config = Config::from_env().expect("config should resolve");
+        // The driver's second finishing deadline, forwarded verbatim beside the
+        // upload wait; the dispatcher never interprets it.
+        assert_eq!(
+            config.passthrough_k8s_env,
+            vec![(
+                "TCAB_DRIVER_REPORT_WAIT_SECONDS".to_string(),
+                "900".to_string()
+            )]
+        );
+    });
+}
+
+#[test]
+fn driver_termination_grace_parses_when_set() {
+    with_env(|| {
+        set_required();
+        set("TCAB_DISPATCHER_DRIVER_TERMINATION_GRACE_SECONDS", "600");
+        let config = Config::from_env().expect("config should resolve");
+        assert_eq!(config.driver_termination_grace_seconds, 600);
+    });
+}
+
+#[test]
+fn a_driver_termination_grace_that_is_not_whole_seconds_is_an_error() {
+    with_env(|| {
+        set_required();
+        for value in ["two minutes", "1.5", "-1", "120s"] {
+            set("TCAB_DISPATCHER_DRIVER_TERMINATION_GRACE_SECONDS", value);
+            let err = Config::from_env().expect_err("a non-whole-seconds grace should error");
+            assert!(
+                matches!(
+                    err,
+                    ConfigError::Invalid {
+                        name: "TCAB_DISPATCHER_DRIVER_TERMINATION_GRACE_SECONDS",
+                        ..
+                    }
+                ),
+                "{value} should be rejected, got {err:?}"
+            );
+        }
     });
 }
 

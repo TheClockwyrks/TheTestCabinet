@@ -272,6 +272,9 @@ pub fn build_driver_job(claim: &ClaimedJob, config: &Config) -> Result<Job, serd
         // A driver that fails has already reported (or will be reported by the
         // dispatcher's death detection); never restart its container in place.
         restart_policy: Some("Never".to_string()),
+        // The time a driver sent SIGTERM (a drain, an eviction, a preemption) has to
+        // hand its record to the backend and report before the kubelet kills it.
+        termination_grace_period_seconds: Some(i64::from(config.driver_termination_grace_seconds)),
         // The driver is the trusted pod: it must reach the Kubernetes API to create
         // the sandbox, so it keeps its service-account token (unlike the sandbox).
         service_account_name: config.driver_service_account.clone(),

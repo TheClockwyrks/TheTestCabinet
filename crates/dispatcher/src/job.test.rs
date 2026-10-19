@@ -11,7 +11,7 @@ use k8s_openapi::api::core::v1::EnvVar;
 
 use crate::config::{
     DEFAULT_DRIVER_CPU_LIMIT, DEFAULT_DRIVER_CPU_REQUEST, DEFAULT_DRIVER_MEMORY_REQUEST,
-    DriverResources,
+    DEFAULT_DRIVER_TERMINATION_GRACE_SECONDS, DriverResources,
 };
 use test_cabinet_contracts::job_api::{ClaimedJob, LaunchBody};
 use test_cabinet_contracts::publish_job_api::PublishClaim;
@@ -56,6 +56,7 @@ fn config() -> Config {
         max_publish_inflight: 2,
         poll_interval: Duration::from_secs(2),
         job_ttl_seconds: 300,
+        driver_termination_grace_seconds: DEFAULT_DRIVER_TERMINATION_GRACE_SECONDS,
         // Mirrors what `DriverResources::from_env` resolves by default: the memory
         // request and limit are ONE value (see `DEFAULT_DRIVER_MEMORY_REQUEST`), and
         // the CPU limit is set (see `DEFAULT_DRIVER_CPU_LIMIT`).
@@ -78,6 +79,14 @@ fn config() -> Config {
             (
                 "TCAB_K8S_IMAGE_PULL_SECRETS".to_string(),
                 "registry-pull".to_string(),
+            ),
+            (
+                "TCAB_ARTIFACT_UPLOAD_WAIT_SECONDS".to_string(),
+                "600".to_string(),
+            ),
+            (
+                "TCAB_DRIVER_REPORT_WAIT_SECONDS".to_string(),
+                "900".to_string(),
             ),
         ],
         publisher_image: Some("registry.example.com/example/tcab-publisher:latest".to_string()),
@@ -341,6 +350,40 @@ fn restart_policy_never_and_no_retries() {
 
     let pod_spec = job_spec.template.spec.as_ref().unwrap();
     assert_eq!(pod_spec.restart_policy.as_deref(), Some("Never"));
+}
+
+#[test]
+fn driver_pod_gets_the_default_termination_grace() {
+    let job = build_driver_job(&claim(), &config()).unwrap();
+    let pod_spec = job.spec.as_ref().unwrap().template.spec.as_ref().unwrap();
+    assert_eq!(pod_spec.termination_grace_period_seconds, Some(120));
+}
+
+#[test]
+fn driver_pod_gets_the_configured_termination_grace() {
+    let config = Config {
+        driver_termination_grace_seconds: 600,
+        ..config()
+    };
+    let job = build_driver_job(&claim(), &config).unwrap();
+    let pod_spec = job.spec.as_ref().unwrap().template.spec.as_ref().unwrap();
+    assert_eq!(pod_spec.termination_grace_period_seconds, Some(600));
+}
+
+#[test]
+fn forwards_both_finishing_deadlines() {
+    let job = build_driver_job(&claim(), &config()).unwrap();
+    let env = container(&job).env.as_ref().unwrap();
+    let map = env_map(env);
+
+    assert_eq!(
+        map["TCAB_ARTIFACT_UPLOAD_WAIT_SECONDS"].value.as_deref(),
+        Some("600")
+    );
+    assert_eq!(
+        map["TCAB_DRIVER_REPORT_WAIT_SECONDS"].value.as_deref(),
+        Some("900")
+    );
 }
 
 #[test]
