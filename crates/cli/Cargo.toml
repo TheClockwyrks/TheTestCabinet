@@ -12,8 +12,8 @@ path = "src/main.rs"
 [dependencies]
 # The run engine: the `tcab` binary is the driver repository's second binary, a thin
 # shell over the same `RunEngine` the driver executes a run with, plus the CLI's own
-# halves the library holds for it (the remote backend, the asset-reference builder,
-# the Pages build deploy helper) and the static code analyzer `tcab analyze` runs.
+# halves the library holds for it (the asset-reference builder, the Pages build
+# deploy helper) and the static code analyzer `tcab analyze` runs.
 test-cabinet-driver = { path = "../driver" }
 # The R2 client `tcab publish-asset-reference` uploads a reference with. An interim
 # edge onto the artifacts service's crate, until the upload goes through its API.

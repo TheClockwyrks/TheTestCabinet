@@ -25,9 +25,8 @@
 //! Its streaming calls authenticate to the backend with the per-job token the
 //! dispatcher passed in (see [`client`]).
 //!
-//! For the CLI binary the library also holds the remote backend
-//! ([`remote_backend`]), the asset-reference builder ([`asset_reference`]) and the
-//! Pages build deploy helper ([`publish`]).
+//! For the CLI binary the library also holds the asset-reference builder
+//! ([`asset_reference`]) and the Pages build deploy helper ([`publish`]).
 
 // The driver binary's own modules: the backend job client, its configuration, the
 // Kubernetes sandbox runtime, the streaming sinks, the run-tree collection and upload,
@@ -74,7 +73,6 @@ pub mod post_run;
 pub mod preview;
 pub mod publish;
 pub mod reference;
-pub mod remote_backend;
 pub mod run_cancellation;
 pub mod run_record;
 pub mod salvage;

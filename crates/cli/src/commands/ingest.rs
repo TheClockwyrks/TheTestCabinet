@@ -10,23 +10,23 @@
 //! created local cluster, and `--changed` is the development loop's way to bring a
 //! backend in line with the checkout from the command line.
 //!
-//! `--env <staging|prod>` targets a deployed environment instead, through the
-//! invoke path [`test_cabinet_driver::remote_backend`] defines: the backend pod's
-//! ingest sidecar refreshes its checkout to the tip of the environment's ingest
-//! branch, submodules included, and scans it.
+//! `--env <staging|prod>` targets a deployed environment instead, through its edge:
+//! the request goes to the environment's origin under `/api` with the Access
+//! service token, and asks the backend to refresh its checkout first, so the
+//! backend's ingest sidecar brings `test-suites` and `cold-storage` to the tip of
+//! the branch the environment ingests before the scan. `TCAB_BACKEND_URL`, when
+//! set, names the backend in place of the origin, which is how a port-forwarded
+//! backend is reached; that path presents the backend's own service token. An edge
+//! that refuses the request (a redirect to its sign-in page, a `401` or a `403`)
+//! fails the command; the redirect is not followed.
 
-use std::sync::Arc;
+use anyhow::{Context, bail};
+use test_cabinet_backend_client::{IngestMode, IngestProgress, ingest_body};
 
-use anyhow::Context;
-use test_cabinet_backend_client::{
-    HttpBackendClient, IngestMode, IngestProgress, IngestSummary, ingest_body,
+use crate::cli::{DeployEnv, IngestArgs};
+use crate::config::{
+    self, ACCESS_CLIENT_ID, ACCESS_CLIENT_SECRET, BACKEND_SERVICE_TOKEN, BACKEND_URL, Credentials,
 };
-use test_cabinet_driver::remote_backend::{
-    AZ_LOGIN, AzLogin, RemoteBackend, SystemAzRunner, az_login, remote_target,
-};
-
-use crate::cli::IngestArgs;
-use crate::config;
 
 /// Trigger an ingest scan and print the streamed progress feed as it arrives.
 ///
@@ -35,15 +35,33 @@ use crate::config;
 /// answer: a line per version as it lands is the difference between progress and
 /// what looks like a hang.
 pub async fn execute(args: IngestArgs) -> anyhow::Result<()> {
+    let credentials = Credentials::from_env()?;
+    let target = target(args.env, config::backend_url(), &credentials)?;
     let scope = if args.targets.is_empty() {
         "the whole checkout".to_string()
     } else {
         args.targets.join(", ")
     };
-    let summary = match &args.env {
-        Some(env) => ingest_remote(&args, env, &scope).await?,
-        None => ingest_local(&args, &scope).await?,
-    };
+    match args.env {
+        Some(env) => println!(
+            "tcab ingest: {scope} on {} via {}/ingest",
+            env.as_str(),
+            target.url
+        ),
+        None => println!("tcab ingest: {scope} via {}/ingest", target.url),
+    }
+    if target.refresh {
+        println!("  refresh: the backend's checkout moves to the environment's branch tip first");
+    }
+    let mode = print_options(&args);
+
+    let mut body = ingest_body(&args.targets, args.force, mode);
+    body.refresh = target.refresh;
+    let client = credentials.client(&target.url);
+    let mut on_progress = |progress: &IngestProgress| print_progress(progress);
+    // The client's error already names the ingest and the URL it was against, and
+    // an edge refusal as the edge's, so no context is added over it.
+    let summary = client.ingest(&body, &mut on_progress).await?;
     println!(
         "\ningested {} version(s), skipped {} ({} total)",
         summary.ingested, summary.skipped, summary.total,
@@ -51,65 +69,80 @@ pub async fn execute(args: IngestArgs) -> anyhow::Result<()> {
     Ok(())
 }
 
-/// Ingest into the backend at `TCAB_BACKEND_URL`.
-async fn ingest_local(args: &IngestArgs, scope: &str) -> anyhow::Result<IngestSummary> {
-    let backend = config::backend_url().context(
-        "TCAB_BACKEND_URL is not set; set it to the backend's address (for example \
-         http://127.0.0.1:8787), or name a deployed environment with --env",
-    )?;
-    println!("tcab ingest: {scope} via {backend}/ingest");
-    let mode = print_options(args);
-
-    // A local backend is reached directly, and its ingest route takes the service
-    // token, so the client presents `TCAB_BACKEND_SERVICE_TOKEN` when it is set.
-    let client = HttpBackendClient::new(backend).with_token(config::service_token());
-    let mut on_progress = |progress: &IngestProgress| print_progress(progress);
-    // The run engine's error already names the ingest and the backend it was against, so no
-    // context is added over it.
-    Ok(client
-        .ingest(
-            &ingest_body(&args.targets, args.force, mode),
-            &mut on_progress,
-        )
-        .await?)
+/// Where an ingest goes and whether it asks for a refresh first.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct Target {
+    /// The backend's base URL.
+    url: String,
+    /// Whether the backend refreshes its checkout before the scan: a deployed
+    /// environment's does, a local backend scans the checkout it was given.
+    refresh: bool,
 }
 
-/// Refresh and ingest a deployed environment's backend through `az aks command
-/// invoke`.
-async fn ingest_remote(args: &IngestArgs, env: &str, scope: &str) -> anyhow::Result<IngestSummary> {
-    let target = remote_target(env)
-        .with_context(|| format!("there is no deployed environment `{env}`"))?
-        .clone();
-    let runner = Arc::new(SystemAzRunner::new());
-    match az_login(runner.as_ref()).await {
-        AzLogin::Authenticated { .. } => {}
-        AzLogin::Unauthenticated { message } => {
-            anyhow::bail!("`az` is not signed in ({message}); run `{AZ_LOGIN}` and try again")
-        }
-        AzLogin::Missing { message } => {
-            anyhow::bail!("{message}; install the Azure CLI and run `{AZ_LOGIN}`")
-        }
+/// Resolve the ingest's target from `--env`, `TCAB_BACKEND_URL` and the
+/// credentials, refusing a combination that could not succeed before any request
+/// is made.
+fn target(
+    env: Option<DeployEnv>,
+    backend_url: Option<String>,
+    credentials: &Credentials,
+) -> anyhow::Result<Target> {
+    let Some(env) = env else {
+        let url = backend_url.with_context(|| {
+            format!(
+                "{BACKEND_URL} is not set; set it to the backend's address (for example \
+                 http://127.0.0.1:8787), or name a deployed environment with --env"
+            )
+        })?;
+        return Ok(Target {
+            url,
+            refresh: false,
+        });
+    };
+    let url = backend_url.unwrap_or_else(|| env.backend_url());
+    let edge = edge_of(&url);
+    if let Some(other) = edge.filter(|edge| *edge != env) {
+        bail!(
+            "{BACKEND_URL} is {url}, the {} environment's edge, but --env names {}; \
+             unset it or name the environment it points at",
+            other.as_str(),
+            env.as_str()
+        );
     }
-    println!(
-        "tcab ingest: {scope} on {}/{} (refreshing to origin/{})",
-        target.cluster, target.namespace, target.ingest_branch
-    );
-    let mode = print_options(args);
-    println!("  running through `az aks command invoke`; the feed is printed once it returns");
-    println!();
+    if edge.is_some() && !credentials.has_access_service_token() {
+        bail!(
+            "an ingest into {} crosses its edge with the Access service token: set \
+             {ACCESS_CLIENT_ID} and {ACCESS_CLIENT_SECRET} (the environment's Key Vault \
+             secrets cloudflare-access-client-id and cloudflare-access-client-secret)",
+            env.as_str()
+        );
+    }
+    if edge.is_none() && !credentials.has_backend_service_token() {
+        bail!(
+            "{BACKEND_URL} is {url}, which is not {}'s edge, so the ingest reaches the \
+             backend directly and presents its service token: set {BACKEND_SERVICE_TOKEN}",
+            env.as_str()
+        );
+    }
+    Ok(Target { url, refresh: true })
+}
 
-    let backend = RemoteBackend::new(target, runner);
-    let mut on_log = |line: &str| println!("  {line}");
-    let mut on_progress = |progress: &IngestProgress| print_progress(progress);
-    Ok(backend
-        .ingest(
-            &args.targets,
-            args.force,
-            mode,
-            &mut on_log,
-            &mut on_progress,
-        )
-        .await?)
+/// The environment whose edge `url` addresses, if any.
+fn edge_of(url: &str) -> Option<DeployEnv> {
+    let host = host_of(url)?;
+    [DeployEnv::Prod, DeployEnv::Staging]
+        .into_iter()
+        .find(|env| host_of(env.origin()).as_deref() == Some(host.as_str()))
+}
+
+/// The lower-cased host of an absolute `http(s)` URL, without its port.
+fn host_of(url: &str) -> Option<String> {
+    let rest = url
+        .strip_prefix("https://")
+        .or_else(|| url.strip_prefix("http://"))?;
+    let authority = rest.split(['/', '?', '#']).next()?;
+    let host = authority.rsplit('@').next()?.split(':').next()?;
+    (!host.is_empty()).then(|| host.to_ascii_lowercase())
 }
 
 /// Print the options the scan runs with, answering with its mode.

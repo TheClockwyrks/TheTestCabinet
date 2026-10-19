@@ -15,11 +15,9 @@
 # guard (the old `${VAULT:-testcabinet-clockwyrks}` / `${CLUSTER:-…-prod-…}` defaults)
 # was the footgun this convention removes.
 #
-# The Rust tools that act on a deployed environment — `tcab ingest --env` and The Spec
-# Cabinet's staging and prod publish targets — cannot source this file, so they read
-# crates/driver/publish-targets.toml, which scripts/generate-publish-targets.sh renders
-# from it. Re-run that script after editing a cluster, resource group, namespace, or
-# ingest branch here; a test in crates/driver fails while the two differ.
+# `tcab --env` does not source this file: it reaches a deployed environment through
+# the edge alone, at the origin `DeployEnv::origin` in crates/cli/src/cli.rs names.
+# Keep that origin equal to TCAB_ORIGIN here.
 #
 # Usage (from a script that has computed its own $script_dir):
 #   source "${script_dir}/lib/env.sh"
