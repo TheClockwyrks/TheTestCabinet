@@ -13,6 +13,7 @@
 //! | `TCAB_PUBLISH_RUN_ID` | yes | The id of the run to release — the artifact-service store key the source tree is downloaded by. | — |
 //! | `TCAB_ARTIFACTS_URL` | yes | The artifact service the run's source tree is downloaded from (`GET /runs/{id}/tree.tar`). | — |
 //! | `TCAB_WORK_DIR` | no | Ephemeral scratch directory the downloaded tree is untarred into. The pod is disposable, so this is lost on exit. | `./.tcab-publisher` |
+//! | `TCAB_PUBLISHER_TERMINATION_GRACE_SECONDS` | no | The pod's termination grace period, in seconds: how long the publisher has after `SIGTERM` to finish the step it is on and report (see [`crate::sequence`]). It matches the publisher Job's `terminationGracePeriodSeconds`, which the dispatcher leaves at Kubernetes' default. | `30` |
 //!
 //! `TCAB_GITHUB_ORG` / `TCAB_PAGES_PROJECT` are **not** parsed here — they are read
 //! directly by [`PublishConfig::from_env`](crate::release::PublishConfig::from_env)
@@ -23,6 +24,13 @@
 //! to look the build's deployment up before deploying it; both are required.
 
 use std::path::PathBuf;
+use std::time::Duration;
+
+/// The termination grace period the publisher assumes when
+/// `TCAB_PUBLISHER_TERMINATION_GRACE_SECONDS` is unset: Kubernetes' default
+/// `terminationGracePeriodSeconds`, which the dispatcher does not override for a
+/// publisher Job.
+pub const DEFAULT_TERMINATION_GRACE: Duration = Duration::from_secs(30);
 
 /// A publisher configuration error: a required variable is unset or unusable.
 #[derive(Debug, thiserror::Error)]
@@ -30,6 +38,16 @@ pub enum ConfigError {
     /// A required environment variable is missing (or blank).
     #[error("required environment variable {0} is not set")]
     Missing(&'static str),
+    /// An optional environment variable is set to a value that cannot be used.
+    #[error("environment variable {var} is not usable: `{value}` ({reason})")]
+    Invalid {
+        /// The variable.
+        var: &'static str,
+        /// The value it holds.
+        value: String,
+        /// What a usable value is.
+        reason: &'static str,
+    },
 }
 
 /// The resolved publisher configuration.
@@ -55,6 +73,11 @@ pub struct Config {
     /// Ephemeral scratch directory the downloaded tree is untarred into
     /// (`TCAB_WORK_DIR`). The pod is disposable, so this is lost on exit.
     pub work_dir: PathBuf,
+    /// The pod's termination grace period
+    /// (`TCAB_PUBLISHER_TERMINATION_GRACE_SECONDS`, default
+    /// [`DEFAULT_TERMINATION_GRACE`]): the time between `SIGTERM` and the pod's
+    /// kill, which bounds the step the publisher is on and its report.
+    pub termination_grace: Duration,
 }
 
 impl Config {
@@ -62,7 +85,9 @@ impl Config {
     ///
     /// `TCAB_BACKEND_URL`, `TCAB_PUBLISH_JOB_ID`, `TCAB_PUBLISH_JOB_TOKEN`,
     /// `TCAB_PUBLISH_RUN_ID`, and `TCAB_ARTIFACTS_URL` are required (the dispatcher
-    /// always sets them); `TCAB_WORK_DIR` defaults. A blank value is treated as
+    /// always sets them); `TCAB_WORK_DIR` and
+    /// `TCAB_PUBLISHER_TERMINATION_GRACE_SECONDS` default, and the latter must be a
+    /// whole number of seconds when set. A blank value is treated as
     /// unset so an empty export does not slip through.
     pub fn from_env() -> Result<Self, ConfigError> {
         let backend_url = non_empty("TCAB_BACKEND_URL")
@@ -82,6 +107,17 @@ impl Config {
         let work_dir = non_empty("TCAB_WORK_DIR")
             .map(PathBuf::from)
             .unwrap_or_else(|| PathBuf::from(".tcab-publisher"));
+        let termination_grace =
+            match non_empty("TCAB_PUBLISHER_TERMINATION_GRACE_SECONDS") {
+                None => DEFAULT_TERMINATION_GRACE,
+                Some(value) => value.parse::<u64>().map(Duration::from_secs).map_err(|_| {
+                    ConfigError::Invalid {
+                        var: "TCAB_PUBLISHER_TERMINATION_GRACE_SECONDS",
+                        value,
+                        reason: "a whole number of seconds",
+                    }
+                })?,
+            };
         Ok(Self {
             backend_url,
             publish_job_id,
@@ -89,6 +125,7 @@ impl Config {
             run_id,
             artifacts_url,
             work_dir,
+            termination_grace,
         })
     }
 }
