@@ -44,3 +44,37 @@ Publishing a run on staging leaves its document, media, index objects and
 code object in the public bucket, the public repository on GitHub, and no
 site build; unpublishing removes the run from the index objects; `make gate`
 passes in the backend and publisher checkouts.
+
+## Blocked
+
+With the backend's R2 credential gone (backend/overview.md "The public
+dataset", backend/snapshot.md "Writing through the artifacts service": the
+backend writes only with `PUT /public/{key}` and
+`POST /runs/{id}/publish-media`; artifacts/overview.md "Object stores": no
+other component holds a bucket credential), two documented behaviours need
+bucket operations no documented route provides:
+
+- backend/snapshot.md "Pruning superseded generations": after the cut-over
+  the publish lists `snapshots/` and deletes stale generations (list and
+  delete in the bucket).
+- backend/results.md "Script references (asset generation)": the backend
+  discovers reference sheets by listing `media/references/` at ingest
+  (today through `R2Client` in `crates/backend/src/api/ingest_api.rs`).
+
+artifacts/overview.md "Routes" and "Auth" document no route that lists or
+deletes public keys.
+
+The user must decide:
+
+1. Does the artifacts service gain public routes for these, for example
+   `GET /public?prefix=` (list) and `DELETE /public/{key}`, under the
+   service token, with the backend keeping the prune and discovery logic?
+2. Or does the artifacts service own them itself, for example a
+   `POST /public/prune` taking the live generation and retention, and a
+   listing route for reference frames only?
+3. Or does reference discovery stop listing the bucket at all (for example
+   the CLI's `publish-asset-reference` reports the frames to the backend),
+   and only pruning needs a route?
+
+The chosen routes then go into artifacts/overview.md "Routes" and "Auth",
+and step 2 of the plan (removing the backend's R2 credential) follows them.
