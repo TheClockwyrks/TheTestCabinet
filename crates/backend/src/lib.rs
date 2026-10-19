@@ -33,6 +33,7 @@ pub mod error;
 pub mod gg_docs;
 pub mod gg_query;
 pub mod ingest;
+pub mod ingest_refresh;
 pub mod logo;
 pub mod metrics;
 pub mod model_id;

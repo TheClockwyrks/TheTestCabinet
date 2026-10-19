@@ -5,7 +5,7 @@ use std::convert::Infallible;
 use axum::Json;
 use axum::body::Body;
 use axum::extract::State;
-use axum::http::{HeaderMap, header};
+use axum::http::{HeaderMap, StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use bytes::Bytes;
 use futures_util::stream;
@@ -23,6 +23,7 @@ use crate::auth::ServiceCaller;
 use crate::db::ReferenceSheetEntry;
 use crate::error::ApiError;
 use crate::ingest::{IngestEvent, IngestReport, IngestRequest, IngestRoots, Ingestor};
+use crate::ingest_refresh::refresh_checkout;
 use crate::publisher::Publisher;
 use crate::readiness::Readiness;
 use crate::store::DefinitionStore;
@@ -44,6 +45,11 @@ use super::AppState;
 /// progress feed (one NDJSON line per version as it completes, then a `done` line),
 /// while the default answers once with the full JSON report. The streaming and
 /// default paths run the identical scan; only the framing differs.
+///
+/// A body asking for `refresh` first has the ingest sidecar refresh the checkout
+/// (see [`refresh_if_asked`]). A failed refresh fails the ingest before anything is
+/// scanned; a refresh that could not update the test suites proceeds, and the
+/// streamed feed opens with the notice saying so.
 #[tracing::instrument(name = "ingest", skip(state, headers, body), err(Debug))]
 pub async fn ingest(
     State(state): State<AppState>,
@@ -52,6 +58,7 @@ pub async fn ingest(
     body: Option<Json<IngestBody>>,
 ) -> Result<Response, ApiError> {
     let body = body.map(|Json(b)| b).unwrap_or_default();
+    let notice = refresh_if_asked(&state, body.refresh).await?;
     let request = promote_for_store_readiness(
         IngestRequest {
             test_cases: body.test_cases,
@@ -84,6 +91,7 @@ pub async fn ingest(
         return Ok(ingest_streaming(
             scan,
             request,
+            notice,
             state.publisher.clone(),
             state.gg_docs.clone(),
             state.ready.clone(),
@@ -121,6 +129,35 @@ pub async fn ingest(
     }
 
     Ok(Json(ingest_response(report)).into_response())
+}
+
+/// Refresh the checkout when the body asked for it and this backend has an ingest
+/// sidecar to do it (`TCAB_BACKEND_INGEST_REFRESH_URL`), returning the notice the
+/// caller is told, if any.
+///
+/// A backend with no sidecar ignores `refresh` and scans the checkout as it is. A
+/// refresh that could not update the test suites is the one failure survived: the
+/// scan ingests what the checkout already holds and the caller is told so. Any
+/// other failure answers `502` with `ingest_refresh_failed` before the scan.
+async fn refresh_if_asked(
+    state: &AppState,
+    refresh: bool,
+) -> Result<Option<&'static str>, ApiError> {
+    if !refresh {
+        return Ok(None);
+    }
+    let Some(url) = state.config.ingest_refresh_url.as_deref() else {
+        tracing::debug!("ingest asked for a refresh; this backend has no ingest sidecar");
+        return Ok(None);
+    };
+    let outcome = refresh_checkout(&state.http, url).await.map_err(|error| {
+        ApiError::new(
+            StatusCode::BAD_GATEWAY,
+            "ingest_refresh_failed",
+            error.to_string(),
+        )
+    })?;
+    Ok(outcome.notice())
 }
 
 /// Force a `changed` scan against a backend whose store is not ready.
@@ -328,18 +365,25 @@ fn wants_ndjson(headers: &HeaderMap) -> bool {
 }
 
 /// Run the scan on a blocking thread, streaming an NDJSON progress line per version
-/// as it completes (plus a closing `done`, or an `error` line if the scan aborts).
+/// as it completes (plus a closing `done`, or an `error` line if the scan aborts),
+/// after a `notice` line when the refresh before it left one.
 /// The scan outpaces no realistic consumer here, so an unbounded channel buffers the
 /// handful of small lines without backpressure; the response ends when the blocking
 /// task drops its sender.
 fn ingest_streaming(
     scan: Scan,
     request: IngestRequest,
+    notice: Option<&'static str>,
     publisher: Publisher,
     gg_docs: crate::gg_docs::GgDocIndex,
     readiness: Readiness,
 ) -> Response {
     let (tx, rx) = tokio::sync::mpsc::unbounded_channel::<Bytes>();
+    if let Some(message) = notice {
+        let _ = tx.send(encode_event(&IngestProgress::Notice {
+            message: message.to_owned(),
+        }));
+    }
 
     tokio::task::spawn_blocking(move || {
         let store = scan.store.clone();
@@ -491,3 +535,7 @@ fn progress_line(event: IngestEvent<'_>) -> IngestProgress {
 #[cfg(test)]
 #[path = "ingest_api.test.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "ingest_api.refresh.test.rs"]
+mod refresh_tests;
