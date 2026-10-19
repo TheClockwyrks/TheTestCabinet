@@ -86,10 +86,11 @@ still a directory of the superrepo's own tree today.
   the layout of a run tree, the test case and suite formats, the job API and
   publish-job API wire types, the reference lock format, the match-play shapes,
   the ingest wire structs, `AssetPreview`, `Writeup` and its parser,
-  `SEED_COMMIT_MESSAGE`, `RUN_IMAGE_OVERRIDE_ENVS`, `MODALITY_IMAGE`, the
-  harness display names, the key names redaction scrubs, the `proof_*` naming
-  rules and the `find_build_output` layout rules, and the asset-reference key
-  layout. Its `fixtures/` holds the scoring goldens.
+  `SEED_COMMIT_MESSAGE`, `IMPLEMENTATION_COMMIT_MESSAGE`,
+  `RUN_IMAGE_OVERRIDE_ENVS`, `MODALITY_IMAGE`, the harness display names, the
+  key names redaction scrubs, the `proof_*` naming rules and the
+  `find_build_output` layout rules, and the asset-reference key layout. Its
+  `fixtures/` holds the scoring goldens.
 - `crates/suites` (`test-cabinet-suites`): the suite runtime. Resolving and
   validating a suite, the engine catalog resolution, the browser driver, the
   vitest validator, the `test_case`, `test_case_group` and `test_suite`

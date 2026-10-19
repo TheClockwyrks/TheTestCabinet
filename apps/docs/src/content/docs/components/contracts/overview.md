@@ -44,11 +44,13 @@ it:
 - The job API and publish-job API wire types, the ingest API's request, report
   and feed, the reference lock format, the match-play shapes, the
   `AssetPreview` shape, and the cold storage root a checkout names.
-- The constants the repositories agree on: `SEED_COMMIT_MESSAGE`, the
-  `RUN_IMAGE_OVERRIDE_ENVS` and `MODALITY_IMAGE` tables, the names of the
-  environment variables redaction scrubs, the playable build's layout rules
-  (`find_build_output`, the `proof_*` naming), the asset-reference key layout,
-  and the `Writeup` a review is parsed from.
+- The constants the repositories agree on: `SEED_COMMIT_MESSAGE` and
+  `IMPLEMENTATION_COMMIT_MESSAGE` (the seed commit's message and the message of
+  the commit the driver makes at run end), the `RUN_IMAGE_OVERRIDE_ENVS` and
+  `MODALITY_IMAGE` tables, the names of the environment variables redaction
+  scrubs, the playable build's layout rules (`find_build_output`, the `proof_*`
+  naming), the asset-reference key layout, and the `Writeup` a review is parsed
+  from.
 
 The crate holds data, the functions over it, and the reading and writing of the
 files that data is stored in: a suite version's export, a partial suite tree,
