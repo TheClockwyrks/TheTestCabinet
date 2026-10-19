@@ -918,9 +918,38 @@ impl DefinitionStore {
     /// served `test-cases/` tree. It lives inside the store's sidecar so it shares
     /// the store's filesystem (the swap is then a plain rename) and stays off the
     /// `test-cases/` tree that `list_versions` walks, so a half-built staging dir is
-    /// never mistaken for an ingested version.
+    /// never mistaken for an ingested version. A pass that stops part way leaves its
+    /// staging behind, so the backend [empties](Self::clear_staging) this root when it
+    /// starts, before it serves or ingests anything.
     pub(crate) fn staging_root(&self) -> PathBuf {
         self.root.join(SIDECAR).join("staging")
+    }
+
+    /// Remove everything under the [staging root](Self::staging_root), returning how
+    /// many entries it held. A store with no staging root yet has nothing to remove.
+    ///
+    /// Startup calls this before the backend serves or ingests anything, so every
+    /// entry is the leftover of a pass an earlier process did not finish: a half-built
+    /// version, or a retired copy a swap had set aside.
+    pub(crate) fn clear_staging(&self) -> Result<usize> {
+        let root = self.staging_root();
+        let entries = match std::fs::read_dir(&root) {
+            Ok(entries) => entries,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(0),
+            Err(error) => return Err(error.into()),
+        };
+        let mut removed = 0;
+        for entry in entries {
+            let entry = entry?;
+            let path = entry.path();
+            if entry.file_type()?.is_dir() {
+                std::fs::remove_dir_all(&path)?;
+            } else {
+                std::fs::remove_file(&path)?;
+            }
+            removed += 1;
+        }
+        Ok(removed)
     }
 
     /// Create a fresh, empty staging directory for building one version's tree

@@ -15,6 +15,9 @@ pub struct Model {
     pub last_uploaded: Option<String>,
     /// Runs in the last uploaded snapshot, or `NULL` if never uploaded.
     pub last_run_count: Option<i64>,
+    /// Incremented by every mark of the snapshot as dirty, so a refresh clears
+    /// `dirty` only when no mark landed after it read the state.
+    pub dirty_generation: i64,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

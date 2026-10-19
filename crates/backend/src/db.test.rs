@@ -620,11 +620,67 @@ async fn publish_marks_snapshot_dirty_but_pushing_a_pending_run_does_not() {
     db.publish("r1", "2026-06-17T10:00:00Z").await.unwrap();
     assert!(db.snapshot_state().await.unwrap().dirty);
 
-    db.mark_uploaded("2026-06-17T10:05:00Z", 1).await.unwrap();
+    let generation = db.snapshot_state().await.unwrap().generation;
+    db.mark_uploaded("2026-06-17T10:05:00Z", 1, generation)
+        .await
+        .unwrap();
     let state = db.snapshot_state().await.unwrap();
     assert!(!state.dirty);
     assert_eq!(state.last_run_count, Some(1));
     assert_eq!(state.last_uploaded.as_deref(), Some("2026-06-17T10:05:00Z"));
+}
+
+#[tokio::test]
+async fn every_dirty_mark_advances_the_snapshot_generation() {
+    let db = Db::connect_in_memory().await.unwrap();
+    assert_eq!(db.snapshot_state().await.unwrap().generation, 0);
+
+    db.mark_dirty().await.unwrap();
+    let first = db.snapshot_state().await.unwrap();
+    assert!(first.dirty);
+    db.mark_dirty().await.unwrap();
+    let second = db.snapshot_state().await.unwrap();
+    assert!(second.dirty);
+    assert!(second.generation > first.generation);
+}
+
+#[tokio::test]
+async fn a_mark_during_a_refresh_keeps_the_snapshot_dirty() {
+    let db = Db::connect_in_memory().await.unwrap();
+    db.mark_dirty().await.unwrap();
+
+    // A refresh reads the state at its start...
+    let read = db.snapshot_state().await.unwrap().generation;
+    // ...a request lands while it regenerates...
+    db.mark_dirty().await.unwrap();
+    // ...and the refresh finishes over the state it read.
+    db.mark_uploaded("2026-06-17T10:05:00Z", 3, read)
+        .await
+        .unwrap();
+
+    let state = db.snapshot_state().await.unwrap();
+    assert!(state.dirty, "the mark that landed mid-refresh is kept");
+    assert_eq!(state.last_uploaded.as_deref(), Some("2026-06-17T10:05:00Z"));
+    assert_eq!(state.last_run_count, Some(3));
+
+    // The next refresh, reading the newer generation, clears it.
+    let read = db.snapshot_state().await.unwrap().generation;
+    db.mark_uploaded("2026-06-17T10:06:00Z", 3, read)
+        .await
+        .unwrap();
+    assert!(!db.snapshot_state().await.unwrap().dirty);
+}
+
+#[tokio::test]
+async fn an_upload_on_a_fresh_store_records_a_clean_state() {
+    let db = Db::connect_in_memory().await.unwrap();
+    db.mark_uploaded("2026-06-17T10:05:00Z", 0, 0)
+        .await
+        .unwrap();
+    let state = db.snapshot_state().await.unwrap();
+    assert!(!state.dirty);
+    assert_eq!(state.last_run_count, Some(0));
+    assert_eq!(state.generation, 0);
 }
 
 /// Parse a stored mutation stamp back to an instant. Comparing parsed instants
@@ -7013,12 +7069,78 @@ async fn a_launch_claim_is_exclusive_until_it_is_released_or_expires() {
             .await
             .unwrap()
     );
-    // A restart releases every claim, since no pass survives it.
-    assert!(db.release_all_launch_claims().await.unwrap() >= 1);
+}
+
+#[tokio::test]
+async fn a_start_releases_only_the_launch_claims_whose_lease_lapsed() {
+    let db = Db::connect_in_memory().await.unwrap();
+    for id in ["fresh-plan", "lapsed-plan", "free-plan"] {
+        db.insert_coverage_plan("u1", &schedulable_plan(id))
+            .await
+            .unwrap();
+    }
+    for id in ["fresh-ladder", "lapsed-ladder"] {
+        db.insert_ladder(
+            "u1",
+            &test_ladder(id, id, vec![rung("r1", "pong", "v1.0.0")]),
+        )
+        .await
+        .unwrap();
+    }
+    // The lapsed claims were taken three minutes before the start, past the two-minute
+    // lease; the fresh ones a moment before it, by a pass another replica still runs.
+    // The variable-length subsecond part would misorder a string comparison.
+    let lapsed = "2026-08-15T00:57:00.5Z";
+    let fresh = "2026-08-15T00:59:59.123456Z";
+    let start = "2026-08-15T01:00:00Z";
+    for (id, at) in [("fresh-plan", fresh), ("lapsed-plan", lapsed)] {
+        assert!(db.claim_coverage_plan_launch("u1", id, at).await.unwrap());
+    }
+    for (id, at) in [("fresh-ladder", fresh), ("lapsed-ladder", lapsed)] {
+        assert!(db.claim_ladder_launch("u1", id, at).await.unwrap());
+    }
+    db.request_coverage_plan_launch("lapsed-plan")
+        .await
+        .unwrap();
+
+    assert_eq!(db.release_lapsed_launch_claims(start).await.unwrap(), 2);
+
+    // The released rows are free to a pass at the start; the fresh ones are still held.
+    let a_second_later = "2026-08-15T01:00:01Z";
+    for (id, free) in [
+        ("fresh-plan", false),
+        ("lapsed-plan", true),
+        ("free-plan", true),
+    ] {
+        assert_eq!(
+            db.claim_coverage_plan_launch("u1", id, a_second_later)
+                .await
+                .unwrap(),
+            free,
+            "{id}"
+        );
+    }
+    for (id, free) in [("fresh-ladder", false), ("lapsed-ladder", true)] {
+        assert_eq!(
+            db.claim_ladder_launch("u1", id, a_second_later)
+                .await
+                .unwrap(),
+            free,
+            "{id}"
+        );
+    }
+    // A standing request survives the release, for the startup pass to take.
     assert!(
-        db.claim_coverage_plan_launch("u1", "p1", "2026-08-15T01:00:01Z")
+        db.coverage_plan_launch_requested("lapsed-plan")
             .await
             .unwrap()
+    );
+    // Nothing lapsed is left a moment later.
+    assert_eq!(
+        db.release_lapsed_launch_claims(a_second_later)
+            .await
+            .unwrap(),
+        0
     );
 }
 
@@ -8319,6 +8441,8 @@ async fn the_probe_provider_projection_joins_slug_and_reads_errored_as_missing_l
         spend: 0.0,
         created_at: "2026-08-23T00:00:00Z".to_string(),
         finished_at: None,
+        lease_expires_at: None,
+        lease_holder: None,
     };
     let item =
         |id: &str, probe_id: &str, provider: Option<&str>, pass: bool, label: Option<&str>| {
@@ -8350,9 +8474,13 @@ async fn the_probe_provider_projection_joins_slug_and_reads_errored_as_missing_l
     db.insert_model_probe_item(item("i1", "p1", Some("acme"), true, Some("correct-calls")))
         .await
         .unwrap();
-    db.insert_model_probe_item(item("i2", "p1", Some("acme"), false, Some("missing-calls")))
-        .await
-        .unwrap();
+    // A second sample: a probe holds one item per call.
+    db.insert_model_probe_item(test_cabinet_entities::model_probe_item::Model {
+        sample: 1,
+        ..item("i2", "p1", Some("acme"), false, Some("missing-calls"))
+    })
+    .await
+    .unwrap();
     db.insert_model_probe_item(item(
         "i3",
         "p2",
@@ -8362,9 +8490,12 @@ async fn the_probe_provider_projection_joins_slug_and_reads_errored_as_missing_l
     ))
     .await
     .unwrap();
-    db.insert_model_probe_item(item("i4", "p2", None, false, None))
-        .await
-        .unwrap();
+    db.insert_model_probe_item(test_cabinet_entities::model_probe_item::Model {
+        sample: 1,
+        ..item("i4", "p2", None, false, None)
+    })
+    .await
+    .unwrap();
 
     let mut rows = db.probe_item_provider_rows().await.unwrap();
     rows.sort();

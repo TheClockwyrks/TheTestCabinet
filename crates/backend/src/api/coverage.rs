@@ -1636,9 +1636,7 @@ pub(super) async fn resolve_launch_facts(state: &AppState, members: &mut [PlanMe
         std::sync::Arc::new(Vec::new())
     };
     // A list price filled for any member changes the catalog the public snapshot shows.
-    let on_fill = || {
-        state.publisher.queue_refresh();
-    };
+    let on_fill = || state.publisher.queue_refresh_detached();
     for member in members {
         if member.unlaunchable.is_some() {
             continue;
@@ -2397,9 +2395,7 @@ pub(super) async fn enqueue_launches(
     let mut launched: Vec<LaunchedCell> = Vec::with_capacity(cells.len());
     let mut blocked: Vec<BlockedCell> = Vec::new();
     // A list price filled for any cell changes the catalog the public snapshot shows.
-    let on_fill = || {
-        state.publisher.queue_refresh();
-    };
+    let on_fill = || state.publisher.queue_refresh_detached();
     // Every model the harness cells bind, so their facts can be seeded at enqueue exactly
     // as `POST /jobs` seeds a by-hand launch's — once for the batch, below. A gg cell's are
     // seeded as it is lowered instead, because its window resolution needs them on record

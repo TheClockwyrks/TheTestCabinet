@@ -1166,3 +1166,31 @@ fn a_manifest_stored_before_validator_engine_scoping_reads_as_unrestricted() {
 
     assert!(stored.engines.is_empty());
 }
+
+#[test]
+fn clearing_staging_removes_every_leftover() {
+    let (_dir, store) = temp_store();
+    store
+        .write_manifest(&sample_manifest("pong", "v1.0.0"))
+        .unwrap();
+
+    // A half-built version with nested content, an empty one and a stray file.
+    let half_built = store.new_staging_dir("pong", "v2.0.0").unwrap();
+    std::fs::create_dir_all(half_built.join("src/deep")).unwrap();
+    std::fs::write(half_built.join("src/deep/main.js"), "x").unwrap();
+    store.new_staging_dir("snake", "v1.0.0").unwrap();
+    std::fs::write(store.staging_root().join("stray"), "x").unwrap();
+
+    assert_eq!(store.clear_staging().unwrap(), 3);
+    assert!(store.staging_root().is_dir(), "the root itself stays");
+    assert_eq!(std::fs::read_dir(store.staging_root()).unwrap().count(), 0);
+    // The served tree is untouched.
+    assert!(store.has_version("pong", "v1.0.0"));
+}
+
+#[test]
+fn clearing_staging_without_a_staging_root_removes_nothing() {
+    let (_dir, store) = temp_store();
+    assert!(!store.staging_root().exists());
+    assert_eq!(store.clear_staging().unwrap(), 0);
+}
