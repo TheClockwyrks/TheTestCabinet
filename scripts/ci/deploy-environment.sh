@@ -33,6 +33,10 @@
 #     (deployments/azure/aks-command-invoke.role.json): run a command and read its
 #     result, and nothing else on the cluster resource.
 #
+# It refuses, before touching the cluster, an overlay that binds a workload to a
+# workload identity annotated `unprovisioned` (tcab-lib.sh's
+# ci_assert_identities_provisioned): prod's artifacts identity until it exists.
+#
 # Before the apply it retires the workloads of an earlier shape
 # (scripts/ci/retire-legacy-backend.sh): the backend Deployment of its old name,
 # which holds the backend's disk, and the artifacts service's StatefulSet. After it,
@@ -104,6 +108,17 @@ fi
 # it would fail half-way through the apply. Refuse before touching the cluster.
 if ! ci_assert_namespaced "$NAMESPACE" <"$manifest"; then
 	echo "deploy-environment.sh: overlays/${ENVIRONMENT} renders objects outside ${NAMESPACE}; move them under deployments/k8s/cluster/." >&2
+	exit 1
+fi
+
+# A workload bound to an identity that does not exist yet would never become ready,
+# and the retirement below would already have removed what it replaces (a brand-new
+# Deployment has no revision to undo to). Refuse before touching the cluster.
+if ! ci_assert_identities_provisioned <"$manifest"; then
+	echo "deploy-environment.sh: overlays/${ENVIRONMENT} binds a workload to an unprovisioned identity, above; nothing was retired or applied." >&2
+	remediation "Provision it, put its clientId in the overlay's patch and move the run trees, then deploy again:" \
+		"    the storage account, private container run-trees, the identity with Storage Blob Data Contributor on it and its federated credential (deployments/k8s/overlays/${ENVIRONMENT}/patch-artifacts-identity.yaml)" \
+		"    copy the trees on the claim artifacts-tcab-artifacts-0 in ${NAMESPACE} into the container"
 	exit 1
 fi
 

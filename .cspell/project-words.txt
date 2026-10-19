@@ -1052,6 +1052,7 @@ unpowered
 unpremultiplied
 unpressured
 UNPROJECTED
+unprovisioned
 unpublishing
 unranked
 unrecognised

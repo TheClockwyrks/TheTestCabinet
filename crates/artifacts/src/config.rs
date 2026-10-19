@@ -6,7 +6,7 @@
 //! | --- | --- | --- | --- |
 //! | `TCAB_ARTIFACTS_BIND` | no | Address the Axum server binds. | `0.0.0.0:8790` |
 //! | `TCAB_BACKEND_URL` | no | The backend the service forwards a driver's per-job token to for upload auth (the backend is the token authority). | `http://127.0.0.1:8787` |
-//! | `TCAB_BACKEND_SERVICE_TOKEN` | no | The shared control-plane service token the backend's tree-management routes must present: `DELETE /runs/{id}/artifacts` (pruning a deleted run's tree) and `GET /runs` (listing stored trees for the reclamation sweep). Unset ⇒ tree management is disabled (both routes reject every caller). | _none_ |
+//! | `TCAB_BACKEND_SERVICE_TOKEN` | no | The shared control-plane service token the backend presents. It is the only credential of `DELETE /runs/{id}/artifacts` (pruning a deleted run's tree), `GET /runs` (listing stored trees for the reclamation sweep) and `POST /runs/{id}/publish-media` (copying a run's media to the public store), and one of the two identities `PUT /public/{key}` accepts, beside an Access service token's assertion. Unset ⇒ the first three routes reject every caller, and `PUT /public/{key}` accepts only an Access service token. | _none_ |
 //! | `TCAB_ACCESS_TEAM_DOMAIN` | no | The Access team domain whose certificates sign the `Cf-Access-Jwt-Assertion` every edge request carries. Set together with `TCAB_ACCESS_AUDIENCE`. | _none_ |
 //! | `TCAB_ACCESS_AUDIENCE` | no | The audience tag of the Access application protecting the service's hostname. Set together with `TCAB_ACCESS_TEAM_DOMAIN`. | _none_ |
 //! | `TCAB_ARTIFACTS_BLOB_ACCOUNT` | yes | The storage account holding the private run-tree container (`devstoreaccount1` against Azurite). | _none_ |
@@ -80,12 +80,16 @@ pub struct Config {
     /// the token authority.
     pub backend_url: String,
     /// The shared control-plane service token (`TCAB_BACKEND_SERVICE_TOKEN`) the
-    /// backend's two tree-management routes must present: the run-tree delete and
-    /// the `GET /runs` listing its reclamation sweep enumerates the stored trees with. It
-    /// is the same secret the backend and dispatcher share, so only a trusted
-    /// control-plane caller can enumerate or prune trees. `None` disables both routes
-    /// entirely — they reject every caller — which is the safe default for a dev or
-    /// single-box setup that never manages trees through the data plane.
+    /// backend presents. It is the only credential of three routes: the run-tree
+    /// delete, the `GET /runs` listing its reclamation sweep enumerates the stored
+    /// trees with, and `POST /runs/{id}/publish-media`, which copies a run's media to
+    /// the public store. It is also one of the two identities `PUT /public/{key}`
+    /// accepts, the other being an Access service token's assertion. It is the same
+    /// secret the backend and dispatcher share, so only a trusted control-plane
+    /// caller can enumerate, prune or publish trees. `None` makes the three routes
+    /// reject every caller and leaves `PUT /public/{key}` to an Access service token
+    /// alone, the safe default for a dev or single-box setup that never manages trees
+    /// through the data plane.
     pub service_token: Option<String>,
     /// The Access application the service verifies an edge request's assertion
     /// against (`TCAB_ACCESS_TEAM_DOMAIN` and `TCAB_ACCESS_AUDIENCE`), or `None`

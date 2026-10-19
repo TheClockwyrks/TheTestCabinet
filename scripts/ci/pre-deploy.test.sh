@@ -97,6 +97,8 @@ awk '
 	/name: TCAB_/ { print }
 	/value: "testcabinet/ { print }
 ' "$2/kustomization.yaml"
+# A case that binds a workload to an identity drops its rendered objects beside it.
+if [ -f "$2/identity.yaml" ]; then echo "---"; cat "$2/identity.yaml"; fi
 STUB
 	chmod +x "$repo/bin/kubectl"
 
@@ -207,6 +209,39 @@ status=$?
 check_failed "fails" "$status"
 check_equal "retires nothing" 1 "$(wc -l <"$repo/az.log")"
 check_lacks "sets no rollout timeout" "THE_TEST_CABINET_ROLLOUT_TIMEOUT" "$out"
+
+echo "--- an overlay bound to an unprovisioned identity ---"
+
+repo="$(fresh_repo)"
+cat >"$repo/deployments/k8s/overlays/staging/identity.yaml" <<'YAML'
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  annotations:
+    azure.workload.identity/client-id: unprovisioned
+  name: tcab-artifacts
+  namespace: tcab-staging
+YAML
+out="$(run "$repo" -- staging "$COMMIT")"
+status=$?
+check_failed "fails" "$status"
+check_contains "naming the identity" "unprovisioned workload identity: ServiceAccount/tcab-artifacts" "$out"
+check_contains "and the trees to move" "artifacts-tcab-artifacts-0 in tcab-staging" "$out"
+check_equal "reads and retires nothing" "" "$(cat "$repo/az.log" 2>/dev/null)"
+
+repo="$(fresh_repo)"
+cat >"$repo/deployments/k8s/overlays/staging/identity.yaml" <<'YAML'
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  annotations:
+    azure.workload.identity/client-id: 3874c619-95e8-4392-a819-284978fb6d12
+  name: tcab-artifacts
+  namespace: tcab-staging
+YAML
+out="$(run "$repo" -- staging "$COMMIT")"
+status=$?
+check_equal "a provisioned identity passes" 0 "$status"
 
 echo "--- refusals ---"
 

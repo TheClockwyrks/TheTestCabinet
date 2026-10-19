@@ -7,10 +7,21 @@
 #   Storage account tcabprodstore (RG testcabinet-prod-westus2-rg), private container run-trees
 #   Identity        tcab-artifacts-prod
 #
-# The client id below is `unprovisioned` until that identity exists: the webhook then
-# projects an AZURE_CLIENT_ID no tenant knows, the service's start-up listing of the
-# container is refused, and the pod never becomes ready, so a deploy undoes it rather
-# than serving a store it cannot reach. Replace it with the identity's clientId.
+# The client id below is `unprovisioned` until that identity exists, and neither the
+# account nor the identity exists yet. Applied as it is, the webhook would project an
+# AZURE_CLIENT_ID no tenant knows, the service's start-up listing of the container
+# would be refused and the pod would never become ready; a brand-new Deployment has
+# no revision to roll back to, and the deploy retires the StatefulSet it replaces
+# first, so prod would be left with no artifacts service. scripts/ci/deploy-environment.sh
+# (and pre-deploy.sh) therefore refuse any overlay that renders this value, before
+# retiring or applying anything (tcab-lib.sh's ci_assert_identities_provisioned):
+# the prod stage fails and prod keeps running what it runs.
+#
+# Before promoting to master: create the account, the container, the identity, its
+# role assignment and its federated credential; replace the value below with the
+# identity's clientId; and copy the run trees on prod's claim artifacts-tcab-artifacts-0
+# (unpublished runs awaiting review among them) into the container, since the
+# Deployment reads the container only.
 #
 # The `azure.workload.identity/use` pod label is what makes the webhook project the
 # identity's token and variables. The local overlay carries neither, so its pod signs
