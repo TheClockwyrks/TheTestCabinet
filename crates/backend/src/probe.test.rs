@@ -463,6 +463,24 @@ fn probe_row(samples: i32) -> test_cabinet_entities::model_probe::Model {
         spend: 0.0,
         created_at: "2026-08-23T00:00:00Z".to_string(),
         finished_at: None,
+        lease_expires_at: Some(crate::db::probe_lease_expiry(&now_rfc3339()).unwrap()),
+        lease_holder: Some(HOLDER.to_string()),
+    }
+}
+
+/// The lease holder [`probe_row`]'s probe is triggered under.
+const HOLDER: &str = "runner-a";
+
+/// A runner over `db` and `endpoint`, holding [`HOLDER`]'s lease and renewing it every
+/// `renew_every`.
+fn runner(db: &Arc<crate::db::Db>, endpoint: String, renew_every: Duration) -> ProbeRunner {
+    ProbeRunner {
+        db: Arc::clone(db),
+        http: reqwest::Client::new(),
+        endpoint,
+        api_key: "test-key".to_string(),
+        holder: HOLDER.to_string(),
+        renew_every,
     }
 }
 
@@ -496,13 +514,7 @@ async fn a_probe_runs_every_case_and_scores_each_against_its_scenario() {
     let probe = probe_row(2);
     db.insert_model_probe(probe.clone()).await.unwrap();
 
-    let runner = ProbeRunner {
-        db: Arc::clone(&db),
-        http: reqwest::Client::new(),
-        endpoint,
-        api_key: "test-key".to_string(),
-    };
-    runner.run(probe).await;
+    runner(&db, endpoint, PROBE_LEASE_RENEWAL).run(probe).await;
 
     let row = db.get_model_probe("probe-1").await.unwrap().unwrap();
     assert_eq!(row.status, "complete");
@@ -510,6 +522,8 @@ async fn a_probe_runs_every_case_and_scores_each_against_its_scenario() {
     assert_eq!(row.pass_rate, Some(0.5));
     assert!((row.spend - 0.008).abs() < 1e-9, "8 calls x 0.001");
     assert!(row.finished_at.is_some());
+    assert_eq!(row.lease_expires_at, None, "finishing clears the lease");
+    assert_eq!(row.lease_holder, None);
 
     let items = db.list_model_probe_items("probe-1").await.unwrap();
     assert_eq!(items.len(), 8, "4 cases x 2 samples per input prompt");
@@ -546,13 +560,13 @@ async fn an_unreachable_gateway_fails_the_probe_with_the_fault_recorded() {
     let probe = probe_row(1);
     db.insert_model_probe(probe.clone()).await.unwrap();
 
-    let runner = ProbeRunner {
-        db: Arc::clone(&db),
-        http: reqwest::Client::new(),
-        endpoint: "http://127.0.0.1:1/chat/completions".to_string(),
-        api_key: "test-key".to_string(),
-    };
-    runner.run(probe).await;
+    runner(
+        &db,
+        "http://127.0.0.1:1/chat/completions".to_string(),
+        PROBE_LEASE_RENEWAL,
+    )
+    .run(probe)
+    .await;
 
     let row = db.get_model_probe("probe-1").await.unwrap().unwrap();
     assert_eq!(row.status, "failed");
@@ -575,4 +589,141 @@ async fn a_backend_restart_reaps_running_probes() {
     let row = db.get_model_probe("probe-1").await.unwrap().unwrap();
     assert_eq!(row.status, "failed");
     assert!(row.error.unwrap().contains("restarted"));
+}
+
+/// A gateway answering every call with a scored reply after `delay`, counting the calls it
+/// received.
+async fn slow_gateway(delay: Duration) -> (String, Arc<std::sync::atomic::AtomicUsize>) {
+    let calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let counter = Arc::clone(&calls);
+    let app = axum::Router::new().route(
+        "/chat/completions",
+        axum::routing::post(move || {
+            let counter = Arc::clone(&counter);
+            async move {
+                counter.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                tokio::time::sleep(delay).await;
+                axum::Json(serde_json::json!({
+                    "choices": [{ "finish_reason": "stop", "message": { "content": "" } }],
+                    "usage": { "cost": 0.001 },
+                }))
+            }
+        }),
+    );
+    tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+    (format!("http://{addr}/chat/completions"), calls)
+}
+
+/// Hand probe-1's lease to another runner, as a backend taking over a lapsed lease does.
+async fn take_over(db: &crate::db::Db) {
+    use sea_orm::{ActiveModelTrait, ActiveValue::Set, IntoActiveModel};
+    let mut row = db
+        .get_model_probe("probe-1")
+        .await
+        .unwrap()
+        .unwrap()
+        .into_active_model();
+    row.lease_holder = Set(Some("runner-b".to_string()));
+    row.update(&db.connection()).await.unwrap();
+}
+
+#[tokio::test]
+async fn a_running_probe_renews_its_lease() {
+    // Every call takes far longer than the test, so the renewal runs while the first call is
+    // still in flight.
+    let (endpoint, _) = slow_gateway(Duration::from_secs(60)).await;
+    let db = Arc::new(crate::db::Db::connect_in_memory().await.unwrap());
+    // A lease from the probe's own trigger time, long past: renewing moves it to now.
+    let probe = test_cabinet_entities::model_probe::Model {
+        lease_expires_at: Some(crate::db::probe_lease_expiry("2026-08-23T00:00:00Z").unwrap()),
+        ..probe_row(1)
+    };
+    db.insert_model_probe(probe.clone()).await.unwrap();
+    let before = probe.lease_expires_at.clone().unwrap();
+
+    let running = tokio::spawn({
+        let runner = runner(&db, endpoint, Duration::from_millis(20));
+        async move { runner.run(probe).await }
+    });
+    let renewed = tokio::time::timeout(Duration::from_secs(10), async {
+        loop {
+            let row = db.get_model_probe("probe-1").await.unwrap().unwrap();
+            if row.lease_expires_at.as_deref() != Some(before.as_str()) {
+                return row;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("the runner renews its lease");
+    assert_eq!(renewed.status, "running");
+    assert_eq!(renewed.lease_holder.as_deref(), Some(HOLDER));
+    assert!(
+        renewed.lease_expires_at.unwrap() > before,
+        "the renewal moved the lease forward"
+    );
+    running.abort();
+}
+
+#[tokio::test]
+async fn a_runner_whose_lease_was_taken_over_stops_without_finishing() {
+    // Every call takes far longer than the renewal interval, so the runner learns of the
+    // takeover from a renewal while its first call is in flight.
+    let (endpoint, calls) = slow_gateway(Duration::from_secs(30)).await;
+    let db = Arc::new(crate::db::Db::connect_in_memory().await.unwrap());
+    let probe = probe_row(1);
+    db.insert_model_probe(probe.clone()).await.unwrap();
+    take_over(&db).await;
+
+    tokio::time::timeout(
+        Duration::from_secs(10),
+        runner(&db, endpoint, Duration::from_millis(50)).run(probe),
+    )
+    .await
+    .expect("the runner stops once its renewal finds the lease taken over");
+
+    assert_eq!(calls.load(std::sync::atomic::Ordering::SeqCst), 1);
+    let row = db.get_model_probe("probe-1").await.unwrap().unwrap();
+    assert_eq!(
+        row.status, "running",
+        "the probe is left to the runner holding it"
+    );
+    assert_eq!(row.lease_holder.as_deref(), Some("runner-b"));
+    assert!(
+        db.list_model_probe_items("probe-1")
+            .await
+            .unwrap()
+            .is_empty()
+    );
+}
+
+#[tokio::test]
+async fn a_runner_whose_lease_was_taken_over_records_no_call() {
+    // The renewal never runs; the takeover is found when the first call is recorded.
+    let (endpoint, calls) = slow_gateway(Duration::ZERO).await;
+    let db = Arc::new(crate::db::Db::connect_in_memory().await.unwrap());
+    let probe = probe_row(1);
+    db.insert_model_probe(probe.clone()).await.unwrap();
+    take_over(&db).await;
+
+    runner(&db, endpoint, Duration::from_secs(3600))
+        .run(probe)
+        .await;
+
+    assert_eq!(
+        calls.load(std::sync::atomic::Ordering::SeqCst),
+        1,
+        "it stops after one call"
+    );
+    let row = db.get_model_probe("probe-1").await.unwrap().unwrap();
+    assert_eq!(row.status, "running");
+    assert_eq!(row.lease_holder.as_deref(), Some("runner-b"));
+    assert!(
+        db.list_model_probe_items("probe-1")
+            .await
+            .unwrap()
+            .is_empty()
+    );
 }

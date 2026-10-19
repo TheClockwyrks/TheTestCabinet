@@ -45,14 +45,17 @@
 //!
 //! The runner executes as a detached task inside the backend process, appending one
 //! `model_probe_item` row per call and finishing the `model_probe` row with the verdict and the
-//! summed spend. Calls are sequential, uncapped by temperature (the provider default, matching how
+//! summed spend. It holds a [lease](crate::db::PROBE_LEASE) on the probe's row while it runs, set
+//! when the probe is triggered and renewed every [`PROBE_LEASE_RENEWAL`]; a runner whose renewal
+//! finds the lease taken over stops issuing calls and leaves the probe to the runner holding it.
+//! Calls are sequential, uncapped by temperature (the provider default, matching how
 //! gg calls the model), and each carries a fresh session/prompt-cache key so provider routing
 //! stays natural. The HTTP endpoint is a parameter so tests can stand in a local server; the real
 //! base is [`DEFAULT_COMPLETIONS_ENDPOINT`].
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{Arc, LazyLock};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use serde::Deserialize;
 use time::OffsetDateTime;
@@ -60,7 +63,7 @@ use time::format_description::well_known::Rfc3339;
 
 use test_cabinet_entities::{model_probe, model_probe_item};
 
-use crate::db::Db;
+use crate::db::{Db, ProbeItemRecorded};
 
 pub use test_cabinet_contracts::backend_api::probe::{
     ProbeMessage, ProbeRequestOut, ProbeToolCall, ProbeToolFunction,
@@ -667,6 +670,10 @@ pub fn label_reply(reply: &ProbeReply, case: &PlannedCase) -> (&'static str, boo
 // The runner
 // ---------------------------------------------------------------------------
 
+/// How often a running probe's runner renews its lease: well inside
+/// [`PROBE_LEASE`](crate::db::PROBE_LEASE), so a renewal or two may fail before the lease lapses.
+pub const PROBE_LEASE_RENEWAL: Duration = Duration::from_secs(30);
+
 /// Everything the detached probe runner needs, cloned out of the request state.
 pub struct ProbeRunner {
     pub db: Arc<Db>,
@@ -675,13 +682,46 @@ pub struct ProbeRunner {
     /// production; a local server in tests).
     pub endpoint: String,
     pub api_key: String,
+    /// The token this runner holds the probe's lease under (the row's `lease_holder`).
+    pub holder: String,
+    /// How often the runner renews the lease ([`PROBE_LEASE_RENEWAL`] in production).
+    pub renew_every: Duration,
+}
+
+/// Aborts the lease renewal task when the runner returns, however it returns.
+struct AbortOnDrop(tokio::task::JoinHandle<()>);
+
+impl Drop for AbortOnDrop {
+    fn drop(&mut self) {
+        self.0.abort();
+    }
 }
 
 impl ProbeRunner {
-    /// Execute one probe to completion: run every planned case's samples sequentially, append an
-    /// item row per call, and finish the probe row with its verdict and spend.
-    /// Every fault is recorded on the rows; nothing is returned.
+    /// Execute one probe to completion while holding its lease: run every planned case's samples
+    /// sequentially, append an item row per call, and finish the probe row with its verdict and
+    /// spend. The lease is renewed every [`renew_every`](Self::renew_every) meanwhile; once a
+    /// renewal, or the recording of a call (which renews it too), finds it taken over, the runner
+    /// stops without recording the call in flight or finishing the probe, which belongs to the
+    /// runner holding the lease. Every fault is recorded on the rows; nothing is returned.
     pub async fn run(&self, probe: model_probe::Model) {
+        let (lost_tx, lost) = tokio::sync::watch::channel(false);
+        let _renewal = AbortOnDrop(tokio::spawn(renew_lease(
+            Arc::clone(&self.db),
+            probe.id.clone(),
+            self.holder.clone(),
+            self.renew_every,
+            lost_tx,
+        )));
+        self.execute(probe, lost).await;
+    }
+
+    /// The body of [`run`](Self::run), stopping as soon as `lost` reports the lease lost.
+    async fn execute(
+        &self,
+        probe: model_probe::Model,
+        mut lost: tokio::sync::watch::Receiver<bool>,
+    ) {
         let cases = match plan_cases(probe.language.as_deref()) {
             Ok(cases) => cases,
             Err(error) => {
@@ -697,21 +737,49 @@ impl ProbeRunner {
         for case in &cases {
             let messages = case.messages();
             for sample in 0..probe.samples {
-                let (item, cost) = self.one_call(&probe, case, sample, &messages).await;
-                spend += cost;
-                if item.label.is_some() {
-                    any_scored = true;
-                } else if first_error.is_none() {
-                    first_error = item.error.clone();
-                }
-                calls.push(ScoredCall {
+                // A closed channel means the renewal task is gone, so the lease is no longer
+                // kept: stop as if it were lost.
+                let call = self.one_call(&probe, case, sample, &messages);
+                let (item, cost) = tokio::select! {
+                    biased;
+                    _ = lost.wait_for(|lost| *lost) => {
+                        tracing::warn!(probe.id = %probe.id, "probe lease lost; stopping the runner");
+                        return;
+                    }
+                    done = call => done,
+                };
+                let scored = ScoredCall {
                     language: item.language.clone(),
                     scenario: item.scenario.clone(),
                     pass: item.label.is_some().then_some(item.pass),
-                });
-                if let Err(err) = self.db.insert_model_probe_item(item).await {
-                    tracing::error!(probe.id = %probe.id, error = %err, "recording probe item");
+                };
+                let error = item.error.clone();
+                match self
+                    .db
+                    .record_model_probe_item(item, &self.holder, &now_rfc3339())
+                    .await
+                {
+                    Ok(ProbeItemRecorded::Stored) => {}
+                    Ok(ProbeItemRecorded::AlreadyStored) => {
+                        // The probe holds an item for this call already; it is the record.
+                        tracing::warn!(probe.id = %probe.id, "probe call already recorded");
+                        continue;
+                    }
+                    Ok(ProbeItemRecorded::LeaseLost) => {
+                        tracing::warn!(probe.id = %probe.id, "probe lease lost; stopping the runner");
+                        return;
+                    }
+                    Err(err) => {
+                        tracing::error!(probe.id = %probe.id, error = %err, "recording probe item");
+                    }
                 }
+                spend += cost;
+                if scored.pass.is_some() {
+                    any_scored = true;
+                } else if first_error.is_none() {
+                    first_error = error;
+                }
+                calls.push(scored);
             }
         }
         if any_scored {
@@ -740,8 +808,8 @@ impl ProbeRunner {
         }
     }
 
-    /// Finish the probe row, logging rather than surfacing a store fault (there is no request to
-    /// fail).
+    /// Finish the probe row under this runner's lease, logging rather than surfacing a store fault
+    /// (there is no request to fail). A probe whose lease another runner took over is left to it.
     async fn finish(
         &self,
         id: &str,
@@ -752,12 +820,25 @@ impl ProbeRunner {
         spend: f64,
     ) {
         let finished_at = now_rfc3339();
-        if let Err(err) = self
+        match self
             .db
-            .finish_model_probe(id, status, error, verdict, pass_rate, spend, &finished_at)
+            .finish_model_probe(
+                id,
+                &self.holder,
+                status,
+                error,
+                verdict,
+                pass_rate,
+                spend,
+                &finished_at,
+            )
             .await
         {
-            tracing::error!(probe.id = %id, error = %err, "finishing probe");
+            Ok(true) => {}
+            Ok(false) => {
+                tracing::warn!(probe.id = %id, "probe lease lost; leaving the probe unfinished");
+            }
+            Err(err) => tracing::error!(probe.id = %id, error = %err, "finishing probe"),
         }
     }
 
@@ -848,6 +929,33 @@ impl ProbeRunner {
         let parsed: serde_json::Value = serde_json::from_str(&text)
             .map_err(|err| format!("parsing the OpenRouter response: {err}"))?;
         parse_reply(&parsed)
+    }
+}
+
+/// Renew the lease `holder` holds on probe `id` every `every`, until a renewal reports it lost,
+/// then send `true` on `lost` and return. A renewal the store refuses is logged and retried at
+/// the next tick: the lease outlives several, and once it has lapsed and been taken over the next
+/// renewal that reaches the store reports it lost.
+async fn renew_lease(
+    db: Arc<Db>,
+    id: String,
+    holder: String,
+    every: Duration,
+    lost: tokio::sync::watch::Sender<bool>,
+) {
+    loop {
+        tokio::time::sleep(every).await;
+        match db
+            .renew_model_probe_lease(&id, &holder, &now_rfc3339())
+            .await
+        {
+            Ok(true) => {}
+            Ok(false) => {
+                let _ = lost.send(true);
+                return;
+            }
+            Err(err) => tracing::warn!(probe.id = %id, error = %err, "renewing the probe lease"),
+        }
     }
 }
 

@@ -141,8 +141,25 @@ pub const JOB_LEASE: time::Duration = time::Duration::minutes(2);
 /// strings; `now` itself may carry any subsecond precision, which is truncated.
 /// `BadRequest` when `now` is not RFC 3339.
 pub fn job_lease_expiry(now: &str) -> Result<String> {
+    lease_expiry(now, JOB_LEASE)
+}
+
+/// How long a model probe's lease runs: the trigger sets the expiry this far past the
+/// trigger, a takeover this far past the takeover, and each renewal this far past the
+/// renewal (the backend overview's "Replicas"; the API's "Model probes").
+pub const PROBE_LEASE: time::Duration = time::Duration::minutes(2);
+
+/// The lease expiry for a probe lease taken or renewed at `now` (RFC 3339):
+/// [`PROBE_LEASE`] past it, at whole-second precision in UTC, like
+/// [`job_lease_expiry`]. `BadRequest` when `now` is not RFC 3339.
+pub fn probe_lease_expiry(now: &str) -> Result<String> {
+    lease_expiry(now, PROBE_LEASE)
+}
+
+/// `lease` past `now` (RFC 3339), written at whole-second precision in UTC.
+fn lease_expiry(now: &str, lease: time::Duration) -> Result<String> {
     let now = parse_instant(now)?;
-    let expiry = (now + JOB_LEASE)
+    let expiry = (now + lease)
         .to_offset(time::UtcOffset::UTC)
         .replace_nanosecond(0)
         .map_err(|e| BackendError::BadRequest(format!("lease expiry: {e}")))?;
@@ -9561,6 +9578,58 @@ mod readability_tests;
 #[path = "db.reviewer.test.rs"]
 mod reviewer_tests;
 
+/// What became of a probe call a runner recorded ([`Db::record_model_probe_item`]).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ProbeItemRecorded {
+    /// The item was stored and the runner's lease renewed.
+    Stored,
+    /// The runner still holds the lease, but the probe already held an item for the
+    /// same call, which is kept.
+    AlreadyStored,
+    /// The probe is no longer `running` or another runner holds its lease; nothing was
+    /// stored.
+    LeaseLost,
+}
+
+/// A probe item as an insertable active model.
+fn probe_item_active_model(row: model_probe_item::Model) -> model_probe_item::ActiveModel {
+    model_probe_item::ActiveModel {
+        id: Set(row.id),
+        probe_id: Set(row.probe_id),
+        language: Set(row.language),
+        scenario: Set(row.scenario),
+        prompt: Set(row.prompt),
+        sample: Set(row.sample),
+        provider: Set(row.provider),
+        finish_reason: Set(row.finish_reason),
+        native_finish_reason: Set(row.native_finish_reason),
+        label: Set(row.label),
+        pass: Set(row.pass),
+        program_text: Set(row.program_text),
+        response_text: Set(row.response_text),
+        reasoning_text: Set(row.reasoning_text),
+        prompt_tokens: Set(row.prompt_tokens),
+        completion_tokens: Set(row.completion_tokens),
+        cost: Set(row.cost),
+        duration_ms: Set(row.duration_ms),
+        error: Set(row.error),
+        created_at: Set(row.created_at),
+    }
+}
+
+/// Keep the stored item when a probe already holds one for the same call.
+fn probe_item_coordinate_conflict() -> OnConflict {
+    OnConflict::columns([
+        model_probe_item::Column::ProbeId,
+        model_probe_item::Column::Language,
+        model_probe_item::Column::Scenario,
+        model_probe_item::Column::Prompt,
+        model_probe_item::Column::Sample,
+    ])
+    .do_nothing()
+    .to_owned()
+}
+
 /// The model-probe store: responses-as-code readiness probes of catalog models
 /// (see [`crate::probe`]).
 ///
@@ -9590,6 +9659,8 @@ impl Db {
             spend: Set(row.spend),
             created_at: Set(row.created_at),
             finished_at: Set(row.finished_at),
+            lease_expires_at: Set(row.lease_expires_at),
+            lease_holder: Set(row.lease_holder),
         }
         .insert(&self.conn())
         .await?;
@@ -9624,33 +9695,55 @@ impl Db {
             .is_some())
     }
 
-    /// Append one completed (or errored) probe call.
-    pub async fn insert_model_probe_item(&self, row: model_probe_item::Model) -> Result<()> {
-        model_probe_item::ActiveModel {
-            id: Set(row.id),
-            probe_id: Set(row.probe_id),
-            language: Set(row.language),
-            scenario: Set(row.scenario),
-            prompt: Set(row.prompt),
-            sample: Set(row.sample),
-            provider: Set(row.provider),
-            finish_reason: Set(row.finish_reason),
-            native_finish_reason: Set(row.native_finish_reason),
-            label: Set(row.label),
-            pass: Set(row.pass),
-            program_text: Set(row.program_text),
-            response_text: Set(row.response_text),
-            reasoning_text: Set(row.reasoning_text),
-            prompt_tokens: Set(row.prompt_tokens),
-            completion_tokens: Set(row.completion_tokens),
-            cost: Set(row.cost),
-            duration_ms: Set(row.duration_ms),
-            error: Set(row.error),
-            created_at: Set(row.created_at),
+    /// Append one completed (or errored) probe call. Returns whether it was stored:
+    /// `false` when the probe already holds an item for the same call (language,
+    /// scenario, prompt and sample), which is kept, so a runner that lost its lease
+    /// can never record a call twice beside the runner that took it over.
+    pub async fn insert_model_probe_item(&self, row: model_probe_item::Model) -> Result<bool> {
+        let inserted = model_probe_item::Entity::insert(probe_item_active_model(row))
+            .on_conflict(probe_item_coordinate_conflict())
+            .exec_without_returning(&self.conn())
+            .await?;
+        Ok(inserted > 0)
+    }
+
+    /// Record one probe call on behalf of the runner `holder`, in one transaction that
+    /// first renews the probe's lease to [`PROBE_LEASE`] past `now` and then appends
+    /// the item as [`insert_model_probe_item`](Self::insert_model_probe_item) does.
+    /// Renewing first fences a runner that lost its lease: on PostgreSQL the renewal
+    /// holds the probe's row until the item is committed, so a takeover either lands
+    /// before it (and the call is not recorded) or after the item is stored (and the
+    /// runner taking over sees it). `BadRequest` when `now` is not an RFC 3339 instant.
+    pub async fn record_model_probe_item(
+        &self,
+        row: model_probe_item::Model,
+        holder: &str,
+        now: &str,
+    ) -> Result<ProbeItemRecorded> {
+        let lease = probe_lease_expiry(now)?;
+        let txn = self.conn().begin().await?;
+        let renewed = model_probe::Entity::update_many()
+            .col_expr(model_probe::Column::LeaseExpiresAt, Expr::value(lease))
+            .filter(model_probe::Column::Id.eq(row.probe_id.as_str()))
+            .filter(model_probe::Column::Status.eq("running"))
+            .filter(model_probe::Column::LeaseHolder.eq(holder))
+            .exec(&txn)
+            .await?
+            .rows_affected;
+        if renewed == 0 {
+            txn.rollback().await?;
+            return Ok(ProbeItemRecorded::LeaseLost);
         }
-        .insert(&self.conn())
-        .await?;
-        Ok(())
+        let inserted = model_probe_item::Entity::insert(probe_item_active_model(row))
+            .on_conflict(probe_item_coordinate_conflict())
+            .exec_without_returning(&txn)
+            .await?;
+        txn.commit().await?;
+        Ok(if inserted > 0 {
+            ProbeItemRecorded::Stored
+        } else {
+            ProbeItemRecorded::AlreadyStored
+        })
     }
 
     /// One probe's calls, in case order (items are ordered by creation, which
@@ -9694,13 +9787,17 @@ impl Db {
             .collect())
     }
 
-    /// Finish a probe: stamp its terminal status (`complete`/`failed`), the
-    /// verdict and clean rate when it completed, the failure message when it did
-    /// not, and the summed spend. Returns whether a row matched.
+    /// Finish a probe on behalf of the runner holding its lease: stamp its terminal
+    /// status (`complete`/`failed`), the verdict and clean rate when it completed, the
+    /// failure message when it did not, and the summed spend, and clear the lease.
+    /// Only a `running` probe whose lease `holder` holds is finished, so a runner that
+    /// lost its lease leaves the probe to the runner that took it over. Returns
+    /// whether a row matched.
     #[allow(clippy::too_many_arguments)]
     pub async fn finish_model_probe(
         &self,
         id: &str,
+        holder: &str,
         status: &str,
         error: Option<String>,
         verdict: Option<String>,
@@ -9715,10 +9812,101 @@ impl Db {
             .col_expr(model_probe::Column::PassRate, Expr::value(pass_rate))
             .col_expr(model_probe::Column::Spend, Expr::value(spend))
             .col_expr(model_probe::Column::FinishedAt, Expr::value(finished_at))
+            .col_expr(
+                model_probe::Column::LeaseExpiresAt,
+                Expr::value(Option::<String>::None),
+            )
+            .col_expr(
+                model_probe::Column::LeaseHolder,
+                Expr::value(Option::<String>::None),
+            )
             .filter(model_probe::Column::Id.eq(id))
+            .filter(model_probe::Column::Status.eq("running"))
+            .filter(model_probe::Column::LeaseHolder.eq(holder))
             .exec(&self.conn())
             .await?;
         Ok(res.rows_affected > 0)
+    }
+
+    /// Renew a running probe's lease to [`PROBE_LEASE`] past `now` on behalf of the
+    /// runner `holder`. Returns whether it was renewed: `false` when the probe is no
+    /// longer `running` or another runner has taken its lease over, which tells the
+    /// runner it has lost the probe and must stop. `BadRequest` when `now` is not an
+    /// RFC 3339 instant.
+    pub async fn renew_model_probe_lease(&self, id: &str, holder: &str, now: &str) -> Result<bool> {
+        let lease = probe_lease_expiry(now)?;
+        let res = model_probe::Entity::update_many()
+            .col_expr(model_probe::Column::LeaseExpiresAt, Expr::value(lease))
+            .filter(model_probe::Column::Id.eq(id))
+            .filter(model_probe::Column::Status.eq("running"))
+            .filter(model_probe::Column::LeaseHolder.eq(holder))
+            .exec(&self.conn())
+            .await?;
+        Ok(res.rows_affected > 0)
+    }
+
+    /// Take a running probe's lease for the runner `holder`, [`PROBE_LEASE`] past
+    /// `now`, when the lease has lapsed: it holds none, its expiry does not parse, or
+    /// the expiry is before `now` (compared as instants). A compare-and-swap on the
+    /// lease as read, so of two backends taking the same lapsed lease exactly one
+    /// succeeds. Returns the probe as taken, or `None` when it is unknown, no longer
+    /// `running`, its lease is still held, or another backend took it first.
+    /// `BadRequest` when `now` is not an RFC 3339 instant.
+    pub async fn take_model_probe_lease(
+        &self,
+        id: &str,
+        holder: &str,
+        now: &str,
+    ) -> Result<Option<model_probe::Model>> {
+        let lease = probe_lease_expiry(now)?;
+        let instant = parse_instant(now)?;
+        let Some(probe) = self.get_model_probe(id).await? else {
+            return Ok(None);
+        };
+        if probe.status != "running" || !lease_lapsed(probe.lease_expires_at.as_deref(), instant) {
+            return Ok(None);
+        }
+        let mut update = model_probe::Entity::update_many()
+            .col_expr(
+                model_probe::Column::LeaseExpiresAt,
+                Expr::value(lease.clone()),
+            )
+            .col_expr(model_probe::Column::LeaseHolder, Expr::value(holder))
+            .filter(model_probe::Column::Id.eq(id))
+            .filter(model_probe::Column::Status.eq("running"));
+        update = match &probe.lease_expires_at {
+            Some(held) => update.filter(model_probe::Column::LeaseExpiresAt.eq(held.as_str())),
+            None => update.filter(model_probe::Column::LeaseExpiresAt.is_null()),
+        };
+        update = match &probe.lease_holder {
+            Some(held) => update.filter(model_probe::Column::LeaseHolder.eq(held.as_str())),
+            None => update.filter(model_probe::Column::LeaseHolder.is_null()),
+        };
+        if update.exec(&self.conn()).await?.rows_affected == 0 {
+            return Ok(None);
+        }
+        Ok(Some(model_probe::Model {
+            lease_expires_at: Some(lease),
+            lease_holder: Some(holder.to_string()),
+            ..probe
+        }))
+    }
+
+    /// Every `running` probe whose lease has lapsed at `now` (none held, an
+    /// unparseable expiry, or an expiry before `now`, compared as instants): the
+    /// probes whose runner is gone and which a running backend takes over, oldest
+    /// first. `BadRequest` when `now` is not an RFC 3339 instant.
+    pub async fn lapsed_running_model_probes(&self, now: &str) -> Result<Vec<model_probe::Model>> {
+        let instant = parse_instant(now)?;
+        Ok(model_probe::Entity::find()
+            .filter(model_probe::Column::Status.eq("running"))
+            .order_by_asc(model_probe::Column::CreatedAt)
+            .order_by_asc(model_probe::Column::Id)
+            .all(&self.conn())
+            .await?
+            .into_iter()
+            .filter(|probe| lease_lapsed(probe.lease_expires_at.as_deref(), instant))
+            .collect())
     }
 
     /// Fail every probe still marked `running` — the startup reap. A probe runs
@@ -9732,6 +9920,14 @@ impl Db {
                 Expr::value("the backend restarted while the probe was running"),
             )
             .col_expr(model_probe::Column::FinishedAt, Expr::value(now))
+            .col_expr(
+                model_probe::Column::LeaseExpiresAt,
+                Expr::value(Option::<String>::None),
+            )
+            .col_expr(
+                model_probe::Column::LeaseHolder,
+                Expr::value(Option::<String>::None),
+            )
             .filter(model_probe::Column::Status.eq("running"))
             .exec(&self.conn())
             .await?;
@@ -9742,6 +9938,10 @@ impl Db {
 #[cfg(test)]
 #[path = "db.lease.test.rs"]
 mod lease_tests;
+
+#[cfg(test)]
+#[path = "db.probe_lease.test.rs"]
+mod probe_lease_tests;
 
 #[cfg(test)]
 #[path = "db.job_events.test.rs"]

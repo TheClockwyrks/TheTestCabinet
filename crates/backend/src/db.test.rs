@@ -8441,6 +8441,8 @@ async fn the_probe_provider_projection_joins_slug_and_reads_errored_as_missing_l
         spend: 0.0,
         created_at: "2026-08-23T00:00:00Z".to_string(),
         finished_at: None,
+        lease_expires_at: None,
+        lease_holder: None,
     };
     let item =
         |id: &str, probe_id: &str, provider: Option<&str>, pass: bool, label: Option<&str>| {
@@ -8472,9 +8474,13 @@ async fn the_probe_provider_projection_joins_slug_and_reads_errored_as_missing_l
     db.insert_model_probe_item(item("i1", "p1", Some("acme"), true, Some("correct-calls")))
         .await
         .unwrap();
-    db.insert_model_probe_item(item("i2", "p1", Some("acme"), false, Some("missing-calls")))
-        .await
-        .unwrap();
+    // A second sample: a probe holds one item per call.
+    db.insert_model_probe_item(test_cabinet_entities::model_probe_item::Model {
+        sample: 1,
+        ..item("i2", "p1", Some("acme"), false, Some("missing-calls"))
+    })
+    .await
+    .unwrap();
     db.insert_model_probe_item(item(
         "i3",
         "p2",
@@ -8484,9 +8490,12 @@ async fn the_probe_provider_projection_joins_slug_and_reads_errored_as_missing_l
     ))
     .await
     .unwrap();
-    db.insert_model_probe_item(item("i4", "p2", None, false, None))
-        .await
-        .unwrap();
+    db.insert_model_probe_item(test_cabinet_entities::model_probe_item::Model {
+        sample: 1,
+        ..item("i4", "p2", None, false, None)
+    })
+    .await
+    .unwrap();
 
     let mut rows = db.probe_item_provider_rows().await.unwrap();
     rows.sort();
