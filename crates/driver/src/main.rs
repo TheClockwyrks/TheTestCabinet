@@ -6,7 +6,9 @@
 //! storage through [`finish`](test_cabinet_driver::finish): the held `storing`
 //! report carrying the record, the run tree and bundle uploads, and the terminal
 //! status carrying the produced (or failed) record — and exits, successfully once
-//! that terminal status landed or was refused. A `SIGTERM` is handled as
+//! that terminal status landed or was refused. Every terminal status waits until
+//! the backend has acknowledged every event batch; one that cannot is withheld and
+//! the driver exits non-zero, leaving the backend to finish from the held record. A `SIGTERM` is handled as
 //! [`sigterm`](test_cabinet_driver::sigterm) sets: a run holding its record keeps
 //! finishing, one that holds none is reported `failed` as `infrastructure`, and
 //! either way the sandbox is deleted first. A first report the backend refuses
@@ -125,11 +127,17 @@ async fn main() -> ExitCode {
     let resolved: std::sync::Mutex<Option<test_cabinet_driver::TestCaseVersion>> =
         std::sync::Mutex::new(None);
     let out_dir = config.work_dir.join("out");
+    // The relay channel: the sinks (held inside `drive`) push onto the sender, the
+    // relay `run_job` spawns owns the receiver. Its progress is shared with the
+    // `SIGTERM` handling, whose `failed` report waits on every event being
+    // acknowledged as the terminal statuses `run_job` posts do.
+    let (tx, rx) = sink::channel();
+    let events = tx.progress();
 
     run_until_shutdown(
         &stage,
         run_job(
-            &config, &client, &run_id, &request, started_at, &stage, &resolved,
+            &config, &client, &run_id, &request, started_at, &stage, &resolved, tx, rx,
         ),
         shutdown,
         &ShutdownTarget {
@@ -137,6 +145,7 @@ async fn main() -> ExitCode {
             report_wait: INTERRUPTED_REPORT_WAIT,
             attempt_timeout: Some(INTERRUPTED_ATTEMPT_TIMEOUT),
             sweep_interval: SANDBOX_SWEEP_INTERVAL,
+            events: Some(&events),
         },
         &DriverSandbox(&config),
         |state, detail| {
@@ -193,7 +202,9 @@ impl Sandbox for DriverSandbox<'_> {
 /// interrupts it ([`run_until_shutdown`]).
 ///
 /// `stage` is moved through the run's stages; `resolved` is filled by `drive` the
-/// moment the definition materializes.
+/// moment the definition materializes. `tx` and `rx` are the relay channel's two
+/// halves: the relay is spawned on `rx` once `starting` is reported.
+#[allow(clippy::too_many_arguments)]
 async fn run_job(
     config: &Config,
     client: &Arc<JobClient>,
@@ -202,6 +213,8 @@ async fn run_job(
     started_at: OffsetDateTime,
     stage: &Arc<StageCell>,
     resolved: &std::sync::Mutex<Option<test_cabinet_driver::TestCaseVersion>>,
+    tx: sink::RelaySender,
+    rx: sink::RelayReceiver,
 ) -> ExitCode {
     // Mark the job starting before any work, so the console shows it left the queue
     // and is spinning up (pre-run container setup). The driver advances it to
@@ -234,7 +247,6 @@ async fn run_job(
 
     // The relay drains the channel and streams events/preview to the backend. The
     // sinks (held inside `drive`) push onto `tx`; the relay owns `rx`.
-    let (tx, rx) = sink::channel();
     // Each event batch is held until the backend acknowledges it, retried under
     // the same wait as the held and terminal reports.
     let relay = tokio::spawn(sink::relay_task(
@@ -317,16 +329,17 @@ async fn run_job(
         CancelRace::Destroyed => {
             // The destroyed run is recorded nowhere, deliberately. The backend already
             // holds the job in its terminal `canceled` state, so no status post is owed;
-            // with no record to attach them to, the events the relay streamed are
-            // orphaned and the run never reaches the run list — which is the point, since
-            // there is no early state to inspect for a harness that could not be asked
-            // for one.
+            // the events the backend already stored stay stored against the job, but with
+            // no record to attach them to the run never reaches the run list — which is
+            // the point, since there is no early state to inspect for a harness that could
+            // not be asked for one.
             //
-            // So the relay is abandoned rather than drained. Draining exists to guarantee
-            // every event reached the backend *before* the record that anchors them; with
-            // no record coming, a flush would only trade the seconds this path exists to
-            // save (a preview connection can hold the channel open for its read timeout
-            // after the run future is dropped) for events nothing will ever read.
+            // So the relay is abandoned rather than drained, and the events it had not
+            // yet had acknowledged are dropped. Draining exists to guarantee every event
+            // is stored *before* the terminal status that anchors them; with no status
+            // coming, a flush would only trade the seconds this path exists to save (a
+            // preview connection can hold the channel open for its read timeout after
+            // the run future is dropped) for events nothing will ever read.
             drop(tx);
             relay.abort();
             // The teardown *is* the kill on this path, so its failure is the one
@@ -360,15 +373,17 @@ async fn run_job(
     // Drop the sending half so the relay's channel closes once it drains the
     // backlog, then await it: every event batch is settled — stored by the backend,
     // or abandoned — *before* the terminal status, carrying the record the backend
-    // persists beside the stored events, is sent.
-    drop(tx);
-    match relay.await {
-        Ok(sink::RelayOutcome::Delivered) => {}
-        Ok(sink::RelayOutcome::Undelivered) => tracing::warn!(
+    // persists beside the stored events, is sent. A terminal status is posted only
+    // once every batch is acknowledged, so an abandoned one withholds it: the held
+    // report and the uploads are still made, and the backend finishes the run from
+    // the held record as it does for a lost driver.
+    let events = sink::settle(tx, relay).await;
+    if events == sink::RelayOutcome::Undelivered {
+        tracing::warn!(
             job_id = %config.job_id,
-            "the backend did not acknowledge every event batch; its stored stream is incomplete",
-        ),
-        Err(err) => tracing::warn!(error = %err, "the relay task panicked"),
+            "the backend did not acknowledge every event batch; the terminal status \
+             will be withheld",
+        );
     }
 
     match outcome {
@@ -393,6 +408,7 @@ async fn run_job(
                 started_at,
                 test_case.as_ref(),
                 stage,
+                events,
             )
             .await;
             teardown_sandbox(config).await;
@@ -423,7 +439,7 @@ async fn run_job(
             );
             let out_dir = config.work_dir.join("out");
             let finished = finish(
-                &finish_target(config, client, &out_dir, stage),
+                &finish_target(config, client, &out_dir, stage, events),
                 Some(record),
                 RunOutcome::Succeeded,
                 already_canceled,
@@ -471,12 +487,16 @@ async fn run_job(
                     started_at,
                     failure.test_case.as_ref(),
                     stage,
+                    events,
                 )
                 .await;
                 teardown_sandbox(config).await;
                 return exit;
             }
-            report_failure(client, config, run_id, request, started_at, failure, stage).await
+            report_failure(
+                client, config, run_id, request, started_at, failure, stage, events,
+            )
+            .await
         }
     }
 }
@@ -534,6 +554,7 @@ const CANCELED_DETAIL: &str = "canceled by operator";
 /// a gg run killed before its session was launched, is destroyed and recorded nowhere,
 /// which is what the operator asked for: there is no early state to anchor, because there
 /// was no session that could be asked to leave one.
+#[allow(clippy::too_many_arguments)]
 async fn report_canceled(
     client: &JobClient,
     config: &Config,
@@ -542,6 +563,7 @@ async fn report_canceled(
     started_at: OffsetDateTime,
     test_case: Option<&test_cabinet_driver::TestCaseVersion>,
     stage: &StageCell,
+    events: sink::RelayOutcome,
 ) -> ExitCode {
     // The backend holds the streamed events, so the locally-written `events.jsonl`
     // (lost with the ephemeral pod anyway) is immaterial — an empty slice, exactly as
@@ -569,7 +591,7 @@ async fn report_canceled(
     // gg session record in the run tree, which the mirrors carry to the backend store.
     let out_dir = config.work_dir.join("out");
     finish(
-        &finish_target(config, client, &out_dir, stage),
+        &finish_target(config, client, &out_dir, stage, events),
         Some(record),
         RunOutcome::Canceled,
         true,
@@ -856,15 +878,17 @@ async fn finalize_showcase_backend_upload(
 /// its success path never writes a [`test_cabinet_driver::RunRecord`], so — exactly
 /// as the worker does — the driver builds a `Failed` record via
 /// [`write_failed_record`] carrying the failure detail, so the run is retained and
-/// inspectable rather than vanishing. The backend persists it with the events the
-/// relay already accumulated, so the locally-written `events.jsonl` (lost with the
-/// ephemeral pod anyway) is immaterial; an empty slice is passed here. The
+/// inspectable rather than vanishing. The backend persists it with the events it
+/// stored as each batch arrived, so the locally-written `events.jsonl` (lost with
+/// the ephemeral pod anyway) is immaterial; an empty slice is passed here. The
 /// resolved version, when the failure happened after resolution, gives the record
 /// its real test type and version.
 ///
 /// A built record takes the whole finishing sequence (held report, uploads, terminal
-/// report); without one the `failed` report is made alone. The exit code follows the
-/// terminal report.
+/// report); without one the `failed` report is made alone. Either way the `failed`
+/// report waits on `events`, every batch acknowledged, and is withheld otherwise.
+/// The exit code follows the terminal report.
+#[allow(clippy::too_many_arguments)]
 async fn report_failure(
     client: &JobClient,
     config: &Config,
@@ -873,6 +897,7 @@ async fn report_failure(
     started_at: OffsetDateTime,
     failure: RunFailure,
     stage: &StageCell,
+    events: sink::RelayOutcome,
 ) -> ExitCode {
     tracing::warn!(detail = %failure.detail, "run failed; reporting to the backend");
     let record = match write_failed_record(
@@ -901,7 +926,7 @@ async fn report_failure(
     // delivered, so the exit code follows the report alone.
     let out_dir = config.work_dir.join("out");
     finish(
-        &finish_target(config, client, &out_dir, stage),
+        &finish_target(config, client, &out_dir, stage, events),
         record,
         RunOutcome::Failed {
             detail: failure.detail,
@@ -913,12 +938,14 @@ async fn report_failure(
     .exit_code()
 }
 
-/// Where this driver's finishing calls go, from its configuration.
+/// Where this driver's finishing calls go, from its configuration, and how the
+/// run's event batches fared.
 fn finish_target<'a>(
     config: &'a Config,
     client: &'a JobClient,
     out_dir: &'a std::path::Path,
     stage: &'a StageCell,
+    events: sink::RelayOutcome,
 ) -> FinishTarget<'a> {
     FinishTarget {
         client,
@@ -931,6 +958,7 @@ fn finish_target<'a>(
         report_wait: config.report_wait,
         attempt_timeout: Some(REPORT_ATTEMPT_TIMEOUT),
         stage: Some(stage),
+        events,
     }
 }
 

@@ -310,6 +310,23 @@ pub async fn relay_task(
     }
 }
 
+/// Close the relay channel by dropping the driver's own sender `tx`, then wait
+/// for the relay `task` to settle every batch, and say how its events fared.
+///
+/// This is what every terminal status waits on: only [`RelayOutcome::Delivered`]
+/// lets one be posted. A relay task that panicked or was aborted settled nothing
+/// it can vouch for, so it reads as [`RelayOutcome::Undelivered`].
+pub async fn settle(tx: RelaySender, task: tokio::task::JoinHandle<RelayOutcome>) -> RelayOutcome {
+    drop(tx);
+    match task.await {
+        Ok(outcome) => outcome,
+        Err(err) => {
+            tracing::warn!(error = %err, "the event relay task did not finish");
+            RelayOutcome::Undelivered
+        }
+    }
+}
+
 /// The relay's delivery state.
 struct Relay {
     client: Arc<JobClient>,

@@ -12,7 +12,11 @@
 //!   `infrastructure` and the detail `driver interrupted by SIGTERM`, naming the
 //!   [stage](Stage) it was in.
 //!
-//! Either way the driver deletes its sandbox before it exits.
+//! Either way the driver deletes its sandbox before it exits. The `failed` report,
+//! like every terminal status, is posted only once the backend has acknowledged
+//! every event batch emitted before it (the driver's events page, "Delivery to the
+//! backend"); the wait for that shares the report's own bound, and a report it
+//! could not wait out is withheld and the driver exits non-zero.
 //!
 //! [`run_until_shutdown`] holds that logic. It races the driver's run, finishing
 //! included, against a shutdown future, which `main` resolves on the signal and a
@@ -30,7 +34,8 @@ use std::time::Duration;
 
 use crate::client::{JobClient, StoreFields};
 use crate::finish::timed;
-use crate::retry::{RetryPolicy, retry_call};
+use crate::retry::{RetryEnd, RetryPolicy, retry_call};
+use crate::sink::{RelayOutcome, RelayProgress};
 use crate::{RunRecord, RunState};
 
 /// The detail a run interrupted before it had a record is reported with, followed
@@ -196,8 +201,9 @@ pub trait Sandbox {
 pub struct ShutdownTarget<'a> {
     /// The run's job client.
     pub client: &'a JobClient,
-    /// How long an interrupted run's `failed` report is retried:
-    /// [`INTERRUPTED_REPORT_WAIT`] for the driver.
+    /// How long an interrupted run's `failed` report is waited for, the wait for
+    /// its events' acknowledgement included: [`INTERRUPTED_REPORT_WAIT`] for the
+    /// driver.
     pub report_wait: Duration,
     /// How long one report attempt may go unanswered:
     /// [`INTERRUPTED_ATTEMPT_TIMEOUT`] for the driver, `None` for a test on a
@@ -206,6 +212,9 @@ pub struct ShutdownTarget<'a> {
     /// The pause between the two sandbox teardowns of an interrupted run:
     /// [`SANDBOX_SWEEP_INTERVAL`] for the driver.
     pub sweep_interval: Duration,
+    /// The run's event relay, whose acknowledgement of every event emitted before
+    /// the signal the `failed` report waits on. `None` waits on nothing.
+    pub events: Option<&'a RelayProgress>,
 }
 
 /// Run the driver's `run`, finishing included, until it ends or `shutdown`
@@ -220,9 +229,11 @@ pub struct ShutdownTarget<'a> {
 ///   (and swept for again a moment later), and the run is reported `failed` with
 ///   the record `interrupted_record` builds for the state
 ///   [`RunState::Infrastructure`] and the detail naming the stage (`None` when it
-///   cannot build one, which reports the failure without a record). The driver
-///   exits successfully once that report landed or was refused and the sandbox is
-///   gone.
+///   cannot build one, which reports the failure without a record). The report is
+///   posted only once every event emitted before it is acknowledged, within the
+///   same `report_wait`; when that does not happen in time it is withheld. The
+///   driver exits successfully once that report landed or was refused and the
+///   sandbox is gone.
 pub async fn run_until_shutdown<R, S, B, F>(
     stage: &StageCell,
     run: R,
@@ -265,9 +276,17 @@ where
     tracing::warn!(stage = %at, "driver sent SIGTERM before the run had a record; reporting it failed");
     let record = interrupted_record(RunState::Infrastructure, &detail);
     let report = async {
-        let policy = RetryPolicy::waiting_for(target.report_wait);
+        let started = tokio::time::Instant::now();
+        if let Some(events) = target.events {
+            match tokio::time::timeout(target.report_wait, events.acknowledged()).await {
+                Ok(RelayOutcome::Delivered) => {}
+                Ok(RelayOutcome::Undelivered) | Err(_) => return Interrupted::Withheld,
+            }
+        }
+        let remaining = target.report_wait.saturating_sub(started.elapsed());
+        let policy = RetryPolicy::waiting_for(remaining);
         let client = target.client;
-        retry_call(
+        let result = retry_call(
             &policy,
             "the interrupted run's report",
             std::future::pending(),
@@ -282,7 +301,8 @@ where
                 )
             },
         )
-        .await
+        .await;
+        Interrupted::Posted(result)
     };
     let teardown = async {
         let first = sandbox.teardown().await;
@@ -292,12 +312,20 @@ where
     };
     let (report, torn_down) = tokio::join!(report, teardown);
     let reported = match &report {
-        Ok(()) => {
+        Interrupted::Withheld => {
+            tracing::error!(
+                %detail,
+                "withholding the interrupted run's report: the backend did not acknowledge \
+                 every event batch in time",
+            );
+            false
+        }
+        Interrupted::Posted(Ok(())) => {
             tracing::info!(%detail, "reported the interrupted run to the backend");
             true
         }
-        Err(failure) => {
-            let refused = failure.end == crate::retry::RetryEnd::Refused;
+        Interrupted::Posted(Err(failure)) => {
+            let refused = failure.end == RetryEnd::Refused;
             tracing::error!(
                 %detail,
                 error = %failure,
@@ -312,6 +340,14 @@ where
     } else {
         ExitCode::FAILURE
     }
+}
+
+/// How an interrupted run's `failed` report ended.
+enum Interrupted<E> {
+    /// It was posted, with this result.
+    Posted(Result<(), crate::retry::RetryFailure<E>>),
+    /// It was not posted: an event batch went unacknowledged within the wait.
+    Withheld,
 }
 
 /// The held report, posted once at once when the finishing made it and it has not
