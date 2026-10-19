@@ -825,6 +825,12 @@ secrets:
 # data. The pod is replaced, which it must be anyway to mount the new volumes.
 # This is a StatefulSet-only rule; Deployments are unaffected.
 #
+# A workload that changed kind is the same problem from the other side: the
+# artifacts service was a StatefulSet and is now a stateless Deployment of the same
+# name, and the apply would leave the old StatefulSet running beside it, its pod
+# selected by the same Service. So a live StatefulSet the overlay now renders as a
+# Deployment is deleted too, its claim retained, as above.
+#
 # Staging/prod deliberately do NOT do this: they take the `--cascade=orphan`
 # route (see the note in k8s/components/observability/lgtm.yaml) to keep the pod
 # serving while the object is recreated. Locally that downtime is worth nothing.
@@ -841,6 +847,11 @@ sts-reconcile:
 	      echo "StatefulSet '$$name': volume claims changed (an immutable field) — deleting the object so the apply recreates it; its PVCs are retained."; \
 	      $(KUBECTL) -n '$(NS)' delete statefulset "$$name" --wait=true; \
 	    fi; \
+	  done; \
+	  for name in $$(printf '%s' "$$desired" | jq -r '.items[] | select(.kind == "Deployment") | .metadata.name'); do \
+	    $(KUBECTL) -n '$(NS)' get statefulset "$$name" >/dev/null 2>&1 || continue; \
+	    echo "StatefulSet '$$name': now a Deployment — deleting the StatefulSet so it does not serve beside it; its PVCs are retained."; \
+	    $(KUBECTL) -n '$(NS)' delete statefulset "$$name" --wait=true; \
 	  done
 
 # How long `rollout-wait` gives EACH workload before it gives up. Deliberately
@@ -868,11 +879,12 @@ TCAB ?= $(shell command -v tcab 2>/dev/null || echo "cargo run --quiet --manifes
 INGEST_POD_TIMEOUT ?= 300
 
 # The workloads each caller waits on. `apply` covers everything the overlay owns,
-# including the observability stack. `local-rebuild` restarts only the services it
-# rebuilds, so it waits on exactly those — tcab-lgtm is neither rebuilt nor
-# restarted there, and waiting on a rollout nobody started proves nothing.
-APPLY_WORKLOADS   := statefulset/tcab-backend statefulset/tcab-artifacts statefulset/tcab-lgtm deployment/tcab-arena deployment/tcab-dispatcher
-RESTART_WORKLOADS := statefulset/tcab-backend statefulset/tcab-artifacts deployment/tcab-arena deployment/tcab-dispatcher
+# including the observability stack and the Azurite emulator. `local-rebuild`
+# restarts only the services it rebuilds, so it waits on exactly those — tcab-lgtm
+# and tcab-azurite are neither rebuilt nor restarted there, and waiting on a
+# rollout nobody started proves nothing.
+APPLY_WORKLOADS   := statefulset/tcab-backend deployment/tcab-azurite deployment/tcab-artifacts statefulset/tcab-lgtm deployment/tcab-arena deployment/tcab-dispatcher
+RESTART_WORKLOADS := statefulset/tcab-backend deployment/tcab-artifacts deployment/tcab-arena deployment/tcab-dispatcher
 
 # Wait for every workload in $(WAIT_WORKLOADS) to finish rolling out, then report once.
 #

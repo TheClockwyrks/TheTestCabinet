@@ -30,7 +30,7 @@ spec:
               value: "bc501b7e30b37db51fc37f69c9ba13c1f0855c32620be7415d6c8df44c9cdc41"
 ---
 apiVersion: apps/v1
-kind: StatefulSet
+kind: Deployment
 metadata:
   name: tcab-artifacts
   namespace: tcab-prod

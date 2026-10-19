@@ -13,9 +13,10 @@
 //!
 //! The pieces:
 //!
-//! - [`store`] — the [`ArtifactStore`](store::ArtifactStore) trait and its
-//!   [`LocalFsStore`] impl (a directory on a PVC), keyed per
-//!   run id. An R2 impl is a deferrable internal detail (see the trait's docs).
+//! - [`store`] — the [`ArtifactStore`]: run trees as objects
+//!   in the private Blob container, keyed per run id, each upload written under a
+//!   fresh generation and made current by a pointer written last. The service
+//!   holds no state of its own, so any replica answers any request.
 //! - [`api`] — the HTTP surface: the driver's upload (per-job-token), the
 //!   publisher's source-tree pull (per-publish-job token), the backend's tree
 //!   management (service token), and the reviewer's build/media reads, the reads
@@ -23,9 +24,18 @@
 //!   under the edge's `/artifacts` prefix.
 //! - [`playable`] — resolving a run's build, proof, validation, showcase and
 //!   asset files for serving.
+//! - [`blob`] — the Azure Blob client over the private run-tree container,
+//!   authenticated by workload identity in a cluster and by Shared Key against
+//!   Azurite.
 //! - [`r2`] — the R2 object-store client. The backend's snapshot writes and the
 //!   CLI's `tcab publish-asset-reference` still call it directly, an interim edge
 //!   until those writes go through this service.
+//! - [`public`] — the public dataset's store: the R2 bucket, or an Azurite
+//!   container on the local stack, behind one interface.
+//! - [`publish`] — the two writes into the public store: a published run's
+//!   media copied from its tree (`publish-media`), and the key rule of a
+//!   public dataset object (`PUT /public/{key}`).
+//! - [`object`] — the shapes both object stores read and write in.
 //! - [`auth`] — who is calling: the Access assertion every edge request carries
 //!   (checked by [`access`]), or one of the in-cluster tokens, with no route
 //!   reachable without one but the health probe.
@@ -35,9 +45,13 @@
 pub mod access;
 pub mod api;
 pub mod auth;
+pub mod blob;
 pub mod config;
 pub mod error;
+pub mod object;
 pub mod playable;
+pub mod public;
+pub mod publish;
 pub mod r2;
 pub mod store;
 
@@ -45,8 +59,9 @@ use std::sync::Arc;
 
 use crate::access::AccessVerifier;
 use crate::api::AppState;
+use crate::blob::{BlobClient, BlobError};
 use crate::config::Config;
-use crate::store::LocalFsStore;
+use crate::store::{ArtifactStore, BlobStore};
 
 /// A fully wired, runnable artifact service: the Axum router plus its resolved
 /// bind address.
@@ -57,24 +72,49 @@ pub struct ArtifactService {
     pub bind: String,
 }
 
-/// Assemble the artifact service from a configuration: open the local-fs store
-/// (creating its root if missing), build the verify HTTP client and the Access
-/// verifier, and construct the router. Fails only if the store root cannot be created (an unwritable PVC) — the
-/// service refuses to start rather than fail every upload later.
-pub fn build(config: Config) -> Result<ArtifactService, store::StoreError> {
-    let store = LocalFsStore::new(&config.root)?;
+/// Make the run-tree container ready to serve from, before the service
+/// starts: against an emulator, create the containers it needs
+/// ([`Config::emulator_containers`]), leaving one that exists as it is; then,
+/// in every mode, list one blob of the run-tree container, which proves the
+/// credential is accepted and the container exists. A cluster whose identity was
+/// not provisioned or federated fails here, so its pod never becomes ready
+/// rather than failing every request later. Answers the containers it created.
+pub async fn prepare_run_container(config: &Config) -> Result<Vec<String>, BlobError> {
+    let runs = BlobClient::new(&config.blob, reqwest::Client::new())?;
+    let mut created = Vec::new();
+    for container in config.emulator_containers() {
+        if runs.for_container(container).create_container().await? {
+            created.push(container.to_string());
+        }
+    }
+    runs.list_page("", None, None, Some(1)).await?;
+    Ok(created)
+}
+
+/// Assemble the artifact service from a configuration: the Blob client of the
+/// private run-tree container, the public store, the verify HTTP client and the
+/// Access verifier, and the router over them. Fails when the container's
+/// credential cannot be set up (a workload identity the pod was not given), so
+/// the service refuses to start rather than fail every request later.
+pub fn build(config: Config) -> Result<ArtifactService, BlobError> {
     let bind = config.bind.clone();
     let http = reqwest::Client::new();
+    let runs = BlobClient::new(&config.blob, http.clone())?;
+    let public = public::open(&config.public_store, &runs);
+    let store = ArtifactStore::new(Arc::new(BlobStore::new(runs)));
     let access = config
         .access
         .as_ref()
         .map(|access| Arc::new(AccessVerifier::new(access, http.clone())));
     let state = AppState {
         store: Arc::new(store),
+        upload_limit: api::MAX_UPLOAD_BYTES,
         backend_url: Arc::new(config.backend_url),
         http,
         service_token: config.service_token.map(Arc::new),
         access,
+        public,
+        transcoder: Arc::new(publish::Ffmpeg::new()),
     };
     Ok(ArtifactService {
         router: api::router(state),

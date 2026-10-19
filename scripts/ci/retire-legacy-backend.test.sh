@@ -35,6 +35,14 @@ check_contains() { # label needle haystack
 	fi
 }
 
+check_lacks() { # label needle haystack
+	if grep -qF -- "$2" <<<"$3"; then
+		bad "$1" "expected output without: $2" "got: $3"
+	else
+		ok "$1"
+	fi
+}
+
 check_failed() { # label status
 	if [ "$2" -ne 0 ]; then
 		ok "$1"
@@ -98,9 +106,11 @@ check_contains "names the staging resource group" "--resource-group testcabinet-
 check_contains "names the staging cluster" "--name testcabinet-staging-westus2-aks" "$invocation"
 check_contains "runs the file it sends" "--command sh retire-legacy-backend.sh" "$invocation"
 sent="$(cat "$repo/sent/retire-legacy-backend.sh" 2>/dev/null)"
-check_contains "deletes the legacy Deployment, idempotently, and waits for its pods" \
-	"kubectl -n tcab-staging delete deployment tcab-backend --ignore-not-found --cascade=foreground --wait=true" "$sent"
-check_contains "says what it did" "The legacy Deployment tcab-backend is not in tcab-staging." "$out"
+check_contains "deletes the legacy workloads, idempotently, and waits for their pods" \
+	"kubectl -n tcab-staging delete deployment/tcab-backend statefulset/tcab-artifacts --ignore-not-found --cascade=foreground --wait=true" "$sent"
+check_lacks "keeps the old artifacts claim" "persistentvolumeclaim" "$sent"
+check_contains "says what it did" \
+	"The legacy workloads deployment/tcab-backend statefulset/tcab-artifacts are not in tcab-staging." "$out"
 
 echo "--- the environment names another namespace ---"
 
@@ -110,7 +120,7 @@ out="$(run "$repo" THE_TEST_CABINET_RESOURCE_GROUP=testcabinet-prod-westus2-rg \
 status=$?
 check_equal "passes" 0 "$status"
 check_contains "names the prod cluster" "--name testcabinet-prod-westus2-aks" "$(cat "$repo/az.log")"
-check_contains "deletes from tcab-prod" "kubectl -n tcab-prod delete deployment tcab-backend" \
+check_contains "deletes from tcab-prod" "kubectl -n tcab-prod delete deployment/tcab-backend statefulset/tcab-artifacts" \
 	"$(cat "$repo/sent/retire-legacy-backend.sh" 2>/dev/null)"
 
 echo "--- the command fails in the cluster ---"
@@ -119,7 +129,7 @@ repo="$(fresh_repo)"
 out="$(run "$repo" STUB_AZ_EXIT_CODE=1)"
 status=$?
 check_failed "fails" "$status"
-check_contains "names the command that retires it by hand" "delete deployment tcab-backend --ignore-not-found" "$out"
+check_contains "names the command that retires them by hand" "delete deployment/tcab-backend statefulset/tcab-artifacts --ignore-not-found" "$out"
 
 echo "--- the invocation never reaches the cluster ---"
 
@@ -136,7 +146,7 @@ out="$(cd / && env PATH="$repo/bin:$PATH" STUB_AZ_LOG="$repo/az.log" STUB_SENT="
 	THE_TEST_CABINET_NAMESPACE=tcab-prod "$repo/scripts/ci/retire-legacy-backend.sh" --dry-run 2>&1)"
 status=$?
 check_equal "passes" 0 "$status"
-check_contains "prints the command" "kubectl -n tcab-prod delete deployment tcab-backend --ignore-not-found" "$out"
+check_contains "prints the command" "kubectl -n tcab-prod delete deployment/tcab-backend statefulset/tcab-artifacts --ignore-not-found" "$out"
 check_equal "reaches no cluster" "" "$(cat "$repo/az.log" 2>/dev/null)"
 
 echo "--- an argument ---"

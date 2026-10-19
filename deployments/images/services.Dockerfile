@@ -333,11 +333,10 @@ RUN --mount=type=cache,target=/root/.npm \
 FROM ${AUDIO_STORE_IMAGE} AS audio-store
 
 # ── Shared slim runtime ──────────────────────────────────────────────────────
-# The base for the three services that render nothing and shell out to nothing:
-# arena, artifacts and dispatcher. ca-certificates covers their outbound HTTPS
-# (the Kubernetes API, the backend over TLS, the Access certificates, telemetry
-# export). No Chromium and
-# no fonts.
+# The base for the three services that render nothing: arena, artifacts and
+# dispatcher. ca-certificates covers their outbound HTTPS (the Kubernetes API, the
+# backend over TLS, the object stores, the Access certificates, telemetry export).
+# No Chromium and no fonts.
 FROM docker.io/library/debian:bookworm-slim AS runtime-slim
 RUN apt-get update \
   && apt-get install -y --no-install-recommends \
@@ -357,14 +356,18 @@ EXPOSE 8791
 ENTRYPOINT ["tcab-arena"]
 
 # ── artifacts ────────────────────────────────────────────────────────────────
-# The artifact service receives each run's produced tree from the driver and serves
-# it to the console off a persistent volume. It forwards a driver's per-job token to
-# the backend and fetches the Access certificates it verifies the edge's assertion
-# with, both over TLS. State (the artifact
-# store) is mounted at runtime — a PersistentVolumeClaim in the cluster —
-# so the image carries none; deployments/k8s/base/artifacts.yaml sets the matching
-# TCAB_ARTIFACTS_ROOT.
+# The artifact service receives each run's produced tree from the driver, holds it
+# in the private Blob container and serves it to the console, and writes the public
+# dataset to R2. It is stateless: it mounts no volume, and its stores and
+# credentials come from the environment (deployments/k8s/base/artifacts.yaml).
+# ffmpeg transcodes a published run's webm clips to H.264 mp4 for iOS playback when
+# the backend publishes its media (crates/artifacts publish.rs, `Ffmpeg`); a failed
+# transcode publishes the webm as recorded.
 FROM runtime-slim AS artifacts
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends \
+       ffmpeg \
+  && rm -rf /var/lib/apt/lists/*
 COPY --from=build /out/tcab-artifacts /usr/local/bin/tcab-artifacts
 ENV TCAB_ARTIFACTS_BIND=0.0.0.0:8790
 EXPOSE 8790

@@ -95,6 +95,43 @@ ci_assert_namespaced() {
 	return "$bad"
 }
 
+# Reads a rendered manifest stream on stdin and prints `<kind>/<name>` for each object
+# annotated `azure.workload.identity/client-id: unprovisioned`: a workload identity an
+# overlay names before it exists in Azure (overlays/prod/patch-artifacts-identity.yaml
+# until tcab-artifacts-prod is provisioned).
+ci_unprovisioned_identities() {
+	awk '
+		function unquote(v) { gsub(/^["\047]|["\047]$/, "", v); return v }
+		function flush() {
+			if (hit) print kind "/" name
+			kind = ""; name = ""; top = ""; hit = 0
+		}
+		/^---/ { flush(); next }
+		/^[A-Za-z]/ { top = $1; sub(/:$/, "", top) }
+		top == "kind" && /^kind: / { kind = unquote($2) }
+		top == "metadata" && /^  name: / { name = unquote($2) }
+		top == "metadata" && /^    azure\.workload\.identity\/client-id: / && unquote($2) == "unprovisioned" { hit = 1 }
+		END { flush() }
+	'
+}
+
+# Reads a rendered manifest stream on stdin and fails, naming each, if it binds any
+# workload to an unprovisioned identity (ci_unprovisioned_identities). Such a deploy
+# would retire the artifacts service's StatefulSet and replace it with a Deployment
+# whose start-up listing of the container is refused, and a brand-new Deployment has
+# no revision to roll back to, so the deploy is refused before the cluster is touched.
+ci_assert_identities_provisioned() {
+	local unprovisioned
+	unprovisioned="$(ci_unprovisioned_identities)"
+	if [[ -n "$unprovisioned" ]]; then
+		local object
+		while read -r object; do
+			echo "unprovisioned workload identity: ${object}" >&2
+		done <<<"$unprovisioned"
+		return 1
+	fi
+}
+
 # ci_resolve_url <base> <url>: the address git clones a submodule from when
 # `.gitmodules` names it <url> in a superproject cloned from <base>. An absolute
 # URL is returned as it is. Each leading `../` drops one path component of

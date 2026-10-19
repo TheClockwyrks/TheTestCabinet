@@ -196,6 +196,26 @@ check_equal "an object in another namespace fails" "1" "$?"
 check_contains "naming it" "outside tcab-staging: Deployment/tcab-dispatcher (namespace default)" "$out"
 
 repo="$(fresh_repo)"
+cat >>"$repo/deployments/k8s/overlays/prod/rendered.yaml" <<'YAML'
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  annotations:
+    azure.workload.identity/client-id: unprovisioned
+  name: tcab-artifacts
+  namespace: tcab-prod
+YAML
+out="$(run "$repo" -- prod "$COMMIT")"
+check_equal "a workload bound to an unprovisioned identity fails" "1" "$?"
+check_contains "naming it" "unprovisioned workload identity: ServiceAccount/tcab-artifacts" "$out"
+check_contains "saying nothing was retired" "nothing was retired or applied" "$out"
+check_contains "and the trees to move" "artifacts-tcab-artifacts-0 in tcab-prod" "$out"
+check_equal "before retiring or reaching the cluster" "pin-images" "$(cut -d' ' -f1 "$repo/calls.log")"
+out="$(run "$repo" -- --render prod "$COMMIT")"
+check_equal "while its render still succeeds" "0" "$?"
+
+repo="$(fresh_repo)"
 out="$(run "$repo" STUB_EXIT_pin_images=1 -- staging "$COMMIT")"
 check_equal "a failed pin fails" "1" "$?"
 check_contains "saying so" "the staging overlay could not be pinned to $COMMIT" "$out"

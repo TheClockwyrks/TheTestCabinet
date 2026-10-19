@@ -1,0 +1,41 @@
+# The artifacts service's Blob identity in STAGING: the user-assigned managed identity
+# holding Storage Blob Data Contributor on the run-tree container, federated to
+# system:serviceaccount:tcab-staging:tcab-artifacts through the testcabinet-staging-westus2-aks
+# OIDC issuer (Run plane, apps/docs/src/content/docs/deployment/kubernetes/run-plane.md
+# "Artifacts service"; the prerequisites in deployment/kubernetes/overview.md).
+#
+#   Storage account tcabstagingstore (RG testcabinet-staging-westus2-rg), private container run-trees
+#   Identity        tcab-artifacts-staging
+#
+# The account has shared-key access disabled, anonymous access off, blob soft delete,
+# container soft delete and versioning on (14 days; deployment/backups.md), and a
+# lifecycle rule expiring noncurrent versions after 14 days.
+#
+# The `azure.workload.identity/use` pod label is what makes the webhook project the
+# identity's token and variables. The local overlay carries neither, so its pod signs
+# with Shared Key against Azurite.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: tcab-artifacts
+  # the base pins tcab-prod; this overlay's `namespace:` directive retargets it on build
+  namespace: tcab-prod
+  annotations:
+    azure.workload.identity/client-id: "3874c619-95e8-4392-a819-284978fb6d12"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tcab-artifacts
+  namespace: tcab-prod
+spec:
+  template:
+    metadata:
+      labels:
+        azure.workload.identity/use: "true"
+    spec:
+      containers:
+        - name: artifacts
+          env:
+            - name: TCAB_ARTIFACTS_BLOB_ACCOUNT
+              value: "tcabstagingstore"

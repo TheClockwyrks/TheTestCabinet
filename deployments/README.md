@@ -50,7 +50,7 @@ deployments/
 │   │   ├── secrets.example.yaml # Secret templates (placeholders only)
 │   │   ├── backend.yaml       # backend StatefulSet (1 replica) + PVC + Service
 │   │   ├── dispatcher.yaml    # dispatcher Deployment (1 replica), no Service
-│   │   ├── artifacts.yaml     # artifact StatefulSet (1 replica) + PVC + Service + SA
+│   │   ├── artifacts.yaml     # artifact Deployment (2, no PVC) + Service + PDB + SA
 │   │   ├── arena.yaml         # arena Deployment (1 replica) + Service + SA
 │   │   ├── ingest-cronjob.yaml # periodic POST /ingest to refresh the catalog
 │   │   └── networkpolicy.yaml # optional default-deny-ingress + allows
@@ -110,7 +110,8 @@ A push to `staging` deploys staging in the workspace template's deployment job
 1. **Before**: [`scripts/ci/pre-deploy.sh`](../scripts/ci/pre-deploy.sh) pins the
    overlay, records the commit the namespace runs now, gives every rollout 600
    seconds, and retires the backend Deployment of its old name, `tcab-backend`, which
-   holds the backend's disk
+   holds the backend's disk, and the artifacts service's StatefulSet, which its
+   stateless Deployment replaces
    ([`retire-legacy-backend.sh`](../scripts/ci/retire-legacy-backend.sh)).
 2. **The template's deploy**: `scripts/ci/deploy.sh` applies the overlay and waits on
    `the-test-cabinet-backend`, rolling it back if it does not become ready.

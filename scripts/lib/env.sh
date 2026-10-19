@@ -23,7 +23,7 @@
 #
 # Usage (from a script that has computed its own $script_dir):
 #   source "${script_dir}/lib/env.sh"
-#   tcab_env_resolve "$env"   # sets TCAB_VAULT / TCAB_CLUSTER / TCAB_RG / TCAB_NAMESPACE
+#   tcab_env_resolve "$env"   # sets TCAB_VAULT / TCAB_CLUSTER / TCAB_RG / TCAB_NAMESPACE / TCAB_ORIGIN
 #
 # Returns 2 (and prints a usage error) for an empty or unknown env, so callers can:
 #   tcab_env_resolve "$env" || exit $?
@@ -38,6 +38,8 @@ tcab_env_resolve() {
       TCAB_CLUSTER="testcabinet-prod-westus2-aks"
       TCAB_RG="testcabinet-prod-westus2-rg"
       TCAB_NAMESPACE="tcab-prod"
+      # The environment's origin at the edge, behind Cloudflare Access.
+      TCAB_ORIGIN="https://console.testcabinet.ai"
       # The branch whose tip the backend ingests its catalog (test-case defs + the
       # reference-build lockfile) from. A stable branch — NOT a per-release tag — so
       # reingest picks up pushed catalog/reference changes on demand without a roll;
@@ -51,6 +53,7 @@ tcab_env_resolve() {
       TCAB_CLUSTER="testcabinet-staging-westus2-aks"
       TCAB_RG="testcabinet-staging-westus2-rg"
       TCAB_NAMESPACE="tcab-staging"
+      TCAB_ORIGIN="https://console.staging.testcabinet.ai"
       TCAB_INGEST_BRANCH="staging"
       ;;
     "")

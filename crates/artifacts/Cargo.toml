@@ -40,16 +40,16 @@ tracing = { workspace = true }
 opentelemetry = { workspace = true }
 http = { workspace = true }
 bytes = { workspace = true }
-# Spooling an in-flight upload to disk instead of buffering it (`api.rs`):
-# `futures-util` drives the request body's chunk stream, and `tempfile` provides the
-# unnamed scratch file it is written into — unnamed so a partial upload, or one
-# refused for exceeding the cap, is reclaimed by the kernel with nothing left to
-# collect.
+# Streaming an upload into the store and a stored tree out of it (`store`):
+# `futures-util` drives the body chunk streams and the concurrent object writes.
 futures-util = { workspace = true }
-tempfile = { workspace = true }
+# The random half of an upload's generation name (`store`), so two replicas
+# starting an upload of the same run at once cannot collide.
+getrandom = { workspace = true }
 # The HTTP client the service verifies a driver's per-job token with against the
 # backend's internal verify endpoint. rustls (no system OpenSSL), `json` for the
-# body. The R2 client (`r2`) sends its signed requests with it too.
+# body. The R2 (`r2`) and Blob (`blob`) clients send their signed requests with
+# it too, and relay object bodies through its `stream` feature.
 reqwest = { workspace = true }
 # Verifies the Cloudflare Access assertion every edge request carries (`src/access.rs`).
 jsonwebtoken = { workspace = true }
@@ -60,18 +60,25 @@ hmac = { workspace = true }
 hex = { workspace = true }
 md-5 = { workspace = true }
 base64 = { workspace = true }
-# `tar` (pure Rust, no system deps) unpacks the run-artifact tree the driver
-# streams up as a tarball — the same crate the worker/driver already depend on to
-# frame trees over the pod `exec` channel.
+# `tar` (pure Rust, no system deps) reads the run-artifact tree the driver
+# streams up as a tarball, and frames the whole-tree downloads — the same crate the
+# driver builds the upload with.
 tar = "0.4"
 # Gzip framing for the reviewer-facing run-archive download. A run tree is source
 # and JSON/NDJSON, so compressing it is most of the point of offering the download
 # at all. Inherited from the workspace, which owns the version because the run-tree
 # artifact convention puts the same codec on the run host and in the backend too.
 flate2 = { workspace = true }
+# The public store (`public`) is one interface over the R2 and Blob clients,
+# held as a trait object because the environment picks the store at startup.
+async-trait = { workspace = true }
+# A published video is staged on disk for its transcode (`publish`), because
+# ffmpeg moves the mp4 index to the front, which needs a seekable output; the
+# staged files are read back into the public store as a stream.
+tempfile = { workspace = true }
+tokio-util = { workspace = true }
 
 [dev-dependencies]
-tempfile = { workspace = true }
 # Decodes the fixed test keys the Access tests sign assertions with.
 base64 = { workspace = true }
 tokio = { workspace = true, features = ["full", "test-util"] }
@@ -79,6 +86,9 @@ tokio = { workspace = true, features = ["full", "test-util"] }
 # tests without binding a socket, exactly as the auth service's tests do.
 tower = { workspace = true, features = ["util"] }
 serde_json = { workspace = true }
+# Decodes the query strings the stub object stores (`blob.stub.test.rs`,
+# `r2.stub.test.rs`) receive.
+percent-encoding = { workspace = true }
 
 [lints]
 workspace = true

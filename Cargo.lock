@@ -5280,18 +5280,21 @@ dependencies = [
 name = "test-cabinet-artifacts"
 version = "0.0.0"
 dependencies = [
+ "async-trait",
  "axum",
  "base64",
  "bytes",
  "dotenvy",
  "flate2",
  "futures-util",
+ "getrandom 0.3.4",
  "hex",
  "hmac",
  "http",
  "jsonwebtoken",
  "md-5",
  "opentelemetry",
+ "percent-encoding",
  "reqwest 0.12.28",
  "serde",
  "serde_json",
@@ -5304,6 +5307,7 @@ dependencies = [
  "thiserror 2.0.18",
  "time",
  "tokio",
+ "tokio-util",
  "tower",
  "tower-http",
  "tracing",
@@ -5365,7 +5369,7 @@ dependencies = [
 
 [[package]]
 name = "test-cabinet-backend-client"
-version = "0.1.0"
+version = "0.2.1"
 dependencies = [
  "async-trait",
  "http",
@@ -5400,7 +5404,7 @@ dependencies = [
 
 [[package]]
 name = "test-cabinet-contracts"
-version = "0.1.0"
+version = "0.2.1"
 dependencies = [
  "hex",
  "percent-encoding",
@@ -5719,7 +5723,7 @@ dependencies = [
 
 [[package]]
 name = "test-cabinet-redact"
-version = "0.1.0"
+version = "0.2.1"
 dependencies = [
  "serde_json",
  "test-cabinet-contracts",
@@ -5768,7 +5772,7 @@ dependencies = [
 
 [[package]]
 name = "test-cabinet-suites"
-version = "0.1.0"
+version = "0.2.1"
 dependencies = [
  "cuid2",
  "handlebars",
@@ -5787,7 +5791,7 @@ dependencies = [
 
 [[package]]
 name = "test-cabinet-telemetry"
-version = "0.1.0"
+version = "0.2.1"
 dependencies = [
  "anyhow",
  "http",
@@ -7710,8 +7714,8 @@ checksum = "b8848ee67ecc8aedbaf3e4122217aff892639231befc6a1b58d29fff4c2cabaa"
 
 [[patch.unused]]
 name = "api-codegen"
-version = "0.1.0"
+version = "0.2.1"
 
 [[patch.unused]]
 name = "contract-codegen"
-version = "0.1.0"
+version = "0.2.1"

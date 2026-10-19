@@ -251,7 +251,9 @@ around it (`.azure/project/deploy-steps.yml`):
 1. copies `deployments/k8s` to a temporary directory and pins the `prod` overlay
    there with `pin-images.sh` from the commit's submodule pointers;
 2. renders it with `kubectl kustomize` on the agent into one manifest file, and
-   refuses the file if it holds anything outside the environment's namespace;
+   refuses the file if it holds anything outside the environment's namespace, or
+   binds a workload to a workload identity whose client id is still
+   `unprovisioned` (a pod that cannot reach its store never becomes ready);
 3. runs `kubectl apply -f` on the file inside the cluster through
    `az aks command invoke`, which uploads the file with the command;
 4. waits up to 600 seconds, concurrently, on every `Deployment` and
