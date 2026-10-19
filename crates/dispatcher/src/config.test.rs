@@ -35,6 +35,8 @@ const ALL_VARS: &[&str] = &[
     "TCAB_K8S_RUN_CPU_REQUEST",
     "TCAB_K8S_RUN_MEMORY_LIMIT",
     "TCAB_ARTIFACTS_URL",
+    "TCAB_REPOS_URL",
+    "TCAB_ARTIFACT_UPLOAD_WAIT_SECONDS",
     // Run-container image passthroughs — cleared for the same reason as the
     // observability vars below: a developer or CI machine may have these set (they
     // are the runner's own image-resolution env), and they must not leak into the
@@ -324,6 +326,44 @@ fn artifacts_url_is_passed_through() {
         assert!(config.passthrough_k8s_env.contains(&(
             "TCAB_ARTIFACTS_URL".to_string(),
             "http://tcab-artifacts:8790".to_string()
+        )));
+    });
+}
+
+#[test]
+fn repos_url_and_upload_wait_are_passed_through_to_driver_jobs() {
+    with_env(|| {
+        set_required();
+        set("TCAB_REPOS_URL", "http://tcab-repos:8792");
+        set("TCAB_ARTIFACT_UPLOAD_WAIT_SECONDS", "600");
+
+        let config = Config::from_env().expect("config should resolve");
+        // The driver uploads the run's bundle to the repos service and bounds each
+        // upload's retries by the wait; the dispatcher forwards both verbatim.
+        assert!(config.passthrough_k8s_env.contains(&(
+            "TCAB_REPOS_URL".to_string(),
+            "http://tcab-repos:8792".to_string()
+        )));
+        assert!(config.passthrough_k8s_env.contains(&(
+            "TCAB_ARTIFACT_UPLOAD_WAIT_SECONDS".to_string(),
+            "600".to_string()
+        )));
+    });
+}
+
+#[test]
+fn repos_url_is_forwarded_into_publish_jobs() {
+    with_env(|| {
+        set_required();
+        set(
+            "TCAB_PUBLISHER_IMAGE",
+            "registry.example.com/example/tcab-publisher:1.0",
+        );
+        set("TCAB_REPOS_URL", "http://tcab-repos:8792");
+        let config = Config::from_env().expect("config should resolve");
+        assert!(config.passthrough_publisher_env.contains(&(
+            "TCAB_REPOS_URL".to_string(),
+            "http://tcab-repos:8792".to_string()
         )));
     });
 }

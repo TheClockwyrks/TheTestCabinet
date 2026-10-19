@@ -87,6 +87,10 @@ fn config() -> Config {
                 "TCAB_ARTIFACTS_URL".to_string(),
                 "http://tcab-artifacts:8790".to_string(),
             ),
+            (
+                "TCAB_REPOS_URL".to_string(),
+                "http://tcab-repos:8792".to_string(),
+            ),
             ("TCAB_GITHUB_ORG".to_string(), "TheClockwyrks".to_string()),
             ("TCAB_PAGES_PROJECT".to_string(), "tcab-runs".to_string()),
         ],
@@ -490,6 +494,10 @@ fn publish_job_forwards_artifacts_org_and_pages_project() {
     assert_eq!(
         map["TCAB_ARTIFACTS_URL"].value.as_deref(),
         Some("http://tcab-artifacts:8790")
+    );
+    assert_eq!(
+        map["TCAB_REPOS_URL"].value.as_deref(),
+        Some("http://tcab-repos:8792")
     );
     assert_eq!(
         map["TCAB_GITHUB_ORG"].value.as_deref(),

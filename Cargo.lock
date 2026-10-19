@@ -5404,10 +5404,12 @@ version = "0.0.0"
 dependencies = [
  "anyhow",
  "async-trait",
+ "axum",
  "base64",
  "cuid2",
  "flate2",
  "foray-core",
+ "futures-util",
  "hex",
  "ignore",
  "k8s-openapi",
@@ -7620,16 +7622,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b8848ee67ecc8aedbaf3e4122217aff892639231befc6a1b58d29fff4c2cabaa"
 
 [[patch.unused]]
-name = "test-cabinet-repos"
-version = "0.0.0"
-
-[[patch.unused]]
 name = "api-codegen"
 version = "0.2.1"
 
 [[patch.unused]]
 name = "contract-codegen"
 version = "0.2.1"
+
+[[patch.unused]]
+name = "test-cabinet-repos"
+version = "0.0.0"
 
 [[patch.unused]]
 name = "foray-cli"

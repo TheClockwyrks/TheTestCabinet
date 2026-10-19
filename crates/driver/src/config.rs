@@ -14,6 +14,8 @@
 //! | `TCAB_DRIVER_RUNTIME` | no | How the run's sandbox container is started: `cli` (host Docker/Podman) or `kubernetes` (a sandbox pod per run via the API). | `cli` |
 //! | `TCAB_WORK_DIR` | no | Ephemeral scratch directory for the run's mountable inputs and produced tree. | `./.tcab-driver` |
 //! | `TCAB_ARTIFACTS_URL` | no | The artifact service the driver uploads the produced run tree to before reporting terminal status. Unset (e.g. a local setup with no artifact service) skips the upload entirely. | — |
+//! | `TCAB_REPOS_URL` | no | The repos service the driver uploads the run's implementation bundle to (`POST /runs/{id}/bundle`) before reporting terminal status. Unset skips the bundle entirely. | — |
+//! | `TCAB_ARTIFACT_UPLOAD_WAIT_SECONDS` | no | How long each upload (the run tree, the bundle) is retried, counted from its first failure. `0` makes a single attempt; a value that is not a whole number of seconds stops the driver before it runs anything. | `21600` (6 hours) |
 //! | `TCAB_DRIVER_SUBSCRIPTION_DIR` | no | A directory the operator-provided subscription Secret is mounted into (one file per credential, keyed by basename). When set, the driver makes subscription auth available by reading these files instead of a host home; unset leaves the run API-key-only, unchanged. | — |
 //!
 //! The driver never *decides* the auth mode — [`resolve_auth_with`] does, from
@@ -92,6 +94,13 @@ pub struct Config {
     /// (`TCAB_ARTIFACTS_URL`), without a trailing slash. `None` (a local setup with
     /// no artifact service) skips the upload entirely.
     pub artifacts_url: Option<String>,
+    /// The repos service base URL the driver uploads the run's implementation
+    /// bundle to (`TCAB_REPOS_URL`), without a trailing slash. `None` skips the
+    /// bundle entirely.
+    pub repos_url: Option<String>,
+    /// How long each upload is retried, counted from its first failure
+    /// (`TCAB_ARTIFACT_UPLOAD_WAIT_SECONDS`). `Duration::ZERO` makes a single attempt.
+    pub upload_wait: Duration,
     /// The directory the operator-provided subscription Secret is mounted into
     /// (`TCAB_DRIVER_SUBSCRIPTION_DIR`), one file per credential keyed by basename.
     /// `None` (no Secret configured) leaves the run API-key-only, unchanged; when
@@ -141,6 +150,13 @@ impl Config {
             .unwrap_or_else(|| PathBuf::from(".tcab-driver"));
         let artifacts_url =
             non_empty("TCAB_ARTIFACTS_URL").map(|url| url.trim_end_matches('/').to_string());
+        let repos_url =
+            non_empty("TCAB_REPOS_URL").map(|url| url.trim_end_matches('/').to_string());
+        let upload_wait = parse_wait(
+            "TCAB_ARTIFACT_UPLOAD_WAIT_SECONDS",
+            non_empty("TCAB_ARTIFACT_UPLOAD_WAIT_SECONDS"),
+            crate::bundle::DEFAULT_UPLOAD_WAIT,
+        )?;
         let subscription_dir = non_empty("TCAB_DRIVER_SUBSCRIPTION_DIR").map(PathBuf::from);
         let mut kubernetes = kubernetes_from_env()?;
         // Stamp the run's job id onto each sandbox pod (via a label) so a
@@ -154,6 +170,8 @@ impl Config {
             runtime,
             work_dir,
             artifacts_url,
+            repos_url,
+            upload_wait,
             subscription_dir,
             kubernetes,
         })
@@ -310,6 +328,27 @@ fn kubernetes_from_env() -> Result<KubernetesConfig, ConfigError> {
     })
 }
 
+/// Parse a wait given in whole seconds, `default` when unset. Anything that is not a
+/// whole number of seconds is a configuration error, which stops the driver before it
+/// runs anything.
+pub fn parse_wait(
+    name: &'static str,
+    value: Option<String>,
+    default: Duration,
+) -> Result<Duration, ConfigError> {
+    match value {
+        None => Ok(default),
+        Some(value) => value
+            .parse::<u64>()
+            .map(Duration::from_secs)
+            .map_err(|err| ConfigError::Invalid {
+                name,
+                value: value.clone(),
+                detail: format!("expected a whole number of seconds: {err}"),
+            }),
+    }
+}
+
 /// Read an environment variable, treating a blank value as unset.
 fn non_empty(key: &str) -> Option<String> {
     std::env::var(key)
@@ -317,3 +356,7 @@ fn non_empty(key: &str) -> Option<String> {
         .map(|value| value.trim().to_string())
         .filter(|value| !value.is_empty())
 }
+
+#[cfg(test)]
+#[path = "config.test.rs"]
+mod tests;
