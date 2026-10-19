@@ -132,7 +132,7 @@ async fn coalesced_refresher_folds_a_burst_into_one_clear() {
     // A burst of three publishes, each waking the debounce loop.
     for i in 0..3 {
         seed_published(&db, &format!("r{i}"), &format!("2026-06-17T21:4{i}:00Z")).await;
-        publisher.queue_refresh();
+        publisher.queue_refresh().await;
     }
 
     // The debounce loop coalesces the burst, converging on a clean snapshot over
@@ -151,6 +151,58 @@ async fn coalesced_refresher_folds_a_burst_into_one_clear() {
     }
     assert!(!state.dirty, "the coalesced refresh cleared the dirty flag");
     assert_eq!(state.last_run_count, Some(3));
+
+    handle.join().await;
+}
+
+#[tokio::test]
+async fn queuing_a_refresh_marks_the_snapshot_dirty_before_any_refresh_runs() {
+    let (_dir, publisher, db) = dev_publisher().await;
+    let before = db.snapshot_state().await.unwrap();
+    assert!(!before.dirty);
+
+    // No refresher is spawned: the mark alone is what survives a restart.
+    assert!(publisher.queue_refresh().await);
+    let after = db.snapshot_state().await.unwrap();
+    assert!(after.dirty);
+    assert!(after.generation > before.generation);
+}
+
+#[tokio::test]
+async fn a_detached_queue_marks_the_snapshot_dirty() {
+    let (_dir, publisher, db) = dev_publisher().await;
+    let mut refreshes = publisher.refreshes();
+    let handle = publisher.spawn();
+
+    publisher.queue_refresh_detached();
+    // The detached task marks, then wakes the loop, whose refresh clears the mark.
+    refreshes
+        .changed()
+        .await
+        .expect("the refresher is still running");
+    let state = db.snapshot_state().await.unwrap();
+    assert!(!state.dirty);
+    assert!(state.generation > 0, "the detached queue wrote its mark");
+
+    handle.join().await;
+}
+
+#[tokio::test]
+async fn a_refresher_started_over_a_dirty_snapshot_runs_the_refresh() {
+    let (_dir, publisher, db) = dev_publisher().await;
+    seed_published(&db, "r1", "2026-06-17T21:40:00Z").await;
+    assert!(db.snapshot_state().await.unwrap().dirty);
+
+    // Nothing is queued: the startup check alone runs the refresh.
+    let mut refreshes = publisher.refreshes();
+    let handle = publisher.spawn();
+    refreshes
+        .changed()
+        .await
+        .expect("the refresher is still running");
+    let state = db.snapshot_state().await.unwrap();
+    assert!(!state.dirty);
+    assert_eq!(state.last_run_count, Some(1));
 
     handle.join().await;
 }

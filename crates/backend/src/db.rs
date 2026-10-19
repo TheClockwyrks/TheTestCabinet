@@ -471,6 +471,10 @@ pub struct SnapshotState {
     pub last_uploaded: Option<String>,
     /// Runs in the last uploaded snapshot, or `None` if never uploaded.
     pub last_run_count: Option<i64>,
+    /// Incremented by every mark of the snapshot as dirty. A refresh passes the
+    /// generation it read at its start to [`Db::mark_uploaded`], which clears
+    /// `dirty` only when no mark landed since.
+    pub generation: i64,
 }
 
 /// The fixed primary key of the single-row `snapshot_state` table.
@@ -2055,57 +2059,88 @@ impl Db {
                 dirty: model.dirty,
                 last_uploaded: model.last_uploaded,
                 last_run_count: model.last_run_count,
+                generation: model.dirty_generation,
             })
             .unwrap_or(SnapshotState {
                 dirty: false,
                 last_uploaded: None,
                 last_run_count: None,
+                generation: 0,
             });
         Ok(state)
     }
 
-    /// Mark the snapshot dirty (a publish has landed). Coalescing reads this to
-    /// decide whether a refresh is needed.
+    /// Mark the snapshot dirty (a refresh has been requested): set the flag and
+    /// increment its generation. Coalescing reads this to decide whether a refresh
+    /// is needed, and a backend that starts with the flag set runs the refresh.
     pub async fn mark_dirty(&self) -> Result<()> {
         set_dirty(&self.conn()).await
     }
 
-    /// Record a successful upload: clear the dirty flag and stamp the upload time
-    /// and run count.
-    pub async fn mark_uploaded(&self, uploaded_at: &str, run_count: i64) -> Result<()> {
+    /// Record a refresh that has written the dataset: stamp the upload time and run
+    /// count, and clear the dirty flag **only** when its generation is still
+    /// `generation`, the one the refresh read before it regenerated. A mark that
+    /// landed while the refresh ran bumped the generation, so the flag stays set and
+    /// the next refresh (or the next start) covers it.
+    pub async fn mark_uploaded(
+        &self,
+        uploaded_at: &str,
+        run_count: i64,
+        generation: i64,
+    ) -> Result<()> {
+        let txn = self.conn().begin().await?;
         snapshot_state::Entity::insert(snapshot_state::ActiveModel {
             id: Set(SNAPSHOT_STATE_ID),
             dirty: Set(false),
             last_uploaded: Set(Some(uploaded_at.to_string())),
             last_run_count: Set(Some(run_count)),
+            dirty_generation: Set(0),
         })
         .on_conflict(
             OnConflict::column(snapshot_state::Column::Id)
                 .update_columns([
-                    snapshot_state::Column::Dirty,
                     snapshot_state::Column::LastUploaded,
                     snapshot_state::Column::LastRunCount,
                 ])
                 .to_owned(),
         )
-        .exec(&self.conn())
+        .exec(&txn)
         .await?;
+        // A single conditional `UPDATE`, so the database re-evaluates the generation
+        // against a concurrent mark rather than trusting a value read earlier.
+        snapshot_state::Entity::update_many()
+            .col_expr(snapshot_state::Column::Dirty, Expr::value(false))
+            .filter(snapshot_state::Column::Id.eq(SNAPSHOT_STATE_ID))
+            .filter(snapshot_state::Column::DirtyGeneration.eq(generation))
+            .exec(&txn)
+            .await?;
+        txn.commit().await?;
         Ok(())
     }
 }
 
-/// Set the single-row snapshot state's `dirty` flag, inserting the row on first
-/// use. Shared by [`Db::publish`] (within its transaction) and [`Db::mark_dirty`].
+/// Set the single-row snapshot state's `dirty` flag and increment its generation,
+/// inserting the row on first use. Shared by [`Db::publish`] (within its
+/// transaction) and [`Db::mark_dirty`].
 async fn set_dirty<C: ConnectionTrait>(conn: &C) -> Result<()> {
     snapshot_state::Entity::insert(snapshot_state::ActiveModel {
         id: Set(SNAPSHOT_STATE_ID),
         dirty: Set(true),
         last_uploaded: NotSet,
         last_run_count: NotSet,
+        dirty_generation: Set(1),
     })
     .on_conflict(
         OnConflict::column(snapshot_state::Column::Id)
             .update_column(snapshot_state::Column::Dirty)
+            .value(
+                snapshot_state::Column::DirtyGeneration,
+                Expr::col((
+                    snapshot_state::Entity,
+                    snapshot_state::Column::DirtyGeneration,
+                ))
+                .add(1),
+            )
             .to_owned(),
     )
     .exec(conn)

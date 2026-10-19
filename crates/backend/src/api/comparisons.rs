@@ -293,7 +293,7 @@ pub async fn publish_comparison(
         .set_comparison_published(&user.0, &id, true, Some(&now()?))
         .await
         .map_err(ApiError::from)?;
-    state.publisher.queue_refresh();
+    state.publisher.queue_refresh().await;
 
     Ok(Json(ComparisonPublishOutcome { enqueued, skipped }))
 }

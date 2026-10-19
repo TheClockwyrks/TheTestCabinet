@@ -6,12 +6,18 @@
 //! so two operators cannot race on the shared snapshot state, and it **coalesces**
 //! a burst of publishes into one regeneration, one upload, and one site rebuild.
 //!
-//! The coalescing is a debounce: a publish marks the store dirty and pings the
-//! refresher; the refresher waits the coalescing window, draining any further
-//! pings that arrive during it, then regenerates the **full** published set
-//! (idempotent — re-running converges on the same snapshot), uploads it
-//! atomically, and fires the hook. A forced refresh (`POST /snapshot/refresh`)
-//! bypasses the debounce and runs immediately.
+//! The coalescing is a debounce: whatever requests a refresh first marks the
+//! snapshot state dirty in the database, then pings the refresher; the refresher
+//! waits the coalescing window, draining any further pings that arrive during it,
+//! then regenerates the **full** published set (idempotent — re-running converges
+//! on the same snapshot), uploads it atomically, and fires the hook. A forced
+//! refresh (`POST /snapshot/refresh`) bypasses the debounce and runs immediately.
+//!
+//! The queue is durable because the mark is written before the ping. A backend
+//! that stops inside the coalescing window, or while a refresh runs, starts with
+//! the flag set and runs the refresh then. A refresh clears the flag only when no
+//! mark landed after it read the state (the state's generation is unchanged), so a
+//! request that arrives while a refresh is already regenerating is not lost.
 //!
 //! Regenerating the full set is a statement about *correctness*, not about work: the
 //! run and case media, and each run's own JSON document, are content-addressed under
@@ -71,8 +77,8 @@ struct PublisherInner {
     snapshot_retention: Duration,
     /// Pinged when a publish marks the store dirty, waking the debounce loop.
     wake: Notify,
-    /// How many refreshes the background loop has finished, so a test can wait for the loop to
-    /// act rather than poll the database on a timer.
+    /// How many refreshes the background loop has finished (the startup refresh included), so a
+    /// test can wait for the loop to act rather than poll the database on a timer.
     #[cfg(test)]
     refreshes: tokio::sync::watch::Sender<u64>,
 }
@@ -137,13 +143,31 @@ impl Publisher {
         }
     }
 
-    /// Notify the refresher that a publish has landed (the store is dirty). This
-    /// returns immediately; the actual regeneration is coalesced and run on the
-    /// background task. Returns whether a refresh was queued — always `true`
-    /// here, since the debounce loop is what coalesces.
-    pub fn queue_refresh(&self) -> bool {
+    /// Queue a refresh: mark the snapshot state dirty in the database, then wake
+    /// the refresher. The regeneration itself is coalesced and run on the
+    /// background task. The mark is written first so the request survives a
+    /// restart: a backend that starts with the flag set runs the refresh.
+    ///
+    /// Returns whether a refresh was queued: `false` only when the mark could not
+    /// be written (logged), in which case the refresher is not woken either.
+    pub async fn queue_refresh(&self) -> bool {
+        if let Err(err) = self.inner.db.mark_dirty().await {
+            tracing::error!("marking the snapshot dirty failed; refresh not queued: {err}");
+            return false;
+        }
         self.inner.wake.notify_one();
         true
+    }
+
+    /// [`queue_refresh`](Self::queue_refresh) from a synchronous callback (a list
+    /// price fill or a price refresh's change report, which fire where nothing can
+    /// be awaited): the queuing runs on its own task, which still writes the dirty
+    /// mark before it wakes the refresher. Must be called within a Tokio runtime.
+    pub fn queue_refresh_detached(&self) {
+        let publisher = self.clone();
+        tokio::spawn(async move {
+            publisher.queue_refresh().await;
+        });
     }
 
     /// Spawn the background debounce loop. It runs until the returned shutdown
@@ -156,23 +180,31 @@ impl Publisher {
         // background refresh's trace (a refresh is not tied to one request), so
         // `run_refresh`'s spans nest under it rather than floating free.
         let task_span = tracing::info_span!("publisher.refresher");
+        #[cfg(test)]
+        let refreshes = inner.refreshes.subscribe();
         let handle = tokio::spawn(
             async move {
-                // Recover a refresh that was pending when the process last stopped.
-                if matches!(inner.db.snapshot_state().await, Ok(state) if state.dirty)
-                    && let Err(err) = run_refresh(&inner).await
-                {
-                    tracing::error!("startup snapshot refresh failed: {err}");
+                // Recover a refresh that was pending when the process last stopped: one
+                // queued (its dirty mark written) but not yet run, or one that was running.
+                if matches!(inner.db.snapshot_state().await, Ok(state) if state.dirty) {
+                    if let Err(err) = run_refresh(&inner).await {
+                        tracing::error!("startup snapshot refresh failed: {err}");
+                    }
+                    #[cfg(test)]
+                    inner.refreshes.send_modify(|finished| *finished += 1);
                 }
                 loop {
                     tokio::select! {
                         _ = inner.wake.notified() => {
                             // Debounce: wait the coalescing window, draining further
-                            // wakes that arrive during it into this one refresh.
+                            // wakes that arrive during it into this one refresh. A
+                            // shutdown inside the window leaves the refresh to the next
+                            // start: its dirty mark is already written.
                             loop {
                                 tokio::select! {
                                     _ = tokio::time::sleep(inner.coalesce) => break,
                                     _ = inner.wake.notified() => continue,
+                                    _ = shutdown_rx.recv() => return,
                                 }
                             }
                             if let Err(err) = run_refresh(&inner).await {
@@ -190,6 +222,8 @@ impl Publisher {
         RefresherHandle {
             _shutdown: shutdown_tx,
             handle,
+            #[cfg(test)]
+            refreshes,
         }
     }
 
@@ -210,23 +244,36 @@ impl Publisher {
 pub struct RefresherHandle {
     _shutdown: mpsc::Sender<()>,
     handle: tokio::task::JoinHandle<()>,
+    /// Subscribed before the loop started, so it sees every refresh the loop
+    /// finishes, the startup refresh included.
+    #[cfg(test)]
+    refreshes: tokio::sync::watch::Receiver<u64>,
 }
 
 impl RefresherHandle {
+    /// A receiver that changes each time this loop finishes a refresh, from its
+    /// startup refresh on.
+    #[cfg(test)]
+    pub(crate) fn refreshes(&self) -> tokio::sync::watch::Receiver<u64> {
+        self.refreshes.clone()
+    }
+
     /// Await the refresher task (used in graceful shutdown / tests).
     ///
     /// Drops the shutdown sender first so the loop's `shutdown_rx.recv()` arm
     /// resolves and the task breaks; awaiting the handle while still holding the
     /// sender would deadlock, since nothing would ever signal the loop to stop.
     pub async fn join(self) {
-        let Self { _shutdown, handle } = self;
+        let Self {
+            _shutdown, handle, ..
+        } = self;
         drop(_shutdown);
         let _ = handle.await;
     }
 }
 
 /// Regenerate the full snapshot, upload it (when R2 is configured), fire the
-/// deploy hook, and clear the dirty flag. This is the one place the snapshot is
+/// deploy hook, and clear the dirty flag unless a mark landed while it ran. This is the one place the snapshot is
 /// produced; both the debounce loop and the forced path call it.
 #[tracing::instrument(
     name = "snapshot.run_refresh",
@@ -235,6 +282,9 @@ impl RefresherHandle {
     err,
 )]
 async fn run_refresh(inner: &PublisherInner) -> Result<RefreshOutcome> {
+    // Read the state before anything is regenerated: the dirty flag is cleared at the
+    // end only if no mark landed after this read.
+    let generation = inner.db.snapshot_state().await?.generation;
     let runs = inner.db.all_published().await?;
     let cases = load_case_manifests(&inner.store)?;
     let generated_at = OffsetDateTime::now_utc();
@@ -407,7 +457,7 @@ async fn run_refresh(inner: &PublisherInner) -> Result<RefreshOutcome> {
         .map_err(|e| BackendError::Snapshot(format!("formatting uploaded_at: {e}")))?;
     inner
         .db
-        .mark_uploaded(&uploaded_at, run_count as i64)
+        .mark_uploaded(&uploaded_at, run_count as i64, generation)
         .await?;
 
     // One line per completed refresh recording whether the gallery deploy hook

@@ -286,7 +286,7 @@ async fn write_config(
 
     // The catalog changed, so the public snapshot must be regenerated — after the
     // seeding above, so the snapshot carries the facts too.
-    state.publisher.queue_refresh();
+    state.publisher.queue_refresh().await;
 
     // Re-compose just this model for the response.
     let config = state
@@ -358,7 +358,7 @@ pub async fn delete(
     if !removed {
         return Err(ApiError::not_found(format!("model `{slug}` not found")));
     }
-    state.publisher.queue_refresh();
+    state.publisher.queue_refresh().await;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -498,7 +498,7 @@ pub async fn refresh_list_prices(
     // however it ended: a refresh cut short (a database failure, a caller that went
     // away) leaves the entries it wrote changed.
     let refresh = crate::bootstrap::refresh_list_prices(&state.db, &state.prices, &|| {
-        state.publisher.queue_refresh();
+        state.publisher.queue_refresh_detached();
     })
     .await
     .map_err(ApiError::from)?;

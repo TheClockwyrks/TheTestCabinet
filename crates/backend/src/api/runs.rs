@@ -139,7 +139,7 @@ pub async fn add_review(
     // A review on an already-published run changes its public aggregate, so a
     // refresh is queued; on a pending run it is not yet public.
     if published {
-        state.publisher.queue_refresh();
+        state.publisher.queue_refresh().await;
     }
 
     Ok(Json(ReviewResponse { id, published }))

@@ -620,11 +620,67 @@ async fn publish_marks_snapshot_dirty_but_pushing_a_pending_run_does_not() {
     db.publish("r1", "2026-06-17T10:00:00Z").await.unwrap();
     assert!(db.snapshot_state().await.unwrap().dirty);
 
-    db.mark_uploaded("2026-06-17T10:05:00Z", 1).await.unwrap();
+    let generation = db.snapshot_state().await.unwrap().generation;
+    db.mark_uploaded("2026-06-17T10:05:00Z", 1, generation)
+        .await
+        .unwrap();
     let state = db.snapshot_state().await.unwrap();
     assert!(!state.dirty);
     assert_eq!(state.last_run_count, Some(1));
     assert_eq!(state.last_uploaded.as_deref(), Some("2026-06-17T10:05:00Z"));
+}
+
+#[tokio::test]
+async fn every_dirty_mark_advances_the_snapshot_generation() {
+    let db = Db::connect_in_memory().await.unwrap();
+    assert_eq!(db.snapshot_state().await.unwrap().generation, 0);
+
+    db.mark_dirty().await.unwrap();
+    let first = db.snapshot_state().await.unwrap();
+    assert!(first.dirty);
+    db.mark_dirty().await.unwrap();
+    let second = db.snapshot_state().await.unwrap();
+    assert!(second.dirty);
+    assert!(second.generation > first.generation);
+}
+
+#[tokio::test]
+async fn a_mark_during_a_refresh_keeps_the_snapshot_dirty() {
+    let db = Db::connect_in_memory().await.unwrap();
+    db.mark_dirty().await.unwrap();
+
+    // A refresh reads the state at its start...
+    let read = db.snapshot_state().await.unwrap().generation;
+    // ...a request lands while it regenerates...
+    db.mark_dirty().await.unwrap();
+    // ...and the refresh finishes over the state it read.
+    db.mark_uploaded("2026-06-17T10:05:00Z", 3, read)
+        .await
+        .unwrap();
+
+    let state = db.snapshot_state().await.unwrap();
+    assert!(state.dirty, "the mark that landed mid-refresh is kept");
+    assert_eq!(state.last_uploaded.as_deref(), Some("2026-06-17T10:05:00Z"));
+    assert_eq!(state.last_run_count, Some(3));
+
+    // The next refresh, reading the newer generation, clears it.
+    let read = db.snapshot_state().await.unwrap().generation;
+    db.mark_uploaded("2026-06-17T10:06:00Z", 3, read)
+        .await
+        .unwrap();
+    assert!(!db.snapshot_state().await.unwrap().dirty);
+}
+
+#[tokio::test]
+async fn an_upload_on_a_fresh_store_records_a_clean_state() {
+    let db = Db::connect_in_memory().await.unwrap();
+    db.mark_uploaded("2026-06-17T10:05:00Z", 0, 0)
+        .await
+        .unwrap();
+    let state = db.snapshot_state().await.unwrap();
+    assert!(!state.dirty);
+    assert_eq!(state.last_run_count, Some(0));
+    assert_eq!(state.generation, 0);
 }
 
 /// Parse a stored mutation stamp back to an instant. Comparing parsed instants

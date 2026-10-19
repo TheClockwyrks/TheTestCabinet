@@ -359,7 +359,9 @@ async fn build_with_prices(
     let price_refresher = {
         let publisher = publisher.clone();
         crate::bootstrap::spawn_price_refresher(Arc::clone(&db), prices.clone(), move || {
-            publisher.queue_refresh();
+            // The callback is synchronous (it fires from a drop guard, so a
+            // cancelled refresh still reports its changes).
+            publisher.queue_refresh_detached();
         })
     };
 
