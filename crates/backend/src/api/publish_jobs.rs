@@ -184,7 +184,10 @@ pub async fn report_result(
 
     match result.state {
         PublishState::Succeeded => {
-            state
+            // A repeated success (the same job reporting again, or a second job
+            // for a run already published) is accepted like the first: the links
+            // are asserted again and the run keeps its original `published_at`.
+            let outcome = state
                 .db
                 .complete_publish_job(
                     &id,
@@ -198,7 +201,7 @@ pub async fn report_result(
             // Coalesced: the dirty flag was set in `complete_publish_job`'s
             // transaction; this only wakes the debounce loop.
             state.publisher.queue_refresh().await;
-            crate::metrics::record_run_published(true);
+            crate::metrics::record_run_published(outcome.newly_published);
         }
         PublishState::Failed => {
             let detail = result.detail.as_deref().unwrap_or("publish failed");
