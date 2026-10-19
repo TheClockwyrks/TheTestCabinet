@@ -10,17 +10,19 @@
 // simulations of a case" (testing/performance/lattice/architecture.md ->
 // "Browser visualization").
 //
-// Both halves ship with the UI bundle, vendored from the case's replay bundle by
-// `scripts/vendor-lattice-assets.mjs` and byte-guarded by `renderer.vendor.test.ts`:
+// Both halves ship with the UI bundle:
 //
 //   • the engine — `lattice-core.wasm`, the same authoritative simulation the CLI
-//     and the validator ran, built with the playback ABI. It is already vendored for
-//     the run player's renderer; this reuses it as the module to STEP.
-//   • the scenarios — the scored `cases/*.json` with their timelines cut to a dense
-//     2500-tick window (see the bundle's `gen-reference.mjs`). The layouts are the
-//     scored ones verbatim; only the run length is shortened, because the reference
-//     engine's playback driver emits a full canonical state every tick and a
-//     360,000-tick trace does not fit a browser.
+//     and the validator ran, built with the playback ABI. It is the module
+//     `@clockwyrks/lattice-runtime` publishes beside its renderer; this reuses it as
+//     the module to STEP.
+//   • the scenarios — the lattice version's content, vendored from the case's replay
+//     bundle by `scripts/vendor-lattice-assets.mjs` and byte-guarded by
+//     `renderer.vendor.test.ts`: the scored `cases/*.json` with their timelines
+//     cut to a dense 2500-tick window (see the bundle's `gen-reference.mjs`). The
+//     layouts are the scored ones verbatim; only the run length is shortened,
+//     because the reference engine's playback driver emits a full canonical state
+//     every tick and a 360,000-tick trace does not fit a browser.
 //
 // They ship with the bundle rather than being fetched because the Reference tab is
 // reachable with NO run at all (and on the static site, which has no backend to ask):
@@ -35,15 +37,16 @@
 // Vite resolves each of these to an emitted URL in every host build (web console,
 // static site). Nothing downloads until a viewer actually launches a
 // playback — these imports are URL strings, not payloads.
-import engineWasmUrl from "./assets/lattice-core.wasm?url";
-import referenceSmallUrl from "./assets/reference-small.json?url";
-import referenceMediumUrl from "./assets/reference-medium.json?url";
+import engineWasmUrl from "@clockwyrks/lattice-runtime/lattice-core.wasm?url";
+
 import referenceLargeUrl from "./assets/reference-large.json?url";
+import referenceMediumUrl from "./assets/reference-medium.json?url";
+import referenceSmallUrl from "./assets/reference-small.json?url";
 
 /**
  * The authoritative engine the reference playbacks step: `lattice-core` compiled to
- * wasm with the playback ABI. The same module the renderer's own integration tests
- * drive, and byte-identical to the case bundle's.
+ * wasm with the playback ABI, as `@clockwyrks/lattice-runtime` ships it. The same
+ * module the runtime's own integration tests drive.
  */
 export const REFERENCE_ENGINE_URL: string = engineWasmUrl;
 

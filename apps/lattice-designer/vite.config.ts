@@ -2,14 +2,14 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import { scenarioApi } from "./scenario-api";
 
-// The Lattice renderer, interpolation, and the `lattice-core` wasm + sprite sheet
-// all live inside the console UI package at `pages/runs/lattice`. They are pure
-// (the renderer imports nothing but its sibling `interpolate`, and the assets are
-// plain files), so this dev tool reuses them by aliasing straight to that folder
-// rather than reaching through the package's public exports or vendoring a second
-// copy of the 350 KB wasm. `.pathname` keeps the config free of a `node:*` import.
-const lattice = new URL(
-  "../../packages/ui/src/app/pages/runs/lattice",
+// The Lattice renderer, interpolation and the `lattice-core` wasm come from
+// `@clockwyrks/lattice-runtime`. The sprite sheet is the lattice version's own
+// content, which the console UI package vendors at `pages/runs/lattice/assets`; the
+// files are plain data, so this dev tool reuses them by aliasing straight to that
+// folder rather than reaching through the package's public exports or vendoring a
+// second copy. `.pathname` keeps the config free of a `node:*` import.
+const latticeAssets = new URL(
+  "../../packages/ui/src/app/pages/runs/lattice/assets",
   import.meta.url,
 ).pathname;
 
@@ -17,7 +17,7 @@ const lattice = new URL(
 // text is read, and why it is refused. One module, no JSX and no styling, so the
 // designer shares the behaviour (a cleared field stays cleared; nothing out of
 // range is ever committed) while keeping its own plain-CSS controls. Same reasoning
-// as `@lattice` above: alias the pure module rather than depend on the package.
+// as `@lattice-assets` above: alias the pure module rather than depend on the package.
 const numeric = new URL(
   "../../packages/ui/src/app/components/numberFieldRules.ts",
   import.meta.url,
@@ -30,7 +30,7 @@ const numeric = new URL(
 export default defineConfig({
   plugins: [react(), scenarioApi()],
   resolve: {
-    alias: { "@lattice": lattice, "@numeric": numeric },
+    alias: { "@lattice-assets": latticeAssets, "@numeric": numeric },
   },
   server: {
     port: 1431,

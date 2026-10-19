@@ -31,6 +31,7 @@
     "@react-three/fiber": "^9.6.1",
     "@clockwyrks/particle-runtime": "*",
     "@clockwyrks/backend-api": "*",
+    "@clockwyrks/lattice-runtime": "*",
     "@clockwyrks/run-record": "*",
     "@clockwyrks/run-stats": "*",
     "@clockwyrks/voxel-runtime": "*",

@@ -5,17 +5,17 @@ import { describe, expect, it } from "vitest";
 
 // Drift guard for the vendored Lattice playback assets.
 //
-// The UI bundles its own copy of the case's playback engine + sprite atlas so
-// every host replays a run identically without fetching the case bundle. That copy
-// is a vendored snapshot, and the two silently drifting matters more here than
-// almost anywhere else: the wasm IS the simulation, so a stale engine would draw a
-// factory that never happened while the run's recorded checksums said otherwise.
+// The renderer and the reference engine come from `@clockwyrks/lattice-runtime`;
+// the lattice version's own content does not. The UI bundles its own copy of the
+// case's sprite atlas and reference scenarios so every host replays a run (and the
+// Reference tab plays the case) identically without fetching the case bundle. That
+// copy is a vendored snapshot, and a stale one would draw with the wrong art or
+// play a factory that is not the scored one.
 //
 // These assets are pure data, so lockstep is cheap to enforce: each must be
-// byte-identical to the bundle's. The renderer is a hand TS port and cannot be
-// byte-compared — but a renderer rework in practice always reshapes the atlas (new
-// frames, rates, offsets), so guarding the assets catches the drift that matters.
-// Resync with:
+// byte-identical to the bundle's. A renderer rework in practice always reshapes the
+// atlas (new frames, rates, offsets), so guarding the atlas also catches a runtime
+// that has moved on from the case's art. Resync with:
 //   node scripts/vendor-lattice-assets.mjs
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -32,10 +32,9 @@ const CASES = join(
 );
 const VENDORED = join(here, "assets");
 
-// Kept in sync with scripts/vendor-lattice-assets.mjs (the renderer is excluded —
-// it is a manual port, not a copy).
+// Kept in sync with scripts/vendor-lattice-assets.mjs (the engine and the renderer
+// are `@clockwyrks/lattice-runtime`'s, not vendored copies).
 const VENDORED_ASSETS = [
-  "lattice-core.wasm",
   "sheet.png",
   "sheet.json",
   "reference-small.json",
@@ -57,7 +56,7 @@ describe("vendored lattice assets", () => {
   }
 });
 
-// The Reference tab plays these three through the vendored engine. They are the
+// The Reference tab plays these three through the runtime's engine. They are the
 // SCORED scenarios with their timelines windowed (see the bundle's
 // `gen-reference.mjs`), and the tab's whole claim is that a reader is watching the
 // factory a run is actually graded on. Guard both halves of that claim: the layout

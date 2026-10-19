@@ -14,6 +14,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "@clockwyrks/lattice-runtime": "*",
     "react": "^19",
     "react-dom": "^19"
   },

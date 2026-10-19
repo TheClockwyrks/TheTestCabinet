@@ -1,11 +1,12 @@
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { defineConfig } from "vite";
+import { defineConfig, searchForWorkspaceRoot } from "vite";
 
 // Standalone dev server for the Lattice playback preview (packages/ui/preview).
-// Run from packages/ui with `npm run dev:preview`. It serves this folder and imports
-// the renderer + vendored wasm/sheet straight from `../src`, so what it draws is the
-// real engine and renderer the app ships — no backend, no run record.
+// Run from packages/ui with `npm run dev:preview`. It serves this folder, imports the
+// vendored sheet straight from `../src` and the renderer + wasm from
+// `@clockwyrks/lattice-runtime`, so what it draws is the real engine and renderer the
+// app ships — no backend, no run record.
 const here = dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig({
@@ -15,7 +16,8 @@ export default defineConfig({
     // Bind all interfaces so it's reachable from a forwarded port (devcontainer).
     host: true,
     open: false,
-    // Allow importing the renderer and vendored assets from the parent package.
-    fs: { allow: [resolve(here, "..")] },
+    // Allow importing the vendored assets from the parent package and the runtime
+    // from the npm workspace (a symlink into the engines checkout).
+    fs: { allow: [resolve(here, ".."), searchForWorkspaceRoot(here)] },
   },
 });

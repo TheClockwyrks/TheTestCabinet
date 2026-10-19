@@ -3,7 +3,7 @@
 //
 // This tool never reimplements the factory physics. It loads the SAME wasm engine
 // the CLI, the validator, and the console's run player use, through the reused
-// `Engine`/`Renderer` from `@lattice`. "Live" is achieved by replay: on every edit
+// `Engine`/`Renderer` from `@clockwyrks/lattice-runtime`. "Live" is achieved by replay: on every edit
 // the design is projected to a scenario, the engine is reloaded from an empty start,
 // and the whole preview window is stepped into a frame cache the render loop then
 // interpolates over and loops. Because the model is integer-deterministic and fast,
@@ -13,8 +13,8 @@
 // loop wrap) restarts the window from empty; the planned live-edit engine ABI is
 // what removes that.
 
-import { Engine, Renderer, loadSheet } from "@lattice/renderer";
-import type { Board, Sheet, Snapshot } from "@lattice/renderer";
+import { Engine, Renderer, loadSheet } from "@clockwyrks/lattice-runtime";
+import type { Board, Sheet, Snapshot } from "@clockwyrks/lattice-runtime";
 import { atlas, sheetPngUrl, wasmUrl } from "./assets";
 import { defaultTimeline, toScenario, type Design } from "./model";
 

@@ -1,6 +1,6 @@
 // A tiny standalone player for the Lattice renderer — no backend, no run record.
-// It instantiates the SAME vendored engine (lattice-core.wasm) and sprite sheet the
-// app bundles, loads a crafted scenario, and steps + draws it exactly the way
+// It instantiates the SAME engine (`@clockwyrks/lattice-runtime`'s lattice-core.wasm)
+// and vendored sprite sheet the app bundles, loads a crafted scenario, and steps + draws it exactly the way
 // LatticePlaybackSection's PlaybackOverlay does. Purely a local dev preview for
 // eyeballing renderer/engine changes.
 //
@@ -18,8 +18,8 @@ import {
   type Board,
   type Sheet,
   type Snapshot,
-} from "../src/app/pages/runs/lattice/renderer";
-import latticeCoreWasmUrl from "../src/app/pages/runs/lattice/assets/lattice-core.wasm?url";
+} from "@clockwyrks/lattice-runtime";
+import latticeCoreWasmUrl from "@clockwyrks/lattice-runtime/lattice-core.wasm?url";
 import sheetPngUrl from "../src/app/pages/runs/lattice/assets/sheet.png?url";
 import atlas from "../src/app/pages/runs/lattice/assets/sheet.json";
 import { PRESETS } from "./scenarios";

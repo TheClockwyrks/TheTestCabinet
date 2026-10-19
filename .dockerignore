@@ -176,9 +176,11 @@
 #     plus its workspace deps @clockwyrks/ui, @clockwyrks/run-record and
 #     @clockwyrks/backend-api, which Vite resolves to their TypeScript sources
 #     (packages/ui exports ./src/*), and
-#     @clockwyrks/run-stats, @clockwyrks/voxel-runtime and
-#     @clockwyrks/particle-runtime, whose compiled subpaths the ui library
-#     imports (run-stats' scoring rules and rollup; the two runtimes' `./three`).
+#     @clockwyrks/run-stats, @clockwyrks/voxel-runtime,
+#     @clockwyrks/particle-runtime and @clockwyrks/lattice-runtime, whose
+#     compiled subpaths the ui library imports (run-stats' scoring rules and
+#     rollup; the voxel and particle runtimes' `./three`; the lattice runtime's
+#     renderer and its `lattice-core.wasm`).
 #     The runtimes are the engines repository's, under engines/packages/.
 #     The Dockerfile builds their dist/ before the console — the sources ride
 #     along here, dist/ is re-excluded below and rebuilt in-image.
@@ -200,6 +202,7 @@
 !/engines/tsconfig.base.json
 !/engines/packages/voxel-runtime
 !/engines/packages/particle-runtime
+!/engines/packages/lattice-runtime
 # The rig/animation half of the generated contract. `run-record` re-exports it, so
 # the console needs it for the same reason it needs `run-record`; separately, it is
 # what the two runtimes above now depend on, so the staging script pulls it into the
@@ -226,10 +229,6 @@
 # name in that script's SHIPPABLE list survives this allowlist, because a `COPY . .`
 # stage is invisible to the COPY-source checks.
 !/engines/packages/case-harness
-# The lattice playback runtime is no package the store stages and the console does
-# not bundle it yet, but it is a member of the npm workspace, and `npm ci` validates
-# every member against the lockfile, so its manifest at least must be in the context.
-!/engines/packages/lattice-runtime/package.json
 # The run-container BASE image (containers/base/Dockerfile) reuses this same npm
 # slice: its builder stage `npm ci`s the workspace and runs the staging script to
 # bake the shippable @clockwyrks packages — and the simple-2d engine runtime —

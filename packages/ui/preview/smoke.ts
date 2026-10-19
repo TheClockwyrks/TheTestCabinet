@@ -4,7 +4,7 @@
 // pass, the stress run is skipped. Here the preview runs each against the reference
 // engine and shows the result, previewing that gate.
 import smoke from "./smoke.json";
-import type { Board, Snapshot } from "../src/app/pages/runs/lattice/renderer";
+import type { Board, Snapshot } from "@clockwyrks/lattice-runtime";
 
 export interface SmokeTest {
   id: string;
