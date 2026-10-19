@@ -81,30 +81,31 @@ is_pipeline() { # path
 
 # Whether rust_build, binary_linux and binary_windows read the path. They
 # compile the whole workspace and run the core and CLI suites, which read
-# `harnesses/`, `orchestrators/`, `packages/` and the test cases and game jams
-# at compile time or in a test, so those stay in. What is left out is what no
-# Rust job opens: the sites, the board, the manifests, the run-container
-# definitions, the gates' sources, prose, every shell test, and the scripts only
-# the image, deploy and release jobs run. Of the submodule pins, contracts' and
-# engines' reach them: the patch table builds their crates from the checkouts,
-# and every Rust job initializes both with scripts/ci/submodules.sh.
+# `harnesses/`, `orchestrators/` and `packages/` at compile time or in a test,
+# so those stay in. What is left out is what no Rust job opens: the sites, the
+# board, the manifests, the run-container definitions, the gates' sources,
+# prose, every shell test, and the scripts only the image, deploy and release
+# jobs run. Of the submodule pins, contracts' and engines' reach them, since the
+# patch table builds their crates from the checkouts and every Rust job
+# initializes both with scripts/ci/submodules.sh, and test-suites' does, since
+# the core and backend suites read the committed catalog from that checkout.
 reaches_rust() { # path
 	is_pipeline "$1" && return 0
 	case "$1" in
-		contracts | engines | scripts/ci/submodules.sh) return 0 ;;
+		contracts | engines | test-suites | scripts/ci/submodules.sh) return 0 ;;
 		apps/docs/* | apps/web/* | apps/site/*) return 1 ;;
 		tasks/* | .github/* | .devcontainer/* | .claude/* | .vscode/*) return 1 ;;
 		deployments/*) return 1 ;;
 		containers/image-names.sh) return 0 ;;
 		containers/*) return 1 ;;
 		ci/*) return 1 ;;
-		test-cases/* | game-jams/* | crates/*.md) return 0 ;;
+		crates/*.md) return 0 ;;
 		*.md) return 1 ;;
 		.gitmodules | .gitignore | .editorconfig | .copier-answers.yml | Makefile) return 1 ;;
 		.cspell/* | cspell.json | .prettierrc* | .prettierignore | .markdownlint* | \
 			eslint.config.* | .pre-commit-config.yaml | LICENSE*) return 1 ;;
 		scripts/*.test.sh | scripts/*.test.mjs) return 1 ;;
-		scripts/ci/audio-packs-check.mjs | scripts/ci/audio-store-image.sh | \
+		scripts/ci/audio-store-image.sh | \
 			scripts/ci/build-context.sh | scripts/ci/build-image.sh | \
 			scripts/ci/ci-image-purge.sh | scripts/ci/ci-image.sh | \
 			scripts/ci/deploy-docs.sh | \
@@ -119,7 +120,7 @@ reaches_rust() { # path
 			scripts/ci/run-image-inputs.sh | scripts/ci/run-images.sh | \
 			scripts/ci/service-image.sh | \
 			scripts/ci/service-images.sh | scripts/ci/settle-workloads.sh | \
-			scripts/ci/spec-vocabulary-check.mjs | scripts/ci/submodule-pins.sh | \
+			scripts/ci/submodule-pins.sh | \
 			scripts/ci/tcab-image-pin.sh) return 1 ;;
 	esac
 	local pin
@@ -135,7 +136,7 @@ reaches_gg() { # path
 	is_pipeline "$1" && return 0
 	reaches_rust "$1" || return 1
 	case "$1" in
-		test-cases/* | game-jams/* | containers/*) return 1 ;;
+		test-suites | containers/*) return 1 ;;
 		scripts/ci/release-build.sh | scripts/ci/release-test.sh | \
 			scripts/ci/release-doctest.sh | scripts/ci/binary-smoke.sh | \
 			scripts/ci/smoke-binary.sh | scripts/ci/install-nextest.sh | \

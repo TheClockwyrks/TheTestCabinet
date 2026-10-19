@@ -1435,8 +1435,9 @@ build_performance() {
 	# image's first stage compiles from `crates/`: the `lattice` CLI, the engine
 	# buildkit (`lattice-core` + `lattice-sdk`), and the reference engine wasm modules.
 	# It also bakes the committed training scenarios from the case's version folder
-	# under `test-cases/`. Like the adversarial image it therefore needs the repository
-	# root as its build context (a repo-root `.dockerignore` keeps it lean). Building
+	# under the test-suites submodule's `test-cases/`. Like the adversarial image it
+	# therefore needs the repository root as its build context (a repo-root
+	# `.dockerignore` keeps it lean). Building
 	# from the local base-wasm tag avoids a registry round-trip and keeps the
 	# performance image pinned to the base-wasm produced in this same invocation.
 	"$DOCKER" build \

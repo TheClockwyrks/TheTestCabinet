@@ -1,9 +1,0 @@
-{
-  "name": "wireworm",
-  "version": "0.1.0",
-  "private": true,
-  "description": "Wireworm — a fixed-shooter where a segmented data-worm winds down a circuit board and you cut it apart, charging and detonating the node field. Runs entirely in the browser.",
-  "devDependencies": {
-    "playwright": "1.61.0"
-  }
-}

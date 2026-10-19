@@ -18,13 +18,16 @@ fn fixture_test_cases() -> std::path::PathBuf {
 }
 
 /// The committed catalog itself, for the one test that holds every version to a
-/// rule: `<TCAB_DEFINITIONS_ROOT>/test-cases`, defaulting to the repository's own.
+/// rule: `<TCAB_DEFINITIONS_ROOT>/test-cases`, defaulting to the repository's
+/// `test-suites` checkout.
 /// It fails, rather than skips, where the catalog is absent.
 fn committed_test_cases() -> std::path::PathBuf {
     let definitions = std::env::var_os("TCAB_DEFINITIONS_ROOT")
         .filter(|value| !value.is_empty())
         .map(std::path::PathBuf::from)
-        .unwrap_or_else(|| std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../.."));
+        .unwrap_or_else(|| {
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../test-suites")
+        });
     let root = definitions.join("test-cases");
     assert!(
         root.is_dir(),
@@ -1259,21 +1262,22 @@ fn ingest_reads_baselines_from_an_overridden_cold_storage_root() {
 }
 
 #[test]
-fn ingest_defaults_to_the_checkout_s_cold_storage_submodule() {
+fn ingest_defaults_to_the_cold_storage_checkout_beside_the_checkout() {
     // nextest runs each test in its own process, so clearing the override here
     // touches no other test.
     unsafe { std::env::remove_var(test_cabinet_contracts::cold_storage::COLD_STORAGE_DIR_ENV) };
-    let checkout = TempDir::new().unwrap();
-    write_e2e_case(checkout.path(), "demo", "demo");
+    let parent = TempDir::new().unwrap();
+    let checkout = parent.path().join("test-suites");
+    write_e2e_case(&checkout, "demo", "demo");
     write(
-        &cold_baseline_dir(&checkout.path().join("cold-storage"), "demo")
+        &cold_baseline_dir(&parent.path().join("cold-storage"), "demo")
             .join("none/base/spin__still.png"),
         "png:still",
     );
 
     let store_dir = TempDir::new().unwrap();
     let store = DefinitionStore::open(store_dir.path()).unwrap();
-    Ingestor::new(checkout.path(), &store)
+    Ingestor::new(&checkout, &store)
         .scan(&IngestRequest::default())
         .expect("scan ingests the case");
 

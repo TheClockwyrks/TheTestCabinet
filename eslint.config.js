@@ -136,15 +136,16 @@ const CONFIG = defineConfig([
     // (.markdownlint-cli2.yaml, cspell.json, .prettierignore) leave out too, so no
     // gate reads what the others leave alone.
     "cold-storage/**",
-    // The contracts and engines repositories, submodules with gates of their own.
+    // The contracts, engines and test-suites repositories, submodules with gates
+    // of their own.
     "contracts/**",
     "engines/**",
+    "test-suites/**",
     "tasks/**/done/**",
     ".claude/workflows/**",
     ".claude/worktrees/**",
     "crates/gg/src/probe_fixtures/**",
     "crates/gg/src/sandbox/guests/**",
-    "test-cases/performance/hard/lattice/*/cases/*.json",
     "crates/*/testdata/definitions/**",
     "**/*.hbs",
     "**/.build/**",

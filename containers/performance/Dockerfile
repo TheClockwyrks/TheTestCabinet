@@ -28,7 +28,8 @@
 # validator scores against, so they are compiled from THIS repository at
 # image-build time and a run records the image digest. The build context is the
 # repository root so the compile stage can see the engines submodule's `crates/` and
-# the committed training fixtures under `test-cases/` (see `containers/build.sh`).
+# the committed training fixtures in the test-suites submodule's `test-cases/` (see
+# `containers/build.sh`).
 #
 # This image inherits everything from base-wasm — the Node toolchain, the Rust +
 # `wasm32-unknown-unknown` toolchain, the unprivileged `node` run user, the `/work`
@@ -153,7 +154,7 @@ COPY --from=lattice-build /opt/lattice/buildkit /opt/lattice/buildkit
 # from the case's version folder so they stay in lockstep with the engine the
 # validator scores against; they are deliberately disjoint from the HELD-OUT scored
 # set, which lives only with the case and is never copied here.
-COPY test-cases/performance/hard/lattice/v1.0.0/references/training /opt/lattice/training
+COPY test-suites/test-cases/performance/hard/lattice/v1.0.0/references/training /opt/lattice/training
 
 # Make everything under /opt/lattice world-readable (and directories traversable)
 # so the unprivileged run user can read the buildkit and the training set and build

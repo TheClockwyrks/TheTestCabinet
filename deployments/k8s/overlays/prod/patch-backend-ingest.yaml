@@ -30,7 +30,10 @@
 #
 # SUBMODULES: after the superproject, the sidecar updates its two submodules, each in
 # its own step: cold-storage shallowly (the baseline media), and the test suites at the
-# commit the branch names. .gitmodules names the test suites repository relative to
+# commit the branch names. The test suites checkout holds the catalog (`test-cases/`,
+# `game-jams/`, `test-case-groups/`), so it is what the backend's
+# TCAB_BACKEND_CHECKOUT names (/state/checkout/test-suites), and cold-storage sits
+# beside it, where the backend's cold-storage root defaults. .gitmodules names the test suites repository relative to
 # the superproject (`../test-suites`), so against the GitHub mirror this clones from it
 # resolves to the mirror's sibling repository. The sidecar rewrites that address to the
 # Azure Repos HTTPS one and answers git's credential request from the read-only token

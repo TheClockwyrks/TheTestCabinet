@@ -3,8 +3,9 @@
 # scripts/ci/build-context.test.sh
 #
 # The script reads the whole tracked tree, so each case runs it in a throwaway
-# git repository holding a copy of this checkout's tracked files (test-cases/
-# and tasks/ aside, which no Dockerfile reads), then breaks one thing the case
+# git repository holding a copy of this checkout's tracked files (the
+# test-suites submodule and tasks/ aside, which no Dockerfile reads but for the
+# catalog paths one copies), then breaks one thing the case
 # names. The pristine copy has to pass, which is the build-context gate itself;
 # the subject of the rest is that each kind of break fails, naming the file to
 # fix.
@@ -72,14 +73,16 @@ export GIT_COMMITTER_NAME=test GIT_COMMITTER_EMAIL=test@example.com
 
 SOURCE="$(cd "$CI_DIR/../.." && pwd)"
 readonly SOURCE
-# The paths under test-cases/ a Dockerfile copies, which the copy has to hold.
+# The paths under the test-suites submodule a Dockerfile copies, which the copy
+# has to hold.
 mapfile -t case_sources < <(cd "$SOURCE" && git ls-files -z -- '*Dockerfile' '*.Dockerfile' '*.dockerfile' |
-	xargs -0 grep -hoE '^[[:space:]]*(COPY|ADD)[[:space:]].*' | grep -oE '(^|[[:space:]])test-cases/[^[:space:]]+' |
+	xargs -0 grep -hoE '^[[:space:]]*(COPY|ADD)[[:space:]].*' | grep -oE '(^|[[:space:]])test-suites/[^[:space:]]+' |
 	sed 's/^[[:space:]]*//' | sort -u)
 # One repository holding the tracked tree, indexed once; each case works in a copy of it by hard links.
 base="$tmp/base"
 mkdir -p "$base"
-(cd "$SOURCE" && { git ls-files -z -- ':!test-cases' ':!tasks' && git ls-files -z -- "${case_sources[@]}"; } |
+(cd "$SOURCE" && { git ls-files -z -- ':!test-suites' ':!tasks' &&
+	git -C test-suites ls-files -z -- "${case_sources[@]#test-suites/}" | sed -z 's|^|test-suites/|'; } |
 	tar --null -T - -cf -) | tar -C "$base" -xf -
 git -C "$base" init --quiet
 git -C "$base" add -A -f

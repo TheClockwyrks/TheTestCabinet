@@ -160,10 +160,12 @@
 !/scripts/ci/install-purescript.sh
 
 # The performance image bakes the committed training scenarios from the
-# Lattice case's version folder (see containers/performance/Dockerfile's
-# `COPY test-cases/.../references/training`). It is the one test-case tree a build
-# embeds, so it must survive the allowlist; the path tracks the Dockerfile's COPY.
-!/test-cases/performance/hard/lattice/v1.0.0/references/training
+# Lattice case's version folder in the test-suites submodule (see
+# containers/performance/Dockerfile's `COPY test-suites/test-cases/.../references/training`).
+# It is the one test-case tree a build embeds, so it must survive the allowlist; the
+# path tracks the Dockerfile's COPY, and admitting it is what has an image job
+# initialize the test-suites submodule (scripts/ci/submodules.sh --build-context).
+!/test-suites/test-cases/performance/hard/lattice/v1.0.0/references/training
 
 # The web service image (deployments/images/web.Dockerfile) is the one NON-cargo
 # service image: it `npm ci`s the npm workspace and `vite build`s the web console

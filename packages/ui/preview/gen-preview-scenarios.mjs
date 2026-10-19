@@ -22,7 +22,7 @@ import { fileURLToPath } from "node:url";
 const here = dirname(fileURLToPath(import.meta.url));
 const casesDir = join(
   here,
-  "../../../test-cases/performance/hard/lattice/v1.0.0/cases",
+  "../../../test-suites/test-cases/performance/hard/lattice/v1.0.0/cases",
 );
 
 // The footprint tiles an entity occupies — the anchor plus any extra tiles for the

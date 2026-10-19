@@ -107,7 +107,7 @@ gates for what it touched:
 | `packages/`, `apps/site/` | `web-lint`, `workspace-test`, `site-build`, `format` |
 | Documentation (`apps/docs/`) | `markdownlint`, `cspell`, `docs-typecheck`, `docs-build` |
 | Any Markdown elsewhere | `markdownlint`, `cspell` |
-| A test case, game jam or group | `frozen-paths`, `spec-prose`, `spec-vocabulary`, `audio-packs`, `validators-typecheck`, `format` |
+| `test-suites/` (a test case, game jam or group) | its own `make gate` (`frozen-paths`, `spec-prose`, `spec-vocabulary`, `audio-packs`, `validators-typecheck` among them) |
 | A Dockerfile, `.dockerignore`, `rust-toolchain.toml` | `build-context` |
 | `deployments/k8s/`, the deploy scripts | `k8s-manifests`, `k8s-deploy-sets` |
 | `scripts/` | `shell-tests`, `scripts-test`, and `shellcheck` (`pre-commit run shellcheck --files …`) |

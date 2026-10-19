@@ -25,7 +25,7 @@ const repoRoot = join(here, "..", "..", "..", "..", "..", "..", "..");
 
 const BUNDLE = join(
   repoRoot,
-  "test-cases/adversarial/easy/foray/v1.0.0/replay/assets",
+  "test-suites/test-cases/adversarial/easy/foray/v1.0.0/replay/assets",
 );
 const VENDORED = here + "/assets";
 

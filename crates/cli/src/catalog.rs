@@ -5,12 +5,14 @@
 //! than the backend, and they all have to answer the same question first: which
 //! directory is the catalog. That answer is stated once here.
 //!
-//! A checkout holds the authored cases at `test-cases/` and the
+//! A checkout of the `test-suites` repository holds the authored cases at
+//! `test-cases/` and the
 //! [test suites](https://docs.testcabinet.ai/test-suites/overview/) beside them at
-//! `test-suites/`, so naming the first locates the second. `TCAB_TEST_CASES_DIR`
-//! relocates the pair — a container, a CI job, or a `tcab` invoked from outside the
-//! repository — and the suites checkout follows it, because moving the catalog
-//! moves the whole checkout.
+//! `test-suites/`, so naming the first locates the second. The default is the
+//! working directory's `test-cases/`, which is the catalog when `tcab` runs from
+//! that checkout. `TCAB_TEST_CASES_DIR` relocates the pair — `test-suites/test-cases`
+//! from the superrepo's root, a container, a CI job — and the suites checkout
+//! follows it, because moving the catalog moves the whole checkout.
 //!
 //! A command that resolves a *named* test case goes through
 //! [`resolver`], which is the engine's single entry point over both catalogs, so a
