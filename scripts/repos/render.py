@@ -144,6 +144,10 @@ NEXTEST_SCRIPT = "scripts/ci/install-nextest.sh"
 EXTRA_GATES: dict[str, dict[str, tuple[str, ...]]] = {
     "contracts": {"rust": ("contract-drift",)},
     "engines": {"checks": ("seeded-contract",)},
+    # gg builds the `gg-toolchains` image from containers/gg-toolchains/, and the
+    # gate holds that Dockerfile's sources to gg's `.dockerignore` allowlist and
+    # its Rust pins to rust-toolchain.toml, as the superrepo's gate holds its own.
+    "gg": {"checks": ("build-context",)},
     "test-suites": {
         "checks": ("frozen-paths", "spec-prose", "spec-vocabulary", "audio-packs", "validators-typecheck"),
     },

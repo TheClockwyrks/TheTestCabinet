@@ -122,6 +122,8 @@ def test_the_windows_and_extra_gate_tables_name_repositories_carrying_a_crate() 
     assert render.extra_gates("test-suites", "content") == {
         "checks": ("frozen-paths", "spec-prose", "spec-vocabulary", "audio-packs", "validators-typecheck")
     }
+    # gg builds its toolchains image, so it holds that Dockerfile to its build context.
+    assert render.extra_gates("gg", "application") == {"checks": ("build-context",)}
 
 
 def test_an_extra_gate_in_a_job_the_pipeline_lacks_is_refused(monkeypatch: pytest.MonkeyPatch) -> None:
