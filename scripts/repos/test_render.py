@@ -118,6 +118,10 @@ def test_the_windows_and_extra_gate_tables_name_repositories_carrying_a_crate() 
         own = [gate_id for ids in jobs.values() for gate_id in ids]
         assert not set(own) & kit_gates, f"{name} adds a gate the kit already renders"
     assert render.EXTRA_GATES["contracts"] == {"rust": ("contract-drift",)}
+    # The content gates the catalog brought with it run beside the kit's prose gates.
+    assert render.extra_gates("test-suites", "content") == {
+        "checks": ("frozen-paths", "spec-prose", "spec-vocabulary", "audio-packs", "validators-typecheck")
+    }
 
 
 def test_an_extra_gate_in_a_job_the_pipeline_lacks_is_refused(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -179,6 +183,32 @@ def test_each_kind_is_rendered_its_shape(kind: str, rendered: Callable[[str], Pa
         manifest = tomllib.loads((root / "crates" / directory / "Cargo.toml").read_text(encoding="utf-8"))
         assert manifest["package"]["name"] == crate
         assert ("/Cargo.lock" in (root / ".gitignore").read_text(encoding="utf-8")) is not shape.commits_lock
+
+
+@pytest.mark.parametrize("kind", KINDS)
+def test_each_kind_is_rendered_its_npm_workspace(kind: str, rendered: Callable[[str], Path]) -> None:
+    """Every kind carries the workspace; a content repository's members are its authoring tools."""
+    assert EDGES.KINDS[kind].typescript
+    root = rendered(ONE_OF_EACH[kind])
+    manifest = json.loads((root / "package.json").read_text(encoding="utf-8"))
+    members = ["tools/*"] if kind == "content" else ["packages/*", "apps/*"]
+    assert manifest["workspaces"] == members
+    assert manifest["private"] is True
+    assert {"build", "typecheck", "test"} <= set(manifest["scripts"])
+    claude = (root / "CLAUDE.md").read_text(encoding="utf-8")
+    dirs = ", ".join(f"`{member.removesuffix('*')}`" for member in members)
+    assert f"| {dirs} | The npm workspace's members" in claude
+    pipeline = (root / "azure-pipelines.yml").read_text(encoding="utf-8")
+    checks = _job(pipeline, "checks")
+    assert checks.index(f"- script: {render.NPM_FEED_SCRIPT} ") < checks.index("gate run typescript")
+
+
+def test_a_kind_without_a_workspace_names_no_members(monkeypatch: pytest.MonkeyPatch) -> None:
+    shape = EDGES.KINDS["content"]
+    monkeypatch.setattr(render.edge_table(), "KINDS", {**EDGES.KINDS, "content": shape._replace(typescript=False)})
+    assert render.npm_workspaces("content") == []
+    assert render.typescript_workspace("content") == ""
+    assert render.ci_npm_feed("content") == ""
 
 
 def _job(pipeline: str, job: str) -> str:

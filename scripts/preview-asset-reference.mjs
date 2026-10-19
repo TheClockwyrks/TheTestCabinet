@@ -172,9 +172,12 @@ function findVersionDir(from) {
   return null;
 }
 
+/** The catalog's test cases, in the test-suites checkout beside this one. */
+const TEST_CASES = path.join(REPO_ROOT, "test-suites", "test-cases");
+
 /** Locate `test-cases/**\/<slug>/<version>/`, newest version unless one is named. */
 function findCaseVersion(slug, versionArg) {
-  const root = path.join(REPO_ROOT, "test-cases");
+  const root = TEST_CASES;
   const matches = [];
   const walk = (dir, depth) => {
     if (depth > 3) return;
@@ -186,7 +189,8 @@ function findCaseVersion(slug, versionArg) {
     }
   };
   walk(root, 0);
-  if (matches.length === 0) fail(`no test case \`${slug}\` under test-cases/`);
+  if (matches.length === 0)
+    fail(`no test case \`${slug}\` under test-suites/test-cases/`);
 
   const caseDir = matches[0];
   const versions = fs

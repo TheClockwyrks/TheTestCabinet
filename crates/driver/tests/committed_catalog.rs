@@ -5,8 +5,8 @@
 //! still resolves, every version passes the engine gate for what it declares, and
 //! so on. The catalog is read from `TCAB_DEFINITIONS_ROOT` (the directory holding
 //! `test-cases/` and `game-jams/`, as the backend names it), defaulting to this
-//! repository's root. A missing catalog fails every test here rather than skipping
-//! it.
+//! repository's `test-suites` checkout. A missing catalog fails every test here
+//! rather than skipping it.
 
 use std::path::{Path, PathBuf};
 
@@ -14,12 +14,13 @@ use test_cabinet_driver::engine::EngineSelection;
 use test_cabinet_driver::{TestCaseCatalog, TestType, ensure_engine_supported};
 
 /// The directory holding the committed `test-cases/` and `game-jams/`:
-/// `TCAB_DEFINITIONS_ROOT` when set, otherwise this repository's root.
+/// `TCAB_DEFINITIONS_ROOT` when set, otherwise this repository's `test-suites`
+/// checkout.
 fn definitions_root() -> PathBuf {
     let root = std::env::var_os("TCAB_DEFINITIONS_ROOT")
         .filter(|value| !value.is_empty())
         .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../.."));
+        .unwrap_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../test-suites"));
     assert!(
         root.join("test-cases").is_dir(),
         "the committed catalog {} is missing",

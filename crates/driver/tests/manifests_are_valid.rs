@@ -36,13 +36,14 @@ fn repo_root() -> PathBuf {
 
 /// The directory holding the committed `test-cases/`, `game-jams/` and
 /// `test-case-groups/`: `TCAB_DEFINITIONS_ROOT` when set (the backend's name for
-/// it), otherwise the repository root. The groups are checked against the whole
-/// catalog, so they are read where the catalog is rather than from a copy.
+/// it), otherwise the repository's `test-suites` checkout. The groups are checked
+/// against the whole catalog, so they are read where the catalog is rather than
+/// from a copy.
 fn definitions_root() -> PathBuf {
     std::env::var_os("TCAB_DEFINITIONS_ROOT")
         .filter(|value| !value.is_empty())
         .map(PathBuf::from)
-        .unwrap_or_else(repo_root)
+        .unwrap_or_else(|| repo_root().join("test-suites"))
 }
 
 /// Immediate subdirectory paths of `dir`, ignoring files and hidden entries.

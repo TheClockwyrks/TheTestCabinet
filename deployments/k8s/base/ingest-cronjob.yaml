@@ -1,4 +1,4 @@
-# Periodic catalog refresh: pull the test-cases repository onto the backend's
+# Periodic catalog refresh: pull the test-suites repository onto the backend's
 # volume and call POST /ingest. Because the backend's volume is persistent, this
 # is a refresh, not a per-restart step. Schedule to taste.
 #
@@ -31,9 +31,11 @@ spec:
                 - |
                   set -eu
                   apk add --no-cache git curl
-                  REPO=https://github.com/TheClockwyrks/TheTestCabinet.git
-                  rm -rf /work/repo
-                  git clone --depth 1 "$REPO" /work/repo
+                  # The catalog's repository; the backend's TCAB_BACKEND_CHECKOUT
+                  # names the directory it is cloned to.
+                  REPO=https://github.com/TheClockwyrks/test-suites.git
+                  rm -rf /work/test-suites
+                  git clone --depth 1 "$REPO" /work/test-suites
                   # Tell the backend to re-ingest. force:true is required after a
                   # test-case edit (the def store is immutable per version).
                   curl -fsS -X POST "$TCAB_BACKEND_URL/ingest" \

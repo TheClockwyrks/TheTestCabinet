@@ -58,14 +58,13 @@ repos:
     rev: v6.0.0
     hooks:
       - id: check-added-large-files
-        # A test-case or game-jam version ships what a playable game needs: a
-        # reference implementation's music track or gameplay recording is
-        # several megabytes, a performance case's oracle output over one, and
-        # a full spec over the 500 kB default. None of those is a mistake this
-        # hook should stop, and a new version is a copy of the last, so every
-        # version directory is left out, as it is for end-of-file-fixer below,
-        # and so are the copies of versions the Rust tests read.
-        exclude: '^(test-cases|game-jams)/.*/v[0-9]+\.[0-9]+\.[0-9]+/|^crates/[^/]+/testdata/definitions/'
+        # The copies of test-case versions the Rust tests read keep what their
+        # source ships, which is what a playable game needs: a reference
+        # implementation's music track or gameplay recording is several
+        # megabytes and a performance case's oracle output over one. None of
+        # those is a mistake this hook should stop, so the copies are left out,
+        # as they are for end-of-file-fixer below.
+        exclude: "^crates/[^/]+/testdata/definitions/"
       - id: check-case-conflict
       - id: check-executables-have-shebangs
       - id: check-illegal-windows-names
@@ -77,14 +76,12 @@ repos:
       - id: end-of-file-fixer
         # Every text file ends with a newline, which nothing else here checks.
         # A reviewer that has to notice a missing one is being spent on what a
-        # hook settles. Binary assets are left alone, and so is every test-case
-        # and game-jam version: a frozen version is immutable (the
-        # `frozen-paths` gate refuses a change to it), and some of them hold
-        # files that end without a newline, which this hook would rewrite.
-        # ESLint writes the lint ratchet's baseline, `eslint-suppressions.json`,
-        # without one and rewrites it on every prune, so it is left alone too. The
-        # copies of versions the Rust tests read keep their source's bytes.
-        exclude: '\.(svg|png|ico|woff2?)$|^(test-cases|game-jams)/.*/v[0-9]+\.[0-9]+\.[0-9]+/|^crates/[^/]+/testdata/definitions/|^eslint-suppressions\.json$'
+        # hook settles. Binary assets are left alone, and so are the copies of
+        # test-case versions the Rust tests read, which keep their source's
+        # bytes, some of them files that end without a newline. ESLint writes
+        # the lint ratchet's baseline, `eslint-suppressions.json`, without one
+        # and rewrites it on every prune, so it is left alone too.
+        exclude: '\.(svg|png|ico|woff2?)$|^crates/[^/]+/testdata/definitions/|^eslint-suppressions\.json$'
       - id: check-shebang-scripts-are-executable
         # Rust files open with inner attributes like `#![forbid(unsafe_code)]`,
         # which this hook mistakes for a shebang; opt them out entirely.
@@ -359,38 +356,9 @@ repos:
         pass_filenames: false
 
       # This project's own gates, each a script under ci/gates/. The ones too
-      # slow for a commit (workspace-test, validators-typecheck and site-build,
-      # which build the workspace or its packages first) have
-      # no hook and run in the pipeline and in `make gate` only;
-      # ci/tests/test_wiring.py names them.
-      - id: frozen-paths
-        name: "frozen test-case versions"
-        entry: uv run --quiet --project ci gate run frozen-paths
-        language: system
-        files: '(^|/)\.frozen$|^(test-cases|game-jams)/|^scripts/(freeze|lib/frozen)\.sh$|^ci/gates/frozen-paths\.py$'
-        pass_filenames: false
-
-      - id: spec-vocabulary
-        name: "seeded spec vocabulary"
-        entry: uv run --quiet --project ci gate run spec-vocabulary
-        language: system
-        files: '^(test-cases|game-jams)/.*/v[0-9]+\.[0-9]+\.[0-9]+/(prompt\.hbs$|specs/)|^contracts/crates/suites/src/prompt\.rs$|^scripts/ci/spec-vocabulary-check\.mjs$|^ci/gates/spec-vocabulary\.py$'
-        pass_filenames: false
-
-      - id: spec-prose
-        name: "spec prose (markdownlint, cspell)"
-        entry: uv run --quiet --project ci gate run spec-prose
-        language: system
-        files: '^(test-cases|game-jams|test-case-groups)/.*\.(md|html|css|toml|hbs)$|^\.cspell/|^\.markdownlint-cli2\.yaml$|^ci/gates/spec-prose\.py$'
-        pass_filenames: false
-
-      - id: audio-packs
-        name: "audio pack declarations"
-        entry: uv run --quiet --project ci gate run audio-packs
-        language: system
-        files: '^(test-cases|game-jams)/.*/(test-case|game-jam)\.toml$|^containers/sample-packs/|^scripts/ci/audio-packs-check\.mjs$|^scripts/lib/audio-packs\.mjs$|^ci/gates/audio-packs\.py$'
-        pass_filenames: false
-
+      # slow for a commit (workspace-test and site-build, which build the
+      # workspace or its packages first) have no hook and run in the pipeline
+      # and in `make gate` only; ci/tests/test_wiring.py names them.
       - id: build-context
         name: "Dockerfile build contexts"
         entry: uv run --quiet --project ci gate run build-context

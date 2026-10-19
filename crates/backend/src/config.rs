@@ -79,7 +79,8 @@ pub struct Config {
     /// different Cloudflare Pages projects, so the one shared lockfile holds a
     /// URL per environment and each backend takes only its own.
     pub env: String,
-    /// Path to the repo checkout ingested on `POST /ingest` (`TCAB_BACKEND_CHECKOUT`).
+    /// Path to the `test-suites` checkout ingested on `POST /ingest`
+    /// (`TCAB_BACKEND_CHECKOUT`).
     /// Each tree ingest reads defaults to its place in it; see
     /// [`ingest_roots`](Self::ingest_roots).
     pub checkout: PathBuf,
@@ -93,7 +94,7 @@ pub struct Config {
     /// The cold-storage tree baseline media is read from
     /// (`TCAB_COLD_STORAGE_ROOT`), mirroring the definitions root. Defaults to
     /// `TCAB_COLD_STORAGE_DIR`, the override the `tcab` capture commands read,
-    /// and then to the checkout's `cold-storage/`.
+    /// and then to the `cold-storage/` checkout beside the checkout.
     pub cold_storage_root: PathBuf,
     /// On-disk definition store (`TCAB_BACKEND_STORE`).
     pub store: PathBuf,

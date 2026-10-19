@@ -22,7 +22,7 @@
 //   node scripts/vendor-lattice-assets.mjs
 //
 // The bundle's own artifacts are regenerated separately — see
-// `test-cases/performance/hard/lattice/v1.0.0/replay/assets/README.md` for how to
+// `test-suites/test-cases/performance/hard/lattice/v1.0.0/replay/assets/README.md` for how to
 // repack `sheet.png`/`sheet.json` and regenerate the `reference-*.json` scenarios.
 
 import { copyFileSync } from "node:fs";
@@ -33,7 +33,7 @@ const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 
 const SRC = join(
   repoRoot,
-  "test-cases/performance/hard/lattice/v1.0.0/replay/assets",
+  "test-suites/test-cases/performance/hard/lattice/v1.0.0/replay/assets",
 );
 const DST = join(repoRoot, "packages/ui/src/app/pages/runs/lattice/assets");
 

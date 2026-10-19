@@ -41,8 +41,9 @@ spec:
             # component). In-namespace Service DNS; the same value in every overlay.
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
               value: "http://tcab-lgtm:4318"
+            # The test suites checkout of the mounted superproject.
             - name: TCAB_BACKEND_CHECKOUT
-              value: "/checkout"
+              value: "/checkout/test-suites"
           volumeMounts:
             - name: checkout
               mountPath: /checkout

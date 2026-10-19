@@ -43,16 +43,19 @@ kinds alone carry is named, such as
 that renders to nothing for a kind without the gate and so is skipped. A set of
 files a kind leaves out is listed under `_exclude` in a block conditional on a
 derived value: a kind carrying no Rust crate (`rust_crate`) is rendered no
-workspace, no Rust configuration and no Rust gate.
+Cargo workspace, no Rust configuration and no Rust gate.
 
 The superrepo's own `.copier-answers.yml` is unrelated: it records the fleet's
 workspace template the superrepo is rendered from, and `copier update` of the
 superrepo reads its template from there.
 
-The kinds are `library`, `application`, `site` and `content`, the table
-`edges.py` in the kit's `ci` library holds with each repository's kind and the
-edges between them; the render reads it for the workspace it writes and the
-rendered `dependency-edges` gate reads it to hold the repository to it.
+The kinds are `library`, `tool`, `application`, `shell`, `site` and
+`content`, the table `edges.py` in the kit's `ci` library holds with each
+repository's kind and the edges between them; the render reads it for the
+workspace it writes and the rendered `dependency-edges` gate reads it to hold
+the repository to it. Every kind carries an npm workspace at its root, whose
+members are `packages/*` and `apps/*` except in a content repository, whose
+members are its authoring tools under `tools/*` (`NPM_WORKSPACES`).
 `render.py` holds what the kit derives beside it: the crate each repository
 carrying one is scaffolded with (`CRATES`, directories and names kept from the
 monorepo), the Rust track (`RUST_TRACKS`: the repositories whose suite drives a

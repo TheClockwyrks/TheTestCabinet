@@ -44,8 +44,9 @@ _exclude:
   - node_modules
   - target
   # A kind carrying no Rust crate (a site, a content repository) is rendered
-  # no workspace, no Rust configuration and no Rust gate. `rust_crate` is a
-  # value the context extension derives from the kind.
+  # no Cargo workspace, no Rust configuration and no Rust gate; its npm
+  # workspace, which every kind carries, is rendered as any other's.
+  # `rust_crate` is a value the context extension derives from the kind.
   - |-
     {% if not rust_crate %}
     Cargo.toml

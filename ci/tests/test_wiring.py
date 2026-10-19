@@ -68,9 +68,6 @@ HOOKLESS: set[str] = {
     # Builds every workspace package the gallery imports, then Vite's
     # production build of it.
     "site-build",
-    # Builds the workspace packages, then runs tsc over one validator project
-    # per engine of every test-case version.
-    "validators-typecheck",
     # Builds the workspace packages, then runs every npm workspace's vitest
     # suite.
     "workspace-test",

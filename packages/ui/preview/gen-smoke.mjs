@@ -3,7 +3,7 @@
 // cheap correctness pre-flight the performance test case runs before the expensive
 // stress scenarios. This is the SINGLE source for those smoke tests: it writes both
 //   - packages/ui/preview/smoke.json — the preview's playable + pass/fail list, and
-//   - test-cases/performance/hard/lattice/v1.0.0/smoke/<id>.json — the held-out
+//   - test-suites/test-cases/performance/hard/lattice/v1.0.0/smoke/<id>.json — the held-out
 //     scenario the validator grades (its `.out` oracle is produced by `lattice solve`).
 // Run: node packages/ui/preview/gen-smoke.mjs
 import { mkdirSync, writeFileSync } from "node:fs";
@@ -14,7 +14,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 // The lattice test case's smoke/ folder, relative to this preview dir.
 const smokeDir = join(
   here,
-  "../../../test-cases/performance/hard/lattice/v1.0.0/smoke",
+  "../../../test-suites/test-cases/performance/hard/lattice/v1.0.0/smoke",
 );
 
 const src = (x, y, dir, item, lane = "both", period = 1) => ({

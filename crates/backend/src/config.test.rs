@@ -189,29 +189,36 @@ fn the_ingest_refresh_endpoint_is_named_by_its_variable() {
     );
 }
 
-/// Each ingest root defaults to its place in the checkout, and each override moves
-/// its own tree alone: the suites default stays under the checkout when the
-/// definitions root is moved, so naming one variable never relocates another tree.
+/// Each ingest root defaults to its place in the checkout, the cold-storage root
+/// beside it, and each override moves its own tree alone: the suites default stays
+/// under the checkout when the definitions root is moved, so naming one variable
+/// never relocates another tree.
 #[test]
 fn each_ingest_root_defaults_into_the_checkout_and_moves_alone() {
     // SAFETY: this process is this test's alone under nextest, the repo's runner.
     unsafe { std::env::remove_var("TCAB_COLD_STORAGE_DIR") };
-    let checkout = Path::new("/state/checkout");
+    let checkout = Path::new("/state/checkout/test-suites");
 
     let defaults = ingest_roots(checkout, None, None, None);
-    assert_eq!(defaults.definitions, PathBuf::from("/state/checkout"));
+    assert_eq!(
+        defaults.definitions,
+        PathBuf::from("/state/checkout/test-suites")
+    );
     assert_eq!(
         defaults.suites,
-        PathBuf::from("/state/checkout/test-suites")
+        PathBuf::from("/state/checkout/test-suites/test-suites")
     );
     assert_eq!(
         defaults.cold_storage,
         PathBuf::from("/state/checkout/cold-storage")
     );
 
-    let moved = ingest_roots(checkout, Some("/state/test-suites".to_string()), None, None);
-    assert_eq!(moved.definitions, PathBuf::from("/state/test-suites"));
-    assert_eq!(moved.suites, PathBuf::from("/state/checkout/test-suites"));
+    let moved = ingest_roots(checkout, Some("/state/definitions".to_string()), None, None);
+    assert_eq!(moved.definitions, PathBuf::from("/state/definitions"));
+    assert_eq!(
+        moved.suites,
+        PathBuf::from("/state/checkout/test-suites/test-suites")
+    );
     assert_eq!(
         moved.cold_storage,
         PathBuf::from("/state/checkout/cold-storage")
@@ -238,10 +245,12 @@ fn each_ingest_root_defaults_into_the_checkout_and_moves_alone() {
 /// default when the backend's own variable is unset.
 #[test]
 fn the_ingest_roots_are_read_from_the_environment() {
-    let dir = tempfile::tempdir().unwrap();
+    let parent = tempfile::tempdir().unwrap();
+    let checkout = parent.path().join("test-suites");
+    let dir = checkout.as_path();
     // SAFETY: this process is this test's alone under nextest, the repo's runner.
     unsafe {
-        std::env::set_var("TCAB_BACKEND_CHECKOUT", dir.path());
+        std::env::set_var("TCAB_BACKEND_CHECKOUT", dir);
         std::env::remove_var("TCAB_DEFINITIONS_ROOT");
         std::env::remove_var("TCAB_SUITES_ROOT");
         std::env::remove_var("TCAB_COLD_STORAGE_ROOT");
@@ -251,9 +260,9 @@ fn the_ingest_roots_are_read_from_the_environment() {
     assert_eq!(
         defaults,
         crate::ingest::IngestRoots {
-            definitions: dir.path().to_path_buf(),
-            suites: dir.path().join("test-suites"),
-            cold_storage: dir.path().join("cold-storage"),
+            definitions: dir.to_path_buf(),
+            suites: dir.join("test-suites"),
+            cold_storage: parent.path().join("cold-storage"),
         }
     );
 
@@ -280,15 +289,12 @@ fn the_ingest_roots_are_read_from_the_environment() {
         config.cold_storage_root,
         PathBuf::from("/state/cold-storage")
     );
-    assert_eq!(config.checkout, dir.path());
+    assert_eq!(config.checkout, dir);
 
     // An empty value is no value, as for every other variable.
     // SAFETY: as above.
     unsafe { std::env::set_var("TCAB_DEFINITIONS_ROOT", "") };
-    assert_eq!(
-        super::Config::from_env().unwrap().definitions_root,
-        dir.path()
-    );
+    assert_eq!(super::Config::from_env().unwrap().definitions_root, dir);
 
     // Other tests in this binary read these (the committed catalog under
     // `TCAB_DEFINITIONS_ROOT`, cold storage under `TCAB_COLD_STORAGE_DIR`), so none

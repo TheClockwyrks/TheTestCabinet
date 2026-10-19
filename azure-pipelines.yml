@@ -105,9 +105,11 @@ trigger:
 
 # The repositories the jobs read beside this one: the contracts and engines
 # repositories, the `contracts/` and `engines/` submodules every build compiles
-# against. No job checks one out. A job that builds names them under `uses:`,
-# which puts them in the scope of the job's access token, and runs
-# `scripts/ci/submodules.sh init contracts engines` after its own checkout, which
+# against, and the test-suites repository, the `test-suites/` submodule holding
+# the catalog the tests over the committed catalog read and the performance
+# image bakes from. No job checks one out. A job that builds names them under
+# `uses:`, which puts them in the scope of the job's access token, and runs
+# `scripts/ci/submodules.sh init` with their paths after its own checkout, which
 # fetches the commits the superproject pins.
 resources:
   repositories:
@@ -117,6 +119,9 @@ resources:
     - repository: engines
       type: git
       name: the-test-cabinet/engines
+    - repository: test-suites
+      type: git
+      name: the-test-cabinet/test-suites
 
 pool:
   vmImage: ubuntu-24.04
@@ -191,6 +196,7 @@ stages:
           repositories:
             - contracts
             - engines
+            - test-suites
         variables:
           # The registry and the git checkouts, under the directory the cache
           # task saves, which is the whole reason CARGO_HOME moves at all.
@@ -215,10 +221,11 @@ stages:
             fetchDepth: 1
             clean: true
 
-          # The contracts and engines submodules, at the pinned commits; the
-          # job's `uses:` puts their repositories in the token's scope.
-          - script: scripts/ci/submodules.sh init contracts engines
-            displayName: Initialize the contracts and engines submodules
+          # The contracts, engines and test-suites submodules, at the pinned
+          # commits; the job's `uses:` puts their repositories in the token's
+          # scope. The tests over the committed catalog read test-suites.
+          - script: scripts/ci/submodules.sh init contracts engines test-suites
+            displayName: Initialize the contracts, engines and test-suites submodules
             env:
               SYSTEM_ACCESSTOKEN: $(System.AccessToken)
 
@@ -380,15 +387,17 @@ stages:
           repositories:
             - contracts
             - engines
+            - test-suites
         steps:
           - checkout: self
             fetchDepth: 1
             clean: true
 
-          # The contracts and engines submodules, at the pinned commits; the
-          # job's `uses:` puts their repositories in the token's scope.
-          - script: scripts/ci/submodules.sh init contracts engines
-            displayName: Initialize the contracts and engines submodules
+          # The contracts, engines and test-suites submodules, at the pinned
+          # commits; the job's `uses:` puts their repositories in the token's
+          # scope. The tests over the committed catalog read test-suites.
+          - script: scripts/ci/submodules.sh init contracts engines test-suites
+            displayName: Initialize the contracts, engines and test-suites submodules
             env:
               SYSTEM_ACCESSTOKEN: $(System.AccessToken)
 
@@ -591,22 +600,6 @@ stages:
 
           # This project's own gates on this track, one step each like every
           # gate above.
-          - script: uv run --quiet --project ci gate run frozen-paths
-            displayName: "frozen test-case versions"
-            condition: eq(variables['checksReady'], 'true')
-
-          - script: uv run --quiet --project ci gate run spec-vocabulary
-            displayName: "seeded spec vocabulary"
-            condition: eq(variables['checksReady'], 'true')
-
-          - script: uv run --quiet --project ci gate run spec-prose
-            displayName: "spec prose (markdownlint, cspell)"
-            condition: eq(variables['checksReady'], 'true')
-
-          - script: uv run --quiet --project ci gate run audio-packs
-            displayName: "audio pack declarations"
-            condition: eq(variables['checksReady'], 'true')
-
           - script: uv run --quiet --project ci gate run build-context
             displayName: "Dockerfile build contexts"
             condition: eq(variables['checksReady'], 'true')
@@ -637,10 +630,6 @@ stages:
             condition: eq(variables['checksReady'], 'true')
             env:
               CI_GATE_ARTIFACTS: target/gate-artifacts/workspace-test
-
-          - script: uv run --quiet --project ci gate run validators-typecheck
-            displayName: "validator projects typecheck (tsc)"
-            condition: eq(variables['checksReady'], 'true')
 
           - script: uv run --quiet --project ci gate run site-build
             displayName: "gallery build (vite build)"
