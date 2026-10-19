@@ -14,7 +14,9 @@ travel alongside the record rather than inside it.
 A run record must be serialized in a machine-readable format such as JSON and
 stored with the run's other artifacts. It is written locally beside those
 artifacts when a run finishes (see [Co-located run
-files](#co-located-run-files)) and reported to the backend by the driver.
+files](#co-located-run-files)). The driver hands it to the backend in a held
+report before it uploads anything and again with the terminal status (see
+[Finishing a run](/components/driver/overview/#finishing-a-run)).
 
 The record's JSON Schema is published at
 <https://docs.testcabinet.ai/schema/core/run-record.schema.json>. The
@@ -172,7 +174,7 @@ The run's terminal state, with enough detail to understand a failure. One of:
   finished, meaning the model never converged. A publishable tier distinct from
   `catastrophic`, likewise unscored.
 - `harness_error`: the agent harness, or the orchestrator runner driving it,
-  exited non-zero. A reportable model outcome, publishable without a review, and
+  exited non-zero on its own. A reportable model outcome, publishable without a review, and
   the one publishable tier that releases no source repository and no playable
   build. It is recorded only as a per-model harness-error statistic. Publishing
   is deliberate rather than automatic, because a subscription auth-token refresh
@@ -193,12 +195,31 @@ The run's terminal state, with enough detail to understand a failure. One of:
   no exit code to report. The watchdog sits well below the platform's own idle
   limits, so a run's fate is decided here and a case's `max_runtime_hours` stays
   reachable however long it is.
-- `infrastructure`: the Test Cabinet's own infrastructure failed, covering a
-  container that would not start or pull, an OOM-killed pod, a failure in
-  seeding or the case's init step, and a collected tree whose
-  [dependency install](/components/driver/validation/#the-dependency-install) did
-  not succeed after its retries. Retained with a diagnostic detail giving the
-  reason, never publishable, and excluded from every model statistic. A run
+- `infrastructure`: the Test Cabinet's own infrastructure failed, so the run
+  says nothing about the model. Every end the Test Cabinet or its platform
+  caused is recorded here:
+  - a container that would not start or pull, and a failure in seeding or the
+    case's init step;
+  - an OOM-killed pod, and a harness that ended on a signal, reported as an
+    exit code above 128 (`137` for `SIGKILL`, `143` for `SIGTERM`);
+  - a sandbox pod that was deleted, or carries a `DisruptionTarget` condition,
+    when the session ends, whatever exit status the exec reported;
+  - a lost exec stream: an exec that returned no status (code `-1`), and a
+    session the container's session log holds without its closing marker;
+  - a [gg](/gg/overview/) session that exited `0` without a terminal status;
+  - a driver interrupted by `SIGTERM` before the run had a record, and a driver
+    the [dispatcher](/components/dispatcher/overview/) reports dead or lost
+    while the backend holds no record for its run;
+  - a collected tree whose
+    [dependency install](/components/driver/validation/#the-dependency-install)
+    did not succeed after its retries.
+
+  Retained with a diagnostic detail giving the reason, never publishable, and
+  excluded from every model statistic. A run whose session the platform ended
+  is neither validated nor scored, because the tree it left is a half-written
+  build rather than the model's result; how the driver tells such an end from
+  the harness's own is in
+  [Attributing an end](/components/driver/execution/#attributing-an-end). A run
   that reached the install carries its collected tree and its validation
   summary.
 - `canceled`: an operator killed a [gg](/gg/overview/) run before it finished.

@@ -15,19 +15,22 @@ elsewhere.
 
 | Data                                                   | Where it lives                                                                                                       | Recoverable without a backup?                       |
 | ------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------- |
-| Published run records, reviews, links, short codes     | The backend's database (`TCAB_BACKEND_DATABASE_URL`)                                                                 | No. This is the system of record                    |
-| Test-case definition store (`TCAB_BACKEND_STORE`)      | On disk                                                                                                              | Yes, re-ingested from the repository                |
-| Ingest checkout (`TCAB_BACKEND_CHECKOUT`)              | On disk                                                                                                              | Yes, it is a git checkout                           |
+| Run records, reviews, links, short codes               | The backend's database (`TCAB_BACKEND_DATABASE_URL`)                                                                 | No. This is the system of record                    |
+| Relayed event streams, controllers, tournaments        | The backend's database                                                                                               | No. This is the system of record                    |
+| Test-case definition store (`TCAB_BACKEND_STORE`)      | Each backend pod's own volume                                                                                        | Yes, re-ingested from the repository                |
+| Ingest checkout (`TCAB_BACKEND_CHECKOUT`)              | Each backend pod's own volume                                                                                        | Yes, it is a git checkout                           |
 | The [public dataset](/components/backend/snapshot/)    | Cloudflare R2                                                                                                        | Yes, regenerated from the database                  |
 | Run outputs (produced code, playable builds)           | Per-run GitHub repos and Cloudflare Pages                                                                            | Yes, already hosted there                           |
 | Run trees (proof media, produced assets, builds, logs) | The [artifacts service](/components/artifacts/overview/)'s Blob container, and once published R2 under `media/runs/` | Yes for a published run, from the copy in R2        |
+| Tournament match replays                               | The artifacts service's Blob container                                                                               | No                                                  |
 | Run bundles (the implementation as a git repository)   | The [repos service](/components/repos/overview/)'s Blob container                                                    | Yes for a published run, from its GitHub repository |
 
-Backing up the runs therefore reduces to continuously backing up one small
-database, the backend's records. The two Blob containers hold what an
-unpublished run produced, and are protected by the storage account rather than
-by this page: enable soft delete and blob versioning on both containers, so a
-deleted or overwritten object can be restored for the retention window.
+Backing up the runs therefore reduces to continuously backing up one database,
+the backend's records. The two Blob containers hold what an unpublished run
+produced and every tournament match replay, and are protected by the storage
+account rather than by this page: enable soft delete and blob versioning on
+both containers, so a deleted or overwritten object can be restored for the
+retention window.
 
 ### The dataset as defense in depth
 
@@ -41,13 +44,10 @@ the backup.
 ### Recreating a cluster
 
 If the whole cluster is deleted and recreated while the database survives, an
-external managed PostgreSQL or a restored SQLite file, the backend's volume
-does not come back with it: the definition store and the ingest checkout sit on
-a per-cluster `PersistentVolumeClaim` that a full delete destroys. A claim
-survives an ordinary pod reschedule, which is what it is for, and it ends with
-the cluster its disk belongs to. The run trees and bundles live in the Blob
-containers and the public dataset in R2, none of which belong to the cluster,
-so they are untouched.
+external managed PostgreSQL or a restored SQLite file, nothing of record is
+lost. The definition store and the ingest checkout are caches on each backend
+pod's own volume, and the run trees, bundles and match replays live in the Blob
+containers and the public dataset in R2, none of which belong to the cluster.
 
 Recovery is one step: the in-pod ingest sidecar re-ingests the definition store
 on backend start, or on demand with `tcab ingest --env <env>`, restoring case

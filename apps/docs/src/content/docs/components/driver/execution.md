@@ -229,9 +229,10 @@ the platform underneath it.
 The watchdog's window must stay far below the platform's own limits. A
 Kubernetes kubelet closes an exec stream idle for
 `streamingConnectionIdleTimeout`, 4 hours on our clusters, without a terminating
-status frame, so the exec reports exit code `-1` and the run is misattributed.
-Because the watchdog always fires first, a hang is attributed accurately and
-promptly, and a case's maximum runtime is reachable however long it is set.
+status frame, so the exec reports exit code `-1`, which reads as a lost exec
+stream rather than the hang it was. Because the watchdog always fires first, a
+hang is attributed accurately and promptly, and a case's maximum runtime is
+reachable however long it is set.
 
 These two are the only terminations the Test Cabinet decides on a timer. An
 operator can also kill a run, and what the
@@ -256,6 +257,35 @@ nothing and tears the sandbox down, and the run is absent from the run list.
 `timed_out` and `hung` unwind the run instead of asking it to stop, so both are
 recorded without a collected tree or folded metrics.
 
+## Attributing an end
+
+A run's end is the model's only when the harness itself ended the session. When
+a session's exec returns, the driver applies the runtime limits and the
+cancellation first, then reads the sandbox pod and the session's own account of
+its end, and only then the exit status. The run is recorded as
+[`infrastructure`](/components/contracts/run-records/#status) when any of these
+holds:
+
+- The sandbox pod is gone, or carries a `DisruptionTarget` condition.
+- The harness exited on a signal, reported as an exit code above 128: `137` for
+  the `SIGKILL` a deleted pod's processes receive, `143` for `SIGTERM`. The
+  sandbox's PID 1 is `sleep infinity` and the harness runs through an `exec`,
+  so a signal always comes from outside the harness.
+- The exec returned no status (code `-1`), which is how a lost exec stream
+  reports.
+- The session log the in-container wrapper writes holds a session without its
+  closing marker. The wrapper appends the marker after the harness exits,
+  whatever its status, so a missing marker means the harness was still running
+  when the exec returned. The log is believed over the exit status.
+- A [gg](/gg/overview/) session exited `0` without a `session_ended` event. gg
+  emits that event before every exit, so an exit without one was reported by
+  the platform rather than by gg.
+
+Such a run is neither validated nor scored, because the tree it left is a
+half-written build rather than the model's result. Its record carries the
+metrics and events the run gathered, and a detail naming the condition with its
+figures: the exit code, the pod's reason, and the sessions left unfinished.
+
 ## Model authored tests
 
 The goal of a test case is to measure how well a model writes code in a large
@@ -277,5 +307,7 @@ convention marking the boundary between what the run was given and what the
 model wrote, and writes the repository as a `git bundle --all`. It uploads the
 run tree to the [artifacts service](/components/artifacts/overview/) and the
 bundle to the [repos service](/components/repos/overview/), each with its
-per-job token, before it reports the run's terminal status. Code analysis runs
-on the local tree before the upload.
+per-job token, after it has handed the run's record to the backend and before
+it reports the run's terminal status (see [Finishing a
+run](/components/driver/overview/#finishing-a-run)). Code analysis runs on the
+local tree before the upload.

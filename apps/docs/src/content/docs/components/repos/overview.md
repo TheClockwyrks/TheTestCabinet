@@ -58,15 +58,20 @@ The bundle is served as `application/octet-stream` under the file name
    case, harness, model and a prefix of the run id.
 2. Unpack the bundle, scrub every file with the shared
    [redaction](/components/backend/results/#secret-redaction), and commit the
-   scrubbed tree.
+   scrubbed tree on top of the bundle's tip.
 3. Push `main` and answer the repository's URL.
 
-The route is idempotent. A repository that already exists is reused, and the
-implementation is committed and pushed again, which recovers a publish whose
-repository was created before its first push landed. The first push after a
-create is retried with backoff, so GitHub's permission-propagation lag after a
-create self-heals. The publisher presents its per-publish-job token. Because the
-route is idempotent, a second publish Job for the same run answers the same URL.
+The route is idempotent, so a publish repeated after a failure at any step
+completes it. The commit is deterministic: its message is fixed, its author and
+committer are `Clockwyrks <runs@clockwyrks.invalid>`, and both its dates are the
+run's end time from its record, so a repeat over the same bundle reproduces the
+same SHA. A repository that already exists is reused. The push is a plain push
+of `main`, and a remote whose `main` already holds the same tree is a success
+whatever commit carries it, so a repeat after a push that landed answers the
+URL. The first push after a create is retried with backoff, so GitHub's
+permission-propagation lag after a create self-heals. The publisher presents its
+per-publish-job token, and a second publish Job for the same run answers the
+same URL.
 
 ## Storage
 

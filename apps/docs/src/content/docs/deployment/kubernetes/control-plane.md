@@ -66,11 +66,11 @@ read from the public bucket's hostname, `snapshot.testcabinet.ai` in prod.
 
 Constraints 1 and 2 above are properties of the SQLite store. Point
 `TCAB_BACKEND_DATABASE_URL` at a managed PostgreSQL instance and the backend
-becomes a plain `Deployment` with no database volume and no single-replica pin,
-the shape of both remote environments; see
-[PostgreSQL](/deployment/kubernetes/postgres/). The browser image and a volume
-for the definition store and checkout still apply, since those stay on local
-disk.
+becomes a plain `Deployment` with no database volume, the shape of both remote
+environments; see [PostgreSQL](/deployment/kubernetes/postgres/). The browser
+image still applies, and each replica keeps its definition store and checkout
+on an ephemeral volume of its own. That shape runs two replicas; see
+[Planned disruption](#planned-disruption).
 
 ### Ingesting definitions
 
@@ -118,6 +118,66 @@ credential is absent, expired or refused, the refresh prints
 `ingest: test suites update failed; ingesting without them` and ingests the
 test cases and the reference-build lockfile the checkout already holds. Every
 other step of `tcab ingest --env <env>` fails it before anything is ingested.
+
+## Planned disruption
+
+A node drain, a node-image upgrade and a deploy each restart service pods. A
+planned restart of any always-on service causes no outage a driver notices and
+cuts no request in flight. Three mechanisms provide that: a second replica
+where the service can run one, a `PodDisruptionBudget` over those replicas, and
+graceful termination in every service.
+
+| Workload           | Replicas | Update strategy              | Budget            | Grace  |
+| ------------------ | -------- | ---------------------------- | ----------------- | ------ |
+| backend            | 2        | `RollingUpdate`, surge 1     | `minAvailable: 1` | `60s`  |
+| `tcab-artifacts`   | 2        | `RollingUpdate`, surge 1     | `minAvailable: 1` | `300s` |
+| `tcab-repos`       | 2        | `RollingUpdate`, surge 1     | `minAvailable: 1` | `300s` |
+| `tcab-web`         | 2        | `RollingUpdate`, surge 1     | `minAvailable: 1` | `30s`  |
+| `tcab-cloudflared` | 2        | `RollingUpdate`, surge 1     | `minAvailable: 1` | `30s`  |
+| `tcab-dispatcher`  | 1        | `Recreate`                   | none              | `60s`  |
+| `tcab-arena`       | 1        | `Recreate`                   | none              | `60s`  |
+| `tcab-lgtm`        | 1        | `StatefulSet` rolling update | none              | `60s`  |
+
+### Two replicas and a budget
+
+A service that holds no state in its process runs two replicas. Its update
+strategy is `RollingUpdate` with `maxSurge: 1` and `maxUnavailable: 0`, so a
+deploy starts the new pod and waits for it to be `Ready` before terminating an
+old one. Its `PodDisruptionBudget` selects the service's
+`app.kubernetes.io/name` label with `minAvailable: 1`, so a drain evicts one
+replica, waits for its replacement to be `Ready` on another node, and only then
+evicts the other. Every budget's selector is the service's own name label, so
+no service budget reaches a run pod.
+
+### One replica
+
+The dispatcher, the arena and the observability stack each run one replica,
+and none carries a budget: a budget that refuses the eviction of a service's
+only pod holds its node out of every upgrade. No driver call reaches any of
+them, so their restart is made safe by graceful termination alone.
+
+- The dispatcher holds no inbound connection, so its restart only pauses
+  admission.
+- The arena's tournament registry is in-memory and per-pod.
+- The observability stack is outside the run path, and telemetry export is
+  best effort.
+
+### Graceful termination
+
+Every service handles `SIGTERM` the same way:
+
+1. It fails its readiness probe at once, so its endpoint leaves the `Service`.
+2. A `preStop` hook of `sleep: {seconds: 5}` holds the pod while that removal
+   propagates, and the service keeps accepting requests meanwhile.
+3. It stops accepting connections and finishes every request in flight.
+   Long-lived streams, such as the console's event streams, are closed so the
+   client reconnects to a ready pod.
+4. It exits with status 0 before `terminationGracePeriodSeconds` ends.
+
+The grace is sized to the longest request the service answers. The artifacts
+and repos services take `300s` so a run-tree or bundle upload in progress
+completes on the terminating replica. The dispatcher spends its grace finishing
+the tick in progress, so a run it has claimed always receives its `Job`.
 
 ## Identity
 
