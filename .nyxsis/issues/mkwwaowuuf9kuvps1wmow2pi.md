@@ -6,8 +6,9 @@ zone: DATA
 number: 1
 title: Make the artifacts service the write-through store over Blob and R2
 type: generic
-state: open
+state: done
 created: 2026-10-13T21:12:10.380402675Z
+done: 2026-10-19T05:09:23.157620215Z
 ---
 
 The artifacts service locates run trees that other components write. The
