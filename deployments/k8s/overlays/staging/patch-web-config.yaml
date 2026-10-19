@@ -1,5 +1,6 @@
 # Set the in-cluster web console's runtime backend URL to the backend's route on the
-# environment's origin, https://console.staging.testcabinet.ai/api, which the edge routes to tcab-backend.
+# environment's origin, https://console.staging.testcabinet.ai/api, which the edge
+# routes to tcab-backend.
 #
 # The single tcab-web image is environment-agnostic (one build per git-sha), so the
 # backend URL is injected at RUNTIME via env: the image's entrypoint `envsubst`s a

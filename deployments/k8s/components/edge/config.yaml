@@ -1,7 +1,7 @@
 # The tcab-prod tunnel's configuration: the ingress rules of the Edge page
 # (apps/docs/src/content/docs/deployment/kubernetes/edge.md#hostnames-and-paths).
-# overlays/staging replaces this file with its own (cloudflared-config.yaml there),
-# which differs only in the tunnel id and the hostnames; keep the two in step.
+# overlays/staging replaces it whole through patch-cloudflared.yaml there, whose
+# copy differs only in the tunnel id and the hostnames; keep the two in step.
 #
 # Rules are matched top to bottom, so the path rules of the origin come before its
 # catch-all. cloudflared forwards the path unchanged, and each service accepts its

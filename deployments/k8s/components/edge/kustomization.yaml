@@ -21,7 +21,8 @@
 #      and its ingress rules.
 #
 # The defaults are prod's: the tcab-prod tunnel and the testcabinet.ai hostnames.
-# overlays/staging replaces the generated ConfigMap with its own config.yaml.
+# overlays/staging replaces the generated ConfigMap's config.yaml through its
+# patch-cloudflared.yaml.
 #
 # Prerequisites (out of band, "Setting up an environment" on the Edge page): the
 # named tunnel exists, its credentials file is the Key Vault secret
