@@ -244,12 +244,12 @@ static build with no Rust step.
 ## gg.rocks (Cloudflare Pages, one-time)
 
 gg's public site is the `gg.rocks` repository, a site the kit renders that
-depends on nothing of the project at build time. It presents gg from the `gg`
-repository's documentation pages, read at the gg version it pins, and its
-pipeline's `deploy` stage builds it and uploads it with `wrangler pages deploy`
-on every `master` and `staging` build that passed the gates stage: `master` to
-`gg-rocks`, served at `gg.rocks`, and `staging` to `gg-rocks-staging`, served
-at `staging.gg.rocks`.
+names no package of the project. Its one input from the project is the `gg`
+repository's documentation pages, read at the gg version it pins, from which it
+presents gg. Its pipeline's `deploy` stage builds it and uploads it with
+`wrangler pages deploy` on every `master` and `staging` build that passed the
+gates stage: `master` to `gg-rocks`, served at `gg.rocks`, and `staging` to
+`gg-rocks-staging`, served at `staging.gg.rocks`.
 
 In the Cloudflare dashboard:
 
