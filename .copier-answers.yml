@@ -5,7 +5,7 @@
 # `_commit` is the template version the workspace was last generated or updated
 # against, and `_src_path` is the template repository it came from.
 _commit: v0.35.1
-_src_path: git@ssh.dev.azure.com:v3/genyume/nyxsis-template-k8s-standard/nyxsis-template-k8s-standard
+_src_path: git@ssh.dev.azure.com:v3/genyume/nyxsis/templates-standard-app
 deployment: azure-k8s
 issues_format: files
 project_description: A benchmark for AI models and harnesses built from test cases
