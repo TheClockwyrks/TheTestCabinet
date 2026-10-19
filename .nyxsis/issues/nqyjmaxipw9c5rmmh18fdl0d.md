@@ -6,10 +6,11 @@ zone: REPOS
 number: 20
 title: Move the lattice designer into test-suites over the lattice runtime
 type: generic
-state: open
+state: done
 depends_on:
   - gfqpmecuzk31twz3dxn6hugm
 created: 2026-10-14T00:20:41.017191733Z
+done: 2026-10-19T11:36:14.474774145Z
 ---
 
 The lattice factory designer is `apps/lattice-designer` in the superrepo,
