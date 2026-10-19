@@ -128,13 +128,16 @@ failure this tool makes easy to cause.
 
 ## How it reuses the engine
 
-There is no second simulation here. The tool aliases straight to the console UI's
-Lattice player (`@clockwyrks/ui`'s `pages/runs/lattice`) for:
+There is no second simulation here. The tool runs a layout through
+`@clockwyrks/lattice-runtime`, the package the console's Lattice player uses, for:
 
 - the **engine** — `lattice-core` compiled to wasm (the same one the CLI, validator,
   and run player use), stepped through its playback ABI;
-- the **renderer** and sprite sheet — so a factory here draws pixel-identically to a
-  run's playback.
+- the **renderer** — so a factory here draws pixel-identically to a run's playback.
+
+The sprite sheet is the lattice version's own content, which the console vendors
+from the case bundle; the tool aliases to that vendored copy (`@lattice-assets`,
+`@clockwyrks/ui`'s `pages/runs/lattice/assets`) rather than keeping a second one.
 
 "Live" editing is **reset-and-replay**: on each edit the design is projected to a
 scenario, the engine is reloaded from empty, and the preview window is stepped into a

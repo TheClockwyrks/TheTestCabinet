@@ -18,11 +18,12 @@ import { defineConfig } from "vitest/config";
 // under jsdom `import.meta.url` is an http URL, and the scenario round-trip test
 // resolves the case's committed `cases/*.json` off a file one.
 //
-// `@lattice` and `@numeric` are aliased exactly as `vite.config.ts` and
+// `@lattice-assets` and `@numeric` are aliased exactly as `vite.config.ts` and
 // `tsconfig.json` alias them. The component tests stub `../assets` and
-// `../useSimulation`, so the wasm engine behind `@lattice` is never loaded here.
-const lattice = new URL(
-  "../../packages/ui/src/app/pages/runs/lattice",
+// `../useSimulation`, so the wasm engine from `@clockwyrks/lattice-runtime` is
+// never loaded here.
+const latticeAssets = new URL(
+  "../../packages/ui/src/app/pages/runs/lattice/assets",
   import.meta.url,
 ).pathname;
 
@@ -34,7 +35,7 @@ const numeric = new URL(
 export default defineConfig({
   plugins: [react()],
   resolve: {
-    alias: { "@lattice": lattice, "@numeric": numeric },
+    alias: { "@lattice-assets": latticeAssets, "@numeric": numeric },
   },
   test: {
     environment: "node",

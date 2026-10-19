@@ -102,8 +102,9 @@ gates for what it touched:
 | Rust (`crates/`, `Cargo.*`) | `rust-fmt`, `rust-clippy`, `rust-doc`, `rust-test`, `rust-doctest` |
 | `crates/gg/` | the above, plus `scripts/ci/gg-test.sh` |
 | `contracts/` | its own `make gate` (`contract-drift` among them, after `npm run gen:contract` in that checkout when a contract or backend API type changed) |
+| `engines/` | its own `make gate` (`seeded-contract` among them) |
 | `apps/web/` | `web-lint`, `web-typecheck`, `web-test`, `web-browser-test`, `web-build` |
-| `packages/`, `apps/site/` | `web-lint`, `workspace-test`, `site-build`, `seeded-contract`, `format` |
+| `packages/`, `apps/site/` | `web-lint`, `workspace-test`, `site-build`, `format` |
 | Documentation (`apps/docs/`) | `markdownlint`, `cspell`, `docs-typecheck`, `docs-build` |
 | Any Markdown elsewhere | `markdownlint`, `cspell` |
 | A test case, game jam or group | `frozen-paths`, `spec-prose`, `spec-vocabulary`, `audio-packs`, `validators-typecheck`, `format` |

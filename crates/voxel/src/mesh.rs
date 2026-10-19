@@ -1,6 +1,6 @@
 //! The cube surface mesher: a [`VoxelSet`] to a face-culled triangle [`PartMesh`].
 //!
-//! This is the Rust port of `packages/voxel-runtime/src/mesh.ts`'s `buildPartMesh`,
+//! This is the Rust port of `engines/packages/voxel-runtime/src/mesh.ts`'s `buildPartMesh`,
 //! emitting the identical [`PartMesh`] shape (flat `positions`/`normals`/`colors`/
 //! `indices` arrays). Each occupied voxel contributes only the unit-cube faces not
 //! shared with an adjacent occupied voxel — interior faces are culled, so just the

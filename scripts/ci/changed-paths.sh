@@ -81,17 +81,17 @@ is_pipeline() { # path
 
 # Whether rust_build, binary_linux and binary_windows read the path. They
 # compile the whole workspace and run the core and CLI suites, which read
-# `engines/`, `harnesses/`, `orchestrators/`, `packages/` and the test cases
-# and game jams at compile time or in a test, so those stay in. What is left
-# out is what no Rust job opens: the sites, the board, the manifests, the
-# run-container definitions, the gates' sources, prose, every shell test, and
-# the scripts only the image, deploy and release jobs run. Of the submodule
-# pins, contracts' reaches them: the patch table builds its crates from the
-# checkout, and every Rust job initializes it with scripts/ci/submodules.sh.
+# `harnesses/`, `orchestrators/`, `packages/` and the test cases and game jams
+# at compile time or in a test, so those stay in. What is left out is what no
+# Rust job opens: the sites, the board, the manifests, the run-container
+# definitions, the gates' sources, prose, every shell test, and the scripts only
+# the image, deploy and release jobs run. Of the submodule pins, contracts' and
+# engines' reach them: the patch table builds their crates from the checkouts,
+# and every Rust job initializes both with scripts/ci/submodules.sh.
 reaches_rust() { # path
 	is_pipeline "$1" && return 0
 	case "$1" in
-		contracts | scripts/ci/submodules.sh) return 0 ;;
+		contracts | engines | scripts/ci/submodules.sh) return 0 ;;
 		apps/docs/* | apps/web/* | apps/site/*) return 1 ;;
 		tasks/* | .github/* | .devcontainer/* | .claude/* | .vscode/*) return 1 ;;
 		deployments/*) return 1 ;;
@@ -117,7 +117,7 @@ reaches_rust() { # path
 			scripts/ci/registry-purge.sh | scripts/ci/report-disk.sh | \
 			scripts/ci/require-gated-commit.sh | scripts/ci/retire-legacy-backend.sh | \
 			scripts/ci/run-image-inputs.sh | scripts/ci/run-images.sh | \
-			scripts/ci/seeded-contract-check.sh | scripts/ci/service-image.sh | \
+			scripts/ci/service-image.sh | \
 			scripts/ci/service-images.sh | scripts/ci/settle-workloads.sh | \
 			scripts/ci/spec-vocabulary-check.mjs | scripts/ci/submodule-pins.sh | \
 			scripts/ci/tcab-image-pin.sh) return 1 ;;

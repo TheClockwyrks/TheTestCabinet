@@ -657,6 +657,18 @@ self_test_normalize
 
 load_dockerignore "$REPO_ROOT/.dockerignore"
 mapfile -t rust_sources < <(git ls-files 'crates/*.rs' | grep -v '\.test\.rs$')
+# The crates of every submodule the context admits compile in the same build, the
+# patch table sending their sources there: the engines repository's engine table
+# bakes in its manifests the same way. Read from each checkout's own index, and
+# passed over for a submodule this checkout has not initialized, which part four
+# names.
+while IFS= read -r context_sub; do
+	[[ -n "$context_sub" ]] || continue
+	submodule_checked_out "$context_sub" || continue
+	mapfile -t -O "${#rust_sources[@]}" rust_sources < <(
+		git -C "$REPO_ROOT/$context_sub" ls-files 'crates/*.rs' | grep -v '\.test\.rs$' | sed "s|^|$context_sub/|"
+	)
+done < <(context_submodules)
 ((${#rust_sources[@]} > 0)) || {
 	echo "error: no compiled Rust sources found under crates/; this check would pass vacuously." >&2
 	exit 1
@@ -699,12 +711,14 @@ done < <(grep -Hno 'include_\(str\|bytes\)! *( *"[^"]*"' -- "${rust_sources[@]}"
 # The third build input no `COPY` names. The services image's `tcab-packages` stage
 # (deployments/images/services.Dockerfile) does `COPY . .`, `npm ci`, and then
 # `node scripts/stage-tcab-packages.mjs` — which reads the SHIPPABLE list in its own
-# source, resolves each name to a directory under `packages/`, and bakes it into
+# source, resolves each name to a package directory of the workspace (the engines
+# submodule's `engines/packages/`, which holds the engines, the runtimes and the case
+# harness, or `contracts/packages/`), and bakes it into
 # /opt/tcab-packages. A name in that list whose directory the allowlist forgets is
 # invisible to every check above, because a whole-context copy is deliberately
 # unchecked: it takes whatever the allowlist admits, and the stage then dies on
 #
-#     Error: shippable package @clockwyrks/<name> not found under packages/
+#     Error: shippable package @clockwyrks/<name> not found under ...
 #
 # which reads as a broken checkout and takes EVERY service image down at once — they
 # all share that Dockerfile. The `tcab-packages` stage is the driver's, but a
@@ -773,10 +787,12 @@ load_dockerignore "$REPO_ROOT/.dockerignore"
 # readdirSync does: a package added and not yet committed is a real build input, and a
 # gate that ran before `git add` and rejected it would be wrong. The glob does not
 # descend, so a workspace's own `node_modules` cannot be mistaken for a member. The
-# staging script reads the contracts submodule's packages too (asset-contract is in
-# the runtimes' closure), so this does as well.
+# staging script reads the engines and contracts submodules' packages (the staged
+# packages are the engines', and asset-contract is in the runtimes' closure), so this
+# does as well.
 package_manifests=()
-for staged_manifest in "$REPO_ROOT"/packages/*/package.json "$REPO_ROOT"/contracts/packages/*/package.json; do
+for staged_manifest in "$REPO_ROOT"/packages/*/package.json "$REPO_ROOT"/engines/packages/*/package.json \
+	"$REPO_ROOT"/contracts/packages/*/package.json; do
 	[[ -f "$staged_manifest" ]] || continue
 	package_manifests+=("${staged_manifest#"$REPO_ROOT/"}")
 done
@@ -800,9 +816,11 @@ while ((${#staged_queue[@]} > 0)); do
 	[[ "$staged_seen" == *"|$staged_name|"* ]] && continue
 	staged_seen="$staged_seen|$staged_name|"
 	if ! staged_dir="$(package_dir_for "$staged_name")"; then
-		echo "error: $STAGING_SCRIPT stages '$staged_name', and no packages/*/package.json or contracts/packages/*/package.json declares that name." >&2
-		[[ -f "$REPO_ROOT/contracts/package.json" ]] ||
-			echo "       The contracts submodule is not checked out: git submodule update --init contracts" >&2
+		echo "error: $STAGING_SCRIPT stages '$staged_name', and no packages/*/package.json, engines/packages/*/package.json or contracts/packages/*/package.json declares that name." >&2
+		for staged_sub in engines contracts; do
+			submodule_checked_out "$staged_sub" ||
+				echo "       The $staged_sub submodule is not checked out: git submodule update --init $staged_sub" >&2
+		done
 		problems=$((problems + 1))
 		continue
 	fi
@@ -815,7 +833,7 @@ while ((${#staged_queue[@]} > 0)); do
 	echo "error: .dockerignore keeps '$staged_dir' OUT of the build context, and $STAGING_SCRIPT stages '$staged_name' from it." >&2
 	echo "       No COPY names it — the services image's package-store stage copies the whole context" >&2
 	echo "       and then runs that script, so this fails as: Error: shippable package $staged_name" >&2
-	echo "       not found under packages/ or contracts/packages/ — which takes every image in services.Dockerfile down." >&2
+	echo "       not found under packages/, engines/packages/ or contracts/packages/ — which takes every image in services.Dockerfile down." >&2
 	echo "       Fix: add '!/$staged_dir' to the .dockerignore allowlist, with a comment saying what stages it." >&2
 	problems=$((problems + 1))
 done

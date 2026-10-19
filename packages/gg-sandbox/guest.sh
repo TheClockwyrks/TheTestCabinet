@@ -99,16 +99,24 @@ unset CARGO_ENCODED_RUSTFLAGS RUSTFLAGS
 # prefixes cover it — this package and `CARGO_HOME` — exactly as the Rust arm's build script does.
 export RUSTFLAGS="--remap-path-prefix=$GUEST=/gg/ecmascript --remap-path-prefix=${CARGO_HOME:-$HOME/.cargo}=/gg/cargo"
 
-# `--locked --offline`, because this runs inside an ordinary `cargo build`. This crate has its OWN
-# `Cargo.lock`, and `scripts/ci/install-gg-build-tools.sh` runs `cargo fetch --locked` against
-# exactly this manifest so the registry closure is warm.
+# `--offline`, because this runs inside an ordinary `cargo build`. This crate has its OWN
+# `Cargo.lock`, and `scripts/ci/install-gg-build-tools.sh` runs `cargo fetch` against exactly this
+# manifest so the registry closure is warm. `--locked` only where no patch table shapes the build:
+# under the superrepo's, cargo writes the lock's `[[patch.unused]]` block in no stable order, so the
+# flag would refuse a current lock at random. The lock is a declared input of this arm's artifact
+# crate, so a build that only reordered it puts it back, bytes and modification time, rather than
+# invalidating itself (scripts/gg-cargo-lock.sh); the `dependency-graph` gate holds it to the checkouts.
+# shellcheck source=scripts/gg-cargo-lock.sh
+source "$ROOT/scripts/gg-cargo-lock.sh"
+mapfile -t locked < <(cargo_locked_args "$GUEST")
 (
 	cd "$GUEST"
-	WASI_SDK="$WASI_SDK_HOME" \
+	cargo_keeping_lock_order "$GUEST/Cargo.lock" \
+		env WASI_SDK="$WASI_SDK_HOME" \
 		AR_wasm32_wasip1="$ARCHIVER" \
 		CFLAGS_wasm32_wasip1="$(gg_ecmascript_cflags)" \
 		CARGO_TARGET_DIR="$BUILD/target" \
-		cargo build --release --locked --offline --target "$GG_ECMASCRIPT_TARGET"
+		cargo build --release ${locked[@]+"${locked[@]}"} --offline --target "$GG_ECMASCRIPT_TARGET"
 )
 
 CORE="$BUILD/target/$GG_ECMASCRIPT_TARGET/release/gg_sandbox_ecmascript.wasm"

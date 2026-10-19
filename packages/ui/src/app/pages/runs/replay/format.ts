@@ -10,7 +10,7 @@
 // drawn without drawing the frames before it.
 //
 // These declarations are a deliberate, structurally identical COPY of
-// `packages/simple-2d/src/contract.ts`, not an import of it. The engine package is
+// `engines/packages/simple-2d/src/contract.ts`, not an import of it. The engine package is
 // vendored into a run repo and has to stay self-contained — the console taking a
 // dependency on it would tie the two release cycles together, and a console built
 // today has to read a recording produced by an engine build it has never seen.

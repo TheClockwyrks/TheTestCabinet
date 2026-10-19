@@ -12,7 +12,7 @@ import {
   type Board,
   type Sheet,
   type Snapshot,
-} from "../lattice/renderer";
+} from "@clockwyrks/lattice-runtime";
 import type { PerformanceSnapshotCheck } from "@clockwyrks/run-record";
 import { firstDrift } from "../lattice/drift";
 import { fitZoom, MAX_ZOOM, MIN_ZOOM, stepZoom } from "../lattice/zoom";

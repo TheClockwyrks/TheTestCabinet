@@ -68,11 +68,18 @@ export "CC_${tgt_us}=musl-gcc"
 export RUSTFLAGS="${RUSTFLAGS:-} -C target-feature=+crt-static"
 
 log "build-gg-static: building gg for $target (release, static)"
-# `--locked`: this script builds the gg that ships — as a release asset and as the
-# binary baked into the driver image — so the dependency set must be exactly the
-# committed Cargo.lock. A stale lock should fail the build loudly here rather than be
-# silently updated into a shipped artifact nobody can reproduce.
-cargo build -p test-cabinet-gg --release --locked --target "$target"
+# `--locked` where it can hold: this script builds the gg that ships — as a release
+# asset and as the binary baked into the driver image — so the dependency set must be
+# exactly the committed Cargo.lock, and a stale lock should fail the build loudly
+# rather than be silently updated into a shipped artifact nobody can reproduce. Under
+# the superrepo's patch table cargo writes the lock's `[[patch.unused]]` block in no
+# stable order, so there the flag would refuse a current lock at random; the
+# `dependency-graph` gate holds that lock to the checkouts instead
+# (scripts/gg-cargo-lock.sh).
+# shellcheck source=scripts/gg-cargo-lock.sh
+source "$repo_root/scripts/gg-cargo-lock.sh"
+mapfile -t locked < <(cargo_locked_args "$repo_root")
+cargo build -p test-cabinet-gg --release ${locked[@]+"${locked[@]}"} --target "$target"
 
 # Resolve the built binary. `CARGO_TARGET_DIR`, when set, moves it off the
 # default ./target path.

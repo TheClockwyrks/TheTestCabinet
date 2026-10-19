@@ -30,20 +30,25 @@
 set -euo pipefail
 # shellcheck source=scripts/ci/tcab-lib.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/tcab-lib.sh"
+# shellcheck source=scripts/gg-cargo-lock.sh
+source "$REPO_ROOT/scripts/gg-cargo-lock.sh"
+# `--locked` only where no patch table shapes the build: inside the superrepo cargo writes the lock's
+# `[[patch.unused]]` block in an order that is not stable between runs (scripts/gg-cargo-lock.sh).
+mapfile -t locked < <(cargo_locked_args .)
 
 case "${1:-}" in
 	"")
 		log "cargo build --all-targets"
-		cargo build --locked --workspace --all-targets
+		cargo build ${locked[@]+"${locked[@]}"} --workspace --all-targets
 		;;
 	--seed)
 		status=0
 		log "cargo clippy (the rust-clippy gate's command)"
-		cargo clippy --locked --workspace --all-targets -- -D warnings || status=1
+		cargo clippy ${locked[@]+"${locked[@]}"} --workspace --all-targets -- -D warnings || status=1
 		log "cargo doc (the rust-doc gate's command)"
-		cargo doc --locked --workspace --no-deps || status=1
+		cargo doc ${locked[@]+"${locked[@]}"} --workspace --no-deps || status=1
 		log "cargo nextest list (builds what the rust-test gate runs)"
-		cargo nextest list --locked --workspace >/dev/null || status=1
+		cargo nextest list ${locked[@]+"${locked[@]}"} --workspace >/dev/null || status=1
 		exit "$status"
 		;;
 	*)

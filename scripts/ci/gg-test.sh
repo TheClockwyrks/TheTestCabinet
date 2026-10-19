@@ -17,6 +17,11 @@
 set -euo pipefail
 # shellcheck source=/dev/null
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/tcab-lib.sh"
+# shellcheck source=scripts/gg-cargo-lock.sh
+source "$REPO_ROOT/scripts/gg-cargo-lock.sh"
+# `--locked` only where no patch table shapes the build: inside the superrepo cargo writes the lock's
+# `[[patch.unused]]` block in an order that is not stable between runs (scripts/gg-cargo-lock.sh).
+mapfile -t locked < <(cargo_locked_args .)
 
 usage() {
 	echo "usage: scripts/ci/gg-test.sh [k/N]" >&2
@@ -30,4 +35,4 @@ if [[ $# -eq 1 ]]; then
 fi
 
 log "cargo nextest run -p test-cabinet-gg --lib${1:+ (partition hash:$1)}"
-cargo nextest run --locked -p test-cabinet-gg --lib ${partition[@]+"${partition[@]}"}
+cargo nextest run ${locked[@]+"${locked[@]}"} -p test-cabinet-gg --lib ${partition[@]+"${partition[@]}"}

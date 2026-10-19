@@ -1483,25 +1483,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "77ce24cb58228fbb8aa041425bb1050850ac19177686ea6e0f41a70416f56fdb"
 
 [[package]]
-name = "foray-cli"
-version = "0.0.0"
-dependencies = [
- "anyhow",
- "clap",
- "foray-core",
- "foray-host",
- "serde_json",
-]
-
-[[package]]
-name = "foray-controller-sdk"
-version = "0.0.0"
-dependencies = [
- "foray-core",
- "serde_json",
-]
-
-[[package]]
 name = "foray-core"
 version = "0.0.0"
 dependencies = [
@@ -1512,14 +1493,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "foray-fuel-probe"
-version = "0.0.0"
-dependencies = [
- "foray-controller-sdk",
- "foray-core",
-]
-
-[[package]]
 name = "foray-host"
 version = "0.0.0"
 dependencies = [
@@ -1527,31 +1500,6 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.18",
  "wasmtime",
- "wat",
-]
-
-[[package]]
-name = "foray-ref-border-soldier"
-version = "0.0.0"
-dependencies = [
- "foray-controller-sdk",
- "foray-core",
-]
-
-[[package]]
-name = "foray-ref-greedy-raider"
-version = "0.0.0"
-dependencies = [
- "foray-controller-sdk",
- "foray-core",
-]
-
-[[package]]
-name = "foray-ref-random"
-version = "0.0.0"
-dependencies = [
- "foray-controller-sdk",
- "foray-core",
 ]
 
 [[package]]
@@ -2648,17 +2596,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "lattice-cli"
-version = "0.0.0"
-dependencies = [
- "anyhow",
- "clap",
- "lattice-core",
- "lattice-host",
- "serde_json",
-]
-
-[[package]]
 name = "lattice-core"
 version = "0.0.0"
 dependencies = [
@@ -2675,31 +2612,6 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.18",
  "wasmtime",
- "wat",
-]
-
-[[package]]
-name = "lattice-ref-naive"
-version = "0.0.0"
-dependencies = [
- "lattice-core",
- "lattice-sdk",
-]
-
-[[package]]
-name = "lattice-ref-transport"
-version = "0.0.0"
-dependencies = [
- "lattice-core",
- "lattice-sdk",
-]
-
-[[package]]
-name = "lattice-sdk"
-version = "0.0.0"
-dependencies = [
- "lattice-core",
- "serde_json",
 ]
 
 [[package]]
@@ -5538,9 +5450,6 @@ dependencies = [
 name = "test-cabinet-engines"
 version = "0.0.0"
 dependencies = [
- "serde_json",
- "tempfile",
- "test-cabinet-contracts",
  "test-cabinet-suites",
 ]
 
@@ -5605,10 +5514,8 @@ dependencies = [
  "lattice-core",
  "lattice-host",
  "serde_json",
- "tempfile",
  "test-cabinet-contracts",
  "thiserror 2.0.18",
- "wat",
 ]
 
 [[package]]
@@ -7719,3 +7626,43 @@ version = "0.2.1"
 [[patch.unused]]
 name = "contract-codegen"
 version = "0.2.1"
+
+[[patch.unused]]
+name = "foray-cli"
+version = "0.0.0"
+
+[[patch.unused]]
+name = "foray-controller-sdk"
+version = "0.0.0"
+
+[[patch.unused]]
+name = "foray-fuel-probe"
+version = "0.0.0"
+
+[[patch.unused]]
+name = "foray-ref-border-soldier"
+version = "0.0.0"
+
+[[patch.unused]]
+name = "foray-ref-greedy-raider"
+version = "0.0.0"
+
+[[patch.unused]]
+name = "foray-ref-random"
+version = "0.0.0"
+
+[[patch.unused]]
+name = "lattice-cli"
+version = "0.0.0"
+
+[[patch.unused]]
+name = "lattice-ref-naive"
+version = "0.0.0"
+
+[[patch.unused]]
+name = "lattice-ref-transport"
+version = "0.0.0"
+
+[[patch.unused]]
+name = "lattice-sdk"
+version = "0.0.0"

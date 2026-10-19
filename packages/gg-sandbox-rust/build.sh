@@ -120,16 +120,23 @@ mkdir -p "$STAGE"
 unset CARGO_ENCODED_RUSTFLAGS
 export RUSTFLAGS="--remap-path-prefix=$HERE=/gg/sdk --remap-path-prefix=${CARGO_HOME:-$HOME/.cargo}=/gg/cargo"
 echo "==> compiling the library set for $GG_RUST_TARGET"
-# `--locked --offline`, because this runs inside an ordinary `cargo build`. This package has its OWN
+# `--offline`, because this runs inside an ordinary `cargo build`. This package has its OWN
 # `Cargo.lock`, separate from the workspace's, so nothing else in this repository warms its registry
-# closure — `scripts/ci/install-gg-build-tools.sh` runs `cargo fetch --locked` against exactly this
-# manifest for that reason. `--locked` additionally refuses to UPDATE the lockfile, which matters
-# beyond determinism: the lockfile is a declared input of this arm's artifact crate, and a build that
-# rewrote its own input would invalidate itself and re-run for ever.
+# closure — `scripts/ci/install-gg-build-tools.sh` runs `cargo fetch` against exactly this manifest
+# for that reason. The lockfile is a declared input of this arm's artifact crate, and a build that
+# rewrote its own input would invalidate itself and re-run for ever. `--locked` refuses to update it
+# where it can hold; under the superrepo's patch table cargo writes its `[[patch.unused]]` block in
+# no stable order, so there the flag would refuse a current lock at random, and instead a build that
+# only reordered the lock puts it back, bytes and modification time (scripts/gg-cargo-lock.sh). The
+# `dependency-graph` gate holds the lock to the checkouts.
+# shellcheck source=scripts/gg-cargo-lock.sh
+source "$ROOT/scripts/gg-cargo-lock.sh"
+mapfile -t locked < <(cargo_locked_args "$HERE")
 (
 	cd "$HERE"
-	CARGO_TARGET_DIR="$BUILD/target" cargo build --release --locked --offline \
-		--target "$GG_RUST_TARGET"
+	cargo_keeping_lock_order "$HERE/Cargo.lock" \
+		env CARGO_TARGET_DIR="$BUILD/target" \
+		cargo build --release ${locked[@]+"${locked[@]}"} --offline --target "$GG_RUST_TARGET"
 )
 
 # NO PROC MACRO may have been built. One in the tree would be a host `.so` named in an rlib's

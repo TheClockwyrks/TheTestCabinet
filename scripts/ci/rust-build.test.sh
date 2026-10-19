@@ -71,6 +71,7 @@ fresh_repo() { # script
 	repo="$(mktemp -d "$tmp/repoXXXXXX")"
 	mkdir -p "$repo/scripts/ci" "$repo/bin"
 	cp "$CI_DIR/$1" "$CI_DIR/tcab-lib.sh" "$repo/scripts/ci/"
+	cp "$CI_DIR/../gg-cargo-lock.sh" "$repo/scripts/"
 	cat >"$repo/bin/cargo" <<'STUB'
 #!/usr/bin/env bash
 echo "cargo $* [cwd=$PWD]" >>"$STUB_LOG"
@@ -85,7 +86,7 @@ run() { # repo script args...
 	local repo="$1" script="$2"
 	shift 2
 	: >"$tmp/cargo.log"
-	(cd "$tmp" && STUB_LOG="$tmp/cargo.log" PATH="$repo/bin:$PATH" "$repo/scripts/ci/$script" "$@" 2>&1)
+	(cd "$tmp" && STUB_LOG="$tmp/cargo.log" CARGO_HOME="$tmp/cargo-home" PATH="$repo/bin:$PATH" "$repo/scripts/ci/$script" "$@" 2>&1)
 }
 
 readonly SEED="cargo clippy --locked --workspace --all-targets -- -D warnings [cwd=REPO]
@@ -119,6 +120,15 @@ out="$(run "$repo" rust-build.sh --everything)"
 check_equal "an unknown flag is a usage error" "2" "$?"
 check_contains "which says how to call it" "usage: scripts/ci/rust-build.sh [--seed]" "$out"
 check_equal "and runs nothing" "" "$(cat "$tmp/cargo.log")"
+
+# Under a patch table cargo writes the lock's unused patches in no stable order, so the
+# build runs without `--locked` (scripts/gg-cargo-lock.sh).
+mkdir -p "$repo/.cargo"
+printf '[patch."https://github.com/TheClockwyrks/engines"]\nx = { path = "x" }\n' >"$repo/.cargo/config.toml"
+out="$(run "$repo" rust-build.sh)"
+check_equal "under a patch table it builds without --locked" \
+	"cargo build --workspace --all-targets [cwd=$repo]" "$(cat "$tmp/cargo.log")"
+rm -r "$repo/.cargo"
 
 echo
 echo "rust-build.test.sh: ${pass} passed, ${fail} failed"

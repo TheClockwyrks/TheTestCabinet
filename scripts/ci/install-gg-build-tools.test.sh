@@ -85,6 +85,7 @@ repo="$tmp/repo"
 mkdir -p "$repo/scripts/ci" "$repo/packages/gg-sandbox-ruby" "$repo/packages/gg-sandbox-purescript" \
 	"$repo/packages/gg-sandbox-swift" "$repo/packages/gg-sandbox-python" "$tmp/server"
 cp "$CI_DIR/install-gg-build-tools.sh" "$CI_DIR/tcab-lib.sh" "$repo/scripts/ci/"
+cp "$CI_DIR/../gg-cargo-lock.sh" "$repo/scripts/"
 fake_fetch "$repo"
 cat >"$repo/scripts/gg-npm-tools.sh" <<'EOF2'
 gg_npm_tool() {
@@ -132,7 +133,7 @@ tar -C "$tmp/build" -cf "$tmp/server/opal-1.7.3.gem" metadata.gz data.tar.gz
 
 # PATH: only the commands the script and the stand-ins run, and each stub the case includes.
 mkdir -p "$tmp/min" "$tmp/npm" "$tmp/uv" "$tmp/cargo"
-for tool in bash cat chmod cp dirname gzip mkdir mktemp rm sed tar; do
+for tool in bash cat chmod cmp cp dirname grep gzip mkdir mktemp rm sed sort tar; do
 	ln -s "$(command -v "$tool")" "$tmp/min/$tool"
 done
 printf '#!/usr/bin/env bash\nexit 0\n' >"$tmp/npm/npm"

@@ -6,8 +6,9 @@ import type { TestCaseSummary } from "./testCases";
 // The other two are per-variant signals the backend sends with the catalog. This one
 // is not, and cannot be: a performance case's reference is its scored factories
 // played through the authoritative engine, and both the engine and the scenarios
-// SHIP WITH THE UI BUNDLE (vendored from the case bundle by
-// `scripts/vendor-lattice-assets.mjs`; see `pages/runs/lattice/reference.ts`). There
+// SHIP WITH THE UI BUNDLE (the engine from `@clockwyrks/lattice-runtime`, the
+// scenarios vendored from the case bundle by `scripts/vendor-lattice-assets.mjs`;
+// see `pages/runs/lattice/reference.ts`). There
 // is nothing for a host to send, and nothing for a host to be missing — the tab works
 // identically on the web console and the static site, with no backend
 // and no snapshot bucket.
