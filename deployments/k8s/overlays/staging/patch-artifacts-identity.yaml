@@ -7,10 +7,9 @@
 #   Storage account tcabstagingstore (RG testcabinet-staging-westus2-rg), private container run-trees
 #   Identity        tcab-artifacts-staging
 #
-# The client id below is `unprovisioned` until that identity exists: the webhook then
-# projects an AZURE_CLIENT_ID no tenant knows, the service's start-up listing of the
-# container is refused, and the pod never becomes ready, so a deploy undoes it rather
-# than serving a store it cannot reach. Replace it with the identity's clientId.
+# The account has shared-key access disabled, anonymous access off, blob soft delete,
+# container soft delete and versioning on (14 days; deployment/backups.md), and a
+# lifecycle rule expiring noncurrent versions after 14 days.
 #
 # The `azure.workload.identity/use` pod label is what makes the webhook project the
 # identity's token and variables. The local overlay carries neither, so its pod signs
@@ -22,7 +21,7 @@ metadata:
   # the base pins tcab-prod; this overlay's `namespace:` directive retargets it on build
   namespace: tcab-prod
   annotations:
-    azure.workload.identity/client-id: "unprovisioned"
+    azure.workload.identity/client-id: "3874c619-95e8-4392-a819-284978fb6d12"
 ---
 apiVersion: apps/v1
 kind: Deployment
