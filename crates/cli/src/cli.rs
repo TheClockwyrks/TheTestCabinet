@@ -431,7 +431,8 @@ impl DeployEnv {
 #[command(disable_version_flag = true)]
 pub struct PublishReferenceArgs {
     /// Deployment environment: which Cloudflare Pages project the reference
-    /// implementation deploys to. **Required** — with no default a publish can
+    /// implementation deploys to, or, for an asset-generation case, whose
+    /// artifacts service its frames are written through. **Required** — with no default a publish can
     /// never silently target prod, mirroring the `--env` flag on the operator
     /// shell scripts (for example `scripts/upload-subscription-creds.sh`).
     #[arg(long, value_enum, value_name = "ENV")]

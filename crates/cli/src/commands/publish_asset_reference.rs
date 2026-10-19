@@ -13,8 +13,12 @@
 //!   reference is a `draw.sh` of drawing-binary calls, run against a workspace
 //!   seeded from the manifest (see [`test_cabinet_driver::asset_reference`]).
 //! - **The artifact is data, not a page.** Frames and action logs are objects, so
-//!   they go to the public snapshot bucket the site already reads, and the UI
-//!   renders them natively instead of embedding an iframe.
+//!   they go to the public bucket the site already reads, and the UI renders them
+//!   natively instead of embedding an iframe. The CLI holds no bucket credential:
+//!   each object is written through the environment's artifacts service
+//!   (`PUT <origin>/artifacts/public/{key}`), crossing the edge with the Access
+//!   service token (`TCAB_ACCESS_CLIENT_ID` and `TCAB_ACCESS_CLIENT_SECRET`). See
+//!   <https://docs.testcabinet.ai/components/cli/overview/#reference-implementations-and-baselines>.
 //! - **There is no lockfile.** Object keys are deterministic
 //!   ([`reference_prefix`]), so the backend discovers published references by
 //!   listing the prefix rather than ingesting a committed URL — nothing has to be
@@ -26,8 +30,9 @@
 //! committed themselves, republishing after editing a script is the whole update
 //! path: run this command again and the objects are overwritten in place.
 
-use anyhow::{Context, Result, bail};
-use test_cabinet_artifacts::r2::{R2Client, R2Config};
+use anyhow::{Context, Result, anyhow, bail};
+use reqwest::header::{CONTENT_TYPE, HeaderMap, HeaderValue, LOCATION};
+use test_cabinet_backend_client::AccessCredential;
 use test_cabinet_driver::{
     SystemCommandRunner, TestCaseVersion, Variant,
     asset_reference::{
@@ -38,6 +43,7 @@ use test_cabinet_driver::{
 
 use super::capture_baselines::Target;
 use crate::cli::PublishReferenceArgs;
+use crate::config::{ACCESS_CLIENT_ID, ACCESS_CLIENT_SECRET, Credentials};
 
 /// Publish every targeted variant's asset reference to the object store.
 ///
@@ -65,28 +71,24 @@ pub(super) async fn execute(
         return Ok(());
     }
 
-    // The bucket comes from the ordinary `TCAB_R2_*` environment — the same one
-    // the backend writes the snapshot with. `--env` selects which deployment is
-    // being published to, so the operator supplies that environment's credentials;
-    // the bucket is echoed below so a publish into the wrong one is visible
-    // immediately rather than after the site fails to show the reference.
-    let config = R2Config::from_env().context(
-        "the target environment's R2 credentials are unset (TCAB_R2_ACCOUNT_ID, \
-         TCAB_R2_BUCKET, TCAB_R2_ACCESS_KEY_ID, TCAB_R2_SECRET_ACCESS_KEY)",
-    )?;
+    // The objects are written through the environment's artifacts service at its
+    // edge, which a person's assertion may not write the public dataset through:
+    // only the Access service token is presented. The target is echoed so a publish
+    // into the wrong environment is visible before anything is drawn.
+    let credential = service_credential(&Credentials::from_env()?)?;
+    let uploader = PublicWriter::new(artifacts_url(args.env), credential);
     println!(
-        "  uploading to bucket `{}` (env `{}`)",
-        config.bucket,
+        "  uploading through `{}` (env `{}`)",
+        uploader.base,
         args.env.as_str()
     );
-    let client = R2Client::new(config);
     let runner = SystemCommandRunner;
 
     let mut published = 0usize;
     let mut failures = 0usize;
     for target in targets {
         let variant = target.variant;
-        match publish_one(&runner, &client, test_case, variant).await {
+        match publish_one(&runner, &uploader, test_case, variant).await {
             Ok(frames) => {
                 println!("  {} — published {frames} frame(s)", variant.slug);
                 published += 1;
@@ -126,7 +128,7 @@ pub(super) async fn execute(
 /// only invite them being edited by hand and drifting from it.
 async fn publish_one(
     runner: &SystemCommandRunner,
-    client: &R2Client,
+    uploader: &PublicWriter,
     test_case: &TestCaseVersion,
     variant: &Variant,
 ) -> Result<usize> {
@@ -165,9 +167,8 @@ async fn publish_one(
         ] {
             let bytes =
                 std::fs::read(path).with_context(|| format!("reading {}", path.display()))?;
-            client
-                // Reference frames are PNG and JSON, neither of them framed.
-                .put_object(&key, bytes, content_type, None)
+            uploader
+                .put(&key, bytes, content_type)
                 .await
                 .with_context(|| format!("uploading {key}"))?;
         }
@@ -175,3 +176,130 @@ async fn publish_one(
 
     Ok(build.frames.len())
 }
+
+/// The artifacts service's base URL at `env`'s edge: the origin's `/artifacts`
+/// path.
+fn artifacts_url(env: crate::cli::DeployEnv) -> String {
+    format!("{}/artifacts", env.origin())
+}
+
+/// The Access service token a write of the public dataset presents, or an error
+/// naming its two variables when the pair is not set.
+fn service_credential(credentials: &Credentials) -> Result<AccessCredential> {
+    credentials.access_service_token().ok_or_else(|| {
+        anyhow!(
+            "publishing an asset reference writes the public dataset through the \
+             environment's edge, which takes the Access service token: set \
+             {ACCESS_CLIENT_ID} and {ACCESS_CLIENT_SECRET} (the Key Vault secrets \
+             `cloudflare-access-client-id` and `cloudflare-access-client-secret`)"
+        )
+    })
+}
+
+/// A writer of single public-dataset objects through the artifacts service's
+/// `PUT /public/{key}`, presenting one Access credential on every request.
+struct PublicWriter {
+    /// The artifacts service's base URL, with no trailing slash.
+    base: String,
+    /// The credential every write presents.
+    credential: AccessCredential,
+    /// An HTTP client that does not follow redirects, so the edge's redirect to
+    /// its sign-in page is reported as a refusal rather than followed into HTML.
+    http: reqwest::Client,
+}
+
+impl PublicWriter {
+    fn new(base: impl Into<String>, credential: AccessCredential) -> Self {
+        let http = reqwest::Client::builder()
+            .redirect(reqwest::redirect::Policy::none())
+            .build()
+            .expect("the HTTP client builds with the default TLS configuration");
+        Self {
+            base: base.into().trim_end_matches('/').to_string(),
+            credential,
+            http,
+        }
+    }
+
+    /// The URL `key` is written at: `<base>/public/<key>`, each of the key's
+    /// segments percent-encoded on its own so the service reads back the key as
+    /// given.
+    fn url(&self, key: &str) -> Result<reqwest::Url> {
+        let mut url = reqwest::Url::parse(&self.base)
+            .with_context(|| format!("the artifacts URL `{}` does not parse", self.base))?;
+        url.path_segments_mut()
+            .map_err(|()| anyhow!("the artifacts URL `{}` cannot carry a path", self.base))?
+            .pop_if_empty()
+            .push("public")
+            .extend(key.split('/'));
+        Ok(url)
+    }
+
+    /// Write `bytes` at `key`, labelled `content_type`, whole.
+    async fn put(&self, key: &str, bytes: Vec<u8>, content_type: &'static str) -> Result<()> {
+        let url = self.url(key)?;
+        let mut headers = HeaderMap::new();
+        self.credential.apply(&mut headers);
+        headers.insert(CONTENT_TYPE, HeaderValue::from_static(content_type));
+        let response = self
+            .http
+            .put(url.clone())
+            .headers(headers)
+            .body(bytes)
+            .send()
+            .await
+            .with_context(|| format!("sending the write to `{url}`"))?;
+        refusal(&url, response).await
+    }
+}
+
+/// `Ok` for a successful write, or an error saying who refused it and why: the
+/// edge (a redirect to its sign-in page, or a `401`/`403` of its own) or the
+/// artifacts service (its error envelope's message).
+async fn refusal(url: &reqwest::Url, response: reqwest::Response) -> Result<()> {
+    let status = response.status();
+    if status.is_success() {
+        return Ok(());
+    }
+    if status.is_redirection() {
+        let location = response
+            .headers()
+            .get(LOCATION)
+            .and_then(|value| value.to_str().ok())
+            .map(|location| location.split(['?', '#']).next().unwrap_or(location))
+            .map(|target| format!("`{target}`"))
+            .unwrap_or_else(|| "an unnamed location".to_string());
+        bail!(
+            "the write to `{url}` was refused by the edge ({status}, redirected to \
+             {location}): the request carried no Access credential the edge accepts"
+        );
+    }
+    let body = response.text().await.unwrap_or_default();
+    match serde_json::from_str::<ErrorEnvelope>(&body) {
+        Ok(envelope) => bail!(
+            "the artifacts service refused the write to `{url}` ({status}): {}",
+            envelope.error.message
+        ),
+        Err(_) if matches!(status.as_u16(), 401 | 403) => bail!(
+            "the write to `{url}` was refused by the edge ({status}): the request carried \
+             no Access credential the edge accepts, or one its policy does not admit"
+        ),
+        Err(_) => bail!("the write to `{url}` failed ({status}): {}", body.trim()),
+    }
+}
+
+/// The artifacts service's error envelope, `{ "error": { "code", "message" } }`.
+#[derive(serde::Deserialize)]
+struct ErrorEnvelope {
+    error: ErrorBody,
+}
+
+/// The body of [`ErrorEnvelope`].
+#[derive(serde::Deserialize)]
+struct ErrorBody {
+    message: String,
+}
+
+#[cfg(test)]
+#[path = "publish_asset_reference.test.rs"]
+mod tests;

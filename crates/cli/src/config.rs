@@ -95,6 +95,20 @@ impl Credentials {
         self.service_token.is_some()
     }
 
+    /// The Access service token, when its pair is set: the one credential a
+    /// write of the public dataset through the edge takes, since the artifacts
+    /// service refuses a person's assertion there.
+    pub fn access_service_token(&self) -> Option<AccessCredential> {
+        self.service_pair
+            .as_ref()
+            .map(
+                |(client_id, client_secret)| AccessCredential::ServiceToken {
+                    client_id: client_id.clone(),
+                    client_secret: client_secret.clone(),
+                },
+            )
+    }
+
     /// The headers' credentials: every Access credential that is set, or the
     /// local identity when none is.
     pub fn access(&self) -> Vec<AccessCredential> {

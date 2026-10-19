@@ -99,3 +99,22 @@ fn debug_names_no_credential_value() {
         assert!(!debug.contains(value), "{debug}");
     }
 }
+
+#[test]
+fn the_access_service_token_is_offered_alone_when_its_pair_is_set() {
+    let none = Credentials::from_lookup(lookup(&[(ACCESS_TOKEN, "user")])).expect("valid");
+    assert_eq!(none.access_service_token(), None);
+    let set = Credentials::from_lookup(lookup(&[
+        (ACCESS_TOKEN, "user"),
+        (ACCESS_CLIENT_ID, "id"),
+        (ACCESS_CLIENT_SECRET, "secret"),
+    ]))
+    .expect("valid");
+    assert_eq!(
+        set.access_service_token(),
+        Some(AccessCredential::ServiceToken {
+            client_id: "id".to_string(),
+            client_secret: "secret".to_string(),
+        })
+    );
+}

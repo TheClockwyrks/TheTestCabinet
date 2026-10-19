@@ -704,6 +704,30 @@ async fn ffmpeg_reports_a_clip_it_cannot_read() {
 }
 
 #[test]
+fn an_asset_references_keys_are_public_keys_under_its_frames_prefix() {
+    use test_cabinet_contracts::asset_reference::{
+        reference_actions_key, reference_image_key, reference_prefix,
+    };
+    assert_eq!(
+        reference_prefix("sprite-knight", "1.0.0", "base"),
+        "media/references/sprite-knight/1.0.0/base"
+    );
+    for (slug, version, variant, index) in [
+        ("sprite-knight", "1.0.0", "base", 0),
+        ("sprite-knight", "v2.10.3", "night-mode", u32::MAX),
+    ] {
+        let frames = format!("{}/frames/", reference_prefix(slug, version, variant));
+        for key in [
+            reference_image_key(slug, version, variant, index),
+            reference_actions_key(slug, version, variant, index),
+        ] {
+            assert_eq!(check_public_key(&key), Ok(()), "{key}");
+            assert!(key.starts_with(&frames), "{key}");
+        }
+    }
+}
+
+#[test]
 fn a_public_key_names_one_object_plainly() {
     for key in [
         "index.json",
