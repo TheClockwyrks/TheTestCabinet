@@ -29,8 +29,8 @@
 //! the plan's retry limit, and a cell whose launch used it up without a counted run is
 //! blocked until its owner retries it.
 //!
-//! This is console-only tooling: the public static site never reaches it (it carries no
-//! bearer token and never mounts this transport).
+//! This is console-only tooling: the public static site never reaches it (it never
+//! mounts this transport), and every route takes a person's assertion.
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 
@@ -43,7 +43,7 @@ use time::format_description::well_known::Rfc3339;
 use test_cabinet_contracts::gg::GgCapabilitySet;
 use test_cabinet_contracts::run_record::HarnessSlug;
 
-use crate::auth::AuthUser;
+use crate::auth::Person;
 use crate::coverage::schedule::{CellDemand, HarnessCapacity, InFlightLimit, launch_pass};
 use crate::db::{
     CANCELABLE_ACTIVE_STATES, CANCELABLE_WAITING_STATES, CellKey, CellRun, JobCancelFilter,
@@ -100,16 +100,16 @@ pub(super) fn clamp_retry_count(retries: u32) -> u32 {
 /// `GET /coverage-groups` — every group the token account owns, both kinds.
 pub async fn list_groups(
     State(state): State<AppState>,
-    user: AuthUser,
+    user: Person,
 ) -> Result<Json<Vec<CoverageGroup>>, ApiError> {
     let mut groups = state
         .db
-        .list_coverage_groups(&user.0.id)
+        .list_coverage_groups(&user.0)
         .await
         .map_err(ApiError::from)?;
     let library = read_gg_library(
         &state,
-        &user.0.id,
+        &user.0,
         groups.iter().flat_map(|group| group.combos.iter()),
     )
     .await?;
@@ -127,14 +127,14 @@ pub async fn list_groups(
 /// reviewer wrote it.
 pub async fn create_group(
     State(state): State<AppState>,
-    user: AuthUser,
+    user: Person,
     Json(input): Json<CoverageGroupInput>,
 ) -> Result<Json<CoverageGroup>, ApiError> {
-    let library = reject_unstorable_members(&state, &user.0.id, &input.combos, &[]).await?;
+    let library = reject_unstorable_members(&state, &user.0, &input.combos, &[]).await?;
     let mut group = group_from_input(new_id(), input, &now()?);
     state
         .db
-        .insert_coverage_group(&user.0.id, &group)
+        .insert_coverage_group(&user.0, &group)
         .await
         .map_err(ApiError::from)?;
     // Stored as the pointer, answered as the read shape — the same thing a later `GET`
@@ -147,7 +147,7 @@ pub async fn create_group(
 /// caller's, and `400` for an unstorable gg member (see [`create_group`]).
 pub async fn update_group(
     State(state): State<AppState>,
-    user: AuthUser,
+    user: Person,
     Path(id): Path<String>,
     Json(input): Json<CoverageGroupInput>,
 ) -> Result<Json<CoverageGroup>, ApiError> {
@@ -155,16 +155,16 @@ pub async fn update_group(
     // re-judged now that the configuration under it has moved on.
     let stored = state
         .db
-        .get_coverage_group(&user.0.id, &id)
+        .get_coverage_group(&user.0, &id)
         .await
         .map_err(ApiError::from)?
         .map(|group| group.combos)
         .unwrap_or_default();
-    let library = reject_unstorable_members(&state, &user.0.id, &input.combos, &stored).await?;
+    let library = reject_unstorable_members(&state, &user.0, &input.combos, &stored).await?;
     let mut group = group_from_input(id, input, &now()?);
     let updated = state
         .db
-        .update_coverage_group(&user.0.id, &group)
+        .update_coverage_group(&user.0, &group)
         .await
         .map_err(ApiError::from)?;
     if !updated {
@@ -179,12 +179,12 @@ pub async fn update_group(
 /// when the id is not the caller's.
 pub async fn delete_group(
     State(state): State<AppState>,
-    user: AuthUser,
+    user: Person,
     Path(id): Path<String>,
 ) -> Result<StatusCode, ApiError> {
     let deleted = state
         .db
-        .delete_coverage_group(&user.0.id, &id)
+        .delete_coverage_group(&user.0, &id)
         .await
         .map_err(ApiError::from)?;
     if !deleted {
@@ -199,16 +199,16 @@ pub async fn delete_group(
 /// filling.
 pub async fn list_plans(
     State(state): State<AppState>,
-    user: AuthUser,
+    user: Person,
 ) -> Result<Json<Vec<CoveragePlanOut>>, ApiError> {
     let mut plans = state
         .db
-        .list_coverage_plans(&user.0.id)
+        .list_coverage_plans(&user.0)
         .await
         .map_err(ApiError::from)?;
     let library = read_gg_library(
         &state,
-        &user.0.id,
+        &user.0,
         plans.iter().flat_map(|out| out.plan.combos.iter()),
     )
     .await?;
@@ -225,14 +225,14 @@ pub async fn list_plans(
 /// (see [`create_group`]).
 pub async fn create_plan(
     State(state): State<AppState>,
-    user: AuthUser,
+    user: Person,
     Json(input): Json<CoveragePlanInput>,
 ) -> Result<Json<CoveragePlanOut>, ApiError> {
-    let library = reject_unstorable_members(&state, &user.0.id, &input.combos, &[]).await?;
+    let library = reject_unstorable_members(&state, &user.0, &input.combos, &[]).await?;
     let mut plan = plan_from_input(new_id(), input, &now()?)?;
     state
         .db
-        .insert_coverage_plan(&user.0.id, &plan)
+        .insert_coverage_plan(&user.0, &plan)
         .await
         .map_err(ApiError::from)?;
     plan.combos = for_read(&plan.combos, &library);
@@ -251,7 +251,7 @@ pub async fn create_plan(
 /// edit added.
 pub async fn update_plan(
     State(state): State<AppState>,
-    user: AuthUser,
+    user: Person,
     Path(id): Path<String>,
     Json(input): Json<CoveragePlanInput>,
 ) -> Result<Json<CoveragePlanOut>, ApiError> {
@@ -259,16 +259,16 @@ pub async fn update_plan(
     // [`reject_unstorable_members`].
     let stored = state
         .db
-        .get_coverage_plan(&user.0.id, &id)
+        .get_coverage_plan(&user.0, &id)
         .await
         .map_err(ApiError::from)?
         .map(|out| out.plan.combos)
         .unwrap_or_default();
-    let library = reject_unstorable_members(&state, &user.0.id, &input.combos, &stored).await?;
+    let library = reject_unstorable_members(&state, &user.0, &input.combos, &stored).await?;
     let mut plan = plan_from_input(id, input, &now()?)?;
     let updated = state
         .db
-        .update_coverage_plan(&user.0.id, &plan)
+        .update_coverage_plan(&user.0, &plan)
         .await
         .map_err(ApiError::from)?;
     if !updated {
@@ -281,7 +281,7 @@ pub async fn update_plan(
         .map_err(ApiError::from)?
         .is_some();
     if filling {
-        super::launch::spawn_launch(&state, LaunchTarget::Plan, &user.0.id, &plan.id);
+        super::launch::spawn_launch(&state, LaunchTarget::Plan, &user.0, &plan.id);
     }
     plan.combos = for_read(&plan.combos, &library);
     Ok(Json(CoveragePlanOut { plan, filling }))
@@ -296,12 +296,12 @@ pub async fn update_plan(
 /// that is what you meant.
 pub async fn delete_plan(
     State(state): State<AppState>,
-    user: AuthUser,
+    user: Person,
     Path(id): Path<String>,
 ) -> Result<StatusCode, ApiError> {
     let deleted = state
         .db
-        .delete_coverage_plan(&user.0.id, &id)
+        .delete_coverage_plan(&user.0, &id)
         .await
         .map_err(ApiError::from)?;
     if !deleted {
@@ -316,15 +316,15 @@ pub async fn delete_plan(
 /// against those counts.
 pub async fn plans_summary(
     State(state): State<AppState>,
-    user: AuthUser,
+    user: Person,
 ) -> Result<Json<Vec<CoveragePlanSummary>>, ApiError> {
     let plans = state
         .db
-        .list_coverage_plans(&user.0.id)
+        .list_coverage_plans(&user.0)
         .await
         .map_err(ApiError::from)?;
-    let groups = group_index(&state, &user.0.id).await?;
-    let library = gg_library(&state, &user.0.id).await?;
+    let groups = group_index(&state, &user.0).await?;
+    let library = gg_library(&state, &user.0).await?;
 
     let resolved: Vec<(&CoveragePlanOut, Vec<PlanMember>, Vec<ReviewPlanCase>)> = plans
         .iter()
@@ -338,10 +338,10 @@ pub async fn plans_summary(
         .iter()
         .flat_map(|(_, _, cases)| cases.iter().map(|c| c.slug.clone()))
         .collect();
-    let ctx = MatrixCtx::load(&state, all_slugs, &user.0.id).await?;
+    let ctx = MatrixCtx::load(&state, all_slugs, &user.0).await?;
     let in_flight = state
         .db
-        .count_in_flight_jobs_by_plan(&user.0.id)
+        .count_in_flight_jobs_by_plan(&user.0)
         .await
         .map_err(ApiError::from)?;
 
@@ -381,17 +381,17 @@ pub async fn plans_summary(
 /// plan's own launch order. 404 when the id is not the caller's.
 pub async fn plan_coverage(
     State(state): State<AppState>,
-    user: AuthUser,
+    user: Person,
     Path(id): Path<String>,
 ) -> Result<Json<CoverageMatrix>, ApiError> {
-    let out = load_plan(&state, &user.0.id, &id).await?;
+    let out = load_plan(&state, &user.0, &id).await?;
     let plan = &out.plan;
-    let groups = group_index(&state, &user.0.id).await?;
-    let library = gg_library(&state, &user.0.id).await?;
+    let groups = group_index(&state, &user.0).await?;
+    let library = gg_library(&state, &user.0).await?;
     let (combos, cases) = resolve_members(plan, &groups, &library);
 
     let slugs: Vec<String> = cases.iter().map(|c| c.slug.clone()).collect();
-    let ctx = MatrixCtx::load(&state, slugs, &user.0.id).await?;
+    let ctx = MatrixCtx::load(&state, slugs, &user.0).await?;
     let retries = state
         .db
         .coverage_plan_cell_retries(&plan.id)
@@ -400,7 +400,7 @@ pub async fn plan_coverage(
     let blocked = ctx
         .blocked_cells(&state, plan.runs_per_cell, &combos, &cases, &retries)
         .await?;
-    let in_flight_limit = resolve_in_flight_limit(&state, &user.0.id, plan.in_flight_limit).await?;
+    let in_flight_limit = resolve_in_flight_limit(&state, &user.0, plan.in_flight_limit).await?;
     let runs_in_flight = state
         .db
         .count_in_flight_jobs_by_origin_prefix(&JobOrigin::plan(&plan.id).owner_prefix())
@@ -425,11 +425,11 @@ pub async fn plan_coverage(
 /// materialized on read).
 pub async fn settings(
     State(state): State<AppState>,
-    user: AuthUser,
+    user: Person,
 ) -> Result<Json<CoverageSettings>, ApiError> {
     let stored = state
         .db
-        .coverage_in_flight_limit(&user.0.id)
+        .coverage_in_flight_limit(&user.0)
         .await
         .map_err(ApiError::from)?;
     Ok(Json(CoverageSettings {
@@ -444,13 +444,13 @@ pub async fn settings(
 /// its settings row on first use.
 pub async fn set_settings(
     State(state): State<AppState>,
-    user: AuthUser,
+    user: Person,
     Json(input): Json<CoverageSettingsInput>,
 ) -> Result<Json<CoverageSettings>, ApiError> {
     let in_flight_limit = clamp_in_flight_limit(input.in_flight_limit);
     state
         .db
-        .set_coverage_in_flight_limit(&user.0.id, in_flight_limit, &now()?)
+        .set_coverage_in_flight_limit(&user.0, in_flight_limit, &now()?)
         .await
         .map_err(ApiError::from)?;
     Ok(Json(CoverageSettings {
@@ -470,17 +470,17 @@ pub async fn set_settings(
 /// is halted. 404 when the id is not the caller's.
 pub async fn fill_plan(
     State(state): State<AppState>,
-    user: AuthUser,
+    user: Person,
     Path(id): Path<String>,
 ) -> Result<Json<LaunchPassResult>, ApiError> {
-    load_plan(&state, &user.0.id, &id).await?;
+    load_plan(&state, &user.0, &id).await?;
     state
         .db
-        .start_coverage_plan_fill(&user.0.id, &id, &new_id())
+        .start_coverage_plan_fill(&user.0, &id, &new_id())
         .await
         .map_err(ApiError::from)?
         .ok_or_else(|| ApiError::not_found("coverage plan not found"))?;
-    Ok(Json(launch_plan(&state, &user.0.id, &id).await?))
+    Ok(Json(launch_plan(&state, &user.0, &id).await?))
 }
 
 /// Run launch passes of one plan as `user_id`, its owner: `skipped: notFilling` when it
@@ -787,14 +787,14 @@ async fn plan_has_cell(
 /// when it is not blocked.
 pub async fn retry_plan_cell(
     State(state): State<AppState>,
-    user: AuthUser,
+    user: Person,
     Path(id): Path<String>,
     Json(input): Json<PlanCellRetryInput>,
 ) -> Result<StatusCode, ApiError> {
-    let out = load_plan(&state, &user.0.id, &id).await?;
+    let out = load_plan(&state, &user.0, &id).await?;
     let plan = &out.plan;
-    let groups = group_index(&state, &user.0.id).await?;
-    let library = gg_library(&state, &user.0.id).await?;
+    let groups = group_index(&state, &user.0).await?;
+    let library = gg_library(&state, &user.0).await?;
     let (mut combos, cases) = resolve_members(plan, &groups, &library);
     let wanted_member = resolve_member(&input.combination.for_storage(), &library);
     let wanted_key = combination_key(&wanted_member.combo.for_storage());
@@ -817,7 +817,7 @@ pub async fn retry_plan_cell(
     let key = cell_key(case, member);
 
     let slugs = vec![case.slug.clone()];
-    let ctx = MatrixCtx::load(&state, slugs, &user.0.id).await?;
+    let ctx = MatrixCtx::load(&state, slugs, &user.0).await?;
     let retries = state
         .db
         .coverage_plan_cell_retries(&id)
@@ -842,7 +842,7 @@ pub async fn retry_plan_cell(
         .map_err(ApiError::from)?;
 
     if out.filling {
-        super::launch::spawn_launch(&state, LaunchTarget::Plan, &user.0.id, &id);
+        super::launch::spawn_launch(&state, LaunchTarget::Plan, &user.0, &id);
         return Ok(StatusCode::NO_CONTENT);
     }
     let demand = ctx.demand(plan.runs_per_cell, case, member);
@@ -856,7 +856,7 @@ pub async fn retry_plan_cell(
             runs,
             retry_count: plan.retry_count,
         }];
-        let enqueued = enqueue_launches(&state, &user.0.id, &cells).await?;
+        let enqueued = enqueue_launches(&state, &user.0, &cells).await?;
         if let Some(blocked) = enqueued.blocked.first() {
             return Err(ApiError::bad_request(format!(
                 "the cell cannot be launched: {}",
@@ -874,16 +874,16 @@ pub async fn retry_plan_cell(
 /// 404 when the id is not the caller's.
 pub async fn plan_queue(
     State(state): State<AppState>,
-    user: AuthUser,
+    user: Person,
     Path(id): Path<String>,
 ) -> Result<Json<CoverageQueue>, ApiError> {
-    let out = load_plan(&state, &user.0.id, &id).await?;
+    let out = load_plan(&state, &user.0, &id).await?;
     let plan = &out.plan;
-    let groups = group_index(&state, &user.0.id).await?;
-    let library = gg_library(&state, &user.0.id).await?;
+    let groups = group_index(&state, &user.0).await?;
+    let library = gg_library(&state, &user.0).await?;
     let (combos, cases) = resolve_members(plan, &groups, &library);
     let slugs: Vec<String> = cases.iter().map(|c| c.slug.clone()).collect();
-    let ctx = MatrixCtx::load(&state, slugs, &user.0.id).await?;
+    let ctx = MatrixCtx::load(&state, slugs, &user.0).await?;
     Ok(Json(plan_queue_of(
         &ctx,
         plan.runs_per_cell,
@@ -946,16 +946,16 @@ fn plan_queue_of(
 /// they describe exactly the runs the matrix counts. 404 when the id is not the caller's.
 pub async fn plan_runs(
     State(state): State<AppState>,
-    user: AuthUser,
+    user: Person,
     Path(id): Path<String>,
 ) -> Result<Json<CoveragePlanRuns>, ApiError> {
-    let out = load_plan(&state, &user.0.id, &id).await?;
+    let out = load_plan(&state, &user.0, &id).await?;
     let plan = &out.plan;
-    let groups = group_index(&state, &user.0.id).await?;
-    let library = gg_library(&state, &user.0.id).await?;
+    let groups = group_index(&state, &user.0).await?;
+    let library = gg_library(&state, &user.0).await?;
     let (combos, cases) = resolve_members(plan, &groups, &library);
     let slugs: Vec<String> = cases.iter().map(|c| c.slug.clone()).collect();
-    let ctx = MatrixCtx::load(&state, slugs, &user.0.id).await?;
+    let ctx = MatrixCtx::load(&state, slugs, &user.0).await?;
     // Two members resolving to one cell hold the same runs, which are listed once.
     let mut seen = HashSet::new();
     let ids: Vec<String> = cells_in_order(plan.outer_axis, &combos, &cases)
@@ -982,7 +982,7 @@ pub async fn plan_runs(
 /// swept up. 404 when the id is not the caller's.
 pub async fn halt_plan(
     State(state): State<AppState>,
-    user: AuthUser,
+    user: Person,
     Path(id): Path<String>,
 ) -> Result<Json<HaltResult>, ApiError> {
     halt_plan_inner(state, user, id, false).await
@@ -996,7 +996,7 @@ pub async fn halt_plan(
 /// id is not the caller's.
 pub async fn halt_all_plan(
     State(state): State<AppState>,
-    user: AuthUser,
+    user: Person,
     Path(id): Path<String>,
 ) -> Result<Json<HaltResult>, ApiError> {
     halt_plan_inner(state, user, id, true).await
@@ -1006,7 +1006,7 @@ pub async fn halt_all_plan(
 /// into the in-flight states the cancel reaches.
 async fn halt_plan_inner(
     state: AppState,
-    user: AuthUser,
+    user: Person,
     id: String,
     include_active: bool,
 ) -> Result<Json<HaltResult>, ApiError> {
@@ -1014,7 +1014,7 @@ async fn halt_plan_inner(
     // refill exactly what it just emptied.
     let found = state
         .db
-        .halt_coverage_plan_fill(&user.0.id, &id)
+        .halt_coverage_plan_fill(&user.0, &id)
         .await
         .map_err(ApiError::from)?;
     if !found {

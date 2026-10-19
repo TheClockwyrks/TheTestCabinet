@@ -6,7 +6,7 @@ import type { DebugScriptResult, RunRecord } from "@clockwyrks/run-record";
 import { RunVerdictPage } from "./RunVerdictPage";
 
 // The read-only Verdict tab as a PUBLIC visitor sees it — the static gallery,
-// where `canExecute` is false and no account is signed in. The run chrome is the
+// where `canExecute` is false and no identity is known. The run chrome is the
 // layout's business; hand the body a fixture run directly.
 vi.mock("../../../layouts/runs/RunDetailLayout", () => ({
   RunDetailLayout: ({
@@ -63,9 +63,6 @@ const gallery = {
 };
 vi.mock("../../../data/galleryContext", () => ({
   useGalleryData: () => gallery,
-}));
-vi.mock("../../../../client/auth", () => ({
-  useAuth: () => ({ account: null, token: null }),
 }));
 vi.mock("../../../runtime/runsRuntime", () => ({
   useRunsRuntime: () => ({ requestRefresh: () => {} }),

@@ -50,8 +50,14 @@ bytes = { workspace = true }
 futures-util = { workspace = true }
 # Tournament `created_at` timestamps, RFC3339, as in the worker.
 time = { workspace = true }
+# Fetches the Access signing keys, and verifies the Cloudflare Access assertion
+# every edge request carries (`src/access.rs`).
+reqwest = { workspace = true }
+jsonwebtoken = { workspace = true }
 
 [dev-dependencies]
+# Decodes the fixed test keys the Access tests sign assertions with.
+base64 = { workspace = true }
 tokio = { workspace = true, features = ["full", "test-util"] }
 # `util` brings `ServiceExt::oneshot` so the router can be exercised end-to-end in
 # tests without binding a socket, exactly as the artifact service's tests do.

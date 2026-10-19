@@ -22,6 +22,7 @@ use axum::response::{IntoResponse, Response};
 use futures_util::StreamExt;
 use tokio::io::AsyncWriteExt;
 
+use crate::auth::ServiceCaller;
 use crate::error::ApiError;
 use crate::store::DefinitionStore;
 use crate::suite_store::StoredSuite;
@@ -86,6 +87,7 @@ pub fn reference_builds_among<'a>(
 #[tracing::instrument(name = "suite_reference_build.upload", skip(state, body), err(Debug))]
 pub async fn upload(
     State(state): State<AppState>,
+    _caller: ServiceCaller,
     Path((slug, version, engine)): Path<(String, String, String)>,
     body: Body,
 ) -> Result<Response, ApiError> {

@@ -36,7 +36,7 @@ impl ApiError {
     }
 
     /// `401 Unauthorized` with code `unauthorized` — an absent, invalid, or
-    /// expired token on a gated endpoint.
+    /// expired assertion or token.
     pub fn unauthorized(message: impl Into<String>) -> Self {
         Self::new(StatusCode::UNAUTHORIZED, "unauthorized", message)
     }
@@ -48,8 +48,9 @@ impl ApiError {
     }
 
     /// `502 Bad Gateway` with code `auth_unavailable` — an upstream the service
-    /// depends on (the auth service for reads, the backend for upload auth) could
-    /// not be reached, distinct from a *rejected* token (a `401`).
+    /// depends on to check a credential (the Access team's signing keys for an
+    /// assertion, the backend for a per-job or per-publish-job token) could not be
+    /// reached, distinct from a *rejected* credential (a `401`).
     pub fn auth_unavailable(message: impl Into<String>) -> Self {
         Self::new(StatusCode::BAD_GATEWAY, "auth_unavailable", message)
     }

@@ -1,5 +1,5 @@
 # Internal-ingress component — the reusable, environment-agnostic app-level wiring
-# that serves the console in-cluster and exposes the console + the four services over
+# that serves the console in-cluster and exposes the console + the three services over
 # an INTERNAL ingress-nginx (VPN-reachable, never public) at host-per-service
 # `*.testcabinet.ai` names with TLS from cert-manager. Layered onto an environment
 # overlay via its `components:` list (today overlays/prod, task-3), so the
@@ -9,10 +9,10 @@
 #
 # It adds:
 #   1. components/web    — the tcab-web console Deployment + ClusterIP Service (the
-#                          static SPA, backend/auth URLs injected at runtime via env),
+#                          static SPA, backend URL injected at runtime via env),
 #                          pulled in as a nested component so the local overlay can
 #                          reuse the same console workload without this ingress wiring.
-#   2. ingress.yaml      — host-per-service Ingress routes (console/api/auth/
+#   2. ingress.yaml      — host-per-service Ingress routes (console/api/
 #                          artifacts/arena, plus grafana → the observability
 #                          component's tcab-lgtm), each with a cert-manager-issued TLS
 #                          cert. The grafana route depends on the observability
@@ -30,7 +30,7 @@
 # Private DNS zone resolves the hostnames to the controller's internal LB IP for VPN
 # clients. This component carries ONLY the app-level resources.
 #
-# Hostnames + the tcab-web backend/auth env + the ClusterIssuer email default to the
+# Hostnames + the tcab-web backend env + the ClusterIssuer email default to the
 # prod values; an overlay patches the per-environment ones (task-3).
 apiVersion: kustomize.config.k8s.io/v1alpha1
 kind: Component

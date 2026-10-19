@@ -27,9 +27,6 @@ vi.mock("../../components/PageLayout", () => ({
 }));
 // Signed in, because a comparison is per-account — the page refuses to render
 // without a token on an executing console.
-vi.mock("../../../client/auth", () => ({
-  useAuth: () => ({ token: "t" }),
-}));
 // An executing console (so the action bar and its trigger button render) whose
 // gallery source has no published comparison to fall back on — the backend below
 // is the only place this comparison comes from.
@@ -403,9 +400,7 @@ describe("ComparisonDetailPage", () => {
     expect(confirmSpy).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByRole("button", { name: "Delete comparison" }));
-    await waitFor(() =>
-      expect(deleteComparison).toHaveBeenCalledWith("cmp-1", "t"),
-    );
+    await waitFor(() => expect(deleteComparison).toHaveBeenCalledWith("cmp-1"));
     // The page it was on is gone, so it leaves for the list.
     expect(await screen.findByText("the list")).toBeInTheDocument();
     confirmSpy.mockRestore();

@@ -1,4 +1,4 @@
-# The host-per-service Ingress routes that expose the console + the four services
+# The host-per-service Ingress routes that expose the console + the three services
 # (plus Grafana, appended last) over the INTERNAL ingress-nginx (the controller's
 # Service carries the Azure internal-LB annotation, task-4, so it only has a private
 # VNet IP reachable from the company VPN). This is the "internal-only Ingress behind
@@ -82,35 +82,6 @@ spec:
                 name: tcab-backend
                 port:
                   number: 8787
----
-apiVersion: networking.k8s.io/v1
-kind: Ingress
-metadata:
-  name: tcab-auth
-  namespace: tcab-prod
-  annotations:
-    cert-manager.io/cluster-issuer: letsencrypt-internal
-    nginx.ingress.kubernetes.io/proxy-body-size: "0"
-    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
-    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
-    nginx.ingress.kubernetes.io/proxy-buffering: "off"
-spec:
-  ingressClassName: nginx
-  tls:
-    - hosts:
-        - auth.tcab.testcabinet.ai
-      secretName: tls-auth
-  rules:
-    - host: auth.tcab.testcabinet.ai
-      http:
-        paths:
-          - path: /
-            pathType: Prefix
-            backend:
-              service:
-                name: tcab-auth
-                port:
-                  number: 8789
 ---
 apiVersion: networking.k8s.io/v1
 kind: Ingress

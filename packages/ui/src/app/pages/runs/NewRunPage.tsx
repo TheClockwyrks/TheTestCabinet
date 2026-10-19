@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router";
-import { useAuth } from "../../../client/auth";
 import { useBackend, useWorkers } from "../../../client/context";
 import type { Model } from "../../../client/types";
 import { harnesses } from "../../data/harnesses";
@@ -112,7 +111,6 @@ export function NewRunPage() {
   const navigate = useNavigate();
   const { client: backend } = useBackend();
   const { active: worker } = useWorkers();
-  const { token } = useAuth();
   const runtime = useRunsRuntime();
   // A test case's Run button links here with `?slug=…&version=…&variant=…`
   // (plus `?engine=…` for a non-default engine) so the form opens with that
@@ -340,9 +338,6 @@ export function NewRunPage() {
     ...(sel.cases.find((c) => c.slug === sel.slug)?.versions ?? []),
   ].reverse();
   const mismatched = worker?.backendMatch === "mismatch";
-  // A run is enqueued on the backend's `POST /jobs`, which is gated on the
-  // launching account — so a sign-in is required before a run can be submitted.
-  const signedOut = Boolean(worker) && !token;
   // Every combination must name a harness and a model — or, in the gg run mode, a
   // configuration plus a model for every slot that configuration asks for. A
   // partially-filled row would otherwise be silently skipped (or, for gg, rejected by
@@ -359,7 +354,6 @@ export function NewRunPage() {
   const canLaunch = Boolean(
     worker &&
     !mismatched &&
-    !signedOut &&
     sel.slug &&
     sel.version &&
     sel.variant &&
@@ -408,24 +402,21 @@ export function NewRunPage() {
           option.capabilitySet,
           combo.slotModels,
         );
-        const ack = await worker!.client.launchGgRun(
-          {
-            testCase: sel.slug,
-            version: sel.version,
-            variant: sel.variant,
-            capabilitySet,
-            // A gg run seeds and builds a workspace like any other run, so it
-            // carries the engine dimension on the same terms.
-            engine,
-            // Omit the override entirely when blank so the case's default runtime
-            // applies (the field is optional, not nullable).
-            ...(maxRuntime === undefined
-              ? {}
-              : { maxRuntimeSeconds: maxRuntime }),
-            retryCount,
-          },
-          token ?? "",
-        );
+        const ack = await worker!.client.launchGgRun({
+          testCase: sel.slug,
+          version: sel.version,
+          variant: sel.variant,
+          capabilitySet,
+          // A gg run seeds and builds a workspace like any other run, so it
+          // carries the engine dimension on the same terms.
+          engine,
+          // Omit the override entirely when blank so the case's default runtime
+          // applies (the field is optional, not nullable).
+          ...(maxRuntime === undefined
+            ? {}
+            : { maxRuntimeSeconds: maxRuntime }),
+          retryCount,
+        });
         // Register the enqueued run with the runs runtime exactly as `launchBatch`
         // does for a harness run: gg has no batch endpoint, so it does not travel
         // through that shared path and has to track its own. Without this a gg run
@@ -511,7 +502,7 @@ export function NewRunPage() {
         engine,
       },
     }));
-    const launched = await launchBatch(worker, token, runtime.track, items);
+    const launched = await launchBatch(worker, runtime.track, items);
     const outcomes: LaunchOutcome[] = meta.map((m, i) => {
       const result = launched[i];
       return {
@@ -572,13 +563,6 @@ export function NewRunPage() {
         <p className={`${styles.notice} ${styles.warn}`}>
           No backend configured, and the test-case catalog comes from the
           backend.
-        </p>
-      )}
-      {signedOut && (
-        <p className={`${styles.notice} ${styles.warn}`}>
-          Sign in to launch a run. The backend attributes each enqueued run to
-          your account. Use the account control in the top bar to register or
-          log in, then launch.
         </p>
       )}
 

@@ -3310,32 +3310,6 @@
       "count": 1
     }
   },
-  "packages/ui/src/app/pages/account/AuthForm.tsx": {
-    "@typescript-eslint/no-confusing-void-expression": {
-      "count": 3
-    },
-    "@typescript-eslint/no-deprecated": {
-      "count": 1
-    },
-    "@typescript-eslint/no-floating-promises": {
-      "count": 1
-    },
-    "@typescript-eslint/no-misused-promises": {
-      "count": 1
-    },
-    "@typescript-eslint/prefer-nullish-coalescing": {
-      "count": 1
-    },
-    "import-x/order": {
-      "count": 4
-    },
-    "unicorn/catch-error-name": {
-      "count": 1
-    },
-    "unicorn/filename-case": {
-      "count": 1
-    }
-  },
   "packages/ui/src/app/pages/account/CaseEngineField.tsx": {
     "@typescript-eslint/no-confusing-void-expression": {
       "count": 1
@@ -4306,34 +4280,6 @@
       "count": 1
     }
   },
-  "packages/ui/src/app/pages/account/LoginPage.tsx": {
-    "@typescript-eslint/prefer-nullish-coalescing": {
-      "count": 1
-    },
-    "import-x/order": {
-      "count": 6
-    },
-    "unicorn/filename-case": {
-      "count": 1
-    },
-    "unicorn/prefer-ternary": {
-      "count": 1
-    }
-  },
-  "packages/ui/src/app/pages/account/RegisterPage.tsx": {
-    "@typescript-eslint/prefer-nullish-coalescing": {
-      "count": 1
-    },
-    "import-x/order": {
-      "count": 6
-    },
-    "unicorn/filename-case": {
-      "count": 1
-    },
-    "unicorn/prefer-ternary": {
-      "count": 1
-    }
-  },
   "packages/ui/src/app/pages/account/ReviewsPage.tsx": {
     "@typescript-eslint/use-unknown-in-catch-callback-variable": {
       "count": 1
@@ -4689,20 +4635,6 @@
     },
     "unicorn/require-array-sort-compare": {
       "count": 1
-    }
-  },
-  "packages/ui/src/app/pages/account/downscalePicture.ts": {
-    "@typescript-eslint/no-confusing-void-expression": {
-      "count": 3
-    },
-    "@typescript-eslint/prefer-optional-chain": {
-      "count": 1
-    },
-    "unicorn/filename-case": {
-      "count": 1
-    },
-    "unicorn/prefer-add-event-listener": {
-      "count": 2
     }
   },
   "packages/ui/src/app/pages/account/inFlightLimit.ts": {
@@ -13354,23 +13286,6 @@
   },
   "packages/ui/src/client/absence.ts": {
     "@typescript-eslint/restrict-template-expressions": {
-      "count": 1
-    }
-  },
-  "packages/ui/src/client/auth.tsx": {
-    "@typescript-eslint/no-empty-function": {
-      "count": 1
-    },
-    "@typescript-eslint/no-unnecessary-condition": {
-      "count": 1
-    },
-    "import-x/order": {
-      "count": 2
-    },
-    "react-refresh/only-export-components": {
-      "count": 1
-    },
-    "unicorn/consistent-function-scoping": {
       "count": 1
     }
   },

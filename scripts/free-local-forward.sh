@@ -5,7 +5,7 @@
 # Why this exists: local-forward backgrounds five `kubectl port-forward` children
 # from a single recipe shell and then blocks in `wait`. A Ctrl-C that only reaches
 # the foreground process — or a terminal that dies outright — can leave those
-# children alive and holding :8787/:8789/:8790/:8791/:3000. The next local-forward
+# children alive and holding :8787/:8790/:8791/:3000. The next local-forward
 # then fails to bind, and because each forward is its own process the surviving
 # ones look healthy while the orphaned ports never come back. This stops the whole
 # arrangement so the next run starts from zero.
@@ -60,10 +60,10 @@ NS="${NS:-tcab-local}"
 # host port is matched as literal digits, which is also what excludes local-ingest's
 # `$$port:8787` — its port is chosen at run time and is already in the list anyway.
 SERVICES="$(sed -n 's|.*port-forward svc/\([A-Za-z0-9._-]\{1,\}\) .*|\1|p' "$MAKEFILE" 2>/dev/null | sort -u | paste -sd'|')"
-SERVICES="${SERVICES:-tcab-arena|tcab-artifacts|tcab-auth|tcab-backend|tcab-lgtm}"
+SERVICES="${SERVICES:-tcab-arena|tcab-artifacts|tcab-backend|tcab-lgtm}"
 
 PORTS="$(sed -n 's|.*port-forward svc/[A-Za-z0-9._-]\{1,\} \([0-9]\{1,\}\):[0-9]\{1,\}.*|\1|p' "$MAKEFILE" 2>/dev/null | sort -un)"
-PORTS="${PORTS:-$(printf '%s\n' 3000 4317 4318 8787 8789 8790 8791)}"
+PORTS="${PORTS:-$(printf '%s\n' 3000 4317 4318 8787 8790 8791)}"
 
 # Two patterns, because the processes to stop do not share a single distinguishing
 # string.

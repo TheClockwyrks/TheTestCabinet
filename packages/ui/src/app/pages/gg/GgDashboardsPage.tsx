@@ -21,7 +21,6 @@ import type {
 } from "@clockwyrks/backend-api/gg-query";
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router";
-import { useAuth } from "../../../client/auth";
 import { useBackend } from "../../../client/context";
 import { useConfirm } from "../../components/ConfirmDialog";
 import { LoadingState } from "../../components/LoadingState";
@@ -74,7 +73,6 @@ function blankBoard(): BoardDraft {
 }
 
 export function GgDashboardsPage() {
-  const { token } = useAuth();
   const { client: backend } = useBackend();
   const [boards, setBoards] = useState<GgDashboard[]>([]);
   const [loading, setLoading] = useState(true);
@@ -87,27 +85,27 @@ export function GgDashboardsPage() {
 
   const list = backend?.listGgDashboards;
   const reload = useCallback(async () => {
-    if (!list || !token) {
+    if (!list) {
       setLoading(false);
       return;
     }
     setLoading(true);
     try {
-      setBoards(await list(token));
+      setBoards(await list());
       setError(null);
     } catch (e) {
       setError(String(e));
     } finally {
       setLoading(false);
     }
-  }, [list, token]);
+  }, [list]);
 
   useEffect(() => {
     void reload();
   }, [reload]);
 
   const save = useCallback(async () => {
-    if (!draft || !token) return;
+    if (!draft) return;
     // Read every width back out of its text. The button is already disabled while
     // one of them names nothing usable; this refuses the save outright, so a
     // keyboard submit cannot get a half-typed width past the gate either.
@@ -131,9 +129,9 @@ export function GgDashboardsPage() {
     setError(null);
     try {
       if (editing && backend?.updateGgDashboard) {
-        await backend.updateGgDashboard(editing, input, token);
+        await backend.updateGgDashboard(editing, input);
       } else if (backend?.createGgDashboard) {
-        await backend.createGgDashboard(input, token);
+        await backend.createGgDashboard(input);
       }
       setDraft(null);
       setEditing(null);
@@ -143,13 +141,13 @@ export function GgDashboardsPage() {
     } finally {
       setBusy(false);
     }
-  }, [backend, draft, editing, token, reload]);
+  }, [backend, draft, editing, reload]);
 
   const { confirm } = useConfirm();
 
   const remove = useCallback(
     async (board: GgDashboard) => {
-      if (!backend?.deleteGgDashboard || !token) return;
+      if (!backend?.deleteGgDashboard) return;
       if (
         !(await confirm({
           title: "Delete dashboard",
@@ -161,7 +159,7 @@ export function GgDashboardsPage() {
       }
       setBusy(true);
       try {
-        await backend.deleteGgDashboard(board.id, token);
+        await backend.deleteGgDashboard(board.id);
         await reload();
       } catch (e) {
         setError(String(e));
@@ -169,7 +167,7 @@ export function GgDashboardsPage() {
         setBusy(false);
       }
     },
-    [backend, token, reload, confirm],
+    [backend, reload, confirm],
   );
 
   /** Open the editor on a copy of an existing board — the same path "Duplicate the
@@ -212,7 +210,7 @@ export function GgDashboardsPage() {
         command="--gg dashboards"
         comment={<>// boards of saved questions, one range each</>}
         titleActions={
-          token && !draft ? (
+          !draft ? (
             <button
               type="button"
               className={exec.primary}
@@ -362,7 +360,7 @@ export function GgDashboardsPage() {
             </span>
           </div>
           <span className={styles.rowActions}>
-            {token && (
+            {
               <button
                 type="button"
                 className={exec.secondary}
@@ -370,19 +368,13 @@ export function GgDashboardsPage() {
               >
                 Duplicate
               </button>
-            )}
+            }
           </span>
         </div>
       </div>
 
       <p className={exec.sectionLabel}>Your dashboards</p>
-      {!token ? (
-        <p className={`${exec.notice} ${exec.warn}`}>
-          Sign in to save your own dashboards. They are kept on your account.
-          The built-in board above queries the same deployment-wide corpus
-          either way.
-        </p>
-      ) : loading ? (
+      {loading ? (
         <LoadingState size="section" label="Loading dashboards…" />
       ) : boards.length === 0 ? (
         <p className={styles.empty}>

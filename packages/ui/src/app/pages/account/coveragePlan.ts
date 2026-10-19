@@ -231,7 +231,6 @@ export function planGgLaunches(
  */
 export async function launchGgCells(
   worker: { client: WorkerClient },
-  token: string | null,
   track: (run: InProgressRun) => void,
   launches: GgCellLaunch[],
   retryCount?: number,
@@ -239,22 +238,19 @@ export async function launchGgCells(
   const failures: { cell: CoverageCell; error: string }[] = [];
   for (const { cell, capabilitySet } of launches) {
     try {
-      const ack = await worker.client.launchGgRun(
-        {
-          testCase: cell.slug,
-          version: cell.version,
-          variant: cell.variant,
-          capabilitySet,
-          // The cell's own engine, exactly as the harness cells beside it send it: a
-          // gg run seeds and builds a workspace like any other run, and the engine is
-          // a segment of the cell it counts against. No runtime override, because a
-          // plan pins none and the case's own runtime applies.
-          engine: caseEngine(cell),
-          // The plan's retry limit, as the harness cells beside it carry it.
-          ...(retryCount !== undefined && { retryCount }),
-        },
-        token ?? "",
-      );
+      const ack = await worker.client.launchGgRun({
+        testCase: cell.slug,
+        version: cell.version,
+        variant: cell.variant,
+        capabilitySet,
+        // The cell's own engine, exactly as the harness cells beside it send it: a
+        // gg run seeds and builds a workspace like any other run, and the engine is
+        // a segment of the cell it counts against. No runtime override, because a
+        // plan pins none and the case's own runtime applies.
+        engine: caseEngine(cell),
+        // The plan's retry limit, as the harness cells beside it carry it.
+        ...(retryCount !== undefined && { retryCount }),
+      });
       track({
         testCaseSlug: cell.slug,
         testCaseVersion: cell.version,

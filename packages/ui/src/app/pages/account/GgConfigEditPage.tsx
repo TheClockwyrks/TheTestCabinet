@@ -1,7 +1,6 @@
 import type { GgConfigInput } from "@clockwyrks/backend-api/gg";
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router";
-import { useAuth } from "../../../client/auth";
 import { useBackend } from "../../../client/context";
 import type { Model } from "../../../client/types";
 import { BackChevron } from "../../components/BackChevron";
@@ -68,7 +67,6 @@ export function GgConfigEditPage() {
   // `?from=saved:<id>` seeds a new configuration from an existing one — how the list
   // page's Duplicate action works.
   const from = params.get("from");
-  const { token } = useAuth();
   const { client: backend } = useBackend();
   const navigate = useNavigate();
   // The account's agent library: what the Agents section imports from, and what an
@@ -109,7 +107,7 @@ export function GgConfigEditPage() {
   const [leaving, setLeaving] = useState<"agent" | "config" | null>(null);
 
   useEffect(() => {
-    if (!backend || !token) {
+    if (!backend) {
       setLoading(false);
       return;
     }
@@ -139,7 +137,7 @@ export function GgConfigEditPage() {
       seed("", "", emptyDraft());
       setLoading(false);
     } else {
-      Promise.resolve(backend.listGgConfigs?.(token) ?? [])
+      Promise.resolve(backend.listGgConfigs?.() ?? [])
         .then((configs) => {
           if (!active) return;
           const wantedId = editing
@@ -180,7 +178,7 @@ export function GgConfigEditPage() {
     return () => {
       active = false;
     };
-  }, [backend, token, editing, configId, from, agentsLoading, savedAgents]);
+  }, [backend, editing, configId, from, agentsLoading, savedAgents]);
 
   // A library that failed to load leaves every imported profile looking inline, and
   // saving would then record it as inline for good. Refuse to save at all until the
@@ -296,7 +294,7 @@ export function GgConfigEditPage() {
   // following it. The profile is unchanged by this: what it saves is exactly what it
   // already is, so the import it becomes pins nothing.
   async function saveAgentToLibrary(agentId: string) {
-    if (!token || !backend?.createGgAgent) return;
+    if (!backend?.createGgAgent) return;
     // The profile carries the model slots its bindings defer to, so the whole of what the
     // library stores is the agent itself — there is no second half to send.
     const agent = savedAgentFromProfile(draft, agentId);
@@ -304,10 +302,7 @@ export function GgConfigEditPage() {
     setSavingAgent(true);
     setError(null);
     try {
-      const created = await backend.createGgAgent(
-        { description: "", agent },
-        token,
-      );
+      const created = await backend.createGgAgent({ description: "", agent });
       const linked = (current: GgConfigDraft): GgConfigDraft => ({
         ...current,
         agents: current.agents.map((a) =>
@@ -336,7 +331,7 @@ export function GgConfigEditPage() {
   }
 
   async function onSave() {
-    if (!token || !savable) return;
+    if (!savable) return;
     const input: GgConfigInput = {
       name: name.trim(),
       description: description.trim(),
@@ -359,9 +354,9 @@ export function GgConfigEditPage() {
     setError(null);
     try {
       if (editing && configId && backend?.updateGgConfig) {
-        await backend.updateGgConfig(configId, input, token);
+        await backend.updateGgConfig(configId, input);
       } else if (backend?.createGgConfig) {
-        await backend.createGgConfig(input, token);
+        await backend.createGgConfig(input);
       }
       navigate(routes.accountGgConfigs());
     } catch (e) {
@@ -377,41 +372,38 @@ export function GgConfigEditPage() {
   // owns it — the configuration, or the agent open on top of it — is named right beside
   // it. Nothing is offered before the form exists: signed out or still loading, the
   // header is the title alone.
-  const headerActions =
-    !token || loading ? null : openAgent ? (
-      <div className={styles.detailActions}>
-        {agentError && <span className={exec.muted}>{agentError}</span>}
-        <button type="button" className={exec.secondary} onClick={cancelAgent}>
-          Cancel
-        </button>
-        <button
-          type="button"
-          className={exec.primary}
-          onClick={saveAgent}
-          disabled={agentError !== null}
-        >
-          Save agent
-        </button>
-      </div>
-    ) : (
-      <div className={styles.detailActions}>
-        {structuralError && (
-          <span className={exec.muted}>{structuralError}</span>
-        )}
-        <button
-          type="button"
-          className={exec.primary}
-          onClick={onSave}
-          disabled={!savable}
-        >
-          {busy
-            ? "Saving…"
-            : editing
-              ? "Save configuration"
-              : "Create configuration"}
-        </button>
-      </div>
-    );
+  const headerActions = loading ? null : openAgent ? (
+    <div className={styles.detailActions}>
+      {agentError && <span className={exec.muted}>{agentError}</span>}
+      <button type="button" className={exec.secondary} onClick={cancelAgent}>
+        Cancel
+      </button>
+      <button
+        type="button"
+        className={exec.primary}
+        onClick={saveAgent}
+        disabled={agentError !== null}
+      >
+        Save agent
+      </button>
+    </div>
+  ) : (
+    <div className={styles.detailActions}>
+      {structuralError && <span className={exec.muted}>{structuralError}</span>}
+      <button
+        type="button"
+        className={exec.primary}
+        onClick={onSave}
+        disabled={!savable}
+      >
+        {busy
+          ? "Saving…"
+          : editing
+            ? "Save configuration"
+            : "Create configuration"}
+      </button>
+    </div>
+  );
 
   const header = (
     <header className={styles.detailHeader}>
@@ -441,17 +433,6 @@ export function GgConfigEditPage() {
       {headerActions}
     </header>
   );
-
-  if (!token) {
-    return (
-      <PageLayout>
-        {header}
-        <p className={`${exec.notice} ${exec.warn}`}>
-          Sign in to edit gg configurations. They are saved to your account.
-        </p>
-      </PageLayout>
-    );
-  }
 
   return (
     <PageLayout>

@@ -1,7 +1,6 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { AuthProvider } from "../../../client/auth";
 import type { WorkerClient } from "../../../client/clients";
 import { WorkersProvider } from "../../../client/context";
 import type { WorkersContextValue } from "../../../client/context";
@@ -63,10 +62,6 @@ function renderPage(
   runs: UnreadableRun[],
   opts: { total?: number; fail?: string; hang?: boolean } = {},
 ) {
-  localStorage.setItem(
-    "tcab.auth",
-    JSON.stringify({ token: "tok", account: { username: "zach" } }),
-  );
   const deleteRun = vi.fn(async () => {});
   const listUnreadableRuns = vi.fn(
     async (_opts?: { limit?: number; offset?: number }) => {
@@ -92,15 +87,13 @@ function renderPage(
   render(
     <MemoryRouter>
       <WorkersProvider value={workers}>
-        <AuthProvider>
-          <ConfirmDialogProvider>
-            <RunsRuntimeProvider>
-              <GalleryDataProvider value={galleryValue()}>
-                <UnreadableRunsPage />
-              </GalleryDataProvider>
-            </RunsRuntimeProvider>
-          </ConfirmDialogProvider>
-        </AuthProvider>
+        <ConfirmDialogProvider>
+          <RunsRuntimeProvider>
+            <GalleryDataProvider value={galleryValue()}>
+              <UnreadableRunsPage />
+            </GalleryDataProvider>
+          </RunsRuntimeProvider>
+        </ConfirmDialogProvider>
       </WorkersProvider>
     </MemoryRouter>,
   );
@@ -137,7 +130,7 @@ describe("UnreadableRunsPage", () => {
     expect(deleteRun).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByRole("button", { name: "Delete run" }));
-    await waitFor(() => expect(deleteRun).toHaveBeenCalledWith("r1", "tok"));
+    await waitFor(() => expect(deleteRun).toHaveBeenCalledWith("r1"));
   });
 
   it("offers delete for a published row", async () => {
@@ -149,7 +142,7 @@ describe("UnreadableRunsPage", () => {
     // got rid of.
     fireEvent.click(screen.getByRole("button", { name: "Delete" }));
     fireEvent.click(await screen.findByRole("button", { name: "Delete run" }));
-    await waitFor(() => expect(deleteRun).toHaveBeenCalledWith("r1", "tok"));
+    await waitFor(() => expect(deleteRun).toHaveBeenCalledWith("r1"));
   });
 
   it("sizes its pager from the total and asks for the chosen page", async () => {

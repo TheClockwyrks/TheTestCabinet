@@ -55,9 +55,6 @@ struct PublisherInner {
     store: DefinitionStore,
     r2: Option<R2Client>,
     deploy_hook_url: Option<String>,
-    /// The auth service client, used to fetch each reviewer's profile picture so it
-    /// can be embedded in the public snapshot.
-    auth: Arc<crate::accounts::AccountsClient>,
     http: reqwest::Client,
     /// The artifact service's **in-cluster** base URL
     /// ([`Config::artifacts_internal_url`](crate::config::Config::artifacts_internal_url)),
@@ -65,6 +62,9 @@ struct PublisherInner {
     /// the (ephemeral) store. `None` in a dev/single-box setup with no separate
     /// artifact service, and in any deployment that supplies no in-cluster URL.
     artifacts_url: Option<String>,
+    /// The shared service token (`TCAB_BACKEND_SERVICE_TOKEN`) the snapshot builder
+    /// presents on its artifact-service reads.
+    artifacts_service_token: Option<String>,
     coalesce: Duration,
     /// How long a superseded snapshot generation is kept before the post-upload
     /// prune removes it (see [`prune_stale_snapshots`]).
@@ -97,14 +97,15 @@ impl Publisher {
     /// form and the dirty flag cleared, but no upload or hook fire happens.
     ///
     /// `artifacts_url` is the artifact service's **in-cluster** base URL, the one the
-    /// backend itself can reach — not the address advertised to consoles.
+    /// backend itself can reach — not the address advertised to consoles — and
+    /// `artifacts_service_token` the shared service token presented on its reads.
     pub fn new(
         db: Arc<Db>,
         store: DefinitionStore,
         r2: Option<R2Client>,
         deploy_hook_url: Option<String>,
         artifacts_url: Option<String>,
-        auth: Arc<crate::accounts::AccountsClient>,
+        artifacts_service_token: Option<String>,
         timing: PublisherTiming,
     ) -> Self {
         // Publishing is enabled (R2 is configured) but no site deploy hook is set:
@@ -124,9 +125,9 @@ impl Publisher {
                 store,
                 r2,
                 deploy_hook_url,
-                auth,
                 http: reqwest::Client::new(),
                 artifacts_url,
+                artifacts_service_token,
                 coalesce: timing.coalesce,
                 snapshot_retention: timing.snapshot_retention,
                 wake: Notify::new(),
@@ -330,36 +331,6 @@ async fn run_refresh(inner: &PublisherInner) -> Result<RefreshOutcome> {
         None => std::collections::HashSet::new(),
     };
 
-    // Each distinct reviewer's profile picture, fetched from the auth service so it
-    // can be embedded in the public snapshot beside their reviews. Unlike run media,
-    // a picture is mutable, so it is re-fetched every refresh (the set of distinct
-    // reviewers is small). Only when R2 is configured — without a bucket the snapshot
-    // is not uploaded and the live console reads reviewer avatars straight from the
-    // auth service, so there is nothing to embed. A reviewer with no picture (the
-    // `Ok(None)` 404 path) is simply absent from the map; a transport/server fault
-    // logs and skips that one reviewer rather than aborting the whole refresh.
-    let mut reviewer_pictures = std::collections::HashMap::new();
-    if inner.r2.is_some() {
-        let reviewer_ids: std::collections::HashSet<String> = runs
-            .iter()
-            .flat_map(|run| run.reviews.iter().map(|r| r.reviewer.user_id.clone()))
-            .collect();
-        for reviewer_id in reviewer_ids {
-            match inner.auth.picture(&reviewer_id).await {
-                Ok(Some(picture)) => {
-                    reviewer_pictures.insert(reviewer_id, picture);
-                }
-                Ok(None) => {}
-                Err(err) => {
-                    tracing::warn!(
-                        reviewer = %reviewer_id,
-                        "fetching a reviewer's profile picture failed ({err}); omitting it from the snapshot"
-                    );
-                }
-            }
-        }
-    }
-
     // The published harness comparisons, each assembled to its full read model over
     // the whole experiment's runs (not only the published ones) with the same
     // computation the internal `/comparisons` API uses, so the public numbers match
@@ -389,13 +360,16 @@ async fn run_refresh(inner: &PublisherInner) -> Result<RefreshOutcome> {
         .collect();
 
     let snapshot = SnapshotBuilder::new(runs, cases, inner.store.clone())
-        .with_artifacts(inner.artifacts_url.clone(), inner.http.clone())
+        .with_artifacts(
+            inner.artifacts_url.clone(),
+            inner.artifacts_service_token.clone(),
+            inner.http.clone(),
+        )
         .with_models(models)
         .with_reference_builds(reference_builds)
         .with_reference_sheets(reference_sheets)
         .with_existing_media(existing_media)
         .with_existing_documents(existing_documents)
-        .with_reviewer_pictures(reviewer_pictures)
         .with_comparisons(comparisons)
         .with_gg_documents(gg_documents)
         .with_test_case_groups(test_case_groups)

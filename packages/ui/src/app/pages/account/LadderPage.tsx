@@ -27,7 +27,6 @@ import { dispatchBadgeClass, dispatchLive } from "./ladder-dispatch";
 import ladderStyles from "./Ladder.module.scss";
 import { ladderAxisLabel } from "./ladderPickers";
 import { RungRuns } from "./LadderRungRuns";
-import { useAuth } from "../../../client/auth";
 import { useBackend } from "../../../client/context";
 import { BackChevron } from "../../components/BackChevron";
 import { useConfirm } from "../../components/ConfirmDialog";
@@ -635,7 +634,6 @@ function ConfiguredRungs({ rungs }: { rungs: LadderRung[] }) {
 // and that rating is all the gate reads.
 export function LadderPage() {
   const { ladderId = "" } = useParams();
-  const { token } = useAuth();
   const { client: backend } = useBackend();
   const { confirm } = useConfirm();
 
@@ -661,17 +659,17 @@ export function LadderPage() {
 
   // Re-read everything the controls can move: the board and the runs left to label.
   const refresh = useCallback(async () => {
-    if (!backend || !token) return;
+    if (!backend) return;
     const [board, q] = await Promise.all([
-      backend.getLadderProgress?.(ladderId, token) ?? Promise.resolve(null),
-      backend.getLadderQueue?.(ladderId, token) ?? Promise.resolve(null),
+      backend.getLadderProgress?.(ladderId) ?? Promise.resolve(null),
+      backend.getLadderQueue?.(ladderId) ?? Promise.resolve(null),
     ]);
     setProgress(board);
     setQueue(q);
-  }, [backend, token, ladderId]);
+  }, [backend, ladderId]);
 
   useEffect(() => {
-    if (!backend || !token) {
+    if (!backend) {
       setLoading(false);
       return;
     }
@@ -679,9 +677,9 @@ export function LadderPage() {
     setLoading(true);
     setError(null);
     Promise.all([
-      backend.getLadder?.(ladderId, token) ?? Promise.resolve(null),
-      backend.getLadderProgress?.(ladderId, token) ?? Promise.resolve(null),
-      backend.getLadderQueue?.(ladderId, token) ?? Promise.resolve(null),
+      backend.getLadder?.(ladderId) ?? Promise.resolve(null),
+      backend.getLadderProgress?.(ladderId) ?? Promise.resolve(null),
+      backend.getLadderQueue?.(ladderId) ?? Promise.resolve(null),
     ])
       .then(([entry, board, q]) => {
         if (!active) return;
@@ -698,7 +696,7 @@ export function LadderPage() {
     return () => {
       active = false;
     };
-  }, [backend, token, ladderId]);
+  }, [backend, ladderId]);
 
   // A run of this dispatch finishing is the event that moves the board without anyone
   // touching it: the tally gains a rated run, and a rung whose gate that settles
@@ -738,7 +736,7 @@ export function LadderPage() {
   // last dispatch's standing on this page (its runs stay in the run list), so that is
   // confirmed; a ladder never run starts at once.
   const run = useCallback(async () => {
-    if (!backend?.runLadder || !token) return;
+    if (!backend?.runLadder) return;
     if (
       dispatch &&
       !(await confirm({
@@ -756,24 +754,24 @@ export function LadderPage() {
     setBusy(true);
     setError(null);
     try {
-      const board = await backend.runLadder(ladderId, token);
+      const board = await backend.runLadder(ladderId);
       setProgress(board);
       setNote(describeLadderRun(board.dispatch));
-      const q = await backend.getLadderQueue?.(ladderId, token);
+      const q = await backend.getLadderQueue?.(ladderId);
       if (q) setQueue(q);
     } catch (e) {
       setError(String(e));
     } finally {
       setBusy(false);
     }
-  }, [backend, token, ladderId, dispatch, confirm]);
+  }, [backend, ladderId, dispatch, confirm]);
 
   // End the running dispatch and cancel its runs that have not started. With
   // `cancelRunning` the sweep reaches runs already executing, which are partly or
   // wholly paid for — so it is confirmed, and never the control reached by accident.
   const stop = useCallback(
     async (cancelRunning: boolean) => {
-      if (!backend?.stopLadder || !token) return;
+      if (!backend?.stopLadder) return;
       if (
         cancelRunning &&
         !(await confirm({
@@ -790,11 +788,7 @@ export function LadderPage() {
       setBusy(true);
       setError(null);
       try {
-        const result = await backend.stopLadder(
-          ladderId,
-          { cancelRunning },
-          token,
-        );
+        const result = await backend.stopLadder(ladderId, { cancelRunning });
         setNote(describeLadderStop(result));
         await refresh();
       } catch (e) {
@@ -803,7 +797,7 @@ export function LadderPage() {
         setBusy(false);
       }
     },
-    [backend, token, ladderId, refresh, confirm],
+    [backend, ladderId, refresh, confirm],
   );
 
   // Retry a climber blocked on a run that used up its automatic retries or on a
@@ -811,15 +805,13 @@ export function LadderPage() {
   // forgets that failure and relaunches that climber's rung.
   const retry = useCallback(
     async (climber: LadderClimber) => {
-      if (!backend?.retryLadderClimber || !token) return;
+      if (!backend?.retryLadderClimber) return;
       setBusy(true);
       setError(null);
       try {
-        await backend.retryLadderClimber(
-          ladderId,
-          { combination: climberCombo(climber) },
-          token,
-        );
+        await backend.retryLadderClimber(ladderId, {
+          combination: climberCombo(climber),
+        });
         setNote(`Retrying ${comboLabel(climber)}.`);
         await refresh();
       } catch (e) {
@@ -828,25 +820,8 @@ export function LadderPage() {
         setBusy(false);
       }
     },
-    [backend, token, ladderId, refresh],
+    [backend, ladderId, refresh],
   );
-
-  if (!token) {
-    return (
-      <PageLayout>
-        <header className={styles.detailHeader}>
-          <div className={styles.detailTitleRow}>
-            <BackChevron to={routes.accountLadders()} label="All ladders" />
-            <h1 className={styles.detailTitle}>Ladder</h1>
-          </div>
-        </header>
-        <p className={`${exec.notice} ${exec.warn}`}>
-          Sign in to view a ladder. Ladders are saved to your account, so there
-          is nothing to show without one.
-        </p>
-      </PageLayout>
-    );
-  }
 
   const statusNote = progress ? ladderStatusNote(progress) : null;
   const editTo = routes.accountLadderEdit(ladderId);

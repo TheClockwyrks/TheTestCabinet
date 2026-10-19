@@ -8,7 +8,6 @@ import {
   stackedBarChart,
 } from "@clockwyrks/ui";
 import type { ComparisonPublishOutcome } from "../../../client/clients";
-import { useAuth } from "../../../client/auth";
 import {
   useOptionalBackend,
   useOptionalWorkers,
@@ -61,7 +60,6 @@ import styles from "./Comparisons.module.scss";
 // declare a winner (no "best", no significance badge).
 export function ComparisonDetailPage() {
   const { id = "" } = useParams();
-  const { token } = useAuth();
   const navigate = useNavigate();
   const { confirm } = useConfirm();
   // A published comparison is public, so this page renders on the static site as
@@ -88,15 +86,15 @@ export function ComparisonDetailPage() {
     useState<ComparisonPublishOutcome | null>(null);
 
   useEffect(() => {
-    // A signed-in console fetches the account's comparison from the backend. A
-    // read-only host (the static site) resolves the published comparison from the
-    // gallery snapshot instead — no token, no fetch.
-    if (backend?.getComparison && token) {
+    // A console fetches the identity's comparison from the backend. A read-only
+    // host (the static site) resolves the published comparison from the gallery
+    // snapshot instead — no fetch.
+    if (backend?.getComparison) {
       let active = true;
       setLoading(true);
       setError(null);
       backend
-        .getComparison(id, token)
+        .getComparison(id)
         .then((c) => {
           if (!active) return;
           setComparison(c ?? null);
@@ -116,9 +114,9 @@ export function ComparisonDetailPage() {
       setError(null);
     }
     setLoading(false);
-  }, [backend, token, id, readComparison]);
+  }, [backend, id, readComparison]);
 
-  const canTrigger = Boolean(worker && token);
+  const canTrigger = Boolean(worker);
 
   // Launch the runs the arms are short of. `fresh` starts a new round instead: every
   // arm's recorded runs are cleared and each arm launches the full `N`.
@@ -165,21 +163,18 @@ export function ComparisonDetailPage() {
             const results: { runId?: string; error?: string }[] = [];
             for (let i = 0; i < remaining; i++) {
               try {
-                const ack = await worker.client.launchGgRun(
-                  {
-                    testCase: controls.caseSlug,
-                    version: controls.version,
-                    variant: controls.variant,
-                    capabilitySet,
-                    // The engine is one of the comparison's held-constant controls.
-                    // A gg arm launched engineless while the comparison declares an
-                    // engine would be doing different work from the harness arm it
-                    // is being compared against — confounding the experiment
-                    // against its own control.
-                    engine: resolveEngineSlug(controls.engineSlug),
-                  },
-                  token ?? "",
-                );
+                const ack = await worker.client.launchGgRun({
+                  testCase: controls.caseSlug,
+                  version: controls.version,
+                  variant: controls.variant,
+                  capabilitySet,
+                  // The engine is one of the comparison's held-constant controls.
+                  // A gg arm launched engineless while the comparison declares an
+                  // engine would be doing different work from the harness arm it
+                  // is being compared against — confounding the experiment
+                  // against its own control.
+                  engine: resolveEngineSlug(controls.engineSlug),
+                });
                 runtime.track({
                   testCaseSlug: controls.caseSlug,
                   testCaseVersion: controls.version,
@@ -214,7 +209,6 @@ export function ComparisonDetailPage() {
           } else {
             const launched = await launchBatch(
               worker,
-              token,
               runtime.track,
               harnessArmLaunchItems(controls, arm, remaining),
             );
@@ -227,19 +221,15 @@ export function ComparisonDetailPage() {
             );
           }
         }
-        if (backend?.updateComparison && token) {
+        if (backend?.updateComparison) {
           // Written back even when nothing was launched: the prune above is itself a
           // change worth keeping, and the response is the re-aggregated comparison —
           // which is how the page learns what its arms' live runs now are.
-          const updated = await backend.updateComparison(
-            comparison.id,
-            {
-              name: comparison.name,
-              description: comparison.description,
-              config: nextConfig,
-            },
-            token,
-          );
+          const updated = await backend.updateComparison(comparison.id, {
+            name: comparison.name,
+            description: comparison.description,
+            config: nextConfig,
+          });
           setComparison(updated);
         }
         if (launchErrors.size > 0) setError([...launchErrors].join(" "));
@@ -249,7 +239,7 @@ export function ComparisonDetailPage() {
         setTriggering(false);
       }
     },
-    [comparison, worker, canTrigger, ggOptions, token, runtime, backend],
+    [comparison, worker, canTrigger, ggOptions, runtime, backend],
   );
 
   const triggerMissing = useCallback(() => launchRuns(false), [launchRuns]);
@@ -287,14 +277,14 @@ export function ComparisonDetailPage() {
     if (confirmed) await launchRuns(true);
   }, [comparison, confirm, launchRuns, ggOptions]);
 
-  const canDelete = Boolean(canExecute && token && backend?.deleteComparison);
+  const canDelete = Boolean(canExecute && backend?.deleteComparison);
 
   // Deleting the comparison discards the experiment, never its runs: the runs it
   // launched are ordinary runs and stay exactly where they are (the backend's
   // `DELETE /comparisons/{id}` touches nothing else). The dialog says so, because
   // "delete this comparison" otherwise reads as "delete all those runs".
   const onDelete = useCallback(async () => {
-    if (!comparison || !backend?.deleteComparison || !token) return;
+    if (!comparison || !backend?.deleteComparison) return;
     const confirmed = await confirm({
       title: "Delete comparison",
       message: (
@@ -310,7 +300,7 @@ export function ComparisonDetailPage() {
     setDeleting(true);
     setError(null);
     try {
-      await backend.deleteComparison(comparison.id, token);
+      await backend.deleteComparison(comparison.id);
       // Gone: leave for the list rather than sitting on a page whose subject no
       // longer exists, and replace the entry so Back does not return to it.
       navigate(routes.runsComparisons(), { replace: true });
@@ -318,10 +308,10 @@ export function ComparisonDetailPage() {
       setError(String(e));
       setDeleting(false);
     }
-  }, [comparison, backend, token, confirm, navigate]);
+  }, [comparison, backend, confirm, navigate]);
 
   const onPublish = useCallback(async () => {
-    if (!comparison || !backend?.publishComparison || !token) return;
+    if (!comparison || !backend?.publishComparison) return;
     setPublishing(true);
     setError(null);
     try {
@@ -330,7 +320,7 @@ export function ComparisonDetailPage() {
       // it is always best-effort and selective — see docs/comparisons/
       // publishing.md). Flip `published` locally rather than guessing at a
       // round-trip; a reload always shows the authoritative state.
-      const outcome = await backend.publishComparison(comparison.id, token);
+      const outcome = await backend.publishComparison(comparison.id);
       setPublishResult(outcome);
       setComparison((prev) => (prev ? { ...prev, published: true } : prev));
     } catch (e) {
@@ -338,7 +328,7 @@ export function ComparisonDetailPage() {
     } finally {
       setPublishing(false);
     }
-  }, [comparison, backend, token]);
+  }, [comparison, backend]);
 
   // What "Trigger missing runs" would launch right now: per arm, `N` less the runs
   // it records that still exist. An arm whose runs were deleted is short again, and
@@ -349,27 +339,6 @@ export function ComparisonDetailPage() {
       comparison ? totalMissingRuns(comparison.config, comparison.arms) : 0,
     [comparison],
   );
-
-  // A console needs a signed-in account (comparisons are per-account); a read-only
-  // host (the static site) renders the published comparison with no sign-in.
-  if (canExecute && !token) {
-    return (
-      <PageLayout>
-        <header className={styles.detailHeader}>
-          <div className={styles.detailTitleRow}>
-            <BackChevron
-              to={routes.runsComparisons()}
-              label="All comparisons"
-            />
-            <h1 className={styles.detailTitle}>Comparison</h1>
-          </div>
-        </header>
-        <p className={`${exec.notice} ${exec.warn}`}>
-          Sign in to view a comparison. Comparisons are saved to your account.
-        </p>
-      </PageLayout>
-    );
-  }
 
   if (loading) {
     return (

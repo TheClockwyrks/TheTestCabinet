@@ -23,9 +23,9 @@ spec:
   policyTypes: ["Ingress"]
   # No ingress rules => deny all inbound by default; add explicit allows below.
 ---
-# Let the control-plane callers reach the backend and auth service: the dispatcher
-# (claim + status), the driver Job pods (stream events/preview/status, push the
-# record), and the artifact service (verify upload/read tokens).
+# Let the control-plane callers reach the backend: the dispatcher (claim + status),
+# the driver Job pods (stream events/preview/status, push the record), the artifact
+# service (verify a driver's per-job token) and the arena.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -33,20 +33,11 @@ metadata:
   namespace: tcab-prod
 spec:
   podSelector:
-    matchExpressions:
-      - key: app.kubernetes.io/name
-        operator: In
-        values: ["tcab-backend", "tcab-auth"]
+    matchLabels:
+      app.kubernetes.io/name: tcab-backend
   policyTypes: ["Ingress"]
   ingress:
     - from:
-        # The backend itself, which verifies every bearer token against the auth
-        # service (`POST /auth/verify`) — e.g. when authorizing a run submission.
-        # Without this the backend's in-cluster call to tcab-auth is refused by the
-        # default-deny ingress and run creation fails with a 502 auth transport error.
-        - podSelector:
-            matchLabels:
-              app.kubernetes.io/name: tcab-backend
         # The dispatcher.
         - podSelector:
             matchLabels:
@@ -55,8 +46,7 @@ spec:
         - podSelector:
             matchLabels:
               app.kubernetes.io/managed-by: tcab-dispatcher
-        # The artifact service (forwards a driver's per-job token to the backend and
-        # a reviewer's account token to auth).
+        # The artifact service (forwards a driver's per-job token to the backend).
         - podSelector:
             matchLabels:
               app.kubernetes.io/name: tcab-artifacts

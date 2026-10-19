@@ -70,11 +70,8 @@ vi.mock("../../../../client/context", () => ({
     },
   }),
 }));
-vi.mock("../../../../client/auth", () => ({
-  useAuth: () => ({
-    account: { id: "acct-1", displayName: "Reviewer", pictureUrl: null },
-    token: "token",
-  }),
+vi.mock("../../../../client/identity", () => ({
+  useIdentity: () => ({ email: "acct-1" }),
 }));
 vi.mock("../../../data/galleryContext", () => ({
   useGalleryData: () => fixture.gallery,
@@ -436,8 +433,7 @@ describe("RunReviewEditor on a validator-rated run", () => {
   it("shows an existing review's run-wide aesthetic badge, not a per-card score", async () => {
     fixture.readReviewItems.mockResolvedValue(items);
     const review = {
-      reviewerId: "other",
-      reviewer: "Someone",
+      reviewer: "other@example.com",
       ratings: [],
       aesthetic: "good",
       checklist: [],

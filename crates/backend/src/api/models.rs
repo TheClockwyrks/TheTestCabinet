@@ -10,9 +10,9 @@
 //! shows up without a release. Curated config is layered on by alias; an
 //! uncurated model is shown, derived, under its canonical id.
 //!
-//! Reads are open (the private-network model); the config mutations, the
-//! OpenRouter lookup, the logo fetch, and the list-price refresh require a bearer
-//! token (see [`AuthUser`]) — the lookup and the logo fetch because they reach a
+//! Reads are open to any identity; the config mutations, the OpenRouter lookup,
+//! the logo fetch, and the list-price refresh take a person's assertion (see
+//! [`Person`]) — the lookup and the logo fetch because they reach a
 //! third party. The same
 //! [`compose_catalog`] the read uses also builds the public snapshot's catalog, so
 //! the two never disagree.
@@ -28,7 +28,7 @@ use crate::model_id::canonical_model_id;
 use test_cabinet_contracts::run_record::{HarnessFamily, HarnessSlug};
 use test_cabinet_entities::model_price;
 
-use crate::auth::AuthUser;
+use crate::auth::Person;
 use crate::db::{AliasEntry, ModelConfigWrite, StoredModel};
 use crate::error::ApiError;
 
@@ -60,11 +60,11 @@ pub async fn list(State(state): State<AppState>) -> Result<Json<ModelCatalogResp
     Ok(Json(ModelCatalogResponse { models }))
 }
 
-/// `POST /models` — create a curated model config. Requires a bearer token.
+/// `POST /models` — create a curated model config. Takes a person's assertion.
 #[tracing::instrument(name = "models.create", skip(state, _user, input), err(Debug))]
 pub async fn create(
     State(state): State<AppState>,
-    _user: AuthUser,
+    _user: Person,
     Json(input): Json<ModelConfigInput>,
 ) -> Result<Json<ModelOut>, ApiError> {
     let slug = input.slug.trim().to_string();
@@ -83,12 +83,12 @@ pub async fn create(
     write_config(&state, slug, input).await
 }
 
-/// `PUT /models/{slug}` — update a curated model config. Requires a bearer token.
+/// `PUT /models/{slug}` — update a curated model config. Takes a person's assertion.
 #[tracing::instrument(name = "models.update", skip(state, _user, input), fields(model.slug = %slug), err(Debug))]
 pub async fn update(
     State(state): State<AppState>,
     Path(slug): Path<String>,
-    _user: AuthUser,
+    _user: Person,
     Json(input): Json<ModelConfigInput>,
 ) -> Result<Json<ModelOut>, ApiError> {
     write_config(&state, slug, input).await
@@ -342,13 +342,13 @@ fn holds_list_price(
             .all(|(stored, submitted)| same_rate(stored, submitted))
 }
 
-/// `DELETE /models/{slug}` — remove a curated model config. Requires a bearer
-/// token. The model may reappear as a derived entry if it still has runs.
+/// `DELETE /models/{slug}` — remove a curated model config. Takes a person's
+/// assertion. The model may reappear as a derived entry if it still has runs.
 #[tracing::instrument(name = "models.delete", skip(state, _user), fields(model.slug = %slug), err(Debug))]
 pub async fn delete(
     State(state): State<AppState>,
     Path(slug): Path<String>,
-    _user: AuthUser,
+    _user: Person,
 ) -> Result<StatusCode, ApiError> {
     let removed = state
         .db
@@ -427,7 +427,7 @@ pub struct OpenRouterLookupQuery {
 
 /// `GET /models/openrouter?slug=&providerPin=` — the descriptive facts OpenRouter
 /// publishes about a model, so the config form can fill itself in instead of the
-/// operator retyping what OpenRouter already knows. Requires a bearer token.
+/// operator retyping what OpenRouter already knows. Takes a person's assertion.
 ///
 /// The list-price figures are resolved by the
 /// [list-price flow](crate::pricing::ModelLaunchFacts::list_price) with
@@ -436,7 +436,7 @@ pub struct OpenRouterLookupQuery {
 /// step, the model's own price in OpenRouter's models listing, is what reads that
 /// listing, and only when the model's endpoints answer neither earlier step.
 ///
-/// Bearer-gated like the logo fetch, and for the same reason: both make the
+/// Person-gated like the logo fetch, and for the same reason: both make the
 /// backend reach out to a third party on the caller's behalf, so both are limited
 /// to signed-in operators rather than open like the catalog read.
 ///
@@ -446,7 +446,7 @@ pub struct OpenRouterLookupQuery {
 #[tracing::instrument(name = "models.openrouter", skip(state, _user), fields(model.openrouter_slug = %query.slug), err(Debug))]
 pub async fn openrouter(
     State(state): State<AppState>,
-    _user: AuthUser,
+    _user: Person,
     Query(query): Query<OpenRouterLookupQuery>,
 ) -> Result<Json<ModelListingOut>, ApiError> {
     let slug = lookup_slug(&query.slug)
@@ -485,14 +485,14 @@ pub async fn openrouter(
 /// `POST /models/list-prices/refresh` — read every catalog entry's list price from
 /// OpenRouter now, as the 24-hour refresh does
 /// ([`crate::bootstrap::refresh_list_prices`]), and answer with what it did.
-/// Requires a bearer token, like every other write to the catalog.
+/// Takes a person's assertion, like every other write to the catalog.
 ///
 /// The public snapshot is regenerated when a rate changed, by a refresh that ended
 /// early too. Runs are untouched: a run keeps the cost it was scored at.
 #[tracing::instrument(name = "models.refresh_list_prices", skip(state, _user), err(Debug))]
 pub async fn refresh_list_prices(
     State(state): State<AppState>,
-    _user: AuthUser,
+    _user: Person,
 ) -> Result<Json<ListPriceRefreshOut>, ApiError> {
     // The refresh queues the snapshot refresh itself, whenever it changed a rate and
     // however it ended: a refresh cut short (a database failure, a caller that went
@@ -511,11 +511,11 @@ pub async fn refresh_list_prices(
 }
 
 /// `POST /models/logo` — fetch and sanitize an svgl.app logo for the config form
-/// to preview and store. Requires a bearer token.
+/// to preview and store. Takes a person's assertion.
 #[tracing::instrument(name = "models.logo", skip(state, _user, input), err(Debug))]
 pub async fn logo(
     State(state): State<AppState>,
-    _user: AuthUser,
+    _user: Person,
     Json(input): Json<LogoFetchInput>,
 ) -> Result<Json<LogoFetchOut>, ApiError> {
     let logo_svg = crate::logo::fetch_logo_svg(&state.http, &input.url).await?;

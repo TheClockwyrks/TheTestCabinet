@@ -33,9 +33,7 @@ async fn test_state_with_prices(
         None,
         None,
         None,
-        std::sync::Arc::new(crate::accounts::AccountsClient::new(
-            config.auth_url.clone(),
-        )),
+        None,
         crate::publisher::PublisherTiming {
             coalesce: config.coalesce,
             snapshot_retention: config.snapshot_retention,
@@ -46,9 +44,7 @@ async fn test_state_with_prices(
         store,
         ready: crate::readiness::Readiness::new(true),
         publisher,
-        auth: std::sync::Arc::new(crate::accounts::AccountsClient::new(
-            config.auth_url.clone(),
-        )),
+        access: None,
         relay: crate::relay::Relay::new(),
         publish_relay: crate::publish_relay::PublishRelay::new(),
         config,

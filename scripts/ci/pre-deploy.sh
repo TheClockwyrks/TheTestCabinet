@@ -9,7 +9,7 @@
 # backend alone and waits on it alone; this does the rest a Test Cabinet deployment
 # needs first, in order:
 #
-#   1. Pins the overlay (scripts/ci/pin-images.sh, in place): the other seven images
+#   1. Pins the overlay (scripts/ci/pin-images.sh, in place): the other six images
 #      and the dispatcher's run-image environment, all at <commit>. deploy.sh lays
 #      its own layer over the overlay, so the render it applies carries them.
 #   2. Reads, in one command in the cluster, the commit the namespace's backend runs

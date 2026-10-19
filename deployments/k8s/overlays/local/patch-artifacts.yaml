@@ -1,5 +1,5 @@
 # Local artifact-service override: tag the environment. Everything else (its own
-# `artifacts` PVC, bind address, backend/auth URLs) carries over from the base
+# `artifacts` PVC, bind address, backend URL) carries over from the base
 # manifest unchanged.
 apiVersion: apps/v1
 kind: StatefulSet

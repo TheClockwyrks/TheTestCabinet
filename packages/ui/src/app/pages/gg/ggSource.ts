@@ -23,7 +23,6 @@ import type {
   GgQuery,
   GgQueryResponse,
 } from "@clockwyrks/run-record/gg-query";
-import { useAuth } from "../../../client/auth";
 import { useOptionalBackend } from "../../../client/context";
 import { useGalleryData } from "../../data/galleryContext";
 import { evaluate, fieldCatalog } from "./query";
@@ -72,7 +71,6 @@ export interface GgSource {
  * one its saved queries and dashboards were written against.
  */
 export function useGgSource(): GgSource | null {
-  const { token } = useAuth();
   const backend = useOptionalBackend()?.client ?? null;
   const { ggData } = useGalleryData();
 
@@ -80,15 +78,15 @@ export function useGgSource(): GgSource | null {
     const runQuery = backend?.runGgQuery;
     const runBatch = backend?.runGgQueryBatch;
     const getFields = backend?.getGgFields;
-    if (runQuery && token) {
+    if (runQuery) {
       return {
         live: true,
         generatedAt: null,
-        runQuery: (query) => runQuery.call(backend, query, token),
+        runQuery: (query) => runQuery.call(backend, query),
         runBatch: runBatch
           ? (queries) =>
               runBatch
-                .call(backend, { queries }, token)
+                .call(backend, { queries })
                 .then((response) => response.results)
           : undefined,
         // A transport with the query route but not the field route reads as an empty
@@ -97,7 +95,7 @@ export function useGgSource(): GgSource | null {
         // whose results are fine.
         fields: () =>
           getFields
-            ? getFields.call(backend, token)
+            ? getFields.call(backend)
             : Promise.resolve({ documents: 0, fields: [] }),
       };
     }
@@ -114,5 +112,5 @@ export function useGgSource(): GgSource | null {
         Promise.resolve(queries.map((query) => evaluate(documents, query))),
       fields: () => Promise.resolve(fieldCatalog(documents)),
     };
-  }, [backend, token, ggData]);
+  }, [backend, ggData]);
 }

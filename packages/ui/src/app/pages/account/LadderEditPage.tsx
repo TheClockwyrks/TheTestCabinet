@@ -31,7 +31,6 @@ import {
   useRetryLimitField,
 } from "./retry-limit";
 import { isIneligible, useVersionEligibility } from "./rungEligibility";
-import { useAuth } from "../../../client/auth";
 import { useBackend } from "../../../client/context";
 import type { Model } from "../../../client/types";
 import { BackChevron } from "../../components/BackChevron";
@@ -67,7 +66,6 @@ const DEFAULT_RUNS_PER_CELL = 3;
 export function LadderEditPage() {
   const { ladderId } = useParams();
   const editing = Boolean(ladderId);
-  const { token } = useAuth();
   const { client: backend } = useBackend();
   const navigate = useNavigate();
 
@@ -107,7 +105,7 @@ export function LadderEditPage() {
   const [dispatchRunning, setDispatchRunning] = useState(false);
 
   useEffect(() => {
-    if (!backend || !token) {
+    if (!backend) {
       setLoading(false);
       return;
     }
@@ -115,9 +113,9 @@ export function LadderEditPage() {
     setLoading(true);
     setError(null);
     Promise.all([
-      backend.listCoverageGroups?.(token) ?? Promise.resolve([]),
+      backend.listCoverageGroups?.() ?? Promise.resolve([]),
       editing && ladderId
-        ? (backend.getLadder?.(ladderId, token) ?? Promise.resolve(null))
+        ? (backend.getLadder?.(ladderId) ?? Promise.resolve(null))
         : Promise.resolve(null),
     ])
       .then(([gs, existing]) => {
@@ -155,7 +153,7 @@ export function LadderEditPage() {
       });
     if (editing && ladderId) {
       backend
-        .getLadderProgress?.(ladderId, token)
+        .getLadderProgress?.(ladderId)
         .then(
           (board) =>
             active && setDispatchRunning(dispatchLive(board.dispatch?.status)),
@@ -168,7 +166,7 @@ export function LadderEditPage() {
     // can *show* what an empty value inherits. Failing to read it must not block
     // editing the ladder, so the placeholder keeps the compiled-in fallback.
     backend
-      .getCoverageSettings?.(token)
+      .getCoverageSettings?.()
       .then((s) => active && setAccountLimit(s.inFlightLimit))
       .catch(() => {
         /* optional; the placeholder stays the compiled-in default */
@@ -177,14 +175,7 @@ export function LadderEditPage() {
       active = false;
     };
     // Both fields' `set` are referentially stable (see components/NumberField).
-  }, [
-    backend,
-    token,
-    editing,
-    ladderId,
-    runsPerCellField.set,
-    retryLimitField.set,
-  ]);
+  }, [backend, editing, ladderId, runsPerCellField.set, retryLimitField.set]);
 
   // Which rungs of the climb a ladder cannot climb at all. Known only once each rung's
   // version has resolved; one the backend does not hold is allowed, as the backend
@@ -221,7 +212,7 @@ export function LadderEditPage() {
     unclimbable === 0;
 
   async function onSave() {
-    if (!token || !savable) return;
+    if (!savable) return;
     setBusy(true);
     setError(null);
     try {
@@ -240,33 +231,15 @@ export function LadderEditPage() {
         retryCount: retryLimitField.value ?? DEFAULT_RETRY_LIMIT,
       };
       if (editing && ladderId && backend?.updateLadder) {
-        await backend.updateLadder(ladderId, input, token);
+        await backend.updateLadder(ladderId, input);
       } else if (backend?.createLadder) {
-        await backend.createLadder(input, token);
+        await backend.createLadder(input);
       }
       navigate(routes.accountLadders());
     } catch (e) {
       setError(String(e));
       setBusy(false);
     }
-  }
-
-  if (!token) {
-    return (
-      <PageLayout>
-        <header className={styles.detailHeader}>
-          <div className={styles.detailTitleRow}>
-            <BackChevron to={routes.accountLadders()} label="All ladders" />
-            <h1 className={styles.detailTitle}>
-              {editing ? "Ladder" : "New ladder"}
-            </h1>
-          </div>
-        </header>
-        <p className={`${exec.notice} ${exec.warn}`}>
-          Sign in to edit ladders. They are saved to your account.
-        </p>
-      </PageLayout>
-    );
   }
 
   return (

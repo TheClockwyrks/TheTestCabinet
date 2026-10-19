@@ -100,22 +100,10 @@ spec:
               value: "/state/tcab-store"
             - name: TCAB_BACKEND_CHECKOUT
               value: "/state/checkout"
-            # The auth service this backend verifies tokens against.
-            - name: TCAB_BACKEND_AUTH_URL
-              value: "http://tcab-auth:8789"
-            # Console-facing data-plane base URLs the backend reports via GET /config
-            # (bytes never transit the backend — these are just the URLs the console
-            # fetches from). Same in-cluster Service DNS the base uses.
-            - name: TCAB_ARTIFACTS_PUBLIC_URL
-              value: "http://tcab-artifacts:8790"
-            - name: TCAB_ARENA_PUBLIC_URL
-              value: "http://tcab-arena:8791"
             # The artifact service as THIS POD reaches it, for pruning a deleted run's
-            # tree and sweeping the trees no run row references. Distinct from the
-            # advertised URL above, which the azure overlays repoint at a VPN hostname;
-            # this one stays on in-cluster Service DNS. This Deployment replaces the
-            # base StatefulSet wholesale, so the base's copy of this variable does not
-            # reach the postgres overlays and it is repeated here.
+            # tree and sweeping the trees no run row references. This Deployment
+            # replaces the base StatefulSet wholesale, so the base's copy of this
+            # variable does not reach the postgres overlays and it is repeated here.
             - name: TCAB_ARTIFACTS_URL
               value: "http://tcab-artifacts:8790"
             # The shared service token the dispatcher claims queued jobs with; MUST

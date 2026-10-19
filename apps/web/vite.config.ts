@@ -1,8 +1,11 @@
 import react from "@vitejs/plugin-react";
 import { playwright } from "@vitest/browser-playwright";
+import { loadEnv } from "vite";
 // The test block below is Vitest's, and `vitest/config` is the entry point that
 // declares it alongside Vite's own options.
 import { configDefaults, defineConfig } from "vitest/config";
+
+import { devIdentity, devProxy } from "./src/dev-server";
 
 /**
  * The web app's build, its development server and its test run.
@@ -14,22 +17,9 @@ import { configDefaults, defineConfig } from "vitest/config";
 /** The port the development server binds when `PORT_VARIABLE` names none. */
 const DEV_SERVER_PORT = 1430;
 
-/**
- * The port the server binds, which `/api` is proxied to when
- * `SERVER_URL_VARIABLE` names no other server.
- *
- * It is the port the server's crate binds when `BIND` names none, so the server
- * and this development server meet with nothing configured.
- */
-const SERVER_PORT = 8080;
-
 /** The variable naming another port for the development server. */
 // prettier-ignore
 const PORT_VARIABLE = "THE_TEST_CABINET_WEB_PORT";
-
-/** The variable naming another server for `/api`, as an HTTP address. */
-// prettier-ignore
-const SERVER_URL_VARIABLE = "THE_TEST_CABINET_BACKEND_URL";
 
 /** The test files the browser project owns, which the jsdom project skips. */
 const BROWSER_TESTS = "src/**/*.browser.test.{ts,tsx}";
@@ -80,16 +70,6 @@ function devPort(): number {
 }
 
 /**
- * The server `/api` is proxied to, taken from the environment.
- *
- * The server speaks plain HTTP on this machine unless the variable names
- * another, such as one running in a cluster behind a forwarded port.
- */
-function serverUrl(): string {
-  return configured(SERVER_URL_VARIABLE) ?? `http://127.0.0.1:${SERVER_PORT}`;
-}
-
-/**
  * The directory a gate run wants this suite's machine-readable results in.
  *
  * `ci/gates/web-test.py` and `ci/gates/web-browser-test.py` run the suite with
@@ -122,148 +102,143 @@ function attachmentsFor(instance: string): string {
   return `${artifacts ?? ".vitest"}/attachments/${instance}`;
 }
 
-export default defineConfig({
-  plugins: [react()],
-  server: {
-    // Bind every interface, so a phone on the same network opens a development
-    // build at the host machine's address.
-    host: true,
-    port: devPort(),
-    // A taken port fails the start rather than moving to another one, so the
-    // port a browser was pointed at is always the port that is serving.
-    strictPort: true,
-    // The server answers every route under the same prefix, so a page reads
-    // the same address whether this server or the server itself is serving it.
-    proxy: {
-      // `ws` carries a WebSocket under `/api` through the same proxy the JSON
-      // routes take, and `xfwd` states the address the browser asked for,
-      // which is the address a server hands back to a client that is to reach
-      // it again.
-      "/api": {
-        target: serverUrl(),
-        changeOrigin: true,
-        ws: true,
-        xfwd: true,
-      },
+export default defineConfig(({ mode }) => {
+  // Every variable, not only the `VITE_` ones the bundle sees: the proxy reads
+  // its own, which never reach the browser.
+  const env = loadEnv(mode, process.cwd(), "");
+  return {
+    plugins: [react(), devIdentity(env)],
+    server: {
+      // Bind every interface, so a phone on the same network opens a development
+      // build at the host machine's address.
+      host: true,
+      port: devPort(),
+      // A taken port fails the start rather than moving to another one, so the
+      // port a browser was pointed at is always the port that is serving.
+      strictPort: true,
+      // Each service answers its routes under the same prefix the edge serves
+      // it at, so a page reads the same address whether this server or the edge
+      // is serving it.
+      proxy: devProxy(env),
     },
-  },
-  test: {
-    /*
-     * Two projects, because the app is checked in two places. Almost every
-     * test states what a screen renders, which jsdom answers in a fraction of
-     * the time a browser takes. The rest state what only a browser knows: what
-     * the cascade resolves a color to, which layout a viewport width selects,
-     * and whether the document overflows its width. The file name is what
-     * decides which project a test belongs to, so the two file sets never
-     * overlap.
-     */
-    projects: [
-      {
-        extends: true,
-        test: {
-          name: "jsdom",
-          environment: "jsdom",
-          globals: true,
-          setupFiles: ["src/test/setup.ts"],
-          include: ["src/**/*.test.{ts,tsx}"],
-          // The browser suite is named by the same glob, and its scaffolding
-          // is the opposite of this project's, so it is taken back out here.
-          exclude: [...configDefaults.exclude, BROWSER_TESTS],
-        },
-      },
-      {
-        extends: true,
-        /*
-         * The browser suite is served by a Vite server of its own, on the
-         * port Vitest names for it, and that server takes this file's
-         * `server` options too. A strict port there fails the whole suite
-         * when another run on the machine holds it, so this server moves to
-         * the next free port instead: nothing is pointed at it but the
-         * engines Vitest opens, which are handed the port it took.
-         */
-        server: { strictPort: false },
-        test: {
-          name: "browser",
-          globals: true,
-          setupFiles: ["src/test/browser-setup.ts"],
-          include: [BROWSER_TESTS],
-          /*
-           * One file at a time per instance. Every file run in parallel opens
-           * a page of its own in each of the six instances, and the threads
-           * three engines spawn for them outgrow a container's process limit
-           * well before they outgrow its memory, which crashes a page rather
-           * than failing a test.
-           */
-          fileParallelism: false,
-          browser: {
-            enabled: true,
-            /*
-             * Every page mounts the WebGL synthwave scene behind its content
-             * unless the browser asks for reduced motion, and a headless engine
-             * on a machine without a GPU rasterizes that scene in software on
-             * the page's main thread. On a pipeline agent, six instances
-             * sharing two cores, the thread is then blocked for seconds at a
-             * stretch: a row's arrival outlasts a `findByRole` timeout, and a
-             * real pointer click outlasts the test. Nothing here states what
-             * the scene renders, so every context asks for reduced motion,
-             * which the backdrop answers with its static CSS fallback. The
-             * option is the provider's, not an instance's: an instance's
-             * `contextOptions` is not read.
-             */
-            provider: playwright({
-              contextOptions: { reducedMotion: "reduce" },
-            }),
-            // Nothing here watches a browser render, in a pipeline or under a
-            // developer, so no window is opened.
-            headless: true,
-            /*
-             * One instance per engine per viewport size, because neither size
-             * is primary and an instance is what fixes the width a test
-             * renders at. Chromium and Firefox are themselves, and WebKit is
-             * the engine Safari is built on, which is as close as a Linux
-             * machine reaches Safari.
-             */
-            instances: ENGINES.flatMap((browser) =>
-              VIEWPORTS.map(({ name, width, height }) => ({
-                browser,
-                name: `${browser}-${name}`,
-                viewport: { width, height },
-                attachmentsDir: attachmentsFor(`${browser}-${name}`),
-              })),
-            ),
+    test: {
+      /*
+       * Two projects, because the app is checked in two places. Almost every
+       * test states what a screen renders, which jsdom answers in a fraction of
+       * the time a browser takes. The rest state what only a browser knows: what
+       * the cascade resolves a color to, which layout a viewport width selects,
+       * and whether the document overflows its width. The file name is what
+       * decides which project a test belongs to, so the two file sets never
+       * overlap.
+       */
+      projects: [
+        {
+          extends: true,
+          test: {
+            name: "jsdom",
+            environment: "jsdom",
+            globals: true,
+            setupFiles: ["src/test/setup.ts"],
+            include: ["src/**/*.test.{ts,tsx}"],
+            // The browser suite is named by the same glob, and its scaffolding
+            // is the opposite of this project's, so it is taken back out here.
+            exclude: [...configDefaults.exclude, BROWSER_TESTS],
           },
         },
-      },
-    ],
-    /*
-     * Reporters and coverage belong to the whole run rather than to a project,
-     * so they are stated here, and both gates that run a project of this
-     * configuration ask for their reports the same way: by naming a directory
-     * in `CI_GATE_ARTIFACTS`. `ci/gates/web-browser-test.py` additionally sets
-     * `CI_GATE_COVERAGE=0`, so the engines are never instrumented. The file
-     * names are the ones `metrics collect` reads: `junit.xml`, and the
-     * `coverage-summary.json` istanbul's `json-summary` reporter writes.
-     */
-    ...(artifacts !== undefined && {
-      reporters: [
-        "default",
-        ["junit", { classnameTemplate: CLASSNAME_TEMPLATE }] as const,
-      ],
-      outputFile: { junit: `${artifacts}/junit.xml` },
-      ...(coverage && {
-        coverage: {
-          enabled: true,
-          provider: "v8" as const,
-          // Every source, so a file no test imports counts as uncovered
-          // instead of dropping out of the total.
-          include: ["src/**/*.{ts,tsx}"],
-          exclude: ["src/**/*.test.{ts,tsx}", "src/test/**"],
-          reporter: ["json-summary"],
-          reportsDirectory: artifacts,
-          // The directory is the gate's, and the JUnit report shares it.
-          clean: false,
+        {
+          extends: true,
+          /*
+           * The browser suite is served by a Vite server of its own, on the
+           * port Vitest names for it, and that server takes this file's
+           * `server` options too. A strict port there fails the whole suite
+           * when another run on the machine holds it, so this server moves to
+           * the next free port instead: nothing is pointed at it but the
+           * engines Vitest opens, which are handed the port it took.
+           */
+          server: { strictPort: false },
+          test: {
+            name: "browser",
+            globals: true,
+            setupFiles: ["src/test/browser-setup.ts"],
+            include: [BROWSER_TESTS],
+            /*
+             * One file at a time per instance. Every file run in parallel opens
+             * a page of its own in each of the six instances, and the threads
+             * three engines spawn for them outgrow a container's process limit
+             * well before they outgrow its memory, which crashes a page rather
+             * than failing a test.
+             */
+            fileParallelism: false,
+            browser: {
+              enabled: true,
+              /*
+               * Every page mounts the WebGL synthwave scene behind its content
+               * unless the browser asks for reduced motion, and a headless engine
+               * on a machine without a GPU rasterizes that scene in software on
+               * the page's main thread. On a pipeline agent, six instances
+               * sharing two cores, the thread is then blocked for seconds at a
+               * stretch: a row's arrival outlasts a `findByRole` timeout, and a
+               * real pointer click outlasts the test. Nothing here states what
+               * the scene renders, so every context asks for reduced motion,
+               * which the backdrop answers with its static CSS fallback. The
+               * option is the provider's, not an instance's: an instance's
+               * `contextOptions` is not read.
+               */
+              provider: playwright({
+                contextOptions: { reducedMotion: "reduce" },
+              }),
+              // Nothing here watches a browser render, in a pipeline or under a
+              // developer, so no window is opened.
+              headless: true,
+              /*
+               * One instance per engine per viewport size, because neither size
+               * is primary and an instance is what fixes the width a test
+               * renders at. Chromium and Firefox are themselves, and WebKit is
+               * the engine Safari is built on, which is as close as a Linux
+               * machine reaches Safari.
+               */
+              instances: ENGINES.flatMap((browser) =>
+                VIEWPORTS.map(({ name, width, height }) => ({
+                  browser,
+                  name: `${browser}-${name}`,
+                  viewport: { width, height },
+                  attachmentsDir: attachmentsFor(`${browser}-${name}`),
+                })),
+              ),
+            },
+          },
         },
+      ],
+      /*
+       * Reporters and coverage belong to the whole run rather than to a project,
+       * so they are stated here, and both gates that run a project of this
+       * configuration ask for their reports the same way: by naming a directory
+       * in `CI_GATE_ARTIFACTS`. `ci/gates/web-browser-test.py` additionally sets
+       * `CI_GATE_COVERAGE=0`, so the engines are never instrumented. The file
+       * names are the ones `metrics collect` reads: `junit.xml`, and the
+       * `coverage-summary.json` istanbul's `json-summary` reporter writes.
+       */
+      ...(artifacts !== undefined && {
+        reporters: [
+          "default",
+          ["junit", { classnameTemplate: CLASSNAME_TEMPLATE }] as const,
+        ],
+        outputFile: { junit: `${artifacts}/junit.xml` },
+        ...(coverage && {
+          coverage: {
+            enabled: true,
+            provider: "v8" as const,
+            // Every source, so a file no test imports counts as uncovered
+            // instead of dropping out of the total.
+            include: ["src/**/*.{ts,tsx}"],
+            exclude: ["src/**/*.test.{ts,tsx}", "src/test/**"],
+            reporter: ["json-summary"],
+            reportsDirectory: artifacts,
+            // The directory is the gate's, and the JUnit report shares it.
+            clean: false,
+          },
+        }),
       }),
-    }),
-  },
+    },
+  };
 });

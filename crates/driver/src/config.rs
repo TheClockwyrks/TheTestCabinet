@@ -9,7 +9,7 @@
 //! | --- | --- | --- | --- |
 //! | `TCAB_BACKEND_URL` | yes | The backend the driver resolves the definition from and streams events/preview/status back to. | — |
 //! | `TCAB_JOB_ID` | yes | The id of the job this driver executes (the `POST /jobs/{id}/…` path key). | — |
-//! | `TCAB_JOB_TOKEN` | yes | The per-job bearer token authenticating this driver's streaming calls. | — |
+//! | `TCAB_JOB_TOKEN` | yes | The per-job bearer token this driver presents on every backend call, reads included. | — |
 //! | `TCAB_RUN_REQUEST` | yes | The [`LaunchBody`] JSON the dispatcher claimed and passed in. | — |
 //! | `TCAB_DRIVER_RUNTIME` | no | How the run's sandbox container is started: `cli` (host Docker/Podman) or `kubernetes` (a sandbox pod per run via the API). | `cli` |
 //! | `TCAB_WORK_DIR` | no | Ephemeral scratch directory for the run's mountable inputs and produced tree. | `./.tcab-driver` |
@@ -77,8 +77,8 @@ pub struct Config {
     pub backend_url: String,
     /// The id of the job this driver executes (`TCAB_JOB_ID`).
     pub job_id: String,
-    /// The per-job bearer token authenticating the driver's streaming calls
-    /// (`TCAB_JOB_TOKEN`).
+    /// The per-job bearer token the driver presents on every backend call, reads
+    /// included (`TCAB_JOB_TOKEN`).
     pub job_token: String,
     /// The launch request the dispatcher passed in (`TCAB_RUN_REQUEST`, the
     /// claimed [`LaunchBody`] JSON), already parsed.

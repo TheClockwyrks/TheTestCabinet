@@ -17,7 +17,7 @@ import {
 import { LoadingState } from "../../../components/LoadingState";
 import type { RunRecord } from "@clockwyrks/run-record";
 import type { StoredReview } from "../../../../client/types";
-import { useAuth } from "../../../../client/auth";
+import { useIdentity } from "../../../../client/identity";
 import { useRunsRuntime } from "../../../runtime/runsRuntime";
 import { RunDetailLayout } from "../../../layouts/runs/RunDetailLayout";
 import { RunReviewEditor } from "./RunReviewEditor";
@@ -91,7 +91,7 @@ function FailureNote({ presentation }: { presentation: RunStatePresentation }) {
 export function RunVerdictPage() {
   const gallery = useGalleryData();
   const { canExecute, localIds } = gallery;
-  const { account } = useAuth();
+  const { email } = useIdentity();
   const runtime = useRunsRuntime();
   return (
     <RunDetailLayout tab="verdict">
@@ -149,11 +149,11 @@ export function RunVerdictPage() {
           );
         }
 
-        // The signed-in account already has its own review on this run — so the
+        // The signed-in identity already has its own review on this run — so the
         // editor is offered to revise it even on a run this worker did not produce
         // locally (a reviewer can correct their own published review from anywhere).
         const ownsReview =
-          !!account && reviews.some((r) => r.reviewerId === account.id);
+          email !== null && reviews.some((r) => r.reviewer === email);
         return (
           <div className={styles.tabStack}>
             {/* Known issues recorded against this run's exact version, scoped to
@@ -176,7 +176,7 @@ export function RunVerdictPage() {
                 <FailureNote presentation={presentation} />
               ) : // A produced, not-yet-published run the active worker owns is
               // reviewed and published here. The editor is also offered when the
-              // signed-in account already has a review to revise (correcting one's
+              // signed-in identity already has a review to revise (correcting one's
               // own review, even on a run this worker did not produce). Otherwise the
               // review shows read-only.
               canExecute && (localIds.has(run.id) || ownsReview) ? (

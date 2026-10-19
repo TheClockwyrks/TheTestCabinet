@@ -15,8 +15,6 @@ path = "src/main.rs"
 # halves the library holds for it (the remote backend, the asset-reference builder,
 # the Pages build deploy helper) and the static code analyzer `tcab analyze` runs.
 test-cabinet-driver = { path = "../driver" }
-# The account wire types the auth-service client (`accounts`) speaks.
-test-cabinet-contracts = { workspace = true }
 # The R2 client `tcab publish-asset-reference` uploads a reference with. An interim
 # edge onto the artifacts service's crate, until the upload goes through its API.
 test-cabinet-artifacts = { path = "../artifacts" }
@@ -36,9 +34,6 @@ anstream = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 dotenvy = { workspace = true }
-# The auth-service client (`accounts`).
-reqwest = { workspace = true }
-http = { workspace = true }
 
 [lints]
 workspace = true

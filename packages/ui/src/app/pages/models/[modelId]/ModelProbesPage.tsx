@@ -72,7 +72,7 @@ function ProbesContent({ model }: { model: ModelSummary }) {
 
   return (
     <div className={styles.page}>
-      {actions ? (
+      {actions && (
         <ProbeTriggerForm
           model={model}
           actions={actions}
@@ -81,11 +81,6 @@ function ProbesContent({ model }: { model: ModelSummary }) {
             setPickedId(probe.id);
           }}
         />
-      ) : (
-        <p className={styles.notice}>
-          Sign in to run probes, using the account control in the top bar. The
-          probe history below is public.
-        </p>
       )}
 
       <section className={styles.section}>

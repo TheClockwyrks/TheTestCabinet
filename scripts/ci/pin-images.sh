@@ -8,7 +8,7 @@
 # stands fails to pull. This rewrites deployments/k8s/overlays/<overlay>/kustomization.yaml
 # so that it names the commit being deployed instead:
 #
-#   - each of the eight entries of its `images:` block gets `newTag: "<commit>"`;
+#   - each of the seven entries of its `images:` block gets `newTag: "<commit>"`;
 #   - a patch of the dispatcher, between two marker comments at the head of its
 #     `patches:` list, points TCAB_DRIVER_IMAGE and TCAB_PUBLISHER_IMAGE at the
 #     driver and publisher images of that commit, and TCAB_CONTAINER_REGISTRY and
@@ -34,10 +34,10 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/tcab-lib.sh"
 
 readonly USAGE="usage: scripts/ci/pin-images.sh <staging|prod> <commit>"
 
-# The eight images a Test Cabinet deployment runs or starts, as the base names
+# The seven images a Test Cabinet deployment runs or starts, as the base names
 # them after its REPLACE_REGISTRY/ placeholder.
-readonly TCAB_IMAGES=(tcab-backend tcab-auth-service tcab-dispatcher tcab-driver
-	tcab-artifacts tcab-arena tcab-publisher tcab-web)
+readonly TCAB_IMAGES=(tcab-backend tcab-dispatcher tcab-driver tcab-artifacts
+	tcab-arena tcab-publisher tcab-web)
 
 if [[ $# -ne 2 ]]; then
 	echo "$USAGE" >&2
@@ -112,7 +112,7 @@ YAML
 # reformats: top-level keys start in column zero, and each entry of `images:` is a
 # `  - name:` line followed by its `    newName:` and `    newTag:` lines.
 #   - The marked patch of an earlier run is dropped wherever it is.
-#   - Inside `images:`, the newTag of each entry whose name is one of the eight
+#   - Inside `images:`, the newTag of each entry whose name is one of the seven
 #     becomes the commit; the pinned names are printed to stderr for the count.
 #   - The marked patch is inserted after the `patches:` line.
 awk -v commit="$COMMIT" -v begin="  ${BEGIN_MARK}" -v end="  ${END_MARK}" \

@@ -67,7 +67,7 @@ trap 'rm -rf "$tmp"' EXIT
 
 COMMIT="0123456789abcdef0123456789abcdef01234567"
 PREVIOUS="89abcdef0123456789abcdef0123456789abcdef"
-IMAGES="tcab-backend tcab-auth-service tcab-dispatcher tcab-driver tcab-artifacts tcab-arena tcab-publisher tcab-web"
+IMAGES="tcab-backend tcab-dispatcher tcab-driver tcab-artifacts tcab-arena tcab-publisher tcab-web"
 
 fresh_repo() {
 	local repo image
@@ -167,7 +167,7 @@ out="$(run "$repo" THE_TEST_CABINET_RESOURCE_GROUP=case-rg THE_TEST_CABINET_CLUS
 status=$?
 check_equal "passes" 0 "$status"
 overlay="$(cat "$repo/deployments/k8s/overlays/staging/kustomization.yaml")"
-check_equal "pins all eight images in place" 8 "$(grep -c "newTag: \"${COMMIT}\"" <<<"$overlay")"
+check_equal "pins all seven images in place" 7 "$(grep -c "newTag: \"${COMMIT}\"" <<<"$overlay")"
 check_contains "adds the dispatcher's patch in place" "TCAB_PUBLISHER_IMAGE" "$overlay"
 check_equal "hands the cluster two commands" 2 "$(wc -l <"$repo/az.log")"
 check_contains "reads first" "--command sh read-backend-commit.sh" "$(sed -n 1p "$repo/az.log")"

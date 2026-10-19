@@ -6,8 +6,8 @@
 //! by **backend run id**, not by a local run directory:
 //!
 //! - **review** submits a review (from a locally authored `writeup.md`) for a
-//!   produced run, attributed to the logged-in account. A run may carry many
-//!   reviews, one per account. The writeup's frontmatter carries the review's
+//!   produced run, attributed to the caller's identity. A run may carry many
+//!   reviews, one per identity. The writeup's frontmatter carries the review's
 //!   `rating.<domain>` lines (functional, legacy runs) and/or the single run-wide
 //!   `aesthetic: <tier>` line (validator-rated runs; the contracts' [`Writeup`] parser
 //!   still reads a legacy file's per-domain `aesthetic.<domain>` lines, collapsed
@@ -25,7 +25,7 @@
 //!   self-review (the run-wide aesthetic tier, plus any verdict overrides) is
 //!   submitted first.
 //!
-//! Both require a logged-in account (`tcab login`) and `TCAB_BACKEND_URL`.
+//! Both require a bearer (`TCAB_TOKEN`) and `TCAB_BACKEND_URL`.
 
 use std::path::{Path, PathBuf};
 
@@ -38,7 +38,7 @@ use crate::cli::{PublishArgs, ReviewArgs};
 use crate::config;
 
 /// `tcab review` — submit a review (from a locally authored `writeup.md`) for a
-/// stored run, attributed to the logged-in account.
+/// stored run, attributed to the caller's identity.
 pub async fn review(args: ReviewArgs) -> Result<()> {
     let writeup_path = args
         .writeup
@@ -253,8 +253,8 @@ fn report_result(run_id: &str, result: &PublishResult) -> Result<()> {
     }
 }
 
-/// Build an [`HttpBackendClient`] for the configured backend, carrying the stored
-/// login token. Errors clearly when the backend URL or login is missing.
+/// Build an [`HttpBackendClient`] for the configured backend, carrying the
+/// `TCAB_TOKEN` bearer. Errors clearly when the backend URL or token is missing.
 fn backend_client() -> Result<HttpBackendClient> {
     let backend = config::backend_url().context(
         "TCAB_BACKEND_URL is not set; set it to the backend's address (for example \

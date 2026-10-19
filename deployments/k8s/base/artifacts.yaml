@@ -5,13 +5,13 @@
 # This is a DATA-plane peer, deliberately separate from the control-plane backend:
 # the driver UPLOADS each run's tree here before reporting terminal status, and the
 # console READS it here. Artifact bytes never transit the backend. It binds
-# 0.0.0.0:8790 and is reached over the cluster network (and, for the console, via
-# the same private boundary the other services sit behind — TCAB_ARTIFACTS_PUBLIC_URL
-# on the backend is what the console resolves links against).
+# 0.0.0.0:8790 and is reached over the cluster network, and by the console through
+# the edge at `/artifacts/` of the environment's origin, where it verifies the Access
+# assertion (TCAB_ACCESS_TEAM_DOMAIN / TCAB_ACCESS_AUDIENCE, set by the staging and
+# prod overlays' patch-access.yaml; unset locally).
 #
 # It needs NO Kubernetes API access — it only talks HTTP to the backend (to verify
-# a driver's per-job upload token) and to the auth service (to gate a reviewer's
-# read of a pre-publish run). It does need durable storage: a single PVC mounted at
+# a driver's per-job upload token). It does need durable storage: a single PVC mounted at
 # TCAB_ARTIFACTS_ROOT. Single replica + ReadWriteOnce, because a local-disk store is
 # single-node; point it at an object store (R2) later to scale out and drop the PVC.
 apiVersion: v1
@@ -108,8 +108,7 @@ spec:
             - name: TCAB_ARTIFACTS_ROOT
               value: "/artifacts"
             # The backend it forwards a driver's per-job token to for upload auth.
-            # (Reads are ungated — browser-loaded media carries no token — so the
-            # service needs no auth-service URL.)
+            # A browser's read carries the edge's Access assertion instead.
             - name: TCAB_BACKEND_URL
               value: "http://tcab-backend:8787"
             # The shared control-plane service token a run-tree delete must present.

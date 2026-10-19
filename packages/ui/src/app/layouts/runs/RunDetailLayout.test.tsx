@@ -97,8 +97,7 @@ function renderLayout(
     record: record(testType, harnessSlug, codeAnalysis, engine),
     reviews: [
       {
-        reviewerId: "u1",
-        reviewer: { userId: "u1", username: "u1", displayName: "U One" },
+        reviewer: "u1@example.com",
         ratings: [{ domain: "approach", rating: "great" }],
         checklist: [],
         writeup: "Solid.",

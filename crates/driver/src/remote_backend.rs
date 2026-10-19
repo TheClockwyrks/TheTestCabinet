@@ -6,7 +6,8 @@
 //! helper pod inside the cluster and returns once it has finished, with everything the
 //! command printed. Every operation here is one such command, which execs into the
 //! backend pod's `ingest` sidecar and talks to the backend over localhost, the only
-//! traffic the cluster's network policy admits.
+//! traffic the cluster's network policy admits, presenting the backend's shared
+//! service token the sidecar carries.
 //!
 //! - [`RemoteBackend::ingest`] refreshes the sidecar's checkout, with its submodules,
 //!   to the tip of the branch the target ingests, then posts `POST /ingest` asking
@@ -49,6 +50,11 @@ const CHECKOUT: &str = "/state/checkout";
 
 /// The address the backend answers at from inside its pod.
 const BACKEND: &str = "http://127.0.0.1:8787";
+
+/// The header every call from the sidecar presents: the backend's shared service
+/// token, which the sidecar carries in its environment. Ingest and the
+/// reference-build writes take it, and every read needs an identity.
+const AUTHORIZATION: &str = "-H \"authorization: Bearer $TCAB_BACKEND_SERVICE_TOKEN\"";
 
 /// The start of a logged line carrying one stored version's detail.
 const DETAIL_MARKER: &str = "tcab-detail";
@@ -595,7 +601,7 @@ impl RemoteBackend {
              export GIT_TERMINAL_PROMPT=0\n\
              {refresh}\n\
              echo \"ingest: triggering the ingest\"\n\
-             curl -sS -N --fail-with-body -X POST {BACKEND}/ingest \
+             curl -sS -N --fail-with-body -X POST {BACKEND}/ingest {AUTHORIZATION} \
              -H \"content-type: application/json\" -H \"accept: application/x-ndjson\" \
              --data \"$2\"\n\
              echo",
@@ -615,9 +621,11 @@ impl RemoteBackend {
     pub fn detail_script(&self, versions: &[(String, String)]) -> String {
         let inner = format!(
             "for path in \"$@\"; do \
-             status=$(curl -sS -o /tmp/tcab-detail -w \"%{{http_code}}\" \"{BACKEND}/test-suites/$path\") || status=000; \
+             out=$(mktemp); \
+             status=$(curl -sS -o \"$out\" -w \"%{{http_code}}\" {AUTHORIZATION} \"{BACKEND}/test-suites/$path\") || status=000; \
              printf \"{DETAIL_MARKER} %s %s \" \"$path\" \"$status\"; \
-             tr -d \"\\n\" < /tmp/tcab-detail 2>/dev/null || true; \
+             tr -d \"\\n\" < \"$out\" 2>/dev/null || true; \
+             rm -f \"$out\"; \
              echo; \
              done"
         );
@@ -632,11 +640,13 @@ impl RemoteBackend {
     /// The command posting each attached archive.
     pub fn upload_script(&self, archives: &[ReferenceBuildArchive]) -> String {
         let inner = format!(
-            "status=$(curl -sS -o /tmp/tcab-upload -w \"%{{http_code}}\" -X PUT \
+            "out=$(mktemp); \
+             status=$(curl -sS -o \"$out\" -w \"%{{http_code}}\" -X PUT {AUTHORIZATION} \
              -H \"content-type: application/gzip\" --data-binary @- \
              \"{BACKEND}/suites/$2/versions/$3/reference-builds/$4\") || status=000; \
              printf \"{UPLOAD_MARKER} %s %s \" \"$1\" \"$status\"; \
-             tr -d \"\\n\" < /tmp/tcab-upload 2>/dev/null || true; \
+             tr -d \"\\n\" < \"$out\" 2>/dev/null || true; \
+             rm -f \"$out\"; \
              echo"
         );
         let mut script = String::new();

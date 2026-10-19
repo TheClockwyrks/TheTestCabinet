@@ -1,7 +1,6 @@
 import type { GgSavedAgentInput } from "@clockwyrks/backend-api/gg";
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router";
-import { useAuth } from "../../../client/auth";
 import { useBackend } from "../../../client/context";
 import type { Model } from "../../../client/types";
 import { BackChevron } from "../../components/BackChevron";
@@ -79,7 +78,6 @@ export function GgAgentEditPage() {
   const [params] = useSearchParams();
   // `?from=<id>` seeds a new agent from an existing one — the list page's Duplicate.
   const from = params.get("from");
-  const { token } = useAuth();
   const { client: backend } = useBackend();
   const navigate = useNavigate();
 
@@ -94,7 +92,7 @@ export function GgAgentEditPage() {
   const [leaving, setLeaving] = useState(false);
 
   useEffect(() => {
-    if (!backend || !token) {
+    if (!backend) {
       setLoading(false);
       return;
     }
@@ -110,7 +108,7 @@ export function GgAgentEditPage() {
       seed("", emptyAgentDraft());
       setLoading(false);
     } else {
-      Promise.resolve(backend.listGgAgents?.(token) ?? [])
+      Promise.resolve(backend.listGgAgents?.() ?? [])
         .then((agents) => {
           if (!active) return;
           const found = agents.find((a) => a.id === (editing ? agentId : from));
@@ -148,7 +146,7 @@ export function GgAgentEditPage() {
     return () => {
       active = false;
     };
-  }, [backend, token, editing, agentId, from]);
+  }, [backend, editing, agentId, from]);
 
   const agent = draft.agents[0];
   const structuralError = draftSaveError(draft);
@@ -167,7 +165,7 @@ export function GgAgentEditPage() {
   }, [dirty]);
 
   async function onSave() {
-    if (!token || !savable) return;
+    if (!savable) return;
     // Committing winds back what the types this agent was not saved under were
     // configured with, exactly as saving an agent onto a configuration does.
     const committed: GgConfigDraft = {
@@ -184,9 +182,9 @@ export function GgAgentEditPage() {
     setError(null);
     try {
       if (editing && agentId && backend?.updateGgAgent) {
-        await backend.updateGgAgent(agentId, input, token);
+        await backend.updateGgAgent(agentId, input);
       } else if (backend?.createGgAgent) {
-        await backend.createGgAgent(input, token);
+        await backend.createGgAgent(input);
       }
       navigate(routes.accountGgAgents());
     } catch (e) {
@@ -195,22 +193,19 @@ export function GgAgentEditPage() {
     }
   }
 
-  const headerActions =
-    !token || loading ? null : (
-      <div className={styles.detailActions}>
-        {structuralError && (
-          <span className={exec.muted}>{structuralError}</span>
-        )}
-        <button
-          type="button"
-          className={exec.primary}
-          onClick={onSave}
-          disabled={!savable}
-        >
-          {busy ? "Saving…" : editing ? "Save agent" : "Create agent"}
-        </button>
-      </div>
-    );
+  const headerActions = loading ? null : (
+    <div className={styles.detailActions}>
+      {structuralError && <span className={exec.muted}>{structuralError}</span>}
+      <button
+        type="button"
+        className={exec.primary}
+        onClick={onSave}
+        disabled={!savable}
+      >
+        {busy ? "Saving…" : editing ? "Save agent" : "Create agent"}
+      </button>
+    </div>
+  );
 
   const header = (
     <header className={styles.detailHeader}>
@@ -229,17 +224,6 @@ export function GgAgentEditPage() {
       {headerActions}
     </header>
   );
-
-  if (!token) {
-    return (
-      <PageLayout>
-        {header}
-        <p className={`${exec.notice} ${exec.warn}`}>
-          Sign in to author gg agents. They are saved to your account.
-        </p>
-      </PageLayout>
-    );
-  }
 
   return (
     <PageLayout>

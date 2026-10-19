@@ -3,7 +3,7 @@
 #
 # Each case pins a temporary copy of this checkout's deployments/k8s, named to the
 # script by TCAB_K8S_ROOT, so the checkout itself is never touched. The subject is
-# the kustomization it writes: all eight images at the commit, the dispatcher's
+# the kustomization it writes: all seven images at the commit, the dispatcher's
 # patch once however often it runs, and its refusals.
 #
 # The script ends by rendering the pinned overlay with kubectl. Where kubectl is
@@ -77,13 +77,13 @@ pin() { # tree overlay commit
 }
 
 for overlay in staging prod; do
-	echo "--- ${overlay}: eight pins ---"
+	echo "--- ${overlay}: seven pins ---"
 	tree="$(fresh_tree)"
 	out="$(pin "$tree" "$overlay" "$COMMIT")"
 	status=$?
 	check_equal "passes" 0 "$status"
 	kustomization="$(cat "$tree/overlays/${overlay}/kustomization.yaml")"
-	check_equal "all eight images are at the commit" 8 "$(grep -c "^    newTag: \"${COMMIT}\"$" <<<"$kustomization")"
+	check_equal "all seven images are at the commit" 7 "$(grep -c "^    newTag: \"${COMMIT}\"$" <<<"$kustomization")"
 	check_equal "none is left unpinned" 0 "$(grep -c 'newTag: unpinned' <<<"$kustomization")"
 	check_contains "the dispatcher's driver image is at the commit" \
 		"value: \"testcabinet.azurecr.io/tcab-driver:${COMMIT}\"" "$kustomization"
@@ -104,7 +104,7 @@ for overlay in staging prod; do
 		"$(cat "$tree/overlays/${overlay}/kustomization.yaml")"
 	pin "$tree" "$overlay" "$OTHER" >/dev/null
 	kustomization="$(cat "$tree/overlays/${overlay}/kustomization.yaml")"
-	check_equal "a run with another commit moves all eight" 8 "$(grep -c "^    newTag: \"${OTHER}\"$" <<<"$kustomization")"
+	check_equal "a run with another commit moves all seven" 7 "$(grep -c "^    newTag: \"${OTHER}\"$" <<<"$kustomization")"
 	check_equal "and leaves the first commit nowhere" 0 "$(grep -c "$COMMIT" <<<"$kustomization")"
 	check_equal "the dispatcher's patch is there once" 1 \
 		"$(grep -c '^  # BEGIN scripts/ci/pin-images.sh' <<<"$kustomization")"
@@ -129,7 +129,7 @@ status=$?
 check_failed "fails" "$status"
 check_contains "names the overlays it pins" "expected staging or prod" "$out"
 
-echo "--- an images block missing one of the eight ---"
+echo "--- an images block missing one of the seven ---"
 
 tree="$(fresh_tree)"
 sed -i '/REPLACE_REGISTRY\/tcab-arena$/,+2d' "$tree/overlays/prod/kustomization.yaml"
@@ -137,14 +137,14 @@ before="$(cat "$tree/overlays/prod/kustomization.yaml")"
 out="$(pin "$tree" prod "$COMMIT")"
 status=$?
 check_failed "fails" "$status"
-check_contains "counts the images it found" "names 7 of the 8 Test Cabinet images" "$out"
+check_contains "counts the images it found" "names 6 of the 7 Test Cabinet images" "$out"
 check_equal "leaves the overlay as it was" "$before" "$(cat "$tree/overlays/prod/kustomization.yaml")"
 
 echo "--- an image the pin does not reach ---"
 
 if [ -n "$real_kubectl" ]; then
 	tree="$(fresh_tree)"
-	# A ninth image the overlay names at `unpinned`, which the eight do not include.
+	# An eighth image the overlay names at `unpinned`, which the seven do not include.
 	cat >>"$tree/overlays/staging/kustomization.yaml" <<'YAML'
   - target: { kind: Deployment, name: tcab-arena }
     patch: |-

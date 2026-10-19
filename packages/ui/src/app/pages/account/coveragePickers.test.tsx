@@ -27,8 +27,8 @@ import exec from "../runs/RunExec.module.scss";
 
 // The configurations the account has saved, whether they are still loading, and why
 // the read failed — mutable so each test can put the picker in the state it is about
-// (signed out, still loading, nothing saved, unreadable, one configuration with two
-// launch slots).
+// (still loading, nothing saved, unreadable, one configuration with two launch
+// slots).
 let ggState: {
   options: GgConfigOption[];
   loading: boolean;
@@ -38,13 +38,6 @@ let ggState: {
   loading: false,
   error: null,
 };
-// The signed-in account's token, or null. A gg configuration belongs to an account, so
-// this is the difference between "you have none" and "we cannot know".
-let authToken: string | null = "t";
-
-vi.mock("../../../client/auth", () => ({
-  useAuth: () => ({ token: authToken }),
-}));
 vi.mock("../runs/gg/useGgConfigs", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("../runs/gg/useGgConfigs")>();
@@ -357,7 +350,6 @@ function typeModel(slot: string, id: string) {
 // were not askable for on this surface at all.
 describe("ComboPicker gg mode", () => {
   beforeEach(() => {
-    authToken = "t";
     ggState = { options: [ggOption()], loading: false, error: null };
   });
 
@@ -509,14 +501,6 @@ describe("ComboPicker gg mode", () => {
     });
   });
 
-  it("says a configuration belongs to an account rather than offering an empty picker", () => {
-    authToken = null;
-    renderPicker();
-    chooseGgMode();
-    expect(screen.getByText(/Sign in to plan runs/)).toBeTruthy();
-    expect(screen.queryByLabelText("gg configuration")).toBeNull();
-  });
-
   it("says so when the account has saved none", () => {
     ggState = { options: [], loading: false, error: null };
     renderPicker();
@@ -618,7 +602,6 @@ describe("ComboPicker gg mode", () => {
 // never as the empty model id storage keeps for it.
 describe("ComboPicker pills", () => {
   beforeEach(() => {
-    authToken = "t";
     ggState = { options: [ggOption()], loading: false, error: null };
   });
 
@@ -636,7 +619,6 @@ describe("ComboPicker pills", () => {
 // block, a divider and a Clear all per configuration.
 describe("ComboPicker gg members", () => {
   beforeEach(() => {
-    authToken = "t";
     ggState = { options: [ggOption()], loading: false, error: null };
   });
 

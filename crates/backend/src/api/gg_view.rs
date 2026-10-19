@@ -2,7 +2,7 @@
 //! per-account objects that sit over the deployment-wide analysis corpus.
 //!
 //! The asymmetry is deliberate and is the whole model: a gg run belongs to the
-//! deployment (the [query endpoints](super::gg_query) take a bearer token and ignore
+//! deployment (the [query endpoints](super::gg_query) take a person's assertion and ignore
 //! whose it is, exactly as the run listings and the coverage matrix already treat
 //! runs), while a *view* over the corpus — a question worth keeping, a board worth
 //! opening every morning — is personal. So these follow the
@@ -39,7 +39,7 @@ use axum::http::StatusCode;
 use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
 
-use crate::auth::AuthUser;
+use crate::auth::Person;
 use crate::error::ApiError;
 
 use super::AppState;
@@ -83,11 +83,11 @@ pub const MIN_PANEL_WIDTH: u32 = 1;
 /// `GET /gg/saved-queries` — every saved query the token account owns, by name.
 pub async fn list_saved_queries(
     State(state): State<AppState>,
-    user: AuthUser,
+    user: Person,
 ) -> Result<Json<Vec<GgSavedQuery>>, ApiError> {
     let saved = state
         .db
-        .list_gg_saved_queries(&user.0.id)
+        .list_gg_saved_queries(&user.0)
         .await
         .map_err(ApiError::from)?;
     Ok(Json(saved))
@@ -102,12 +102,12 @@ pub async fn list_saved_queries(
 /// link's meaning depend on what else the account happens to have saved.
 pub async fn get_saved_query(
     State(state): State<AppState>,
-    user: AuthUser,
+    user: Person,
     Path(id): Path<String>,
 ) -> Result<Json<GgSavedQuery>, ApiError> {
     state
         .db
-        .get_gg_saved_query(&user.0.id, &id)
+        .get_gg_saved_query(&user.0, &id)
         .await
         .map_err(ApiError::from)?
         .map(Json)
@@ -117,13 +117,13 @@ pub async fn get_saved_query(
 /// `POST /gg/saved-queries` — save a query.
 pub async fn create_saved_query(
     State(state): State<AppState>,
-    user: AuthUser,
+    user: Person,
     Json(input): Json<GgSavedQueryInput>,
 ) -> Result<Json<GgSavedQuery>, ApiError> {
     let saved = saved_query_from_input(new_id(), input, &now()?)?;
     state
         .db
-        .insert_gg_saved_query(&user.0.id, &saved)
+        .insert_gg_saved_query(&user.0, &saved)
         .await
         .map_err(ApiError::from)?;
     Ok(Json(saved))
@@ -133,14 +133,14 @@ pub async fn create_saved_query(
 /// not the caller's.
 pub async fn update_saved_query(
     State(state): State<AppState>,
-    user: AuthUser,
+    user: Person,
     Path(id): Path<String>,
     Json(input): Json<GgSavedQueryInput>,
 ) -> Result<Json<GgSavedQuery>, ApiError> {
     let saved = saved_query_from_input(id, input, &now()?)?;
     let updated = state
         .db
-        .update_gg_saved_query(&user.0.id, &saved)
+        .update_gg_saved_query(&user.0, &saved)
         .await
         .map_err(ApiError::from)?;
     if !updated {
@@ -154,12 +154,12 @@ pub async fn update_saved_query(
 /// the caller's.
 pub async fn delete_saved_query(
     State(state): State<AppState>,
-    user: AuthUser,
+    user: Person,
     Path(id): Path<String>,
 ) -> Result<StatusCode, ApiError> {
     let deleted = state
         .db
-        .delete_gg_saved_query(&user.0.id, &id)
+        .delete_gg_saved_query(&user.0, &id)
         .await
         .map_err(ApiError::from)?;
     if !deleted {
@@ -171,11 +171,11 @@ pub async fn delete_saved_query(
 /// `GET /gg/dashboards` — every dashboard the token account owns, by name.
 pub async fn list_dashboards(
     State(state): State<AppState>,
-    user: AuthUser,
+    user: Person,
 ) -> Result<Json<Vec<GgDashboard>>, ApiError> {
     let boards = state
         .db
-        .list_gg_dashboards(&user.0.id)
+        .list_gg_dashboards(&user.0)
         .await
         .map_err(ApiError::from)?;
     Ok(Json(boards))
@@ -185,12 +185,12 @@ pub async fn list_dashboards(
 /// without loading every board the account owns. 404 when the id is not the caller's.
 pub async fn get_dashboard(
     State(state): State<AppState>,
-    user: AuthUser,
+    user: Person,
     Path(id): Path<String>,
 ) -> Result<Json<GgDashboard>, ApiError> {
     state
         .db
-        .get_gg_dashboard(&user.0.id, &id)
+        .get_gg_dashboard(&user.0, &id)
         .await
         .map_err(ApiError::from)?
         .map(Json)
@@ -200,13 +200,13 @@ pub async fn get_dashboard(
 /// `POST /gg/dashboards` — save a dashboard.
 pub async fn create_dashboard(
     State(state): State<AppState>,
-    user: AuthUser,
+    user: Person,
     Json(input): Json<GgDashboardInput>,
 ) -> Result<Json<GgDashboard>, ApiError> {
     let board = dashboard_from_input(new_id(), input, &now()?)?;
     state
         .db
-        .insert_gg_dashboard(&user.0.id, &board)
+        .insert_gg_dashboard(&user.0, &board)
         .await
         .map_err(ApiError::from)?;
     Ok(Json(board))
@@ -216,14 +216,14 @@ pub async fn create_dashboard(
 /// the caller's.
 pub async fn update_dashboard(
     State(state): State<AppState>,
-    user: AuthUser,
+    user: Person,
     Path(id): Path<String>,
     Json(input): Json<GgDashboardInput>,
 ) -> Result<Json<GgDashboard>, ApiError> {
     let board = dashboard_from_input(id, input, &now()?)?;
     let updated = state
         .db
-        .update_gg_dashboard(&user.0.id, &board)
+        .update_gg_dashboard(&user.0, &board)
         .await
         .map_err(ApiError::from)?;
     if !updated {
@@ -236,12 +236,12 @@ pub async fn update_dashboard(
 /// caller's.
 pub async fn delete_dashboard(
     State(state): State<AppState>,
-    user: AuthUser,
+    user: Person,
     Path(id): Path<String>,
 ) -> Result<StatusCode, ApiError> {
     let deleted = state
         .db
-        .delete_gg_dashboard(&user.0.id, &id)
+        .delete_gg_dashboard(&user.0, &id)
         .await
         .map_err(ApiError::from)?;
     if !deleted {

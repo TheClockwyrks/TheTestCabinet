@@ -374,13 +374,8 @@ fn job_summary_carries_when_the_run_started() {
 // --- Attribution ------------------------------------------------------------
 
 /// A signed-in account to attribute a launch to.
-fn account(id: &str) -> AuthUser {
-    AuthUser(crate::accounts::Account {
-        id: id.to_string(),
-        username: "reviewer".to_string(),
-        display_name: "Reviewer".to_string(),
-        picture_updated_at: None,
-    })
+fn account(id: &str) -> Person {
+    Person(id.to_string())
 }
 
 /// The launch request the attribution tests enqueue; the body itself is irrelevant

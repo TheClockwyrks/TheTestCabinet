@@ -1,13 +1,11 @@
 import type { Comparison } from "@clockwyrks/backend-api/comparison";
 import { useCallback, useEffect, useState } from "react";
-import { useAuth } from "../../client/auth";
 import { useOptionalBackend } from "../../client/context";
 import { useGalleryData } from "./galleryContext";
 
 export interface ComparisonsState {
-  /** The signed-in account's comparisons, each already fully aggregated by the
-   * backend (no separate stats fetch). Empty (not loading) when signed out or
-   * when the active transport can't reach the endpoint (the static site). */
+  /** The signed-in identity's comparisons, each already fully aggregated by the
+   * backend (no separate stats fetch); on the static site, the published set. */
   comparisons: Comparison[];
   loading: boolean;
   error: string | null;
@@ -15,14 +13,11 @@ export interface ComparisonsState {
   reload: () => Promise<void>;
 }
 
-// The comparisons this host shows. On a console (signed in) it is the account's
-// saved comparisons, fetched per-account from `GET /comparisons` (mirroring
-// `useGgConfigs`). On the read-only static site it is the published comparisons the
-// snapshot baked into the gallery ({@link GalleryDataInput.comparisons}) — public
-// and review-less, so no sign-in is involved. A console signed out has neither and
-// simply reports none (the list page shows a sign-in prompt).
+// The comparisons this host shows. On a console it is the signed-in identity's
+// saved comparisons, fetched from `GET /comparisons` (mirroring `useGgConfigs`). On
+// the read-only static site it is the published comparisons the snapshot baked
+// into the gallery ({@link GalleryDataInput.comparisons}) — public and review-less.
 export function useComparisons(): ComparisonsState {
-  const { token } = useAuth();
   // Optional, not asserted: this hook backs the Comparisons tab, which renders on
   // the static site too — and that host mounts no backend provider at all. The
   // load path below already treats a backend that cannot list comparisons as
@@ -35,13 +30,13 @@ export function useComparisons(): ComparisonsState {
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async (): Promise<Comparison[]> => {
-    // A signed-in console fetches the account's comparisons; a read-only host
-    // (static site) reads the published set from the gallery instead.
-    if (backend?.listComparisons && token) {
-      return backend.listComparisons(token);
+    // A console fetches the identity's comparisons; a read-only host (static site)
+    // reads the published set from the gallery instead.
+    if (backend?.listComparisons) {
+      return backend.listComparisons();
     }
     return publishedComparisons ?? [];
-  }, [backend, token, publishedComparisons]);
+  }, [backend, publishedComparisons]);
 
   useEffect(() => {
     let active = true;

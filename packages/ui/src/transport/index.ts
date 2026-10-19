@@ -1,11 +1,9 @@
 // `@clockwyrks/ui/transport` — the shared HTTP transports the web console uses.
 //
-// The web console talks to the backend over one HTTP API (the backend serves the
-// catalog and published data, owns the run queue, and proxies the artifact/arena
-// services). These transports are the single implementation of that wire
-// protocol.
+// The web console talks to the backend, the artifacts service and the arena
+// service, each at a path of its own origin (`/api`, `/artifacts`, `/arena`).
+// These transports are the single implementation of that wire protocol.
 export {
-  bearer,
   getJson,
   getJsonStreamed,
   getNdjson,
@@ -18,11 +16,13 @@ export {
 export {
   createBackendExec,
   createHttpBackend,
-  fetchArenaUrl,
-  fetchArtifactsUrl,
-  fetchGrafanaUrl,
-  fetchSnapshotUrl,
   referenceMediaKey,
 } from "./httpBackend";
-export type { ArtifactsUrlSource } from "./httpBackend";
+export {
+  ARENA_PATH,
+  ARTIFACTS_PATH,
+  currentHostname,
+  grafanaUrlForHost,
+  snapshotUrlForHost,
+} from "./origin-services";
 export { createHttpArena } from "./httpArena";

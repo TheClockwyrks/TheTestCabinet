@@ -1,11 +1,11 @@
 //! The `tcab-arena` binary entrypoint.
 //!
 //! Resolves configuration from the environment, builds the service, and serves
-//! the Axum router until terminated. Like the backend, auth, and artifact services
-//! there is no app-level auth guarding the *process* — bind to a private-network
-//! interface via `TCAB_ARENA_BIND` in production. The arena's run endpoints are
-//! deliberately unauthenticated behind that boundary (faithful to the worker the
-//! console posts them token-less to).
+//! the Axum router until terminated. Every route but the health probe needs an
+//! identity: the Access assertion every request through the edge carries, verified
+//! against `TCAB_ACCESS_TEAM_DOMAIN` and `TCAB_ACCESS_AUDIENCE` (see
+//! [`test_cabinet_arena::auth`]). A configuration naming only one of the two
+//! `TCAB_ACCESS_*` variables is refused at startup.
 
 use std::process::ExitCode;
 
@@ -31,10 +31,17 @@ async fn main() -> ExitCode {
         }
     };
 
-    let config = Config::from_env();
+    let config = match Config::from_env() {
+        Ok(config) => config,
+        Err(err) => {
+            eprintln!("configuration error: {err}");
+            return ExitCode::FAILURE;
+        }
+    };
     tracing::info!(
         backend = %config.backend_url,
         max_concurrent = config.max_concurrent_matches,
+        verifies_access = config.access.is_some(),
         "arena service configuration resolved"
     );
 

@@ -7,9 +7,9 @@ import type {
   WorkersContextValue,
 } from "@clockwyrks/ui/client";
 import {
+  ARTIFACTS_PATH,
   createBackendExec,
   createHttpBackend,
-  fetchArtifactsUrl,
 } from "@clockwyrks/ui/transport";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
@@ -112,73 +112,26 @@ export function useBackendConnection(): BackendContextValue {
 // non-removable entry, no list, no per-pod registration, no `tcab.web.workers`
 // storage). Add/remove are absent — there is nothing to add.
 //
-// A pre-publish run's build and media live behind the separate artifact service,
-// whose base URL the backend reports at `GET /config`. We fetch it once per
-// backend so the execution client can resolve those root-relative links; it is
-// `null` (links left unresolved) until the fetch resolves or when no artifact
-// service is configured.
+// A pre-publish run's build and media live behind the separate artifacts service,
+// served at `/artifacts` of the console's own origin (`ARTIFACTS_PATH`), so the
+// execution client resolves those root-relative links against that path.
 export function useExecConnection(
   backendUrl: string | null,
 ): WorkersContextValue {
-  // Auth service URL: the deployment's runtime config (injected /config.js) is
-  // preferred over the build-time VITE_AUTH_URL, then falls back to the backend
-  // URL (the single-box dev setup where the backend also fronts auth).
-  const authUrl = backendUrl
-    ? (globalThis.__TCAB_CONFIG__?.authUrl ??
-      import.meta.env.VITE_AUTH_URL ??
-      backendUrl)
-    : null;
-
-  // Resolve the artifact service's base URL from the backend's `/config` whenever
-  // the backend changes. Best-effort — an unreachable backend leaves it null, so
-  // pre-publish links stay unresolved (today's behavior). The in-flight promise is
-  // kept, not just the value it lands on: a consumer that snapshots the URL into
-  // fetched data has to await it, since re-rendering with the value later cannot
-  // correct what it already stored (see `resolveBuild`).
-  const artifactsSettled = useMemo(
-    () => (backendUrl ? fetchArtifactsUrl(backendUrl) : Promise.resolve(null)),
-    [backendUrl],
-  );
-
-  // The resolved URL is kept with the promise it came from, so a backend switch
-  // reads as "not resolved yet" until the new backend answers.
-  const [resolved, setResolved] = useState<{
-    readonly from: Promise<string | null>;
-    readonly url: string | null;
-  } | null>(null);
-  useEffect(() => {
-    const controller = new AbortController();
-    void (async () => {
-      // Never rejects: an unreachable backend resolves null.
-      const url = await artifactsSettled;
-      if (!controller.signal.aborted)
-        setResolved({ from: artifactsSettled, url });
-    })();
-    return () => {
-      controller.abort();
-    };
-  }, [artifactsSettled]);
-  const artifactsUrl =
-    resolved?.from === artifactsSettled ? resolved.url : null;
-
   const worker = useMemo<WorkerHandle | null>(
     () =>
-      backendUrl && authUrl
+      backendUrl
         ? {
             id: "backend",
             label: "Backend",
             url: backendUrl,
-            client: createBackendExec(backendUrl, authUrl, {
-              current: artifactsUrl,
-              settled: artifactsSettled,
-            }),
+            client: createBackendExec(backendUrl, ARTIFACTS_PATH),
             identity: { url: backendUrl, version: null, backendId: backendUrl },
             // The execution path *is* the backend, so it trivially matches it.
             backendMatch: "match",
           }
         : null,
-    // Rebuild when the backend, auth URL, or resolved artifacts URL changes.
-    [backendUrl, authUrl, artifactsUrl, artifactsSettled],
+    [backendUrl],
   );
 
   const workers = useMemo(() => (worker ? [worker] : []), [worker]);

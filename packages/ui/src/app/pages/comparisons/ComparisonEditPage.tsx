@@ -7,7 +7,6 @@ import type {
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router";
 import type { HarnessSlug } from "@clockwyrks/run-record";
-import { useAuth } from "../../../client/auth";
 import { useBackend } from "../../../client/context";
 import type { Model } from "../../../client/types";
 import { PageLayout } from "../../components/PageLayout";
@@ -79,7 +78,6 @@ function emptyArm(kind: ArmKind): ArmDraft {
 export function ComparisonEditPage() {
   const { id } = useParams();
   const editing = Boolean(id);
-  const { token } = useAuth();
   const { client: backend } = useBackend();
   const navigate = useNavigate();
   const testCaseName = useTestCaseName();
@@ -150,14 +148,14 @@ export function ComparisonEditPage() {
   // Load the existing comparison once the catalog is ready to accept a
   // preselected case (edit mode only).
   useEffect(() => {
-    if (!editing || !id || !backend?.getComparison || !token) {
+    if (!editing || !id || !backend?.getComparison) {
       setLoading(false);
       return;
     }
     let active = true;
     setLoading(true);
     backend
-      .getComparison(id, token)
+      .getComparison(id)
       .then((c: Comparison) => {
         if (!active) return;
         setName(c.name);
@@ -192,7 +190,7 @@ export function ComparisonEditPage() {
     // sel's setters are stable across renders; only re-run when the identity of
     // what we're loading changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [editing, id, backend, token]);
+  }, [editing, id, backend]);
 
   // The gg configuration a row launches, and the model slots it still needs
   // bound — the deferred slots its agents name. Read straight off the picked
@@ -339,7 +337,7 @@ export function ComparisonEditPage() {
             : null;
 
   async function onSave() {
-    if (!token || !savable || nField.value === undefined) return;
+    if (!savable || nField.value === undefined) return;
     const input: ComparisonInput = {
       name: name.trim(),
       description: description.trim(),
@@ -363,38 +361,16 @@ export function ComparisonEditPage() {
     setError(null);
     try {
       if (editing && id && backend?.updateComparison) {
-        await backend.updateComparison(id, input, token);
+        await backend.updateComparison(id, input);
         navigate(routes.comparisonDetail(id));
       } else if (backend?.createComparison) {
-        const created = await backend.createComparison(input, token);
+        const created = await backend.createComparison(input);
         navigate(routes.comparisonDetail(created.id));
       }
     } catch (e) {
       setError(String(e));
       setBusy(false);
     }
-  }
-
-  if (!token) {
-    return (
-      <PageLayout>
-        <header className={styles.detailHeader}>
-          <div className={styles.detailTitleRow}>
-            <BackChevron
-              to={routes.runsComparisons()}
-              label="All comparisons"
-            />
-            <h1 className={styles.detailTitle}>
-              {editing ? "Comparison" : "New comparison"}
-            </h1>
-          </div>
-        </header>
-        <p className={`${exec.notice} ${exec.warn}`}>
-          Sign in to create or edit a comparison. Comparisons are saved to your
-          account.
-        </p>
-      </PageLayout>
-    );
   }
 
   // Catalog versions are oldest-first; show the dropdown newest-first.

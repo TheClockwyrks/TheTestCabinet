@@ -7,11 +7,10 @@
 # `kubectl port-forward` (see the components/web kustomization for both consumers).
 #
 # The single tcab-web image is environment-agnostic (one build per git-sha, like the
-# publisher image), so the backend + auth URLs are injected at RUNTIME via env: the
-# image's entrypoint `envsubst`s a /config.js the SPA reads (window.__TCAB_CONFIG__).
-# The placeholders below are empty defaults — each consumer patches the real URLs
-# (prod sets TCAB_WEB_BACKEND_URL=https://api.tcab.testcabinet.ai etc.; local points
-# them at the host-forwarded http://127.0.0.1:8787 / :8789).
+# publisher image), so the backend URL is injected at RUNTIME via env: the image's
+# entrypoint `envsubst`s a /config.js the SPA reads (window.__TCAB_CONFIG__). The
+# placeholder below is an empty default — each consumer patches the real URL (prod
+# sets TCAB_WEB_BACKEND_URL=https://api.tcab.testcabinet.ai).
 #
 # It is a DATA-plane peer like the other services: a ClusterIP Service is the only
 # in-cluster surface, and (in prod) the ingress — never a LoadBalancer here — is the
@@ -82,8 +81,6 @@ spec:
             # /config.js from them). Empty by default so an unset env yields a valid
             # (empty) config; each overlay patches the real https URLs (task-3).
             - name: TCAB_WEB_BACKEND_URL
-              value: ""
-            - name: TCAB_WEB_AUTH_URL
               value: ""
           readinessProbe:
             httpGet:

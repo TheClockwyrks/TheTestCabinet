@@ -11,16 +11,17 @@
 # host-daemon siblings, and `kubectl` reaches the API server published on the host
 # via host.docker.internal (the `cluster`/`kubeconfig` targets wire this up). It
 # also works on a bare host with `docker`/`k3d`/`kubectl` installed directly.
-# Everything runs in the cluster — the backend + auth, the dispatcher, the
+# Everything runs in the cluster — the backend, the dispatcher, the
 # artifact service, the arena service, the in-cluster Grafana LGTM observability
 # stack, and one per-run driver Job per enqueued run. There is no worker-on-host
 # wiring; a run enqueued at the backend schedules as a Job here, and an adversarial
 # match/tournament runs on the arena service. The web console is the ONE piece that
 # does NOT run in-cluster locally: baking it into a pod forces a full image
 # rebuild+re-import on every UI edit, so instead you run it from source with
-# `npm run -w apps/web dev` (serves 127.0.0.1:1430, pre-pointed at the forwarded
-# backend/auth via apps/web/.env.development — no VITE_BACKEND_URL to set). It reaches
-# the data plane over `make local-forward`, exactly as the in-cluster console did.
+# `npm run -w apps/web dev` (serves 127.0.0.1:1430 and proxies `/api`, `/artifacts`
+# and `/arena` to the forwarded services, adding the `dev@local` identity header —
+# see apps/web/.env.development; no VITE_BACKEND_URL to set). It reaches the data
+# plane over `make local-forward`.
 # (Prod still serves the console in-cluster; only the local overlay drops it.) The
 # observability stack (the local overlay's `components/observability`) replaces the
 # LGTM the devcontainer used to ship: every service exports OTLP to it in-cluster —
@@ -59,7 +60,7 @@
 #   run-images-gg-selfcheck  build gg static and rebuild the five environment-representative `-gg` images WITH
 #                   the `gg selfcheck` gate — the same command CI publishes behind (builds only; imports nothing)
 #   local-reapply   re-apply the overlay ONLY (after a manifest-only change — RBAC, env, volumes; no image rebuild)
-#   local-forward   foreground-forward backend→:8787, auth→:8789, artifacts→:8790, arena→:8791, AND Grafana→:3000 to localhost (the console runs from source via `npm run -w apps/web dev`)
+#   local-forward   foreground-forward backend→:8787, artifacts→:8790, arena→:8791, AND Grafana→:3000 to localhost (the console runs from source via `npm run -w apps/web dev`)
 #   local-grafana   foreground-forward Grafana→:3000 AND the OTLP collector→:4318/:4317 to localhost (use when you also need the OTLP ports; local-forward already exposes Grafana)
 #   local-ingest    re-ingest the whole catalog (`tcab ingest --force`) — the scripted whole-catalog refresh
 #   local-import    re-import EVERY already-built service + run image into the node, no rebuild (recovery after the node lost its images)
@@ -143,7 +144,6 @@ TCAB_COMMIT ?= $(shell sh -c 'h=$$(git -C "$(REPO)" rev-parse HEAD 2>/dev/null) 
 SERVICES_DOCKERFILE := $(REPO)/deployments/images/services.Dockerfile
 
 BACKEND_IMG    := $(REGISTRY_PREFIX)/tcab-backend:local
-AUTH_IMG       := $(REGISTRY_PREFIX)/tcab-auth-service:local
 DISPATCHER_IMG := $(REGISTRY_PREFIX)/tcab-dispatcher:local
 DRIVER_IMG     := $(REGISTRY_PREFIX)/tcab-driver:local
 ARTIFACTS_IMG  := $(REGISTRY_PREFIX)/tcab-artifacts:local
@@ -152,7 +152,7 @@ ARENA_IMG      := $(REGISTRY_PREFIX)/tcab-arena:local
 # The web console is intentionally absent: it runs from source locally
 # (`npm run -w apps/web dev`), not as an in-cluster pod, so there is no tcab-web
 # image to build or import here (see the header comment and the local overlay).
-ALL_IMGS := $(BACKEND_IMG) $(AUTH_IMG) $(DISPATCHER_IMG) $(DRIVER_IMG) $(ARTIFACTS_IMG) $(ARENA_IMG)
+ALL_IMGS := $(BACKEND_IMG) $(DISPATCHER_IMG) $(DRIVER_IMG) $(ARTIFACTS_IMG) $(ARENA_IMG)
 
 # The run-container images — the base end-to-end image plus the per-asset-kind
 # images that BAKE IN their modeling tool (`draw`/`draw-sheet`/`voxel`/`voxel-anim`,
@@ -325,10 +325,9 @@ local-up: cluster images run-images apply-overlay local-ingest apply-wait
 	@echo ""
 	@echo "Stack is up in namespace '$(NS)' (services only — the web console runs from source, see below)."
 	@echo "Forward the data plane with:  make -C deployments/local local-forward"
-	@echo "  backend → http://127.0.0.1:8787   auth → http://127.0.0.1:8789   artifacts → http://127.0.0.1:8790   arena → http://127.0.0.1:8791   Grafana → http://127.0.0.1:3000"
+	@echo "  backend → http://127.0.0.1:8787   artifacts → http://127.0.0.1:8790   arena → http://127.0.0.1:8791   Grafana → http://127.0.0.1:3000"
 	@echo "Then start the web console from source (a separate terminal):  npm run -w apps/web dev  →  http://127.0.0.1:1430"
-	@echo "  (its backend/auth URLs are baked into apps/web/.env.development — no extra flags; edits hot-reload with no image rebuild)"
-	@echo "  (the backend reports the artifacts + arena URLs at GET /config; the console fetches build/media and matches/tournaments from them)"
+	@echo "  (it proxies /api, /artifacts and /arena to the forwards above as dev@local — no extra flags; edits hot-reload with no image rebuild)"
 	@echo "Observe it with Grafana at http://127.0.0.1:3000 (anonymous admin) — local-forward above already exposes it; local-grafana adds the OTLP ports for out-of-cluster exporters."
 
 # Create the k3d cluster if it does not already exist, mapping the repository to
@@ -566,7 +565,6 @@ images: export DOCKER_CONFIG := $(BUILD_DOCKER_CONFIG)
 images: audio-store
 	@mkdir -p '$(BUILD_DOCKER_CONFIG)' && printf '{}\n' > '$(BUILD_DOCKER_CONFIG)/config.json'
 	$(CONTAINER_TOOL) build --build-arg TCAB_BUILD_COMMIT='$(TCAB_COMMIT)' --target backend    -t '$(BACKEND_IMG)'    -f '$(SERVICES_DOCKERFILE)' '$(REPO)'
-	$(CONTAINER_TOOL) build --build-arg TCAB_BUILD_COMMIT='$(TCAB_COMMIT)' --target auth       -t '$(AUTH_IMG)'       -f '$(SERVICES_DOCKERFILE)' '$(REPO)'
 	$(CONTAINER_TOOL) build --build-arg TCAB_BUILD_COMMIT='$(TCAB_COMMIT)' --target dispatcher -t '$(DISPATCHER_IMG)' -f '$(SERVICES_DOCKERFILE)' '$(REPO)'
 	$(CONTAINER_TOOL) build --build-arg TCAB_BUILD_COMMIT='$(TCAB_COMMIT)' --build-arg AUDIO_STORE_IMAGE='$(AUDIO_STORE_IMG)' \
 	                        --target driver    -t '$(DRIVER_IMG)'     -f '$(SERVICES_DOCKERFILE)' '$(REPO)'
@@ -873,8 +871,8 @@ INGEST_POD_TIMEOUT ?= 300
 # including the observability stack. `local-rebuild` restarts only the services it
 # rebuilds, so it waits on exactly those — tcab-lgtm is neither rebuilt nor
 # restarted there, and waiting on a rollout nobody started proves nothing.
-APPLY_WORKLOADS   := statefulset/tcab-backend statefulset/tcab-auth statefulset/tcab-artifacts statefulset/tcab-lgtm deployment/tcab-arena deployment/tcab-dispatcher
-RESTART_WORKLOADS := statefulset/tcab-backend statefulset/tcab-auth statefulset/tcab-artifacts deployment/tcab-arena deployment/tcab-dispatcher
+APPLY_WORKLOADS   := statefulset/tcab-backend statefulset/tcab-artifacts statefulset/tcab-lgtm deployment/tcab-arena deployment/tcab-dispatcher
+RESTART_WORKLOADS := statefulset/tcab-backend statefulset/tcab-artifacts deployment/tcab-arena deployment/tcab-dispatcher
 
 # Wait for every workload in $(WAIT_WORKLOADS) to finish rolling out, then report once.
 #
@@ -956,6 +954,9 @@ apply-wait:
 # port-forward reaches a not-yet-ready pod because `kubectl port-forward svc/…`
 # selects a pod by the Service's selector rather than through its endpoints, which
 # readiness has emptied.
+#
+# The ingest route takes the backend's service token, the `SERVICE_TOKEN` the
+# `secrets` target put into tcab-backend-secrets, which `tcab ingest` presents.
 local-ingest:
 	@echo "Waiting for a running tcab-backend pod (up to $(INGEST_POD_TIMEOUT)s)…"; \
 	  deadline=$$(( $$(date +%s) + $(INGEST_POD_TIMEOUT) )); \
@@ -988,19 +989,13 @@ local-ingest:
 	    sleep 1; \
 	  done; \
 	  if [ -z "$$ready" ]; then echo "ERROR: backend not reachable on 127.0.0.1:$$port after 30s." >&2; cat "$$pflog" >&2; exit 1; fi; \
-	  TCAB_BACKEND_URL=http://127.0.0.1:$$port $(TCAB) ingest --force
+	  TCAB_BACKEND_URL=http://127.0.0.1:$$port TCAB_BACKEND_SERVICE_TOKEN='$(SERVICE_TOKEN)' $(TCAB) ingest --force
 
 # Hold the data-plane services open on localhost until interrupted (Ctrl-C). The web
 # console is NOT forwarded here — it runs from source (`npm run -w apps/web dev` on
-# 127.0.0.1:1430), reaching these same forwarded addresses. The backend + auth are
-# forwarded so the console (and the CLI) can reach them; auth is separate
-# because the backend no longer proxies it. The artifact + arena services are
-# forwarded because the console loads a pre-publish run's build and its proof/asset
-# media directly from them (as browser `<img>`/`<iframe>` requests) and POSTs
-# matches/tournaments to the arena — the in-cluster `tcab-artifacts:8790` /
-# `tcab-arena:8791` the backend advertises by default are not resolvable from the host
-# browser (the local backend patch points `TCAB_ARTIFACTS_PUBLIC_URL` /
-# `TCAB_ARENA_PUBLIC_URL` at these forwarded addresses). Everything the browser touches
+# 127.0.0.1:1430), whose dev server proxies `/api`, `/artifacts` and `/arena` of its own
+# origin to these forwarded addresses, adding the local identity header. The CLI
+# reaches the forwarded backend directly. Everything the browser touches
 # runs outside the cluster, so these forwards are required.
 #
 # Grafana (tcab-lgtm:3000) is forwarded here too, purely for convenience: it is the
@@ -1009,10 +1004,9 @@ local-ingest:
 # OTLP collector ports (:4318/:4317) forwarded — to export telemetry from a binary
 # run OUTSIDE the cluster — which this data-plane forward deliberately leaves out.
 local-forward:
-	@echo "Forwarding backend→127.0.0.1:8787, auth→127.0.0.1:8789, artifacts→127.0.0.1:8790, arena→127.0.0.1:8791, Grafana→http://127.0.0.1:3000 (Ctrl-C to stop)…"
+	@echo "Forwarding backend→127.0.0.1:8787, artifacts→127.0.0.1:8790, arena→127.0.0.1:8791, Grafana→http://127.0.0.1:3000 (Ctrl-C to stop)…"
 	@echo "Start the console separately with:  npm run -w apps/web dev  →  http://127.0.0.1:1430"
 	@$(KUBECTL) -n '$(NS)' port-forward svc/tcab-backend 8787:8787 & \
-	  $(KUBECTL) -n '$(NS)' port-forward svc/tcab-auth 8789:8789 & \
 	  $(KUBECTL) -n '$(NS)' port-forward svc/tcab-artifacts 8790:8790 & \
 	  $(KUBECTL) -n '$(NS)' port-forward svc/tcab-arena 8791:8791 & \
 	  $(KUBECTL) -n '$(NS)' port-forward svc/tcab-lgtm 3000:3000 & \

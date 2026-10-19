@@ -1,6 +1,5 @@
 import type { GgSavedAgent } from "@clockwyrks/backend-api/gg";
 import { useCallback, useEffect, useState } from "react";
-import { useAuth } from "../../../../client/auth";
 import { useOptionalBackend } from "../../../../client/context";
 
 /**
@@ -13,7 +12,6 @@ import { useOptionalBackend } from "../../../../client/context";
  * are none: a saved agent belongs to an account.
  */
 export function useGgAgents() {
-  const { token } = useAuth();
   // Optional, not asserted: the comparison detail page resolves configurations and
   // renders on the static site, which mounts no backend provider.
   const backend = useOptionalBackend()?.client ?? null;
@@ -22,9 +20,9 @@ export function useGgAgents() {
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async (): Promise<GgSavedAgent[]> => {
-    if (!backend?.listGgAgents || !token) return [];
-    return backend.listGgAgents(token);
-  }, [backend, token]);
+    if (!backend?.listGgAgents) return [];
+    return backend.listGgAgents();
+  }, [backend]);
 
   useEffect(() => {
     let active = true;

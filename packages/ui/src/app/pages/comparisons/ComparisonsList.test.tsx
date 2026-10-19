@@ -9,9 +9,6 @@ import {
 import { ConfirmDialogProvider } from "../../components/ConfirmDialog";
 import { ComparisonsList } from "./ComparisonsList";
 
-vi.mock("../../../client/auth", () => ({
-  useAuth: () => ({ token: "t" }),
-}));
 // An executing console: the mutating affordances are its to show. The value is a
 // constant, as the real context's is — a fresh object each render would re-run
 // the list's load effect on every render.
@@ -113,9 +110,7 @@ describe("ComparisonsList", () => {
     expect(confirmSpy).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByRole("button", { name: "Delete comparison" }));
-    await waitFor(() =>
-      expect(deleteComparison).toHaveBeenCalledWith("cmp-1", "t"),
-    );
+    await waitFor(() => expect(deleteComparison).toHaveBeenCalledWith("cmp-1"));
     // Re-read, so the deleted row does not linger.
     await waitFor(() => expect(listComparisons).toHaveBeenCalledTimes(2));
 

@@ -17,9 +17,6 @@ import { GroupEditPage } from "./GroupEditPage";
 vi.mock("../../components/PageLayout", () => ({
   PageLayout: ({ children }: { children: ReactNode }) => <div>{children}</div>,
 }));
-vi.mock("../../../client/auth", () => ({
-  useAuth: () => ({ token: "t0" }),
-}));
 vi.mock("../runs/gg/useGgConfigs", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("../runs/gg/useGgConfigs")>();

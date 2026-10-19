@@ -23,7 +23,6 @@ import type {
 } from "@clockwyrks/backend-api/gg-query";
 import { useCallback, useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router";
-import { useAuth } from "../../../client/auth";
 import { useBackend } from "../../../client/context";
 import { useConfirm } from "../../components/ConfirmDialog";
 import { LoadingState } from "../../components/LoadingState";
@@ -40,7 +39,6 @@ import exec from "../runs/RunExec.module.scss";
 
 export function GgSavedQueriesPage() {
   const [params, setParams] = useSearchParams();
-  const { token } = useAuth();
   const { client: backend } = useBackend();
   const [saved, setSaved] = useState<GgSavedQuery[]>([]);
   const [loading, setLoading] = useState(true);
@@ -51,20 +49,20 @@ export function GgSavedQueriesPage() {
 
   const list = backend?.listGgSavedQueries;
   const reload = useCallback(async () => {
-    if (!list || !token) {
+    if (!list) {
       setLoading(false);
       return;
     }
     setLoading(true);
     try {
-      setSaved(await list(token));
+      setSaved(await list());
       setError(null);
     } catch (e) {
       setError(String(e));
     } finally {
       setLoading(false);
     }
-  }, [list, token]);
+  }, [list]);
 
   useEffect(() => {
     void reload();
@@ -90,14 +88,14 @@ export function GgSavedQueriesPage() {
   }, [params, setParams]);
 
   const save = useCallback(async () => {
-    if (!draft || !token) return;
+    if (!draft) return;
     setBusy(true);
     setError(null);
     try {
       if (editing && backend?.updateGgSavedQuery) {
-        await backend.updateGgSavedQuery(editing, draft, token);
+        await backend.updateGgSavedQuery(editing, draft);
       } else if (backend?.createGgSavedQuery) {
-        await backend.createGgSavedQuery(draft, token);
+        await backend.createGgSavedQuery(draft);
       }
       setDraft(null);
       setEditing(null);
@@ -107,13 +105,13 @@ export function GgSavedQueriesPage() {
     } finally {
       setBusy(false);
     }
-  }, [backend, draft, editing, token, reload]);
+  }, [backend, draft, editing, reload]);
 
   const { confirm } = useConfirm();
 
   const remove = useCallback(
     async (query: GgSavedQuery) => {
-      if (!backend?.deleteGgSavedQuery || !token) return;
+      if (!backend?.deleteGgSavedQuery) return;
       if (
         !(await confirm({
           title: "Delete saved query",
@@ -125,7 +123,7 @@ export function GgSavedQueriesPage() {
       }
       setBusy(true);
       try {
-        await backend.deleteGgSavedQuery(query.id, token);
+        await backend.deleteGgSavedQuery(query.id);
         await reload();
       } catch (e) {
         setError(String(e));
@@ -133,7 +131,7 @@ export function GgSavedQueriesPage() {
         setBusy(false);
       }
     },
-    [backend, token, reload, confirm],
+    [backend, reload, confirm],
   );
 
   return (
@@ -142,7 +140,7 @@ export function GgSavedQueriesPage() {
         command="--gg saved"
         comment={<>// questions worth keeping</>}
         titleActions={
-          token && !draft ? (
+          !draft ? (
             <Link className={exec.primary} to={routes.ggAnalysisDiscover()}>
               Compose in Discover
             </Link>
@@ -214,12 +212,7 @@ export function GgSavedQueriesPage() {
         </div>
       )}
 
-      {!token ? (
-        <p className={`${exec.notice} ${exec.warn}`}>
-          Sign in to save queries. They are kept on your account, and the corpus
-          they run over is deployment-wide either way.
-        </p>
-      ) : loading ? (
+      {loading ? (
         <LoadingState size="section" label="Loading saved queries…" />
       ) : saved.length === 0 ? (
         <p className={styles.empty}>

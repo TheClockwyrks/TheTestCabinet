@@ -1,6 +1,6 @@
 # Local k3d overlay — the development mirror of a Kubernetes deployment.
 #
-# It deploys the WHOLE run topology — backend + auth (stateful), the dispatcher,
+# It deploys the WHOLE run topology — the backend (stateful), the dispatcher,
 # the artifact service, and the driver/dispatcher RBAC — reusing the same flat
 # manifests staging/prod use and overriding only what differs locally: the
 # namespace, locally-built images, the TCAB_ENV tag, dev secrets, and a read-only
@@ -41,11 +41,11 @@ resources:
 # via the internal-ingress component in the prod overlay). Baking the console
 # into an in-cluster pod forces a full image rebuild + re-import on every UI edit,
 # which makes iterating on the console painfully slow. Locally we run it straight from
-# source instead: `npm run -w apps/web dev` serves it on 127.0.0.1:1430, pre-pointed at
-# the host-forwarded backend/auth (apps/web/.env.development) so no extra flags are
-# needed. The browser reaches the backend/artifacts/arena over `make local-forward`,
-# exactly as the in-cluster console did. (The backend/auth CORS layers are permissive,
-# so the cross-origin dev-server → forwarded-backend requests are allowed.)
+# source instead: `npm run -w apps/web dev` serves it on 127.0.0.1:1430 and proxies
+# `/api`, `/artifacts` and `/arena` of its own origin to the backend/artifacts/arena
+# `make local-forward` exposes on localhost (apps/web/vite.config.ts), adding the
+# `Cf-Access-Authenticated-User-Email` header (`dev@local` by default) that each
+# service takes the identity from, since this overlay sets no TCAB_ACCESS_* variable.
 components:
   - ../../components/observability
 
@@ -55,9 +55,6 @@ components:
 images:
   - name: REPLACE_REGISTRY/tcab-backend
     newName: tcab-backend
-    newTag: local
-  - name: REPLACE_REGISTRY/tcab-auth-service
-    newName: tcab-auth-service
     newTag: local
   - name: REPLACE_REGISTRY/tcab-dispatcher
     newName: tcab-dispatcher
@@ -91,7 +88,6 @@ patches:
   # Per-environment overrides for the always-on workloads (TCAB_ENV, the repo mount,
   # the local namespaces + driver image, etc.).
   - path: patch-backend.yaml
-  - path: patch-auth.yaml
   - path: patch-dispatcher.yaml
   - path: patch-artifacts.yaml
   - path: patch-arena.yaml

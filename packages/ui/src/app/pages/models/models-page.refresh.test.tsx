@@ -7,7 +7,7 @@ import {
 } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { MemoryRouter } from "react-router";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { ModelsPage } from "./ModelsPage";
 import {
@@ -31,15 +31,6 @@ import { RunsRuntimeProvider, useRunsRuntime } from "../../runtime/runsRuntime";
 vi.mock("../../components/PageLayout", () => ({
   PageLayout: ({ children }: { children: ReactNode }) => <div>{children}</div>,
 }));
-const authState = vi.hoisted((): { token: string | null } => ({ token: "t" }));
-vi.mock("../../../client/auth", () => ({
-  useAuth: () => ({ token: authState.token }),
-}));
-
-beforeEach(() => {
-  authState.token = "t";
-});
-
 const MODELS = [
   { slug: "anthropic-claude", name: "Claude", provider: "anthropic" },
 ] as unknown as ModelSummary[];
@@ -193,20 +184,13 @@ describe("the Models page's Refresh control", () => {
     expect(queryRefreshButton()).toBeNull();
   });
 
-  it("is hidden with + Add model when signed out", () => {
-    authState.token = null;
-    renderPage();
-    expect(queryAddModel()).toBeNull();
-    expect(queryRefreshButton()).toBeNull();
-  });
-
-  it("calls the endpoint once with the signed-in token", async () => {
+  it("calls the endpoint once", async () => {
     const refresh = vi.fn().mockResolvedValue(COUNTS);
     renderPage({ refreshListPrices: refresh });
     fireEvent.click(refreshButton());
     await waitFor(() => expect(refreshButton()).toBeEnabled());
     expect(refresh).toHaveBeenCalledTimes(1);
-    expect(refresh).toHaveBeenCalledWith("t");
+    expect(refresh).toHaveBeenCalledWith();
   });
 
   it("is disabled while the request runs and enabled again after", async () => {

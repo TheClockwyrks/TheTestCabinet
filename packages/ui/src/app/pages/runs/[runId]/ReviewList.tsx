@@ -66,15 +66,14 @@ export function ReviewList({
         // with an ellipsis; the full prose lives on the review's own page.
         const snippet = review.writeup.trim();
         return (
-          <li key={review.reviewerId || review.reviewer}>
+          <li key={review.reviewer}>
             <Link
-              to={routes.runReview(runId, review.reviewerId)}
+              to={routes.runReview(runId, review.reviewer)}
               className={styles.reviewLink}
             >
               <div className={styles.reviewBody}>
                 <ReviewHeader
                   reviewer={review.reviewer}
-                  reviewerPictureUrl={review.reviewerPictureUrl}
                   rating={overall}
                   aesthetic={aesthetic}
                   grade={grade}
@@ -101,7 +100,6 @@ export function ReviewList({
 // timestamp beside its score. Each row spreads its pair to opposite edges.
 export function ReviewHeader({
   reviewer,
-  reviewerPictureUrl,
   rating,
   aesthetic,
   grade,
@@ -110,9 +108,6 @@ export function ReviewHeader({
   score,
 }: {
   reviewer: string;
-  // The reviewer's avatar URL, shown beside their name; falls back to initials when
-  // absent or the picture 404s (the reviewer has no picture).
-  reviewerPictureUrl?: string | null;
   rating: Rating | null;
   // The reviewer's run-wide AESTHETIC tier, shown beside the functional
   // `rating` (or in place of it where none applies). Null/absent for a legacy
@@ -132,12 +127,7 @@ export function ReviewHeader({
     <div className={styles.reviewHeader}>
       <div className={styles.reviewHeaderRow}>
         <span className={styles.reviewAuthor}>
-          <Avatar
-            name={reviewer}
-            pictureUrl={reviewerPictureUrl}
-            size={20}
-            className={styles.reviewAvatar}
-          />
+          <Avatar name={reviewer} size={20} className={styles.reviewAvatar} />
           {reviewer}
         </span>
         <span className={styles.reviewBadges}>

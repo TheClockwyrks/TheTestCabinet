@@ -29,7 +29,6 @@ kustomize flagging an overlay→ancestor cycle.
 | `rbac.yaml`            | The `tcab-driver` SA/Role (pod create/get/list/delete + pods/exec get+create — the driver execs over a WebSocket, a GET to the exec subresource, so `get` is required, not just `create`, for the sandbox) and the `tcab-dispatcher` SA/Role (jobs create/get/list/watch/delete + pods/log, for the queue). |
 | `secrets.example.yaml` | Secret templates (R2 creds, the shared service token, harness keys, registry pull secret) — **placeholders only**, not a base resource.                                                                                                                                                                     |
 | `backend.yaml`         | Backend StatefulSet (1 replica) + PVC + ClusterIP Service.                                                                                                                                                                                                                                                  |
-| `auth.yaml`            | Auth-service StatefulSet (1 replica) + PVC + ClusterIP Service.                                                                                                                                                                                                                                             |
 | `dispatcher.yaml`      | Dispatcher Deployment (1 replica) running under `tcab-dispatcher`; claims queued jobs and creates driver Jobs. No Service (binds no socket).                                                                                                                                                                |
 | `artifacts.yaml`       | Artifact-service StatefulSet (1 replica) + PVC + ClusterIP Service + its own SA (no API access).                                                                                                                                                                                                            |
 | `arena.yaml`           | Arena-service Deployment (1 replica, **no PVC** — stateless) + ClusterIP Service (`:8791`) + its own SA (no API access); runs adversarial matches/tournaments off the backend, with real CPU requests/limits.                                                                                               |
@@ -59,16 +58,16 @@ Overlays compose in reusable kustomize **components**:
 | Component                  | Purpose                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 | -------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `components/observability` | Runs the Grafana LGTM stack (`grafana/otel-lgtm`: collector + Tempo/Mimir/Loki + Grafana) in-cluster as `tcab-lgtm` (StatefulSet + ClusterIP Service + PVC for Grafana state) plus a NetworkPolicy admitting the services' OTLP. Included by `overlays/{local,staging,prod}`; each overlay's env patch sets every workload's `OTEL_EXPORTER_OTLP_ENDPOINT=http://tcab-lgtm:4318`. Grafana is `ClusterIP`-only — reach it via `kubectl port-forward svc/tcab-lgtm 3000:3000`, or, in `prod`, at `grafana.tcab.testcabinet.ai` over the internal (VPN-only) ingress (the `internal-ingress` component's route + the overlay's `patch-grafana-auth.yaml`, which disables the image's anonymous-admin default and sets creds from the `tcab-grafana-admin` Secret). Drop it (and the endpoint) to send telemetry to Grafana Cloud / an external collector instead. |
-| `components/postgres`      | Converts the backend + auth service from their SQLite `StatefulSet` shape to stateless `Deployment`s (no PVC) wired to a managed database via Secret. Environment-agnostic — each overlay supplies its own namespace, `TCAB_ENV`, images, and connection-string Secret (Azure Database for PostgreSQL — Flexible Server in the `staging` and `prod` overlays).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
-| `components/web`           | The in-cluster web console (`tcab-web`) `Deployment` + `ClusterIP` `Service` — the static SPA, with its backend/auth URLs injected at runtime into `/config.js` (each consumer patches the real values). Pulled in by the `internal-ingress` component behind a prod ingress. `overlays/local` deliberately does NOT include it — locally the console runs from source (`npm run -w apps/web dev`) against a `kubectl port-forward`ed backend, so a UI edit needs no image rebuild.                                                                                                                                                                                                                                                                                                                                                                            |
+| `components/postgres`      | Converts the backend from its SQLite `StatefulSet` shape to a stateless `Deployment` wired to a managed database via Secret. Environment-agnostic — each overlay supplies its own namespace, `TCAB_ENV`, images, and connection-string Secret (Azure Database for PostgreSQL — Flexible Server in the `staging` and `prod` overlays).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| `components/web`           | The in-cluster web console (`tcab-web`) `Deployment` + `ClusterIP` `Service` — the static SPA, with its backend URL injected at runtime into `/config.js` (each consumer patches the real values). Pulled in by the `internal-ingress` component behind a prod ingress. `overlays/local` deliberately does NOT include it — locally the console runs from source (`npm run -w apps/web dev`) against a `kubectl port-forward`ed backend, so a UI edit needs no image rebuild.                                                                                                                                                                                                                                                                                                                                                                                  |
 
 The service container images are built from [`../images/`](../images/) — every Rust
-service is a `--target` of the shared `services.Dockerfile` (`backend`, `auth`,
+service is a `--target` of the shared `services.Dockerfile` (`backend`,
 `dispatcher`, `driver`, `artifacts`, `arena`, `publisher`), and the console has its
 own `web.Dockerfile`. The Azure pipeline builds them, and the **run-container**
 images the sandbox runs inside ([`containers/`](../../containers/README.md)), on
 every push to `master` and `staging`, and pushes each to
-`testcabinet.azurecr.io/<image>:<sha>` (`tcab-backend`, `tcab-auth-service`,
+`testcabinet.azurecr.io/<image>:<sha>` (`tcab-backend`,
 `tcab-dispatcher`, `tcab-driver`, `tcab-artifacts`, `tcab-arena`,
 `tcab-publisher`, `tcab-web`, and the `test-cabinet-*` run images). The workspace
 template's publish stage retags `tcab-backend:<sha>` as
@@ -77,7 +76,7 @@ template's publish stage retags `tcab-backend:<sha>` as
 `staging` and `prod` overlays run the backend from. Those overlays name every Test
 Cabinet image at the tag `unpinned`, which nothing pushes, so applied as they stand
 they fail to pull; [`scripts/ci/pin-images.sh`](../../scripts/ci/pin-images.sh) pins
-all eight images, and the dispatcher's run images and run-container tag, to the
+all seven images, and the dispatcher's run images and run-container tag, to the
 commit being deployed.
 
 ## Cluster prerequisites
@@ -155,7 +154,14 @@ kubectl kustomize deployments/k8s/overlays/prod    # or staging, local
 
 Staging and prod are the same manifests; only the namespace, `TCAB_ENV`, and the
 resources they point at differ, which `overlays/staging` rewrites.
-Keep them otherwise identical so staging rehearses prod. The dispatcher's
+Keep them otherwise identical so staging rehearses prod. Each sets, in its
+`patch-access.yaml`, the Access team domain and the audience tag of its origin's
+Access application, which the backend, the artifacts service and the arena verify
+the edge's assertion against; `overlays/local` sets neither, so locally each
+service takes the identity from the `Cf-Access-Authenticated-User-Email` header.
+See
+[Identity](../../apps/docs/src/content/docs/components/auth/overview.md#configuration).
+The dispatcher's
 `TCAB_K8S_*` sandbox settings are documented in
 [`deployment/kubernetes/run-plane.md`](../../apps/docs/src/content/docs/deployment/kubernetes/run-plane.md)
 and the dispatcher's
@@ -180,5 +186,5 @@ your **environment** (`ANTHROPIC_API_KEY` / `OPENAI_API_KEY` / `OPENROUTER_API_K
 for the driver, a dev `SERVICE_TOKEN` for the other two), so no key is written to a
 tracked file.
 
-The repo-root `.env.backend.example`, `.env.auth.example`, and `.env.dispatcher.example`
+The repo-root `.env.backend.example`, `.env.artifacts.example` and `.env.dispatcher.example`
 remain the authoritative reference for every variable each service reads.

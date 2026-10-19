@@ -42,7 +42,6 @@ describe("frameReview / frameReviews", () => {
   ): StoredReview =>
     ({
       reviewer,
-      reviewerId: reviewer,
       ratings: [],
       aesthetic,
       checklist: [],
@@ -58,7 +57,6 @@ describe("frameReview / frameReviews", () => {
   it("collapses a legacy stored row's per-domain tiers to the worst", () => {
     const legacy = {
       reviewer: "A",
-      reviewerId: "A",
       ratings: [],
       aesthetics: [
         { domain: "core", rating: "legendary" },

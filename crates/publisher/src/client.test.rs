@@ -140,14 +140,24 @@ async fn post_result_hits_result_with_the_links() {
 }
 
 /// Spin up a stub backend whose `GET /runs/{id}` answers with `body`, for the
-/// publication preflight. Returns its base URL.
+/// publication preflight, to a caller presenting the per-publish-job token `pub-tok`
+/// and `401` to any other (every read needs an identity). Returns its base URL.
 async fn stub_run_backend(body: Value) -> String {
     let app = Router::new()
         .route(
             "/runs/{id}",
-            axum::routing::get(move || {
+            axum::routing::get(move |headers: HeaderMap| {
                 let body = body.clone();
-                async move { axum::Json(body) }
+                async move {
+                    let presented = headers
+                        .get(axum::http::header::AUTHORIZATION)
+                        .and_then(|v| v.to_str().ok());
+                    if presented == Some("Bearer pub-tok") {
+                        Ok(axum::Json(body))
+                    } else {
+                        Err(StatusCode::UNAUTHORIZED)
+                    }
+                }
             }),
         )
         .route(

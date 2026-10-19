@@ -301,13 +301,9 @@ async fn a_gg_runs_session_summary_round_trips_through_get_run() {
     assert_eq!(summary.slot_costs[0].tokens.output, Some(240));
 }
 
-/// A reviewer identity for tests, derived from a stable account id.
-fn reviewer(id: &str) -> Reviewer {
-    Reviewer {
-        user_id: id.to_string(),
-        username: format!("{id}-handle"),
-        display_name: format!("{id} Display"),
-    }
+/// A reviewer identity for tests.
+fn reviewer(id: &str) -> String {
+    id.to_string()
 }
 
 /// A review from account `u1` rating `gameplay` great.
@@ -461,11 +457,7 @@ async fn add_review_is_per_account_upsert_and_a_run_can_carry_many() {
         .unwrap();
     let stored = db.get_run("r1").await.unwrap().unwrap();
     assert_eq!(stored.reviews.len(), 2);
-    let u1 = stored
-        .reviews
-        .iter()
-        .find(|r| r.reviewer.user_id == "u1")
-        .unwrap();
+    let u1 = stored.reviews.iter().find(|r| r.reviewer == "u1").unwrap();
     assert_eq!(u1.ratings[0].rating, Rating::Scuffed);
     // `reviewed_at` stays the first submission; `edited_at` records the edit.
     assert_eq!(u1.reviewed_at, "2026-06-17T22:00:00Z");
@@ -533,7 +525,7 @@ async fn list_reviews_by_user_orders_by_reviewed_at_and_paginates() {
     let ids: Vec<&str> = page1.iter().map(|r| r.record.id.as_str()).collect();
     assert_eq!(ids, ["r3", "r2"]);
     // Each returned run carries u1's review among its reviews.
-    assert!(page1[0].reviews.iter().any(|r| r.reviewer.user_id == "u1"));
+    assert!(page1[0].reviews.iter().any(|r| r.reviewer == "u1"));
 
     // Page 2 (offset 2) is the remaining r1.
     let (page2, total) = db.list_reviews_by_user("u1", 2, 2).await.unwrap();

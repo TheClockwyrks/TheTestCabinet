@@ -88,7 +88,7 @@ function HarnessesBody({ config }: { config: HarnessConfigApi }) {
       {!canEditLimit && (
         <Panel className={styles.intro}>
           <p className={styles.muted}>
-            Sign in to change a harness&rsquo;s maximum parallelism.
+            This console cannot change a harness&rsquo;s maximum parallelism.
           </p>
         </Panel>
       )}

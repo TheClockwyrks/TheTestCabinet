@@ -7,9 +7,10 @@
 # service fetches every controller input from the backend and persists finished
 # tournaments + replays back to it over HTTP. It is STATELESS — no database, no PVC —
 # so it is a plain Deployment, NOT a StatefulSet. It binds 0.0.0.0:8791 and is reached
-# over the cluster network (and, for the console, via the same private boundary the
-# other services sit behind — TCAB_ARENA_PUBLIC_URL on the backend is what the console
-# resolves it against).
+# over the cluster network, and by the console through the edge at `/arena/` of the
+# environment's origin, where it verifies the Access assertion (TCAB_ACCESS_TEAM_DOMAIN
+# / TCAB_ACCESS_AUDIENCE, set by the staging and prod overlays' patch-access.yaml;
+# unset locally).
 #
 # It needs NO Kubernetes API access — it only talks HTTP to the backend. It IS the
 # CPU-bound pod of the topology, so it carries real CPU requests/limits.
@@ -67,6 +68,15 @@ spec:
             # The backend it fetches controller inputs from and persists results to.
             - name: TCAB_BACKEND_URL
               value: "http://tcab-backend:8787"
+            # The shared service token the arena presents on every backend call: every
+            # backend read needs an identity, and persisting a tournament takes the
+            # service token. The same secret the backend verifies it against; without
+            # it the backend refuses every call the arena makes.
+            - name: TCAB_BACKEND_SERVICE_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: tcab-backend-secrets
+                  key: TCAB_BACKEND_SERVICE_TOKEN
             # The capacity guard: matches/tournaments running CPU-bound wasm at once
             # before the service rejects with 503. Tune with the CPU limit below.
             - name: TCAB_ARENA_MAX_CONCURRENT

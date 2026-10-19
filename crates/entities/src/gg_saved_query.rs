@@ -1,6 +1,6 @@
 //! The `gg_saved_query` table: an operator's named, reusable TCQ query.
 //!
-//! Many rows per account (keyed by the auth-service `user_id`), each with an opaque
+//! Many rows per account (keyed by the owner's identity in `user_id`), each with an opaque
 //! `id`, a display name, an optional description, and the query as **source text**.
 //! The corpus a query runs over is deployment-wide — a gg run belongs to the
 //! deployment, exactly as the run listings already treat runs — but a *view* over it
@@ -20,8 +20,8 @@ pub struct Model {
     /// The query's opaque id (minted on create). The primary key.
     #[sea_orm(primary_key, auto_increment = false)]
     pub id: String,
-    /// The owning account's id (from the auth service, via the verified bearer
-    /// token).
+    /// The owner's identity: the Access assertion's email. A row made before the
+    /// edge asserted the identity holds the retired auth service's account id.
     pub user_id: String,
     /// The operator-chosen display name (e.g. `overflow by model`).
     pub name: String,

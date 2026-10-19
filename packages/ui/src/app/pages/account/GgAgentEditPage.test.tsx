@@ -31,9 +31,6 @@ vi.mock("../../components/PageLayout", () => ({
   PageLayout: ({ children }: { children: ReactNode }) => <div>{children}</div>,
 }));
 // A signed-in operator: a saved agent is account-scoped, so the token unlocks the form.
-vi.mock("../../../client/auth", () => ({
-  useAuth: () => ({ token: "t0" }),
-}));
 
 const createGgAgent = vi.fn().mockResolvedValue({ id: "a1" });
 const updateGgAgent = vi.fn().mockResolvedValue({ id: "saved-1" });

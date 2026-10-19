@@ -15,10 +15,10 @@
 //!   a coalesced background task regenerates the full public snapshot, uploads it
 //!   atomically to R2, and fires the site deploy hook.
 //!
-//! There is **no app-level auth**: the backend sits on a private network and
-//! trusts every caller that can reach it.
+//! Every request identifies its caller, by the Cloudflare Access assertion the
+//! edge attaches or by a token the backend minted; see [`auth`].
 
-pub mod accounts;
+pub mod access;
 pub mod api;
 pub mod artifacts;
 pub mod auth;
@@ -281,12 +281,25 @@ async fn build_with_prices(
 
     let r2 = config.r2.clone().map(R2Client::new);
 
-    // The client the auth middleware verifies bearer tokens against, and the
-    // publisher fetches reviewer profile pictures from for the public snapshot.
-    // Constructed once and shared; it holds only the auth service base URL.
-    let auth = Arc::new(crate::accounts::AccountsClient::new(
-        config.auth_url.clone(),
-    ));
+    // The Access assertion check, or `None` for a backend with no Access application
+    // (the local overlay), which takes the identity from the local header instead.
+    let access = config.access.as_ref().map(|access| {
+        tracing::info!(
+            team_domain = %access.team_domain,
+            "verifying Cloudflare Access assertions"
+        );
+        Arc::new(crate::access::AccessVerifier::new(
+            access,
+            reqwest::Client::new(),
+        ))
+    });
+    if access.is_none() {
+        tracing::warn!(
+            "no Access application configured (TCAB_ACCESS_TEAM_DOMAIN and \
+             TCAB_ACCESS_AUDIENCE unset): taking the identity from \
+             Cf-Access-Authenticated-User-Email as presented"
+        );
+    }
 
     let publisher = Publisher::new(
         Arc::clone(&db),
@@ -294,7 +307,7 @@ async fn build_with_prices(
         r2,
         config.deploy_hook_url.clone(),
         config.artifacts_internal_url.clone(),
-        Arc::clone(&auth),
+        config.service_token.clone(),
         crate::publisher::PublisherTiming {
             coalesce: config.coalesce,
             snapshot_retention: config.snapshot_retention,
@@ -342,20 +355,6 @@ async fn build_with_prices(
         })
     };
 
-    // A deployment that advertises an artifact service to consoles but gives this
-    // backend no address of its own for it silently loses three things, none of which
-    // announce themselves at the moment they stop working. Say so at boot, where an
-    // operator is already reading. A WARNING and not an error: the artifact URL is
-    // optional by design (a single-box dev setup has no artifact service at all), and
-    // a backend without it serves runs, reviews and the catalog perfectly.
-    if config.artifacts_public_url.is_some() && config.artifacts_internal_url.is_none() {
-        tracing::warn!(
-            "TCAB_ARTIFACTS_URL is unset while an artifact service is advertised to consoles; \
-             tree pruning, the reclamation sweep and the snapshot's artifact media fallback \
-             are all off"
-        );
-    }
-
     let http = reqwest::Client::new();
     // Reclaim the artifact trees no run row references (see `crate::artifacts`). The
     // delete-time prune is best-effort, so this is what bounds how long a tree whose
@@ -396,7 +395,7 @@ async fn build_with_prices(
         store,
         ready: readiness,
         publisher,
-        auth,
+        access,
         relay: crate::relay::Relay::new(),
         publish_relay: crate::publish_relay::PublishRelay::new(),
         config: Arc::new(config),

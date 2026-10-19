@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { MemoryRouter, Route, Routes } from "react-router";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   BackendProvider,
   type BackendContextValue,
@@ -14,8 +14,8 @@ import {
 import type { ModelSummary } from "../../../data/models";
 import { ModelProbesPage } from "./ModelProbesPage";
 
-// The Probes tab: probe history for everyone, trigger controls for a signed-in
-// operator (with the language selector), and the backend's error envelope
+// The Probes tab: probe history for everyone, trigger controls where the
+// transport can trigger (with the language selector), and the backend's error envelope
 // surfaced when a trigger is refused (409 already running / 422 no slug / 503
 // no key).
 
@@ -24,17 +24,6 @@ import { ModelProbesPage } from "./ModelProbesPage";
 vi.mock("../../../components/PageLayout", () => ({
   PageLayout: ({ children }: { children: ReactNode }) => <div>{children}</div>,
 }));
-// Mutable so the signed-out case flips the token off without a second module
-// graph; reset before each test.
-const authState = vi.hoisted(() => ({ token: "t" as string | null }));
-vi.mock("../../../../client/auth", () => ({
-  useAuth: () => ({ token: authState.token }),
-}));
-
-beforeEach(() => {
-  authState.token = "t";
-});
-
 const MODEL = {
   slug: "claude-x",
   name: "Claude X",
@@ -214,9 +203,9 @@ function backendValue(stubs: ClientStubs): BackendContextValue {
   } as unknown as BackendContextValue;
 }
 
-// The trigger gate needs both Bearer methods; tests that exercise the form pass
+// The trigger gate needs both trigger methods; tests that exercise the form pass
 // their own trigger stub and inherit this provider enumeration.
-function signedInStubs(overrides: ClientStubs = {}): ClientStubs {
+function probeStubs(overrides: ClientStubs = {}): ClientStubs {
   return {
     triggerModelProbe: vi.fn().mockResolvedValue(RUNNING),
     listModelProbeProviders: vi.fn().mockResolvedValue({
@@ -227,7 +216,7 @@ function signedInStubs(overrides: ClientStubs = {}): ClientStubs {
   };
 }
 
-function renderPage(stubs: ClientStubs = signedInStubs()) {
+function renderPage(stubs: ClientStubs = probeStubs()) {
   render(
     <MemoryRouter initialEntries={["/models/claude-x/probes"]}>
       <GalleryDataProvider value={galleryValue()}>
@@ -263,20 +252,18 @@ describe("ModelProbesPage", () => {
     expect(screen.getByText(/files\.writeFile/)).toBeInTheDocument();
   });
 
-  it("hides the trigger and shows a notice when signed out", async () => {
-    authState.token = null;
-    renderPage();
+  it("hides the trigger where the transport cannot trigger a probe", async () => {
+    renderPage({});
 
-    expect(
-      await screen.findByText(/sign in to run probes/i),
-    ).toBeInTheDocument();
+    // The history still reads; only the trigger is absent.
+    expect(await screen.findAllByText("Ready")).not.toHaveLength(0);
     expect(screen.queryByRole("button", { name: /run probe/i })).toBeNull();
   });
 
   it("triggers a probe with the seeded defaults and shows the new row", async () => {
     const trigger = vi.fn().mockResolvedValue(RUNNING);
     renderPage(
-      signedInStubs({
+      probeStubs({
         listModelProbes: vi.fn().mockResolvedValue([]),
         triggerModelProbe: trigger,
       }),
@@ -287,11 +274,10 @@ describe("ModelProbesPage", () => {
     // The defaults: 8 samples per input prompt, every language (no `language`
     // field), the default route (no `provider`).
     await waitFor(() =>
-      expect(trigger).toHaveBeenCalledWith(
-        "claude-x",
-        { samples: 8, maxTokens: 3500 },
-        "t",
-      ),
+      expect(trigger).toHaveBeenCalledWith("claude-x", {
+        samples: 8,
+        maxTokens: 3500,
+      }),
     );
     // The accepted probe lands at the head of the history immediately, still
     // running, marked as probing every language.
@@ -302,7 +288,7 @@ describe("ModelProbesPage", () => {
   it("pins the probe to one language arm through the selector", async () => {
     const trigger = vi.fn().mockResolvedValue(RUNNING);
     renderPage(
-      signedInStubs({
+      probeStubs({
         listModelProbes: vi.fn().mockResolvedValue([]),
         triggerModelProbe: trigger,
       }),
@@ -314,17 +300,17 @@ describe("ModelProbesPage", () => {
     fireEvent.click(screen.getByRole("button", { name: /run probe/i }));
 
     await waitFor(() =>
-      expect(trigger).toHaveBeenCalledWith(
-        "claude-x",
-        { samples: 8, maxTokens: 3500, language: "rust" },
-        "t",
-      ),
+      expect(trigger).toHaveBeenCalledWith("claude-x", {
+        samples: 8,
+        maxTokens: 3500,
+        language: "rust",
+      }),
     );
   });
 
   it("refuses an out-of-range sample count before any request", async () => {
     const trigger = vi.fn().mockResolvedValue(RUNNING);
-    renderPage(signedInStubs({ triggerModelProbe: trigger }));
+    renderPage(probeStubs({ triggerModelProbe: trigger }));
 
     fireEvent.change(await screen.findByLabelText("Samples per prompt"), {
       target: { value: "129" },
@@ -340,7 +326,7 @@ describe("ModelProbesPage", () => {
 
   it("surfaces the backend's error envelope in the alert", async () => {
     renderPage(
-      signedInStubs({
+      probeStubs({
         triggerModelProbe: vi
           .fn()
           .mockRejectedValue(

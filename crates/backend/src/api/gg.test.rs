@@ -8,16 +8,8 @@ use crate::db::Db;
 /// the handler). The minting tests below are about the capability set the job
 /// carries, so they all mint under this one.
 fn launch_attribution() -> JobAttribution {
-    attribution(
-        &AuthUser(crate::accounts::Account {
-            id: "acct-gg".to_string(),
-            username: "reviewer".to_string(),
-            display_name: "Reviewer".to_string(),
-            picture_updated_at: None,
-        }),
-        &LaunchQuery::default(),
-    )
-    .expect("no origin is not an error")
+    attribution(&Person("acct-gg".to_string()), &LaunchQuery::default())
+        .expect("no origin is not an error")
 }
 
 /// The internal id an authored fixture mints for the profile whose slug is `slug`.

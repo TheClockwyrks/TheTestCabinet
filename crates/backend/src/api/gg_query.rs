@@ -13,8 +13,8 @@
 //! The corpus is **not account-scoped**. A gg run belongs to the deployment, not to
 //! whoever launched it, exactly as the run listings and the coverage matrix already
 //! treat runs; it is the *saved views* over the corpus that are per-account. The
-//! bearer token is therefore a gate on reaching the surface at all, not a filter on
-//! what it returns.
+//! person's assertion is therefore a gate on reaching the surface at all, not a filter
+//! on what it returns.
 
 #[cfg(test)]
 #[path = "gg_query.test.rs"]
@@ -29,7 +29,7 @@ use crate::gg_query::{
     GgFieldCatalog, GgQuery, GgQueryResponse, GgRunDoc, evaluate, field_catalog,
 };
 
-use crate::auth::AuthUser;
+use crate::auth::Person;
 use crate::error::ApiError;
 use crate::gg_docs::CatalogScores;
 
@@ -57,7 +57,7 @@ pub const GG_QUERY_MAX_ROWS: u32 = 1_000;
 pub const GG_QUERY_MAX_BATCH: usize = 32;
 
 /// `POST /gg/query` — evaluate one TCQ query over every gg run this deployment
-/// holds. Requires a bearer token, the same gate as the other gg endpoints.
+/// holds. Takes a person's assertion, the same gate as the other gg endpoints.
 ///
 /// The client parses and compiles the query text; the wire form is the compiled
 /// [`GgQuery`], so the server needs neither a parser nor a clock (a relative date
@@ -65,7 +65,7 @@ pub const GG_QUERY_MAX_BATCH: usize = 32;
 #[tracing::instrument(name = "gg.query", skip(state, _user, query), err(Debug))]
 pub async fn run_query(
     State(state): State<AppState>,
-    _user: AuthUser,
+    _user: Person,
     Json(query): Json<GgQuery>,
 ) -> Result<Json<GgQueryResponse>, ApiError> {
     let docs = corpus(&state).await?;
@@ -73,11 +73,11 @@ pub async fn run_query(
 }
 
 /// `POST /gg/query/batch` — evaluate up to [`GG_QUERY_MAX_BATCH`] queries against one
-/// index read. Requires a bearer token.
+/// index read. Takes a person's assertion.
 #[tracing::instrument(name = "gg.query.batch", skip(state, _user, body), err(Debug))]
 pub async fn run_query_batch(
     State(state): State<AppState>,
-    _user: AuthUser,
+    _user: Person,
     Json(body): Json<GgQueryBatch>,
 ) -> Result<Json<GgQueryBatchResponse>, ApiError> {
     ensure_batch_fits(body.queries.len())?;
@@ -91,8 +91,8 @@ pub async fn run_query_batch(
 }
 
 /// `GET /gg/fields` — the field catalog: every dotted field observed across the
-/// corpus, with its kind, its document count and its most common values. Requires a
-/// bearer token.
+/// corpus, with its kind, its document count and its most common values. Takes a
+/// person's assertion.
 ///
 /// This is what makes the language discoverable, and the document count is the part
 /// that matters most: a `tool.*` field is deliberately sparse, and without seeing the
@@ -100,7 +100,7 @@ pub async fn run_query_batch(
 #[tracing::instrument(name = "gg.fields", skip(state, _user), err(Debug))]
 pub async fn gg_fields(
     State(state): State<AppState>,
-    _user: AuthUser,
+    _user: Person,
 ) -> Result<Json<GgFieldCatalog>, ApiError> {
     let docs = corpus(&state).await?;
     Ok(Json(field_catalog(&docs)))

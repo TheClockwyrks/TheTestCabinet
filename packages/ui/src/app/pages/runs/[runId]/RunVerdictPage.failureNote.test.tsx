@@ -55,9 +55,6 @@ vi.mock("../../../data/galleryContext", () => ({
     fetchCaseVariant: async () => null,
   }),
 }));
-vi.mock("../../../../client/auth", () => ({
-  useAuth: () => ({ account: null, token: null }),
-}));
 vi.mock("../../../runtime/runsRuntime", () => ({
   useRunsRuntime: () => ({ requestRefresh: () => {} }),
 }));

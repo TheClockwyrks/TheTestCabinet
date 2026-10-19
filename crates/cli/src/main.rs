@@ -11,7 +11,6 @@
 //! and routes to a handler that calls into the run engine where the surface already
 //! exists and otherwise reports that the behavior is not implemented yet.
 
-mod accounts;
 mod catalog;
 mod cli;
 mod commands;
@@ -77,9 +76,6 @@ async fn dispatch(command: Command) -> anyhow::Result<ExitCode> {
     match command {
         Command::Validate(args) => return commands::validate::execute(args).await,
         Command::Run(args) => commands::run::execute(args).await?,
-        Command::Register(args) => commands::auth::register(args).await?,
-        Command::Login(args) => commands::auth::login(args).await?,
-        Command::Logout => commands::auth::logout().await?,
         Command::Review(args) => commands::publish::review(args).await?,
         Command::Publish(args) => commands::publish::publish(args).await?,
         Command::Harnesses(args) => commands::harnesses::execute(args).await?,
@@ -101,9 +97,6 @@ fn command_name(command: &Command) -> &'static str {
     match command {
         Command::Run(_) => "run",
         Command::Validate(_) => "validate",
-        Command::Register(_) => "register",
-        Command::Login(_) => "login",
-        Command::Logout => "logout",
         Command::Review(_) => "review",
         Command::Publish(_) => "publish",
         Command::Harnesses(_) => "harnesses",

@@ -1,20 +1,14 @@
-import { useEffect, useRef, useState } from "react";
-import { Navigate, useNavigate } from "react-router";
-import { Avatar, DonutChartWidget, Panel } from "@clockwyrks/ui";
+import { useEffect, useState } from "react";
+import { DonutChartWidget, Panel } from "@clockwyrks/ui";
 import type { DonutSegment } from "@clockwyrks/ui";
 import type { ReviewStatSlice, ReviewStats } from "../../../client/types";
 import { RATING_META } from "../../../ratings";
 import { PageLayout } from "../../components/PageLayout";
-import { useRevealNotice } from "../../components/SubmitNotice";
 import { LoadingState } from "../../components/LoadingState";
 import { PromptHeader } from "../../components/PromptHeader";
-import { useAuth } from "../../../client/auth";
-import { useBackend, useWorkers } from "../../../client/context";
+import { useBackend } from "../../../client/context";
 import { useTestCaseName } from "../../data/useTestCaseName";
-import { routes } from "../../routes";
 import { AccountTabs } from "./AccountTabs";
-import { downscaleToSquare } from "./downscalePicture";
-import { Button } from "../../../primitives";
 import styles from "./AccountPages.module.scss";
 
 // A categorical palette for the test-case and model rings, whose slices have no
@@ -62,33 +56,23 @@ function categorySegments(
   return segments;
 }
 
-// The account view's Profile tab (`/account`): the signed-in user's identity card
-// (avatar, display name, username, profile-picture controls, sign out) alongside a
-// full-width breakdown of their recent review activity — ring charts of the test
-// cases and models they've reviewed and the ratings they've given. A console-only
-// page; a signed-out visitor is redirected to the sign-in page. Signing out clears the
-// stored token and returns to the gallery home.
+// The account view's Activity tab (`/account`): a full-width breakdown of the
+// signed-in identity's recent review activity, ring charts of the test cases and
+// models they've reviewed and the ratings they've given. A console-only page. The
+// identity is the one the edge asserts on each request, so the console holds no
+// profile of its own and signing in and out happen at the edge.
 export function AccountPage() {
-  const { account, token, logout, setProfilePicture, removeProfilePicture } =
-    useAuth();
-  const { active: worker } = useWorkers();
   const { client: backend } = useBackend();
   const testCaseName = useTestCaseName();
-  const navigate = useNavigate();
-  const fileInput = useRef<HTMLInputElement>(null);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const errorRef = useRevealNotice<HTMLParagraphElement>(error);
 
   const [stats, setStats] = useState<ReviewStats | null>(null);
   const [statsError, setStatsError] = useState<string | null>(null);
   const [statsLoading, setStatsLoading] = useState(true);
 
-  // Load the account's recent-review breakdowns for the charts. Refetches whenever the
-  // signed-in token changes (a sign-out unmounts the page). A transport without the
-  // stats call simply leaves the section empty.
+  // Load the identity's recent-review breakdowns for the charts. A transport
+  // without the stats call simply leaves the section empty.
   useEffect(() => {
-    if (!backend?.getReviewStats || !token) {
+    if (!backend?.getReviewStats) {
       setStatsLoading(false);
       return;
     }
@@ -96,7 +80,7 @@ export function AccountPage() {
     setStatsLoading(true);
     setStatsError(null);
     backend
-      .getReviewStats(token)
+      .getReviewStats()
       .then((res) => {
         if (!active) return;
         setStats(res);
@@ -110,109 +94,13 @@ export function AccountPage() {
     return () => {
       active = false;
     };
-  }, [backend, token]);
-
-  if (!account) return <Navigate to={routes.login()} replace />;
-
-  // The active transport can only manage a picture when it implements the auth calls;
-  // hide the controls otherwise (rather than offer a button that throws).
-  const canManagePicture = !!worker?.client?.setProfilePicture;
-  const hasPicture = !!account.pictureUrl;
-
-  const onPick = async (file: File | undefined) => {
-    if (!file) return;
-    setError(null);
-    setBusy(true);
-    try {
-      const picture = await downscaleToSquare(file);
-      await setProfilePicture(picture);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setBusy(false);
-      // Clear the input so re-picking the same file fires `change` again.
-      if (fileInput.current) fileInput.current.value = "";
-    }
-  };
-
-  const onRemove = async () => {
-    setError(null);
-    setBusy(true);
-    try {
-      await removeProfilePicture();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setBusy(false);
-    }
-  };
+  }, [backend]);
 
   return (
     <PageLayout>
       <PromptHeader command="--account" comment={<>// your account</>} />
-      <AccountTabs active="profile" />
+      <AccountTabs active="activity" />
       <div className={styles.profile}>
-        <Panel className={styles.identityCard}>
-          <div className={styles.identity}>
-            <Avatar
-              name={account.displayName}
-              pictureUrl={account.pictureUrl}
-              size={72}
-            />
-            <div className={styles.identityText}>
-              <span className={styles.displayName}>{account.displayName}</span>
-              <span className={styles.username}>@{account.username}</span>
-              {canManagePicture && (
-                <div className={styles.pictureControls}>
-                  <input
-                    ref={fileInput}
-                    type="file"
-                    accept="image/*"
-                    className={styles.hiddenInput}
-                    onChange={(e) => void onPick(e.target.files?.[0])}
-                  />
-                  <Button
-                    size="small"
-                    disabled={busy}
-                    onClick={() => fileInput.current?.click()}
-                  >
-                    {hasPicture ? "Change picture" : "Add picture"}
-                  </Button>
-                  {hasPicture && (
-                    <Button
-                      variant="link"
-                      size="small"
-                      className={styles.removePicture}
-                      disabled={busy}
-                      onClick={() => void onRemove()}
-                    >
-                      Remove
-                    </Button>
-                  )}
-                </div>
-              )}
-            </div>
-          </div>
-          {/* Beside the controls that raise it, not after the card they sit in.
-            Outside the capability guard above, which tracks the connected worker
-            rather than the upload: a worker that drops mid-upload must not take
-            the failure it caused off the screen with it. */}
-          {error && (
-            <p ref={errorRef} className={styles.error} role="alert">
-              {error}
-            </p>
-          )}
-          <Button
-            className={styles.signOut}
-            onClick={() => {
-              logout();
-              navigate(routes.home());
-            }}
-          >
-            Sign out
-          </Button>
-        </Panel>
-
         <Panel className={styles.activity}>
           <header className={styles.activityHead}>
             <h2 className={styles.sectionTitle}>Review activity</h2>

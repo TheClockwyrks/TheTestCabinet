@@ -19,6 +19,7 @@ use test_cabinet_contracts::reference_lock::ReferenceLock;
 use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
 
+use crate::auth::ServiceCaller;
 use crate::db::ReferenceSheetEntry;
 use crate::error::ApiError;
 use crate::ingest::{IngestEvent, IngestReport, IngestRequest, IngestRoots, Ingestor};
@@ -46,6 +47,7 @@ use super::AppState;
 #[tracing::instrument(name = "ingest", skip(state, headers, body), err(Debug))]
 pub async fn ingest(
     State(state): State<AppState>,
+    _caller: ServiceCaller,
     headers: HeaderMap,
     body: Option<Json<IngestBody>>,
 ) -> Result<Response, ApiError> {

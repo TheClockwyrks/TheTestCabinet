@@ -1,6 +1,6 @@
 //! The `coverage_settings` table: an account's coverage preferences.
 //!
-//! One row per account (the auth-service user id is the primary key), holding the
+//! One row per account (the owner's identity is the primary key), holding the
 //! account's default **runs-in-flight limit**: how many of one plan's or one ladder
 //! dispatch's own jobs may be queued, pending, dispatched, starting or running at once.
 //! It keeps one plan or ladder from taking over the global queue. Completed runs never
@@ -19,8 +19,9 @@ use sea_orm::entity::prelude::*;
 #[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel)]
 #[sea_orm(table_name = "coverage_settings")]
 pub struct Model {
-    /// The owning account's id (from the auth service, via the verified bearer
-    /// token). The primary key — one settings row per account.
+    /// The owner's identity: the Access assertion's email. A row made before the
+    /// edge asserted the identity holds the retired auth service's account id.
+    /// The primary key — one settings row per identity.
     #[sea_orm(primary_key, auto_increment = false)]
     pub user_id: String,
     /// The account's default runs-in-flight limit per plan or ladder dispatch. Not null:

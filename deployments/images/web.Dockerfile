@@ -9,12 +9,12 @@
 # exposed publicly.
 #
 # Runtime config, NOT a build-time bake. CI builds ONE tcab-web:<git-sha> image
-# shared by every overlay (mirroring tcab-publisher), so the backend/auth URLs
+# shared by every overlay (mirroring tcab-publisher), so the backend URL
 # cannot be inlined per-environment via Vite's build-time VITE_* vars. Instead the
-# entrypoint `envsubst`s /config.js from TCAB_WEB_BACKEND_URL / TCAB_WEB_AUTH_URL
+# entrypoint `envsubst`s /config.js from TCAB_WEB_BACKEND_URL
 # at container start; the console reads window.__TCAB_CONFIG__ from that file
 # before it boots (see apps/web/index.html + apps/web/src/state/useConnections.ts).
-# Both default to empty, so an unset env yields a valid (empty) config that leaves
+# It defaults to empty, so an unset env yields a valid (empty) config that leaves
 # the console unconfigured rather than broken.
 #
 # The canonical image is built by the Azure pipeline (scripts/ci/service-image.sh)

@@ -314,11 +314,14 @@ pub struct StoredTournament {
     pub published_at: String,
 }
 
-/// A run's review as stored, attributed to the account that wrote it.
+/// A run's review as stored, attributed to the identity that wrote it.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct StoredReview {
-    /// The account that wrote the review.
-    pub reviewer: Reviewer,
+    /// The identity that wrote the review: the Access assertion's email (or a
+    /// service token's common name), recorded at submission. A review written
+    /// before the edge carried the identity holds the display name its account
+    /// had then.
+    pub reviewer: String,
     /// The reviewer's per-domain functional ratings. This review's overall rating
     /// is the worst across them; the run's is the worst across all its reviews.
     /// Empty on a review of a validator-rated run, whose functional rating is not
@@ -377,19 +380,6 @@ pub struct RecentReviewSubject {
     /// its worst tier — `row_aesthetic`); `None` for a legacy run's review, or
     /// one whose stored aesthetics JSON no longer parsed.
     pub aesthetic: Option<AestheticRating>,
-}
-
-/// The reviewing account a [`StoredReview`] is attributed to, denormalized from
-/// the verified bearer token at submission so the snapshot is self-contained
-/// (accounts live in the auth service's separate database).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Reviewer {
-    /// The account id (from the auth service).
-    pub user_id: String,
-    /// The account's login handle.
-    pub username: String,
-    /// The account's human-facing display name.
-    pub display_name: String,
 }
 
 /// The outcome of publishing a tournament into the store.
@@ -765,7 +755,7 @@ impl Db {
         // leaves `edited_at` null.
         let existing = review::Entity::find()
             .filter(review::Column::RunId.eq(run_id))
-            .filter(review::Column::ReviewerUserId.eq(&review.reviewer.user_id))
+            .filter(review::Column::Reviewer.eq(&review.reviewer))
             .one(&txn)
             .await?;
         let (id, reviewed_at, edited_at) = match &existing {
@@ -825,9 +815,7 @@ impl Db {
         review::Entity::insert(review::ActiveModel {
             id: Set(id),
             run_id: Set(run_id.to_string()),
-            reviewer_user_id: Set(review.reviewer.user_id.clone()),
-            reviewer_username: Set(review.reviewer.username.clone()),
-            reviewer_display_name: Set(review.reviewer.display_name.clone()),
+            reviewer: Set(review.reviewer.clone()),
             ratings: Set(ratings_json),
             aesthetics: Set(aesthetics_json),
             aesthetic: Set(aesthetic_token),
@@ -841,8 +829,6 @@ impl Db {
                 // `reviewed_at` is deliberately NOT updated — it stays the first
                 // submission time; an edit stamps `edited_at` instead.
                 .update_columns([
-                    review::Column::ReviewerUsername,
-                    review::Column::ReviewerDisplayName,
                     review::Column::Ratings,
                     review::Column::Aesthetics,
                     review::Column::Aesthetic,
@@ -1325,7 +1311,7 @@ impl Db {
         // cannot read is neither counted nor returned.
         let reviewed = || {
             review::Entity::find()
-                .filter(review::Column::ReviewerUserId.eq(user_id))
+                .filter(review::Column::Reviewer.eq(user_id))
                 .join(JoinType::InnerJoin, review::Relation::Run.def())
                 .filter(run::Column::RecordReadable.eq(true))
         };
@@ -1384,7 +1370,7 @@ impl Db {
         window: usize,
     ) -> Result<(Vec<RecentReviewSubject>, usize)> {
         let total = review::Entity::find()
-            .filter(review::Column::ReviewerUserId.eq(user_id))
+            .filter(review::Column::Reviewer.eq(user_id))
             .count(&self.conn())
             .await? as usize;
 
@@ -1397,7 +1383,7 @@ impl Db {
             .column(review::Column::Ratings)
             .column(review::Column::Aesthetics)
             .column(review::Column::Aesthetic)
-            .filter(review::Column::ReviewerUserId.eq(user_id))
+            .filter(review::Column::Reviewer.eq(user_id))
             .join(JoinType::InnerJoin, review::Relation::Run.def())
             .order_by_desc(review::Column::ReviewedAt)
             .order_by_desc(review::Column::Id)
@@ -2248,11 +2234,7 @@ fn stored_review_with_revisions(
         &aesthetics,
     );
     Ok(StoredReview {
-        reviewer: Reviewer {
-            user_id: model.reviewer_user_id,
-            username: model.reviewer_username,
-            display_name: model.reviewer_display_name,
-        },
+        reviewer: model.reviewer,
         ratings,
         aesthetics,
         aesthetic,
@@ -2528,7 +2510,7 @@ pub(crate) fn validator_only_rating(
 }
 
 /// Reviewer coverage plans and the run/job counts the coverage matrix is built
-/// from. A plan is per-account (keyed by the auth-service user id); the counts are
+/// from. A plan is per-account (keyed by the owner's identity); the counts are
 /// **global** — they tally every run/job for a cell regardless of who launched it,
 /// so two reviewers dividing the model space never redo each other's runs.
 impl Db {
@@ -3760,7 +3742,7 @@ impl Db {
             Some(reviewer) => review::Entity::find()
                 .select_only()
                 .column(review::Column::RunId)
-                .filter(review::Column::ReviewerUserId.eq(reviewer))
+                .filter(review::Column::Reviewer.eq(reviewer))
                 .into_tuple::<String>()
                 .all(&self.conn())
                 .await?
@@ -4745,7 +4727,7 @@ pub struct DispatchEvidence {
 
 /// Ladders: the ordered, gated sibling of a coverage plan, and their dispatches.
 ///
-/// A ladder itself is per-account (keyed by the auth-service `user_id`) and every
+/// A ladder itself is per-account (keyed by the owner's identity in `user_id`) and every
 /// read/write of one is scoped by it. Its child tables — rungs, the dispatch, its
 /// climbers and outcomes — are keyed by the ladder or dispatch id alone and **inherit**
 /// that scoping: a caller reaches them only after resolving the ladder through
@@ -5409,7 +5391,7 @@ impl Db {
                 run::Relation::Review.def().on_condition({
                     let reviewer = reviewer_user_id.to_string();
                     move |_run, review| {
-                        Expr::col((review, review::Column::ReviewerUserId))
+                        Expr::col((review, review::Column::Reviewer))
                             .eq(reviewer.clone())
                             .into_condition()
                     }
@@ -7015,6 +6997,15 @@ impl Db {
             .await?)
     }
 
+    /// Fetch the job whose per-job token is `token`, the lookup that resolves a
+    /// driver's bearer token to the job it was minted for.
+    pub async fn job_by_token(&self, token: &str) -> Result<Option<job::Model>> {
+        Ok(job::Entity::find()
+            .filter(job::Column::JobToken.eq(token))
+            .one(&self.conn())
+            .await?)
+    }
+
     /// Every job still in flight (`queued`, `pending`, `dispatched`, `starting`, or
     /// `running`), in queue order. This is the console's active-run list: a run it is
     /// watching survives a page reload because the backend remembers it — including
@@ -7271,6 +7262,15 @@ impl Db {
     /// Fetch one publish job by id.
     pub async fn get_publish_job(&self, id: &str) -> Result<Option<publish_job::Model>> {
         Ok(publish_job::Entity::find_by_id(id.to_string())
+            .one(&self.conn())
+            .await?)
+    }
+
+    /// Fetch the publish job whose per-publish-job token is `token`, the lookup that
+    /// resolves a publisher's bearer token to the publish job it was minted for.
+    pub async fn publish_job_by_token(&self, token: &str) -> Result<Option<publish_job::Model>> {
+        Ok(publish_job::Entity::find()
+            .filter(publish_job::Column::JobToken.eq(token))
             .one(&self.conn())
             .await?)
     }
@@ -9092,6 +9092,10 @@ pub(crate) mod tests;
 #[cfg(test)]
 #[path = "db.readability.test.rs"]
 mod readability_tests;
+
+#[cfg(test)]
+#[path = "db.reviewer.test.rs"]
+mod reviewer_tests;
 
 /// The model-probe store: responses-as-code readiness probes of catalog models
 /// (see [`crate::probe`]).

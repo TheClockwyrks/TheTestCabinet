@@ -21,9 +21,6 @@ import { capabilitySetFromDraft, emptyDraft } from "../runs/gg/ggConfigDraft";
 vi.mock("../../components/PageLayout", () => ({
   PageLayout: ({ children }: { children: ReactNode }) => <div>{children}</div>,
 }));
-vi.mock("../../../client/auth", () => ({
-  useAuth: () => ({ token: "t" }),
-}));
 // A single already-selected case, so the only remaining save gate is the
 // configuration rows themselves.
 vi.mock("../../runtime/useCatalog", () => ({
