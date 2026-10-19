@@ -73,6 +73,22 @@
 # is rendered the stage, and one whose kind builds no TypeScript workspace has
 # nothing to publish, so its stage skips with a notice.
 #
+{% if ci_project_jobs %}
+# This repository runs jobs and stages of its own beside the kit's, in
+# templates it writes under .azure/project/ and the kit never renders: its
+# jobs, in jobs.yml, at the end of the gates stage, and its stages, in
+# stages.yml, after the publish stage. Each template is handed the image of
+# the Rust track, the registry and its service connection, and the arm64
+# agent pool, since a template cannot read this file's resources. The mirror
+# waits on the gates stage, those jobs included, and on each of the
+# repository's own stages, which the kit's PROJECT_PIPELINE table names.
+{% if ci_project_setup %}
+# The Rust job takes the steps of setup-steps.yml, beside them, after it
+# fetched its dependencies and before its first check: what compiling the
+# workspace needs beyond the track's image.
+{% endif %}
+#
+{% endif %}
 # The repository kit writes this file, so a change arrives with
 # `scripts/repos/render.py --update` run from the superrepo rather than by
 # hand here.
@@ -106,7 +122,7 @@ stages:
 {% if rust_crate %}
       - job: rust
         displayName: Rust
-        timeoutInMinutes: 60
+        timeoutInMinutes: {{rust_timeout}}
         container: {{ci_rust_track}}
 {% if ci_uses %}
 {{ci_uses}}
@@ -141,6 +157,10 @@ stages:
               SYSTEM_ACCESSTOKEN: $(System.AccessToken)
 {% if ci_rust_npm %}
 {{ci_rust_npm}}
+{% endif %}
+{% if ci_project_setup %}
+          # This repository's own setup, before the first check.
+{{ci_project_setup}}
 {% endif %}
           - script: echo "##vso[task.setvariable variable=checksReady]true"
             displayName: Ready to run the checks
@@ -329,11 +349,16 @@ stages:
 {% if ci_checks_extra_gates %}
 {{ci_checks_extra_gates}}
 {% endif %}
+{% if ci_project_jobs %}
+
+      # This repository's own jobs in the gates stage.
+{{ci_project_jobs}}
+{% endif %}
 {% if ci_image %}
 
   # The application's image, after every gate passed, on master and staging:
   # one job per architecture, then the multi-arch tag. A tag's run builds
-  # none, and the publish and mirror stages wait on the gates alone.
+  # none, and the publish and mirror stages do not wait on the image stage.
 {{ci_image_stage}}
 {% endif %}
 
@@ -346,12 +371,22 @@ stages:
   # notice, and a workspace no `typescript` gate of the repository builds is
   # refused.
 {{ci_publish}}
+{% if ci_project_stages %}
+
+  # This repository's own stages, after the publish stage. Each names the
+  # stages it depends on and the refs it runs for.
+{{ci_project_stages}}
+{% endif %}
 {% if ci_mirror %}
 
   # The mirror on GitHub is the public source every manifest names, and only
   # this stage writes to it, so it holds gated commits and nothing else. Each
   # of {{branches | join(', ')}} is pushed to the branch of its name once
   # every gate passed, and a tag once its packages are published.
+{% if project_stages %}
+  # Either waits too on this repository's own stages, each of which has to
+  # have passed or been skipped.
+{% endif %}
   # scripts/ci/mirror.sh refuses a push that would not move the mirror
   # forward; queue a run with the variable `mirrorAllowRewrite` set to `true`
   # to push over it anyway. The deploy key is the secure file
@@ -362,9 +397,15 @@ stages:
     dependsOn:
       - gates
       - publish
+{% for stage in project_stages %}
+      - {{stage}}
+{% endfor %}
     condition: >-
       and(eq(dependencies.gates.result, 'Succeeded'),
       in(dependencies.publish.result, 'Succeeded', 'Skipped'),
+{% for stage in project_stages %}
+      in(dependencies.{{stage}}.result, 'Succeeded', 'Skipped'),
+{% endfor %}
       or(in(variables['Build.SourceBranch'], {% for branch in branches %}'refs/heads/{{branch}}'{% if not loop.last %}, {% endif %}{% endfor %}),
       startsWith(variables['Build.SourceBranch'], 'refs/tags/v')))
     jobs:

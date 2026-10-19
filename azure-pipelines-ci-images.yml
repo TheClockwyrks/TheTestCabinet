@@ -116,6 +116,9 @@ resources:
     - repository: engines
       type: git
       name: the-test-cabinet/engines
+    - repository: gg
+      type: git
+      name: the-test-cabinet/gg
     - repository: microservice-repos
       type: git
       name: the-test-cabinet/microservice-repos
@@ -146,6 +149,7 @@ jobs:
         - cold-storage
         - contracts
         - engines
+        - gg
         - microservice-repos
         - test-suites
     steps:
@@ -189,6 +193,7 @@ jobs:
         - cold-storage
         - contracts
         - engines
+        - gg
         - microservice-repos
         - test-suites
     steps:
@@ -226,6 +231,7 @@ jobs:
         - cold-storage
         - contracts
         - engines
+        - gg
         - microservice-repos
         - test-suites
     steps:

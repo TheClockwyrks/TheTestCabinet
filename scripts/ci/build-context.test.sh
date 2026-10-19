@@ -78,12 +78,23 @@ readonly SOURCE
 mapfile -t case_sources < <(cd "$SOURCE" && git ls-files -z -- '*Dockerfile' '*.Dockerfile' '*.dockerfile' |
 	xargs -0 grep -hoE '^[[:space:]]*(COPY|ADD)[[:space:]].*' | grep -oE '(^|[[:space:]])test-suites/[^[:space:]]+' |
 	sed 's/^[[:space:]]*//' | sort -u)
+# The submodules the copy carries whole: each one's tracked files and its git
+# entry, never the directory itself, whose build output (a gg checkout's target/
+# runs to gigabytes) the tree does not track. test-suites is copied below for the
+# catalog paths a Dockerfile reads alone.
+mapfile -t submodule_dirs < <(cd "$SOURCE" && git ls-files -s | awk '$1 == "160000" && $4 != "test-suites" { print $4 }')
 # One repository holding the tracked tree, indexed once; each case works in a copy of it by hard links.
 base="$tmp/base"
 mkdir -p "$base"
-(cd "$SOURCE" && { git ls-files -z -- ':!test-suites' ':!tasks' &&
-	git -C test-suites ls-files -z -- "${case_sources[@]#test-suites/}" | sed -z 's|^|test-suites/|'; } |
-	tar --null -T - -cf -) | tar -C "$base" -xf -
+(cd "$SOURCE" && {
+	git ls-files -z -s -- ':!test-suites' ':!tasks' | awk -v RS='\0' -v ORS='\0' '$1 != "160000" { sub(/^[^\t]*\t/, ""); print }'
+	for sub in "${submodule_dirs[@]}"; do
+		[ -e "$sub/.git" ] || continue
+		printf '%s\0' "$sub/.git"
+		git -C "$sub" ls-files -z | sed -z "s|^|$sub/|"
+	done
+	git -C test-suites ls-files -z -- "${case_sources[@]#test-suites/}" | sed -z 's|^|test-suites/|'
+} | tar --null -T - -cf -) | tar -C "$base" -xf -
 git -C "$base" init --quiet
 git -C "$base" add -A -f
 
@@ -105,11 +116,11 @@ check_contains "and reports what it checked" "Rust pin(s) under containers/ name
 echo "--- an allowlist that drops a source a Dockerfile copies ---"
 repo="$(fresh_repo)"
 own "$repo/.dockerignore"
-# Both entries admit it: the directory's own, and the file's.
-sed -i -E '\#^!/scripts/ci(/install-java\.sh)?$#d' "$repo/.dockerignore"
+# A file of the gg slice the devcontainer image copies out of the gg submodule.
+sed -i -E '\#^!/gg/packages/gg-sandbox-java/java-version\.sh$#d' "$repo/.dockerignore"
 out="$(run "$repo")"
 check_equal "fails" "1" "$?"
-check_contains "naming the source and the allowlist" "copies 'scripts/ci/install-java.sh', which .dockerignore keeps OUT of the build context." "$out"
+check_contains "naming the source and the allowlist" "copies './gg/packages/gg-sandbox-java/java-version.sh', which .dockerignore keeps OUT of the build context." "$out"
 
 echo "--- a Dockerfile that copies a path that does not exist ---"
 repo="$(fresh_repo)"
@@ -120,6 +131,25 @@ out="$(run "$repo")"
 check_equal "fails" "1" "$?"
 check_contains "naming the Dockerfile and the source" "$dockerfile:" "$out"
 check_contains "and that it is absent" "copies 'scripts/ci/no-such-helper.sh', which does not exist in the repository." "$out"
+
+echo "--- a RUN bind mount of a path that does not exist ---"
+repo="$(fresh_repo)"
+dockerfile="deployments/images/services.Dockerfile"
+own "$repo/$dockerfile"
+sed -i 's#source=crates/driver/gg-release-version#source=crates/driver/no-such-pin#' "$repo/$dockerfile"
+out="$(run "$repo")"
+check_equal "fails" "1" "$?"
+check_contains "naming the Dockerfile and the mounted source" \
+	"copies 'crates/driver/no-such-pin', which does not exist in the repository." "$out"
+
+echo "--- a RUN bind mount of a path the allowlist drops ---"
+repo="$(fresh_repo)"
+own "$repo/.dockerignore"
+printf '\n/crates/driver/gg-release-version\n' >>"$repo/.dockerignore"
+out="$(run "$repo")"
+check_equal "fails" "1" "$?"
+check_contains "naming the source and the allowlist" \
+	"copies 'crates/driver/gg-release-version', which .dockerignore keeps OUT of the build context." "$out"
 
 echo "--- a case image pinning another Rust ---"
 repo="$(fresh_repo)"

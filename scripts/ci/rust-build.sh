@@ -8,8 +8,7 @@
 #
 # THE BUILD is the only check anywhere that links every target of the
 # workspace: clippy and rustdoc stop at metadata, and nextest links only the
-# test binaries. `--all-targets` takes the test binaries in too, except gg's,
-# whose `test = false` (crates/gg/Cargo.toml) leaves them to the gg_tests jobs.
+# test binaries. `--all-targets` takes the test binaries in too.
 #
 # THE SEED warms the template's `rust` job. That job restores `target/` from
 # its cache and saves it only when every one of its steps succeeded, so a cold
@@ -22,18 +21,13 @@
 # fails. `cargo nextest list` builds exactly what `cargo nextest run` would.
 # .cargo/config.toml's rustdoc flag reaches the doc build here and in the gate
 # alike.
-#
-# Building crates/gg needs gg's program-language toolchains and the npm
-# workspace installed: `crates/gg/build.rs` reflects each arm's signature
-# catalogue out of that arm's own SDK. scripts/ci/gg-ci-toolchains.sh and
-# scripts/ci/npm-install.sh provide them first.
 set -euo pipefail
 # shellcheck source=scripts/ci/tcab-lib.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/tcab-lib.sh"
-# shellcheck source=scripts/gg-cargo-lock.sh
-source "$REPO_ROOT/scripts/gg-cargo-lock.sh"
+# shellcheck source=scripts/ci/cargo-lock.sh
+source "$REPO_ROOT/scripts/ci/cargo-lock.sh"
 # `--locked` only where no patch table shapes the build: inside the superrepo cargo writes the lock's
-# `[[patch.unused]]` block in an order that is not stable between runs (scripts/gg-cargo-lock.sh).
+# `[[patch.unused]]` block in an order that is not stable between runs (scripts/ci/cargo-lock.sh).
 mapfile -t locked < <(cargo_locked_args .)
 
 case "${1:-}" in

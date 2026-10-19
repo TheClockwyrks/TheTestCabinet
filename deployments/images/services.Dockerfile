@@ -24,11 +24,9 @@
 # mtime refresh happens ONCE and each workspace crate is compiled once. `--target`
 # then picks a runtime stage, and BuildKit builds only the stages that target
 # actually depends on — asking for `arena` never runs the gg or npm stages. Two
-# targets depend on the gg stage: `driver` bakes the gg binary, and `backend` bakes
-# the reference documents that binary projects. In CI neither of them RUNS that stage:
-# scripts/ci/service-image.sh replaces it with `--build-context gg-build=<dir>` carrying
-# the gates stage's already-gated binary, and the stage is what the offline local build
-# uses (see its own header below).
+# targets depend on the gg stage, which fetches the gg release the driver pins rather
+# than building one: `driver` bakes the gg binary, and `backend` bakes the reference
+# documents of the same release (see the stage's own header below).
 #
 # The canonical images are built by the Azure pipeline (scripts/ci/service-image.sh)
 # on every push to master and staging, natively per architecture, and pushed to the
@@ -55,17 +53,16 @@ ARG AUDIO_STORE_IMAGE=scratch
 # change recompiles only what changed instead of re-downloading the toolchain and
 # rebuilding every dependency from scratch.
 #
-# THE RUSTUP CACHE IS NOT SHARED WITH THE gg STAGE, and that is a correctness
-# requirement rather than a preference. rust-toolchain.toml pins an exact compiler,
-# which the `rust:1-bookworm` base image does not necessarily ship — and a cache mount
-# over /usr/local/rustup hides whatever it *does* ship, so against a cold cache rustup
-# fetches the pinned toolchain here. gg-build fetches it too (its first `rustc` runs
-# inside install-gg-toolchains.sh), and the two stages start at the same moment: a
-# `--target backend` build depends on both. rustup stages a component download at a
-# content-hash-named `<hash>.partial` under RUSTUP_HOME and takes no cross-process
-# lock, so two rustups fetching one toolchain into one shared mount collide on that
-# exact path — whichever renames it into place first leaves the other renaming
-# something that is no longer there, and the build dies with
+# THE RUSTUP CACHE HAS AN `id` OF ITS OWN, and that is a correctness requirement
+# rather than a preference. rust-toolchain.toml pins an exact compiler, which the
+# `rust:1-bookworm` base image does not necessarily ship — and a cache mount over
+# /usr/local/rustup hides whatever it *does* ship, so against a cold cache rustup
+# fetches the pinned toolchain here. Any other stage or Dockerfile that mounted the
+# same cache and ran rustup at the same moment would fetch it too. rustup stages a
+# component download at a content-hash-named `<hash>.partial` under RUSTUP_HOME and
+# takes no cross-process lock, so two rustups fetching one toolchain into one shared
+# mount collide on that exact path — whichever renames it into place first leaves the
+# other renaming something that is no longer there, and the build dies with
 #
 #   error: component download failed for rustc-<triple>: could not rename 'downloaded'
 #   file from '/usr/local/rustup/downloads/<hash>.partial' to
@@ -119,180 +116,50 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
         target/release/tcab-publisher \
         /out/
 
-# ── gg static-musl stage (driver AND backend) ────────────────────────────────
-# The first-party `gg` harness, built static against musl. gg is copied into every
-# sandbox run container, whose images span glibc Debian bookworm AND the Ubuntu
-# blender image — a static binary is the one gg that runs across all of them. Built
-# here for THIS image's own platform (the script targets the host arch), so an arm64
-# image bakes an aarch64-musl gg and an amd64 image an x86_64-musl gg. musl-tools
-# supplies the musl-gcc the script needs (ring/wasmtime compile a little C for the
-# musl target).
+# ── gg release stage (driver AND backend) ───────────────────────────────────
+# The first-party `gg` harness and its reference documents, as the `gg` repository's
+# pipeline released them: this stage does not build gg, it fetches the release the driver
+# pins. gg is built, tested and released in its own repository (see "Releasing gg" in
+# apps/docs/src/content/docs/development/releasing.md), whose `v*` tag uploads a
+# static-musl binary per architecture and `gg-reference.tar.gz` to the anonymously
+# readable `gg-releases` blob container. The version is the one line of
+# crates/driver/gg-release-version, the same file the driver compiles in as
+# `DEFAULT_RELEASE_VERSION`, and scripts/ci/gg-release.sh is what reads it and fetches,
+# here exactly as in every other build that needs gg.
 #
-# WHY A SINGLE STATIC BINARY NOW PULLS IN ELEVEN COMPILERS. gg drives a model in one of
-# eleven program languages, and what a model is *told* each language offers is a
-# signature catalogue reflected out of that language's own SDK by that language's own
-# documentation tool — `tsc`, griffe, YARD, `purs`, javadoc, the Kotlin front end,
-# rustdoc, `swiftc -emit-symbol-graph`, `clang++ -ast-dump=json`, Roslyn. Those
-# catalogues were committed once, so that this stage needed nothing but rustc; they are
-# generated by `crates/gg/build.rs` now, on every build, so a gg binary cannot embed a
-# description of a surface the guest in the same checkout does not export. A machine
-# that builds gg is therefore a machine that has all eleven toolchains — this one
-# included, and scripts/ci/install-gg-toolchains.sh is the one pinned list of them that
-# the devcontainer and CI install too.
+# Two targets take from it: `driver` bakes the binary, and `backend` bakes the documents,
+# so a deployed console's reference and the harness its runs execute describe one
+# release. The binary is static, so the one a driver image carries runs in every run
+# container image, Debian or Ubuntu alike.
 #
-# AND IT NOW COMPILES THEM AS WELL AS READING THEM. What a model's program is compiled
-# and evaluated AGAINST — the guest components, the SDK jars, the compiled library sets —
-# stopped being committed the same way and for the same reason. Each arm has a crate under
-# crates/gg-sandbox-artifacts/ whose build script runs that arm's packages/gg-sandbox*/build.sh
-# into its own OUT_DIR, so this stage bakes four language runtimes (TypeScript/JavaScript,
-# Python, Ruby, C#) and links six compile targets on the way to one static binary. One of
-# them needs a toolchain the eleven-arm list deliberately excludes — see the second
-# installer call below.
+# THE ARCHITECTURE is this stage's own: the helper takes the binary for `uname -m`, which
+# under `--platform linux/amd64` is x86_64 whether the builder is native or emulated, so an
+# amd64 image bakes the x86_64 binary and an arm64 image the aarch64 one. The helper runs
+# the binary before anything is copied and refuses one whose `gg --version` is not the
+# pinned version, and a tarball without `gg-reference/index.json`.
 #
-# CI DOES NOT RUN THIS STAGE, and knowing that is the difference between reading this file
-# and understanding what a deployed image contains. scripts/ci/service-image.sh passes
-# `--build-context gg-build=<dir>` for the backend and driver targets, which REPLACES the
-# stage: it never enters the build graph, and each `COPY --from=gg-build` below resolves
-# against a directory scripts/ci/gg-prebuilt.sh staged out of the gates stage's `gg-<arch>`
-# artifact. That artifact is the gg `gg selfcheck` is driven against inside four run images
-# and the one that projected the reference documents beside it, so one binary per commit
-# serves the run images, the driver and the backend.
-#
-# The stage stays because it is the OFFLINE path. Two local entry points build it with no
-# pipeline artifact and no network, so it has to produce a gg of its own:
-# `make -C deployments/local images`, and `docker compose -f deployments/local/compose.yml up
-# backend`, which builds `--target backend`. Those two are also the ONLY things that build this
-# stage now — no pipeline job does — so it is an ungated code path, and a change to the gg
-# toolchain installers, to scripts/build-gg-static.sh or to this stage's base pins can break it
-# with every branch green. On x86_64 that build currently yields a binary that segfaults in
-# `gg reference --out` — the diagnostics on that RUN's tail are there to narrow it — so neither
-# local entry point completes on an x86_64 machine yet, which leaves an aarch64 run of one of
-# them as the only feedback there is. tasks/backlog/ carries the issue.
-FROM docker.io/library/rust:1-bookworm AS gg-build
-WORKDIR /src
-# Node, for the two ECMAScript arms: the TypeScript and JavaScript catalogues are one
-# reflection over the declarations `tsc` emits, and the PureScript arm's reflector is a
-# Node script as well. Taken from the same official image the package-store stage below
-# builds on rather than from Debian's archive, which is two majors behind. Only the
-# interpreter and npm itself are copied — copying all of /usr/local would bury this
-# image's own /usr/local/cargo and /usr/local/rustup.
-COPY --from=docker.io/library/node:24-bookworm-slim /usr/local/bin/node /usr/local/bin/node
-COPY --from=docker.io/library/node:24-bookworm-slim /usr/local/lib/node_modules /usr/local/lib/node_modules
-RUN ln -s ../lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm
-COPY . .
-ARG TCAB_BUILD_COMMIT
-# Every arm's installer defaults to a directory under $HOME — ~/.local/bin for `purs`,
-# `uv` and esbuild, ~/.local/share for the JDK, the Kotlin compiler, Swift, wasi-sdk and
-# .NET — and `purs` and `uv` are found on PATH. This is the root user's, so name it once
-# here rather than in the RUN below, where a `cd` into a package would lose it.
-ENV PATH=/root/.local/bin:$PATH
-# The registry and git caches are shared with the build stage, which is safe because
-# cargo locks both. The `rustup` and `target/` caches are NOT: each gets its OWN id,
-# for two different reasons. This stage and the build stage run in parallel, and cargo
-# locks a whole target dir, so a shared `target/` would serialise the two builds on
-# that lock — a distinct id lets them proceed independently (glibc services vs
-# static-musl gg). rustup, by contrast, locks nothing at all, and two rustups fetching
-# the pinned toolchain into one mount race on a single `<hash>.partial` and fail the
-# build outright; the build stage's header states that one in full. This stage's own
-# rustup writes are the wasm32 and musl targets `rustup target add`s in, which land in
-# this id and are wanted nowhere else.
-#
-# The toolchains land in a CACHE MOUNT (/root/.local) rather than in a layer, and that
-# is a size decision rather than a speed one. Installed they are ~1.9 GB — Swift alone
-# is 835 MB after its installer prunes 3.3 GB down — and scripts/ci/service-image.sh
-# exports every stage's layers to a registry cache with `mode=max`, so a 1.9 GB layer
-# would be pushed into every service's cache on every build. A cache mount is not
-# exported at all: a warm local BuildKit
-# (`make -C deployments/local images`) reuses it and never re-downloads, and a cold CI
-# runner pays the download once per run. Everything the installers write lives under that
-# one prefix, which is what makes a single mount enough; ~/.cache carries uv's own
-# downloads (a CPython and the pinned griffe) and /root/.npm the npm cache, for the same
-# reason.
-#
-# THE ~/.cache MOUNT EARNS ITS KEEP A SECOND WAY, and it is the reason it is worth
-# knowing it is here: `gg_fetch` (scripts/ci/fetch.sh) stages every large toolchain
-# archive under ~/.cache/tcab/downloads and leaves the PARTIAL file there when a transfer
-# is cut short. So a build that dies eight hundred megabytes into the 1.05 GB Swift
-# toolchain — which is what a flaky link does to a twelve-minute download — resumes on the
-# next `make images` instead of starting that download again. The installers delete their
-# own archives once the tree they feed has verified itself, so a build that succeeds
-# leaves the mount holding nothing but the caches named above.
-RUN --mount=type=cache,target=/usr/local/cargo/registry \
-    --mount=type=cache,target=/usr/local/cargo/git \
-    --mount=type=cache,target=/usr/local/rustup,id=rustup-gg,sharing=locked \
-    --mount=type=cache,target=/src/target,id=gg-target \
-    --mount=type=cache,target=/root/.local,id=gg-toolchains \
-    --mount=type=cache,target=/root/.cache,id=gg-toolchain-downloads \
-    --mount=type=cache,target=/root/.npm \
-    # musl-tools for the link; ca-certificates and curl because every installer fetches
-    # a pinned release; ruby because the Ruby arm reflects with YARD, and unlike the
-    # other ten arms its interpreter is a distribution package rather than something an
-    # installer can lay down under $HOME (install-gg-toolchains.sh installs the pinned
-    # YARD into it and fails by name if the interpreter is absent). python3 is already in
-    # this base image and is named anyway: the Rust, Swift and C++ reflectors are Python
-    # scripts, and depending on it silently is how a base-image change becomes a mystery.
-    # unzip is for the C# arm alone and only since its guest stopped being committed: the
-    # Mono WASI runtime pack it is relinked from ships as a `.nupkg`, which is a zip, and
-    # every other fetch in both installer lists is a tarball. ~400 KB, and without it the
-    # build toolchain installer below fails four minutes in.
-    apt-get update && apt-get install -y --no-install-recommends \
-        musl-tools ca-certificates curl python3 ruby unzip \
-    && rm -rf /var/lib/apt/lists/* \
-    && ./scripts/ci/install-gg-toolchains.sh \
-    # And the C# arm's BUILD toolchains, which are deliberately not on that list: a whole .NET SDK
-    # and an unpruned wasi-sdk, ~1.4 GB, needed to relink Mono's IL interpreter into this arm's guest
-    # component. That component is not committed any more (nothing gg embeds is), so the cargo build
-    # below produces it. Without this line the arm's build.sh falls back to fetching both into its
-    # own .build/ — which still works and still costs the download, but lands outside the
-    # /root/.local cache mount and is therefore paid again on every image build.
-    && ./scripts/ci/install-gg-build-toolchains.sh \
-    # The pinned `typescript` the ECMAScript arms reflect through is a workspace
-    # devDependency, so the catalogue step needs the workspace installed. It is the
-    # repo-root install, not a package-scoped one: npm ci validates the whole workspace
-    # against the lockfile.
-    && npm ci \
-    # Refresh the COPYed sources' mtimes before building, for the reason the services
-    # stage above states at length — and with one extra consequence here. `target/` is a
-    # cache mount that survives across builds and across branches, and it holds a
-    # previous build's gg together with the eleven catalogues that build reflected. Those
-    # catalogues are `crates/gg/build.rs`'s output, and cargo decides whether to re-run a
-    # build script by comparing mtimes against the inputs it declared — every guest
-    # package's sources among them. Sources newer than the artifacts is what makes that
-    # comparison come out right, so this is what stops the image baking a gg whose
-    # description of a language came off another branch's SDK.
-    && find /src -path /src/target -prune -o -type f -exec touch {} + \
-    && TCAB_BUILD_COMMIT="${TCAB_BUILD_COMMIT}" scripts/build-gg-static.sh /gg \
-    # AND THE REFERENCE DOCUMENTS THE BACKEND SERVES, projected by the binary one line
-    # above. This is the second consumer of this stage, and the reason the header now says
-    # "driver AND backend": `tcab-backend` serves gg's model-facing surface at
-    # /gg/reference, cannot depend on test-cabinet-gg (oxc + tiktoken-rs, and the eleven
-    # language toolchains this stage installs to build it), and reads twelve JSON documents
-    # at run time instead. Projecting them from the same gg the same build produced is what
-    # makes the console's reference and the harness a run actually executes one vintage of one
-    # checkout, which a committed artifact plus a drift gate only approximated. CI holds that
-    # property through the named context instead: both the binary and the documents it staged
-    # come from one gates-stage link of this commit.
-    #
-    # It runs the static-musl binary under this glibc base, which is exactly what static
-    # means, and it needs nothing else: every arm's signature catalogue is compiled into
-    # that binary by crates/gg/build.rs, so `reference --out` opens no file, resolves no
-    # toolchain and reaches no network. Same RUN as the build so the documents land in this
-    # stage's layer beside /gg rather than costing another one.
-    #
-    # THE COMMANDS AROUND IT ARE THE DIAGNOSIS, and they are here because this is where
-    # the x86_64 build of this stage fails: `reference --out` exits 139 with no other output,
-    # and the log said nothing about which half of that was broken. The architecture and the
-    # stack limit say what the process was given; `ls -l /gg` says what was linked and how
-    # big it is (the size is what a defective link shows up in, compared against the digest
-    # scripts/build-gg-static.sh now prints); `--version` separates exec and start-up from
-    # the projection; and the final listing says the twelve documents were written rather
-    # than an empty directory.
-    && uname -m \
-    && ulimit -s \
-    && ls -l /gg \
-    && /gg --version \
-    && /gg reference --out /gg-reference \
-    && ls -l /gg-reference
+# ONLY THE THREE FILES THE FETCH READS are mounted, never the context: the layer is keyed
+# on the pin and the helper alone, so a source change does not download the ~780 MB binary
+# again, and a pin bump does. TCAB_GG_RELEASE_VERSION and TCAB_GG_RELEASE_URL, the names
+# the driver reads at run time, override the pin and the release container for one build
+# (a prerelease such as 0.7.1-rc1, or a mirror); they are build arguments only and never
+# reach a runtime image.
+FROM docker.io/library/debian:bookworm-slim AS gg-release
+ARG TCAB_GG_RELEASE_VERSION=
+ARG TCAB_GG_RELEASE_URL=
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends ca-certificates curl \
+  && rm -rf /var/lib/apt/lists/*
+RUN --mount=type=bind,source=scripts/ci/gg-release.sh,target=/src/scripts/ci/gg-release.sh \
+    --mount=type=bind,source=scripts/ci/tcab-lib.sh,target=/src/scripts/ci/tcab-lib.sh \
+    --mount=type=bind,source=crates/driver/gg-release-version,target=/src/crates/driver/gg-release-version \
+    TCAB_GG_RELEASE_VERSION="${TCAB_GG_RELEASE_VERSION}" \
+    TCAB_GG_RELEASE_URL="${TCAB_GG_RELEASE_URL}" \
+    bash /src/scripts/ci/gg-release.sh fetch /gg-release \
+  && chmod 0755 /gg-release/gg \
+  && chmod -R a+rX /gg-release/gg-reference \
+  && /gg-release/gg --version \
+  && ls -l /gg-release/gg-reference
 
 # ── Package store stage (driver only) ────────────────────────────────────────
 # The driver seeds each run's repository, and a `packages`-declaring case has its
@@ -432,22 +299,14 @@ RUN apt-get update \
 
 COPY --from=build /out/tcab-backend /usr/local/bin/tcab-backend
 
-# gg's reference documents — `index.json` plus one per program language — projected by the
-# gg binary the stage above linked, and served verbatim at GET /gg/reference[/{language}]
-# for the console's gg Reference section. They ship as FILES beside the binary rather than
-# compiled into it for the same reason the Playwright driver above does: the backend must
-# not link the crate that produces them (test-cabinet-gg pulls oxc and tiktoken-rs, and
-# building it needs the eleven language toolchains the gg-build stage installs), and a file
-# the same build produced cannot disagree with it the way a committed artifact could.
-#
-# WHICH BUILD OF gg PROJECTED THEM. In CI, the gates stage's: scripts/ci/service-image.sh
-# replaces the `gg-build` stage with a named build context holding the published `gg-<arch>`
-# artifact and the documents that binary projected, so this COPY reads that directory. The
-# property the paragraph above argues for is unchanged — the documents still come from the
-# very binary the run images are self-checked against and the driver bakes, one link of one
-# checkout — and it is now the only link of that commit rather than the second, unchecked
-# one. A local `--target backend` builds the stage and projects them there instead.
-COPY --from=gg-build /gg-reference /opt/gg-reference/
+# gg's reference documents — `index.json` plus one per program language — of the gg release
+# the driver pins, served verbatim at GET /gg/reference[/{language}] for the console's gg
+# Reference section. They ship as FILES beside the binary rather than compiled into it for
+# the same reason the Playwright driver above does: the backend links nothing of gg's. gg
+# projects them with `gg reference --out` when its pipeline releases, and the gg-release
+# stage above fetches the tarball of the same version the driver image bakes the binary
+# of, so the reference and the harness a run executes describe one release.
+COPY --from=gg-release /gg-release/gg-reference /opt/gg-reference/
 
 # State paths are mounted at runtime (a PersistentVolumeClaim in the cluster, a
 # named volume locally). The compose file and deployments/k8s/base/backend.yaml set
@@ -524,11 +383,10 @@ COPY --from=build /out/tcab-driver /usr/local/bin/tcab-driver
 # release download or network egress. World-readable (a+rX via the 0755) so the
 # unprivileged `node` user reads it.
 #
-# In CI these are the bytes of the gates stage's `gg-<arch>` artifact, which the named build
-# context above supplies in place of the `gg-build` stage: the same binary `gg selfcheck`
-# passed in four run images and the same one the backend's documents were projected by. A
-# local build takes the gg that stage links.
-COPY --from=gg-build /gg /usr/local/lib/tcab/gg
+# It is the release the driver pins, fetched by the gg-release stage above: the binary the
+# `-gg` run images were self-checked against, and the release the backend's documents
+# come from.
+COPY --from=gg-release /gg-release/gg /usr/local/lib/tcab/gg
 RUN chmod 0755 /usr/local/lib/tcab/gg
 
 # The host package store the seeder vendors a `packages`-declaring case's runtime

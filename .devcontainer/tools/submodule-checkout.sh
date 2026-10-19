@@ -1,13 +1,14 @@
 #!/usr/bin/env bash
 # Checks out the submodules the workspace builds against over SSH, through the
 # host's agent that tools/ssh-agent.sh publishes. The submodules named as
-# arguments are checked out, and with none named, `contracts`, `engines`,
+# arguments are checked out, and with none named, `contracts`, `engines`, `gg`,
 # `microservice-repos` and `test-suites`: contracts/ and engines/ hold the crates
 # and packages every build compiles against, and the npm workspace lists their
-# packages, so `npm ci` needs them populated; microservice-repos/ is where the
-# patch table sends its crate, and cargo loads every patch path, so every build
-# under the superrepo needs it populated; test-suites/ is the suites checkout The
-# Test Cabinet ingests from.
+# packages, so `npm ci` needs them populated; gg/ and microservice-repos/ hold
+# the crates the patch table names, and cargo loads every patch path, so every
+# build under the superrepo needs them populated; gg/ holds the documentation
+# site's gg pages too; test-suites/ is the suites checkout The Test Cabinet
+# ingests from.
 # cold-storage/ beside them is optional and about 2 GB, so it is left to a
 # `git submodule update --init cold-storage` by hand.
 #
@@ -17,7 +18,7 @@
 # the agent that script publishes.
 #
 # Never fails the step it runs from: a host with no agent, or no network, keeps
-# a working container, and `git submodule update --init contracts engines microservice-repos test-suites`
+# a working container, and `git submodule update --init contracts engines gg microservice-repos test-suites`
 # (or this script) checks them out once it has one. A checkout with no
 # .gitmodules has nothing to check out and is left alone. Idempotent: a
 # submodule already checked out is left where it is.
@@ -40,7 +41,7 @@
 set -uo pipefail
 
 # How long the checkout runs for, in seconds, where the environment states no
-# deadline of its own. contracts, engines, microservice-repos and test-suites are a few megabytes each and
+# deadline of its own. contracts, engines, gg, microservice-repos and test-suites are a few megabytes each and
 # clone in seconds; the deadline is for a connection that never answers.
 readonly DEFAULT_DEADLINE=120
 
@@ -65,7 +66,7 @@ fi
 
 submodules=("$@")
 if [ "${#submodules[@]}" -eq 0 ]; then
-	submodules=(contracts engines microservice-repos test-suites)
+	submodules=(contracts engines gg microservice-repos test-suites)
 fi
 
 if mkdir -p "${HOME}/.ssh" && chmod 700 "${HOME}/.ssh"; then
@@ -113,6 +114,6 @@ case "$status" in
 		echo "submodule checkout did not finish within ${deadline}s and was stopped; SSH reached no answer, which is a key waiting on an approval or a connection carrying nothing"
 		echo "$manual"
 		;;
-	*) echo "submodule checkout failed; contracts/, engines/ and microservice-repos/ are build inputs and test-suites/ the suites checkout The Test Cabinet ingests; ${manual}" ;;
+	*) echo "submodule checkout failed; contracts/, engines/, gg/ and microservice-repos/ are build inputs and test-suites/ the suites checkout The Test Cabinet ingests; ${manual}" ;;
 esac
 exit 0

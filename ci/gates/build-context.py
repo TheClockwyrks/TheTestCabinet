@@ -3,8 +3,9 @@
 The root `.dockerignore` is an allowlist, so a COPY of a path it keeps out fails
 only when the image is next built, long after the commit. scripts/ci/build-context.sh
 reads each of this project's Dockerfiles (`deployments/images/`, `containers/`)
-against the allowlist that applies to it, checks that the driver image's gg stage
-keeps every guest package it compiles, and holds each Rust pin under
+against the allowlist that applies to it, COPY sources and RUN bind mounts alike,
+checks the inputs no COPY names (the workspace's `include_str!` paths, the staged
+packages, the toolchain installers' pins), and holds each Rust pin under
 `containers/` to `rust-toolchain.toml`, which the template decides.
 """
 

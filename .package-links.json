@@ -16,6 +16,9 @@
       "@clockwyrks/structured-3d": "packages/structured-3d",
       "@clockwyrks/voxel-runtime": "packages/voxel-runtime"
     },
+    "gg": {
+      "@clockwyrks/gg-sandbox": "packages/gg-sandbox"
+    },
     "test-suites": {
       "@clockwyrks/lattice-designer": "tools/lattice-designer"
     }

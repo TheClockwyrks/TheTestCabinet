@@ -10,9 +10,10 @@
 # ONE harness. Every other harness installs a CLI into the run container at run time and
 # has no compiler on its turn path at all, so a run it drives must not pull gigabytes it
 # cannot use — and must not offer a model a compiler no other arm of its comparison has.
-# `containers/gg-toolchains/Dockerfile` is where the tree is assembled and where the
-# constraints on adding one are written down; `harness::gg_variant` in `crates/driver` is
-# what resolves a gg run to the variant.
+# The tree is assembled and released by the `gg` repository (its
+# `containers/gg-toolchains/Dockerfile`, where the constraints on adding a toolchain are
+# written down), published beside each gg release as `test-cabinet-gg-toolchains:<version>`;
+# `harness::gg_variant` in `crates/driver` is what resolves a gg run to the variant.
 #
 # Nothing else is added. A gg variant is the same run image with the same binaries, the
 # same run user and the same working directory — a case that runs under gg and under
@@ -28,10 +29,14 @@
 # registry-qualified tag), so a variant is always `FROM` the matching parent.
 ARG BASE_IMAGE=test-cabinet-base-wasm:latest
 
-# The toolchain builder. Same reason for being declared here, and the same reason it has to
+# The toolchain image. Same reason for being declared here, and the same reason it has to
 # arrive through a named `FROM`: `COPY --from=` cannot interpolate a build arg
-# ("variable expansion is not supported for --from").
-ARG GG_TOOLCHAINS_IMAGE=test-cabinet-gg-toolchains:latest
+# ("variable expansion is not supported for --from"). `build.sh` passes the
+# `test-cabinet-gg-toolchains` image of the gg release the driver pins
+# (`scripts/ci/gg-release.sh toolchains-image`). It has no default, because a default here
+# would be a second pin of the gg version: a build that does not pass it fails at this
+# `FROM` rather than copying another release's tree.
+ARG GG_TOOLCHAINS_IMAGE
 FROM ${GG_TOOLCHAINS_IMAGE} AS ggtools
 
 FROM ${BASE_IMAGE}
@@ -53,8 +58,8 @@ FROM ${BASE_IMAGE}
 # mounts the blob the first one uploaded instead of uploading ~900 MB again. `--link` is what
 # asks for that: BuildKit builds the layer rooted at `scratch` and merges it in, rather than
 # diffing it against this variant's parent snapshot. IT IS THE SOURCE PATH THAT DELIVERS IT.
-# This line copies `/opt`, the root of the builder image's whole filesystem
-# (`containers/gg-toolchains/Dockerfile` ends `FROM scratch` and copies `/opt/gg` into it, so
+# This line copies `/opt`, the root of the toolchain image's whole filesystem (gg's
+# `containers/gg-toolchains/Dockerfile` ends `FROM scratch` and copies `/opt/gg` into it, so
 # `/opt` holds `gg` and nothing else), and not `/opt/gg`. Copying `/opt/gg` made the copy
 # create `opt/` itself as the parent of what it wrote, and a directory the copy creates gets
 # the moment of the build as its mtime, so the layer's tar carried one `opt/` entry per
@@ -72,7 +77,7 @@ FROM ${BASE_IMAGE}
 # must agree. A change that reintroduces a created parent directory, or copies anything the
 # builder image did not stamp itself, shows up there as twenty-seven different digests.
 #
-# WHY THIS FILE HAS NO `# syntax=` DIRECTIVE. `containers/base`, `containers/tools` and
+# WHY THIS FILE HAS NO `# syntax=` DIRECTIVE. `containers/base`, `containers/tools` and gg's
 # `containers/gg-toolchains` all name the pinned external Dockerfile frontend and this one
 # does not, so a variant is built with the daemon's vendored frontend, which accepts `--link`
 # and shares the layer as measured above. The directive would cost what it cannot buy: this

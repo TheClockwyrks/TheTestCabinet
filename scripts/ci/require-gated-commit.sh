@@ -23,10 +23,10 @@
 # WHAT A PASS IS. Every check job, read from the run's timeline as the `Phase`
 # record whose identifier is `<stage>.<job>`, is completed and succeeded or
 # succeededWithIssues. The check jobs are the template's `rust` and `web` and the
-# project's gg test partitions, `rust_build`, both binary jobs and
-# `submodule_pins`. The run as a whole is not waited on: its image jobs, the
-# publish and deploy stages, `prod`, `gg_release` and `docs` never gate a
-# release, exactly as the gates stage alone gated a tag before.
+# project's `rust_build`, both binary jobs and `submodule_pins`. The run as a
+# whole is not waited on: its image jobs, the publish and deploy stages, `prod`
+# and `docs` never gate a release, exactly as the gates stage alone gated a tag
+# before.
 #
 # NO RUN AT ALL. The main pipeline's trigger batches pushes, so a tagged commit
 # may have been superseded before a run reached it. Then this queues one on the
@@ -64,10 +64,6 @@ readonly PIPELINE="$TCAB_MAIN_PIPELINE_ID"
 readonly CHECKS=(
 	gates.rust
 	gates.web
-	gates.gg_tests_1_of_4
-	gates.gg_tests_2_of_4
-	gates.gg_tests_3_of_4
-	gates.gg_tests_4_of_4
 	gates.rust_build
 	gates.binary_linux
 	gates.binary_windows

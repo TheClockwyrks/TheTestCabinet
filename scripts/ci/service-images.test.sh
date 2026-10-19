@@ -46,7 +46,7 @@ mkdir -p "$repo/scripts/ci" "$repo/bin"
 cp "$CI_DIR/service-images.sh" "$CI_DIR/tcab-lib.sh" "$repo/scripts/ci/"
 cat >"$repo/scripts/ci/service-image.sh" <<'STUB'
 #!/usr/bin/env bash
-echo "service-image.sh $* gg=${TCAB_PREBUILT_GG:-<unset>} [cwd=$PWD]" >>"$STUB_LOG"
+echo "service-image.sh $* [cwd=$PWD]" >>"$STUB_LOG"
 [[ "$1" == "${STUB_FAIL_ON:-}" ]] && exit 1
 exit 0
 STUB
@@ -59,7 +59,7 @@ run() {
 	: >"$tmp/calls.log"
 	(cd "$tmp" && STUB_LOG="$tmp/calls.log" PATH="$repo/bin:$PATH" "$repo/scripts/ci/service-images.sh" "$@" 2>&1)
 }
-calls() { sed 's/ gg=.*//' "$tmp/calls.log"; }
+calls() { sed 's/ \[cwd=.*//' "$tmp/calls.log"; }
 
 expected_order() {
 	local service
@@ -78,11 +78,6 @@ check_equal "each call runs from the repository root" "7" "$(grep -c "\[cwd=$rep
 out="$(STUB_UNAME_M=aarch64 run "$SHA")"
 check_equal "an arm64 build succeeds" "0" "$?"
 check_contains "and names its own tag" "<image>:$SHA-arm64" "$out"
-
-out="$(TCAB_PREBUILT_GG=/stage/gg run "$SHA")"
-check_equal "a prebuilt gg is passed through" "7" "$(grep -c 'gg=/stage/gg' "$tmp/calls.log")"
-out="$(run "$SHA")"
-check_equal "and is unset when the caller sets none" "7" "$(grep -c 'gg=<unset>' "$tmp/calls.log")"
 
 out="$(STUB_FAIL_ON=driver run "$SHA")"
 check_equal "a failing service fails the build" "1" "$?"

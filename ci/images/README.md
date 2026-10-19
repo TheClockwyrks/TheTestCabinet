@@ -84,7 +84,7 @@ because a pipeline step reads no rc file.
   image copies.
 - The project's own packages, which the checks on this track reach for and a
   compile does not: `ruby`, which gg's Ruby arm reflects its signature
-  catalogue with when `crates/gg` builds; `libicu-dev`, which the .NET runtime
+  catalogue with when gg's `crates/gg` builds; `libicu-dev`, which the .NET runtime
   behind gg's C# arm loads; `cmake`, for the crates whose build scripts compile
   native code; and `ffmpeg`, for the scripts the Rust jobs run.
   `ci/images/rust.Dockerfile` lists them, with `musl-tools`, in a step of

@@ -34,7 +34,7 @@
 //! a regenerate-and-diff check. That was a second source of truth with a guard bolted to
 //! it, and a guard is not the same thing as not having the problem: the committed bytes
 //! could disagree with the gg in the image beside them for as long as it took somebody to
-//! run the gate. A file the *same build* produced cannot. It is the move
+//! run the gate. A file the *same build* produced cannot. It is the move gg's
 //! `crates/gg/build.rs` already made for the eleven signature catalogues and the arms'
 //! artifacts, one level up.
 //!
@@ -44,11 +44,11 @@
 //! # Where the directory comes from
 //!
 //! [`Config::gg_reference`](crate::config::Config::gg_reference) — `TCAB_GG_REFERENCE`.
-//! The backend image bakes the documents at `/opt/gg-reference` out of the same build stage
-//! that produces the gg binary the driver image ships, so a deployed backend and the gg its
-//! runs execute are one build of one checkout. A developer running the binary from a
-//! checkout points it at `target/gg-reference` by default and fills that with
-//! `scripts/gg-reference.sh`.
+//! The backend image bakes the documents at `/opt/gg-reference` from the gg release the
+//! driver pins (`v<version>/gg-reference.tar.gz`, projected by the very binary that release
+//! ships), so a deployed backend and the gg its runs execute are one release. A developer
+//! running the binary from a checkout fills a directory with `scripts/gg-reference.sh` in
+//! the gg checkout (`gg/target/gg-reference` by default) and points the variable at it.
 //!
 //! # Why it is ungated
 //!
@@ -236,7 +236,7 @@ fn counted(document: &GgReferenceApi) -> GgReferenceLanguage {
 /// documentation page; it is the only thing that degrades.
 ///
 /// **Only success is cached.** A failure is left uncached deliberately, so that a developer
-/// who starts the backend, sees the `503`, and runs `scripts/gg-reference.sh` gets a
+/// who starts the backend, sees the `503`, and runs gg's `scripts/gg-reference.sh` gets a
 /// working page on the next request instead of having to restart the process to clear a
 /// memoized error. It costs one failed directory read per request in exactly the state
 /// where nothing is being served anyway. (In a container the documents are baked into the
@@ -266,8 +266,8 @@ fn unavailable(directory: &Path, err: &ReferenceError) -> ApiError {
         "gg_reference_unavailable",
         format!(
             "gg's reference documents are not available at {} ({err}); write them with \
-             `scripts/gg-reference.sh` or point TCAB_GG_REFERENCE at a \
-             `gg reference --out` directory",
+             `scripts/gg-reference.sh` in the gg checkout and point TCAB_GG_REFERENCE at \
+             them, or at any `gg reference --out` directory",
             directory.display()
         ),
     )

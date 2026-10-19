@@ -84,8 +84,7 @@ builds() {
 # A timeline in which every check job succeeded, then each argument `<identifier>=<state>/<result>`
 # overrides one Phase record (a result of `-` is none, as for a job still running).
 timeline() {
-	local checks=(rust web gg_tests_1_of_4 gg_tests_2_of_4 gg_tests_3_of_4 gg_tests_4_of_4
-		rust_build binary_linux binary_windows submodule_pins)
+	local checks=(rust web rust_build binary_linux binary_windows submodule_pins)
 	local -A state=() result=()
 	local job override records=()
 	for job in "${checks[@]}"; do
@@ -161,7 +160,7 @@ run
 # 4. A run still running its checks is waited on, and passes once they do.
 case_dir pending
 builds "11:$COMMIT:inProgress" >"$STATE/builds.json"
-timeline "gates.rust=inProgress/-" "gates.gg_tests_3_of_4=pending/-" >"$STATE/timeline-11.json"
+timeline "gates.rust=inProgress/-" "gates.rust_build=pending/-" >"$STATE/timeline-11.json"
 timeline >"$STATE/timeline-11.done.json"
 printf '#!/usr/bin/env bash\ncp "%s" "%s"\n' "$STATE/timeline-11.done.json" "$STATE/timeline-11.json" >"$STATE/on-sleep"
 chmod +x "$STATE/on-sleep"

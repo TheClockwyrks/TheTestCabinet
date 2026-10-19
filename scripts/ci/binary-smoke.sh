@@ -16,9 +16,8 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/tcab-lib.sh"
 # Resolve the produced binary. Cargo writes it under the *configured* target
 # directory, which is `target/` unless `CARGO_TARGET_DIR` moves it, so
 # hardcoding `target/` would make this gate unrunnable for a developer who set
-# the variable to reproduce a CI failure.
-# `scripts/build-gg-static.sh` resolves its artifact the same way. The binary
-# carries a .exe suffix on Windows.
+# the variable to reproduce a CI failure. The binary carries a .exe suffix on
+# Windows.
 target_dir="${CARGO_TARGET_DIR:-target}"
 bin="$target_dir/release/tcab"
 if [[ ! -x "$bin" && -x "$bin.exe" ]]; then

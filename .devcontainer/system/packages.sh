@@ -18,11 +18,11 @@ DEBIAN_FRONTEND=noninteractive apt-get install -y \
 # What this project's own builds and tools reach for beyond the template's
 # list. Each is declared here because it was once present by accident, and a
 # tool that arrives with the base image disappears silently on a base bump.
-#   - ruby: gg's Ruby arm reflects its signature catalogue with YARD, and
+#   - ruby: gg's Ruby arm reflects its signature catalogue with YARD, and gg's
 #     crates/gg/build.rs reflects all eleven catalogues as a step of building
-#     the crate, so without an interpreter `cargo build --workspace` fails.
+#     the crate, so without an interpreter the gg/ checkout does not build.
 #     It is the one gg toolchain that is a distribution package rather than a
-#     pinned download: scripts/ci/install-gg-toolchains.sh, which
+#     pinned download: gg's scripts/ci/install-gg-toolchains.sh, which
 #     languages/gg/install.sh runs a few steps later, refuses to proceed
 #     without it and installs the pinned YARD on top of it. The interpreter
 #     itself is deliberately unpinned; what has to agree across the

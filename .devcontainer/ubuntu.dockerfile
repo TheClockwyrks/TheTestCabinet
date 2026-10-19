@@ -11,10 +11,10 @@
 #
 # Its build context is the repository root rather than this directory, and
 # every COPY below is written from there. The last of the project's steps
-# installs gg's program-language toolchains with the repository's own
-# installers, which read their pins from beside the arms under packages/, so the
-# build has to see the repository. The root .dockerignore is an allowlist and
-# decides what it sees; see "The build context" in README.md.
+# installs gg's program-language toolchains with gg's own installers, which
+# read their pins from beside the arms under the gg checkout's packages/, so the
+# build has to see the gg submodule, initialized. The root .dockerignore is an
+# allowlist and decides what it sees; see "The build context" in README.md.
 #
 # Every script reads the architecture from `dpkg --print-architecture` rather
 # than from a build argument, because Podman supplies none.
@@ -173,39 +173,39 @@ COPY --chown=dev:dev ./.devcontainer/tools/helm.sh /tmp/scripts/tools/
 RUN bash /tmp/scripts/tools/helm.sh && rm -rf /tmp/scripts
 
 # gg's eleven program-language toolchains and its C# guest's build toolchains, which
-# are not optional. Most of them are the language images copied above, which
-# scripts/ci/gg-image-toolchains.sh links at the homes gg's installers check before
-# those installers run, so this layer fetches only what no image holds: the TeaVM
-# jars the jvm image's cache lacks, the build tools the arms' locks pin, the
-# wasmtime reactor adapter gg pins, the C# guest's Mono pack, workload and
-# wasi-sdk, and the crates and wheels the arms build offline.
-# crates/gg/build.rs reflects each arm's signature catalogue out of that arm's
-# own SDK with that arm's own documentation tool as a step of building the
-# crate, so a container without them cannot `cargo build --workspace` at all,
-# and the rust-clippy and rust-doc commit hooks fail with it. See the header of
-# languages/gg/install.sh.
+# a build of the gg checkout needs. Most of them are the language images copied above,
+# which gg's scripts/ci/gg-image-toolchains.sh links at the homes gg's installers check
+# before those installers run, so this layer fetches only what no image holds: the
+# TeaVM jars the jvm image's cache lacks, the build tools the arms' locks pin, the
+# wasmtime reactor adapter gg pins, the C# guest's Mono pack, workload and wasi-sdk,
+# and the crates and wheels the arms build offline. gg's crates/gg/build.rs reflects
+# each arm's signature catalogue out of that arm's own SDK with that arm's own
+# documentation tool as a step of building the crate, so a container without them
+# cannot build gg/ at all. See the header of languages/gg/install.sh.
 #
 # Deliberately the last of this project's steps, and its own layer. A pin moving in
-# packages/gg-sandbox-*/<lang>-version.sh, an installer changing or a new arm
+# gg/packages/gg-sandbox-*/<lang>-version.sh, an installer changing or a new arm
 # arriving invalidates this layer and nothing above it, so a rebuild downloads
 # toolchains rather than redoing the project's packages, helm and the musl
 # target first, and the coding agents below it rebuild without it. It is also
 # the layer most likely to fail on a bad day, fetching from half a dozen
 # upstreams, and having everything else cached is what makes retrying it cheap.
 #
-# The installers read their pins out of the repository, so a partial repository
-# is staged for them: the installers and the shared shell they source, gg's own
-# build shell, every arm's pins and the files those pins read, and the
-# rust-toolchain.toml the Rust arm's pin defers to. scripts/ci/tcab-lib.sh
-# resolves the repository root from its own path, which is what lets the slice
-# stand in for a checkout. The installers and gg's shell are globs, so a new
-# arm's installer needs no edit here; the files under packages/ are named one
-# by one, because a COPY of a directory takes every source the allowlist admits
-# and would put the arms' whole sources into this layer's cache key, so that an
-# edit to a guest cost the next rebuild every toolchain. A new arm therefore
-# adds its version file below, and the build fails on the installer's own
-# `source` line until it does. The list is the `$REPO_ROOT/<path>` literals in
-# scripts/ci/install-*.sh, which scripts/ci/build-context.sh reads the same way.
+# The installers are gg's and read their pins out of the gg checkout, so a partial
+# gg repository is staged for them from the `gg/` submodule, which must be
+# initialized on the host before the image builds: the installers and the shared
+# shell they source, gg's own build shell, every arm's pins and the files those
+# pins read, and the rust-toolchain.toml the Rust arm's pin defers to. gg's
+# scripts/ci/tcab-lib.sh resolves the repository root from its own path, which is
+# what lets the slice stand in for a checkout. The installers and gg's shell are
+# globs, so a new arm's installer needs no edit here; the files under packages/
+# are named one by one, because a COPY of a directory takes every source the
+# allowlist admits and would put the arms' whole sources into this layer's cache
+# key, so that an edit to a guest cost the next rebuild every toolchain. A new arm
+# therefore adds its version file below and to the root .dockerignore, and the
+# build fails on the installer's own `source` line until it does. The list is the
+# `$REPO_ROOT/<path>` literals in gg/scripts/ci/install-*.sh, which
+# scripts/ci/build-context.sh reads the same way.
 #
 # The slice is deleted in the install RUN so that nothing ships a stale half
 # repository for someone to read a pin out of. That is hygiene rather than a
@@ -215,67 +215,67 @@ COPY --chown=dev:dev \
 	./.devcontainer/languages/gg/install.sh \
 	/tmp/scripts/languages/gg/
 COPY --chown=dev:dev \
-	./scripts/ci/install-*.sh \
-	./scripts/ci/gg-image-toolchains.sh \
-	./scripts/ci/tcab-lib.sh \
-	./scripts/ci/fetch.sh \
+	./gg/scripts/ci/install-*.sh \
+	./gg/scripts/ci/gg-image-toolchains.sh \
+	./gg/scripts/ci/tcab-lib.sh \
+	./gg/scripts/ci/fetch.sh \
 	/tmp/scripts/gg-repo/scripts/ci/
 COPY --chown=dev:dev \
-	./scripts/gg-*.sh \
+	./gg/scripts/gg-*.sh \
 	/tmp/scripts/gg-repo/scripts/
 # The lock each npm-delivered build tool's tree is installed from. The resolver
 # in gg-npm-tools.sh reads it beside itself, and install-gg-build-tools.sh runs
 # that resolver in this layer; a lock moving reinstalls the tool, so the
 # directory is part of this layer's cache key on purpose.
 COPY --chown=dev:dev \
-	./scripts/gg-npm-locks/ \
+	./gg/scripts/gg-npm-locks/ \
 	/tmp/scripts/gg-repo/scripts/gg-npm-locks/
 COPY --chown=dev:dev \
-	./rust-toolchain.toml \
+	./gg/rust-toolchain.toml \
 	/tmp/scripts/gg-repo/rust-toolchain.toml
 COPY --chown=dev:dev \
-	./packages/gg-sandbox-cpp/cpp-version.sh \
+	./gg/packages/gg-sandbox-cpp/cpp-version.sh \
 	/tmp/scripts/gg-repo/packages/gg-sandbox-cpp/
 COPY --chown=dev:dev \
-	./packages/gg-sandbox-csharp/csharp-version.sh \
+	./gg/packages/gg-sandbox-csharp/csharp-version.sh \
 	/tmp/scripts/gg-repo/packages/gg-sandbox-csharp/
 COPY --chown=dev:dev \
-	./packages/gg-sandbox-java/java-version.sh \
+	./gg/packages/gg-sandbox-java/java-version.sh \
 	/tmp/scripts/gg-repo/packages/gg-sandbox-java/
 COPY --chown=dev:dev \
-	./packages/gg-sandbox-kotlin/kotlin-version.sh \
+	./gg/packages/gg-sandbox-kotlin/kotlin-version.sh \
 	/tmp/scripts/gg-repo/packages/gg-sandbox-kotlin/
 # purescript-version.sh reads the registry version out of spago.yaml, and the
 # build tools' installer warms Spago's store against spago.lock.
 COPY --chown=dev:dev \
-	./packages/gg-sandbox-purescript/purescript-version.sh \
-	./packages/gg-sandbox-purescript/spago.yaml \
-	./packages/gg-sandbox-purescript/spago.lock \
+	./gg/packages/gg-sandbox-purescript/purescript-version.sh \
+	./gg/packages/gg-sandbox-purescript/spago.yaml \
+	./gg/packages/gg-sandbox-purescript/spago.lock \
 	/tmp/scripts/gg-repo/packages/gg-sandbox-purescript/
 # The Python arm has no version file: its componentize-py pin is in build.sh,
 # and its wheels are pre-fetched from requirements.txt into uv's cache.
 COPY --chown=dev:dev \
-	./packages/gg-sandbox-python/build.sh \
-	./packages/gg-sandbox-python/requirements.txt \
+	./gg/packages/gg-sandbox-python/build.sh \
+	./gg/packages/gg-sandbox-python/requirements.txt \
 	/tmp/scripts/gg-repo/packages/gg-sandbox-python/
 COPY --chown=dev:dev \
-	./packages/gg-sandbox-ruby/opal-version.sh \
-	./packages/gg-sandbox-ruby/yard-version.sh \
+	./gg/packages/gg-sandbox-ruby/opal-version.sh \
+	./gg/packages/gg-sandbox-ruby/yard-version.sh \
 	/tmp/scripts/gg-repo/packages/gg-sandbox-ruby/
 # The Rust arm's crate closure and the ECMAScript guest's are separate
 # lockfiles from the workspace's, fetched here so their builds run --offline.
 # Each manifest names its [lib] path, so cargo looks for no src/ in the slice.
 COPY --chown=dev:dev \
-	./packages/gg-sandbox-rust/rust-version.sh \
-	./packages/gg-sandbox-rust/Cargo.toml \
-	./packages/gg-sandbox-rust/Cargo.lock \
+	./gg/packages/gg-sandbox-rust/rust-version.sh \
+	./gg/packages/gg-sandbox-rust/Cargo.toml \
+	./gg/packages/gg-sandbox-rust/Cargo.lock \
 	/tmp/scripts/gg-repo/packages/gg-sandbox-rust/
 COPY --chown=dev:dev \
-	./packages/gg-sandbox/guest/Cargo.toml \
-	./packages/gg-sandbox/guest/Cargo.lock \
+	./gg/packages/gg-sandbox/guest/Cargo.toml \
+	./gg/packages/gg-sandbox/guest/Cargo.lock \
 	/tmp/scripts/gg-repo/packages/gg-sandbox/guest/
 COPY --chown=dev:dev \
-	./packages/gg-sandbox-swift/swift-version.sh \
+	./gg/packages/gg-sandbox-swift/swift-version.sh \
 	/tmp/scripts/gg-repo/packages/gg-sandbox-swift/
 # ~/.npm is npm's download cache, left behind by the build tools it installs
 # into their pinned prefixes; the caches the arms' offline builds read (uv's,

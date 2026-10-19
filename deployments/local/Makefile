@@ -57,8 +57,9 @@
 #   run-images-e2e / -full-stack / -game-jam / -asset / -adversarial / -performance / -gg
 #                   rebuild+import ONLY one test type's run image(s) — the fast path when you touched just that type's tooling
 #   run-image-<name>  rebuild+import a SINGLE run image by short name (e.g. run-image-voxel-animation) — the finest grain, for one asset kind
-#   run-images-gg-selfcheck  build gg static and rebuild the five environment-representative `-gg` images WITH
-#                   the `gg selfcheck` gate — the same command CI publishes behind (builds only; imports nothing)
+#   run-images-gg-selfcheck  fetch the pinned gg release (or take TCAB_GG_BINARY) and rebuild the five
+#                   environment-representative `-gg` images WITH the `gg selfcheck` gate — the same command CI
+#                   publishes behind (builds only; imports nothing)
 #   local-reapply   re-apply the overlay ONLY (after a manifest-only change — RBAC, env, volumes; no image rebuild)
 #   local-forward   foreground-forward backend→:8787, artifacts→:8790, arena→:8791, repos→:8792, AND Grafana→:3000 to localhost (the console runs from source via `npm run -w apps/web dev`)
 #   local-grafana   foreground-forward Grafana→:3000 AND the OTLP collector→:4318/:4317 to localhost (use when you also need the OTLP ports; local-forward already exposes Grafana)
@@ -245,9 +246,10 @@ PERFORMANCE_IMAGE_NAMES := performance
 # the name: there is exactly one variant per image and no list that could be missing one.
 GG_IMAGE_NAMES          := $(addsuffix -gg,$(E2E_IMAGE_NAMES) $(FULL_STACK_IMAGE_NAMES) $(GAME_JAM_IMAGE_NAMES) $(ASSET_IMAGE_NAMES) $(ADVERSARIAL_IMAGE_NAMES) $(PERFORMANCE_IMAGE_NAMES))
 
-# The five variants `run-images-gg-selfcheck` drives `gg selfcheck` in, and the binary it
-# builds to drive them with. One variant per ENVIRONMENT: every `-gg` image carries the same
-# `/opt/gg`, byte for byte, because each copies one builder image's tree to one absolute
+# The five variants `run-images-gg-selfcheck` drives `gg selfcheck` in, and where the gg
+# release it drives them with is fetched to. One variant per ENVIRONMENT: every `-gg` image
+# carries the same `/opt/gg`, byte for byte, because each copies one toolchain image's tree
+# to one absolute
 # path, so what differs between them is the environment that tree has to run in — the image
 # the lineage is rooted at, plus every package the run images `apt-get install` on the way
 # down. That is five and not two, because a dozen run images install their own packages on
@@ -262,7 +264,17 @@ GG_IMAGE_NAMES          := $(addsuffix -gg,$(E2E_IMAGE_NAMES) $(FULL_STACK_IMAGE
 # grouping from the Dockerfiles and fails a gated build if any variant's environment has no
 # representative.
 GG_SELFCHECK_IMAGE_NAMES := sprite-gg base-wasm-gg voxel-gg full-stack-3d-gg blender-gg
-GG_SELFCHECK_BIN         := $(REPO)/target/gg-selfcheck/gg
+GG_SELFCHECK_DIR         := $(REPO)/target/gg-selfcheck
+GG_SELFCHECK_BIN         := $(or $(TCAB_GG_BINARY),$(GG_SELFCHECK_DIR)/gg)
+
+# The docker configuration the run-image targets pull the gg toolchain image with. Every
+# `-gg` variant copies its tree out of `test-cabinet-gg-toolchains:<version>`, the image the
+# gg repository publishes beside the release the driver pins, in the private registry. The
+# builds themselves run under BUILD_DOCKER_CONFIG, which carries no credentials (see below),
+# so the image is pulled first, with the caller's own configuration, where `az acr login
+# --name testcabinet` left its credential; containers/build.sh then finds it in the local
+# store. Read when this file is parsed, before any target exports its own DOCKER_CONFIG.
+HOST_DOCKER_CONFIG := $(or $(DOCKER_CONFIG),$(HOME)/.docker)
 
 # Every run image this Makefile builds + imports locally: the union of the per-type
 # groups above (so it stays in lockstep with them). Order matches build.sh's
@@ -551,27 +563,13 @@ audio-store:
 # build off the registry and makes an audio change testable before it has been
 # published. See the `audio-store` target.
 #
-# THE BACKEND AND DRIVER LINES ARE THE SLOW ONES, AND THE FIRST RUN IS MUCH THE
-# SLOWEST. Both depend on the gg stage: the driver bakes the `gg` binary itself, and the
-# backend bakes the reference documents that binary projects (`gg reference --out`,
-# served at /gg/reference). gg's build reflects a signature catalogue out of each of its
-# eleven program languages' SDKs — nothing is committed under crates/gg/src/sandbox/guests
-# any more — so that stage installs every one of those toolchains
-# (scripts/ci/install-gg-toolchains.sh, ~1.9 GB) and runs eleven documentation tools.
-# They live in BuildKit cache mounts rather than in image layers, so a second
-# `make images` on the same machine re-downloads nothing and re-reflects only the arms
-# whose SDK changed; a pruned builder pays for all of it again. The two lines share the
-# stage, so the SECOND of them is cheap — the cost is paid once, by whichever runs first,
-# which since the backend leads the list below is normally the backend. This is the
-# fastest way to find out that the gg stage is broken, which is why it is worth knowing it
-# is normal for it to take minutes rather than seconds.
-#
-# CI NO LONGER BUILDS THAT STAGE AT ALL: it replaces it with the gates stage's published
-# `gg-<arch>` artifact (scripts/ci/gg-prebuilt.sh), so a break in the stage reaches only the
-# local paths that still build it — this target, and `docker compose -f compose.yml up backend`,
-# which builds `--target backend` too. Nothing gates it, so this target is the feedback loop.
-# On x86_64 the stage currently links a gg that segfaults in `gg reference --out`, so neither
-# local path completes there; tasks/backlog/ carries the issue.
+# THE BACKEND AND DRIVER LINES TAKE gg FROM ITS RELEASE: the services Dockerfile's
+# `gg-release` stage fetches the gg release the driver pins (crates/driver/gg-release-version)
+# from the anonymously readable release container, the binary for the driver and the
+# reference documents for the backend. The binary is ~780 MB, so the first build pays for
+# the download; the stage is keyed on the pin, so later builds take it from the build
+# cache until the pin moves. `docker compose -f compose.yml up backend` builds the same
+# stage for `--target backend`.
 images: export DOCKER_CONFIG := $(BUILD_DOCKER_CONFIG)
 images: audio-store
 	@mkdir -p '$(BUILD_DOCKER_CONFIG)' && printf '{}\n' > '$(BUILD_DOCKER_CONFIG)/config.json'
@@ -638,10 +636,18 @@ images: audio-store
 # `run-images-e2e` group and the full `run-images`.
 define build_import_run_images
 	@mkdir -p '$(BUILD_DOCKER_CONFIG)' && printf '{}\n' > '$(BUILD_DOCKER_CONFIG)/config.json'
+	@case ' $(1) ' in *'-gg '*) $(call pull_gg_toolchains) ;; esac
 	IMAGE_NAME_PREFIX='$(RUN_IMAGE_PREFIX)' IMAGE_TAG='$(RUN_IMAGE_TAG)' DOCKER='$(CONTAINER_TOOL)' \
 	  bash '$(REPO)/containers/build.sh' $(1)
 	$(call save_and_import,$(2))
 endef
+
+# Pull the gg toolchain image the `-gg` variants copy, with HOST_DOCKER_CONFIG's credentials,
+# unless the local store already holds it. A shell fragment, for a recipe line.
+pull_gg_toolchains = ref="$$(bash '$(REPO)/scripts/ci/gg-release.sh' toolchains-image)" \
+	&& { $(CONTAINER_TOOL) image inspect "$$ref" >/dev/null 2>&1 \
+	     || DOCKER_CONFIG='$(HOST_DOCKER_CONFIG)' $(CONTAINER_TOOL) pull "$$ref" \
+	     || { echo "could not pull $$ref; sign in first with: az acr login --name testcabinet" >&2; exit 1; }; }
 
 # Rebuild + import EVERY run image (what `local-up` runs). The heavy path — prefer a
 # narrower target below when iterating on one test type or one asset kind. Passes the
@@ -710,15 +716,16 @@ run-images-gg:
 # not carry, and the installer's verification passed because the builder stage it ran in had
 # apt-installed one and then exported `/opt/gg` without it.
 #
-# So this target builds the static `gg` a run is actually given (`scripts/build-gg-static.sh`
-# — the same binary the driver image bakes in) and hands it to `containers/build.sh
+# So this target fetches the static `gg` a run is actually given — the release the driver
+# pins, the same binary the driver image bakes in (`scripts/ci/gg-release.sh fetch`) — or
+# takes the file TCAB_GG_BINARY names, and hands it to `containers/build.sh
 # --gg-selfcheck`, which drives every arm's real bootstrap turn inside each image it builds,
 # as the unprivileged `node` run user, in the gap where CI pushes. It is the SAME
 # invocation `scripts/ci/run-images.sh` publishes behind, which is what makes a
 # green run here mean something: not a local approximation of the gate, the gate.
 #
 # FIVE IMAGES, NOT TWENTY-SEVEN. `/opt/gg` is byte-identical across every variant, each
-# copying one builder image's tree to one absolute path, so what can differ is the
+# copying one toolchain image's tree to one absolute path, so what can differ is the
 # environment it runs in — and there are five of those, not the two parents it looks like:
 # `sprite-gg` is the shared base, `base-wasm-gg` adds base-wasm's packages, `voxel-gg` adds
 # the mesa stack the render images install, `full-stack-3d-gg` is the one image that has BOTH
@@ -728,13 +735,13 @@ run-images-gg:
 #
 # It BUILDS but does not IMPORT: this is a question about the images, not a way to put them
 # in the cluster — `run-images-gg` is what the cluster needs. Expect minutes: the check
-# compiles one program per arm eleven times over (~35 s per image once the toolchain builder
-# and every parent is cached; the first run pays for those instead — and two of the five
+# compiles one program per arm eleven times over (~35 s per image once the toolchain image
+# and every parent is local; the first run pays for those instead — and two of the five
 # parents bake tooling binaries, so that first run also builds the `tools` Rust builder).
 #
-# The binary is written under the repository's own gitignored `target/`, beside where
-# `gg-reference`/`gg-artifacts` land, rather than into a temporary directory — it is ~750 MB
-# and rebuilding it for every check is the slow half of this target.
+# The release is fetched under the repository's own gitignored `target/` rather than into a
+# temporary directory — the binary is ~780 MB — and fetched again only when what is there
+# does not report the pinned version.
 #
 # NONE OF THE FIVE PARENTS NEEDS A CREDENTIAL. `full-stack-3d` bakes no audio, as the 2D
 # image does not — the packs a run may reach are staged into its container at start time
@@ -743,7 +750,15 @@ run-images-gg:
 run-images-gg-selfcheck: export DOCKER_CONFIG := $(BUILD_DOCKER_CONFIG)
 run-images-gg-selfcheck:
 	@mkdir -p '$(BUILD_DOCKER_CONFIG)' && printf '{}\n' > '$(BUILD_DOCKER_CONFIG)/config.json'
-	bash '$(REPO)/scripts/build-gg-static.sh' '$(GG_SELFCHECK_BIN)'
+	@$(call pull_gg_toolchains)
+	@if [ -n '$(TCAB_GG_BINARY)' ]; then \
+	  echo "using TCAB_GG_BINARY=$(TCAB_GG_BINARY)"; \
+	elif [ -x '$(GG_SELFCHECK_BIN)' ] \
+	  && [ "$$('$(GG_SELFCHECK_BIN)' --version)" = "gg $$(bash '$(REPO)/scripts/ci/gg-release.sh' version)" ]; then \
+	  echo "$(GG_SELFCHECK_BIN) is the pinned release already"; \
+	else \
+	  bash '$(REPO)/scripts/ci/gg-release.sh' fetch '$(GG_SELFCHECK_DIR)'; \
+	fi
 	IMAGE_NAME_PREFIX='$(RUN_IMAGE_PREFIX)' IMAGE_TAG='$(RUN_IMAGE_TAG)' DOCKER='$(CONTAINER_TOOL)' \
 	  bash '$(REPO)/containers/build.sh' --gg-selfcheck '$(GG_SELFCHECK_BIN)' $(GG_SELFCHECK_IMAGE_NAMES)
 

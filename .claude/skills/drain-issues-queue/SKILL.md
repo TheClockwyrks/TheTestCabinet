@@ -23,8 +23,8 @@ This project's changelogs, under `apps/docs/src/content/docs/changelogs/`, are
 written only immediately before a release and only when asked, so draining the
 queue writes no changelog entry. A test-case version whose directory carries a
 `.frozen` marker is never edited: an issue whose fix would change one is fixed in
-a new version of the case, or it is blocked. The unit tests of `crates/gg` are
-not part of `rust-test`: a change under `crates/gg/` also runs
+a new version of the case, or it is blocked. gg's unit tests are not part of
+`rust-test`: a change in the `gg/` checkout also runs its
 `scripts/ci/gg-test.sh`, as the `coding` skill's gates table says.
 
 ## Scope

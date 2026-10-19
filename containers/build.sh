@@ -52,7 +52,8 @@
 #     and
 #   - one `<name>-gg` VARIANT per run image `gg` is pointed at — that image plus the
 #     language toolchains a gg run's responses-as-code programs are compiled with
-#     (`gg/Dockerfile`, `FROM` its parent, copying out of the `gg-toolchains` builder).
+#     (`gg/Dockerfile`, `FROM` its parent, copying the toolchain tree out of the
+#     `test-cabinet-gg-toolchains` image of the gg release the driver pins).
 # With that one exception, none is a per-harness image: a run installs the selected
 # harness's CLI into the image at run time (see `harnesses/README.md`). The exception is
 # gg, whose programs need a COMPILER on the turn path and whose language is resolved per
@@ -157,6 +158,10 @@
 #                 manifest write) is tried before the build fails on it (default: 4)
 #   REGISTRY_RETRY_DELAY  seconds before the first retry; the Nth retry waits N times
 #                 this (default: 10)
+#   GG_TOOLCHAINS_IMAGE  the toolchain image every `-gg` variant copies its tree out of
+#                 (default: what `scripts/ci/gg-release.sh toolchains-image` prints, the
+#                 `test-cabinet-gg-toolchains` image of the gg release the driver pins,
+#                 which pulling needs `az acr login --name testcabinet` for)
 #
 # GATING THE `-gg` VARIANTS ON `gg selfcheck` (`--gg-selfcheck <PATH-TO-GG>`).
 #
@@ -254,7 +259,8 @@ set -- ${positional[@]+"${positional[@]}"}
 if [[ -n "${GG_SELFCHECK_BIN}" ]]; then
 	if [[ ! -f "${GG_SELFCHECK_BIN}" || ! -x "${GG_SELFCHECK_BIN}" ]]; then
 		echo "--gg-selfcheck: '${GG_SELFCHECK_BIN}' is not an executable file." >&2
-		echo "       Build one with: scripts/build-gg-static.sh <out-path>" >&2
+		echo "       Fetch the pinned release with: scripts/ci/gg-release.sh fetch <dir>" >&2
+		echo "       (or build one in the gg checkout: gg/scripts/build-gg-static.sh <out-path>)" >&2
 		exit 1
 	fi
 	GG_SELFCHECK_BIN="$(cd "$(dirname "${GG_SELFCHECK_BIN}")" && pwd)/$(basename "${GG_SELFCHECK_BIN}")"
@@ -373,41 +379,32 @@ readonly FULL_STACK_2D_IMAGE="${IMAGE_NAME_PREFIX}full-stack-2d:${IMAGE_TAG}"
 # same compile. It is deliberately absent from image-names.sh, which is the list of
 # PUBLISHED run images.
 readonly TOOLS_IMAGE="${IMAGE_NAME_PREFIX}tools:${IMAGE_TAG}"
-# The gg LANGUAGE-TOOLCHAIN builder image: the toolchains every `-gg` variant bakes in
-# (see containers/gg-toolchains/Dockerfile, which is where what this image IS is written
-# down). Like TOOLS_IMAGE it is not a RUN image — a run never executes in it; it is only
-# ever a `COPY --from` source — and it is deliberately absent from image-names.sh for
-# that reason, that list being the set of images a run RESOLVES. What keeps it out in
-# practice is this script rather than the Rust suite: `build_one` dispatches on the names
-# in that list, so an entry there would route `./build.sh` and `make run-images` through
-# `build_asset_image` for something that is not an asset image.
+# The gg LANGUAGE-TOOLCHAIN image: the toolchains every `-gg` variant bakes in. It is not
+# built here. The `gg` repository's pipeline builds it from its
+# containers/gg-toolchains/Dockerfile and publishes it on each release tag, multi-arch, as
+# `test-cabinet-gg-toolchains:<version>` beside the gg binaries, so the tree a variant
+# carries is the one the gg release it is driven by was built and tested with. The version
+# is the driver's pin (crates/driver/gg-release-version), read through
+# scripts/ci/gg-release.sh like every other consumer of it. Like the asset tooling it is
+# not a RUN image — a run never executes in it; it is only ever a `COPY --from` source.
 #
-# UNLIKE TOOLS_IMAGE it IS pushed, and the distinction is worth stating because the two
-# sat in the same sentence for a long time. The asset tooling is ~20 Rust binaries
-# compiled from this checkout in a cargo pass whose cache mounts make a no-change
-# rebuild near-instant, so there is nothing a registry copy would save. This one is
-# ~1.9 GB fetched from five upstreams and pruned, and it is IDENTICAL in every `-gg`
-# variant — so publishing it means (a) the exact tree inside those variants is
-# independently pullable and pinned by digest rather than only inspectable by taking a
-# run image apart, and (b) `./build.sh <name>-gg` can be pointed at the published tag
-# through the GG_TOOLCHAINS_IMAGE build arg instead of paying for the fetch again.
-#
-# IT IS ONE MORE COPY OF THE TREE IN THE REGISTRY, AND THE ONLY EXTRA ONE.
-# `containers/gg/Dockerfile` copies its `/opt` with `--link`, so every variant carries ONE
-# digest for the tree and the registry stores those bytes once, mounting them into each
-# variant's repository after the first push. Read the comment on that COPY, which carries
-# the measurement and says why the source path is `/opt` and not `/opt/gg`, before touching
-# it. What keeps the build agent's disk survivable is the reclaim below rather than the
-# sharing: the local store still chains each variant's copy under its own parent.
-#
-# Because it is not in image-names.sh, the pipeline's run-image manifest job, which is
-# driven by that list, appends this one by name to what it hands scripts/ci/manifest.sh.
-readonly GG_TOOLCHAINS_IMAGE="${IMAGE_NAME_PREFIX}gg-toolchains:${IMAGE_TAG}"
-# The AUDIO STORE image: every published audio pack, as data. Like GG_TOOLCHAINS_IMAGE it
+# ONE COPY OF THE TREE IN THE REGISTRY. `containers/gg/Dockerfile` copies its `/opt` with
+# `--link`, so every variant carries ONE digest for the tree and the registry stores those
+# bytes once, mounting them into each variant's repository after the first push. Read the
+# comment on that COPY, which carries the measurement and says why the source path is
+# `/opt` and not `/opt/gg`, before touching it. What keeps the build agent's disk
+# survivable is the reclaim below rather than the sharing: the local store still chains
+# each variant's copy under its own parent.
+GG_TOOLCHAINS_IMAGE="${GG_TOOLCHAINS_IMAGE:-}"
+if [[ -z "${GG_TOOLCHAINS_IMAGE}" ]]; then
+	GG_TOOLCHAINS_IMAGE="$("${SCRIPT_DIR}/../scripts/ci/gg-release.sh" toolchains-image)"
+fi
+readonly GG_TOOLCHAINS_IMAGE
+# The AUDIO STORE image: every published audio pack, as data. Like the asset tooling it
 # is not a RUN image — nothing executes in it and nothing resolves it for a run; it is a
 # `FROM scratch` tree that the DRIVER image copies in at `/opt/tcab-audio` and that
-# `scripts/fetch-audio-store.sh` pulls onto a local checkout. And like it, it IS pushed,
-# and it is deliberately absent from image-names.sh for the same mechanical reason:
+# `scripts/fetch-audio-store.sh` pulls onto a local checkout. Unlike the tooling it IS
+# pushed, and it is deliberately absent from image-names.sh for the same mechanical reason:
 # `build_one` dispatches on that list by name, so an entry there would route it through
 # `build_asset_image`. The pipeline fuses this one in its own scripts/ci/manifest.sh call.
 #
@@ -608,7 +605,6 @@ produce() {
 	ensure_parents_local "${name}"
 	case "${name}" in
 		tools) build_tools ;;
-		gg-toolchains) build_gg_toolchains ;;
 		*) build_one "${name}" ;;
 	esac
 }
@@ -651,7 +647,7 @@ push_and_pin() {
 # Reclaiming disk as the build goes
 # ---------------------------------------------------------------------------
 # A full PUSH build builds the fifty-five names `containers/image-names.sh` lists, plus the
-# two builder images and the audio store. Twenty-seven of the fifty-five are `-gg` variants
+# asset-tooling builder and the audio store. Twenty-seven of the fifty-five are `-gg` variants
 # carrying a 2.2 GB `/opt/gg`. `containers/gg/Dockerfile` copies that tree with `--link` so
 # that every variant's layer carries ONE digest and the registry stores it once — but the
 # LOCAL store does not share it: a layer sits under its parent's chain there, and every
@@ -660,7 +656,7 @@ push_and_pin() {
 #
 # THE RECLAIM BELOW IS CORRECT WHETHER OR NOT THAT LAYER IS DEDUPED ANYWHERE, which is the
 # whole point of it: it rests on no property of the builder or the registry. With it the peak
-# is the toolchain builder, one resident variant and the rest of the set — around 8 GB.
+# is the pulled toolchain image, one resident variant and the rest of the set — around 8 GB.
 #
 # IT IS OFF UNLESS `RECLAIM=1` IS SET WITH `PUSH=1`, and `scripts/ci/run-images.sh` is the
 # only caller that sets it. Pushing is something `containers/README.md` documents a developer
@@ -671,7 +667,6 @@ push_and_pin() {
 # one too early breaks a later build. Within one invocation the parent map is:
 #
 #   tools            -> every asset image and both full-stack images
-#   gg-toolchains    -> every -gg variant
 #   base             -> base-wasm and every asset image
 #   base-wasm        -> full-stack-2d/3d, adversarial, performance
 #   full-stack-2d    -> game-jam, and full-stack-2d-gg
@@ -684,15 +679,16 @@ push_and_pin() {
 # its variant is pushed. RECLAIM_KEEP holds back the names that outlive their own position in
 # that list.
 #
-# Two of the five are reachable by the reclaim and would break a later build. `base-wasm` is
+# Two of the four are reachable by the reclaim and would break a later build. `base-wasm` is
 # the parent of full-stack-2d, full-stack-3d, adversarial and performance, all of which come
 # after `base-wasm-gg`; `full-stack-2d` is the parent of `game-jam`, which comes after
-# `full-stack-2d-gg`. The other three are named because they are what the whole set is built
-# FROM: `base` and `tools` have no variant and so never reach the reclaim, and
-# `gg-toolchains` is a `COPY --from` source for every variant there is. A new run image that
+# `full-stack-2d-gg`. The other two are named because they are what the whole set is built
+# FROM: `base` and `tools` have no variant and so never reach the reclaim. (The gg toolchain
+# image, a `COPY --from` source for every variant, is pulled rather than built and is no
+# name of this loop, so the reclaim never reaches it.) A new run image that
 # becomes the parent of anything but its own variant belongs here too — the third line
 # `containers/image-names.sh`'s header asks for when one is added.
-readonly RECLAIM_KEEP=(tools gg-toolchains base base-wasm full-stack-2d)
+readonly RECLAIM_KEEP=(tools base base-wasm full-stack-2d)
 
 reclaim_keeps() {
 	local name="$1" keep
@@ -769,10 +765,8 @@ reclaim_image() {
 # build. `--all` takes every `--mount=type=cache` record in the builder, not just this
 # build's, and on a dev box the default builder is the one embedded BuildKit instance the
 # whole daemon shares — so it would also take `deployments/images/services.Dockerfile`'s
-# `gg-toolchains` (about 1.9 GB of downloaded SDKs), `gg-target`, `rustup-gg` and
-# `gg-toolchain-downloads` mounts, and every other project's build cache on that daemon.
-# `deployments/local/Makefile` names relinking gg and re-downloading those toolchains as the
-# slowest thing in the repository. THAT IS WHY THE RECLAIM IS GATED ON `RECLAIM=1` RATHER
+# cargo registry, rustup and target/ mounts, and every other project's build cache on that
+# daemon. THAT IS WHY THE RECLAIM IS GATED ON `RECLAIM=1` RATHER
 # THAN ON `PUSH`: a developer's documented `PUSH=1 IMAGE_REGISTRY=…` publish must not pay it.
 #
 # Inside CI the cost is bounded and small. The agent is a fresh VM whose builder starts empty
@@ -839,51 +833,15 @@ build_tools() {
 	push_inputs_tag "${TOOLS_IMAGE}" tools
 }
 
-# Build the gg language-toolchain builder: every compiler a `gg` run's
-# responses-as-code programs may be compiled with, assembled under one prefix and
-# exported as a `scratch` image the `-gg` variants `COPY --from`.
-#
-# This is NOT a run image and never appears in image-names.sh — a run never executes in
-# it; it is only ever a source for `COPY --from`. It IS published under PUSH, though, for
-# the reasons set out where GG_TOOLCHAINS_IMAGE is defined above.
-#
-# Built once and copied into every variant, for the same reason the asset tooling is:
-# the tree is identical on each of them, so assembling it per variant would be the same
-# work repeated. Its content being identical is also why the registry stores the copied
-# layer once however many variants are published.
-build_gg_toolchains() {
-	echo "==> building ${GG_TOOLCHAINS_IMAGE} (gg language toolchains)"
-	# Every toolchain's version comes from the package that owns it rather than from a
-	# default in the Dockerfile, so a pin is edited in one place — and for all but one arm
-	# that is now arranged so the wrapper cannot get it wrong either. Java's, Kotlin's,
-	# Swift's, the C++ arm's, the C# arm's and (as of this change) PureScript's blocks each
-	# COPY that arm's version file and RUN the same installer a developer's or CI machine
-	# runs, so the list of versions is read by the image rather than passed to it. PureScript
-	# was the last holdout and the one where it mattered most: externs are a
-	# compiler-version-private format, so the `purs` in this image and the `purs` that
-	# compiled the library set inside gg's binary must be the same release or NOTHING
-	# compiles — and the two ARG defaults it used to carry were a second answer that a
-	# `docker build -f` skipping this wrapper would silently have taken.
-	#
-	# Rust's is still a build arg, because there is no installer to run: the block is
-	# `rustup` inside the image. The pin is not this arm's to choose either — it is
-	# `rust-toolchain.toml`'s, read here through packages/gg-sandbox-rust/rust-version.sh.
-	# The compiler in this image and the compiler that built the `.rlib` set inside gg's
-	# binary must be the same release (an `.rlib` is a compiler-version-private format), so
-	# having only one Rust release in the repository is what makes the two impossible to get
-	# out of step; the Dockerfile declares `ARG RUST_VERSION` with no default so a build that
-	# forgets this line fails rather than guessing.
-	# shellcheck source=packages/gg-sandbox-rust/rust-version.sh
-	source "${SCRIPT_DIR}/../packages/gg-sandbox-rust/rust-version.sh"
-	"$DOCKER" build \
-		--build-arg "RUST_VERSION=${GG_RUST_VERSION}" \
-		--build-arg "RUST_TARGET=${GG_RUST_TARGET}" \
-		-t "${GG_TOOLCHAINS_IMAGE}" \
-		-f "${SCRIPT_DIR}/gg-toolchains/Dockerfile" "${SCRIPT_DIR}/.."
-
-	if [[ -n "${PUSH}" ]]; then
-		push_and_pin "${GG_TOOLCHAINS_IMAGE}" gg-toolchains
-	fi
+# Pull the gg toolchain image the `-gg` variants copy their tree out of, once, before the
+# first variant this run BUILDS (a reused variant needs no tree). A variant's `FROM` would
+# pull it too, but an explicit pull retries the registry the way every other round trip
+# here does, and leaves the image in the local store, where every later variant finds it
+# and the reclaim, which removes only names this script builds, leaves it.
+pull_gg_toolchains() {
+	image_present "${GG_TOOLCHAINS_IMAGE}" && return 0
+	echo "==> pulling ${GG_TOOLCHAINS_IMAGE} (the gg language toolchains of the release the driver pins)"
+	registry_retry "$DOCKER" pull --quiet "${GG_TOOLCHAINS_IMAGE}"
 }
 
 # The path, within the build context, that the audio store is staged to. The stager owns
@@ -1238,6 +1196,7 @@ build_gg_variant() {
 	local name="$1"
 	local parent="$2"
 	local image="${IMAGE_NAME_PREFIX}${name}:${IMAGE_TAG}"
+	pull_gg_toolchains
 	echo "==> building ${image} (FROM ${parent})"
 	"$DOCKER" build \
 		--build-arg "BASE_IMAGE=${parent}" \
@@ -1672,19 +1631,6 @@ select_needs_base_wasm() {
 	return 1
 }
 
-# Whether the selection includes any gg variant. Each is one `COPY` of the gg
-# language-toolchain tree onto an already-built run image, so the toolchain builder has
-# to exist first.
-select_needs_gg_toolchains() {
-	local x
-	for x in "${selected[@]}"; do
-		case "$x" in
-			*-gg) return 0 ;;
-		esac
-	done
-	return 1
-}
-
 # Whether anything to be built is the game-jam image, which is built `FROM` the
 # full-stack-2d image — so full-stack-2d must be present first (it in turn needs
 # base-wasm and base, covered above).
@@ -1715,8 +1661,8 @@ select_needs_tools() {
 
 # THE BASELINE DISK READING, before anything is built. `reclaim_after_push` reports after
 # every variant, but the first of those lands after `base-wasm-gg`, the third of fifty-five
-# names — so a failure in `tools` or `gg-toolchains`, which is where the 2.2 GB toolchain tree
-# is first materialised, used to produce no figure at all. This is the one that says what the
+# names — so a failure in `tools`, or in pulling the 2.2 GB toolchain image, would produce
+# no figure at all. This is the one that says what the
 # agent started with. Under RECLAIM only, so a local build's output is unchanged.
 if [[ -n "${PUSH}" && -n "${RECLAIM}" ]]; then
 	echo "==> disk before the first image"
@@ -1732,15 +1678,7 @@ if select_needs_tools; then
 	produce tools
 fi
 
-# Layer 0b — the gg language toolchains, built before any `-gg` variant copies them out.
-# ALWAYS rebuilt, for the same reason the asset tooling is: it carries the compilers a gg
-# run's programs are judged by, so a stale one would bake yesterday's toolchain into an
-# otherwise-fresh variant. It is independent of the base, so it is built here.
-if select_needs_gg_toolchains; then
-	produce gg-toolchains
-fi
-
-# Layer 0c — the audio store, which depends on nothing and which nothing depends on.
+# Layer 0b — the audio store, which depends on nothing and which nothing depends on.
 # Built when it is NAMED, and on a full build only under PUSH: staging it needs node and
 # the audio object store's presign credentials, which a contributor does not have and now
 # does not need, so a plain local `./build.sh` skips it with a note and still builds every
