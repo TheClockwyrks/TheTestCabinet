@@ -100,7 +100,6 @@ pub use ladders::{
     LadderStopInput, LadderSummary, RungTally, SlotCounts, SlotStatus,
 };
 pub(crate) use launch::spawn_startup_passes;
-// The backend retries failed publishes in the background for its whole life.
 pub use model_candidates::{CandidateOut, ModelCandidatesOut};
 pub use model_probes::{
     ModelProbeDetailResponse, ModelProbeItemOut, ModelProbeOut, ModelProbesResponse,
