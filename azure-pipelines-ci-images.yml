@@ -119,6 +119,9 @@ resources:
     - repository: gg
       type: git
       name: the-test-cabinet/gg
+    - repository: gg.rocks
+      type: git
+      name: the-test-cabinet/gg.rocks
     - repository: microservice-repos
       type: git
       name: the-test-cabinet/microservice-repos
@@ -150,6 +153,7 @@ jobs:
         - contracts
         - engines
         - gg
+        - gg.rocks
         - microservice-repos
         - test-suites
     steps:
@@ -194,6 +198,7 @@ jobs:
         - contracts
         - engines
         - gg
+        - gg.rocks
         - microservice-repos
         - test-suites
     steps:
@@ -232,6 +237,7 @@ jobs:
         - contracts
         - engines
         - gg
+        - gg.rocks
         - microservice-repos
         - test-suites
     steps:

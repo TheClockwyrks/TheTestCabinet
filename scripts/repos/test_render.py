@@ -140,6 +140,7 @@ def test_an_extra_gate_in_a_job_the_pipeline_lacks_is_refused(monkeypatch: pytes
 def test_the_project_pipeline_table_names_repositories_and_stages() -> None:
     assert set(render.PROJECT_PIPELINE) <= set(EDGES.REPOSITORIES)
     assert render.PROJECT_PIPELINE["gg"] == ("release",)
+    assert render.PROJECT_PIPELINE["gg.rocks"] == ("deploy",)
     for name in render.PROJECT_PIPELINE:
         assert render.project_stages(name)
     assert render.project_stages("microservice-arena") == ()
@@ -148,6 +149,7 @@ def test_the_project_pipeline_table_names_repositories_and_stages() -> None:
     assert render.ci_project_stages("microservice-arena", "application") == ""
     assert render.ci_project_setup("microservice-arena", "application") == ""
     assert render.ci_project_setup("gg", "application") == f"          - template: {render.PROJECT_SETUP}"
+    assert render.ci_project_setup("gg.rocks", "site") == ""
     assert set(render.RUST_TIMEOUTS) <= set(EDGES.REPOSITORIES)
     assert render.rust_timeout("gg") == 120
     assert render.rust_timeout("microservice-arena") == render.RUST_TIMEOUT
@@ -160,6 +162,30 @@ def test_the_project_pipeline_is_handed_the_rust_image_the_registry_and_the_arm6
         "registryEndpoint": render.CI_IMAGE_ENDPOINT,
         "arm64Pool": render.ARM64_POOL,
     }
+
+
+def test_a_site_s_project_pipeline_is_handed_no_rust_image() -> None:
+    assert render.project_parameters("gg.rocks", "site") == {
+        "registry": render.CI_REGISTRY,
+        "registryEndpoint": render.CI_IMAGE_ENDPOINT,
+        "arm64Pool": render.ARM64_POOL,
+    }
+
+
+def test_a_site_s_pipeline_includes_its_own_jobs_and_deploy_stage(rendered: Callable[[str], Path]) -> None:
+    pipeline = (rendered("gg.rocks") / "azure-pipelines.yml").read_text(encoding="utf-8")
+    parameters = "".join(f"{key}: {value}\n" for key, value in render.project_parameters("gg.rocks", "site").items())
+    jobs = pipeline.index(f"      - template: {render.PROJECT_JOBS}\n        parameters:\n")
+    stages = pipeline.index(f"  - template: {render.PROJECT_STAGES}\n    parameters:\n")
+    assert pipeline.index("  - stage: gates\n") < jobs < pipeline.index("  - stage: publish\n") < stages
+    assert stages < pipeline.index("  - stage: mirror\n")
+    assert parameters.replace("\n", "\n          ").strip() in pipeline[jobs:]
+    assert parameters.replace("\n", "\n      ").strip() in pipeline[stages:]
+    assert "rustImage" not in pipeline
+    assert render.PROJECT_SETUP not in pipeline
+    mirror = pipeline[pipeline.index("  - stage: mirror\n") :]
+    assert "      - gates\n      - publish\n      - deploy\n    condition:" in mirror
+    assert "in(dependencies.deploy.result, 'Succeeded', 'Skipped')," in mirror
 
 
 def test_the_kits_arm64_pool_is_the_superrepos() -> None:

@@ -1,6 +1,6 @@
 ---
 format: nyxsis-issue
-version: 2
+version: 3
 id: n78e029uw7xcnx8uz1lctj6d
 zone: REPOS
 number: 11
@@ -9,6 +9,11 @@ type: generic
 state: open
 depends_on:
   - txf8l556rdhfmbw9k1bxwvet
+  - why63p6o1vq24lae4hpsex0h
+  - z144xga276q9j4rmlzsibbwf
+  - m12w5wiiu79bndk4ro5ig45l
+  - poskdbz9r08ecr4qziroj0xr
+  - nucz4aaupa56b5r8erjhq960
 created: 2026-10-13T21:13:03.863838776Z
 ---
 

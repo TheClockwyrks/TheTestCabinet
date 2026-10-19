@@ -73,8 +73,9 @@ The kind decides a repository's shape.
 | `client-tauri` | shell | The operator client for Windows, Linux, macOS and Android |
 | `test-suites` | content | The test cases and game jams, and the lattice factory designer |
 
-Every repository but `contracts`, `engines`, `gg`, `test-suites` and
-`cold-storage` is still a directory of the superrepo's own tree today.
+Every repository but `contracts`, `engines`, `gg`, `gg.rocks`,
+`microservice-repos`, `test-suites` and `cold-storage` is still a directory of
+the superrepo's own tree today.
 
 ### Where each responsibility lives
 
@@ -204,6 +205,7 @@ console.testcabinet.ai -> test-suites            the vendored sprite atlas and
                                                  reference scenarios
 the-spec-cabinet -> test-suites                  the suite being authored
 client-tauri -> console.testcabinet.ai           the URL it loads
+gg.rocks -> gg                                   the documentation pages it presents
 microservice-driver -> microservice-artifacts, microservice-repos
                                                  HTTP, the run tree and bundle uploads
 microservice-backend -> microservice-artifacts, microservice-repos
@@ -425,7 +427,8 @@ the render gives it one step there. Every gate a repository adds is hookless,
 and the rendered `ci/tests/test_wiring.py` holds each to its one step.
 
 A repository whose pipeline runs work beyond the kit's, such as `gg`, which
-releases its binaries, its reference and its toolchains image on a tag, writes
+releases its binaries, its reference and its toolchains image on a tag, or
+`gg.rocks`, whose `deploy` stage uploads the site to its Pages project, writes
 it as the superrepo writes its own: its jobs in `.azure/project/jobs.yml`,
 which the gates stage includes after the kit's jobs, and its stages in
 `.azure/project/stages.yml`, which the pipeline includes after the publish

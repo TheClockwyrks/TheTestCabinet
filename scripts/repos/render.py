@@ -160,8 +160,10 @@ GATE_JOBS = ("rust", "checks")
 # the tags or branches their own conditions name. The table names those
 # stages, and the mirror stage waits on each, so a ref is mirrored only once
 # what the repository releases from it is out. gg's `release` stage publishes
-# its binaries, its reference and its toolchains image on a tag.
-PROJECT_PIPELINE: dict[str, tuple[str, ...]] = {"gg": ("release",)}
+# its binaries, its reference and its toolchains image on a tag, and gg.rocks's
+# `deploy` stage uploads the site to its Pages project from `master` and
+# `staging`.
+PROJECT_PIPELINE: dict[str, tuple[str, ...]] = {"gg": ("release",), "gg.rocks": ("deploy",)}
 PROJECT_JOBS = ".azure/project/jobs.yml"
 PROJECT_STAGES = ".azure/project/stages.yml"
 # The steps such a repository's Rust job takes after it fetched its
