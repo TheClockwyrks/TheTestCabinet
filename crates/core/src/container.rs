@@ -556,6 +556,27 @@ fn runtime_answers(binary: &str) -> bool {
     }
 }
 
+/// Whether the container engine took a run container down, read from a
+/// `container inspect` of `{{.State.Status}} {{.State.OOMKilled}}`, and if so a
+/// description of it.
+///
+/// A container that no longer exists, or that the engine killed for running out of
+/// memory, was disrupted. Any other failed inspect is no evidence either way.
+fn container_disruption(id: &str, success: bool, stdout: &str, stderr: &str) -> Option<String> {
+    if !success {
+        return stderr
+            .to_ascii_lowercase()
+            .contains("no such container")
+            .then(|| format!("run container `{id}` no longer exists"));
+    }
+    let mut fields = stdout.split_whitespace();
+    let status = fields.next().unwrap_or_default();
+    let oom_killed = fields.next() == Some("true");
+    oom_killed.then(|| {
+        format!("run container `{id}` was killed by the container engine for running out of memory (status {status})")
+    })
+}
+
 #[cfg(test)]
 #[path = "container.test.rs"]
 mod tests;
@@ -728,6 +749,29 @@ impl ContainerRuntime for CliContainerRuntime {
             )));
         }
         Ok(())
+    }
+
+    async fn disruption(&self, container: &ContainerHandle) -> Option<String> {
+        let args = vec![
+            "container".to_string(),
+            "inspect".to_string(),
+            "--format".to_string(),
+            "{{.State.Status}} {{.State.OOMKilled}}".to_string(),
+            container.id.clone(),
+        ];
+        let output = match self.run(&args).await {
+            Ok(output) => output,
+            Err(err) => {
+                tracing::warn!(container = %container.id, error = %err, "inspecting run container for disruption");
+                return None;
+            }
+        };
+        container_disruption(
+            &container.id,
+            output.status.success(),
+            &String::from_utf8_lossy(&output.stdout),
+            &String::from_utf8_lossy(&output.stderr),
+        )
     }
 
     async fn pull(&self, image: &str) -> Result<()> {

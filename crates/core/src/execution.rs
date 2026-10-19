@@ -353,6 +353,23 @@ pub trait ContainerRuntime: Send + Sync {
     /// Stop and remove the container.
     async fn stop(&self, container: &ContainerHandle) -> Result<()>;
 
+    /// How the platform took the container down from outside the run, if it did.
+    ///
+    /// Asked as soon as a harness session returns, whatever the session's outcome:
+    /// a harness killed by a node drain, an eviction or a deletion sees only that it
+    /// was killed, so its exit code says how the session ended and never why (see
+    /// [container disruption](crate::Error::ContainerDisrupted)). `Some` carries a
+    /// human-readable description naming the disruption; `None` means the container
+    /// is still there and nothing outside the run touched it.
+    ///
+    /// A runtime that cannot tell answers `None`, and so does one whose own read of
+    /// the container failed: a failed read is no evidence against the session's
+    /// outcome. The default answers `None`, for runtimes whose containers nothing
+    /// outside the run can take away.
+    async fn disruption(&self, _container: &ContainerHandle) -> Option<String> {
+        None
+    }
+
     /// Ensure `image` is present in local storage, fetching it from its registry
     /// if it is not already pulled.
     ///

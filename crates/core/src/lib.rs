@@ -1343,6 +1343,48 @@ where
                 })
         };
         let session_elapsed = self.clock.now().saturating_sub(session_started);
+
+        // A harness whose container the platform took down sees only that it was
+        // killed, and reports whatever that looks like from inside: a non-zero exit,
+        // or a clean one with nothing done. The runtime is asked whether that is what
+        // happened before the outcome is believed. A launch refused before any session
+        // ran and an operator's own cancel are skipped: the first had no container
+        // work to disrupt, and the second tears the container down on purpose.
+        let outcome = match outcome {
+            Err(Error::CanceledBeforeSession) => outcome,
+            _ if cancel.is_canceled() => outcome,
+            _ => match self.runtime.disruption(&handle).await {
+                None => outcome,
+                Some(disruption) => {
+                    let session = match &outcome {
+                        Ok(_) => "the harness exited successfully".to_string(),
+                        Err(err) => err.to_string(),
+                    };
+                    let error = Error::ContainerDisrupted {
+                        slug: slug.as_str().to_string(),
+                        disruption,
+                        session,
+                    };
+                    tracing::error!(
+                        run_id,
+                        harness = slug.as_str(),
+                        container = %handle.id,
+                        error = %error,
+                        "run container was disrupted while the harness session ran"
+                    );
+                    events.emit(&event::HarnessEvent {
+                        timestamp: event::now_timestamp(),
+                        session_id: None,
+                        kind: event::EventKind::Error {
+                            message: error.to_string(),
+                            code: None,
+                        },
+                    });
+                    Err(error)
+                }
+            },
+        };
+
         match outcome {
             Ok(outcome) => Ok(ExecutedSession {
                 handle,

@@ -304,3 +304,43 @@ fn detection_probes_in_order_and_stops_at_the_first_answer() {
 fn a_runtime_that_is_not_installed_does_not_answer() {
     assert!(!runtime_answers("tcab-no-such-container-runtime"));
 }
+
+// ── container_disruption ─────────────────────────────────────────────────────
+
+#[test]
+fn a_running_container_is_not_disrupted() {
+    assert_eq!(
+        container_disruption("abc", true, "running false\n", ""),
+        None
+    );
+}
+
+#[test]
+fn a_container_the_engine_killed_for_memory_is_disrupted() {
+    let detail = container_disruption("abc", true, "exited true\n", "").unwrap();
+    assert!(detail.contains("`abc`"), "{detail}");
+    assert!(detail.contains("out of memory"), "{detail}");
+    assert!(detail.contains("status exited"), "{detail}");
+}
+
+#[test]
+fn a_container_that_no_longer_exists_is_disrupted() {
+    for stderr in [
+        "Error: No such container: abc",
+        "Error: no such container \"abc\"",
+    ] {
+        assert_eq!(
+            container_disruption("abc", false, "", stderr).as_deref(),
+            Some("run container `abc` no longer exists"),
+            "{stderr}"
+        );
+    }
+}
+
+#[test]
+fn a_failed_inspect_is_no_evidence_of_a_disruption() {
+    assert_eq!(
+        container_disruption("abc", false, "", "Cannot connect to the Docker daemon"),
+        None
+    );
+}
