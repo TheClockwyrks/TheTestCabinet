@@ -63,19 +63,23 @@ the superrepo's root, and so are [`cold-storage`](#cold-storage) and
 
 A plain clone downloads the superrepo alone and leaves each submodule
 directory empty. The superrepo's own gates and the docs site read
-`contracts/`, whose schemas the docs publish, and `engines/`, which the
-repositories still held in the superrepo's own tree build against, and nothing
-else; every other checkout is fetched when a task needs it:
+`contracts/`, whose schemas the docs publish, `engines/`, which the
+repositories still held in the superrepo's own tree build against, and
+`microservice-repos/`, whose crate the
+[patch table](/development/repositories/#inside-the-superrepo) names, since
+cargo loads every patch path before it builds anything, and nothing else; every
+other checkout is fetched when a task needs it:
 
 ```sh
 git clone <superrepo-url>
-git submodule update --init contracts engines
+git submodule update --init contracts engines microservice-repos
 git submodule update --init microservice-driver   # what the task touches
 git submodule update --init --depth 1 cold-storage
 git submodule update --init test-suites
 ```
 
-The devcontainer populates `contracts/`, `engines/` and `test-suites/` when it
+The devcontainer populates `contracts/`, `engines/`, `microservice-repos/` and
+`test-suites/` when it
 creates a container, the last because a local backend ingests its suites from that
 checkout. `.gitmodules` sets the tracked branch of every repository to
 `master`, so `git submodule update --remote <name>` moves that checkout to the

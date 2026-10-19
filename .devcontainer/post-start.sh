@@ -24,7 +24,7 @@
 # tools/submodule-checkout.sh, which follows tools/ssh-agent.sh because it
 # clones through the agent that script publishes. post-create.sh runs it once
 # at creation, and it runs here again so a container created with no agent, or
-# no network, gets contracts/, engines/ and test-suites/ at its next start. The script
+# no network, gets contracts/, engines/, microservice-repos/ and test-suites/ at its next start. The script
 # never fails, and the `|| true` holds that here as well. It stops a checkout
 # that outlives its deadline too, so an SSH connection that never answers does
 # not hold the start.

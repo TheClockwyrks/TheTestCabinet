@@ -41,6 +41,7 @@ ignores:
   - "cold-storage/**"
   - "contracts/**"
   - "engines/**"
+  - "microservice-repos/**"
   - "tasks/**/done/**"
   - ".claude/workflows/**"
   - ".claude/worktrees/**"
