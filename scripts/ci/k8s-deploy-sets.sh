@@ -11,8 +11,9 @@
 #     after scripts/ci/pin-images.sh, holds namespaced objects only, all in
 #     `tcab-<env>`, because the deploy identity's role is scoped to that namespace;
 #   - that set names every Test Cabinet image, and the dispatcher's driver and
-#     publisher images, at `testcabinet.azurecr.io/<image>:<commit>`, and leaves no
-#     REPLACE_ placeholder anywhere;
+#     publisher images, at `testcabinet.azurecr.io/<image>:<commit>`, an image a
+#     repository of its own builds (`microservice-*`) at the commit its submodule
+#     pointer names, and leaves no REPLACE_ placeholder anywhere;
 #   - the overlay on its own names every Test Cabinet image at the tag `unpinned`
 #     and at no other, so the pin is the only thing that chooses a deployment's
 #     images;
@@ -37,6 +38,12 @@ readonly CI_DIR
 source "${CI_DIR}/tcab-lib.sh"
 
 readonly SHA="0123456789abcdef0123456789abcdef01234567"
+# The commit the microservice-repos submodule pointer stands at in the rendered
+# deploys: a commit no checkout holds, so pin-images.sh is handed it rather than
+# reading it from SHA's tree, and distinct from SHA, so a submodule image pinned
+# to the superrepo's commit is caught.
+readonly REPOS_SHA="89abcdef0123456789abcdef0123456789abcdef"
+export TCAB_PIN_GITLINKS="microservice-repos=${REPOS_SHA}"
 readonly BACKEND_IMAGE="${CI_REGISTRY}/the-test-cabinet-backend"
 
 k8s_root="${TCAB_K8S_ROOT:-deployments/k8s}"
@@ -62,7 +69,7 @@ image_refs() {
 		/^ *(- )?image: / { v = $NF; gsub(/"/, "", v); print v }
 		want && /^ *value: / { v = $NF; gsub(/"/, "", v); print v }
 		{ want = ($0 ~ /name: TCAB_(DRIVER|PUBLISHER)_IMAGE$/) }
-	' | { grep -E '(^|/)(tcab|the-test-cabinet)-' || true; } | sort -u
+	' | { grep -E '(^|/)(tcab|the-test-cabinet|microservice)-' || true; } | sort -u
 }
 
 for dir in "$k8s_root"/overlays/*/ "$k8s_root"/cluster/*/; do
@@ -101,10 +108,16 @@ for env in staging prod; do
 	refs="$(image_refs <<<"$deployed")"
 	[[ -n "$refs" ]] || fail "the ${env} deploy names no Test Cabinet image"
 	while IFS= read -r ref; do
-		[[ -z "$ref" || "$ref" == "${CI_REGISTRY}/"*":${SHA}" ]] ||
-			fail "the ${env} deploy names ${ref}, not ${CI_REGISTRY}/<image>:<commit>"
+		case "$ref" in
+			"" | "${CI_REGISTRY}/microservice-repos:${REPOS_SHA}") ;;
+			"${CI_REGISTRY}/microservice-"*)
+				fail "the ${env} deploy names ${ref}, not ${CI_REGISTRY}/<repository>:<the commit its submodule pointer names>" ;;
+			"${CI_REGISTRY}/"*":${SHA}") ;;
+			*) fail "the ${env} deploy names ${ref}, not ${CI_REGISTRY}/<image>:<commit>" ;;
+		esac
 	done <<<"$refs"
-	for want in "${CI_REGISTRY}/tcab-driver:${SHA}" "${CI_REGISTRY}/tcab-publisher:${SHA}" "${BACKEND_IMAGE}:${SHA}"; do
+	for want in "${CI_REGISTRY}/tcab-driver:${SHA}" "${CI_REGISTRY}/tcab-publisher:${SHA}" "${BACKEND_IMAGE}:${SHA}" \
+		"${CI_REGISTRY}/microservice-repos:${REPOS_SHA}"; do
 		grep -qxF "$want" <<<"$refs" || fail "the ${env} deploy does not name ${want}"
 	done
 	grep -qE "^ *value: \"?${SHA}\"?$" <<<"$deployed" ||

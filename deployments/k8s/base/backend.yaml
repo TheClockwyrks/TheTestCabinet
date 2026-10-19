@@ -55,6 +55,10 @@ spec:
             # own origin, so the backend advertises no URL for it.
             - name: TCAB_ARTIFACTS_URL
               value: "http://tcab-artifacts:8790"
+            # The repos service as this pod reaches it, to read a run's bundle for a
+            # console's download and to prune a deleted run's bundle.
+            - name: TCAB_REPOS_URL
+              value: "http://tcab-repos:8792"
             # The shared service token the dispatcher claims queued jobs with. MUST
             # match the dispatcher's TCAB_BACKEND_SERVICE_TOKEN (tcab-dispatcher-secrets)
             # or the queue never drains. Without it the dispatcher endpoints are

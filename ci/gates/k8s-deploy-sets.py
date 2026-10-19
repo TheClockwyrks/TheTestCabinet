@@ -6,7 +6,8 @@ what The Test Cabinet's Azure deployments add, through
 renders; the set `scripts/ci/deploy-environment.sh --render` prints for staging
 and prod, which is the overlay after `scripts/ci/pin-images.sh`, is namespaced
 in `tcab-<env>` alone and names every Test Cabinet image, and the dispatcher's
-run images, at the ACR and the commit, with no `REPLACE_` placeholder left; the
+run images, at the ACR and the commit (an image a repository of its own builds at
+the commit its submodule pointer names), with no `REPLACE_` placeholder left; the
 overlays on their own name every such image at `unpinned`; each
 `cluster/azure-<env>` holds cluster-scoped objects alone; and the staging set
 under the template deploy.sh's own layer carries exactly the one backend image
@@ -29,6 +30,7 @@ if run(["scripts/ci/k8s-deploy-sets.sh"], unset=GIT_LOCATION_VARIABLES).returnco
     fail(
         "",
         "A deploy set is not what the deploy identity may apply, above. Reproduce a set with:",
+        "    TCAB_PIN_GITLINKS=microservice-repos=89abcdef0123456789abcdef0123456789abcdef \\",
         "    scripts/ci/deploy-environment.sh --render staging 0123456789abcdef0123456789abcdef01234567",
     )
 

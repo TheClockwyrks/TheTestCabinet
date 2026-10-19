@@ -25,6 +25,7 @@ resources:
   - backend.yaml
   - dispatcher.yaml
   - artifacts.yaml
+  - repos.yaml
   - arena.yaml
   - ingest-cronjob.yaml
   - networkpolicy.yaml

@@ -58,7 +58,8 @@ components:
 # whatever a moving tag last named. scripts/ci/pin-images.sh rewrites each newTag to
 # the commit being deployed (and adds the dispatcher's run-image environment) before
 # anything applies it. The backend's repository is `the-test-cabinet-backend`, the name
-# the workspace template's publish and deploy stages use; the other six keep their
+# the workspace template's publish and deploy stages use; the repos service's is
+# `microservice-repos`, the repository it is built in; the other six keep their
 # `tcab-*` names.
 images:
   - name: REPLACE_REGISTRY/tcab-backend
@@ -72,6 +73,9 @@ images:
     newTag: unpinned
   - name: REPLACE_REGISTRY/tcab-artifacts
     newName: testcabinet.azurecr.io/tcab-artifacts
+    newTag: unpinned
+  - name: REPLACE_REGISTRY/tcab-repos
+    newName: testcabinet.azurecr.io/microservice-repos
     newTag: unpinned
   - name: REPLACE_REGISTRY/tcab-arena
     newName: testcabinet.azurecr.io/tcab-arena

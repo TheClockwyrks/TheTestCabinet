@@ -215,6 +215,12 @@ spec:
             # the upload (a single-box cluster with no artifact service).
             - name: TCAB_ARTIFACTS_URL
               value: "http://tcab-artifacts:8790"
+            # The repos service each driver uploads the run's implementation bundle to
+            # beside the run tree, and each publisher asks for the public push.
+            # Forwarded into every driver and publish Job. Unset skips the bundle
+            # upload.
+            - name: TCAB_REPOS_URL
+              value: "http://tcab-repos:8792"
             - name: TCAB_ENV
               value: "prod"
 # The tcab-dispatcher-secrets Secret this reads (TCAB_BACKEND_SERVICE_TOKEN) lives

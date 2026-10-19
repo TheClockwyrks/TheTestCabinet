@@ -1,0 +1,157 @@
+# Repos service: keeps each run's implementation as a git bundle, one object per
+# run in a private Azure Blob container of its own, and pushes a published run's
+# implementation to its public GitHub repository. See
+# apps/docs/src/content/docs/deployment/kubernetes/run-plane.md ("Repos service")
+# and components/repos/overview.md.
+#
+# A DATA-plane peer of the artifacts service, and the same shape: the driver
+# UPLOADS each run's bundle here (`POST /runs/{id}/bundle`, its per-job token)
+# beside the run tree, the publisher asks it for the public push
+# (`POST /runs/{id}/publish`, its per-publish-job token), and the backend reads
+# and deletes a bundle with the shared service token. It binds 0.0.0.0:8792 and
+# is reached over the cluster network only: it sits behind no edge path, since a
+# console's bundle download is answered by the backend.
+#
+# STATELESS: a Deployment of two interchangeable replicas with no volume. A
+# bundle is staged in the container's /tmp while it is checked and published.
+# The bundles live in the environment's private Blob container
+# (TCAB_REPOS_BLOB_ACCOUNT / TCAB_REPOS_BLOB_CONTAINER), which the service
+# reaches as a user-assigned managed identity holding Storage Blob Data
+# Contributor on it, federated to this ServiceAccount by workload identity; the
+# staging and prod overlays set the identity's client id, the pod's
+# `azure.workload.identity/use` label, the environment's account and the GitHub
+# organization and token. The local overlay points the service at the Azurite
+# emulator with Shared Key instead, and names no GitHub pair, so a local publish
+# answers 503.
+#
+# It needs NO Kubernetes API access — it talks HTTP to the backend (to verify a
+# driver's per-job or a publisher's per-publish-job token, and to read a run's
+# record at publish), to its Blob container and to GitHub.
+apiVersion: v1
+kind: Service
+metadata:
+  name: tcab-repos
+  namespace: tcab-prod
+spec:
+  selector:
+    app.kubernetes.io/name: tcab-repos
+  ports:
+    - name: http
+      port: 8792
+      targetPort: 8792
+  # ClusterIP only — the driver, the publisher and the backend reach it over the
+  # cluster network, and no edge path leads to it.
+  type: ClusterIP
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: tcab-repos
+  namespace: tcab-prod
+  # No API access: no Role binds it. The staging and prod overlays federate it to
+  # the environment's managed identity (`azure.workload.identity/client-id`); the
+  # base names none, so the local overlay's pod signs its Azurite requests with
+  # Shared Key alone.
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tcab-repos
+  namespace: tcab-prod
+spec:
+  # Two interchangeable replicas: the service holds nothing a restart loses, so a
+  # planned disruption of one leaves the other serving (Planned disruption, in
+  # deployment/kubernetes/control-plane.md). A deploy starts the new pod and waits
+  # for it to be Ready before terminating an old one.
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: tcab-repos
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: tcab-repos
+        app.kubernetes.io/part-of: test-cabinet
+    spec:
+      serviceAccountName: tcab-repos # no API access — its own identity only
+      # Sized to the longest request the service answers: a bundle upload in
+      # progress completes on the terminating replica.
+      terminationGracePeriodSeconds: 300
+      containers:
+        - name: repos
+          image: REPLACE_REGISTRY/tcab-repos:latest # the staging and prod overlays name testcabinet.azurecr.io/microservice-repos
+          resources:
+            # MEMORY REQUEST == LIMIT, as for every always-on service (Memory
+            # ceilings, in deployment/kubernetes/overview.md, and the dispatcher
+            # container's `resources` commentary in base/dispatcher.yaml). 1Gi is
+            # the ceiling the docs size for unpacking and pushing the largest bundle
+            # at publish, with git's own working set; an upload is streamed to a
+            # staged file and to Blob, never held whole in memory.
+            requests:
+              cpu: 100m
+              memory: 1Gi
+            limits:
+              memory: 1Gi
+          ports:
+            - containerPort: 8792
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: 8792
+            periodSeconds: 5
+          lifecycle:
+            # Hold the pod while its endpoint's removal from the Service
+            # propagates, so no new request is routed to a stopping replica.
+            preStop:
+              sleep:
+                seconds: 5
+          env:
+            - name: TCAB_REPOS_BIND
+              value: "0.0.0.0:8792"
+            # The storage account and private container the bundles are written
+            # to, one object `<run-id>.bundle` per run. Prod's account; the staging
+            # overlay names its own, the local overlay Azurite's.
+            - name: TCAB_REPOS_BLOB_ACCOUNT
+              value: "tcabprodstore"
+            - name: TCAB_REPOS_BLOB_CONTAINER
+              value: "bundles"
+            # The backend a driver's per-job or a publisher's per-publish-job token
+            # is forwarded to for verification, and a publish reads the run's
+            # record from.
+            - name: TCAB_BACKEND_URL
+              value: "http://tcab-backend:8787"
+            # The shared control-plane service token: the only credential of the
+            # bundle download and delete the backend calls, and the one a publish
+            # reads the record with. It must equal the backend's own
+            # TCAB_BACKEND_SERVICE_TOKEN — sourced from the same secret. Optional:
+            # absent, those routes refuse every caller and uploads are unaffected.
+            - name: TCAB_BACKEND_SERVICE_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: tcab-backend-secrets
+                  key: TCAB_BACKEND_SERVICE_TOKEN
+                  optional: true
+            # TCAB_GITHUB_ORG and TCAB_GITHUB_TOKEN are a pair the service refuses
+            # to start with half of, so the base names neither (every publish
+            # answers 503) and the staging and prod overlays add both.
+            - name: TCAB_ENV
+              value: "prod"
+---
+# Planned disruption: a drain evicts one replica and waits for its replacement to
+# be Ready before evicting the other. The selector is the service's own name label,
+# so the budget reaches no run pod.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: tcab-repos
+  namespace: tcab-prod
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: tcab-repos

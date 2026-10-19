@@ -8,7 +8,11 @@
 # stands fails to pull. This rewrites deployments/k8s/overlays/<overlay>/kustomization.yaml
 # so that it names the commit being deployed instead:
 #
-#   - each of the seven entries of its `images:` block gets `newTag: "<commit>"`;
+#   - each of the seven entries of its `images:` block for an image this repository
+#     builds gets `newTag: "<commit>"`, and the entry of each image a repository of
+#     its own builds gets the commit the superrepo's submodule pointer for that
+#     repository names at <commit>, which its pipeline pushed as <name>:<commit>
+#     (Pinning images, in deployment/kubernetes/overview.md);
 #   - a patch of the dispatcher, between two marker comments at the head of its
 #     `patches:` list, points TCAB_DRIVER_IMAGE and TCAB_PUBLISHER_IMAGE at the
 #     driver and publisher images of that commit, and TCAB_CONTAINER_REGISTRY and
@@ -25,7 +29,11 @@
 # temporary copy of deployments/k8s, named by TCAB_K8S_ROOT. The script ends by
 # rendering the overlay and fails if a Test Cabinet image in it is still unpinned.
 #
-#   TCAB_K8S_ROOT  The deployments/k8s tree to pin (default: the checkout's own)
+#   TCAB_K8S_ROOT      The deployments/k8s tree to pin (default: the checkout's own)
+#   TCAB_PIN_GITLINKS  Space-separated `<submodule path>=<commit>` pairs that stand in
+#                      for the submodule pointers at <commit>, for a render of a
+#                      commit this checkout does not hold (the k8s-deploy-sets gate
+#                      and the tests). Unset, each pointer is read from <commit>.
 set -euo pipefail
 
 caller_dir="$PWD"
@@ -34,10 +42,19 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/tcab-lib.sh"
 
 readonly USAGE="usage: scripts/ci/pin-images.sh <staging|prod> <commit>"
 
-# The seven images a Test Cabinet deployment runs or starts, as the base names
-# them after its REPLACE_REGISTRY/ placeholder.
+# The seven images a Test Cabinet deployment runs or starts that this repository
+# builds, as the base names them after its REPLACE_REGISTRY/ placeholder, all at the
+# commit being deployed.
 readonly TCAB_IMAGES=(tcab-backend tcab-dispatcher tcab-driver tcab-artifacts
 	tcab-arena tcab-publisher tcab-web)
+
+# The images a repository of their own builds, each as `<image>=<submodule path>`:
+# each is pinned to the commit the superrepo's submodule pointer for that repository
+# names at the commit being deployed.
+readonly SUBMODULE_IMAGES=(tcab-repos=microservice-repos)
+
+SUPERREPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+readonly SUPERREPO
 
 if [[ $# -ne 2 ]]; then
 	echo "$USAGE" >&2
@@ -61,6 +78,41 @@ if ! [[ "$COMMIT" =~ ^[0-9a-f]{40}$ ]]; then
 	echo "pin-images.sh: '${COMMIT}' is not a commit (forty lowercase hex characters)" >&2
 	exit 1
 fi
+
+# The commit the submodule pointer at <path> names at the commit being deployed: a
+# TCAB_PIN_GITLINKS pair for it, else the gitlink in that commit's tree.
+gitlink_commit() { # path
+	local path="$1" pair entry
+	for pair in ${TCAB_PIN_GITLINKS:-}; do
+		if [[ "${pair%%=*}" == "$path" ]]; then
+			printf '%s' "${pair#*=}"
+			return 0
+		fi
+	done
+	entry="$(git -C "$SUPERREPO" ls-tree "$COMMIT" -- "$path" 2>/dev/null)" || return 1
+	[[ "$entry" == "160000 commit "* ]] || return 1
+	entry="${entry#160000 commit }"
+	printf '%s' "${entry%%[[:space:]]*}"
+}
+
+# Every image to pin, as `<image>=<tag>`.
+pins=()
+for image in "${TCAB_IMAGES[@]}"; do
+	pins+=("${image}=${COMMIT}")
+done
+for pair in "${SUBMODULE_IMAGES[@]}"; do
+	image="${pair%%=*}"
+	path="${pair#*=}"
+	if ! tag="$(gitlink_commit "$path")" || ! [[ "$tag" =~ ^[0-9a-f]{40}$ ]]; then
+		got=""
+		[[ -z "$tag" ]] || got=" (got \"${tag}\")"
+		echo "pin-images.sh: ${image} is pinned to the commit the submodule pointer ${path} names at ${COMMIT}, and none was found${got}" >&2
+		echo "Fetch ${COMMIT} into this checkout, or name the pointer with TCAB_PIN_GITLINKS=${path}=<commit>." >&2
+		exit 1
+	fi
+	pins+=("${image}=${tag}")
+done
+readonly IMAGE_COUNT=${#pins[@]}
 
 k8s_root="${TCAB_K8S_ROOT:-deployments/k8s}"
 if [[ -n "${TCAB_K8S_ROOT:-}" && "$k8s_root" != /* ]]; then
@@ -112,21 +164,24 @@ YAML
 # reformats: top-level keys start in column zero, and each entry of `images:` is a
 # `  - name:` line followed by its `    newName:` and `    newTag:` lines.
 #   - The marked patch of an earlier run is dropped wherever it is.
-#   - Inside `images:`, the newTag of each entry whose name is one of the seven
-#     becomes the commit; the pinned names are printed to stderr for the count.
+#   - Inside `images:`, the newTag of each entry whose name is one of the pinned
+#     images becomes its tag; the pinned names are printed to stderr for the count.
 #   - The marked patch is inserted after the `patches:` line.
-awk -v commit="$COMMIT" -v begin="  ${BEGIN_MARK}" -v end="  ${END_MARK}" \
-	-v patch_file="$patch_file" -v images="${TCAB_IMAGES[*]}" '
+awk -v begin="  ${BEGIN_MARK}" -v end="  ${END_MARK}" \
+	-v patch_file="$patch_file" -v images="${pins[*]}" '
 	BEGIN {
 		n = split(images, list, " ")
-		for (i = 1; i <= n; i++) wanted["REPLACE_REGISTRY/" list[i]] = 1
+		for (i = 1; i <= n; i++) {
+			split(list[i], pair, "=")
+			wanted["REPLACE_REGISTRY/" pair[1]] = pair[2]
+		}
 	}
 	$0 == begin { skipping = 1; next }
 	skipping { if ($0 == end) skipping = 0; next }
 	/^[^ #]/ { top = $0; sub(/:.*/, "", top); entry = "" }
 	top == "images" && /^  - name: / { entry = $3 }
 	top == "images" && /^    newTag: / && (entry in wanted) {
-		print "    newTag: \"" commit "\""
+		print "    newTag: \"" wanted[entry] "\""
 		print entry > "/dev/stderr"
 		next
 	}
@@ -146,9 +201,9 @@ if grep -qx no-patches-key "$pinned_file"; then
 	exit 1
 fi
 pinned="$(sort -u "$pinned_file" | grep -c . || true)"
-if [[ "$pinned" -ne ${#TCAB_IMAGES[@]} ]]; then
-	echo "pin-images.sh: ${KUSTOMIZATION} names ${pinned} of the ${#TCAB_IMAGES[@]} Test Cabinet images in its images: block" >&2
-	echo "Each of ${TCAB_IMAGES[*]} needs an entry named REPLACE_REGISTRY/<image> with a newTag line." >&2
+if [[ "$pinned" -ne $IMAGE_COUNT ]]; then
+	echo "pin-images.sh: ${KUSTOMIZATION} names ${pinned} of the ${IMAGE_COUNT} Test Cabinet images in its images: block" >&2
+	echo "Each of ${pins[*]%%=*} needs an entry named REPLACE_REGISTRY/<image> with a newTag line." >&2
 	exit 1
 fi
 cat "$out_file" >"$KUSTOMIZATION"
@@ -169,4 +224,4 @@ if unpinned="$(grep -nE ':unpinned"?$|REPLACE_REGISTRY' <<<"$rendered")"; then
 	echo "$unpinned" >&2
 	exit 1
 fi
-echo "pin-images.sh: overlays/${OVERLAY} names every Test Cabinet image at ${COMMIT}"
+echo "pin-images.sh: overlays/${OVERLAY} names every Test Cabinet image at ${COMMIT}, and ${pins[*]:${#TCAB_IMAGES[@]}}"

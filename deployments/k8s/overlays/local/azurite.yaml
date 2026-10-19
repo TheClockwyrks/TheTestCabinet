@@ -1,14 +1,14 @@
 # Azurite: the local stack's object store, standing in for the environment's Azure
 # Blob containers and its Cloudflare R2 bucket (Running the services locally,
 # apps/docs/src/content/docs/development/running.md "The local stack"). The private
-# run-tree container and the public dataset's container are containers of it, so
-# nothing local reaches Azure or Cloudflare.
+# run-tree container, the public dataset's container and the repos service's private
+# bundle container are containers of it, so nothing local reaches Azure or Cloudflare.
 #
 # Blob only, on Azurite's well-known development account `devstoreaccount1`, whose
 # key is public; clients sign with Shared Key against the path-style endpoint
-# http://tcab-azurite:10000/devstoreaccount1. The artifacts service creates its
-# containers at start-up when it signs with Shared Key, so nothing provisions them
-# here. Version 3.29 or later: the service pins x-ms-version 2023-11-03.
+# http://tcab-azurite:10000/devstoreaccount1. The artifacts and repos services
+# create their containers at start-up when they sign with Shared Key, so nothing
+# provisions them here. Version 3.29 or later: both pin x-ms-version 2023-11-03.
 #
 # One replica over a claim, so the stored trees survive an Azurite restart and a
 # `local-rebuild` of the services, as they did on the artifacts service's own volume.
