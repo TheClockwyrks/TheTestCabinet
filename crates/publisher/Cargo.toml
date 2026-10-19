@@ -36,11 +36,19 @@ tracing = { workspace = true }
 # progress/result back to the backend with. rustls (no system OpenSSL), `json`
 # for the bodies.
 reqwest = { workspace = true }
+# The downloaded `tree.tar` body, handed out of the retried request as it came.
+bytes = { workspace = true }
 # The `CommandRunner` seam the release drives `gh`/`git`/`wrangler` through.
 async-trait = { workspace = true }
 # Untar the `application/x-tar` source tree the artifact service serves (pure
 # Rust, matching the driver's upload side which tars the same layout).
 tar = "0.4"
+# Parsing the record's RFC 3339 `finished_at` into the implementation commit's
+# fixed date.
+time = { workspace = true }
+# The digest of the scrubbed build a Pages deployment carries as its commit hash.
+sha2 = { workspace = true }
+hex = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }

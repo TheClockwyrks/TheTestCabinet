@@ -6,6 +6,7 @@
 use std::sync::Mutex;
 
 use super::*;
+use crate::pages::tests::{StubPagesApi, deployment};
 use test_cabinet_backend_client::{
     BackendClient, ResolvedArtifact, ResolvedReference, Result as ClientResult,
 };
@@ -16,7 +17,7 @@ use test_cabinet_contracts::run_record::{
 use test_cabinet_contracts::test_case::{TestCase, TestCaseVersion};
 use test_cabinet_contracts::validation::ValidationSummary;
 
-fn sample_record() -> RunRecord {
+pub(super) fn sample_record() -> RunRecord {
     RunRecord {
         id: "d483a2f9-7bda-4018-a27f-586ccdf31a9e".to_string(),
         started_at: "2026-06-15T01:36:06Z".to_string(),
@@ -112,11 +113,12 @@ fn sanitize_label_collapses_and_trims_non_alphanumerics() {
 /// [`PublishConfig`] has no `Default` and no compiled-in fallback: every
 /// environment sets its org and Pages project explicitly (see
 /// [`PublishConfig::from_env`]), so the tests spell the targets out here.
-fn sample_config() -> PublishConfig {
+pub(super) fn sample_config() -> PublishConfig {
     PublishConfig {
         github_org: "TheClockwyrks".to_string(),
         repo_prefix: "tcab-".to_string(),
         pages_project: "test-cabinet-runs".to_string(),
+        git_remote_base: DEFAULT_GIT_REMOTE_BASE.to_string(),
     }
 }
 
@@ -137,6 +139,42 @@ fn config_derives_repo_addresses() {
         config.repo_url(&record),
         "https://github.com/TheClockwyrks/tcab-pong-codex-gpt-5-4-mini-d483a2f9"
     );
+    assert_eq!(
+        config.remote_url(&record),
+        "https://github.com/TheClockwyrks/tcab-pong-codex-gpt-5-4-mini-d483a2f9.git"
+    );
+}
+
+#[test]
+fn remote_url_follows_the_remote_base_but_the_public_url_does_not() {
+    let config = PublishConfig {
+        git_remote_base: "/srv/remotes/".to_string(),
+        ..sample_config()
+    };
+    let record = sample_record();
+    assert_eq!(
+        config.remote_url(&record),
+        "/srv/remotes/TheClockwyrks/tcab-pong-codex-gpt-5-4-mini-d483a2f9.git"
+    );
+    assert_eq!(
+        config.repo_url(&record),
+        "https://github.com/TheClockwyrks/tcab-pong-codex-gpt-5-4-mini-d483a2f9"
+    );
+}
+
+#[test]
+fn commit_date_is_the_end_time_in_seconds_at_utc() {
+    assert_eq!(
+        commit_date("2026-06-15T01:40:25Z").expect("date"),
+        "1781487625 +0000"
+    );
+    // The same instant written with an offset gives the same date.
+    assert_eq!(
+        commit_date("2026-06-15T03:40:25+02:00").expect("date"),
+        "1781487625 +0000"
+    );
+    assert!(matches!(commit_date("yesterday"), Err(Error::Publish(_))));
+    assert!(matches!(commit_date(""), Err(Error::Publish(_))));
 }
 
 /// Serializes the env-mutating test below so it cannot race other tests that
@@ -202,40 +240,37 @@ fn wrangler_url_is_captured_not_constructed() {
     assert_eq!(parse_wrangler_url("nothing here"), None);
 }
 
+/// The tree `git rev-parse HEAD^{tree}` reports in the mock's implementation repo.
+const LOCAL_TREE: &str = "1111111111111111111111111111111111111111";
+
 /// A [`CommandRunner`] that records every invocation and returns canned results,
 /// so publish orchestration can be asserted without a real `gh`/`git`/`wrangler`.
 struct MockRunner {
     repo_exists: bool,
-    /// Whether `git status --porcelain` should report uncommitted work, so the
-    /// commit-before-push path either commits (dirty) or skips the commit (clean).
-    working_tree_dirty: bool,
     /// How many leading `git push` invocations should fail before one succeeds,
     /// so the propagation-lag retry path can be exercised. Counts down as pushes
     /// are attempted.
     push_failures: Mutex<u32>,
+    /// How many leading `wrangler` runs fail before one succeeds.
+    wrangler_failures: Mutex<u32>,
+    /// The tree the remote's `main` holds after a refused push, or `None` when
+    /// the remote has no `main` (the fetch fails), as a freshly created and still
+    /// empty repository does.
+    remote_tree: Option<String>,
     calls: Mutex<Vec<String>>,
+    /// The environment each `git commit` was given, in order.
+    commit_envs: Mutex<Vec<Vec<(String, String)>>>,
 }
 
 impl MockRunner {
-    /// A runner whose implementation working tree carries the model's
-    /// uncommitted changes — the common case the push must commit.
     fn new(repo_exists: bool) -> Self {
         Self {
             repo_exists,
-            working_tree_dirty: true,
             push_failures: Mutex::new(0),
+            wrangler_failures: Mutex::new(0),
+            remote_tree: None,
             calls: Mutex::new(Vec::new()),
-        }
-    }
-
-    /// A runner whose implementation working tree is already clean (nothing to
-    /// commit), so the push proceeds against the existing commits.
-    fn with_clean_tree(repo_exists: bool) -> Self {
-        Self {
-            repo_exists,
-            working_tree_dirty: false,
-            push_failures: Mutex::new(0),
-            calls: Mutex::new(Vec::new()),
+            commit_envs: Mutex::new(Vec::new()),
         }
     }
 
@@ -246,49 +281,96 @@ impl MockRunner {
         self
     }
 
+    /// Make the first `n` `wrangler` runs fail before one succeeds.
+    fn failing_first_deploys(mut self, n: u32) -> Self {
+        self.wrangler_failures = Mutex::new(n);
+        self
+    }
+
+    /// Make the remote's `main` hold `tree`, so a refused push compares it.
+    fn with_remote_tree(mut self, tree: &str) -> Self {
+        self.remote_tree = Some(tree.to_string());
+        self
+    }
+
     fn calls(&self) -> Vec<String> {
         self.calls.lock().expect("lock").clone()
     }
+
+    fn commit_envs(&self) -> Vec<Vec<(String, String)>> {
+        self.commit_envs.lock().expect("lock").clone()
+    }
+}
+
+/// Whether a recorded call is the implementation commit (`git -c … commit …`).
+fn is_commit(call: &str) -> bool {
+    call.starts_with("git ") && call.contains(" commit ")
+}
+
+/// Whether a recorded call is the implementation push.
+fn is_push(call: &str) -> bool {
+    call.starts_with("git ") && call.contains(" push ")
+}
+
+/// Whether a recorded call is the fetch of the remote's `main`.
+fn is_fetch(call: &str) -> bool {
+    call.starts_with("git ") && call.contains(" fetch ")
 }
 
 #[async_trait::async_trait]
 impl CommandRunner for MockRunner {
-    async fn run(
+    async fn run_with_env(
         &self,
         program: &str,
         args: &[&str],
         _cwd: Option<&Path>,
+        env: &[(&str, &str)],
     ) -> Result<CommandOutput> {
-        self.calls
-            .lock()
-            .expect("lock")
-            .push(format!("{program} {}", args.join(" ")));
-        // `gh repo view` is the existence probe; `wrangler pages deploy` prints a
-        // deployment URL; `git status --porcelain` reports the model's
-        // uncommitted work so the commit-before-push path runs; everything else
-        // simply "succeeds".
+        let call = format!("{program} {}", args.join(" "));
+        self.calls.lock().expect("lock").push(call.clone());
+        if is_commit(&call) {
+            self.commit_envs.lock().expect("lock").push(
+                env.iter()
+                    .map(|(k, v)| (k.to_string(), v.to_string()))
+                    .collect(),
+            );
+        }
         let is_repo_view =
             program == "gh" && args.first() == Some(&"repo") && args.get(1) == Some(&"view");
         let is_wrangler = program == "wrangler";
-        let is_git_status = program == "git" && args.first() == Some(&"status");
-        let is_git_push = program == "git" && args.contains(&"push");
-        let stdout = if is_wrangler {
-            "✨ Deployment complete! https://abc123.test-cabinet-runs.pages.dev\n".to_string()
-        } else if is_git_status && self.working_tree_dirty {
-            " M controller/src/lib.rs\n".to_string()
-        } else {
-            String::new()
-        };
         // A push fails while there are scripted failures left (the propagation
-        // lag); `gh repo view` reports existence; everything else succeeds.
-        let push_fails = is_git_push && {
+        // lag or a remote holding another commit).
+        let push_fails = is_push(&call) && {
             let mut remaining = self.push_failures.lock().expect("lock");
             (*remaining > 0).then(|| *remaining -= 1).is_some()
         };
-        let success = if is_repo_view {
-            self.repo_exists
+        let wrangler_fails = is_wrangler && {
+            let mut remaining = self.wrangler_failures.lock().expect("lock");
+            (*remaining > 0).then(|| *remaining -= 1).is_some()
+        };
+        let (success, stdout) = if is_repo_view {
+            (self.repo_exists, String::new())
+        } else if wrangler_fails {
+            (
+                false,
+                "✘ [ERROR] A request to the Cloudflare API failed.\n".to_string(),
+            )
+        } else if is_wrangler {
+            (
+                true,
+                "✨ Deployment complete! https://abc123.test-cabinet-runs.pages.dev\n".to_string(),
+            )
+        } else if is_fetch(&call) {
+            (self.remote_tree.is_some(), String::new())
+        } else if call.contains("FETCH_HEAD^{tree}") {
+            match &self.remote_tree {
+                Some(tree) => (true, format!("{tree}\n")),
+                None => (false, String::new()),
+            }
+        } else if call.contains("HEAD^{tree}") {
+            (true, format!("{LOCAL_TREE}\n"))
         } else {
-            !push_fails
+            (!push_fails, String::new())
         };
         Ok(CommandOutput {
             success,
@@ -305,7 +387,7 @@ impl CommandRunner for MockRunner {
 /// A trivial [`BackendClient`] stub. `release_code`/`release_playable_build` never
 /// touch the backend, so the release tests need only something that satisfies the
 /// [`BackendPublisher`] type bound.
-struct MockBackend;
+pub(super) struct MockBackend;
 
 #[async_trait::async_trait]
 impl BackendClient for MockBackend {
@@ -339,6 +421,16 @@ impl BackendClient for MockBackend {
     }
 }
 
+/// Five attempts with no pause between them, so the retry paths run without
+/// sleeping.
+pub(super) fn instant_backoff() -> Backoff {
+    Backoff {
+        attempts: 5,
+        initial_delay: Duration::ZERO,
+        max_delay: Duration::ZERO,
+    }
+}
+
 fn publisher_for(
     dir: &Path,
     runner: MockRunner,
@@ -347,14 +439,11 @@ fn publisher_for(
     let build_dir = dir.join("dist");
     std::fs::create_dir_all(&impl_dir).expect("impl dir");
     std::fs::create_dir_all(&build_dir).expect("build dir");
-    // Zero out the propagation-lag delays so the release tests never actually
-    // sleep; the retry *count* is preserved so the retry path stays exercised.
-    let publisher =
-        BackendPublisher::new(sample_config(), runner, MockBackend).with_push_retry(PushRetry {
-            attempts: 5,
-            initial_delay: Duration::ZERO,
-            backoff: Duration::ZERO,
-        });
+    // Zero out the delays so the release tests never actually sleep; the retry
+    // *count* is kept so the retry paths stay exercised.
+    let publisher = BackendPublisher::new(sample_config(), runner, MockBackend)
+        .with_backoff(instant_backoff())
+        .with_create_settle(Duration::ZERO);
     (publisher, impl_dir, build_dir)
 }
 
@@ -408,16 +497,223 @@ async fn release_code_creates_a_public_repo_and_commits_before_the_push() {
     // Staging uses a blanket add — the seeded `.gitignore` keeps build artifacts
     // (e.g. `target/`) out.
     assert!(calls.iter().any(|c| c == "git add --all"), "{calls:?}");
-    let commit_pos = calls.iter().position(|c| c.contains("git commit"));
-    let push_pos = calls.iter().position(|c| c.contains(" push "));
+    let commit_pos = calls.iter().position(|c| is_commit(c));
+    let push_pos = calls.iter().position(|c| is_push(c));
     assert!(
         matches!((commit_pos, push_pos), (Some(commit), Some(push)) if commit < push),
         "implementation must be committed before the push: {calls:?}"
     );
 }
 
+/// Release `build_dir`'s playable build through `publisher`, looking its
+/// deployment up in `stub`.
+async fn release_build_against(
+    publisher: BackendPublisher<MockRunner, MockBackend>,
+    stub: &StubPagesApi,
+    impl_dir: PathBuf,
+    build_dir: &Path,
+) -> (Result<Option<String>>, Vec<String>) {
+    let publisher = publisher.with_pages_api(stub.api());
+    let artifacts = ArtifactCollection::new(impl_dir);
+    let record = sample_record();
+    let request = ReleaseRequest {
+        record: &record,
+        artifacts: &artifacts,
+        build_dir: Some(build_dir),
+    };
+    let result = publisher.release_playable_build(&request).await;
+    (result, publisher.runner().calls())
+}
+
 #[tokio::test]
-async fn release_playable_build_deploys_and_captures_the_wrangler_url() {
+async fn release_playable_build_deploys_with_the_digest_and_captures_the_wrangler_url() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let (publisher, impl_dir, build_dir) = publisher_for(dir.path(), MockRunner::new(false));
+    std::fs::write(build_dir.join("index.html"), b"<!doctype html>").expect("write build");
+    let digest = build_digest(&build_dir).expect("digest");
+    let record = sample_record();
+    // The project holds deployments of this run's branch with another build and
+    // of this build on another branch; neither is reused.
+    let stub = StubPagesApi::with(vec![
+        deployment(
+            "https://other.test-cabinet-runs.pages.dev",
+            &record.id,
+            &"0".repeat(64),
+        ),
+        deployment(
+            "https://elsewhere.test-cabinet-runs.pages.dev",
+            "another-run",
+            &digest,
+        ),
+    ])
+    .await;
+
+    let (playable_build, calls) =
+        release_build_against(publisher, &stub, impl_dir, &build_dir).await;
+
+    // The playable build URL is the one wrangler reported, not a constructed host.
+    assert_eq!(
+        playable_build.expect("release build").as_deref(),
+        Some("https://abc123.test-cabinet-runs.pages.dev")
+    );
+    // The build was looked up, then deployed to Cloudflare Pages under the run-id
+    // branch alias, carrying the scrubbed build's digest as its commit hash.
+    assert_eq!(stub.requests().len(), 1);
+    let deploys: Vec<_> = calls
+        .iter()
+        .filter(|c| c.contains("wrangler pages deploy"))
+        .collect();
+    assert_eq!(deploys.len(), 1, "{calls:?}");
+    assert!(
+        deploys[0].contains(&format!("--branch={}", record.id))
+            && deploys[0].contains(&format!("--commit-hash={digest}"))
+            && deploys[0].contains("--project-name test-cabinet-runs"),
+        "{calls:?}"
+    );
+}
+
+#[tokio::test]
+async fn release_playable_build_reuses_the_deployment_of_the_same_build() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let (publisher, impl_dir, build_dir) = publisher_for(dir.path(), MockRunner::new(false));
+    std::fs::write(build_dir.join("index.html"), b"<!doctype html>").expect("write build");
+    let digest = build_digest(&build_dir).expect("digest");
+    let record = sample_record();
+    let stub = StubPagesApi::with(vec![deployment(
+        "https://3f6fa159.test-cabinet-runs.pages.dev",
+        &record.id,
+        &digest,
+    )])
+    .await;
+
+    let (playable_build, calls) =
+        release_build_against(publisher, &stub, impl_dir, &build_dir).await;
+
+    // The deployment an earlier attempt made is reported, and nothing is deployed.
+    assert_eq!(
+        playable_build.expect("release build").as_deref(),
+        Some("https://3f6fa159.test-cabinet-runs.pages.dev")
+    );
+    assert!(!calls.iter().any(|c| c.contains("wrangler")), "{calls:?}");
+}
+
+#[tokio::test]
+async fn release_playable_build_digests_the_scrubbed_build() {
+    // A leaked key is scrubbed before the digest is taken, so the digest the
+    // lookup searches for is that of the tree actually deployed.
+    let key = "sk-proj-DATA4digestSCRUBtest0123456789abcdefABCDEF";
+    let dir = tempfile::tempdir().expect("tempdir");
+    let (publisher, impl_dir, build_dir) = publisher_for(dir.path(), MockRunner::new(false));
+    std::fs::write(build_dir.join("app.js"), format!("const k = \"{key}\";")).expect("write");
+    let stub = StubPagesApi::with(Vec::new()).await;
+
+    let (playable_build, calls) =
+        release_build_against(publisher, &stub, impl_dir, &build_dir).await;
+    playable_build.expect("release build");
+
+    let scrubbed = std::fs::read_to_string(build_dir.join("app.js")).expect("read");
+    assert!(!scrubbed.contains(key), "{scrubbed}");
+    let digest = build_digest(&build_dir).expect("digest");
+    assert!(
+        calls
+            .iter()
+            .any(|c| c.contains(&format!("--commit-hash={digest}"))),
+        "{calls:?}"
+    );
+}
+
+#[tokio::test]
+async fn release_playable_build_fails_when_the_lookup_fails() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let (publisher, impl_dir, build_dir) = publisher_for(dir.path(), MockRunner::new(false));
+    let stub = StubPagesApi::serve(Vec::new(), axum::http::StatusCode::BAD_GATEWAY).await;
+
+    let (playable_build, calls) =
+        release_build_against(publisher, &stub, impl_dir, &build_dir).await;
+
+    assert!(
+        matches!(
+            playable_build,
+            Err(Error::PagesApi {
+                status: Some(502),
+                ..
+            })
+        ),
+        "{playable_build:?}"
+    );
+    assert!(!calls.iter().any(|c| c.contains("wrangler")), "{calls:?}");
+    // A 502 is transient: the lookup was made once per attempt.
+    assert_eq!(stub.requests().len(), 5);
+}
+
+#[tokio::test]
+async fn release_playable_build_fails_at_once_when_the_lookup_is_refused() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let (publisher, impl_dir, build_dir) = publisher_for(dir.path(), MockRunner::new(false));
+    let stub = StubPagesApi::serve(Vec::new(), axum::http::StatusCode::FORBIDDEN).await;
+
+    let (playable_build, calls) =
+        release_build_against(publisher, &stub, impl_dir, &build_dir).await;
+
+    assert!(
+        matches!(
+            playable_build,
+            Err(Error::PagesApi {
+                status: Some(403),
+                ..
+            })
+        ),
+        "{playable_build:?}"
+    );
+    assert_eq!(stub.requests().len(), 1, "a 403 is not retried");
+    assert!(!calls.iter().any(|c| c.contains("wrangler")), "{calls:?}");
+}
+
+#[tokio::test]
+async fn a_failed_wrangler_run_is_retried_after_looking_again() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let (publisher, impl_dir, build_dir) =
+        publisher_for(dir.path(), MockRunner::new(false).failing_first_deploys(1));
+    let stub = StubPagesApi::with(Vec::new()).await;
+
+    let (playable_build, calls) =
+        release_build_against(publisher, &stub, impl_dir, &build_dir).await;
+
+    assert_eq!(
+        playable_build.expect("the second deploy lands").as_deref(),
+        Some("https://abc123.test-cabinet-runs.pages.dev")
+    );
+    assert_eq!(
+        calls.iter().filter(|c| c.starts_with("wrangler ")).count(),
+        2,
+        "{calls:?}"
+    );
+    // Each attempt looked the deployment up before deploying.
+    assert_eq!(stub.requests().len(), 2);
+}
+
+#[tokio::test]
+async fn a_wrangler_run_that_keeps_failing_is_bounded_by_the_attempts() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let (publisher, impl_dir, build_dir) =
+        publisher_for(dir.path(), MockRunner::new(false).failing_first_deploys(99));
+    let stub = StubPagesApi::with(Vec::new()).await;
+
+    let (playable_build, calls) =
+        release_build_against(publisher, &stub, impl_dir, &build_dir).await;
+
+    let err = playable_build.expect_err("every deploy fails");
+    assert!(matches!(err, Error::Command(_)), "{err}");
+    assert!(err.to_string().contains("Cloudflare API failed"), "{err}");
+    assert_eq!(
+        calls.iter().filter(|c| c.starts_with("wrangler ")).count(),
+        5,
+        "{calls:?}"
+    );
+}
+
+#[tokio::test]
+async fn release_playable_build_without_a_pages_api_deploys_nothing() {
     let dir = tempfile::tempdir().expect("tempdir");
     let (publisher, impl_dir, build_dir) = publisher_for(dir.path(), MockRunner::new(false));
     let artifacts = ArtifactCollection::new(impl_dir);
@@ -428,32 +724,29 @@ async fn release_playable_build_deploys_and_captures_the_wrangler_url() {
         build_dir: Some(&build_dir),
     };
 
-    let playable_build = publisher
-        .release_playable_build(&request)
-        .await
-        .expect("release build");
+    let playable_build = publisher.release_playable_build(&request).await;
 
-    // The playable build URL is the one wrangler reported, not a constructed host.
-    assert_eq!(
-        playable_build.as_deref(),
-        Some("https://abc123.test-cabinet-runs.pages.dev")
-    );
-    // The build was deployed to Cloudflare Pages under the run-id branch alias.
-    let calls = publisher.runner().calls();
     assert!(
-        calls.iter().any(|c| c.contains("wrangler pages deploy")
-            && c.contains(&format!("--branch={}", record.id)))
+        matches!(playable_build, Err(Error::Publish(_))),
+        "{playable_build:?}"
+    );
+    assert!(
+        !publisher
+            .runner()
+            .calls()
+            .iter()
+            .any(|c| c.contains("wrangler"))
     );
 }
 
 #[tokio::test]
-async fn release_code_skips_the_commit_when_the_working_tree_is_already_clean() {
-    // A re-release (or a run the model never modified) finds nothing to commit:
-    // staging still runs, but no commit is attempted, and the push proceeds
-    // against the existing commits. This is what keeps releasing idempotent.
+async fn release_code_always_commits_with_the_fixed_identity_and_end_time() {
+    // The commit is deterministic: always made (empty when the model changed
+    // nothing), unsigned, without hooks, with the fixed message, and with the
+    // identity and both dates given through the environment, the dates being the
+    // record's end time. No repository-local identity is configured.
     let dir = tempfile::tempdir().expect("tempdir");
-    let (publisher, impl_dir, _build_dir) =
-        publisher_for(dir.path(), MockRunner::with_clean_tree(false));
+    let (publisher, impl_dir, _build_dir) = publisher_for(dir.path(), MockRunner::new(false));
     let artifacts = ArtifactCollection::new(impl_dir);
     let record = sample_record();
     let request = ReleaseRequest {
@@ -468,17 +761,118 @@ async fn release_code_skips_the_commit_when_the_working_tree_is_already_clean() 
         .expect("release code");
 
     let calls = publisher.runner().calls();
-    // Staging still happens, but a clean tree means no commit is made...
-    assert!(calls.iter().any(|c| c == "git add --all"), "{calls:?}");
-    assert!(!calls.iter().any(|c| c.contains("git commit")), "{calls:?}");
-    // ...and the repo is still created and the existing commits pushed.
-    assert!(
-        calls
-            .iter()
-            .any(|c| c.contains("gh repo create") && c.contains("--public")),
+    let commits: Vec<&String> = calls.iter().filter(|c| is_commit(c)).collect();
+    assert_eq!(
+        commits,
+        vec![
+            "git -c commit.gpgSign=false commit --quiet --allow-empty --no-verify \
+             --message Publish the run's implementation"
+        ],
         "{calls:?}"
     );
-    assert!(calls.iter().any(|c| c.contains(" push ")), "{calls:?}");
+    assert!(!calls.iter().any(|c| c.contains("git config")), "{calls:?}");
+    assert!(!calls.iter().any(|c| c.contains("git status")), "{calls:?}");
+    let date = "1781487625 +0000".to_string();
+    let identity = |k: &str, v: &str| (k.to_string(), v.to_string());
+    assert_eq!(
+        publisher.runner().commit_envs(),
+        vec![vec![
+            identity("GIT_AUTHOR_NAME", "Clockwyrks"),
+            identity("GIT_AUTHOR_EMAIL", "runs@clockwyrks.invalid"),
+            ("GIT_AUTHOR_DATE".to_string(), date.clone()),
+            identity("GIT_COMMITTER_NAME", "Clockwyrks"),
+            identity("GIT_COMMITTER_EMAIL", "runs@clockwyrks.invalid"),
+            ("GIT_COMMITTER_DATE".to_string(), date),
+        ]]
+    );
+}
+
+#[tokio::test]
+async fn release_code_with_an_unusable_end_time_fails_before_touching_git() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let (publisher, impl_dir, _build_dir) = publisher_for(dir.path(), MockRunner::new(false));
+    let artifacts = ArtifactCollection::new(impl_dir);
+    let mut record = sample_record();
+    record.finished_at = "not a time".to_string();
+    let request = ReleaseRequest {
+        record: &record,
+        artifacts: &artifacts,
+        build_dir: None,
+    };
+
+    let err = publisher
+        .release_code(&request)
+        .await
+        .expect_err("an unusable end time fails");
+    assert!(err.to_string().contains("not a time"), "{err}");
+    let calls = publisher.runner().calls();
+    assert!(calls.is_empty(), "nothing may run: {calls:?}");
+}
+
+#[tokio::test]
+async fn a_refused_push_whose_remote_holds_the_same_tree_is_a_success() {
+    // The remote's `main` carries the run's tree under another commit (an earlier
+    // publish with another message or date): the push is refused, the fetched
+    // tree matches, and the publish succeeds without retrying.
+    let dir = tempfile::tempdir().expect("tempdir");
+    let runner = MockRunner::new(true)
+        .failing_first_pushes(99)
+        .with_remote_tree(LOCAL_TREE);
+    let (publisher, impl_dir, _build_dir) = publisher_for(dir.path(), runner);
+    let artifacts = ArtifactCollection::new(impl_dir);
+    let record = sample_record();
+    let request = ReleaseRequest {
+        record: &record,
+        artifacts: &artifacts,
+        build_dir: None,
+    };
+
+    let source_repo = publisher
+        .release_code(&request)
+        .await
+        .expect("the same tree is a success");
+    assert_eq!(
+        source_repo.as_deref(),
+        Some("https://github.com/TheClockwyrks/tcab-pong-codex-gpt-5-4-mini-d483a2f9")
+    );
+    let calls = publisher.runner().calls();
+    assert_eq!(calls.iter().filter(|c| is_push(c)).count(), 1, "{calls:?}");
+    let fetch = calls
+        .iter()
+        .find(|c| is_fetch(c))
+        .expect("the remote's main is fetched");
+    assert!(fetch.contains("gh auth git-credential"), "{fetch}");
+    assert!(fetch.ends_with("origin refs/heads/main"), "{fetch}");
+}
+
+#[tokio::test]
+async fn a_refused_push_whose_remote_holds_another_tree_fails_without_retrying() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let runner = MockRunner::new(true)
+        .failing_first_pushes(99)
+        .with_remote_tree("2222222222222222222222222222222222222222");
+    let (publisher, impl_dir, _build_dir) = publisher_for(dir.path(), runner);
+    let artifacts = ArtifactCollection::new(impl_dir);
+    let record = sample_record();
+    let request = ReleaseRequest {
+        record: &record,
+        artifacts: &artifacts,
+        build_dir: None,
+    };
+
+    let err = publisher
+        .release_code(&request)
+        .await
+        .expect_err("another tree is a failure");
+    assert!(
+        matches!(&err, Error::Diverged(repo)
+            if repo == "TheClockwyrks/tcab-pong-codex-gpt-5-4-mini-d483a2f9"),
+        "{err}"
+    );
+    let calls = publisher.runner().calls();
+    assert_eq!(calls.iter().filter(|c| is_push(c)).count(), 1, "{calls:?}");
+    // Nothing forces the remote: every push is a plain one.
+    assert!(!calls.iter().any(|c| c.contains("--force")), "{calls:?}");
 }
 
 #[tokio::test]
@@ -610,7 +1004,7 @@ async fn release_code_reuses_an_existing_repo_but_still_pushes() {
     // But the push still runs: this is what recovers a repo whose first push never
     // landed (created but left empty by an earlier failure). A re-push of an
     // already-complete repo is a clean no-op.
-    assert!(calls.iter().any(|c| c.contains(" push ")), "{calls:?}");
+    assert!(calls.iter().any(|c| is_push(c)), "{calls:?}");
 }
 
 #[tokio::test]
@@ -640,8 +1034,19 @@ async fn release_code_retries_the_push_through_the_propagation_lag() {
     );
     // Three push attempts: two rejected, the third accepted.
     let calls = publisher.runner().calls();
-    let pushes = calls.iter().filter(|c| c.contains(" push ")).count();
+    let pushes = calls.iter().filter(|c| is_push(c)).count();
     assert_eq!(pushes, 3, "{calls:?}");
+    // Every attempt asked whether the repository exists before pushing.
+    assert_eq!(
+        calls
+            .iter()
+            .filter(|c| c.starts_with("gh repo view"))
+            .count(),
+        3,
+        "{calls:?}"
+    );
+    // Each refused push looked at the remote, which had no `main` yet.
+    assert_eq!(calls.iter().filter(|c| is_fetch(c)).count(), 2, "{calls:?}");
 }
 
 #[tokio::test]
@@ -665,13 +1070,13 @@ async fn release_code_fails_when_the_push_never_succeeds() {
         .release_code(&request)
         .await
         .expect_err("release code should fail when the push never lands");
+    assert!(matches!(err, Error::Command(_)), "{err}");
     let message = err.to_string();
-    assert!(message.contains("after 5 attempt"), "{message}");
     assert!(message.contains("403"), "{message}");
 
     // The push was attempted exactly `attempts` times before giving up.
     let calls = publisher.runner().calls();
-    let pushes = calls.iter().filter(|c| c.contains(" push ")).count();
+    let pushes = calls.iter().filter(|c| is_push(c)).count();
     assert_eq!(pushes, 5, "{calls:?}");
 }
 
