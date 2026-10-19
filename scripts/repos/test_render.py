@@ -133,6 +133,51 @@ def test_an_extra_gate_in_a_job_the_pipeline_lacks_is_refused(monkeypatch: pytes
         render.variables("gg.rocks", "site", "The site")
 
 
+def test_the_project_pipeline_table_names_repositories_and_stages() -> None:
+    assert set(render.PROJECT_PIPELINE) <= set(EDGES.REPOSITORIES)
+    assert render.PROJECT_PIPELINE["gg"] == ("release",)
+    for name in render.PROJECT_PIPELINE:
+        assert render.project_stages(name)
+    assert render.project_stages("microservice-arena") == ()
+    assert render.project_parameters("microservice-arena", "application") == {}
+    assert render.ci_project_jobs("microservice-arena", "application") == ""
+    assert render.ci_project_stages("microservice-arena", "application") == ""
+
+
+def test_the_project_pipeline_is_handed_the_rust_image_the_registry_and_the_arm64_pool() -> None:
+    assert render.project_parameters("gg", "application") == {
+        "rustImage": render.image_reference("rust"),
+        "registry": render.CI_REGISTRY,
+        "registryEndpoint": render.CI_IMAGE_ENDPOINT,
+        "arm64Pool": render.ARM64_POOL,
+    }
+
+
+def test_the_kits_arm64_pool_is_the_superrepos() -> None:
+    jobs = (render.SUPERREPO / ".azure" / "project" / "jobs.yml").read_text(encoding="utf-8")
+    pool = re.search(r"^  - name: arm64Pool\n(?:    .*\n)*?    default: (\S+) *$", jobs, re.MULTILINE)
+    assert pool, "the superrepo's project jobs declare no arm64Pool default"
+    assert pool.group(1) == render.ARM64_POOL
+
+
+@pytest.mark.parametrize(
+    ("stages", "said"),
+    [
+        (("Release",), "is not shaped like a stage id"),
+        (("1release",), "is not shaped like a stage id"),
+        (("mirror",), "is one the kit's pipeline declares"),
+        (("release", "release"), "names one of its own stages twice"),
+        ((), "names none of its stages"),
+    ],
+)
+def test_a_project_stage_the_pipeline_cannot_carry_is_refused(
+    monkeypatch: pytest.MonkeyPatch, stages: tuple[str, ...], said: str
+) -> None:
+    monkeypatch.setitem(render.PROJECT_PIPELINE, "gg", stages)
+    with pytest.raises(render.RenderError, match=re.escape(said)):
+        render.variables("gg", "application", "x")
+
+
 def test_the_kits_nextest_is_the_superrepos() -> None:
     pin = re.compile(r'^NEXTEST_VERSION="\$\{NEXTEST_VERSION:-(.+)\}"$', re.MULTILINE)
     kit = pin.search((render.KIT / render.NEXTEST_SCRIPT).read_text(encoding="utf-8"))
@@ -250,6 +295,44 @@ def test_an_extra_gate_is_given_a_step_in_its_job(rendered: Callable[[str], Path
     assert "contract-drift" not in _job(contracts, "checks")
     wiring = (rendered("contracts") / "ci" / "tests" / "test_wiring.py").read_text(encoding="utf-8")
     assert 'REPOSITORY_PIPELINE_ONLY = "playwright-image contract-drift"' in wiring
+
+
+def test_a_project_pipeline_includes_its_own_jobs_and_stages(rendered: Callable[[str], Path]) -> None:
+    pipeline = (rendered("gg") / "azure-pipelines.yml").read_text(encoding="utf-8")
+    parameters = "".join(f"{key}: {value}\n" for key, value in render.project_parameters("gg", "application").items())
+    jobs = pipeline.index(f"      - template: {render.PROJECT_JOBS}\n        parameters:\n")
+    stages = pipeline.index(f"  - template: {render.PROJECT_STAGES}\n    parameters:\n")
+    assert pipeline.index("  - stage: gates\n") < jobs < pipeline.index("  - stage: publish\n") < stages
+    assert stages < pipeline.index("  - stage: mirror\n")
+    assert parameters.replace("\n", "\n          ").strip() in pipeline[jobs:]
+    assert parameters.replace("\n", "\n      ").strip() in pipeline[stages:]
+    mirror = pipeline[pipeline.index("  - stage: mirror\n") :]
+    assert "      - gates\n      - publish\n      - release\n    condition:" in mirror
+    assert "in(dependencies.release.result, 'Succeeded', 'Skipped')," in mirror
+    arena = (rendered("microservice-arena") / "azure-pipelines.yml").read_text(encoding="utf-8")
+    assert ".azure/project/" not in arena
+    assert "      - gates\n      - publish\n    condition:" in arena
+
+
+def test_a_project_pipeline_repository_passes_its_own_ci_tests(rendered: Callable[[str], Path]) -> None:
+    """The wiring test holds the includes to the stand-in templates its first commit carries."""
+    root = rendered("gg")
+    env = {key: value for key, value in os.environ.items() if key not in render.GIT_LOCATING}
+    env["PYTHONPATH"] = str(root / "ci" / "src")
+    done = subprocess.run(
+        [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", "-o", "addopts=", "tests/test_wiring.py"],
+        cwd=root / "ci",
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert done.returncode == 0, done.stdout[-4000:] + done.stderr[-2000:]
+    for command in (["check", "ci"], ["format", "--check", "ci"]):
+        linted = subprocess.run(
+            [sys.executable, "-m", "ruff", *command], cwd=root, capture_output=True, text=True, check=False
+        )
+        assert linted.returncode == 0, linted.stdout + linted.stderr
 
 
 def test_a_crate_is_never_published_and_resolves_as_the_monorepo_does(rendered: Callable[[str], Path]) -> None:

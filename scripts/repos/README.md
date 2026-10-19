@@ -61,7 +61,10 @@ carrying one is scaffolded with (`CRATES`, directories and names kept from the
 monorepo), the Rust track (`RUST_TRACKS`: the repositories whose suite drives a
 browser run in the `rust-browser` image), the image pins (`ciImageTag` from
 `ci/images/tags.yml`), the feed (`FEED_REGISTRY`), the long-lived branches
-(`BRANCHES`) and the release tags each dependent pins (`TAGS`).
+(`BRANCHES`), the release tags each dependent pins (`TAGS`) and the
+repositories whose pipeline includes jobs and stages they write themselves
+under `.azure/project/`, with the stages the mirror waits on
+(`PROJECT_PIPELINE`).
 
 ## The two records
 

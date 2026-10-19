@@ -22,10 +22,17 @@ running after the gates, for a tag alone, and to running no gate of its own.
 The suite also runs on Windows, in a job of the gates stage that runs no gate,
 on a hosted Windows agent, under nextest installed by the kit's script.
 {% endif %}
+{% if ci_project_jobs %}
+This repository runs jobs and stages of its own, written in the templates
+under .azure/project/ that the kit leaves to it: its jobs are included in the
+gates stage and its stages after the publish, each handed the parameters it
+declares, none of them runs a gate, and every stage it declares follows the
+gates.
+{% endif %}
 {% if ci_mirror %}
 A commit on master, staging or nightly, and a published tag, is pushed to the
 GitHub mirror by the last stage, held to running after the gates and the
-publish, on those refs alone, with the mirror's own deploy key.
+publish{% if project_stages %} and this repository's own stages{% endif %}, on those refs alone, with the mirror's own deploy key.
 {% endif %}
 """
 
@@ -99,6 +106,13 @@ MIRROR_KEY = "{{mirror_key}}"
 MIRROR_URL = "{{public_source}}"
 {% endif %}
 MIRROR_SCRIPT = "scripts/ci/mirror.sh"
+# This repository's own pipeline templates, the stages the second declares,
+# and what the pipeline hands each, by parameter; all empty for a repository
+# whose pipeline is the kit's alone.
+PROJECT_JOBS = ".azure/project/jobs.yml"
+PROJECT_STAGES_FILE = ".azure/project/stages.yml"
+PROJECT_STAGES: list[str] = {{project_stages_list}}
+PROJECT_PARAMETERS: dict[str, str] = {{project_parameters_dict}}
 # The feed a job authenticates npm to before its first install, or nothing for
 # a kind that builds no workspace.
 FEED_SCRIPT_REGISTRY = "{{feed_registry if typescript_workspace else ''}}"
@@ -464,6 +478,85 @@ def test_a_tag_publishes_the_public_packages_after_the_gates() -> None:
     assert "SYSTEM_ACCESSTOKEN: $(System.AccessToken)" in step, "the publish is given no token"
 
 
+{% if ci_project_jobs %}
+def _include_at(text: str, template: str, indent: int) -> tuple[int, dict[str, str]]:
+    """Where the text includes the template, and the parameters it hands over there."""
+    pad = " " * indent
+    found = list(re.finditer(rf"^{pad}- template: {re.escape(template)} *\n{pad}  parameters:\n", text, re.MULTILINE))
+    assert len(found) == 1, f"the pipeline includes {template} {len(found)} times"
+    handed = {}
+    for line in text[found[0].end() :].splitlines():
+        given = re.fullmatch(rf"{pad}    (?P<key>[A-Za-z0-9]+): (?P<value>\S+) *", line)
+        if not given:
+            break
+        handed[given.group("key")] = given.group("value")
+    return found[0].start(), handed
+
+
+def _declared_parameters(path: Path) -> list[str]:
+    """The parameters a template declares, under its top-level `parameters:` list."""
+    text = path.read_text(encoding="utf-8")
+    block = re.search(r"^parameters:\n((?:(?:  .*|)\n)*)", text, re.MULTILINE)
+    return re.findall(r"^  - name: ([A-Za-z0-9]+) *$", block.group(1), re.MULTILINE) if block else []
+
+
+def test_the_pipeline_hands_its_own_templates_what_it_runs_in() -> None:
+    """Each template is handed the Rust image the track pins, the registry, its connection and the arm64 pool."""
+    pipeline = PIPELINE.read_text(encoding="utf-8")
+    containers = _container_resources()
+    for template, indent in ((PROJECT_JOBS, 6), (PROJECT_STAGES_FILE, 2)):
+        _, handed = _include_at(pipeline, template, indent)
+        assert handed == PROJECT_PARAMETERS, f"{template} is handed {handed}"
+        if "rustImage" in handed:
+            rust = containers[IMAGE_OF_TRACK["rust"]]["image"]
+            assert handed["rustImage"] == rust, f"{template} is handed another Rust image than the track's"
+        assert handed["registryEndpoint"] == IMAGE_ENDPOINT
+        path = ROOT / template
+        assert path.is_file(), f"the pipeline includes {template}, which the repository does not hold"
+        declared = _declared_parameters(path)
+        assert sorted(declared) == sorted(handed), (
+            f"{template} declares the parameters {sorted(declared)} and is handed {sorted(handed)}; "
+            "Azure Pipelines refuses a parameter a template does not declare"
+        )
+
+
+def test_the_repositorys_own_jobs_are_in_the_gates_stage() -> None:
+    stages = _stages()
+    _include_at(stages["gates"], PROJECT_JOBS, 6)
+    assert _named((ROOT / PROJECT_JOBS).read_text(encoding="utf-8")) == set(), (
+        f"{PROJECT_JOBS} runs a gate, which the kit gives a step of its own"
+    )
+
+
+def _depends_on(stage: str) -> list[str]:
+    inline = re.search(r"^    dependsOn: *(\S+) *$", stage, re.MULTILINE)
+    if inline:
+        return [inline.group(1)]
+    listed = re.search(r"^    dependsOn: *\n((?:      - .*\n)+)", stage, re.MULTILINE)
+    return re.findall(r"^      - (\S+) *$", listed.group(1), re.MULTILINE) if listed else []
+
+
+def test_the_repositorys_own_stages_follow_the_gates_and_run_no_gate() -> None:
+    """The stages are included after the publish, are the ones named, and each waits for the gates.
+
+    A stage that names no `dependsOn` would depend on the stage before it, the
+    publish, which a branch's run skips.
+    """
+    stages = _stages()
+    _include_at(stages[PUBLISH_STAGE], PROJECT_STAGES_FILE, 2)
+    text = (ROOT / PROJECT_STAGES_FILE).read_text(encoding="utf-8")
+    own = _sections(STAGE, text)
+    assert list(own) == PROJECT_STAGES, f"{PROJECT_STAGES_FILE} declares the stages {list(own)}, not {PROJECT_STAGES}"
+    for stage, body in own.items():
+        assert "gates" in _depends_on(body), f"the {stage} stage does not depend on the gates"
+    assert _named(text) == set(), f"{PROJECT_STAGES_FILE} runs a gate, which the kit gives a step of its own"
+{% else %}
+def test_the_pipeline_includes_no_template_of_its_own() -> None:
+    assert ".azure/project/" not in PIPELINE.read_text(encoding="utf-8"), "the pipeline includes a project template"
+    assert PROJECT_STAGES == [] and PROJECT_PARAMETERS == {}
+{% endif %}
+
+
 {% if ci_mirror %}
 def test_the_mirror_stage_pushes_the_gated_refs_last() -> None:
     stages = _stages()
@@ -472,6 +565,11 @@ def test_the_mirror_stage_pushes_the_gated_refs_last() -> None:
     assert "      - gates\n      - publish\n" in mirror, "the stage does not wait for the gates and the publish"
     assert "eq(dependencies.gates.result, 'Succeeded')" in mirror, "the stage runs after a failed gate"
     assert "in(dependencies.publish.result, 'Succeeded', 'Skipped')" in mirror, "the stage runs after a failed publish"
+    for stage in PROJECT_STAGES:
+        assert f"      - {stage}\n" in mirror[: mirror.index("condition:")], f"the stage does not wait for {stage}"
+        assert f"in(dependencies.{stage}.result, 'Succeeded', 'Skipped')" in mirror, (
+            f"the stage runs after a failed {stage} stage"
+        )
     branches = ", ".join(f"'refs/heads/{branch}'" for branch in BRANCHES)
     assert f"in(variables['Build.SourceBranch'], {branches})" in mirror, "the stage is not held to the branches"
     assert "startsWith(variables['Build.SourceBranch'], 'refs/tags/v')" in mirror, "a tag is never mirrored"

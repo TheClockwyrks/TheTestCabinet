@@ -338,6 +338,8 @@ and the kit's `edges.py` hold:
 - the Windows job, for a repository `WINDOWS_TESTS` names;
 - the steps of the gates a repository writes itself, which `EXTRA_GATES` names
   by the job each runs in;
+- the includes of the jobs and stages a repository writes itself, which
+  `PROJECT_PIPELINE` names with the stages the mirror waits on;
 - for a `tool`, the image job that bakes its binaries, and for a `shell`, the
   bundle jobs;
 - the mirror, the feed and the branches.
@@ -415,6 +417,20 @@ the repository writes under `ci/gates/`, and the kit leaves it to the
 repository; `EXTRA_GATES` in `render.py` names it and the job it runs in, and
 the render gives it one step there. Every gate a repository adds is hookless,
 and the rendered `ci/tests/test_wiring.py` holds each to its one step.
+
+A repository whose pipeline runs work beyond the kit's, such as `gg`, which
+releases its binaries, its reference and its toolchains image on a tag, writes
+it as the superrepo writes its own: its jobs in `.azure/project/jobs.yml`,
+which the gates stage includes after the kit's jobs, and its stages in
+`.azure/project/stages.yml`, which the pipeline includes after the publish
+stage. `PROJECT_PIPELINE` in `render.py` names the repository and its stages,
+and the kit leaves both files to it. Each is handed the image of the Rust
+track, the registry, the service connection to it and the arm64 agent pool as
+the parameters `rustImage`, `registry`, `registryEndpoint` and `arm64Pool`. The
+mirror stage waits on each of the repository's stages as on the publish, and
+the rendered `ci/tests/test_wiring.py` holds the includes to the parameters
+each file declares, each stage to depending on the gates, and both files to
+running no gate.
 
 A repository's `azure-pipelines.yml` runs on every push to `master`, `staging`
 and `nightly` and to a `v*` tag. The gates stage runs the Rust gates in the
