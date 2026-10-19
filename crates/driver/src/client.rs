@@ -90,6 +90,8 @@ impl JobClient {
                 state: DriverState::Starting,
                 record: None,
                 detail: None,
+                artifacts_stored: None,
+                store_fault: None,
             },
         )
         .await
@@ -103,6 +105,8 @@ impl JobClient {
                 state: DriverState::Running,
                 record: None,
                 detail: None,
+                artifacts_stored: None,
+                store_fault: None,
             },
         )
         .await
@@ -192,6 +196,8 @@ impl JobClient {
                 state: DriverState::Succeeded,
                 record: Some(record),
                 detail: None,
+                artifacts_stored: None,
+                store_fault: None,
             },
         )
         .await
@@ -211,6 +217,8 @@ impl JobClient {
                 state: DriverState::Failed,
                 record,
                 detail: Some(detail.into()),
+                artifacts_stored: None,
+                store_fault: None,
             },
         )
         .await
@@ -232,6 +240,8 @@ impl JobClient {
                 state: DriverState::Canceled,
                 record: Some(record),
                 detail: None,
+                artifacts_stored: None,
+                store_fault: None,
             },
         )
         .await

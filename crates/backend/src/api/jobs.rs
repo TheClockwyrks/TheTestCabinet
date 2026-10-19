@@ -1381,6 +1381,13 @@ async fn apply_status(
             ));
             Ok(StatusCode::NO_CONTENT)
         }
+        DriverState::Storing => {
+            // The held report is defined by the contract but not handled here yet:
+            // answer it as an unsupported transition rather than misreading it.
+            Err(ApiError::unprocessable(
+                "the `storing` status is not yet supported",
+            ))
+        }
         DriverState::Failed => {
             // An infrastructure/setup failure needs a *specific* reason a "run
             // failed" placeholder would hide — "couldn't pull container image",
