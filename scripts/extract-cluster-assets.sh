@@ -11,8 +11,9 @@
 # to tmp/assets/<run-id>/, so you can feed the produced assets into another test case.
 #
 # Why it can't just `kubectl cp` like the local script does: the deployed clusters
-# have a PRIVATE API server and the artifact service is behind the INTERNAL ingress,
-# so from a dev box there is neither a usable kubeconfig nor a reachable artifact URL.
+# have a PRIVATE API server and the artifact service is reachable from outside only
+# through the edge, behind Cloudflare Access, so from a dev box there is neither a
+# usable kubeconfig nor an artifact URL this script could call without a credential.
 # Like the other remote tools (tcab ingest --env) this
 # drives the cluster with `az aks command invoke`, which needs only an authenticated
 # `az`. That gives us a command channel but no file channel — an invoke returns its

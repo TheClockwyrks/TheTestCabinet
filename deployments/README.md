@@ -55,11 +55,10 @@ deployments/
 │   │   ├── ingest-cronjob.yaml # periodic POST /ingest to refresh the catalog
 │   │   └── networkpolicy.yaml # optional default-deny-ingress + allows
 │   ├── components/            # observability, postgres, postgres-azure-ad, keyvault-csi,
-│   │                          #   web, internal-ingress
+│   │                          #   web, edge (the Cloudflare Tunnel connector)
 │   ├── cluster/               # cluster-scoped objects, applied by hand by a cluster administrator
 │   │   ├── namespace/         # the environment's Namespace
 │   │   ├── observability/     # the LGTM stack's node-metrics ClusterRole + binding
-│   │   ├── internal-ingress/  # the cert-manager ClusterIssuer
 │   │   └── azure-{staging,prod}/ # the bootstraps for tcab-staging and tcab-prod
 │   ├── overlays/
 │   │   ├── prod/              # prod on managed PostgreSQL, deployed from master

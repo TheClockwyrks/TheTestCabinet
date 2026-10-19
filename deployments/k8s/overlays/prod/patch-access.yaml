@@ -9,10 +9,9 @@
 # neither trusts the `Cf-Access-Authenticated-User-Email` header as presented, which
 # is the local overlay's shape and never a deployed one's.
 #
-# The audience below is a value no assertion carries, so every edge request is refused
-# with 401 until the tag of the origin's Access application is written here (step 4 of
-# "Setting up an environment" on the Edge page). The in-cluster callers present the
-# backend's own tokens and are unaffected.
+# The audience below is the tag of the Access application guarding console.testcabinet.ai
+# (step 4 of "Setting up an environment" on the Edge page). The in-cluster callers
+# present the backend's own tokens and are unaffected.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -28,7 +27,7 @@ spec:
             - name: TCAB_ACCESS_TEAM_DOMAIN
               value: "shrill-term-5c16.cloudflareaccess.com"
             - name: TCAB_ACCESS_AUDIENCE
-              value: "unset-until-the-access-application-exists"
+              value: "bbd3c7d3975b5bdda1622f6d22e6cb779ba4fa10916000b2d38ba56de50561c3"
 ---
 apiVersion: apps/v1
 kind: StatefulSet
@@ -44,7 +43,7 @@ spec:
             - name: TCAB_ACCESS_TEAM_DOMAIN
               value: "shrill-term-5c16.cloudflareaccess.com"
             - name: TCAB_ACCESS_AUDIENCE
-              value: "unset-until-the-access-application-exists"
+              value: "bbd3c7d3975b5bdda1622f6d22e6cb779ba4fa10916000b2d38ba56de50561c3"
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -60,4 +59,4 @@ spec:
             - name: TCAB_ACCESS_TEAM_DOMAIN
               value: "shrill-term-5c16.cloudflareaccess.com"
             - name: TCAB_ACCESS_AUDIENCE
-              value: "unset-until-the-access-application-exists"
+              value: "bbd3c7d3975b5bdda1622f6d22e6cb779ba4fa10916000b2d38ba56de50561c3"

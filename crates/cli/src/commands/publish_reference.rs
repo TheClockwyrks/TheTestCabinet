@@ -33,7 +33,7 @@
 //!    shared [`deploy_pages_build`].
 //! 4. Record each deployed URL in the committed reference-builds lockfile
 //!    (`test-cases/reference-builds.lock.json`), under the `--env` key. This is the
-//!    **pull** model: the backend is private (VPN-only) and cannot be pushed to, so
+//!    **pull** model: the backend is private (behind Access) and cannot be pushed to, so
 //!    it ingests this file from its own git checkout instead — commit the lockfile,
 //!    push, and run `tcab ingest --env <env>` to have the backend
 //!    reconcile its `case_reference_build` table (the site's Reference tab source).
