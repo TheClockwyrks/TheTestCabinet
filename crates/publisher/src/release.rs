@@ -21,6 +21,8 @@ use test_cabinet_contracts::run_record::RunRecord;
 use test_cabinet_contracts::test_case::TCAB_VENDOR_DIR;
 use test_cabinet_redact::SecretScrubber;
 use test_cabinet_suites::execution::ArtifactCollection;
+use time::OffsetDateTime;
+use time::format_description::well_known::Rfc3339;
 
 use crate::error::{Error, Result};
 
@@ -77,7 +79,28 @@ pub struct PublishConfig {
     /// deployed under its own branch alias (`--branch=<run-id>`); the URL is read
     /// from `wrangler`'s output, never constructed.
     pub pages_project: String,
+    /// The base the implementation is pushed under: the push goes to
+    /// `<git_remote_base>/<org>/<repo>.git`. It is GitHub
+    /// ([`DEFAULT_GIT_REMOTE_BASE`]) in every deployment; tests point it at a
+    /// directory of local bare repositories so the push and the tree comparison
+    /// run against a real `git` remote. The public URL the run is linked to is
+    /// always [`PublishConfig::repo_url`], whatever this holds.
+    pub git_remote_base: String,
 }
+
+/// Where the per-run repositories are pushed to in every deployment.
+pub const DEFAULT_GIT_REMOTE_BASE: &str = "https://github.com";
+
+/// The message of the commit that carries the run's implementation. It is fixed,
+/// and the same as the repos service's, so the commit is deterministic and a
+/// repeat reproduces its SHA (see `components/repos/overview.md`, Publishing).
+pub const PUBLISH_COMMIT_MESSAGE: &str = "Publish the run's implementation";
+
+/// The author and committer name of the implementation commit.
+const PUBLISH_IDENTITY_NAME: &str = "Clockwyrks";
+
+/// The author and committer email of the implementation commit.
+const PUBLISH_IDENTITY_EMAIL: &str = "runs@clockwyrks.invalid";
 
 /// The fixed prefix applied to every per-run repository name. It is identical in
 /// every deployment — only the org and Pages project differ between environments —
@@ -100,6 +123,7 @@ impl PublishConfig {
             github_org: required_var("TCAB_GITHUB_ORG")?,
             repo_prefix: REPO_PREFIX.to_string(),
             pages_project: required_var("TCAB_PAGES_PROJECT")?,
+            git_remote_base: DEFAULT_GIT_REMOTE_BASE.to_string(),
         })
     }
 
@@ -117,6 +141,43 @@ impl PublishConfig {
     pub fn repo_url(&self, record: &RunRecord) -> String {
         format!("https://github.com/{}", self.repo_qualified(record))
     }
+
+    /// The git remote the implementation is pushed to:
+    /// `<git_remote_base>/<org>/<repo>.git`.
+    pub fn remote_url(&self, record: &RunRecord) -> String {
+        format!(
+            "{}/{}.git",
+            self.git_remote_base.trim_end_matches('/'),
+            self.repo_qualified(record)
+        )
+    }
+}
+
+/// The `GIT_AUTHOR_DATE`/`GIT_COMMITTER_DATE` of a record's RFC 3339
+/// `finished_at`: seconds since the epoch at UTC (`<unix> +0000`, git's internal
+/// format), so the commit's bytes depend on the instant alone. The repos service
+/// derives the same value. A `finished_at` that does not parse fails the publish:
+/// a date taken from anywhere else would make the commit differ between repeats.
+pub fn commit_date(finished_at: &str) -> Result<String> {
+    let at = OffsetDateTime::parse(finished_at, &Rfc3339).map_err(|_| {
+        Error::Publish(format!(
+            "the run's record has no usable end time `{finished_at}`"
+        ))
+    })?;
+    Ok(format!("{} +0000", at.unix_timestamp()))
+}
+
+/// The `GIT_AUTHOR_*` and `GIT_COMMITTER_*` environment of the implementation
+/// commit: the fixed identity, and both dates `date`.
+fn commit_env(date: &str) -> [(&'static str, &str); 6] {
+    [
+        ("GIT_AUTHOR_NAME", PUBLISH_IDENTITY_NAME),
+        ("GIT_AUTHOR_EMAIL", PUBLISH_IDENTITY_EMAIL),
+        ("GIT_AUTHOR_DATE", date),
+        ("GIT_COMMITTER_NAME", PUBLISH_IDENTITY_NAME),
+        ("GIT_COMMITTER_EMAIL", PUBLISH_IDENTITY_EMAIL),
+        ("GIT_COMMITTER_DATE", date),
+    ]
 }
 
 /// Read a required publish-configuration variable, treating a blank (or
@@ -211,8 +272,21 @@ impl CommandOutput {
 /// testable without touching the network, a real GitHub, or Cloudflare.
 #[async_trait::async_trait]
 pub trait CommandRunner: Send + Sync {
-    /// Run `program` with `args`, optionally in `cwd`, and capture its output.
-    async fn run(&self, program: &str, args: &[&str], cwd: Option<&Path>) -> Result<CommandOutput>;
+    /// Run `program` with `args`, optionally in `cwd`, with the variables in `env`
+    /// added to the inherited environment, and capture its output.
+    async fn run_with_env(
+        &self,
+        program: &str,
+        args: &[&str],
+        cwd: Option<&Path>,
+        env: &[(&str, &str)],
+    ) -> Result<CommandOutput>;
+
+    /// Run `program` with `args`, optionally in `cwd`, in the inherited
+    /// environment, and capture its output.
+    async fn run(&self, program: &str, args: &[&str], cwd: Option<&Path>) -> Result<CommandOutput> {
+        self.run_with_env(program, args, cwd, &[]).await
+    }
 }
 
 /// A [`CommandRunner`] that executes commands as real subprocesses.
@@ -221,9 +295,16 @@ pub struct SystemCommandRunner;
 
 #[async_trait::async_trait]
 impl CommandRunner for SystemCommandRunner {
-    async fn run(&self, program: &str, args: &[&str], cwd: Option<&Path>) -> Result<CommandOutput> {
+    async fn run_with_env(
+        &self,
+        program: &str,
+        args: &[&str],
+        cwd: Option<&Path>,
+        env: &[(&str, &str)],
+    ) -> Result<CommandOutput> {
         let mut command = tokio::process::Command::new(program);
         command.args(args);
+        command.envs(env.iter().copied());
         if let Some(dir) = cwd {
             command.current_dir(dir);
         }
@@ -238,6 +319,10 @@ impl CommandRunner for SystemCommandRunner {
         })
     }
 }
+
+/// The git credential helper the push and the fetch authenticate through: `gh`,
+/// which reads `GH_TOKEN` itself.
+const GH_CREDENTIAL_HELPER: &str = "credential.https://github.com.helper=!gh auth git-credential";
 
 /// How the implementation push tolerates GitHub's permission-propagation lag on
 /// a freshly created organization repository.
@@ -330,7 +415,19 @@ impl<R: CommandRunner, B: BackendClient> BackendPublisher<R, B> {
         args: &[&str],
         cwd: Option<&Path>,
     ) -> Result<CommandOutput> {
-        let output = self.runner.run(program, args, cwd).await?;
+        self.require_with_env(program, args, cwd, &[]).await
+    }
+
+    /// Run a command with `env` added to its environment and fail unless it
+    /// exits successfully.
+    async fn require_with_env(
+        &self,
+        program: &str,
+        args: &[&str],
+        cwd: Option<&Path>,
+        env: &[(&str, &str)],
+    ) -> Result<CommandOutput> {
+        let output = self.runner.run_with_env(program, args, cwd, env).await?;
         if !output.success {
             return Err(Error::Publish(format!(
                 "`{program} {}` failed: {}",
@@ -350,12 +447,17 @@ impl<R: CommandRunner, B: BackendClient> BackendPublisher<R, B> {
     /// seeded `.gitignore`, so build artifacts (`target/`, `node_modules/`, …)
     /// stay out of the public source repo even though a blanket add is used.
     ///
-    /// Idempotent: when staging finds nothing to commit — a re-push, or a run
-    /// the model never modified — the commit is skipped rather than failing, and
-    /// the push proceeds against whatever is already committed. A `git init` is
-    /// run defensively for the unusual case of an implementation that arrived
-    /// without a repo, so the push always has commits to create from.
-    async fn commit_implementation(&self, dir: &Path) -> Result<()> {
+    /// The commit is deterministic (see `components/repos/overview.md`,
+    /// Publishing): one commit is always made on top of the tree's tip, empty when
+    /// the model changed nothing, with the fixed [`PUBLISH_COMMIT_MESSAGE`], the
+    /// author and committer `Clockwyrks <runs@clockwyrks.invalid>` and both dates
+    /// `date` (the run's end time, see [`commit_date`]). The identity and dates
+    /// are given through the `GIT_AUTHOR_*`/`GIT_COMMITTER_*` environment, which
+    /// outranks any configuration, and signing and hooks are off, so a repeat over
+    /// the same downloaded tree reproduces the same SHA. A `git init` is run
+    /// defensively for the unusual case of an implementation that arrived without
+    /// a repo; its commit is then a root commit, as deterministic.
+    async fn commit_implementation(&self, dir: &Path, date: &str) -> Result<()> {
         if !dir.join(".git").is_dir() {
             self.require(
                 "git",
@@ -364,16 +466,6 @@ impl<R: CommandRunner, B: BackendClient> BackendPublisher<R, B> {
             )
             .await?;
         }
-        // Repo-local identity so committing does not depend on the host's global
-        // git configuration (matching how seeding configures the seed repo).
-        self.require("git", &["config", "user.name", "Clockwyrks"], Some(dir))
-            .await?;
-        self.require(
-            "git",
-            &["config", "user.email", "runs@clockwyrks.invalid"],
-            Some(dir),
-        )
-        .await?;
         self.require("git", &["add", "--all"], Some(dir)).await?;
         // A `packages`-declaring case vendors its runtime libraries under
         // `.vendor/packages/`, whose `dist/` subtrees the case's own `.gitignore`
@@ -389,20 +481,22 @@ impl<R: CommandRunner, B: BackendClient> BackendPublisher<R, B> {
         // and pushed to the run's public repository: a model that dumped its
         // environment can have written its provider key into a source file.
         self.scrub_staged_secrets(dir).await?;
-        // Commit only when staging produced something, so a re-push is a clean
-        // no-op instead of a `git commit` "nothing to commit" failure. Porcelain
-        // status is empty exactly when the index matches HEAD.
-        let status = self
-            .require("git", &["status", "--porcelain"], Some(dir))
-            .await?;
-        if !status.stdout.trim().is_empty() {
-            self.require(
-                "git",
-                &["commit", "--quiet", "--message", "Apply run implementation"],
-                Some(dir),
-            )
-            .await?;
-        }
+        self.require_with_env(
+            "git",
+            &[
+                "-c",
+                "commit.gpgSign=false",
+                "commit",
+                "--quiet",
+                "--allow-empty",
+                "--no-verify",
+                "--message",
+                PUBLISH_COMMIT_MESSAGE,
+            ],
+            Some(dir),
+            &commit_env(date),
+        )
+        .await?;
         Ok(())
     }
 
@@ -449,32 +543,47 @@ impl<R: CommandRunner, B: BackendClient> BackendPublisher<R, B> {
     }
 
     /// Push the committed implementation in `dir` to the run's public
-    /// repository, tolerating GitHub's permission-propagation lag on a freshly
-    /// created org repo (see [`PushRetry`]).
+    /// repository at `remote`, tolerating GitHub's permission-propagation lag on a
+    /// freshly created organization repo (see [`PushRetry`]).
+    ///
+    /// The push is a plain push of `main`. A refused push is not a failure by
+    /// itself: the remote's `main` is fetched and its tree compared with `HEAD`'s
+    /// (see `components/repos/overview.md`, Publishing). The same tree is a
+    /// success whatever commit carries it, so a repeat after a push that landed
+    /// succeeds; a different tree is [`Error::Diverged`], left as it is and not
+    /// retried; a remote with no `main` yet, or one that cannot be fetched, is
+    /// retried with backoff.
     ///
     /// `just_created` is true when this call created the repository, gating the
     /// pre-push settle delay: a re-publish of an existing repo skips it. The push
-    /// authenticates through `gh`'s git credential helper rather than a bare
-    /// `git push`: the publisher pod configures no git credential helper, so the
+    /// and the fetch authenticate through `gh`'s git credential helper rather than
+    /// a bare `git`: the publisher pod configures no git credential helper, so the
     /// token is only reachable via `gh auth git-credential` (which reads
     /// `GH_TOKEN` itself — this code never handles the token). A leading empty
     /// `credential.helper` resets any inherited helper so `gh`'s is the one used.
     async fn push_implementation(
         &self,
         dir: &Path,
+        remote: &str,
         qualified: &str,
         just_created: bool,
     ) -> Result<()> {
-        let url = format!("https://github.com/{qualified}.git");
-        self.ensure_origin(dir, &url).await?;
+        self.ensure_origin(dir, remote).await?;
+        let head_tree = self
+            .require("git", &["rev-parse", "--verify", "HEAD^{tree}"], Some(dir))
+            .await?
+            .stdout
+            .trim()
+            .to_string();
 
         if just_created && !self.push_retry.initial_delay.is_zero() {
             tokio::time::sleep(self.push_retry.initial_delay).await;
         }
 
+        let attempts = self.push_retry.attempts.max(1);
         let mut backoff = self.push_retry.backoff;
         let mut last = None;
-        for attempt in 1..=self.push_retry.attempts.max(1) {
+        for attempt in 1..=attempts {
             let output = self
                 .runner
                 .run(
@@ -485,7 +594,7 @@ impl<R: CommandRunner, B: BackendClient> BackendPublisher<R, B> {
                         "-c",
                         "credential.helper=",
                         "-c",
-                        "credential.https://github.com.helper=!gh auth git-credential",
+                        GH_CREDENTIAL_HELPER,
                         "push",
                         "--quiet",
                         "--set-upstream",
@@ -498,7 +607,18 @@ impl<R: CommandRunner, B: BackendClient> BackendPublisher<R, B> {
             if output.success {
                 return Ok(());
             }
-            if attempt < self.push_retry.attempts.max(1) {
+            match self.remote_main_tree(dir).await? {
+                Some(tree) if tree == head_tree => {
+                    tracing::info!(
+                        repo = qualified,
+                        "the repository's `main` already holds the run's implementation tree"
+                    );
+                    return Ok(());
+                }
+                Some(_) => return Err(Error::Diverged(qualified.to_string())),
+                None => {}
+            }
+            if attempt < attempts {
                 tracing::warn!(
                     repo = qualified,
                     attempt,
@@ -514,9 +634,45 @@ impl<R: CommandRunner, B: BackendClient> BackendPublisher<R, B> {
             .map(|o| o.failure_details())
             .unwrap_or_else(|| "(no output captured)".to_string());
         Err(Error::Publish(format!(
-            "pushing the implementation to {qualified} failed after {} attempt(s): {detail}",
-            self.push_retry.attempts.max(1)
+            "pushing the implementation to {qualified} failed after {attempts} attempt(s): {detail}"
         )))
+    }
+
+    /// The tree the `origin` remote's `main` holds, or `None` when it has no
+    /// `main` or cannot be fetched. Fetched into `FETCH_HEAD` only, authenticated
+    /// as the push is.
+    async fn remote_main_tree(&self, dir: &Path) -> Result<Option<String>> {
+        let fetched = self
+            .runner
+            .run(
+                "git",
+                &[
+                    "-c",
+                    "credential.helper=",
+                    "-c",
+                    GH_CREDENTIAL_HELPER,
+                    "fetch",
+                    "--quiet",
+                    "--no-tags",
+                    "origin",
+                    "refs/heads/main",
+                ],
+                Some(dir),
+            )
+            .await?;
+        if !fetched.success {
+            return Ok(None);
+        }
+        let tree = self
+            .runner
+            .run(
+                "git",
+                &["rev-parse", "--verify", "FETCH_HEAD^{tree}"],
+                Some(dir),
+            )
+            .await?;
+        let text = tree.stdout.trim();
+        Ok((tree.success && !text.is_empty()).then(|| text.to_string()))
     }
 
     /// Point the implementation repo's `origin` at `url`, whether or not a
@@ -558,15 +714,18 @@ impl<R: CommandRunner, B: BackendClient> Publisher for BackendPublisher<R, B> {
 
         let impl_dir = request.artifacts.repo_path.as_path();
         let qualified = self.config.repo_qualified(record);
+        // The commit's date is the run's end time; an unusable one fails before
+        // anything is committed, created or pushed.
+        let date = commit_date(&record.finished_at)?;
 
         // Commit the model's working tree first so the push carries the
         // implementation, not just the seed. The collected implementation is a
         // git repo seeded with a single "Seed test case" commit; the model's
-        // actual work sits in the working tree, uncommitted. Idempotent: a clean
-        // tree (a re-publish, or a run the model never modified) skips the commit
-        // and the push proceeds against whatever is already committed. The seeded
-        // `.gitignore` keeps build artifacts such as `target/` out of the push.
-        self.commit_implementation(impl_dir).await?;
+        // actual work sits in the working tree, uncommitted. The commit is
+        // deterministic, so a repeat over the same downloaded tree reproduces its
+        // SHA. The seeded `.gitignore` keeps build artifacts such as `target/` out
+        // of the push.
+        self.commit_implementation(impl_dir, &date).await?;
 
         // Ensure the repository exists, creating it public and empty when it does
         // not. The source is a public repository per `core/results.md` (each run
@@ -577,8 +736,9 @@ impl<R: CommandRunner, B: BackendClient> Publisher for BackendPublisher<R, B> {
         // propagation lag on a newly created org repo (see `PushRetry`), and a
         // re-publish whose first push never landed — leaving the repo created but
         // empty — must still push to recover, instead of short-circuiting on the
-        // repo's mere existence. Both `commit_implementation` and the push below
-        // are idempotent, so an already-complete repo re-pushes as a clean no-op.
+        // repo's mere existence. The commit is deterministic and a remote already
+        // holding the same tree is a success, so an already-complete repo
+        // re-publishes as a clean no-op.
         let exists = self
             .runner
             .run("gh", &["repo", "view", &qualified], None)
@@ -588,8 +748,13 @@ impl<R: CommandRunner, B: BackendClient> Publisher for BackendPublisher<R, B> {
             self.require("gh", &["repo", "create", &qualified, "--public"], None)
                 .await?;
         }
-        self.push_implementation(impl_dir, &qualified, !exists)
-            .await?;
+        self.push_implementation(
+            impl_dir,
+            &self.config.remote_url(record),
+            &qualified,
+            !exists,
+        )
+        .await?;
 
         Ok(Some(self.config.repo_url(record)))
     }
@@ -788,3 +953,7 @@ pub fn implementation_dir(record_path: &Path) -> PathBuf {
 #[cfg(test)]
 #[path = "release.test.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "release.git.test.rs"]
+mod git_tests;

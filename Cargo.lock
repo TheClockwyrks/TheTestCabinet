@@ -5133,6 +5133,7 @@ dependencies = [
  "test-cabinet-suites",
  "test-cabinet-telemetry",
  "thiserror 2.0.18",
+ "time",
  "tokio",
  "tracing",
 ]

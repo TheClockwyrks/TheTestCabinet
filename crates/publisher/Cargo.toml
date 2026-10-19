@@ -41,6 +41,9 @@ async-trait = { workspace = true }
 # Untar the `application/x-tar` source tree the artifact service serves (pure
 # Rust, matching the driver's upload side which tars the same layout).
 tar = "0.4"
+# Parsing the record's RFC 3339 `finished_at` into the implementation commit's
+# fixed date.
+time = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }

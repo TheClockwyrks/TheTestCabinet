@@ -24,8 +24,8 @@ use crate::release::{CommandOutput, CommandRunner};
 
 /// A [`CommandRunner`] standing in for `gh`/`git`/`wrangler`: it records every call
 /// and answers each tool the way the release path expects — `gh repo view` reports
-/// the repo absent (so the create path runs), `git status` reports a dirty tree (so
-/// the commit runs), `wrangler pages deploy` prints a deployment URL, and everything
+/// the repo absent (so the create path runs), `wrangler pages deploy` prints a
+/// deployment URL, and everything
 /// else simply succeeds. Mirrors the release tests' `MockRunner`. The call log lives behind a
 /// shared handle so a [`Clone`] of the runner can be moved into the release while the
 /// test keeps a clone to read the recorded calls.
@@ -42,11 +42,12 @@ impl StubRunner {
 
 #[async_trait::async_trait]
 impl CommandRunner for StubRunner {
-    async fn run(
+    async fn run_with_env(
         &self,
         program: &str,
         args: &[&str],
         _cwd: Option<&std::path::Path>,
+        _env: &[(&str, &str)],
     ) -> crate::Result<CommandOutput> {
         self.calls
             .lock()
@@ -55,11 +56,8 @@ impl CommandRunner for StubRunner {
         let is_repo_view =
             program == "gh" && args.first() == Some(&"repo") && args.get(1) == Some(&"view");
         let is_wrangler = program == "wrangler";
-        let is_git_status = program == "git" && args.first() == Some(&"status");
         let stdout = if is_wrangler {
             "✨ Deployment complete! https://abc123.test-cabinet-runs.pages.dev\n".to_string()
-        } else if is_git_status {
-            " M src/main.rs\n".to_string()
         } else {
             String::new()
         };
@@ -196,7 +194,9 @@ async fn releases_source_then_build_and_returns_both_links() {
     // The two steps ran in order, committing the implementation before the push and
     // releasing the code before deploying the build.
     let calls = runner.calls();
-    let commit = calls.iter().position(|c| c.contains("git commit"));
+    let commit = calls
+        .iter()
+        .position(|c| c.starts_with("git ") && c.contains(" commit "));
     let create = calls.iter().position(|c| c.contains("gh repo create"));
     let deploy = calls
         .iter()
