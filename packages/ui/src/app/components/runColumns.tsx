@@ -144,7 +144,8 @@ function categoryLabel(testType: string): string {
 }
 
 // The status label for an in-progress run's live phase. "queued"/"starting" carry
-// an ellipsis (work is pending and will proceed on its own); "pending" is a
+// an ellipsis (work is pending and will proceed on its own), as does "storing" (the
+// run has finished and its driver is waiting to store its files); "pending" is a
 // deliberate hold — the harness is at its parallelism cap, or the run is a game-jam
 // entry waiting for the same model's earlier entry of that jam to finish — shown
 // without one so it reads as a settled state rather than imminent progress.
@@ -153,6 +154,7 @@ const ACTIVE_STATE_LABEL: Readonly<Record<InProgressRun["state"], string>> = {
   pending: "pending",
   starting: "starting…",
   running: "running…",
+  storing: "storing files…",
   failed: "failed",
 };
 
@@ -496,8 +498,9 @@ export const RUN_COLUMNS: readonly RunColumn[] = [
     // that replaces it when the run lands. That figure is the run's measured time:
     // frozen the instant its container is torn down, with the wait for cluster
     // capacity subtracted. The job holds at `running` through the post-run analysis
-    // and the validation pass that follow teardown, so this cell counts those too and
-    // steps down by their total on the row that replaces it.
+    // and the validation pass that follow teardown, and at `storing` while its driver
+    // waits to store the run's files, so this cell counts those too and steps down by
+    // their total on the row that replaces it.
     renderActive: (run, ctx) => {
       const started = run.startedAt ? Date.parse(run.startedAt) : Number.NaN;
       if (Number.isNaN(started)) return activeDash("Duration", true);

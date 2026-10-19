@@ -103,13 +103,14 @@ trigger:
 # never used, so a reference names one image for as long as the registry keeps
 # it. The forty zeros are the placeholder a render carries; see the header.
 
-# The repositories the jobs read beside this one: the contracts and engines
-# repositories, the `contracts/` and `engines/` submodules every build compiles
-# against, the gg repository, the `gg/` submodule whose crate the patch table
-# names (cargo loads every patch path, so every build reads it) and whose pages
-# the documentation site builds, and the test-suites repository, the
-# `test-suites/` submodule holding the catalog the tests over the committed
-# catalog read and the performance image bakes from. No job checks one out. A job that builds names them under
+# The repositories the jobs read beside this one: the contracts, engines, gg and
+# microservice-repos repositories, the `contracts/`, `engines/`, `gg/` and
+# `microservice-repos/` submodules every build reads, because the patch table
+# names their crates and cargo loads every patch path (no member uses gg's
+# crate; the documentation site builds gg's pages from its checkout), and the
+# test-suites repository, the `test-suites/` submodule holding the catalog the
+# tests over the committed catalog read and the performance image bakes from.
+# No job checks one out. A job that builds names them under
 # `uses:`, which puts them in the scope of the job's access token, and runs
 # `scripts/ci/submodules.sh init` with their paths after its own checkout, which
 # fetches the commits the superproject pins.
@@ -124,6 +125,9 @@ resources:
     - repository: gg
       type: git
       name: the-test-cabinet/gg
+    - repository: microservice-repos
+      type: git
+      name: the-test-cabinet/microservice-repos
     - repository: test-suites
       type: git
       name: the-test-cabinet/test-suites
@@ -202,6 +206,7 @@ stages:
             - contracts
             - engines
             - gg
+            - microservice-repos
             - test-suites
         variables:
           # The registry and the git checkouts, under the directory the cache
@@ -227,12 +232,13 @@ stages:
             fetchDepth: 1
             clean: true
 
-          # The contracts, engines, gg and test-suites submodules, at the
-          # pinned commits; the job's `uses:` puts their repositories in the
-          # token's scope. The tests over the committed catalog read
-          # test-suites, and the documentation site reads gg's pages.
-          - script: scripts/ci/submodules.sh init contracts engines gg test-suites
-            displayName: Initialize the contracts, engines, gg and test-suites submodules
+          # The contracts, engines, gg, microservice-repos and test-suites
+          # submodules, at the pinned commits; the job's `uses:` puts their
+          # repositories in the token's scope. The tests over the committed
+          # catalog read test-suites, and the documentation site reads gg's
+          # pages.
+          - script: scripts/ci/submodules.sh init contracts engines gg microservice-repos test-suites
+            displayName: Initialize the contracts, engines, gg, microservice-repos and test-suites submodules
             env:
               SYSTEM_ACCESSTOKEN: $(System.AccessToken)
 
@@ -395,18 +401,20 @@ stages:
             - contracts
             - engines
             - gg
+            - microservice-repos
             - test-suites
         steps:
           - checkout: self
             fetchDepth: 1
             clean: true
 
-          # The contracts, engines, gg and test-suites submodules, at the
-          # pinned commits; the job's `uses:` puts their repositories in the
-          # token's scope. The tests over the committed catalog read
-          # test-suites, and the documentation site reads gg's pages.
-          - script: scripts/ci/submodules.sh init contracts engines gg test-suites
-            displayName: Initialize the contracts, engines, gg and test-suites submodules
+          # The contracts, engines, gg, microservice-repos and test-suites
+          # submodules, at the pinned commits; the job's `uses:` puts their
+          # repositories in the token's scope. The tests over the committed
+          # catalog read test-suites, and the documentation site reads gg's
+          # pages.
+          - script: scripts/ci/submodules.sh init contracts engines gg microservice-repos test-suites
+            displayName: Initialize the contracts, engines, gg, microservice-repos and test-suites submodules
             env:
               SYSTEM_ACCESSTOKEN: $(System.AccessToken)
 

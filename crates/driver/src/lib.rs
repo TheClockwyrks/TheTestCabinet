@@ -29,15 +29,20 @@
 
 // The driver binary's own modules: the backend job client, its configuration, the
 // Kubernetes sandbox runtime, the streaming sinks, the run-tree collection and upload,
-// and the cancellation disposition.
+// the implementation bundle, the finishing sequence and its calls' retry policy, and
+// the cancellation disposition.
 pub mod artifacts;
+pub mod bundle;
 pub mod cancel;
 pub mod client;
 pub mod collect;
 pub mod config;
 pub mod creds;
+pub mod finish;
 pub mod kubernetes;
+pub mod retry;
 pub mod run;
+pub mod sigterm;
 pub mod sink;
 
 // The run engine.
@@ -76,6 +81,7 @@ pub mod run_cancellation;
 pub mod run_record;
 pub mod salvage;
 pub mod seeding;
+pub mod session_end;
 pub mod toolchain_report;
 pub mod toolchain_stage;
 pub mod validation;
@@ -169,11 +175,11 @@ pub use event::{
 pub use execution::{
     ArtifactCollection, ArtifactCollector, ContainerFile, ContainerHandle, ContainerRuntime,
     ContainerSpec, ContainerStart, ExecOutput, OutputSink, OutputStream, PreparedInstall,
-    RawOutputLine, RepoSeeder, SeedRequest, SeededRepo, WORKSPACE_DIR,
+    RawOutputLine, RepoSeeder, SandboxState, SeedRequest, SeededRepo, WORKSPACE_DIR,
 };
 pub use harness::{
-    AgentHarness, Availability, HarnessInvocation, HarnessOutcome, HarnessRegistry, Usage,
-    resolve_run_image,
+    AgentHarness, Availability, HarnessInvocation, HarnessOutcome, HarnessRegistry, PlatformEnd,
+    Usage, resolve_run_image,
 };
 pub use harness_registry::DefaultHarnessRegistry;
 pub use install::{
@@ -705,6 +711,39 @@ pub struct ExecutedSession {
     /// drive. This is the model's own working time, and the only stage of a run
     /// whose duration describes the model rather than the fleet.
     pub session_elapsed: Duration,
+}
+
+/// The session half of a [platform-ended](HarnessOutcome::platform_end) run, as
+/// [`RunEngine::execute`] handed it back.
+struct PlatformEndedSession {
+    handle: ContainerHandle,
+    outcome: HarnessOutcome,
+    environment: RunEnvironment,
+    end: PlatformEnd,
+}
+
+/// What a [platform-ended](HarnessOutcome::platform_end) run's record is attributed
+/// to, resolved by [`RunEngine::run_resolved`] before the session.
+struct PlatformEndContext<'a> {
+    run_id: &'a str,
+    test_case: &'a TestCaseVersion,
+    variant: &'a Variant,
+    seeded: &'a SeededRepo,
+    request: &'a RunRequest,
+    orchestrator_slug: &'a str,
+    engine_slug: &'a str,
+    cancel: &'a RunCancellation,
+    events: &'a mut dyn EventSink,
+}
+
+/// The clock readings a [platform-ended](HarnessOutcome::platform_end) run's
+/// durations are partitioned from (see [`RunDurations::partition`]).
+struct PlatformEndTimes {
+    started_at: OffsetDateTime,
+    run_started: Duration,
+    before_teardown: Duration,
+    session_elapsed: Duration,
+    scheduling_wait: Duration,
 }
 
 impl<S, R, C, V> RunEngine<S, R, C, V>
@@ -1344,6 +1383,7 @@ where
         // session would make one model's recorded working time a function of how
         // long a registry pull, an `npm install` or a harness download took.
         let session_started = self.clock.now();
+        events.stage(crate::sigterm::Stage::Session);
         let outcome = if let Some(prepared) = prepared_gg {
             let drive = gg_exec::run_gg_session(&self.runtime, &handle, prepared, events, cancel);
             with_runtime_cap(drive, max_runtime, slug).await
@@ -1393,6 +1433,116 @@ where
                 Err(err)
             }
         }
+    }
+
+    /// Record a run whose session the [platform ended](HarnessOutcome::platform_end).
+    ///
+    /// The tree is neither collected nor analysed nor validated, because what the
+    /// session left behind is a half-written build rather than the model's result.
+    /// The gg capture journal is salvaged and the container stopped exactly as for a
+    /// session that produced no outcome, and the record is then written like any
+    /// other: [`RunState::Infrastructure`] with the end's detail, the metrics the
+    /// session gathered, an empty validation summary, and the session's raw and
+    /// translated streams beside it.
+    async fn record_platform_end(
+        &self,
+        session: PlatformEndedSession,
+        context: PlatformEndContext<'_>,
+        times: PlatformEndTimes,
+    ) -> Result<RunRecord> {
+        let PlatformEndedSession {
+            handle,
+            outcome,
+            environment,
+            end,
+        } = session;
+        let PlatformEndContext {
+            run_id,
+            test_case,
+            variant,
+            seeded,
+            request,
+            orchestrator_slug,
+            engine_slug,
+            cancel,
+            events,
+        } = context;
+        tracing::warn!(detail = %end.detail, "the platform ended the harness session");
+
+        events.stage(crate::sigterm::Stage::Collection);
+        events.emit(&HarnessEvent::system(
+            SystemStage::Teardown,
+            SystemStatus::Started,
+        ));
+        self.abandon_container(&handle, run_id, test_case, variant, seeded, request, cancel)
+            .await;
+        events.emit(&HarnessEvent::system(
+            SystemStage::Teardown,
+            SystemStatus::Completed,
+        ));
+        events.stage(crate::sigterm::Stage::PostRun);
+
+        let measured = self.clock.now().saturating_sub(times.run_started);
+        // Nothing was validated, so no validation duration is recorded.
+        let metrics = self.collect_metrics(
+            &outcome,
+            RunDurations::partition(
+                measured,
+                times.before_teardown,
+                times.session_elapsed,
+                times.scheduling_wait,
+                None,
+            ),
+            &request.list_prices(),
+        )?;
+        let finished_at = OffsetDateTime::now_utc();
+        let record = RunRecord {
+            id: run_id.to_string(),
+            started_at: times.started_at.format(&Rfc3339).unwrap_or_default(),
+            finished_at: finished_at.format(&Rfc3339).unwrap_or_default(),
+            subject: RunSubject {
+                test_case_slug: test_case.slug.clone(),
+                test_case_version: test_case.version.clone(),
+                test_type: test_case.test_type,
+                variant: variant.slug.clone(),
+                harness_slug: request.harness,
+                harness_version: outcome.harness_version.clone(),
+                orchestrator_slug: orchestrator_slug.to_string(),
+                engine_slug: engine_slug.to_string(),
+                engine_version: seeded.engine_version.clone(),
+                model_id: request.model_id.clone(),
+                gg_capability_set: request.gg_capability_set.clone(),
+                gg_summary: outcome.gg_summary.clone(),
+            },
+            tooling: RunTooling::current(),
+            environment,
+            metrics,
+            // Nothing was checked, so nothing is reported as having failed a check.
+            validation: ValidationSummary::default(),
+            links: RunLinks::default(),
+            status: RunStatus {
+                state: RunState::Infrastructure,
+                detail: Some(end.detail),
+            },
+            // No tree was collected, so there is no README, code analysis, toolchain
+            // report or showcase to read out of one.
+            game_jam_readme: None,
+            tool_calls: outcome.tool_calls.clone(),
+            game_jam_prior_entries: self.prior_game_jam_entries.clone(),
+            seed_commit: Some(seeded.initial_commit.clone()),
+            code_analysis: None,
+            toolchain: None,
+            showcase: None,
+        };
+
+        let run_dir = self.output_dir.join(&record.id);
+        std::fs::create_dir_all(&run_dir)?;
+        std::fs::write(
+            run_dir.join("run-record.json"),
+            serde_json::to_string_pretty(&record)?,
+        )?;
+        write_run_streams(&run_dir, &outcome.raw_output, &outcome.translated_events)?;
+        Ok(record)
     }
 
     /// Give up on a run whose session produced no outcome, while the container it ran in
@@ -1845,6 +1995,7 @@ where
             _ => None,
         };
 
+        events.stage(crate::sigterm::Stage::Seeding);
         let seeded = self.seed(
             test_case,
             &variant,
@@ -1870,6 +2021,8 @@ where
                     .map(|reference| Path::new("reference").join(reference.file_name())),
             )
             .collect();
+        // The image pull, the sandbox start and its preparation, up to the session.
+        events.stage(crate::sigterm::Stage::SandboxStart);
         let ExecutedSession {
             handle,
             outcome,
@@ -1897,9 +2050,45 @@ where
         // from the fleet's (see [`RunDurations::partition`]).
         let before_teardown = self.clock.now().saturating_sub(run_started);
 
+        // A session the platform ended (see [`crate::session_end`]) is neither
+        // collected, analysed nor validated: the tree it left is a half-written build
+        // rather than the model's result. Its record still carries what the session
+        // gathered, so it is written here rather than left to a bare failure record.
+        if let Some(end) = outcome.platform_end.clone() {
+            return self
+                .record_platform_end(
+                    PlatformEndedSession {
+                        handle,
+                        outcome,
+                        environment,
+                        end,
+                    },
+                    PlatformEndContext {
+                        run_id,
+                        test_case,
+                        variant: &variant,
+                        seeded: &seeded,
+                        request,
+                        orchestrator_slug: &orchestrator.manifest.slug,
+                        engine_slug: engine.slug(),
+                        cancel,
+                        events,
+                    },
+                    PlatformEndTimes {
+                        started_at,
+                        run_started,
+                        before_teardown,
+                        session_elapsed,
+                        scheduling_wait,
+                    },
+                )
+                .await;
+        }
+
         // Collect the working tree, then always tear the container down. The
         // teardown is bracketed by system events so the feed shows the run
         // wrapping up rather than going quiet once the harness session ends.
+        events.stage(crate::sigterm::Stage::Collection);
         events.emit(&HarnessEvent::system(
             SystemStage::Teardown,
             SystemStatus::Started,
@@ -1910,6 +2099,7 @@ where
             SystemStage::Teardown,
             SystemStatus::Completed,
         ));
+        events.stage(crate::sigterm::Stage::PostRun);
         let mut artifacts = artifacts?;
 
         // The run's wall clock, frozen here so nothing below can inflate what the

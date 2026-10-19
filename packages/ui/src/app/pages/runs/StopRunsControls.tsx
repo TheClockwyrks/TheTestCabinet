@@ -22,10 +22,15 @@ type StopScope = "waiting" | "active" | "all";
 // jobs legitimately wait there) but both are equally free to cancel.
 const WAITING_STATES: InProgressRun["state"][] = ["queued", "pending"];
 
-// The job phases that are already burning a driver, a container, and tokens.
-// `dispatched` reaches the console mapped onto `starting` — see `InProgressRun` —
-// so the two names here cover all three of the backend's active states.
-const ACTIVE_STATES: InProgressRun["state"][] = ["starting", "running"];
+// The job phases that already hold a driver: spinning up, running, or finished and
+// waiting to store the run's files. `dispatched` reaches the console mapped onto
+// `starting` — see `InProgressRun` — so the three names here cover all four of the
+// backend's driven states.
+const ACTIVE_STATES: InProgressRun["state"][] = [
+  "starting",
+  "running",
+  "storing",
+];
 
 /**
  * The transport a sweep needs, or null where the cabinet cannot be stopped from here at

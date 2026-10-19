@@ -10,7 +10,9 @@
 # needs first, in order:
 #
 #   1. Pins the overlay (scripts/ci/pin-images.sh, in place): the other six images
-#      and the dispatcher's run-image environment, all at <commit>. deploy.sh lays
+#      this repository builds and the dispatcher's run-image environment, all at
+#      <commit>, and the repos service's image at the commit <commit>'s
+#      microservice-repos submodule pointer names. deploy.sh lays
 #      its own layer over the overlay, so the render it applies carries them.
 #   2. Refuses an overlay that binds a workload to a workload identity annotated
 #      `unprovisioned` (tcab-lib.sh's ci_assert_identities_provisioned), before
@@ -125,7 +127,7 @@ done
 # and step 5 would already have retired what it replaces. Refuse before the cluster.
 if ! kubectl kustomize "deployments/k8s/overlays/${OVERLAY}" | ci_assert_identities_provisioned; then
 	echo "pre-deploy.sh: overlays/${OVERLAY} binds a workload to an unprovisioned identity, above; nothing was retired or applied." >&2
-	remediation "Provision it, put its clientId in deployments/k8s/overlays/${OVERLAY}/patch-artifacts-identity.yaml" \
+	remediation "Provision it, put its clientId in deployments/k8s/overlays/${OVERLAY}/patch-artifacts-identity.yaml or patch-repos-identity.yaml" \
 		"and copy the trees on the claim artifacts-tcab-artifacts-0 in ${NAMESPACE} into the container, then deploy again."
 	exit 1
 fi

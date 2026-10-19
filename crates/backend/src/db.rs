@@ -30,6 +30,7 @@ use sea_orm::{
     RelationTrait, Select, TransactionTrait,
 };
 use serde::{Deserialize, Serialize};
+use test_cabinet_contracts::event::HarnessEvent;
 use test_cabinet_contracts::match_play::TournamentRecord;
 use test_cabinet_contracts::metrics::{Cost, TokenPrices};
 use test_cabinet_contracts::reference_lock::ReferenceBuildEntry;
@@ -39,10 +40,10 @@ use test_cabinet_contracts::run_record::{
 use test_cabinet_entities::{
     backfill_state, case_reference_build, case_reference_sheet, comparison, coverage_group,
     coverage_plan, coverage_plan_cell_retry, coverage_settings, gg_agent, gg_config, gg_dashboard,
-    gg_saved_query, harness_config, job, ladder, ladder_dispatch, ladder_dispatch_climber,
-    ladder_dispatch_outcome, ladder_rung, model, model_alias, model_price, model_probe,
-    model_probe_item, publish_job, review, review_plan, review_revision, run, run_link,
-    snapshot_state, tournament,
+    gg_saved_query, harness_config, job, job_event, ladder, ladder_dispatch,
+    ladder_dispatch_climber, ladder_dispatch_outcome, ladder_rung, model, model_alias, model_price,
+    model_probe, model_probe_item, publish_job, review, review_plan, review_revision, run,
+    run_link, snapshot_state, tournament,
 };
 use test_cabinet_suites::test_case::{TestType, version_key};
 use time::OffsetDateTime;
@@ -58,8 +59,16 @@ use crate::store::{CaseNames, StoredManifest};
 /// list, counts toward coverage, and is cancelable. `queued` and `pending` have no
 /// driver yet (the dispatcher will claim a `queued` one; a `pending` one is held
 /// back because its harness is at its parallelism cap); `dispatched`, `starting`,
-/// and `running` each have a driver Job coming up or executing.
-const IN_FLIGHT_STATES: [&str; 5] = ["queued", "pending", "dispatched", "starting", "running"];
+/// and `running` each have a driver Job coming up or executing, and a `storing` one
+/// has a driver handing its finished run to durable storage.
+const IN_FLIGHT_STATES: [&str; 6] = [
+    "queued",
+    "pending",
+    "dispatched",
+    "starting",
+    "running",
+    "storing",
+];
 
 /// What one id a comparison arm recorded stands for ([`Db::resolve_arm_runs`]).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -108,8 +117,54 @@ fn in_flight_limit_to_column(limit: InFlightLimit) -> i32 {
 
 /// The job states that occupy a **parallelism slot** for their harness: a driver
 /// Job has been (or is being) created for them. Used to enforce a harness's maximum
-/// parallelism — `queued`/`pending` jobs have no driver yet, so they do not count.
-const ACTIVE_SLOT_STATES: [&str; 3] = ["dispatched", "starting", "running"];
+/// parallelism — `queued`/`pending` jobs have no driver yet, so they do not count. A
+/// `storing` job's driver is still alive, uploading the finished run, so it keeps its
+/// slot until its terminal report lands.
+const ACTIVE_SLOT_STATES: [&str; 4] = ["dispatched", "starting", "running", "storing"];
+
+/// The job states a driver exists for, or is being created for: what the dispatcher
+/// may report lost, what a `storing` report may move to `storing`, and the states whose
+/// [claim lease](JOB_LEASE) a renewal extends. Same members as `ACTIVE_SLOT_STATES`,
+/// different question: that one asks which jobs hold a parallelism slot, this one
+/// asks which jobs the backend believes a driver is executing.
+pub const DRIVEN_STATES: [&str; 4] = ["dispatched", "starting", "running", "storing"];
+
+/// How long a job's claim lease runs: the claim sets the expiry this far past the
+/// claim, and each renewal this far past the renewal (the dispatcher overview's
+/// "Claim leases").
+pub const JOB_LEASE: time::Duration = time::Duration::minutes(2);
+
+/// The lease expiry for a claim or renewal made at `now` (RFC 3339): [`JOB_LEASE`]
+/// past it, written at whole-second precision in UTC (`YYYY-MM-DDTHH:MM:SSZ`).
+///
+/// The fixed width is what makes two stored expiries compare chronologically as
+/// strings; `now` itself may carry any subsecond precision, which is truncated.
+/// `BadRequest` when `now` is not RFC 3339.
+pub fn job_lease_expiry(now: &str) -> Result<String> {
+    let now = parse_instant(now)?;
+    let expiry = (now + JOB_LEASE)
+        .to_offset(time::UtcOffset::UTC)
+        .replace_nanosecond(0)
+        .map_err(|e| BackendError::BadRequest(format!("lease expiry: {e}")))?;
+    expiry
+        .format(&Rfc3339)
+        .map_err(|e| BackendError::BadRequest(format!("formatting a lease expiry: {e}")))
+}
+
+/// Whether a job's claim lease has lapsed at `now`: it holds none, its stored expiry
+/// does not parse, or the expiry is before `now`. Compared as instants, so neither
+/// side's subsecond precision matters.
+fn lease_lapsed(lease_expires_at: Option<&str>, now: OffsetDateTime) -> bool {
+    lease_expires_at
+        .and_then(|at| OffsetDateTime::parse(at, &Rfc3339).ok())
+        .is_none_or(|expiry| expiry < now)
+}
+
+/// Parse an RFC 3339 instant a caller passed as `now`; `BadRequest` when it is not one.
+fn parse_instant(now: &str) -> Result<OffsetDateTime> {
+    OffsetDateTime::parse(now, &Rfc3339)
+        .map_err(|e| BackendError::BadRequest(format!("`{now}` is not an RFC 3339 instant: {e}")))
+}
 
 /// The in-flight job states that have **cost nothing yet**: the job is waiting to be
 /// claimed (`queued`) or deliberately held back behind a cap or a same-model game jam
@@ -121,14 +176,14 @@ const ACTIVE_SLOT_STATES: [&str; 3] = ["dispatched", "starting", "running"];
 pub const CANCELABLE_WAITING_STATES: [&str; 2] = ["queued", "pending"];
 
 /// The in-flight job states that are **already spending**: a driver Job exists and is
-/// being created, starting up, or executing, so the tokens for that run are partly or
-/// wholly paid for.
+/// being created, starting up, executing, or storing the finished run, so the tokens
+/// for that run are partly or wholly paid for.
 ///
 /// Cancelling these discards work in progress, which is why the controls that reach
 /// them — `halt all`, the Runs page's "Kill active" — are the rare ones and confirm
 /// first. Same members as `ACTIVE_SLOT_STATES`, different question: that one asks
 /// which jobs hold a parallelism slot, this one asks which are expensive to cancel.
-pub const CANCELABLE_ACTIVE_STATES: [&str; 3] = ["dispatched", "starting", "running"];
+pub const CANCELABLE_ACTIVE_STATES: [&str; 4] = ["dispatched", "starting", "running", "storing"];
 
 /// How long a launch-pass claim on a coverage plan or ladder stays valid before another
 /// caller may take it over.
@@ -281,7 +336,8 @@ pub struct StoredRun {
     /// pushed. Not part of the run record itself.
     pub published_at: Option<String>,
     /// The run's recorded normalized event stream, stored verbatim as a JSON
-    /// array string (the `run.events_json` column). `None` for a run that
+    /// array string (the `run.events_json` column): its job's stored events in
+    /// sequence order when the record was persisted. `None` for a run that
     /// recorded none. Re-emitted into the snapshot and served by
     /// `GET /runs/{id}/events`.
     pub events_json: Option<String>,
@@ -654,6 +710,10 @@ impl Db {
             record_readable: Set(true),
             record_format: Set(RUN_RECORD_FORMAT as i32),
             events_json: Set(events_json.map(|s| s.to_string())),
+            // Written only by the terminal report that says it
+            // (`set_run_artifacts_stored`): a first push leaves it `NULL`, and a re-push
+            // leaves what an earlier report recorded.
+            artifacts_stored: NotSet,
             // `NotSet` on both paths: the mutation timestamp is stamped by
             // `touch_run` below, inside this same transaction, so that exactly one
             // place in the store decides its value. The insert therefore lands on
@@ -982,6 +1042,9 @@ impl Db {
         // records the attempt's job id and reaches the retry's run through its
         // `retried_by`, which nothing else links back to. It keeps that link and
         // loses the run.
+        //
+        // A deleted job's stored events (`job_event`) go with it through their
+        // `ON DELETE CASCADE` foreign key.
         run::Entity::delete_by_id(run_id.to_string())
             .exec(&txn)
             .await?;
@@ -6511,7 +6574,33 @@ fn new_job_model(new: NewJob, queue_seq: i64) -> job::ActiveModel {
         // `starting`, not by joining the queue.
         started_at: Set(None),
         retried_by: Set(None),
+        held_record: Set(None),
+        held_detail: Set(None),
+        lost_at: Set(None),
+        // A job holds no lease until it is claimed.
+        lease_expires_at: Set(None),
     }
+}
+
+/// Clear `parent`'s [`retried_by`](job::Model::retried_by) stamp inside `txn`.
+async fn clear_retried_by(txn: &DatabaseTransaction, parent: &str) -> Result<()> {
+    job::Entity::update_many()
+        .col_expr(job::Column::RetriedBy, Expr::value(Option::<String>::None))
+        .filter(job::Column::Id.eq(parent))
+        .exec(txn)
+        .await?;
+    Ok(())
+}
+
+/// What [`Db::withdraw_retry`] did with the retry a lost outcome enqueued.
+#[derive(Debug, Clone)]
+pub enum WithdrawnRetry {
+    /// The retry was still waiting, and its row was deleted.
+    Deleted(job::Model),
+    /// The retry had been claimed, and was canceled; the canceled row.
+    Canceled(job::Model),
+    /// The retry had already finished, and was left standing.
+    Finished(job::Model),
 }
 
 /// A publish job to enqueue: the minted id and token, and the run it releases. The
@@ -6654,10 +6743,44 @@ impl Db {
     /// reconciliation moves any number of others between `queued` and `pending`.
     /// Returning only the claim would leave every held-back run's row stale until
     /// something else re-read the queue.
+    ///
+    /// The claimed job's **lease** is set [`JOB_LEASE`] past `now`. Before anything is
+    /// counted, the pass returns every `dispatched` job whose lease has lapsed (or that
+    /// holds none) to `queued`: its claim was never followed by a driver, whether the
+    /// driver `Job`'s creation failed or the dispatcher died before creating it. Such a
+    /// job keeps its `queue_seq`, so it is taken again at its original position, and
+    /// its `attempt`, since nothing ran; it is given a fresh per-job token, so the
+    /// backend refuses the old one from then on, and its lease is cleared. No retry is
+    /// enqueued. Returning it first frees the parallelism slot it held, and each such
+    /// job is reported among [`ClaimOutcome::reconciled`] with the state it ends the
+    /// pass in, unless this same pass claims it again.
+    ///
+    /// `now` is an RFC 3339 instant; `BadRequest` when it is not one.
     pub async fn claim_next(&self, now: &str) -> Result<ClaimOutcome> {
         use std::collections::{HashMap, HashSet};
 
+        let now_instant = parse_instant(now)?;
+        let lease = job_lease_expiry(now)?;
         let txn = self.conn().begin().await?;
+
+        // Return every lapsed claim to the queue before the slots are counted, so the
+        // slot it held is free for this very pass.
+        let mut reconciled: Vec<job::Model> = Vec::new();
+        for job in job::Entity::find()
+            .filter(job::Column::State.eq("dispatched"))
+            .all(&txn)
+            .await?
+        {
+            if !lease_lapsed(job.lease_expires_at.as_deref(), now_instant) {
+                continue;
+            }
+            let mut active_model = job.into_active_model();
+            active_model.state = Set("queued".to_string());
+            active_model.job_token = Set(cuid2::create_id());
+            active_model.lease_expires_at = Set(None);
+            active_model.updated_at = Set(now.to_string());
+            reconciled.push(active_model.update(&txn).await?);
+        }
 
         // The per-harness parallelism limits (harnesses with no configured limit are
         // absent → unlimited).
@@ -6702,7 +6825,6 @@ impl Db {
             .await?;
 
         let mut claimed: Option<job::Model> = None;
-        let mut reconciled: Vec<job::Model> = Vec::new();
         for job in waiting {
             let active = active_by_harness
                 .get(&job.harness_slug)
@@ -6726,8 +6848,12 @@ impl Db {
                 if job.test_type == TestType::GameJam.as_str() {
                     jams_in_flight.insert(jam_key);
                 }
+                // A job this pass returned to the queue and now claims again is
+                // announced by the claim alone.
+                reconciled.retain(|requeued| requeued.id != job.id);
                 let mut active_model = job.into_active_model();
                 active_model.state = Set("dispatched".to_string());
+                active_model.lease_expires_at = Set(Some(lease.clone()));
                 active_model.updated_at = Set(now.to_string());
                 claimed = Some(active_model.update(&txn).await?);
                 continue;
@@ -6739,6 +6865,9 @@ impl Db {
             // claim pass would be pure noise on the console stream.
             let target = if has_room { "queued" } else { "pending" };
             if job.state != target {
+                // A job this pass returned to the queue is reported once, in the state
+                // it ends the pass in.
+                reconciled.retain(|requeued| requeued.id != job.id);
                 let mut active_model = job.into_active_model();
                 active_model.state = Set(target.to_string());
                 active_model.updated_at = Set(now.to_string());
@@ -6758,6 +6887,32 @@ impl Db {
     /// the display states the same pass reconciled around it.
     pub async fn claim_next_job(&self, now: &str) -> Result<Option<job::Model>> {
         Ok(self.claim_next(now).await?.claimed)
+    }
+
+    /// Extend the claim lease of each listed job still driven ([`DRIVEN_STATES`]) to
+    /// [`JOB_LEASE`] past `now`, the dispatcher's renewal for every job whose driver
+    /// `Job` is live. Ids of unknown jobs and of jobs in any other state are ignored:
+    /// a job that finished or returned to the queue between the dispatcher's read of
+    /// the cluster and this call holds no lease to extend. Returns how many jobs were
+    /// renewed. `BadRequest` when `now` is not an RFC 3339 instant.
+    pub async fn renew_job_leases(&self, ids: &[String], now: &str) -> Result<u64> {
+        let lease = job_lease_expiry(now)?;
+        if ids.is_empty() {
+            return Ok(0);
+        }
+        let mut renewed = 0;
+        // Chunked so a large cluster's renewal stays under the per-statement bound
+        // parameter limits.
+        for chunk in ids.chunks(1000) {
+            renewed += job::Entity::update_many()
+                .col_expr(job::Column::LeaseExpiresAt, Expr::value(lease.clone()))
+                .filter(job::Column::Id.is_in(chunk.iter().cloned()))
+                .filter(job::Column::State.is_in(DRIVEN_STATES))
+                .exec(&self.conn())
+                .await?
+                .rows_affected;
+        }
+        Ok(renewed)
     }
 
     /// Every stored per-harness config row (harnesses with no overrides are absent).
@@ -6819,6 +6974,10 @@ impl Db {
         active.state = Set("canceled".to_string());
         active.updated_at = Set(now.to_string());
         active.detail = Set(Some(detail.to_string()));
+        // `canceled` is terminal, so it ends the hold like any other terminal state: a
+        // canceled job is never finished from a held record.
+        active.held_record = Set(None);
+        active.held_detail = Set(None);
         let updated = active.update(&txn).await?;
         txn.commit().await?;
         Ok(Some(updated))
@@ -6860,6 +7019,8 @@ impl Db {
         let mut active = model.into_active_model();
         active.record_id = Set(Some(record_id.to_string()));
         active.updated_at = Set(now.to_string());
+        active.held_record = Set(None);
+        active.held_detail = Set(None);
         let updated = active.update(&txn).await?;
         txn.commit().await?;
         Ok(Some(updated))
@@ -6906,6 +7067,8 @@ impl Db {
             .col_expr(job::Column::State, Expr::value("canceled"))
             .col_expr(job::Column::UpdatedAt, Expr::value(now))
             .col_expr(job::Column::Detail, Expr::value(detail))
+            .col_expr(job::Column::HeldRecord, Expr::value(Option::<String>::None))
+            .col_expr(job::Column::HeldDetail, Expr::value(Option::<String>::None))
             .filter(job::Column::State.is_in(states));
         if let Some(origin) = filter.origin {
             update = update.filter(origin.condition());
@@ -6987,7 +7150,239 @@ impl Db {
         if let Some(record_id) = record_id {
             active.record_id = Set(Some(record_id.to_string()));
         }
+        // A terminal state ends the hold: the run is recorded from here on, so the copy
+        // of its record kept against a lost driver is no longer needed.
+        if matches!(state, "succeeded" | "failed") {
+            active.held_record = Set(None);
+            active.held_detail = Set(None);
+        }
         Ok(Some(active.update(&self.conn()).await?))
+    }
+
+    /// Hold a finished run's record against job `id`: move the job to `storing` and
+    /// store `record_json` and `detail` on its row, replacing whatever an earlier
+    /// `storing` report held. Returns the updated row, or `None` when the job is unknown
+    /// or no longer in one of the `from` states (it was canceled, or already finished).
+    ///
+    /// This is the write behind the driver's held report: the record is in the database
+    /// before the report is answered, so a driver lost from then on leaves a run the
+    /// backend can still finish ([`Self::mark_job_lost`]).
+    pub async fn hold_job_record(
+        &self,
+        id: &str,
+        from: &[&str],
+        record_json: &str,
+        detail: Option<&str>,
+        now: &str,
+    ) -> Result<Option<job::Model>> {
+        let txn = self.conn().begin().await?;
+        let candidate = job::Entity::find_by_id(id.to_string())
+            .filter(job::Column::State.is_in(from.iter().copied()))
+            .one(&txn)
+            .await?;
+        let Some(model) = candidate else {
+            txn.commit().await?;
+            return Ok(None);
+        };
+        let mut active = model.into_active_model();
+        active.state = Set("storing".to_string());
+        active.updated_at = Set(now.to_string());
+        active.held_record = Set(Some(record_json.to_string()));
+        active.held_detail = Set(detail.map(str::to_string));
+        let updated = active.update(&txn).await?;
+        txn.commit().await?;
+        Ok(Some(updated))
+    }
+
+    /// Record that the dispatcher reported job `id` lost, at `now`. A terminal report
+    /// reaching the backend while the mark is set supersedes the lost outcome rather
+    /// than repeating it; [`Self::clear_job_lost`] removes the mark once it has.
+    pub async fn mark_job_lost(&self, id: &str, now: &str) -> Result<()> {
+        job::Entity::update_many()
+            .col_expr(job::Column::LostAt, Expr::value(now))
+            .filter(job::Column::Id.eq(id))
+            .exec(&self.conn())
+            .await?;
+        Ok(())
+    }
+
+    /// Remove job `id`'s lost mark: a terminal report has superseded the lost outcome,
+    /// so a repeat of that report is a repeat and nothing more.
+    pub async fn clear_job_lost(&self, id: &str) -> Result<()> {
+        job::Entity::update_many()
+            .col_expr(job::Column::LostAt, Expr::value(Option::<String>::None))
+            .filter(job::Column::Id.eq(id))
+            .exec(&self.conn())
+            .await?;
+        Ok(())
+    }
+
+    /// Withdraw the automatic retry job `parent` enqueued: delete it while it is still
+    /// waiting (`queued` or `pending`), cancel it with `detail` once it has been claimed,
+    /// and clear `parent`'s [`retried_by`](job::Model::retried_by) either way, in one
+    /// transaction.
+    ///
+    /// A retry that already reached a terminal state is left standing, and so is the
+    /// stamp that points at it: it is a finished run, and withdrawing it now would count
+    /// one launch twice. `None` when `parent` is unknown or enqueued no retry.
+    pub async fn withdraw_retry(
+        &self,
+        parent: &str,
+        now: &str,
+        detail: &str,
+    ) -> Result<Option<WithdrawnRetry>> {
+        let txn = self.conn().begin().await?;
+        let Some(retry_id) = job::Entity::find_by_id(parent.to_string())
+            .one(&txn)
+            .await?
+            .and_then(|job| job.retried_by)
+        else {
+            txn.commit().await?;
+            return Ok(None);
+        };
+        let Some(retry) = job::Entity::find_by_id(retry_id.clone()).one(&txn).await? else {
+            // The retry row is gone (its run was deleted): only the stamp is left.
+            clear_retried_by(&txn, parent).await?;
+            txn.commit().await?;
+            return Ok(None);
+        };
+        let withdrawn = if CANCELABLE_WAITING_STATES.contains(&retry.state.as_str()) {
+            // Any events it stored cascade with it (`job_event`).
+            job::Entity::delete_by_id(retry_id).exec(&txn).await?;
+            WithdrawnRetry::Deleted(retry)
+        } else if IN_FLIGHT_STATES.contains(&retry.state.as_str()) {
+            let mut active = retry.into_active_model();
+            active.state = Set("canceled".to_string());
+            active.updated_at = Set(now.to_string());
+            active.detail = Set(Some(detail.to_string()));
+            active.held_record = Set(None);
+            active.held_detail = Set(None);
+            WithdrawnRetry::Canceled(active.update(&txn).await?)
+        } else {
+            txn.commit().await?;
+            return Ok(Some(WithdrawnRetry::Finished(retry)));
+        };
+        clear_retried_by(&txn, parent).await?;
+        txn.commit().await?;
+        Ok(Some(withdrawn))
+    }
+
+    /// Record on run `run_id` whether the artifacts service holds its tree, as the
+    /// driver's terminal report said. A no-op for an unknown run.
+    pub async fn set_run_artifacts_stored(&self, run_id: &str, stored: bool) -> Result<()> {
+        let txn = self.conn().begin().await?;
+        let updated = run::Entity::update_many()
+            .col_expr(run::Column::ArtifactsStored, Expr::value(stored))
+            .filter(run::Column::Id.eq(run_id))
+            .exec(&txn)
+            .await?;
+        if updated.rows_affected > 0 {
+            touch_run(&txn, run_id).await?;
+        }
+        txn.commit().await?;
+        Ok(())
+    }
+
+    /// Store a batch of job `job_id`'s events, the first at sequence `first_sequence`
+    /// and each following one a sequence higher, in one transaction (the driver's
+    /// events page, "Delivery to the backend").
+    ///
+    /// An event whose `(job, sequence)` key is already stored is skipped, so a resent
+    /// batch, or one overlapping a batch already stored, stores only what is new. Returns
+    /// the events this call stored, with their sequences, in sequence order: the ones to
+    /// fan out to the job's live subscribers. Each insert is skipped on conflict rather
+    /// than checked beforehand, so two deliveries of one batch racing on PostgreSQL each
+    /// report only the events they actually wrote.
+    ///
+    /// The job's row must exist (the key's foreign key); a sequence past `i64::MAX` is
+    /// refused with [`BackendError::BadRequest`] before anything is written.
+    pub async fn store_job_events(
+        &self,
+        job_id: &str,
+        first_sequence: u64,
+        events: &[HarnessEvent],
+    ) -> Result<Vec<(u64, HarnessEvent)>> {
+        let mut rows = Vec::with_capacity(events.len());
+        for (offset, event) in (0u64..).zip(events) {
+            let out_of_range = || {
+                BackendError::BadRequest(format!(
+                    "event sequence {first_sequence} + {offset} is out of range"
+                ))
+            };
+            let sequence = first_sequence
+                .checked_add(offset)
+                .ok_or_else(out_of_range)?;
+            let key = i64::try_from(sequence).map_err(|_| out_of_range())?;
+            rows.push((sequence, key, serde_json::to_string(event)?, event));
+        }
+
+        let txn = self.conn().begin().await?;
+        let mut stored = Vec::new();
+        for (sequence, key, event_json, event) in rows {
+            let inserted = job_event::Entity::insert(job_event::ActiveModel {
+                job_id: Set(job_id.to_string()),
+                sequence: Set(key),
+                event_json: Set(event_json),
+            })
+            .on_conflict(
+                OnConflict::columns([job_event::Column::JobId, job_event::Column::Sequence])
+                    .do_nothing()
+                    .to_owned(),
+            )
+            .exec_without_returning(&txn)
+            .await?;
+            if inserted > 0 {
+                stored.push((sequence, event.clone()));
+            }
+        }
+        txn.commit().await?;
+        Ok(stored)
+    }
+
+    /// Job `job_id`'s stored events in sequence order: its recorded stream. Empty for a
+    /// job with none stored, or an unknown job.
+    pub async fn job_events(&self, job_id: &str) -> Result<Vec<HarnessEvent>> {
+        Ok(self
+            .job_events_after(job_id, None)
+            .await?
+            .into_iter()
+            .map(|(_, event)| event)
+            .collect())
+    }
+
+    /// Job `job_id`'s stored events with their sequences, in sequence order, keeping
+    /// only those after `after` when it is given. The live stream replays these as its
+    /// backlog and reads the ones after the last it delivered when its subscriber falls
+    /// behind the fan-out.
+    pub async fn job_events_after(
+        &self,
+        job_id: &str,
+        after: Option<u64>,
+    ) -> Result<Vec<(u64, HarnessEvent)>> {
+        let mut query = job_event::Entity::find().filter(job_event::Column::JobId.eq(job_id));
+        if let Some(after) = after {
+            // A sequence past the signed range was never stored (the store refuses one),
+            // so nothing follows it.
+            let Ok(after) = i64::try_from(after) else {
+                return Ok(Vec::new());
+            };
+            query = query.filter(job_event::Column::Sequence.gt(after));
+        }
+        query
+            .order_by_asc(job_event::Column::Sequence)
+            .all(&self.conn())
+            .await?
+            .into_iter()
+            .map(|row| {
+                let sequence = u64::try_from(row.sequence).map_err(|_| {
+                    BackendError::Internal(format!(
+                        "job `{job_id}` holds the negative event sequence {}",
+                        row.sequence
+                    ))
+                })?;
+                Ok((sequence, serde_json::from_str(&row.event_json)?))
+            })
+            .collect()
     }
 
     /// Fetch one job by id.
@@ -9274,3 +9669,11 @@ impl Db {
         Ok(res.rows_affected)
     }
 }
+
+#[cfg(test)]
+#[path = "db.lease.test.rs"]
+mod lease_tests;
+
+#[cfg(test)]
+#[path = "db.job_events.test.rs"]
+mod job_events_tests;

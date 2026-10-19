@@ -311,6 +311,10 @@ fn queued_job(harness_slug: &str, gg_config_json: Option<&str>) -> job::Model {
         updated_at: "2026-06-17T20:40:00Z".to_string(),
         started_at: None,
         retried_by: None,
+        held_record: None,
+        held_detail: None,
+        lost_at: None,
+        lease_expires_at: None,
     }
 }
 

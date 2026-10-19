@@ -29,13 +29,13 @@ use crate::{
     TestCaseVersion, TestType, materialize_version,
 };
 use test_cabinet_backend_client::{BackendClient, HttpBackendClient};
-use tokio::sync::mpsc::UnboundedSender;
 
 use crate::client::JobClient;
 use crate::config::{Config, DriverRuntime};
 use crate::creds::mounted_creds;
 use crate::kubernetes::{KubernetesArtifactCollector, KubernetesContainerRuntime};
-use crate::sink::{BackendEventSink, BackendPreviewSink, Outbound};
+use crate::sigterm::StageCell;
+use crate::sink::{BackendEventSink, BackendPreviewSink, RelaySender};
 
 /// Why a run failed, with the resolved version when the failure happened after the
 /// definition was materialized. Mirrors the worker's `RunFailure`: the version
@@ -115,14 +115,19 @@ impl RunFailure {
 /// engine writes — including a hung run's salvaged session record — is keyed by the same
 /// id the caller's own failure/cancellation record will carry. See
 /// [`RunEngine::run_resolved`](crate::RunEngine::run_resolved).
+///
+/// `stage` is moved through the run's stages as the run reaches them, by the engine
+/// through the event sink, for the driver's [`SIGTERM` handling](crate::sigterm).
+#[allow(clippy::too_many_arguments)]
 pub async fn drive(
     config: &Config,
     run_id: &str,
     request: &RunRequest,
-    outbound: &UnboundedSender<Outbound>,
+    outbound: &RelaySender,
     job_client: &JobClient,
     resolved: &std::sync::Mutex<Option<TestCaseVersion>>,
     cancel: &RunCancellation,
+    stage: &Arc<StageCell>,
 ) -> Result<RunRecord, RunFailure> {
     // When the run requests an explicit auth mode, lock it for the engine by
     // setting `TCAB_AUTH_MODE` before resolution — the driver does not select the
@@ -261,6 +266,7 @@ pub async fn drive(
                 outbound,
                 job_client,
                 cancel,
+                stage,
             )
             .await
         }
@@ -286,6 +292,7 @@ pub async fn drive(
                 outbound,
                 job_client,
                 cancel,
+                stage,
             )
             .await
         }
@@ -315,9 +322,10 @@ async fn drive_engine<R, C>(
     runtime: R,
     collector: C,
     creds: Option<Box<dyn CredBytesSource + Send + Sync>>,
-    outbound: &UnboundedSender<Outbound>,
+    outbound: &RelaySender,
     client: &JobClient,
     cancel: &RunCancellation,
+    stage: &Arc<StageCell>,
 ) -> Result<RunRecord, crate::Error>
 where
     R: ContainerRuntime,
@@ -374,7 +382,7 @@ where
         clock: std::sync::Arc::new(crate::SystemClock),
     };
 
-    let mut events = BackendEventSink::new(outbound.clone());
+    let mut events = BackendEventSink::new(outbound.clone()).with_stage(stage.clone());
     // An asset-generation run streams its live drawing frames through the same
     // relay, so the console's run monitor can watch the sprite take shape; other
     // run types produce none and the listener simply never fires.

@@ -12,7 +12,7 @@
 # via host.docker.internal (the `cluster`/`kubeconfig` targets wire this up). It
 # also works on a bare host with `docker`/`k3d`/`kubectl` installed directly.
 # Everything runs in the cluster — the backend, the dispatcher, the
-# artifact service, the arena service, the in-cluster Grafana LGTM observability
+# artifact service, the repos service, the arena service, the in-cluster Grafana LGTM observability
 # stack, and one per-run driver Job per enqueued run. There is no worker-on-host
 # wiring; a run enqueued at the backend schedules as a Job here, and an adversarial
 # match/tournament runs on the arena service. The web console is the ONE piece that
@@ -61,7 +61,7 @@
 #                   environment-representative `-gg` images WITH the `gg selfcheck` gate — the same command CI
 #                   publishes behind (builds only; imports nothing)
 #   local-reapply   re-apply the overlay ONLY (after a manifest-only change — RBAC, env, volumes; no image rebuild)
-#   local-forward   foreground-forward backend→:8787, artifacts→:8790, arena→:8791, AND Grafana→:3000 to localhost (the console runs from source via `npm run -w apps/web dev`)
+#   local-forward   foreground-forward backend→:8787, artifacts→:8790, arena→:8791, repos→:8792, AND Grafana→:3000 to localhost (the console runs from source via `npm run -w apps/web dev`)
 #   local-grafana   foreground-forward Grafana→:3000 AND the OTLP collector→:4318/:4317 to localhost (use when you also need the OTLP ports; local-forward already exposes Grafana)
 #   local-ingest    re-ingest the whole catalog (`tcab ingest --force`) — the scripted whole-catalog refresh
 #   local-import    re-import EVERY already-built service + run image into the node, no rebuild (recovery after the node lost its images)
@@ -149,11 +149,20 @@ DISPATCHER_IMG := $(REGISTRY_PREFIX)/tcab-dispatcher:local
 DRIVER_IMG     := $(REGISTRY_PREFIX)/tcab-driver:local
 ARTIFACTS_IMG  := $(REGISTRY_PREFIX)/tcab-artifacts:local
 ARENA_IMG      := $(REGISTRY_PREFIX)/tcab-arena:local
+REPOS_IMG      := $(REGISTRY_PREFIX)/tcab-repos:local
+
+# The repos service is its own repository, microservice-repos, checked out as the
+# superrepo's submodule of that name: its image is built from that checkout's own
+# Dockerfile with the checkout as the build context, as its pipeline builds it. Its
+# dependencies on other repositories are fetched at the tags its manifest pins.
+# The commit is resolved the way TCAB_COMMIT is, from that checkout.
+REPOS_DIR    := $(REPO)/microservice-repos
+REPOS_COMMIT ?= $(shell sh -c 'h=$$(git -C "$(REPOS_DIR)" rev-parse HEAD 2>/dev/null) || exit 0; [ -n "$$(git -C "$(REPOS_DIR)" status --porcelain 2>/dev/null)" ] && h="$$h-dirty"; printf %s "$$h"')
 
 # The web console is intentionally absent: it runs from source locally
 # (`npm run -w apps/web dev`), not as an in-cluster pod, so there is no tcab-web
 # image to build or import here (see the header comment and the local overlay).
-ALL_IMGS := $(BACKEND_IMG) $(DISPATCHER_IMG) $(DRIVER_IMG) $(ARTIFACTS_IMG) $(ARENA_IMG)
+ALL_IMGS := $(BACKEND_IMG) $(DISPATCHER_IMG) $(DRIVER_IMG) $(ARTIFACTS_IMG) $(ARENA_IMG) $(REPOS_IMG)
 
 # The run-container images — the base end-to-end image plus the per-asset-kind
 # images that BAKE IN their modeling tool (`draw`/`draw-sheet`/`voxel`/`voxel-anim`,
@@ -337,7 +346,7 @@ local-up: cluster images run-images apply-overlay local-ingest apply-wait
 	@echo ""
 	@echo "Stack is up in namespace '$(NS)' (services only — the web console runs from source, see below)."
 	@echo "Forward the data plane with:  make -C deployments/local local-forward"
-	@echo "  backend → http://127.0.0.1:8787   artifacts → http://127.0.0.1:8790   arena → http://127.0.0.1:8791   Grafana → http://127.0.0.1:3000"
+	@echo "  backend → http://127.0.0.1:8787   artifacts → http://127.0.0.1:8790   arena → http://127.0.0.1:8791   repos → http://127.0.0.1:8792   Grafana → http://127.0.0.1:3000"
 	@echo "Then start the web console from source (a separate terminal):  npm run -w apps/web dev  →  http://127.0.0.1:1430"
 	@echo "  (it proxies /api, /artifacts and /arena to the forwards above as dev@local — no extra flags; edits hot-reload with no image rebuild)"
 	@echo "Observe it with Grafana at http://127.0.0.1:3000 (anonymous admin) — local-forward above already exposes it; local-grafana adds the OTLP ports for out-of-cluster exporters."
@@ -526,14 +535,16 @@ audio-store:
 	    -t '$(AUDIO_STORE_IMG)' -f '$(REPO)/containers/audio-store/Dockerfile' '$(REPO)'; \
 	fi
 
-# Build the service images from the same Dockerfile the cluster uses, then load
-# them into the cluster's nodes (no registry needed for local development).
+# Build the service images from the same Dockerfiles the cluster's images are built
+# from, then load them into the cluster's nodes (no registry needed for local
+# development).
 #
-# All six come out of ONE file, deployments/images/services.Dockerfile, each
-# selected with `--target`. That file shares a single cargo build stage across every
-# service, so the six builds below compile the workspace ONCE between them: the
-# first `docker build` runs the shared stage and the other five hit it in the layer
-# cache. (When they were six separate Dockerfiles each re-dirtied the shared cargo
+# The repos image is built from the microservice-repos checkout's own Dockerfile,
+# with that checkout as its context (REPOS_DIR above). Every other service image
+# comes out of ONE file, deployments/images/services.Dockerfile, each selected with
+# `--target`. That file shares a single cargo build stage across every service, so
+# those builds compile the workspace ONCE between them: the first `docker build`
+# runs the shared stage and the others hit it in the layer cache. (When they were six separate Dockerfiles each re-dirtied the shared cargo
 # target/ cache mount, so every service rebuilt the ~19 workspace crates it pulls in
 # — six times over per `make images`, even with no source change.)
 #
@@ -568,6 +579,8 @@ images: audio-store
 	                        --target driver    -t '$(DRIVER_IMG)'     -f '$(SERVICES_DOCKERFILE)' '$(REPO)'
 	$(CONTAINER_TOOL) build --build-arg TCAB_BUILD_COMMIT='$(TCAB_COMMIT)' --target artifacts  -t '$(ARTIFACTS_IMG)'  -f '$(SERVICES_DOCKERFILE)' '$(REPO)'
 	$(CONTAINER_TOOL) build --build-arg TCAB_BUILD_COMMIT='$(TCAB_COMMIT)' --target arena      -t '$(ARENA_IMG)'      -f '$(SERVICES_DOCKERFILE)' '$(REPO)'
+	@[ -f '$(REPOS_DIR)/Dockerfile' ] || { echo "ERROR: $(REPOS_DIR) is not checked out; run: git submodule update --init microservice-repos" >&2; exit 1; }
+	$(CONTAINER_TOOL) build --build-arg TCAB_BUILD_COMMIT='$(REPOS_COMMIT)' -t '$(REPOS_IMG)' -f '$(REPOS_DIR)/Dockerfile' '$(REPOS_DIR)'
 	$(call save_and_import,$(ALL_IMGS))
 
 # Build the run-container images (the base + per-asset-kind images with their
@@ -898,8 +911,8 @@ INGEST_POD_TIMEOUT ?= 300
 # restarts only the services it rebuilds, so it waits on exactly those — tcab-lgtm
 # and tcab-azurite are neither rebuilt nor restarted there, and waiting on a
 # rollout nobody started proves nothing.
-APPLY_WORKLOADS   := statefulset/tcab-backend deployment/tcab-azurite deployment/tcab-artifacts statefulset/tcab-lgtm deployment/tcab-arena deployment/tcab-dispatcher
-RESTART_WORKLOADS := statefulset/tcab-backend deployment/tcab-artifacts deployment/tcab-arena deployment/tcab-dispatcher
+APPLY_WORKLOADS   := statefulset/tcab-backend deployment/tcab-azurite deployment/tcab-artifacts deployment/tcab-repos statefulset/tcab-lgtm deployment/tcab-arena deployment/tcab-dispatcher
+RESTART_WORKLOADS := statefulset/tcab-backend deployment/tcab-artifacts deployment/tcab-repos deployment/tcab-arena deployment/tcab-dispatcher
 
 # Wait for every workload in $(WAIT_WORKLOADS) to finish rolling out, then report once.
 #
@@ -1031,11 +1044,12 @@ local-ingest:
 # OTLP collector ports (:4318/:4317) forwarded — to export telemetry from a binary
 # run OUTSIDE the cluster — which this data-plane forward deliberately leaves out.
 local-forward:
-	@echo "Forwarding backend→127.0.0.1:8787, artifacts→127.0.0.1:8790, arena→127.0.0.1:8791, Grafana→http://127.0.0.1:3000 (Ctrl-C to stop)…"
+	@echo "Forwarding backend→127.0.0.1:8787, artifacts→127.0.0.1:8790, arena→127.0.0.1:8791, repos→127.0.0.1:8792, Grafana→http://127.0.0.1:3000 (Ctrl-C to stop)…"
 	@echo "Start the console separately with:  npm run -w apps/web dev  →  http://127.0.0.1:1430"
 	@$(KUBECTL) -n '$(NS)' port-forward svc/tcab-backend 8787:8787 & \
 	  $(KUBECTL) -n '$(NS)' port-forward svc/tcab-artifacts 8790:8790 & \
 	  $(KUBECTL) -n '$(NS)' port-forward svc/tcab-arena 8791:8791 & \
+	  $(KUBECTL) -n '$(NS)' port-forward svc/tcab-repos 8792:8792 & \
 	  $(KUBECTL) -n '$(NS)' port-forward svc/tcab-lgtm 3000:3000 & \
 	  wait
 

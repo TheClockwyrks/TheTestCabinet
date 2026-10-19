@@ -151,9 +151,10 @@ arm's deferring to gg's `rust-toolchain.toml`. A gate whose toolchain is absent 
 names what installs it, so a toolchain missing here is a check that says so
 rather than one that quietly passes.
 
-`post-create.sh` populates the `contracts/`, `engines/` and `gg/` submodules, which every
-build compiles against, and the `test-suites/` submodule, the suites checkout the local backend
-ingests (not `cold-storage/`, which is optional and about 2 GB), through
+`post-create.sh` populates the `contracts/`, `engines/`, `gg/` and
+`microservice-repos/` submodules, which every build compiles against, and the
+`test-suites/` submodule, the suites checkout the local backend ingests (not
+`cold-storage/`, which is optional and about 2 GB), through
 `tools/submodule-checkout.sh` (see [Submodule checkout](#submodule-checkout)),
 installs the git hook through `scripts/setup-hooks.sh`, places cargo's target
 directory (see [Where cargo builds](#where-cargo-builds)) and installs the npm
@@ -677,20 +678,22 @@ warning about it.
 
 ## Submodule checkout
 
-The `contracts/`, `engines/`, `gg/` and `test-suites/` submodules live in the
-organization's other repositories, reached over SSH at `ssh.dev.azure.com`.
+The `contracts/`, `engines/`, `gg/`, `microservice-repos/` and `test-suites/`
+submodules live in the organization's other repositories, reached over SSH at
+`ssh.dev.azure.com`.
 `post-create.sh` checks them out ahead of `npm ci`, whose workspace lists the
 packages `contracts/` and `engines/` hold, and `post-start.sh` checks them out
 again at every start, each through `tools/submodule-checkout.sh` after the SSH
 agent is published. The script pins
 Azure DevOps' published RSA host key in `~/.ssh/known_hosts`, so the first clone
 does not stop at the interactive host-key prompt nothing is there to answer, and
-runs `git submodule update --init contracts engines gg test-suites` through the host's agent
-when the checkout holds a `.gitmodules`. Passed submodule paths, it checks out
-those instead; `cold-storage/` is left to a `git submodule update --init
-cold-storage` by hand. It never fails the step it runs from: a host with no
-agent, or no network, keeps a working container and says so, and the next start
-or that command checks the submodules out once SSH works.
+runs `git submodule update --init contracts engines gg microservice-repos test-suites`
+through the host's agent when the checkout holds a `.gitmodules`. Passed
+submodule paths, it checks out those instead; `cold-storage/` is left to a
+`git submodule update --init cold-storage` by hand. It never fails the step it
+runs from: a host with no agent, or no network, keeps a working container and
+says so, and the next start or that command checks the submodules out once SSH
+works.
 
 It never holds the step either. A connection can stall where it cannot fail: an
 agent whose key waits on an approval nobody is there to give answers

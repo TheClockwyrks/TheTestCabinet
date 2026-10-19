@@ -225,6 +225,8 @@ pub(crate) async fn report(state: &AppState, job_id: &str, record: RunRecord) {
             state: DriverState::Succeeded,
             record: Some(record),
             detail: None,
+            artifacts_stored: None,
+            store_fault: None,
         }),
     )
     .await
@@ -250,6 +252,8 @@ pub(crate) async fn report_failed(state: &AppState, job_id: &str) -> Option<Stri
             state: DriverState::Failed,
             record: None,
             detail: Some("harness unavailable".to_string()),
+            artifacts_stored: None,
+            store_fault: None,
         }),
     )
     .await

@@ -82,6 +82,10 @@ mod m20261002_000055_ladder_dispatch;
 mod m20261009_000056_add_retry_count;
 mod m20261010_000057_drop_model_price_rates;
 mod m20261018_000058_collapse_review_reviewer;
+mod m20261019_000059_add_job_held_record;
+mod m20261019_000060_add_run_artifacts_stored;
+mod m20261019_000061_add_job_lease;
+mod m20261019_000062_create_job_event;
 
 pub struct Migrator;
 
@@ -151,6 +155,10 @@ impl MigratorTrait for Migrator {
             Box::new(m20261009_000056_add_retry_count::Migration),
             Box::new(m20261010_000057_drop_model_price_rates::Migration),
             Box::new(m20261018_000058_collapse_review_reviewer::Migration),
+            Box::new(m20261019_000059_add_job_held_record::Migration),
+            Box::new(m20261019_000060_add_run_artifacts_stored::Migration),
+            Box::new(m20261019_000061_add_job_lease::Migration),
+            Box::new(m20261019_000062_create_job_event::Migration),
         ]
     }
 }

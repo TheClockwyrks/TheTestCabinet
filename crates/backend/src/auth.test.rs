@@ -435,6 +435,27 @@ async fn the_dispatchers_routes_take_only_the_service_token() {
 }
 
 #[tokio::test]
+async fn a_lease_renewal_takes_only_the_service_token() {
+    let (_dir, _state, router) = local_backend().await;
+    let body = || Some(serde_json::json!({ "jobIds": ["j1"] }));
+    let (status, _) = call(&router, "POST", "/jobs/leases", &[Cred::None], body()).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    for cred in [Cred::LocalEmail("dev@local"), Cred::Bearer("token-j1")] {
+        let (status, _) = call(&router, "POST", "/jobs/leases", &[cred], body()).await;
+        assert_eq!(status, StatusCode::FORBIDDEN);
+    }
+    let (status, body) = call(
+        &router,
+        "POST",
+        "/jobs/leases",
+        &[Cred::Bearer(SERVICE_TOKEN)],
+        body(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NO_CONTENT, "{body}");
+}
+
+#[tokio::test]
 async fn a_job_token_reads_and_uploads_run_media_but_takes_nothing_else() {
     let (_dir, _state, router) = local_backend().await;
     let (status, body) = call(

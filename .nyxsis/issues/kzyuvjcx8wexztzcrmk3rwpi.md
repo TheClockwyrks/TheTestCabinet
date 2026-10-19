@@ -6,10 +6,11 @@ zone: DATA
 number: 2
 title: Create the repos service as microservice-repos
 type: generic
-state: open
+state: done
 depends_on:
   - txf8l556rdhfmbw9k1bxwvet
 created: 2026-10-13T21:12:43.921022081Z
+done: 2026-10-19T13:38:20.97463697Z
 ---
 
 A run's implementation is pushed to GitHub by the publisher Job from a tree it

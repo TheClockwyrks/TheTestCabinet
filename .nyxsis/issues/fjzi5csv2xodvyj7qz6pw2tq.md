@@ -6,8 +6,9 @@ zone: RUN
 number: 1
 title: Hand a finished run to durable storage before the driver exits
 type: generic
-state: open
+state: done
 created: 2026-10-19T00:36:36.216805336Z
+done: 2026-10-19T15:36:04.199235552Z
 ---
 
 A finished run's result lives only on the driver pod's disk until its one

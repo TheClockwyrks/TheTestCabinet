@@ -17,6 +17,7 @@
 //! | `TCAB_DISPATCHER_MAX_PUBLISH_INFLIGHT` | no | The maximum number of non-terminal publish `Job`s the dispatcher keeps in flight (the publish lane's admission cap). Driver `Job`s do not count against it, so a publish never waits behind runs. | `8` |
 //! | `TCAB_DISPATCHER_POLL_INTERVAL_SECONDS` | no | How long to back off after a tick that admitted nothing (both queues empty, or both lanes at their caps) before polling again. | `2` |
 //! | `TCAB_DISPATCHER_JOB_TTL_SECONDS` | no | `ttlSecondsAfterFinished` on each driver `Job`, for automatic cleanup once it terminates. | `300` |
+//! | `TCAB_DISPATCHER_DRIVER_TERMINATION_GRACE_SECONDS` | no | `terminationGracePeriodSeconds` on each driver pod: the time a driver sent `SIGTERM` has to hand its record to the backend and report before it is killed (see the driver's termination handling). A value that is not a whole number of seconds is a configuration error. | `120` |
 //! | `TCAB_DISPATCHER_DRIVER_CPU_REQUEST` / `TCAB_DISPATCHER_DRIVER_MEMORY_REQUEST` | no | CPU/memory **requests** on the driver container. These keep the driver pod out of the `BestEffort` QoS class, and the memory request is the node's reservation for the driver — see [`DEFAULT_DRIVER_CPU_REQUEST`] and [`DEFAULT_DRIVER_MEMORY_REQUEST`]. Set to a blank value to omit them (not advised). | `100m` / `2Gi` |
 //! | `TCAB_DISPATCHER_DRIVER_MEMORY_LIMIT` | no | A memory **limit** on the driver container. **Unset by default, deliberately**: a memory limit is a cgroup ceiling the kernel enforces by `SIGKILL`, and a driver OOM-killed mid-run destroys a run that has already paid for its API calls — see [`DEFAULT_DRIVER_MEMORY_REQUEST`] for why run pods carry a request and no limit. Set it only when a namespace `LimitRange` or quota forces one. | — |
 //! | `TCAB_DISPATCHER_DRIVER_CPU_LIMIT` | no | The CPU **limit** on the driver container, which bounds how wide the post-run toolchain fans out and so how much memory it uses — see [`DEFAULT_DRIVER_CPU_LIMIT`]. Over-limit CPU is throttled, never killed. Set to a blank value to leave the CPU unbounded. | `2` |
@@ -48,6 +49,9 @@
 //! | `TCAB_CONTAINER_REGISTRY` / `TCAB_CONTAINER_TAG` | The registry/namespace and tag the driver resolves the run-container image from (the driver's `harness::resolve_run_image`); unset uses the compiled defaults (`testcabinet.azurecr.io` / `latest`). The Azure pipeline's deploy sets both to the ACR and the commit being deployed, pinning the run images to the same `<git-sha>` as the service images. |
 //! | `TCAB_CONTAINER_IMAGE_*` (one per run image — `_BASE_WASM`, `_FULL_STACK_2D`, `_FULL_STACK_3D`, `_SPRITE`, `_VOXEL`, …, `_BLENDER`, `_ADVERSARIAL`, `_PERFORMANCE`; the full set is `test_cabinet_contracts::harness::RUN_IMAGE_OVERRIDE_ENVS`) | Full per-image ref overrides (registry+name+tag) that bypass the registry/tag composition for one run image; unset composes from the registry/tag above. |
 //! | `TCAB_ARTIFACTS_URL` | The artifact service the driver uploads the produced run tree to before reporting terminal status; unset skips the upload (see the driver's `Config`). |
+//! | `TCAB_REPOS_URL` | The repos service the driver uploads the run's implementation bundle to before reporting terminal status; unset skips the upload (see the driver's `Config`). Forwarded into publish `Job`s as well. |
+//! | `TCAB_ARTIFACT_UPLOAD_WAIT_SECONDS` | How long the driver retries each upload, counted from its first failure (see the driver's `Config`). |
+//! | `TCAB_DRIVER_REPORT_WAIT_SECONDS` | How long the driver retries the held (`storing`) report and the terminal report, counted from each call's first failure (see the driver's `Config`). |
 //! | `OTEL_EXPORTER_OTLP_ENDPOINT` / `OTEL_EXPORTER_OTLP_HEADERS` / `OTEL_EXPORTER_OTLP_PROTOCOL` | Observability: forwarded so each driver `Job` exports its run/driver spans to the same OTLP collector as the services; unset leaves the driver on stdout-only logging. `OTEL_SERVICE_NAME` is **not** forwarded (the driver keeps its own `tcab-driver` name). |
 //! | `TCAB_ENV` | Tags the driver's telemetry with the same `deployment.environment.name` as the rest of the deployment. |
 //!
@@ -178,6 +182,12 @@ pub const DEFAULT_PUBLISHER_CPU_REQUEST: &str = "100m";
 /// publishes.
 pub const DEFAULT_PUBLISHER_MEMORY: &str = "1Gi";
 
+/// The default `terminationGracePeriodSeconds` of a driver pod
+/// (`TCAB_DISPATCHER_DRIVER_TERMINATION_GRACE_SECONDS`): the time a driver sent
+/// `SIGTERM` (a drain, an eviction, a preemption) has to post its held record and
+/// report before the kubelet kills it.
+pub const DEFAULT_DRIVER_TERMINATION_GRACE_SECONDS: u32 = 120;
+
 /// The variables the dispatcher passes through into each driver `Job`'s env
 /// verbatim — sandbox-pod settings (`TCAB_K8S_RUN_*` and siblings), the
 /// run-container image selection, the artifact service URL, and the observability
@@ -213,6 +223,16 @@ pub const PASSTHROUGH_K8S_VARS: &[&str] = &[
     // produced run tree to this artifact service before reporting terminal status.
     // Unset (a single-box dev cluster with no artifact service) skips the upload.
     "TCAB_ARTIFACTS_URL",
+    // The same for the repos service the driver uploads the run's implementation
+    // bundle to (the committed workspace as `git bundle --all`). Unset skips it.
+    "TCAB_REPOS_URL",
+    // How long the driver keeps retrying each of those uploads, counted from the
+    // upload's first failure. Unset leaves the driver's own default.
+    "TCAB_ARTIFACT_UPLOAD_WAIT_SECONDS",
+    // How long the driver keeps retrying the held (`storing`) report and the
+    // terminal report, counted from each call's first failure. The second of the
+    // driver's two finishing deadlines; unset leaves the driver's own default.
+    "TCAB_DRIVER_REPORT_WAIT_SECONDS",
     // Observability: forwarded so each per-run driver Job exports its run/driver
     // spans (service name `tcab-driver`) to the same OTLP collector — the in-cluster
     // Grafana LGTM stack — as the long-lived services, tagged with the same
@@ -239,7 +259,8 @@ pub const PASSTHROUGH_K8S_VARS: &[&str] = &[
 
 /// The variables the dispatcher passes through into each **publish** `Job`'s env
 /// verbatim — the artifact-service URL (the publisher downloads the run's
-/// `tree.tar` from it), the GitHub org / Cloudflare Pages project the publisher's
+/// `tree.tar` from it), the repos-service URL (publishing pushes the run's bundle
+/// from it), the GitHub org / Cloudflare Pages project the publisher's
 /// `PublishConfig::from_env` resolves, and the observability vars. The publisher
 /// never interprets the values the dispatcher reads here; it only forwards the ones
 /// that are set. The backend URL, job id, job token, and run id are *not* listed —
@@ -250,6 +271,9 @@ pub const PUBLISHER_PASSTHROUGH_VARS: &[&str] = &[
     // single-box dev cluster with no artifact service) leaves the publisher with no
     // tree to release — the publish path is only enabled in a full deployment.
     "TCAB_ARTIFACTS_URL",
+    // The repos service holding the run's implementation bundle, which publishing
+    // pushes to the run's public repository (`POST /runs/{id}/publish`).
+    "TCAB_REPOS_URL",
     // The publisher's `PublishConfig::from_env` reads these to choose
     // the GitHub org the public per-run repo lands in and the Cloudflare Pages
     // project the playable build deploys to. Both are required there (no compiled-in
@@ -401,6 +425,10 @@ pub struct Config {
     pub poll_interval: Duration,
     /// `ttlSecondsAfterFinished` on each driver `Job` (`TCAB_DISPATCHER_JOB_TTL_SECONDS`).
     pub job_ttl_seconds: i32,
+    /// `terminationGracePeriodSeconds` on each driver pod
+    /// (`TCAB_DISPATCHER_DRIVER_TERMINATION_GRACE_SECONDS`, default
+    /// [`DEFAULT_DRIVER_TERMINATION_GRACE_SECONDS`]).
+    pub driver_termination_grace_seconds: u32,
     /// The driver container's resource requests/limits
     /// (`TCAB_DISPATCHER_DRIVER_{CPU,MEMORY}_{REQUEST,LIMIT}`). Requests default to
     /// [`DEFAULT_DRIVER_CPU_REQUEST`] / [`DEFAULT_DRIVER_MEMORY_REQUEST`] so the
@@ -453,8 +481,8 @@ pub struct Config {
     /// `_CPU_LIMIT`). See [`DEFAULT_PUBLISHER_MEMORY`].
     pub publisher_resources: DriverResources,
     /// The variables passed through into each publish `Job`'s env verbatim
-    /// (`TCAB_ARTIFACTS_URL`, `TCAB_GITHUB_ORG`, `TCAB_PAGES_PROJECT`, and the
-    /// observability vars that are set), collected once at startup. See
+    /// (`TCAB_ARTIFACTS_URL`, `TCAB_REPOS_URL`, `TCAB_GITHUB_ORG`,
+    /// `TCAB_PAGES_PROJECT`, and the observability vars that are set), collected once at startup. See
     /// [`PUBLISHER_PASSTHROUGH_VARS`].
     pub passthrough_publisher_env: Vec<(String, String)>,
 }
@@ -499,6 +527,10 @@ impl Config {
         let max_publish_inflight = parse_or("TCAB_DISPATCHER_MAX_PUBLISH_INFLIGHT", 8usize)?.max(1);
         let poll_seconds = parse_or("TCAB_DISPATCHER_POLL_INTERVAL_SECONDS", 2u64)?;
         let job_ttl_seconds = parse_or("TCAB_DISPATCHER_JOB_TTL_SECONDS", 300i32)?;
+        let driver_termination_grace_seconds = parse_or(
+            "TCAB_DISPATCHER_DRIVER_TERMINATION_GRACE_SECONDS",
+            DEFAULT_DRIVER_TERMINATION_GRACE_SECONDS,
+        )?;
         let driver_resources = DriverResources::from_env();
 
         let driver_secrets = non_empty("TCAB_DISPATCHER_DRIVER_SECRETS")
@@ -560,6 +592,7 @@ impl Config {
             max_publish_inflight,
             poll_interval: Duration::from_secs(poll_seconds),
             job_ttl_seconds,
+            driver_termination_grace_seconds,
             driver_resources,
             driver_secrets,
             driver_subscription_secret,

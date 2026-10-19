@@ -35,12 +35,13 @@ members = [
 	"crates/entities",
 	"crates/migration",
 ]
-# The contracts, engines and gg repositories, submodules, are workspaces of their own.
-# The contracts and engines crates are named under `[workspace.dependencies]` by their
+# The repositories checked out as submodules carrying a crate (contracts, engines,
+# gg, microservice-repos) are workspaces of their own. The contracts, engines and
+# microservice-repos crates are named under `[workspace.dependencies]` by their
 # public source, and the patch table of `.cargo/config.toml` builds them from the
-# checkouts. No member depends on gg; the patch table names its crate all the same,
-# and the lock records it as unused.
-exclude = ["contracts", "engines", "gg"]
+# checkouts. No member depends on gg; the patch table names its crate all the
+# same, and the lock records it as unused.
+exclude = ["contracts", "engines", "gg", "microservice-repos"]
 
 [workspace.package]
 edition = "2024"

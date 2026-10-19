@@ -6,8 +6,9 @@ zone: RUN
 number: 3
 title: Lease claimed runs and resolve lapsed leases in the dispatcher
 type: generic
-state: open
+state: done
 created: 2026-10-19T00:37:57.96751129Z
+done: 2026-10-19T17:48:37.605740649Z
 ---
 
 A claimed run has no lease. The dispatcher decides a driver is lost from an

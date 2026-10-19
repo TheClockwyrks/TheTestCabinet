@@ -60,6 +60,15 @@ repos:
         language: system
         files: '(^|/)Cargo\.toml$|(^|/)package\.json$|^\.test-cabinet-repo\.toml$|^ci/src/the_test_cabinet_ci/edges\.py$|^ci/gates/dependency-edges\.py$'
         pass_filenames: false
+{% if ci_image %}
+      - id: build-context
+        name: Dockerfile build context
+        description: Hold every Dockerfile's COPY sources to .dockerignore and its Rust pins to rust-toolchain.toml.
+        entry: uv run --quiet --project ci gate run build-context
+        language: system
+        files: '(^|/)[^/]*[Dd]ockerfile[^/]*$|(^|/)\.dockerignore$|^rust-toolchain\.toml$|^scripts/ci/build-context\.sh$|^ci/gates/build-context\.py$'
+        pass_filenames: false
+{% endif %}
 {% if rust_crate %}
       - id: rust-fmt
         name: cargo fmt (--check)

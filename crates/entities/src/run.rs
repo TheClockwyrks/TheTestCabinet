@@ -190,6 +190,13 @@ pub struct Model {
     /// The run's recorded normalized event stream as a JSON array, or `NULL`.
     #[sea_orm(column_type = "Text", nullable)]
     pub events_json: Option<String>,
+    /// Whether the artifacts service holds the run's tree, as the driver's terminal
+    /// report said (`artifactsStored`): `true` when the service acknowledged it,
+    /// `false` when it did not, and `NULL` while no report has said, which is what a
+    /// run of a driver with no artifacts service carries. A report that omits the
+    /// field leaves it as it is.
+    #[sea_orm(nullable)]
+    pub artifacts_stored: Option<bool>,
     /// RFC 3339 of the last write that changed anything observable about this row
     /// — the **mutation timestamp**, distinct from `finished_at` (when the run
     /// stopped executing) and `published_at` (when it went public).

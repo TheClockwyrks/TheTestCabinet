@@ -95,6 +95,22 @@ check_failed "fails" "$status"
 check_contains "names the image" "tcab-extra:unpinned" "$out"
 check_contains "names the deploy that does not render" "the staging deploy does not render" "$out"
 
+echo "--- a repository's own image at the superrepo's commit ---"
+
+tree="$(fresh_tree)"
+cat >>"$tree/overlays/prod/kustomization.yaml" <<'YAML'
+  - target: { kind: Deployment, name: tcab-repos }
+    patch: |-
+      - op: replace
+        path: /spec/template/spec/containers/0/image
+        value: testcabinet.azurecr.io/microservice-repos:0123456789abcdef0123456789abcdef01234567
+YAML
+out="$(check "$tree")"
+status=$?
+check_failed "fails" "$status"
+check_contains "names the image and what it is pinned to" \
+	"the prod deploy names testcabinet.azurecr.io/microservice-repos:0123456789abcdef0123456789abcdef01234567, not testcabinet.azurecr.io/<repository>:<the commit its submodule pointer names>" "$out"
+
 echo "--- a cluster-scoped object in a deploy set ---"
 
 tree="$(fresh_tree)"

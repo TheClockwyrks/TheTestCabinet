@@ -11,6 +11,10 @@
 #   - driver Job pods: app.kubernetes.io/managed-by: tcab-dispatcher (the Jobs it creates)
 #   - sandbox pods:    app.kubernetes.io/managed-by: tcab-driver     (created by a driver)
 #   - artifact pods:   app.kubernetes.io/name: tcab-artifacts
+#   - repos pods:      app.kubernetes.io/name: tcab-repos
+#
+# Publish Job pods carry the driver Job pods' label (the dispatcher creates both),
+# so every flow from a driver below admits the publisher too.
 #
 # Sandbox pods need NO inbound access except the driver's exec/preview connections —
 # exec rides the API server, preview is the driver pod reaching the sandbox pod —
@@ -29,7 +33,8 @@ spec:
 ---
 # Let the control-plane callers reach the backend: the dispatcher (claim + status),
 # the driver Job pods (stream events/preview/status, push the record), the artifact
-# service (verify a driver's per-job token) and the arena.
+# and repos services (verify a driver's per-job or a publisher's per-publish-job
+# token; the repos service also reads a published run's record) and the arena.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -54,6 +59,12 @@ spec:
         - podSelector:
             matchLabels:
               app.kubernetes.io/name: tcab-artifacts
+        # The repos service (forwards a driver's per-job or a publisher's
+        # per-publish-job token to the backend, and reads the record a publish
+        # stamps its commit with).
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: tcab-repos
         # The arena service (fetches controller inputs from the backend and persists
         # finished tournaments + replays back to it).
         - podSelector:
@@ -86,6 +97,33 @@ spec:
         # are refused by the default-deny ingress as a connection timeout, which reads
         # as an artifact-service outage rather than a policy refusal, and a deleted
         # run's tree occupies the volume forever.
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: tcab-backend
+---
+# Let the repos service's callers in: a driver Job pod uploading the run's bundle, a
+# publish Job pod asking for the public push (both labelled managed-by the
+# dispatcher), and the backend reading a bundle for a console's download and
+# deleting a deleted run's bundle. The service's own traffic out (its Blob
+# container, GitHub and the backend) is egress, which no policy here restricts.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: tcab-allow-repos-from-callers
+  namespace: tcab-prod
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: tcab-repos
+  policyTypes: ["Ingress"]
+  ingress:
+    - from:
+        # Every driver and publish Job pod (the dispatcher labels them managed-by
+        # itself).
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/managed-by: tcab-dispatcher
+        # The backend, over TCAB_REPOS_URL.
         - podSelector:
             matchLabels:
               app.kubernetes.io/name: tcab-backend

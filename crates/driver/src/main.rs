@@ -2,9 +2,19 @@
 //!
 //! Resolves its configuration from the environment the dispatcher set, reports
 //! `running` to the backend, drives the one run it was created for while streaming
-//! the live events and preview frames back, then reports the terminal status
-//! carrying the produced (or failed) record — and exits. There is no server and no
-//! flags; everything arrives through `TCAB_*` env (see
+//! the live events and preview frames back, then hands the finished run to durable
+//! storage through [`finish`](test_cabinet_driver::finish): the held `storing`
+//! report carrying the record, the run tree and bundle uploads, and the terminal
+//! status carrying the produced (or failed) record — and exits, successfully once
+//! that terminal status landed or was refused. Every terminal status waits until
+//! the backend has acknowledged every event batch; one that cannot is withheld and
+//! the driver exits non-zero, leaving the backend to finish from the held record. A `SIGTERM` is handled as
+//! [`sigterm`](test_cabinet_driver::sigterm) sets: a run holding its record keeps
+//! finishing, one that holds none is reported `failed` as `infrastructure`, and
+//! either way the sandbox is deleted first. A first report the backend refuses
+//! means the job went back to the queue: the driver exits successfully without
+//! running anything (see [`first_report_failure`]). There is no server and no flags;
+//! everything arrives through `TCAB_*` env (see
 //! [`config`](test_cabinet_driver::config)).
 
 use std::process::ExitCode;
@@ -18,10 +28,17 @@ use time::OffsetDateTime;
 use test_cabinet_driver::cancel::{
     CancelDisposition, CancelRace, cancel_disposition, race_cancellation,
 };
-use test_cabinet_driver::client::JobClient;
+use test_cabinet_driver::client::{JobClient, first_report_failure};
 use test_cabinet_driver::config::{Config, DriverRuntime};
+use test_cabinet_driver::finish::{
+    FinishTarget, Mirrors, REPORT_ATTEMPT_TIMEOUT, RunOutcome, finish,
+};
 use test_cabinet_driver::kubernetes::KubernetesContainerRuntime;
 use test_cabinet_driver::run::{RunFailure, drive};
+use test_cabinet_driver::sigterm::{
+    INTERRUPTED_ATTEMPT_TIMEOUT, INTERRUPTED_REPORT_WAIT, SANDBOX_SWEEP_INTERVAL, Sandbox,
+    ShutdownTarget, Stage, StageCell, run_until_shutdown,
+};
 use test_cabinet_driver::sink;
 
 /// How often the driver polls its own job's state to notice an operator
@@ -44,12 +61,6 @@ const CANCEL_POLL_INTERVAL: Duration = Duration::from_secs(3);
 /// this grace: there is no session to wind down, and holding the driver — and with it a
 /// dispatcher scheduling slot — open for twenty minutes would buy nothing.
 const CANCEL_WINDDOWN_GRACE: Duration = Duration::from_secs(1200);
-
-/// How long a destroyed run waits before sweeping for its sandbox a second time, to
-/// catch a sandbox whose creation landed after the first sweep listed. Long enough for
-/// an in-flight create to have been persisted, short enough to keep the destroy path's
-/// promise of freeing the run's scheduling slot in seconds.
-const SANDBOX_SWEEP_INTERVAL: Duration = Duration::from_secs(2);
 
 #[tokio::main]
 async fn main() -> ExitCode {
@@ -104,29 +115,145 @@ async fn main() -> ExitCode {
         config.job_token.clone(),
     ));
 
+    // Handle `SIGTERM` from here on: the signal is registered before the first
+    // report, so the pod's termination is always the driver's to act on.
+    let shutdown = sigterm();
+    let started_at = OffsetDateTime::now_utc();
+    let stage = Arc::new(StageCell::new());
+    // Filled by `drive` the moment the definition materializes, so the fallback
+    // cancellation path — a gg session that would not wind down inside its grace,
+    // which therefore never hands a return value back — and an interrupted run can
+    // still be recorded against the run's real case identity and test type.
+    let resolved: std::sync::Mutex<Option<test_cabinet_driver::TestCaseVersion>> =
+        std::sync::Mutex::new(None);
+    let out_dir = config.work_dir.join("out");
+    // The relay channel: the sinks (held inside `drive`) push onto the sender, the
+    // relay `run_job` spawns owns the receiver. Its progress is shared with the
+    // `SIGTERM` handling, whose `failed` report waits on every event being
+    // acknowledged as the terminal statuses `run_job` posts do.
+    let (tx, rx) = sink::channel();
+    let events = tx.progress();
+
+    run_until_shutdown(
+        &stage,
+        run_job(
+            &config, &client, &run_id, &request, started_at, &stage, &resolved, tx, rx,
+        ),
+        shutdown,
+        &ShutdownTarget {
+            client: &client,
+            report_wait: INTERRUPTED_REPORT_WAIT,
+            attempt_timeout: Some(INTERRUPTED_ATTEMPT_TIMEOUT),
+            sweep_interval: SANDBOX_SWEEP_INTERVAL,
+            events: Some(&events),
+        },
+        &DriverSandbox(&config),
+        |state, detail| {
+            let test_case = resolved.lock().ok().and_then(|slot| slot.clone());
+            write_failed_record(
+                &out_dir,
+                &run_id,
+                &request,
+                test_case.as_ref(),
+                started_at,
+                state,
+                detail,
+                &[],
+            )
+            .map_err(|err| {
+                tracing::warn!(error = %err, "could not build the interrupted run's record");
+            })
+            .ok()
+        },
+    )
+    .await
+}
+
+/// Resolve on the driver's first `SIGTERM`. A signal handler that cannot be
+/// installed is logged and never resolves, leaving the signal's default action.
+fn sigterm() -> impl std::future::Future<Output = ()> {
+    let signal = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate());
+    async move {
+        match signal {
+            Ok(mut signal) => {
+                if signal.recv().await.is_some() {
+                    return;
+                }
+            }
+            Err(err) => {
+                tracing::warn!(error = %err, "could not install the SIGTERM handler");
+            }
+        }
+        std::future::pending().await
+    }
+}
+
+/// The run's sandbox, as [`run_until_shutdown`] deletes it.
+struct DriverSandbox<'a>(&'a Config);
+
+impl Sandbox for DriverSandbox<'_> {
+    async fn teardown(&self) -> bool {
+        teardown_sandbox(self.0).await
+    }
+}
+
+/// Run the job: report `starting`, drive the run against an operator's
+/// cancellation and finish it. Its exit code is the driver's unless `SIGTERM`
+/// interrupts it ([`run_until_shutdown`]).
+///
+/// `stage` is moved through the run's stages; `resolved` is filled by `drive` the
+/// moment the definition materializes. `tx` and `rx` are the relay channel's two
+/// halves: the relay is spawned on `rx` once `starting` is reported.
+#[allow(clippy::too_many_arguments)]
+async fn run_job(
+    config: &Config,
+    client: &Arc<JobClient>,
+    run_id: &str,
+    request: &test_cabinet_driver::RunRequest,
+    started_at: OffsetDateTime,
+    stage: &Arc<StageCell>,
+    resolved: &std::sync::Mutex<Option<test_cabinet_driver::TestCaseVersion>>,
+    tx: sink::RelaySender,
+    rx: sink::RelayReceiver,
+) -> ExitCode {
     // Mark the job starting before any work, so the console shows it left the queue
     // and is spinning up (pre-run container setup). The driver advances it to
     // `running` from inside `drive` once setup finishes and the harness session is
     // about to begin. A failure to even report this is terminal: the driver cannot
     // stream, so there is nothing useful it can still do.
+    //
+    // A *refusal* is the backend saying the job is no longer this driver's: its claim
+    // lease lapsed while it was still `dispatched`, so it went back to the queue with
+    // a fresh token, and a reclaimed run of the same job id may already be driving.
+    // The driver deletes the sandbox it holds and exits successfully, so its `Job`
+    // completes: a failed `Job` would have the dispatcher reap sandboxes by job-id
+    // label and report a death, both against the reclaimed run. The driver holds no
+    // sandbox yet — `drive` starts it after this report — so there is nothing of its
+    // own to delete, and it must not delete by job-id label, which would take the
+    // reclaimed run's sandbox.
     if let Err(err) = client.post_status_starting().await {
+        if first_report_failure(&err).exits_successfully() {
+            tracing::warn!(
+                job_id = %config.job_id,
+                error = %err,
+                "the backend refused this job's token: the job returned to the queue \
+                 and is no longer this driver's; exiting without running it"
+            );
+            return ExitCode::SUCCESS;
+        }
         eprintln!("could not report `starting` to the backend: {err}");
         return ExitCode::FAILURE;
     }
 
-    let started_at = OffsetDateTime::now_utc();
-
     // The relay drains the channel and streams events/preview to the backend. The
     // sinks (held inside `drive`) push onto `tx`; the relay owns `rx`.
-    let (tx, rx) = sink::channel();
-    let relay = tokio::spawn(sink::relay_task(client.clone(), rx));
-
-    // Filled by `drive` the moment the definition materializes, so the fallback
-    // cancellation path below — a gg session that would not wind down inside its grace,
-    // which therefore never hands a return value back — can still record the killed run
-    // against its real case identity and test type.
-    let resolved: std::sync::Mutex<Option<test_cabinet_driver::TestCaseVersion>> =
-        std::sync::Mutex::new(None);
+    // Each event batch is held until the backend acknowledges it, retried under
+    // the same wait as the held and terminal reports.
+    let relay = tokio::spawn(sink::relay_task(
+        client.clone(),
+        rx,
+        test_cabinet_driver::retry::RetryPolicy::waiting_for(config.report_wait),
+    ));
 
     // Race the run against an operator cancellation. `wait_for_cancellation` resolves
     // only when the backend reports this job `canceled`, and what happens then depends
@@ -159,14 +286,14 @@ async fn main() -> ExitCode {
     // it. This is the same both locally (a k3d cluster) and in production: both drive a
     // run through a driver pod that polls its backend job here.
     let cancel = RunCancellation::new();
-    let disposition = cancel_disposition(&request);
+    let disposition = cancel_disposition(request);
     let raced = race_cancellation(
-        drive(&config, &run_id, &request, &tx, &client, &resolved, &cancel),
+        drive(config, run_id, request, &tx, client, resolved, &cancel, stage),
         // Announce the kill where it is observed rather than where it is acted on: the
         // wind-down branch says nothing more for up to twenty minutes, and an operator
         // watching the driver's logs needs to see that the kill landed now.
         async {
-            wait_for_cancellation(&client).await;
+            wait_for_cancellation(client).await;
             match disposition {
                 CancelDisposition::WindDown => tracing::info!(
                     job_id = %config.job_id,
@@ -184,6 +311,9 @@ async fn main() -> ExitCode {
         CANCEL_WINDDOWN_GRACE,
     )
     .await;
+    // The run's own stages are over, wherever the race ended: from here the driver
+    // is finishing, which a `SIGTERM` does not cut short.
+    stage.set(Stage::Finishing);
 
     let outcome = match raced {
         CancelRace::Finished(outcome) => Some(outcome),
@@ -199,16 +329,17 @@ async fn main() -> ExitCode {
         CancelRace::Destroyed => {
             // The destroyed run is recorded nowhere, deliberately. The backend already
             // holds the job in its terminal `canceled` state, so no status post is owed;
-            // with no record to attach them to, the events the relay streamed are
-            // orphaned and the run never reaches the run list — which is the point, since
-            // there is no early state to inspect for a harness that could not be asked
-            // for one.
+            // the events the backend already stored stay stored against the job, but with
+            // no record to attach them to the run never reaches the run list — which is
+            // the point, since there is no early state to inspect for a harness that could
+            // not be asked for one.
             //
-            // So the relay is abandoned rather than drained. Draining exists to guarantee
-            // every event reached the backend *before* the record that anchors them; with
-            // no record coming, a flush would only trade the seconds this path exists to
-            // save (a preview connection can hold the channel open for its read timeout
-            // after the run future is dropped) for events nothing will ever read.
+            // So the relay is abandoned rather than drained, and the events it had not
+            // yet had acknowledged are dropped. Draining exists to guarantee every event
+            // is stored *before* the terminal status that anchors them; with no status
+            // coming, a flush would only trade the seconds this path exists to save (a
+            // preview connection can hold the channel open for its read timeout after
+            // the run future is dropped) for events nothing will ever read.
             drop(tx);
             relay.abort();
             // The teardown *is* the kill on this path, so its failure is the one
@@ -220,7 +351,7 @@ async fn main() -> ExitCode {
             // own active deadline (hours) ends it. Nothing re-runs the Job (the
             // dispatcher creates it with a zero backoff limit) and the backend job is
             // already terminally `canceled`, so failing costs only the reap it buys.
-            if !teardown_sandbox(&config).await {
+            if !teardown_sandbox(config).await {
                 return ExitCode::FAILURE;
             }
             // Sweep once more, a beat later. Dropping the run future cancels whatever
@@ -232,7 +363,7 @@ async fn main() -> ExitCode {
             // own active deadline (hours) hit. A second pass costs a couple of seconds
             // against a wait this path exists to cut from twenty minutes.
             tokio::time::sleep(SANDBOX_SWEEP_INTERVAL).await;
-            if !teardown_sandbox(&config).await {
+            if !teardown_sandbox(config).await {
                 return ExitCode::FAILURE;
             }
             return ExitCode::SUCCESS;
@@ -240,12 +371,19 @@ async fn main() -> ExitCode {
     };
 
     // Drop the sending half so the relay's channel closes once it drains the
-    // backlog, then await it: this guarantees every streamed event has reached the
-    // backend (where the relay accumulates them) *before* the terminal status —
-    // carrying the record the backend persists from those events — is sent.
-    drop(tx);
-    if let Err(err) = relay.await {
-        tracing::warn!(error = %err, "the relay task panicked");
+    // backlog, then await it: every event batch is settled — stored by the backend,
+    // or abandoned — *before* the terminal status, carrying the record the backend
+    // persists beside the stored events, is sent. A terminal status is posted only
+    // once every batch is acknowledged, so an abandoned one withholds it: the held
+    // report and the uploads are still made, and the backend finishes the run from
+    // the held record as it does for a lost driver.
+    let events = sink::settle(tx, relay).await;
+    if events == sink::RelayOutcome::Undelivered {
+        tracing::warn!(
+            job_id = %config.job_id,
+            "the backend did not acknowledge every event batch; the terminal status \
+             will be withheld",
+        );
     }
 
     match outcome {
@@ -262,99 +400,56 @@ async fn main() -> ExitCode {
             // exists so a session that stops responding cannot cost the operator
             // everything the run had streamed.
             let test_case = resolved.lock().ok().and_then(|slot| slot.clone());
-            report_canceled(
-                &client,
-                &config,
-                &run_id,
-                &request,
+            let exit = report_canceled(
+                client,
+                config,
+                run_id,
+                request,
                 started_at,
                 test_case.as_ref(),
+                stage,
+                events,
             )
             .await;
-            teardown_sandbox(&config).await;
-            ExitCode::SUCCESS
+            teardown_sandbox(config).await;
+            exit
         }
-        Some(Ok(mut record)) => {
-            // Upload the produced tree to the artifact service (when configured) and
-            // stamp the playable-build link on the record, *before* reporting the
-            // terminal status — so by the time the console sees the run finish, its
-            // build and media are already servable.
-            finalize_artifacts(&config, &mut record).await;
-            // For an adversarial run, also mirror the controller wasm + proof
-            // replays into the *backend* store (the CLI does this at push). Without
-            // it a backend-driven run is invisible to the arena and its replays
-            // 404 — a no-op for any other run type.
-            finalize_adversarial_backend_upload(&config, &record).await;
-            // For a performance run, mirror each passing case's scored scenario the
-            // same way — browser playback fetches it from the backend store and
-            // re-simulates it, so without this a backend-driven run's playback has
-            // nothing to load. A no-op for any other run type.
-            finalize_performance_backend_upload(&config, &record).await;
-            // Mirror the run's proof-of-implementation media into the *backend*
-            // store too. The artifact service only serves the session that produced
-            // the run; the public snapshot reads proof from the backend store, so
-            // without this proof never reaches the published site.
-            finalize_proof_backend_upload(&config, &record).await;
-            // Same for a run's synthesized *actual* validation media (the model
-            // build's per-review-item debug-script outputs): the public snapshot reads
-            // it from the backend store, so mirror it there or the published site
-            // degrades the reviewer's automated-validation side-by-side to
-            // presence-only.
-            finalize_validation_backend_upload(&config, &record).await;
-            // Same for an asset-generation run's media (regenerated/preview image +
-            // action log): the public snapshot reads it from the backend store, so
-            // mirror it there or the published asset result view has nothing to show.
-            finalize_asset_backend_upload(&config, &record).await;
-            // Same for the run's showcase files (the carousel media and any image the
-            // description references): the public snapshot reads them from the backend
-            // store, so mirror them there or the published Play tab renders the
-            // description with broken images and an empty carousel.
-            finalize_showcase_backend_upload(&config, &record).await;
-            // For a gg run captured with the (debug-only) replay capability, mirror its
-            // `.gg/replay.json` record into the backend store so `GET /runs/{id}/replay`
-            // can serve it to a replay driver. A no-op for any run that captured none.
-            finalize_replay_backend_upload(&config, &record).await;
-            // Same for the run's code-analysis document, which every harness produces:
-            // the per-run Code tab reads it from the backend store, so mirror it there or
-            // the tab degrades to the bounded summary on the record alone.
-            finalize_code_analysis_backend_upload(&config, &record).await;
-
-            // A gg run that wound down for an operator's kill took this same path — it
+        Some(Ok(record)) => {
+            // A gg run that wound down for an operator's kill takes this same path — it
             // is an ordinary engine outcome, produced by the ordinary post-session
-            // stages, and every upload above applies to it exactly as it does to a run
-            // that finished on its own. Only the terminal status differs. The latch is
-            // raised on the wind-down branch alone, so this is a gg-only branch: a
-            // destroyed run returned above and never reaches here.
+            // stages, and the whole finishing sequence applies to it exactly as it does
+            // to a run that finished on its own. Only the terminal status differs: it is
+            // `canceled`, carrying the record. The latch is raised on the wind-down
+            // branch alone, so a destroyed run returned above and never reaches here.
             //
-            // The branch is on whether the run was *canceled*, not on the record's own
-            // state, because those can honestly disagree: a run that reached its own
-            // ending in the moment between the kill landing and the driver noticing it
-            // hands back a `completed` record against an already-`canceled` job. Its
-            // state is recorded as what it truly was, but it is still handed over as a
-            // cancellation — the only status the backend accepts on a canceled job, and
-            // the difference between retaining that run and silently discarding it.
-            if cancel.is_canceled() {
-                tracing::info!(
-                    run_id = %record.id,
-                    state = ?record.status.state,
-                    "canceled run wound down and produced a record; reporting canceled"
-                );
-                if let Err(err) = client.post_status_canceled(record).await {
-                    // The job is already terminal and the operator has their answer;
-                    // failing the driver over the record post would only make the pod
-                    // look broken. Log it and exit cleanly.
-                    tracing::warn!(error = %err, "could not report `canceled` to the backend");
-                }
-                teardown_sandbox(&config).await;
-                return ExitCode::SUCCESS;
+            // The terminal status follows whether the run was *canceled*, not the
+            // record's own state, because those can honestly disagree: a run that
+            // reached its own ending in the moment between the kill landing and the
+            // driver noticing it hands back a `completed` record against an
+            // already-`canceled` job. Its state is recorded as what it truly was, but it
+            // is still handed over as a cancellation — the only status the backend
+            // accepts on a canceled job, and the difference between retaining that run
+            // and silently discarding it.
+            let already_canceled = cancel.is_canceled();
+            tracing::info!(
+                run_id = %record.id,
+                state = ?record.status.state,
+                already_canceled,
+                "run produced a record; handing it to durable storage"
+            );
+            let out_dir = config.work_dir.join("out");
+            let finished = finish(
+                &finish_target(config, client, &out_dir, stage, events),
+                Some(record),
+                RunOutcome::Succeeded,
+                already_canceled,
+                &BackendMirrors::new(config, MirrorSet::All),
+            )
+            .await;
+            if already_canceled {
+                teardown_sandbox(config).await;
             }
-
-            tracing::info!(run_id = %record.id, "run produced a record; reporting succeeded");
-            if let Err(err) = client.post_status_succeeded(record).await {
-                eprintln!("could not report `succeeded` to the backend: {err}");
-                return ExitCode::FAILURE;
-            }
-            ExitCode::SUCCESS
+            finished.exit_code()
         }
         Some(Err(failure)) => {
             // The kill landed before the session was launched — during the driver's own
@@ -368,7 +463,7 @@ async fn main() -> ExitCode {
                     job_id = %config.job_id,
                     "run canceled before its session was launched; recording nothing"
                 );
-                if !teardown_sandbox(&config).await {
+                if !teardown_sandbox(config).await {
                     return ExitCode::FAILURE;
                 }
                 return ExitCode::SUCCESS;
@@ -384,19 +479,24 @@ async fn main() -> ExitCode {
                     detail = %failure.detail,
                     "the canceled run errored while winding down; recording what is held",
                 );
-                report_canceled(
-                    &client,
-                    &config,
-                    &run_id,
-                    &request,
+                let exit = report_canceled(
+                    client,
+                    config,
+                    run_id,
+                    request,
                     started_at,
                     failure.test_case.as_ref(),
+                    stage,
+                    events,
                 )
                 .await;
-                teardown_sandbox(&config).await;
-                return ExitCode::SUCCESS;
+                teardown_sandbox(config).await;
+                return exit;
             }
-            report_failure(&client, &config, &run_id, &request, started_at, failure).await
+            report_failure(
+                client, config, run_id, request, started_at, failure, stage, events,
+            )
+            .await
         }
     }
 }
@@ -445,8 +545,9 @@ const CANCELED_DETAIL: &str = "canceled by operator";
 /// It is worth building anyway because of what it anchors: the gg run's telemetry —
 /// nearly all of what it produced — was streamed as it happened and is already in the
 /// backend's hands, and without a record to attach it to the killed run never reaches the
-/// run list at all. Everything here is best-effort — the job is already terminal and the
-/// sandbox teardown still has to happen, so a failure to record is logged, never fatal.
+/// run list at all. A record that cannot be built is logged and nothing is posted, the job
+/// being already terminal; one that is built takes the whole finishing sequence, and the
+/// exit code follows its terminal report.
 ///
 /// Both call sites are on the wind-down branch, so this is reached for a gg run only, and
 /// only for one whose session had been launched. A canceled run of any other harness, and
@@ -461,7 +562,9 @@ async fn report_canceled(
     request: &test_cabinet_driver::RunRequest,
     started_at: OffsetDateTime,
     test_case: Option<&test_cabinet_driver::TestCaseVersion>,
-) {
+    stage: &StageCell,
+    events: sink::RelayOutcome,
+) -> ExitCode {
     // The backend holds the streamed events, so the locally-written `events.jsonl`
     // (lost with the ephemeral pod anyway) is immaterial — an empty slice, exactly as
     // `report_failure` passes.
@@ -475,35 +578,33 @@ async fn report_canceled(
         CANCELED_DETAIL,
         &[],
     ) {
-        Ok(mut record) => {
-            // Upload whatever happens to be in the out directory. On this path the
-            // engine never reached artifact collection, so it is usually empty — but a
-            // run that errored *after* collecting has a tree worth keeping, and the
-            // upload is a no-op when there is nothing there.
-            finalize_artifacts(config, &mut record).await;
-            // Same for a gg run's session record: a cancellation that could not wind down
-            // cleanly still leaves a salvaged, truncated record in the run tree, and this
-            // is the only path that would mirror it.
-            finalize_replay_backend_upload(config, &record).await;
-            // The code analysis is a no-op here in practice — this path is reached when
-            // the engine never got to the post-run seam — but it is wired for the same
-            // reason the replay upload is: whatever *did* land in the run tree is the only
-            // account of the run, and this is the only path that would mirror it.
-            finalize_code_analysis_backend_upload(config, &record).await;
-            record
-        }
+        Ok(record) => record,
         Err(err) => {
             tracing::warn!(error = %err, "could not build the canceled run record");
-            return;
+            return ExitCode::SUCCESS;
         }
     };
-    if let Err(err) = client.post_status_canceled(record).await {
-        tracing::warn!(error = %err, "could not report `canceled` to the backend");
-    }
+    // The canceled run takes the whole finishing sequence. On this path the engine
+    // never reached artifact collection, so the out directory is usually empty — but a
+    // run that errored *after* collecting has a tree and a bundle worth keeping, and a
+    // cancellation that could not wind down cleanly still leaves a salvaged, truncated
+    // gg session record in the run tree, which the mirrors carry to the backend store.
+    let out_dir = config.work_dir.join("out");
+    finish(
+        &finish_target(config, client, &out_dir, stage, events),
+        Some(record),
+        RunOutcome::Canceled,
+        true,
+        &BackendMirrors::new(config, MirrorSet::Canceled),
+    )
+    .await
+    .exit_code()
 }
 
 /// Tear down the run's sandbox, reporting whether it is now gone. Called on **every**
-/// cancellation path, and the reason each of them is correct.
+/// cancellation path, and the reason each of them is correct, and on `SIGTERM`
+/// ([`DriverSandbox`]), so an interrupted run leaves nothing for the dispatcher's
+/// reaper.
 ///
 /// The harness is its own process inside the sandbox, so neither dropping the run future
 /// nor the engine returning ends it: the host only ever held the `exec` stream. On the
@@ -544,7 +645,7 @@ async fn teardown_sandbox(config: &Config) -> bool {
         Ok(()) => {
             tracing::info!(
                 job_id = %config.job_id,
-                "tore down the canceled run's sandbox"
+                "tore down the run's sandbox"
             );
             true
         }
@@ -552,49 +653,10 @@ async fn teardown_sandbox(config: &Config) -> bool {
             tracing::warn!(
                 job_id = %config.job_id,
                 error = %err,
-                "could not tear down the canceled run's sandbox"
+                "could not tear down the run's sandbox"
             );
             false
         }
-    }
-}
-
-/// Upload the produced run tree to the artifact service and stamp the run's
-/// playable-build link onto `record`, when an artifact service is configured
-/// (`TCAB_ARTIFACTS_URL`).
-///
-/// The link is set root-relative (`/runs/{id}/build/`) — the console prefixes the
-/// artifact base URL it learned from the backend's `/config` — and only when the
-/// run produced a static build to serve, mirroring what the worker set at list
-/// time. An upload failure is logged but never fatal: the record itself still
-/// reaches the backend (only its servable artifacts are missing), and the run
-/// outcome is unchanged. When `TCAB_ARTIFACTS_URL` is unset (a local setup with no
-/// artifact service) this is a no-op and the record carries no playable link.
-async fn finalize_artifacts(config: &Config, record: &mut test_cabinet_driver::RunRecord) {
-    let Some(artifacts_url) = config.artifacts_url.as_deref() else {
-        return;
-    };
-    let out_dir = config.work_dir.join("out");
-
-    if let Some(link) = test_cabinet_driver::artifacts::playable_build_link(&out_dir, &record.id) {
-        record.links.playable_build = Some(link);
-    }
-
-    if let Err(err) = test_cabinet_driver::artifacts::upload_run_tree(
-        artifacts_url,
-        &record.id,
-        &config.job_id,
-        &out_dir,
-        &config.job_token,
-    )
-    .await
-    {
-        // A missing upload leaves the run inspectable (its record is still posted),
-        // it just cannot be played from the reviewer UI — worth a warning, not a
-        // failed run.
-        tracing::warn!(run_id = %record.id, error = %err, "could not upload run artifacts");
-    } else {
-        tracing::info!(run_id = %record.id, "uploaded run artifacts to the artifact service");
     }
 }
 
@@ -816,11 +878,17 @@ async fn finalize_showcase_backend_upload(
 /// its success path never writes a [`test_cabinet_driver::RunRecord`], so — exactly
 /// as the worker does — the driver builds a `Failed` record via
 /// [`write_failed_record`] carrying the failure detail, so the run is retained and
-/// inspectable rather than vanishing. The backend persists it with the events the
-/// relay already accumulated, so the locally-written `events.jsonl` (lost with the
-/// ephemeral pod anyway) is immaterial; an empty slice is passed here. The
+/// inspectable rather than vanishing. The backend persists it with the events it
+/// stored as each batch arrived, so the locally-written `events.jsonl` (lost with
+/// the ephemeral pod anyway) is immaterial; an empty slice is passed here. The
 /// resolved version, when the failure happened after resolution, gives the record
 /// its real test type and version.
+///
+/// A built record takes the whole finishing sequence (held report, uploads, terminal
+/// report); without one the `failed` report is made alone. Either way the `failed`
+/// report waits on `events`, every batch acknowledged, and is withheld otherwise.
+/// The exit code follows the terminal report.
+#[allow(clippy::too_many_arguments)]
 async fn report_failure(
     client: &JobClient,
     config: &Config,
@@ -828,6 +896,8 @@ async fn report_failure(
     request: &test_cabinet_driver::RunRequest,
     started_at: OffsetDateTime,
     failure: RunFailure,
+    stage: &StageCell,
+    events: sink::RelayOutcome,
 ) -> ExitCode {
     tracing::warn!(detail = %failure.detail, "run failed; reporting to the backend");
     let record = match write_failed_record(
@@ -840,20 +910,7 @@ async fn report_failure(
         &failure.detail,
         &[],
     ) {
-        Ok(mut record) => {
-            // A failed run rarely produced a static build, but it may have collected
-            // partial artifacts (proof media, an asset frame) worth retaining for
-            // inspection — upload them and stamp any build link, the same as a
-            // succeeded run, before the terminal status is posted.
-            finalize_artifacts(config, &mut record).await;
-            // A `hung` or `timed_out` gg run never reaches artifact collection, but the
-            // engine salvages its capture journal out of the container before teardown and
-            // assembles it into the run tree all the same — so this is the one upload that
-            // routinely has something to do on the failure path. Without it the replay of
-            // exactly the run most worth replaying would stop at the driver pod.
-            finalize_replay_backend_upload(config, &record).await;
-            Some(record)
-        }
+        Ok(record) => Some(record),
         Err(err) => {
             // The record is a courtesy for inspection; if it cannot even be built,
             // still report the failure with its reason so the console is not left
@@ -862,11 +919,111 @@ async fn report_failure(
             None
         }
     };
-    if let Err(err) = client.post_status_failed(failure.detail, record).await {
-        eprintln!("could not report `failed` to the backend: {err}");
-        return ExitCode::FAILURE;
+    // A failed run whose record was built takes the same finishing sequence as a
+    // succeeded one: a failed run rarely produced a static build, but it may have
+    // collected partial artifacts (proof media, an asset frame, its repository) worth
+    // retaining. The run failed, but the driver did its job once the report is
+    // delivered, so the exit code follows the report alone.
+    let out_dir = config.work_dir.join("out");
+    finish(
+        &finish_target(config, client, &out_dir, stage, events),
+        record,
+        RunOutcome::Failed {
+            detail: failure.detail,
+        },
+        false,
+        &BackendMirrors::new(config, MirrorSet::Failed),
+    )
+    .await
+    .exit_code()
+}
+
+/// Where this driver's finishing calls go, from its configuration, and how the
+/// run's event batches fared.
+fn finish_target<'a>(
+    config: &'a Config,
+    client: &'a JobClient,
+    out_dir: &'a std::path::Path,
+    stage: &'a StageCell,
+    events: sink::RelayOutcome,
+) -> FinishTarget<'a> {
+    FinishTarget {
+        client,
+        artifacts_url: config.artifacts_url.as_deref(),
+        repos_url: config.repos_url.as_deref(),
+        job_id: &config.job_id,
+        job_token: &config.job_token,
+        out_dir,
+        upload_wait: config.upload_wait,
+        report_wait: config.report_wait,
+        attempt_timeout: Some(REPORT_ATTEMPT_TIMEOUT),
+        stage: Some(stage),
+        events,
     }
-    // The run failed, but the driver did its job: it reported the failure with a
-    // specific reason. Exit successfully so the Job is not retried by the cluster.
-    ExitCode::SUCCESS
+}
+
+/// Which of the best-effort backend-store mirrors a finishing path makes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum MirrorSet {
+    /// A run that produced its record: every mirror.
+    All,
+    /// A failed run: the gg session record, which a `hung` or `timed_out` gg run
+    /// salvages into its tree even though it never reached artifact collection —
+    /// the replay of exactly the run most worth replaying.
+    Failed,
+    /// A canceled run the driver recorded itself: the gg session record a
+    /// cancellation that could not wind down cleanly still salvages, and the code
+    /// analysis, whatever did land in the run tree being the only account of the
+    /// run.
+    Canceled,
+}
+
+/// The best-effort mirrors of a run's media into the backend store, made by
+/// [`finish`] between the uploads and the terminal report. Each logs its own
+/// failure and never fails the run.
+struct BackendMirrors<'a> {
+    config: &'a Config,
+    set: MirrorSet,
+}
+
+impl<'a> BackendMirrors<'a> {
+    fn new(config: &'a Config, set: MirrorSet) -> Self {
+        Self { config, set }
+    }
+}
+
+impl Mirrors for BackendMirrors<'_> {
+    async fn mirror(&self, record: &test_cabinet_driver::RunRecord) {
+        let config = self.config;
+        if self.set == MirrorSet::All {
+            // For an adversarial run, mirror the controller wasm + proof replays into
+            // the *backend* store (the CLI does this at push). Without it a
+            // backend-driven run is invisible to the arena and its replays 404 — a
+            // no-op for any other run type.
+            finalize_adversarial_backend_upload(config, record).await;
+            // For a performance run, mirror each passing case's scored scenario the
+            // same way — browser playback fetches it from the backend store and
+            // re-simulates it. A no-op for any other run type.
+            finalize_performance_backend_upload(config, record).await;
+            // The run's proof-of-implementation media: the public snapshot reads proof
+            // from the backend store, so without this proof never reaches the
+            // published site.
+            finalize_proof_backend_upload(config, record).await;
+            // The run's synthesized *actual* validation media: the public snapshot
+            // reads it from the backend store for the reviewer's side-by-side.
+            finalize_validation_backend_upload(config, record).await;
+            // An asset-generation run's media (regenerated/preview image + action log).
+            finalize_asset_backend_upload(config, record).await;
+            // The run's showcase files (the carousel media and any image the
+            // description references), for the published Play tab.
+            finalize_showcase_backend_upload(config, record).await;
+        }
+        // A gg run's `.gg/replay.json` record, so `GET /runs/{id}/replay` can serve it
+        // to a replay driver. A no-op for any run that captured none.
+        finalize_replay_backend_upload(config, record).await;
+        if self.set != MirrorSet::Failed {
+            // The run's code-analysis document, for the per-run Code tab.
+            finalize_code_analysis_backend_upload(config, record).await;
+        }
+    }
 }

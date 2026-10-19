@@ -6,8 +6,9 @@ zone: RUN
 number: 2
 title: Classify every run the platform ended as infrastructure
 type: generic
-state: open
+state: done
 created: 2026-10-19T00:36:48.27058678Z
+done: 2026-10-19T16:32:34.748682534Z
 ---
 
 Runs the Test Cabinet's own platform ended are recorded as model outcomes.

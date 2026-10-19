@@ -45,7 +45,7 @@ use tracing::instrument;
 use crate::exec_stream::drain_with_idle_timeout;
 use crate::execution::{
     ArtifactCollection, ArtifactCollector, ContainerDir, ContainerFile, ContainerHandle,
-    ContainerRuntime, ContainerSpec, ContainerStart, ExecOutput, OutputSink,
+    ContainerRuntime, ContainerSpec, ContainerStart, ExecOutput, OutputSink, SandboxState,
 };
 use crate::{Error, Result, SKIPPED_DIRS};
 
@@ -981,6 +981,27 @@ impl ContainerRuntime for KubernetesContainerRuntime {
         }
     }
 
+    async fn sandbox_state(&self, container: &ContainerHandle) -> SandboxState {
+        match self.pods().get(&container.id).await {
+            Ok(pod) => pod_sandbox_state(&pod),
+            // The pod no longer exists: deleted out from under the session.
+            Err(kube::Error::Api(err)) if err.code == 404 => SandboxState::Gone {
+                reason: "deleted".to_string(),
+            },
+            // An unreadable pod says nothing about how the session ended, so the end
+            // falls through to the session's own account and the exit status.
+            Err(err) => {
+                tracing::warn!(
+                    pod = %container.id,
+                    error = %err,
+                    "reading the sandbox pod after its session failed; attributing the end \
+                     by the exit status"
+                );
+                SandboxState::Unknown
+            }
+        }
+    }
+
     async fn image_digest(&self, _image: &str) -> Result<Option<String>> {
         // The digest is resolved from the pod's container status when it reaches
         // Running (`await_running`) and recorded by the engine immediately after
@@ -1606,6 +1627,81 @@ fn exit_code_from_status(status: Option<Status>) -> i32 {
         .and_then(|message| message.parse::<i32>().ok())
         // A failure with no parseable ExitCode is reported as a generic non-zero.
         .unwrap_or(1)
+}
+
+/// The [`SandboxState`] a read sandbox pod is in.
+///
+/// A `DisruptionTarget` condition with status `True` is read first, because it
+/// names why the cluster is taking the pod away (an eviction, a preemption, a
+/// node drain) while the deletion it leads to says only that it is going; the
+/// reader is the dispatcher's, which reads its driver pod the same way. A pod
+/// being deleted (a `deletionTimestamp` set) or past running (phase `Failed` or
+/// `Succeeded`, which a sandbox whose PID 1 is `sleep infinity` only reaches when
+/// something outside it ended it) is [`Gone`](SandboxState::Gone). Any other pod
+/// is [`Running`](SandboxState::Running).
+fn pod_sandbox_state(pod: &Pod) -> SandboxState {
+    if let Some(reason) = disruption_reason(pod) {
+        return SandboxState::Disrupted { reason };
+    }
+    if pod.metadata.deletion_timestamp.is_some() {
+        return SandboxState::Gone {
+            reason: "being deleted".to_string(),
+        };
+    }
+    let status = pod.status.as_ref();
+    match status.and_then(|status| status.phase.as_deref()) {
+        Some(phase @ ("Failed" | "Succeeded")) => {
+            let detail = status
+                .and_then(|status| status.reason.as_deref())
+                .map(str::to_string)
+                .or_else(|| run_container_terminated(pod));
+            let reason = match detail {
+                Some(detail) => format!("phase {phase}: {detail}"),
+                None => format!("phase {phase}"),
+            };
+            SandboxState::Gone { reason }
+        }
+        _ => SandboxState::Running,
+    }
+}
+
+/// The reason, condition message included, a `DisruptionTarget` condition with
+/// status `True` gives for the cluster taking the pod away, such as
+/// `EvictionByEvictionAPI: Eviction API: evicting`. `None` when the pod carries no
+/// such condition. Ported from the dispatcher's reader of its driver pod.
+fn disruption_reason(pod: &Pod) -> Option<String> {
+    let condition = pod
+        .status
+        .as_ref()?
+        .conditions
+        .as_ref()?
+        .iter()
+        .find(|c| c.type_ == "DisruptionTarget" && c.status == "True")?;
+    let reason = condition.reason.clone().unwrap_or_else(|| "Evicted".into());
+    let suffix = condition
+        .message
+        .as_deref()
+        .map(|m| format!(": {m}"))
+        .unwrap_or_default();
+    Some(format!("{reason}{suffix}"))
+}
+
+/// The run container's terminated state as `{reason} (exit {code})`, such as
+/// `OOMKilled (exit 137)`. `None` when it has not terminated.
+fn run_container_terminated(pod: &Pod) -> Option<String> {
+    let terminated = pod
+        .status
+        .as_ref()?
+        .container_statuses
+        .as_ref()?
+        .iter()
+        .find(|cs| cs.name == RUN_CONTAINER)?
+        .state
+        .as_ref()?
+        .terminated
+        .as_ref()?;
+    let reason = terminated.reason.as_deref().unwrap_or("Error");
+    Some(format!("{reason} (exit {})", terminated.exit_code))
 }
 
 /// The registry digest reference (`repo@sha256:…`) the kubelet resolved the run

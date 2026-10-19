@@ -662,6 +662,8 @@ async fn report_lost(state: &AppState, job_id: &str) -> StatusCode {
             state: test_cabinet_contracts::job_api::DriverState::Failed,
             record: None,
             detail: Some("the driver Job no longer exists".to_string()),
+            artifacts_stored: None,
+            store_fault: None,
         }),
     )
     .await
@@ -717,6 +719,8 @@ async fn a_job_whose_driver_is_lost_fails_and_its_retry_keeps_the_plan_filling()
             state: test_cabinet_contracts::job_api::DriverState::Succeeded,
             record: None,
             detail: None,
+            artifacts_stored: None,
+            store_fault: None,
         }),
     )
     .await

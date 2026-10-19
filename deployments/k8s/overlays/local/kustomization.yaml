@@ -1,11 +1,13 @@
 # Local k3d overlay — the development mirror of a Kubernetes deployment.
 #
 # It deploys the WHOLE run topology — the backend (stateful), the dispatcher,
-# the artifact service, and the driver/dispatcher RBAC — reusing the same flat
+# the artifact and repos services, and the driver/dispatcher RBAC — reusing the same flat
 # manifests staging/prod use and overriding only what differs locally: the
 # namespace, locally-built images, the TCAB_ENV tag, dev secrets, a read-only
 # mount of the repository checkout the backend ingests from, and an Azurite blob
-# emulator in place of the environment's Blob containers and R2 bucket.
+# emulator in place of the environment's Blob containers and R2 bucket. The repos
+# service names no GitHub organization or token here, so a local publish answers
+# 503 and nothing local reaches GitHub.
 #
 # With the dispatcher + driver/artifacts in the cluster, a run enqueued at the
 # backend schedules as a per-run driver Job in-cluster — full local/deploy parity,
@@ -30,8 +32,10 @@ resources:
   # so they live under ../../cluster rather than in the base and its components.
   - ../../cluster/namespace
   - ../../cluster/observability
-  # The Azurite blob emulator: the object store of the artifacts service here, its
-  # run-tree container and the public dataset's container (patch-artifacts.yaml).
+  # The Azurite blob emulator: the object store of the artifacts and repos services
+  # here, the artifacts service's run-tree container and the public dataset's
+  # container (patch-artifacts.yaml), and the repos service's bundle container
+  # (patch-repos.yaml).
   - azurite.yaml
 
 # Stand the in-cluster Grafana LGTM stack up alongside the run topology (it replaces
@@ -69,6 +73,9 @@ images:
   - name: REPLACE_REGISTRY/tcab-artifacts
     newName: tcab-artifacts
     newTag: local
+  - name: REPLACE_REGISTRY/tcab-repos
+    newName: tcab-repos
+    newTag: local
   - name: REPLACE_REGISTRY/tcab-arena
     newName: tcab-arena
     newTag: local
@@ -95,6 +102,7 @@ patches:
   - path: patch-backend.yaml
   - path: patch-dispatcher.yaml
   - path: patch-artifacts.yaml
+  - path: patch-repos.yaml
   - path: patch-arena.yaml
 
   # Drop the base resources the local stack does without. The Makefile force-ingests
@@ -138,6 +146,15 @@ patches:
       kind: NetworkPolicy
       metadata:
         name: tcab-allow-artifacts-from-drivers
+  - target:
+      kind: NetworkPolicy
+      name: tcab-allow-repos-from-callers
+    patch: |-
+      $patch: delete
+      apiVersion: networking.k8s.io/v1
+      kind: NetworkPolicy
+      metadata:
+        name: tcab-allow-repos-from-callers
   - target:
       kind: NetworkPolicy
       name: tcab-allow-driver-from-sandbox

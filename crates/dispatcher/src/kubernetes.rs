@@ -18,6 +18,9 @@
 //! It deliberately holds no durable state: the in-flight set is recomputed from the
 //! live cluster, and the backend's `job` table is the source of truth.
 //!
+//! The control loop reaches the cluster only through the [`Cluster`] trait, which
+//! [`Kube`] implements; the controller's tests substitute an in-memory cluster.
+//!
 //! ## Why the dispatcher reaps sandboxes
 //!
 //! The driver creates the sandbox pod and normally deletes it itself — at the end of
@@ -71,6 +74,45 @@ pub struct ManagedJob {
     pub kind: JobKind,
     /// Where the `Job` is in its lifecycle.
     pub phase: JobPhase,
+}
+
+/// The cluster operations the control loop needs, so the loop can be driven against
+/// an in-memory cluster in tests. [`Kube`] is the one real implementation; each
+/// method's contract is documented there.
+pub trait Cluster {
+    /// Create one `Job` (see [`Kube::create_job`]).
+    fn create_job(&self, job: &Job) -> impl Future<Output = anyhow::Result<()>> + Send;
+
+    /// List the `Job`s the dispatcher owns (see [`Kube::list_managed`]).
+    fn list_managed(&self) -> impl Future<Output = anyhow::Result<Vec<ManagedJob>>> + Send;
+
+    /// Why a failed driver `Job`'s pod died (see [`Kube::failure_detail`]).
+    fn failure_detail(&self, job_name: &str) -> impl Future<Output = String> + Send;
+
+    /// Delete a job's orphaned sandbox pods, answering how many were removed (see
+    /// [`Kube::delete_sandbox_pods`]).
+    fn delete_sandbox_pods(
+        &self,
+        job_id: &str,
+    ) -> impl Future<Output = anyhow::Result<usize>> + Send;
+}
+
+impl Cluster for Kube {
+    async fn create_job(&self, job: &Job) -> anyhow::Result<()> {
+        Kube::create_job(self, job).await
+    }
+
+    async fn list_managed(&self) -> anyhow::Result<Vec<ManagedJob>> {
+        Kube::list_managed(self).await
+    }
+
+    async fn failure_detail(&self, job_name: &str) -> String {
+        Kube::failure_detail(self, job_name).await
+    }
+
+    async fn delete_sandbox_pods(&self, job_id: &str) -> anyhow::Result<usize> {
+        Kube::delete_sandbox_pods(self, job_id).await
+    }
 }
 
 /// A thin wrapper over the `kube` client scoped to the dispatcher's namespace.

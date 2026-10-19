@@ -170,9 +170,8 @@ test-cabinet-match-play = { path = "engines/crates/match-play" }
 #   [patch."https://github.com/TheClockwyrks/microservice-artifacts"]
 #   test-cabinet-artifacts = { path = "microservice-artifacts/crates/artifacts" }
 
-# microservice-repos is not checked out; the table joins once it is bootstrapped:
-#   [patch."https://github.com/TheClockwyrks/microservice-repos"]
-#   test-cabinet-repos = { path = "microservice-repos/crates/repos" }
+[patch."https://github.com/TheClockwyrks/microservice-repos"]
+test-cabinet-repos = { path = "microservice-repos/crates/repos" }
 
 # microservice-publisher is not checked out; the table joins once it is bootstrapped:
 #   [patch."https://github.com/TheClockwyrks/microservice-publisher"]

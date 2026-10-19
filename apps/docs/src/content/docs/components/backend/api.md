@@ -668,10 +668,12 @@ for the job and attaches the record id to the already-canceled job. The job
 keeps its `canceled` state and its cancellation detail, no completion
 notification fires, and no retry is enqueued.
 
-Only the driver of a killed gg run whose session had been launched posts this
-status. A killed run of any other harness, and a gg run killed before its
-session was launched, is destroyed by its driver, which posts nothing further,
-so the job stays `canceled` with no record attached.
+The driver of a killed gg run whose session had been launched posts this
+status, and so does the driver of a run of any harness canceled while it was
+[finishing the run](/components/driver/overview/#retries), which posts
+`canceled` carrying the record it holds. Any other killed run, a gg run killed
+before its session was launched among them, is destroyed by its driver, which
+posts nothing further, so the job stays `canceled` with no record attached.
 
 ### The held record
 

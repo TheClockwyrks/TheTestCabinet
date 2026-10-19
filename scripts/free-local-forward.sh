@@ -2,10 +2,10 @@
 # Tear down LOCAL port-forwarding so `make -C deployments/local local-forward`
 # can bind cleanly.
 #
-# Why this exists: local-forward backgrounds five `kubectl port-forward` children
-# from a single recipe shell and then blocks in `wait`. A Ctrl-C that only reaches
-# the foreground process — or a terminal that dies outright — can leave those
-# children alive and holding :8787/:8790/:8791/:3000. The next local-forward
+# Why this exists: local-forward backgrounds one `kubectl port-forward` child per
+# service from a single recipe shell and then blocks in `wait`. A Ctrl-C that only
+# reaches the foreground process — or a terminal that dies outright — can leave those
+# children alive and holding :8787/:8790/:8791/:8792/:3000. The next local-forward
 # then fails to bind, and because each forward is its own process the surviving
 # ones look healthy while the orphaned ports never come back. This stops the whole
 # arrangement so the next run starts from zero.
@@ -49,7 +49,7 @@ MAKEFILE="deployments/local/Makefile"
 
 # Read the namespace, the forwarded service names, and the host ports out of the
 # Makefile so this stays in sync when they move — the service list in particular has
-# grown before (arena) and a stale copy here would silently stop reaping the new one.
+# grown before (arena, repos) and a stale copy here would silently stop reaping the new one.
 # The fallbacks are the current values.
 
 # `NS ?= tcab-local`. Honour an exported NS the same way the Makefile does.
@@ -60,10 +60,10 @@ NS="${NS:-tcab-local}"
 # host port is matched as literal digits, which is also what excludes local-ingest's
 # `$$port:8787` — its port is chosen at run time and is already in the list anyway.
 SERVICES="$(sed -n 's|.*port-forward svc/\([A-Za-z0-9._-]\{1,\}\) .*|\1|p' "$MAKEFILE" 2>/dev/null | sort -u | paste -sd'|')"
-SERVICES="${SERVICES:-tcab-arena|tcab-artifacts|tcab-backend|tcab-lgtm}"
+SERVICES="${SERVICES:-tcab-arena|tcab-artifacts|tcab-backend|tcab-lgtm|tcab-repos}"
 
 PORTS="$(sed -n 's|.*port-forward svc/[A-Za-z0-9._-]\{1,\} \([0-9]\{1,\}\):[0-9]\{1,\}.*|\1|p' "$MAKEFILE" 2>/dev/null | sort -un)"
-PORTS="${PORTS:-$(printf '%s\n' 3000 4317 4318 8787 8790 8791)}"
+PORTS="${PORTS:-$(printf '%s\n' 3000 4317 4318 8787 8790 8791 8792)}"
 
 # Two patterns, because the processes to stop do not share a single distinguishing
 # string.
@@ -134,7 +134,7 @@ if [[ -z "$pids" ]]; then
 else
 	echo "Local forwarding processes (namespace $NS):"
 	# The recipe shell carries the ENTIRE local-forward recipe as its command line —
-	# five kubectl invocations on one line. Clip it: the pid, start time, and opening
+	# one kubectl invocation per service on one line. Clip it: the pid, start time, and opening
 	# words are all anyone needs to recognise what is being stopped.
 	# shellcheck disable=SC2086 # word-splitting is how we pass the pid list to ps
 	ps -o pid=,lstart=,args= -p $pids | cut -c1-120 | sed 's/^/  /'

@@ -61,6 +61,11 @@ The bundle is served as `application/octet-stream` under the file name
    scrubbed tree on top of the bundle's tip.
 3. Push `main` and answer the repository's URL.
 
+The scrub reaches every commit the bundle carries, not the tip's tree alone,
+since a push of `main` sends the whole history: a commit whose files held a key
+is recreated over its scrubbed tree with its own message, author, committer and
+dates, and a commit whose files hold none is pushed as it is.
+
 The route is idempotent, so a publish repeated after a failure at any step
 completes it. The commit is deterministic: its message is fixed, its author and
 committer are `Clockwyrks <runs@clockwyrks.invalid>`, and both its dates are the

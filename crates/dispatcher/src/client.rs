@@ -1,6 +1,6 @@
 //! The dispatcher's client for the backend's control-plane job API.
 //!
-//! The dispatcher speaks two of the backend's `/jobs` endpoints (see the backend's
+//! The dispatcher speaks these of the backend's job endpoints (see the backend's
 //! `api/jobs.rs`):
 //!
 //! - **Claim** — `POST /jobs/next`, authenticated with the shared **service
@@ -14,9 +14,11 @@
 //!   driver itself could never report. The status POST uses the **per-job token**
 //!   (carried in the [`ClaimedJob`]), not the service token — it is exactly the
 //!   call the dead driver would have made.
-//! - **Lost** — `GET /jobs/active` to read which jobs the backend believes a driver
-//!   is executing, and `POST /jobs/{id}/lost` (service token) to fail one whose
-//!   driver the cluster no longer runs. The service token, because a dispatcher that
+//! - **Leases** — `POST /jobs/leases` (service token) to renew, in one call, the
+//!   claim lease of every run whose driver `Job` is live, and `GET /jobs/active` to
+//!   read each job's state beside its lease expiry.
+//! - **Lost** — `POST /jobs/{id}/lost` (service token) to fail a job past
+//!   `dispatched` whose lease lapsed. The service token, because a dispatcher that
 //!   restarted holds no per-job token for the jobs an earlier process dispatched.
 //!
 //! The dispatcher never enqueues, streams events, or pushes records: those are the
@@ -25,7 +27,7 @@
 use reqwest::{Client, StatusCode};
 use serde::Deserialize;
 
-use test_cabinet_contracts::job_api::{ClaimedJob, DriverState, StatusUpdate};
+use test_cabinet_contracts::job_api::{ClaimedJob, DriverState, LeaseRenewal, StatusUpdate};
 use test_cabinet_contracts::publish_job_api::PublishClaim;
 
 /// A failure talking to the backend's job API.
@@ -89,6 +91,9 @@ pub enum JobState {
     Starting,
     /// The driver is executing the run.
     Running,
+    /// The run is over and the driver is handing its result to durable storage;
+    /// the backend holds its record. Still driven: the driver can be lost here.
+    Storing,
     /// The run produced a record.
     Succeeded,
     /// The run could not be driven to a record.
@@ -105,7 +110,10 @@ impl JobState {
     /// Whether the backend believes a driver is executing the job: it was claimed and
     /// has not reached a terminal state. Only such a job can lose its driver.
     pub fn is_driven(self) -> bool {
-        matches!(self, Self::Dispatched | Self::Starting | Self::Running)
+        matches!(
+            self,
+            Self::Dispatched | Self::Starting | Self::Running | Self::Storing
+        )
     }
 
     /// Whether the run is over from the backend's perspective. A driver-pod death
@@ -121,8 +129,8 @@ struct JobStatusOut {
     state: JobState,
 }
 
-/// The subset of one `GET /jobs/active` row the dispatcher reads: the job's id and its
-/// lifecycle state.
+/// The subset of one `GET /jobs/active` row the dispatcher reads: the job's id, its
+/// lifecycle state and its claim lease.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ActiveJob {
@@ -130,6 +138,11 @@ pub struct ActiveJob {
     pub run_id: String,
     /// Where the job is in its lifecycle.
     pub state: JobState,
+    /// When the job's claim lease lapses (RFC 3339), absent for a job never claimed
+    /// or one whose lease the backend has cleared. An absent lease on a driven job
+    /// counts as lapsed.
+    #[serde(default)]
+    pub lease_expires_at: Option<String>,
 }
 
 /// A client for the backend's control-plane job API.
@@ -261,8 +274,38 @@ impl BackendClient {
             })
     }
 
+    /// Renew the claim lease of each listed job (`POST /jobs/leases`, service token).
+    /// The backend extends each one still driven to two minutes past the call and
+    /// ignores the rest, so the list need not be filtered by backend state.
+    pub async fn renew_leases(&self, job_ids: &[String]) -> Result<(), ClientError> {
+        let body = LeaseRenewal {
+            job_ids: job_ids.to_vec(),
+        };
+        let response = self
+            .http
+            .post(format!("{}/jobs/leases", self.base_url))
+            .bearer_auth(&self.service_token)
+            .json(&body)
+            .send()
+            .await
+            .map_err(|source| ClientError::Transport {
+                what: "lease renewal",
+                source,
+            })?;
+        let status = response.status();
+        if status.is_success() {
+            return Ok(());
+        }
+        let body = response.text().await.unwrap_or_default();
+        Err(ClientError::Status {
+            what: "lease renewal",
+            status,
+            body,
+        })
+    }
+
     /// The jobs the backend still has in flight (`GET /jobs/active`), every state from
-    /// `queued` to `running`.
+    /// `queued` to `storing`, each with its lease expiry.
     pub async fn active_jobs(&self) -> Result<Vec<ActiveJob>, ClientError> {
         let response = self
             .http
@@ -294,8 +337,9 @@ impl BackendClient {
 
     /// Report a job whose driver is gone without having reported
     /// (`POST /jobs/{id}/lost`, service token). `detail` says what the dispatcher found.
-    /// The backend fails the job only while it is still `dispatched`, `starting` or
-    /// `running`, so a report racing the driver's own is harmless.
+    /// The backend finishes the job only while it is still `dispatched`, `starting`,
+    /// `running` or `storing` (from its held record when it holds one), so a report
+    /// racing the driver's own is harmless.
     pub async fn report_lost(
         &self,
         job_id: &str,
@@ -305,6 +349,8 @@ impl BackendClient {
             state: DriverState::Failed,
             record: None,
             detail: Some(detail.into()),
+            artifacts_stored: None,
+            store_fault: None,
         };
         let response = self
             .http
@@ -344,6 +390,8 @@ impl BackendClient {
             state: DriverState::Failed,
             record: None,
             detail: Some(detail.into()),
+            artifacts_stored: None,
+            store_fault: None,
         };
         let response = self
             .http

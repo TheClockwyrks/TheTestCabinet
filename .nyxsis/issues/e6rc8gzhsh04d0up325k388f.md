@@ -6,8 +6,9 @@ zone: BACK
 number: 1
 title: Persist each relayed event batch in Postgres as it arrives
 type: generic
-state: open
+state: done
 created: 2026-10-19T00:38:30.451934995Z
+done: 2026-10-19T19:17:26.59327757Z
 ---
 
 The backend holds a running job's relayed events only in the in-memory relay

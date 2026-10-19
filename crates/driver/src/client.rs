@@ -9,11 +9,18 @@
 //! token the dispatcher passed in.
 //!
 //! The terminal record is handed back *with* the status: the backend persists it
-//! using the events the relay already accumulated from the streaming calls below,
-//! so the driver never re-sends them as part of the record.
+//! with the events it stored from the numbered batches [`JobClient::post_events`]
+//! delivered, so the driver never re-sends them as part of the record.
+//!
+//! A finished run is handed over twice: first in the held `storing` report
+//! ([`JobClient::post_status_storing`]), which the backend keeps against the job
+//! before the uploads begin, then in the terminal report, which also says whether
+//! the run tree was stored ([`StoreFields`]), in the sequence
+//! [`finish`](crate::finish) makes. Both are made under the driver's
+//! [retry policy](crate::retry); [`ClientError::is_refused`] tells a request the
+//! backend refused, which ends the retrying at once, from every other failure.
 
-use crate::event::HarnessEvent;
-use crate::job_api::{DriverState, JobState, JobStatusOut, StatusUpdate};
+use crate::job_api::{DriverState, EventBatch, JobState, JobStatusOut, StatusUpdate};
 use crate::preview::AssetPreview;
 use crate::run_record::RunRecord;
 use reqwest::Client;
@@ -40,6 +47,69 @@ pub enum ClientError {
         /// The response body, for diagnostics (often empty on a `204`-path error).
         body: String,
     },
+}
+
+impl ClientError {
+    /// Whether the backend refused the request itself: a `4xx` other than `408`
+    /// (Request Timeout) and `429` (Too Many Requests). No retry can change such an
+    /// answer, so it ends the call at once. A transport failure, a `408`, a `429`,
+    /// a `5xx` and any other status are retried.
+    pub fn is_refused(&self) -> bool {
+        match self {
+            Self::Transport { .. } => false,
+            Self::Status { status, .. } => {
+                status.is_client_error() && !matches!(status.as_u16(), 408 | 429)
+            }
+        }
+    }
+}
+
+/// What the driver does when its first report, `starting`, fails.
+///
+/// The first report is the first call the driver makes with its per-job token, so
+/// it is where a driver learns that the backend no longer accepts that token: its
+/// job's claim [lease](https://docs.testcabinet.ai/components/dispatcher/overview/#claim-leases)
+/// lapsed while the job was still `dispatched`, the job returned to the queue with a
+/// fresh token, and another driver may already hold it. See
+/// [`first_report_failure`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FirstReportFailure {
+    /// The backend refused the report ([`ClientError::is_refused`]): the job is no
+    /// longer this driver's. The driver deletes the sandbox it holds and exits
+    /// successfully, so its `Job` completes rather than fails and nothing reaps or
+    /// reports against the job id the reclaimed run now carries.
+    Withdrawn,
+    /// The backend could not be reached or did not answer. The driver cannot stream
+    /// and exits non-zero.
+    Unreachable,
+}
+
+impl FirstReportFailure {
+    /// Whether the driver exits successfully on this failure.
+    pub fn exits_successfully(self) -> bool {
+        matches!(self, Self::Withdrawn)
+    }
+}
+
+/// Classify a failure of the driver's first report ([`JobClient::post_status_starting`]).
+pub fn first_report_failure(error: &ClientError) -> FirstReportFailure {
+    if error.is_refused() {
+        FirstReportFailure::Withdrawn
+    } else {
+        FirstReportFailure::Unreachable
+    }
+}
+
+/// What a terminal report says of the run tree's upload (`artifactsStored`,
+/// `storeFault`).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct StoreFields {
+    /// `true` when the artifacts service acknowledged the tree, `false` when it did
+    /// not, and `None` when no artifacts service is configured.
+    pub artifacts_stored: Option<bool>,
+    /// Why the tree was not stored, when the cause was a condition of the store
+    /// rather than the run's own failure.
+    pub store_fault: Option<String>,
 }
 
 /// Append the body to a status error when there is one to show.
@@ -90,6 +160,8 @@ impl JobClient {
                 state: DriverState::Starting,
                 record: None,
                 detail: None,
+                artifacts_stored: None,
+                store_fault: None,
             },
         )
         .await
@@ -103,19 +175,53 @@ impl JobClient {
                 state: DriverState::Running,
                 record: None,
                 detail: None,
+                artifacts_stored: None,
+                store_fault: None,
             },
         )
         .await
     }
 
-    /// Stream a batch of harness events (`POST /jobs/{id}/events`). The backend
-    /// appends them to the live stream and the backlog persisted with the run.
-    pub async fn post_events(&self, events: &[HarnessEvent]) -> Result<(), ClientError> {
+    /// Hand the finished run's record to the backend before the uploads begin
+    /// (`POST /jobs/{id}/status`, `storing`): the held report. `detail` is the run's
+    /// failure detail when it will be reported `failed`. The backend stores the
+    /// record (and the detail) against the job, replacing what an earlier `storing`
+    /// report left, and finishes the run from it if the driver is lost.
+    ///
+    /// The same report is repeated after each failed attempt of an upload that is
+    /// waiting on the store, with that failure as `store_fault` (`storeFault`): the
+    /// reason the run is still storing. It goes there rather than in `detail`, which
+    /// stays the run's own failure, since the backend replaces the held detail with
+    /// each report's and would otherwise finish a lost run with the upload's error.
+    pub async fn post_status_storing(
+        &self,
+        record: &RunRecord,
+        detail: Option<&str>,
+        store_fault: Option<&str>,
+    ) -> Result<(), ClientError> {
+        self.post_status(
+            "status (storing)",
+            &StatusUpdate {
+                state: DriverState::Storing,
+                record: Some(record.clone()),
+                detail: detail.map(str::to_string),
+                artifacts_stored: None,
+                store_fault: store_fault.map(str::to_string),
+            },
+        )
+        .await
+    }
+
+    /// Deliver one numbered batch of harness events (`POST /jobs/{id}/events`).
+    /// The backend stores every event of the batch keyed by job and sequence,
+    /// skipping any already stored, and answers `204` once the write has
+    /// committed, so a resent batch is idempotent.
+    pub async fn post_events(&self, batch: &EventBatch) -> Result<(), ClientError> {
         let response = self
             .http
             .post(self.url("events"))
             .bearer_auth(&self.job_token)
-            .json(events)
+            .json(batch)
             .send()
             .await
             .map_err(|source| ClientError::Transport {
@@ -183,15 +289,22 @@ impl JobClient {
     }
 
     /// Report success with the produced record (`POST /jobs/{id}/status`,
-    /// `succeeded`). The backend persists the record using the events the relay
-    /// accumulated, regardless of the record's own outcome.
-    pub async fn post_status_succeeded(&self, record: RunRecord) -> Result<(), ClientError> {
+    /// `succeeded`) and what became of its tree (`store`). The backend persists the
+    /// record using the events the relay accumulated, regardless of the record's own
+    /// outcome.
+    pub async fn post_status_succeeded(
+        &self,
+        record: RunRecord,
+        store: StoreFields,
+    ) -> Result<(), ClientError> {
         self.post_status(
             "status (succeeded)",
             &StatusUpdate {
                 state: DriverState::Succeeded,
                 record: Some(record),
                 detail: None,
+                artifacts_stored: store.artifacts_stored,
+                store_fault: store.store_fault,
             },
         )
         .await
@@ -199,11 +312,13 @@ impl JobClient {
 
     /// Report a terminal infrastructure/setup failure with a specific diagnostic
     /// reason (`POST /jobs/{id}/status`, `failed`), plus whatever record the run
-    /// managed to produce (retained so the timeline stays inspectable).
+    /// managed to produce (retained so the timeline stays inspectable) and what became
+    /// of its tree (`store`; default when the run produced none).
     pub async fn post_status_failed(
         &self,
         detail: impl Into<String>,
         record: Option<RunRecord>,
+        store: StoreFields,
     ) -> Result<(), ClientError> {
         self.post_status(
             "status (failed)",
@@ -211,6 +326,8 @@ impl JobClient {
                 state: DriverState::Failed,
                 record,
                 detail: Some(detail.into()),
+                artifacts_stored: store.artifacts_stored,
+                store_fault: store.store_fault,
             },
         )
         .await
@@ -222,16 +339,24 @@ impl JobClient {
     /// events the relay accumulated and attaches it to the job, so the killed run stays
     /// visible and inspectable in the run list.
     ///
-    /// Reached for a canceled [gg](crate::gg) run alone, the one harness with
-    /// a wind-down to ask for. A canceled run of any other is destroyed by the driver,
-    /// which posts nothing after the kill (see the [`cancel`](crate::cancel) module).
-    pub async fn post_status_canceled(&self, record: RunRecord) -> Result<(), ClientError> {
+    /// Reached for a canceled [gg](crate::gg) run, the one harness with a wind-down
+    /// to ask for, and for a run of any harness whose job is canceled while its
+    /// finishing waits (see [`finish`](crate::finish)). A run of any other harness
+    /// canceled before its finishing began is destroyed by the driver, which posts
+    /// nothing after the kill (see the [`cancel`](crate::cancel) module).
+    pub async fn post_status_canceled(
+        &self,
+        record: RunRecord,
+        store: StoreFields,
+    ) -> Result<(), ClientError> {
         self.post_status(
             "status (canceled)",
             &StatusUpdate {
                 state: DriverState::Canceled,
                 record: Some(record),
                 detail: None,
+                artifacts_stored: store.artifacts_stored,
+                store_fault: store.store_fault,
             },
         )
         .await
@@ -274,3 +399,7 @@ impl JobClient {
 #[cfg(test)]
 #[path = "client.test.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "client.first_report.test.rs"]
+mod first_report_tests;

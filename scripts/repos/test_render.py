@@ -122,8 +122,10 @@ def test_the_windows_and_extra_gate_tables_name_repositories_carrying_a_crate() 
     assert render.extra_gates("test-suites", "content") == {
         "checks": ("frozen-paths", "spec-prose", "spec-vocabulary", "audio-packs", "validators-typecheck")
     }
-    # gg builds its toolchains image, so it holds that Dockerfile to its build context.
-    assert render.extra_gates("gg", "application") == {"checks": ("build-context",)}
+    # gg, an application, takes the kit's `build-context` gate, which holds its
+    # Dockerfiles (the `gg-toolchains` image's among them) to its build context.
+    assert render.extra_gates("gg", "application") == {}
+    assert render.builds_image("application")
 
 
 def test_an_extra_gate_in_a_job_the_pipeline_lacks_is_refused(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -201,6 +203,64 @@ def test_the_kits_nextest_is_the_superrepos() -> None:
         assert own and own.group(1) == kit.group(1)
 
 
+def test_a_kind_that_builds_an_image_carries_a_crate() -> None:
+    """The image is built from the workspace, fetching its dependencies as the Rust job does."""
+    assert {"application"} == render.IMAGE_KINDS
+    for kind in render.IMAGE_KINDS:
+        assert EDGES.KINDS[kind].crate == "binary", kind
+    assert render.ci_image_stage("contracts", "library") == ""
+
+
+def test_the_image_stage_builds_each_architecture_then_fuses_them() -> None:
+    stage = render.ci_image_stage("microservice-arena", "application")
+    assert stage.startswith("  - stage: image\n    displayName: Image\n    dependsOn: gates\n")
+    branches = "in(variables['Build.SourceBranch'], 'refs/heads/master', 'refs/heads/staging')"
+    assert f"    condition: and(succeeded(), {branches})\n" in stage
+    jobs = re.findall(r"^      - job: (\S+)$", stage, re.MULTILINE)
+    assert jobs == ["image_amd64", "image_arm64", "image_manifest"]
+    amd64, arm64, manifest = (_job(stage + "\n", job) for job in jobs)
+    assert "          vmImage: ubuntu-24.04\n" in amd64
+    assert f"          name: {render.ARM64_POOL}\n" in arm64
+    for arch, job in (("amd64", amd64), ("arm64", arm64)):
+        assert re.findall(r"^            - (\S+)$", job, re.MULTILINE) == ["contracts", "engines"], arch
+        assert "- script: scripts/ci/git-sources.sh\n" in job
+        assert f"containerRegistry: {render.CI_IMAGE_ENDPOINT}\n" in job
+        assert job.endswith(
+            '- script: scripts/ci/image.sh microservice-arena "$(Build.SourceVersion)"\n'
+            f"            displayName: Build and push the image ({arch})\n"
+        )
+    assert ("sudo rm -rf" in amd64, "sudo rm -rf" in arm64) == (True, False)
+    assert "        dependsOn:\n          - image_amd64\n          - image_arm64\n" in manifest
+    assert '- script: scripts/ci/manifest.sh "$(Build.SourceVersion)" microservice-arena\n' in manifest
+
+
+def test_the_image_pins_the_kits_rust() -> None:
+    toolchain = tomllib.loads((render.KIT / "rust-toolchain.toml").read_text(encoding="utf-8"))
+    assert render.rust_channel() == toolchain["toolchain"]["channel"]
+
+
+def test_an_application_is_rendered_its_image(rendered: Callable[[str], Path]) -> None:
+    """The scaffold builds the crate from the Rust the kit pins, and the render passes its own build-context gate."""
+    root = rendered("microservice-arena")
+    _, crate = render.crate_of("microservice-arena")
+    dockerfile = (root / "Dockerfile").read_text(encoding="utf-8")
+    assert f"FROM docker.io/library/rust:{render.rust_channel()}-bookworm AS build\n" in dockerfile
+    assert f"cargo build --release --locked -p {crate}" in dockerfile
+    assert "--mount=type=secret,id=gitconfig,target=/root/.gitconfig,required=false" in dockerfile
+    assert f'ENTRYPOINT ["{crate}"]' in dockerfile
+    env = {key: value for key, value in os.environ.items() if key not in render.GIT_LOCATING}
+    done = subprocess.run(
+        ["scripts/ci/build-context.sh"], cwd=root, env=env, capture_output=True, text=True, check=False
+    )
+    assert done.returncode == 0, done.stdout + done.stderr
+    pipeline = (root / "azure-pipelines.yml").read_text(encoding="utf-8")
+    assert pipeline.count("gate run build-context\n") == 1
+    assert "gate run build-context\n" in _job(pipeline, "checks")
+    hooks = (root / ".pre-commit-config.yaml").read_text(encoding="utf-8")
+    assert "      - id: build-context\n" in hooks
+    assert yaml.safe_load(pipeline)["stages"][1]["stage"] == "image"
+
+
 @pytest.mark.parametrize(
     ("name", "kind", "description", "said"),
     [
@@ -228,6 +288,13 @@ def test_each_kind_is_rendered_its_shape(kind: str, rendered: Callable[[str], Pa
     assert ("ci/gates/typescript.py" in files) is shape.typescript
     assert (".npmrc" in files) is shape.typescript
     assert ("scripts/resolve-lock.sh" in files) is shape.commits_lock
+    image = render.builds_image(kind)
+    for path in ("Dockerfile", ".dockerignore", "ci/gates/build-context.py", "scripts/ci/build-context.sh"):
+        assert (path in files) is image, path
+    for path in ("scripts/ci/image.sh", "scripts/ci/manifest.sh"):
+        assert (path in files) is image, path
+    pipeline = (root / "azure-pipelines.yml").read_text(encoding="utf-8")
+    assert ("  - stage: image\n" in pipeline) is image
     assert not [path for path in files if path.endswith(".jinja") or "{%" in path or "{{" in path]
     assert not [path for path in files if path.startswith(("tasks/", ".codex/"))]
     if shape.crate:
@@ -498,6 +565,23 @@ def test_an_update_merges_a_kit_change_and_keeps_the_repositorys_own(tmp_path: P
     assert "A line the repository wrote." in merged
     answers = yaml.safe_load((root / ".copier-answers.yml").read_text(encoding="utf-8"))
     assert answers["_commit"] == git(["rev-parse", "--short", "HEAD"], own_superrepo)
+
+
+def test_an_update_leaves_an_applications_dockerfile_to_it(tmp_path: Path, own_superrepo: Path) -> None:
+    """The Dockerfile is a scaffold the repository grows, so an update of the kit never merges into it."""
+    root = tmp_path / "microservice-arena"
+    render.render(root, "microservice-arena", "application", "The arena", source=own_superrepo)
+    git(["init", "--quiet", "--initial-branch=master"], root)
+    (root / "Dockerfile").write_text("FROM scratch\n", encoding="utf-8")
+    commit(root, "chore: scaffold")
+
+    template = own_superrepo / "templates" / "repository" / "{% if ci_image %}Dockerfile{% endif %}.jinja"
+    template.write_text(template.read_text(encoding="utf-8") + "# A line the kit added.\n", encoding="utf-8")
+    commit(own_superrepo, "change the kit's Dockerfile")
+
+    outcome = render.update(root, source=own_superrepo)
+    assert outcome.conflicts == []
+    assert (root / "Dockerfile").read_text(encoding="utf-8") == "FROM scratch\n"
 
 
 def test_an_update_refuses_uncommitted_changes(tmp_path: Path, own_superrepo: Path) -> None:

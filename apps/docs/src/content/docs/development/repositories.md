@@ -86,10 +86,11 @@ Every repository but `contracts`, `engines`, `gg`, `test-suites` and
   the layout of a run tree, the test case and suite formats, the job API and
   publish-job API wire types, the reference lock format, the match-play shapes,
   the ingest wire structs, `AssetPreview`, `Writeup` and its parser,
-  `SEED_COMMIT_MESSAGE`, `RUN_IMAGE_OVERRIDE_ENVS`, `MODALITY_IMAGE`, the
-  harness display names, the key names redaction scrubs, the `proof_*` naming
-  rules and the `find_build_output` layout rules, and the asset-reference key
-  layout. Its `fixtures/` holds the scoring goldens.
+  `SEED_COMMIT_MESSAGE`, `IMPLEMENTATION_COMMIT_MESSAGE`,
+  `RUN_IMAGE_OVERRIDE_ENVS`, `MODALITY_IMAGE`, the harness display names, the
+  key names redaction scrubs, the `proof_*` naming rules and the
+  `find_build_output` layout rules, and the asset-reference key layout. Its
+  `fixtures/` holds the scoring goldens.
 - `crates/suites` (`test-cabinet-suites`): the suite runtime. Resolving and
   validating a suite, the engine catalog resolution, the browser driver, the
   vitest validator, the `test_case`, `test_case_group` and `test_suite`
@@ -338,6 +339,10 @@ and the kit's `edges.py` hold:
 - the Windows job, for a repository `WINDOWS_TESTS` names;
 - the steps of the gates a repository writes itself, which `EXTRA_GATES` names
   by the job each runs in;
+- for an `application`, the `Dockerfile` scaffold and its `.dockerignore`
+  allowlist, the `build-context` gate, and the image stage that builds the
+  image natively on an amd64 and an arm64 agent and fuses the two into
+  `<name>:<commit>` (`IMAGE_KINDS` in `render.py`);
 - the includes of the jobs, stages and Rust setup steps a repository writes
   itself, which `PROJECT_PIPELINE` names with the stages the mirror waits on,
   and the Rust job's time limit (`RUST_TIMEOUTS`);

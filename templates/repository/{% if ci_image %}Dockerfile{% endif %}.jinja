@@ -1,0 +1,43 @@
+# syntax=docker/dockerfile:1
+# The image of {{name}}. Its pipeline builds it on every gated push to master
+# and staging, natively once per architecture (scripts/ci/image.sh), and fuses
+# the two into the multi-arch `{{image_registry}}/{{name}}:<commit>` a
+# deployment pins (scripts/ci/manifest.sh).
+#
+# The build context is the repository root, held to what .dockerignore admits,
+# and the `build-context` gate holds every COPY below to that allowlist and the
+# Rust pin to rust-toolchain.toml's channel. The kit writes this file once, as
+# a scaffold, and it then belongs to the repository: an update never merges
+# into it.
+#
+# A manifest names a dependency on another repository by its public source,
+# which a build cannot reach while the mirrors are private. The pipeline hands
+# the build the git configuration scripts/ci/git-sources.sh wrote, which
+# rewrites each public source to Azure and carries the job's token, as the
+# secret `gitconfig`; it is mounted for the one RUN that fetches and never
+# enters a layer. A build without it fetches from the public sources as named.
+FROM docker.io/library/rust:{{rust_channel}}-bookworm AS build
+WORKDIR /src
+COPY . .
+# The commit the image is built from, which the build context, carrying no
+# `.git`, cannot tell; the pipeline passes it.
+ARG TCAB_BUILD_COMMIT
+# The cargo registry, the git checkouts and target/ are cache mounts, so a
+# source change compiles only what changed. BuildKit replays the mtimes a file
+# had in the context when the COPY is served from cache, so the sources are
+# touched first and cargo never takes an artifact of another build as fresh.
+RUN --mount=type=secret,id=gitconfig,target=/root/.gitconfig,required=false \
+    --mount=type=cache,target=/usr/local/cargo/registry \
+    --mount=type=cache,target=/usr/local/cargo/git \
+    --mount=type=cache,target=/src/target \
+    find /src -path /src/target -prune -o -type f -exec touch {} + \
+    && TCAB_BUILD_COMMIT="${TCAB_BUILD_COMMIT}" cargo build --release --locked -p {{crate}} \
+    && mkdir -p /out \
+    && cp target/release/{{crate}} /out/
+
+FROM docker.io/library/debian:bookworm-slim
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends ca-certificates \
+  && rm -rf /var/lib/apt/lists/*
+COPY --from=build /out/{{crate}} /usr/local/bin/{{crate}}
+ENTRYPOINT ["{{crate}}"]
