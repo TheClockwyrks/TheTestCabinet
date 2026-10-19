@@ -16,10 +16,9 @@
 //! frames back to the backend as it goes, and reports its terminal status — carrying
 //! the produced [run record](RunRecord) — when it finishes.
 //!
-//! It re-implements **none** of a run's behavior: every piece is the same
-//! [`RunEngine`] a local `tcab run` assembles (see [`run`]), only the in-process sinks
-//! are swapped for backend-streaming ones (see [`sink`]) and the outcome is streamed
-//! back rather than served locally.
+//! It re-implements **none** of a run's behavior: every piece is the [`RunEngine`]
+//! (see [`run`]), driven through backend-streaming sinks (see [`sink`]), and the
+//! outcome is streamed back rather than served locally.
 //!
 //! There is no app-level auth on the driver itself — it is a client, not a server.
 //! Its streaming calls authenticate to the backend with the per-job token the
@@ -306,7 +305,7 @@ pub struct RunRequest {
     pub engine: EngineSelection,
     /// Optional override for the maximum harness runtime, in seconds. `None`
     /// uses the resolved test case's `max_runtime_seconds` default; `Some`
-    /// replaces it for this run (for example `tcab run --max-runtime`). Either
+    /// replaces it for this run (the launch's maximum-runtime override). Either
     /// way the run is bounded, so a session can never continue unbounded.
     pub max_runtime_override: Option<u64>,
     /// An explicit per-run override for the run-container image: a full, pullable

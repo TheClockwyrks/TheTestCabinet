@@ -8,7 +8,7 @@
 # name and one of the slugs the agent harness layer in `crates/driver` knows.
 slug = "claude"
 
-# Human-readable name, shown by `tcab harnesses`.
+# Human-readable name, shown by the console.
 name = "Anthropic Claude Code"
 
 # The CLI binary the run probes (`<binary> --version`) and invokes. The installer

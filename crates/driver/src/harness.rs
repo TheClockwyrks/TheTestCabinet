@@ -569,7 +569,7 @@ pub trait AgentHarness: Send + Sync {
     fn slug(&self) -> HarnessSlug;
 
     /// The human-readable harness name, for display (for example by
-    /// `tcab harnesses`). Defaults to the slug.
+    /// the console). Defaults to the slug.
     fn name(&self) -> &str {
         self.slug().as_str()
     }

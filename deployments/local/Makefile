@@ -755,8 +755,8 @@ run-image-%:
 # read, so its assignments take effect here.
 #
 # OPTIONALLY also builds tcab-driver-subscription from the host's signed-in harness
-# CLI credential files (the same files the local `tcab run` reads): Claude's
-# ~/.claude/.credentials.json (+ ~/.claude.json), Codex's $CODEX_HOME/auth.json
+# CLI credential files (the files each harness CLI signs in with on this machine):
+# Claude's ~/.claude/.credentials.json (+ ~/.claude.json), Codex's $CODEX_HOME/auth.json
 # (default ~/.codex/auth.json), and the Antigravity OAuth token. Unlike the API-key
 # block this NEVER errors when the files are absent — subscription is opt-in; the
 # Secret is mounted optional, so missing creds just leave runs API-key-only.

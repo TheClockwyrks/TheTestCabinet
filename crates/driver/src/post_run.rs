@@ -44,7 +44,7 @@
 //! the contract lives in the engine, the implementation is injected by whoever
 //! assembles it. For code analysis that keeps the engine independent of the
 //! [code analyzer](crate::analyzer): the engine runs whatever stages it is handed, and the
-//! hosts (the driver binary, `tcab run`) are what wire the analyzer in. A host that
+//! host (the driver binary) is what wire the analyzer in. A host that
 //! wires no stages (the default, and every test) simply runs none.
 
 use std::path::{Path, PathBuf};

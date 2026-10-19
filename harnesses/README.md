@@ -38,7 +38,7 @@ Each `harness.toml` declares:
 | Field     | Meaning                                                                                                             |
 | --------- | ------------------------------------------------------------------------------------------------------------------- |
 | `slug`    | Stable slug; must match the directory name and a slug the agent harness layer knows.                                |
-| `name`    | Human-readable name, shown by `tcab harnesses`.                                                                     |
+| `name`    | Human-readable name, shown by the console.                                                                          |
 | `binary`  | The CLI binary a run probes (`<binary> --version`) and invokes. The installer must put it on the run user's `PATH`. |
 | `install` | Shell command run inside the run container, before the session, to install the CLI.                                 |
 

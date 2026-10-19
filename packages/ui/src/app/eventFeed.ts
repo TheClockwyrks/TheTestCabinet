@@ -2,10 +2,8 @@
 //
 // This is the single source of truth for how a normalized harness event reads in
 // the web UI. The per-type colors live as `--ttc-event-*` tokens in
-// `styles/theme.scss` and are applied by event type in the feed's stylesheet;
-// they deliberately mirror the CLI's terminal palette in
-// `crates/cli/src/commands/event_printer.rs` so a given event type shows up as
-// the same hue in the CLI stream and here. Keep the two in lockstep.
+// `styles/theme.scss` and are applied by event type in the feed's stylesheet,
+// so a given event type shows up as the same hue in every feed.
 
 import type { HarnessEvent } from "../client/types";
 import type {

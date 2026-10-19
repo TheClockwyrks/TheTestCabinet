@@ -38,7 +38,7 @@
 // @clockwyrks/structured-2d, @clockwyrks/simple-3d, @clockwyrks/structured-3d) and the shared validator harness
 // (@clockwyrks/case-harness).
 // They are staged into the same store, but an engine is a run dimension selected
-// per run (`tcab run --engine <slug>`) rather than something a case declares, and
+// per run (chosen when the run is launched) rather than something a case declares, and
 // it is seeded into `.vendor/engine/` rather than `.vendor/packages/`. So an engine
 // runtime belongs in this list and must NOT be added to SHIPPABLE_PACKAGES —
 // adding it there would let a case request the engine through `packages`, which

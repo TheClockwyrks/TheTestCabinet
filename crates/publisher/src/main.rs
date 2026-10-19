@@ -2,7 +2,7 @@
 //!
 //! Resolves its configuration from the environment the dispatcher set, downloads the
 //! reviewed run's source tree from the artifact service, performs the GitHub-repo +
-//! Cloudflare Pages release (the same two steps a local `tcab publish` drives, via
+//! Cloudflare Pages release (through
 //! [`tcab_publisher::release::BackendPublisher`]) while streaming progress lines to the
 //! backend, then reports the terminal [`PublishResult`] — carrying the produced links
 //! on success or the reason on failure — and exits. There is no server and no flags;

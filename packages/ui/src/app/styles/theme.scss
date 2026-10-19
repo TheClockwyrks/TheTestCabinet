@@ -31,11 +31,10 @@
   --ttc-aesthetic-okay: #94a3b8;
   --ttc-aesthetic-slop: #a16207;
 
-  // Per-event-type colors for the live harness feed. These mirror the CLI's
-  // terminal palette (crates/cli/src/commands/event_printer.rs) so a given event
-  // type reads as the same hue in the CLI stream and in the web feed — the one
-  // thing to avoid is an event type wearing one color in one component and a
-  // different one elsewhere. The hues track the CLI's ANSI colors, tuned for
+  // Per-event-type colors for the live harness feed. Every feed reads them from
+  // here so a given event type wears the same hue everywhere — the one thing to
+  // avoid is an event type wearing one color in one component and a different
+  // one elsewhere. The hues follow the classic ANSI terminal colors, tuned for
   // legibility on the deep-black background.
   --ttc-event-agent: #22d3ee; // cyan
   --ttc-event-reasoning: #a78bfa; // purple (model thinking)

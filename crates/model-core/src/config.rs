@@ -55,7 +55,8 @@ pub struct Config {
     #[serde(default = "default_mesh")]
     pub mesh: PathBuf,
     /// The live-preview endpoint, when a viewer is observing this run. Absent for
-    /// an unobserved run (a plain `tcab run` or `tcab validate`).
+    /// an unobserved run (a `tcab validate`, or a run no viewer
+    /// is watching).
     #[serde(default)]
     pub live: Option<LiveConfig>,
 }

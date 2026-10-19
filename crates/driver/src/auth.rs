@@ -13,8 +13,8 @@
 //!   performs the login or mints tokens.
 //!
 //! Which mode a run uses is resolved here, once, from the harness's declared
-//! capabilities and the host environment, so the orchestrator and the
-//! `tcab harnesses` readiness listing select identically.
+//! capabilities and the host environment, so every caller that runs a
+//! harness or reports its readiness selects identically.
 //!
 //! ## Selecting a mode
 //!
@@ -313,8 +313,8 @@ pub fn resolve_auth_with(
     }
 }
 
-/// Report a harness's readiness from configuration alone, for the
-/// `tcab harnesses` listing. Cost-free: it only checks whether the credentials
+/// Report a harness's readiness from configuration alone, for a
+/// readiness listing. Cost-free: it only checks whether the credentials
 /// the resolved mode needs are present (environment variables and file
 /// existence), never reading file contents or starting a container.
 pub fn auth_readiness(harness: &dyn AgentHarness) -> Availability {

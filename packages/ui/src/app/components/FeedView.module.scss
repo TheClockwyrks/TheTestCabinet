@@ -2,8 +2,8 @@
 
 // The console's activity feed. The container is style-agnostic; the chosen layout
 // is selected by `data-feed-style` below. Each line resolves its accent from the
-// shared `--ttc-event-*` tokens (set per `data-event-type`), so the feed matches
-// the CLI's terminal palette in every layout.
+// shared `--ttc-event-*` tokens (set per `data-event-type`), so the feed wears the
+// same palette in every layout.
 //
 // Shared by every feed in the console — the normalized harness event stream and
 // gg's own first-party telemetry stream — so a run reads the same way whichever
