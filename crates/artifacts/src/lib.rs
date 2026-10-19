@@ -27,9 +27,15 @@
 //!   tests.
 //! - [`playable`] — resolving a run's build, proof, validation, showcase and
 //!   asset files for serving.
+//! - [`blob`] — the Azure Blob client over the private run-tree container,
+//!   authenticated by workload identity in a cluster and by Shared Key against
+//!   Azurite.
 //! - [`r2`] — the R2 object-store client. The backend's snapshot writes and the
 //!   CLI's `tcab publish-asset-reference` still call it directly, an interim edge
 //!   until those writes go through this service.
+//! - [`public`] — the public dataset's store: the R2 bucket, or an Azurite
+//!   container on the local stack, behind one interface.
+//! - [`object`] — the shapes both object stores read and write in.
 //! - [`auth`] — who is calling: the Access assertion every edge request carries
 //!   (checked by [`access`]), or one of the in-cluster tokens, with no route
 //!   reachable without one but the health probe.
@@ -39,10 +45,13 @@
 pub mod access;
 pub mod api;
 pub mod auth;
+pub mod blob;
 pub mod build_rule;
 pub mod config;
 pub mod error;
+pub mod object;
 pub mod playable;
+pub mod public;
 pub mod r2;
 pub mod store;
 

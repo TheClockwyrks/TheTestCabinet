@@ -5280,6 +5280,7 @@ dependencies = [
 name = "test-cabinet-artifacts"
 version = "0.0.0"
 dependencies = [
+ "async-trait",
  "axum",
  "base64",
  "bytes",
@@ -5292,6 +5293,7 @@ dependencies = [
  "jsonwebtoken",
  "md-5",
  "opentelemetry",
+ "percent-encoding",
  "reqwest 0.12.28",
  "serde",
  "serde_json",

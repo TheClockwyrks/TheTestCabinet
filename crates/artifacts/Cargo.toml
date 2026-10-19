@@ -49,7 +49,8 @@ futures-util = { workspace = true }
 tempfile = { workspace = true }
 # The HTTP client the service verifies a driver's per-job token with against the
 # backend's internal verify endpoint. rustls (no system OpenSSL), `json` for the
-# body. The R2 client (`r2`) sends its signed requests with it too.
+# body. The R2 (`r2`) and Blob (`blob`) clients send their signed requests with
+# it too, and relay object bodies through its `stream` feature.
 reqwest = { workspace = true }
 # Verifies the Cloudflare Access assertion every edge request carries (`src/access.rs`).
 jsonwebtoken = { workspace = true }
@@ -69,6 +70,9 @@ tar = "0.4"
 # at all. Inherited from the workspace, which owns the version because the run-tree
 # artifact convention puts the same codec on the run host and in the backend too.
 flate2 = { workspace = true }
+# The public store (`public`) is one interface over the R2 and Blob clients,
+# held as a trait object because the environment picks the store at startup.
+async-trait = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }
@@ -79,6 +83,9 @@ tokio = { workspace = true, features = ["full", "test-util"] }
 # tests without binding a socket, exactly as the auth service's tests do.
 tower = { workspace = true, features = ["util"] }
 serde_json = { workspace = true }
+# Decodes the query strings the stub object stores (`blob.stub.test.rs`,
+# `r2.stub.test.rs`) receive.
+percent-encoding = { workspace = true }
 
 [lints]
 workspace = true
