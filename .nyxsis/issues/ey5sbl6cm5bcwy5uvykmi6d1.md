@@ -6,8 +6,9 @@ zone: EDGE
 number: 2
 title: Verify the Access assertion in the services and retire accounts
 type: generic
-state: open
+state: done
 created: 2026-10-13T21:11:26.138577549Z
+done: 2026-10-19T01:18:05.80599113Z
 ---
 
 The backend keeps its own accounts, registration, login and minted user
