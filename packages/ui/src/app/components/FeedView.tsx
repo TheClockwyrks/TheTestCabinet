@@ -101,8 +101,8 @@ function Line({ line }: { line: FeedLine }) {
 // The console's activity feed: a dense, monospace stream rendered in one of three
 // interchangeable layouts (see `EventFeedStyle`). Every layout shows the same data
 // and differs only in arrangement, driven by the `data-feed-style` attribute. The
-// per-type colors come from the shared `--ttc-event-*` tokens, so the feed matches
-// the CLI's terminal palette. The streaming feeds (the live monitor, the run-detail
+// per-type colors come from the shared `--ttc-event-*` tokens, so every feed wears
+// the same palette. The streaming feeds (the live monitor, the run-detail
 // Events tab, the gg activity panel) are virtualized so a long run stays responsive;
 // the Appearance settings preview is a short, non-scrolling sample, so it renders as
 // a plain list instead.

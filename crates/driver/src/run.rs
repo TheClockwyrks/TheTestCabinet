@@ -1,12 +1,11 @@
 //! Driving the one run this driver executes, backend-streamed.
 //!
 //! This is the worker's `runner.rs` (`drive_run → run_inner → drive_engine`) with
-//! the in-memory job removed: the same [`RunEngine`] a local `tcab run` or the
-//! worker assembles, always backend-resolved (the driver has no local
-//! `test-cases/` checkout), only here the live events and preview frames flow
-//! through the backend-streaming [`sink`](crate::sink) rather than onto a job. It
-//! re-implements **none** of a run's behavior; the record it produces is the one
-//! the engine writes, identical to a local run's.
+//! the in-memory job removed: the same [`RunEngine`] the worker assembled, always
+//! backend-resolved (the driver has no local `test-cases/` checkout), only here the
+//! live events and preview frames flow through the backend-streaming
+//! [`sink`](crate::sink) rather than onto a job. It re-implements **none** of a run's
+//! behavior; the record it produces is the one the engine writes.
 //!
 //! The outcome is *not* recorded locally (the pod is ephemeral): [`drive`] returns
 //! it so `crate::main` can stream the terminal status — carrying the produced or

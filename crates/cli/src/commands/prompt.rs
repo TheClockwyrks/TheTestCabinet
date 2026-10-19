@@ -11,7 +11,7 @@ use test_cabinet_driver::render_case_prompt;
 
 use crate::catalog;
 use crate::cli::PromptArgs;
-use crate::commands::engines;
+use crate::commands::engine_selection;
 
 /// Resolve the test case version and variant, render the prompt, and print it.
 pub async fn execute(args: PromptArgs) -> anyhow::Result<()> {
@@ -27,7 +27,7 @@ pub async fn execute(args: PromptArgs) -> anyhow::Result<()> {
     // rendered text differs by engine and this command has to resolve one to render
     // anything. `none` — the default — renders exactly the prompt every case had
     // before engines existed.
-    let engine = engines::resolve_for_case(&args.engine, &test_case)
+    let engine = engine_selection::resolve_for_case(&args.engine, &test_case)
         .with_context(|| format!("selecting engine `{}`", args.engine))?;
 
     // A locally-inspected prompt has no backend to source earlier game-jam entries

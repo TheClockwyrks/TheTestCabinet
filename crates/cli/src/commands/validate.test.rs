@@ -663,7 +663,8 @@ fn a_suite_case_resolves_from_its_exported_version() {
     test_case
         .variant(test_cabinet_driver::test_suite::SUITE_VARIANT_SLUG)
         .expect("the implicit variant is selectable");
-    engines::resolve_for_case("none", &test_case).expect("the engineless run is supported");
+    engine_selection::resolve_for_case("none", &test_case)
+        .expect("the engineless run is supported");
 }
 
 // A draft is authored state rather than an exported version, so nothing in it is a

@@ -212,8 +212,8 @@ pub enum Error {
     ///
     /// Every run is bounded by a maximum wall-clock duration so a session can
     /// never continue unbounded. The bound is the test case's
-    /// `max_runtime_hours` manifest field, overridable per invocation (for
-    /// example by `tcab run --max-runtime`). When it elapses the run container is
+    /// `max_runtime_hours` manifest field, overridable per run (by the
+    /// launch's maximum-runtime override). When it elapses the run container is
     /// torn down and the run aborts with this error.
     #[error("{slug} harness exceeded the maximum runtime of {seconds}s")]
     RunTimedOut {

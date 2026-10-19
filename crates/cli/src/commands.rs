@@ -1,20 +1,12 @@
-//! Subcommand handlers.
-//!
-//! Each handler is a stub that calls into [`test_cabinet_driver`]'s run engine where the surface
-//! exists and otherwise reports that the orchestration is not implemented yet.
+//! Subcommand handlers, one module per command the CLI overview documents, plus the
+//! helpers they share.
 
 pub mod analyze;
 pub mod capture_baselines;
-pub mod engines;
-pub mod event_printer;
-pub mod harnesses;
+pub mod engine_selection;
 pub mod ingest;
-pub mod orchestrators;
 pub mod prompt;
-pub mod publish;
 pub mod publish_asset_reference;
 pub mod publish_reference;
-pub mod run;
 pub mod seed;
-pub mod test_case_groups;
 pub mod validate;

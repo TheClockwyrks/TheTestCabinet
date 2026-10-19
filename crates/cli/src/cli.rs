@@ -4,11 +4,10 @@
 //! easy to test in isolation (see `cli.test.rs`).
 
 use clap::{Args, Parser, Subcommand, ValueEnum};
-use test_cabinet_driver::run_record::HarnessSlug;
 use test_cabinet_driver::test_suite::SUITE_VARIANT_SLUG;
 use test_cabinet_driver::{CodeTreeBasis, NONE_SLUG};
 
-/// The variant `seed`, `prompt`, `validate` and `run` select when none is named.
+/// The variant `seed`, `prompt` and `validate` select when none is named.
 ///
 /// Every authored case declares a `base` variant, and a
 /// [test suite](https://docs.testcabinet.ai/test-suites/test-case-definition/)
@@ -19,13 +18,15 @@ const DEFAULT_VARIANT: &str = SUITE_VARIANT_SLUG;
 
 /// The Test Cabinet command line interface.
 ///
-/// `tcab` exposes the headless run engine so runs can be scripted and benchmark sweeps
-/// run in batch.
+/// `tcab` operates on definitions: it validates a tree, analyzes its code, captures and
+/// publishes a case's references, ingests definitions into a backend, and inspects what a
+/// run would seed and prompt. A run is launched from the console and executed by a
+/// driver; the CLI launches nothing.
 #[derive(Debug, Parser)]
 #[command(
     name = "tcab",
     version,
-    about = "The Test Cabinet — script and batch coding-agent benchmark runs",
+    about = "The Test Cabinet — validate, inspect, ingest and publish test case definitions",
     long_about = None,
 )]
 pub struct Cli {
@@ -34,37 +35,12 @@ pub struct Cli {
     pub command: Command,
 }
 
-/// Top-level subcommands, each mapping onto a run-engine capability.
+/// Top-level subcommands, the command set the CLI overview documents.
 #[derive(Debug, Subcommand)]
 pub enum Command {
-    /// Launch a run: select a test case version, harness, and model.
-    Run(RunArgs),
-
     /// Run validation over a produced implementation. Exits `0` only when the tree
     /// satisfied everything the case declares.
     Validate(ValidateArgs),
-
-    /// Submit a review (from the run's `writeup.md`) for a produced run.
-    Review(ReviewArgs),
-
-    /// Publish finished run(s): self-review + publish in one step (the solo path).
-    /// A legacy run cannot be published without at least one review; a
-    /// validator-rated run with no writeup is published without a self-review.
-    Publish(PublishArgs),
-
-    /// List supported harnesses and their availability.
-    Harnesses(HarnessesArgs),
-
-    /// List the built-in orchestrators and what each one does.
-    Orchestrators(OrchestratorsArgs),
-
-    /// List the built-in engines — the runtimes a produced game can be built on.
-    Engines(EnginesArgs),
-
-    /// List the test-case groups — the repo-defined sets of related cases the
-    /// home page presents — and each one's member cases.
-    #[command(name = "test-case-groups")]
-    TestCaseGroups(TestCaseGroupsArgs),
 
     /// Seed a test case version into a folder to inspect what a run's harness
     /// receives as input, without launching a container.
@@ -75,10 +51,16 @@ pub enum Command {
     Prompt(PromptArgs),
 
     /// Build and deploy a test case variant's **reference implementation** — the
-    /// authored, correct static build of the case — and record its URL on the
-    /// backend so the site's Reference tab can embed it.
+    /// authored, correct static build of the case — and record its URL in the
+    /// committed reference-builds lockfile the backend ingests.
     #[command(name = "publish-reference")]
     PublishReference(PublishReferenceArgs),
+
+    /// Draw an asset-generation case's reference with its `draw.sh` and write the
+    /// frames and action logs to the public bucket through the environment's
+    /// artifacts service.
+    #[command(name = "publish-asset-reference")]
+    PublishAssetReference(PublishAssetReferenceArgs),
 
     /// (Re)generate a case version's **baseline** validation media in the
     /// cold-storage submodule (or `TCAB_COLD_STORAGE_DIR`) by driving its debug
@@ -97,118 +79,6 @@ pub enum Command {
     /// disk — no run, no container, no backend, no credentials. It executes nothing in the
     /// tree it reads.
     Analyze(AnalyzeArgs),
-}
-
-/// The agent harness to drive, selectable on the command line.
-///
-/// This mirrors [`HarnessSlug`] from the run engine so the CLI's accepted values stay
-/// in lockstep with the canonical slugs used in run records and on the site.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
-#[value(rename_all = "snake_case")]
-pub enum HarnessArg {
-    /// Anthropic Claude Code (`claude`).
-    Claude,
-    /// OpenAI Codex (`codex`).
-    Codex,
-    /// Cline (`cline`).
-    Cline,
-    /// Google Antigravity (`antigravity`).
-    Antigravity,
-    /// Goose (`goose`).
-    Goose,
-    /// Kilo Code (`kilo`).
-    Kilo,
-    /// OpenCode (`opencode`).
-    Opencode,
-    /// Pi (`pi`).
-    Pi,
-}
-
-impl From<HarnessArg> for HarnessSlug {
-    fn from(arg: HarnessArg) -> Self {
-        match arg {
-            HarnessArg::Claude => HarnessSlug::Claude,
-            HarnessArg::Codex => HarnessSlug::Codex,
-            HarnessArg::Cline => HarnessSlug::Cline,
-            HarnessArg::Antigravity => HarnessSlug::Antigravity,
-            HarnessArg::Goose => HarnessSlug::Goose,
-            HarnessArg::Kilo => HarnessSlug::Kilo,
-            HarnessArg::Opencode => HarnessSlug::Opencode,
-            HarnessArg::Pi => HarnessSlug::Pi,
-        }
-    }
-}
-
-/// Arguments for `tcab run`.
-///
-/// `disable_version_flag` frees `--version` to mean the *test case* version
-/// rather than clap's auto-generated binary-version flag.
-#[derive(Debug, Args)]
-#[command(disable_version_flag = true)]
-pub struct RunArgs {
-    /// Slug of the test case to run (for example, `carom`).
-    #[arg(long, value_name = "SLUG")]
-    pub test_case: String,
-
-    /// Exact, immutable test case version to run.
-    #[arg(long, value_name = "VERSION")]
-    pub version: String,
-
-    /// Variant of the test case to run. Selects which specs are seeded and is
-    /// recorded in the run record. Defaults to `base`, which is the only variant a
-    /// suite-defined test case carries.
-    #[arg(long, value_name = "VARIANT", default_value = DEFAULT_VARIANT)]
-    pub variant: String,
-
-    /// Agent harness to drive the run.
-    #[arg(long, value_enum, value_name = "HARNESS")]
-    pub harness: HarnessArg,
-
-    /// Model ID passed to the harness unchanged (opaque to The Test Cabinet).
-    #[arg(long, value_name = "MODEL")]
-    pub model: String,
-
-    /// Maximum harness runtime in hours before the run is stopped. Overrides the
-    /// test case's `max_runtime_hours` default; omit to use that default.
-    /// Fractional hours are allowed (for example `0.5`).
-    #[arg(long, value_name = "HOURS")]
-    pub max_runtime: Option<f64>,
-
-    /// Built-in orchestrator that conducts the harness sessions (today only
-    /// `one-shot`, a single session — the default). Selection is limited to
-    /// end-to-end test cases; other test types always run `one-shot`. See
-    /// `tcab orchestrators`.
-    #[arg(long, value_name = "SLUG", default_value = "one-shot")]
-    pub orchestrator: String,
-
-    /// The runtime the produced game is built on — its frame loop and delta time,
-    /// input actions, audio, assets, and diagnostics. Defaults to `none`: no
-    /// runtime, with the build supplying all of that itself. The test case version
-    /// must declare the engine among the ones it supports, or the run is refused
-    /// before any container starts. See `tcab engines`.
-    #[arg(long, value_name = "SLUG", default_value = NONE_SLUG)]
-    pub engine: String,
-
-    /// Harness authentication mode for this run: `auto`, `subscription`, or
-    /// `api-key`. Omit to keep the default (API-key, preferring a subscription only
-    /// when its credentials are available). Forwarded to the backend, which the
-    /// driver applies — the only way to run a subscription-only harness on the
-    /// cluster path.
-    #[arg(long, value_name = "MODE")]
-    pub auth_mode: Option<String>,
-
-    /// How many times the backend automatically retries this run after a terminal
-    /// infrastructure error or catastrophic (won't-load) build. Omit to accept the
-    /// backend default of `1` (one retry); `0` disables retries. A timeout or a
-    /// completed run is never retried.
-    #[arg(long, value_name = "N")]
-    pub retry_count: Option<u32>,
-
-    /// Directory to also write the produced run record's JSON into. The backend
-    /// holds the run's artifacts, so this only mirrors the record locally; omit it
-    /// to write nothing to disk.
-    #[arg(long, value_name = "DIR")]
-    pub out_dir: Option<std::path::PathBuf>,
 }
 
 /// Arguments for `tcab validate`.
@@ -240,76 +110,15 @@ pub struct ValidateArgs {
     /// written against an engine is driven through that engine's host interface,
     /// so naming the wrong one validates against expectations the build was never
     /// given; the slug is checked against the engines the case supports before
-    /// anything is built. See `tcab engines`.
+    /// anything is built.
     #[arg(long, value_name = "SLUG", default_value = NONE_SLUG)]
     pub engine: String,
-}
-
-/// Arguments for `tcab review`.
-#[derive(Debug, Args)]
-pub struct ReviewArgs {
-    /// The backend run id of the (already-stored) run to review.
-    #[arg(value_name = "RUN_ID")]
-    pub run_id: String,
-
-    /// Path to the review's `writeup.md` the reviewer authored locally. Defaults to
-    /// `writeup.md` in the working directory.
-    #[arg(long, value_name = "FILE")]
-    pub writeup: Option<std::path::PathBuf>,
-}
-
-/// Arguments for `tcab publish`.
-#[derive(Debug, Args)]
-pub struct PublishArgs {
-    /// One or more backend run ids to publish. Multiple values enable batch
-    /// publishing of a sweep's runs in a single invocation. Each run's self-review
-    /// is read from `<run-id>.md` in the working directory; a validator-rated run
-    /// may omit it.
-    #[arg(value_name = "RUN_ID", required = true, num_args = 1..)]
-    pub run_ids: Vec<String>,
-
-    /// Print what would be reviewed and published — without submitting any review
-    /// or flipping any run public.
-    #[arg(long)]
-    pub dry_run: bool,
-}
-
-/// Arguments for `tcab harnesses`.
-#[derive(Debug, Args)]
-pub struct HarnessesArgs {
-    /// Emit the listing as JSON instead of a human-readable table.
-    #[arg(long)]
-    pub json: bool,
-}
-
-/// Arguments for `tcab orchestrators`.
-#[derive(Debug, Args)]
-pub struct OrchestratorsArgs {
-    /// Emit the listing as JSON instead of a human-readable table.
-    #[arg(long)]
-    pub json: bool,
-}
-
-/// Arguments for `tcab engines`.
-#[derive(Debug, Args)]
-pub struct EnginesArgs {
-    /// Emit the listing as JSON instead of a human-readable table.
-    #[arg(long)]
-    pub json: bool,
-}
-
-/// Arguments for `tcab test-case-groups`.
-#[derive(Debug, Args)]
-pub struct TestCaseGroupsArgs {
-    /// Emit the listing as JSON instead of a human-readable table.
-    #[arg(long)]
-    pub json: bool,
 }
 
 /// Arguments for `tcab seed`.
 ///
 /// `disable_version_flag` frees `--version` to mean the *test case* version
-/// rather than clap's auto-generated binary-version flag, matching `tcab run`.
+/// rather than clap's auto-generated binary-version flag, matching `tcab validate`.
 #[derive(Debug, Args)]
 #[command(disable_version_flag = true)]
 pub struct SeedArgs {
@@ -331,7 +140,7 @@ pub struct SeedArgs {
     /// engine with a runtime vendors that runtime out of the
     /// host package store into the seeded repository and writes its dependency
     /// into the workspace `package.json`, so this is how to inspect what a build
-    /// on that engine is handed. See `tcab engines`.
+    /// on that engine is handed.
     #[arg(long, value_name = "SLUG", default_value = NONE_SLUG)]
     pub engine: String,
 
@@ -344,7 +153,7 @@ pub struct SeedArgs {
 /// Arguments for `tcab prompt`.
 ///
 /// `disable_version_flag` frees `--version` to mean the *test case* version
-/// rather than clap's auto-generated binary-version flag, matching `tcab run`.
+/// rather than clap's auto-generated binary-version flag, matching `tcab validate`.
 #[derive(Debug, Args)]
 #[command(disable_version_flag = true)]
 pub struct PromptArgs {
@@ -363,29 +172,11 @@ pub struct PromptArgs {
 
     /// Engine to render the prompt for, defaulting to `none`. A prompt template
     /// branches on the selected engine — naming one is the only way to see the
-    /// engine section a run on that engine would actually hand the harness. See
-    /// `tcab engines`.
+    /// engine section a run on that engine would actually hand the harness.
     #[arg(long, value_name = "SLUG", default_value = NONE_SLUG)]
     pub engine: String,
 }
 
-/// Arguments for `tcab publish-reference`.
-///
-/// The command targets a case (by slug or folder name) at a single version and,
-/// for each targeted variant that declares a `reference_implementation`, builds
-/// it with the case's own `[build]` commands, deploys the static output to
-/// Cloudflare Pages, and records the served URL on the backend.
-///
-/// `version` is positional and optional: omit it to target the case's newest
-/// version. Variant selection is `--variant <slug>` for exactly one, or
-/// `--all-variants` for every variant that declares a reference implementation;
-/// when neither is given the command defaults to all such variants (the flag is
-/// the explicit, self-documenting form of the default). The two selectors are
-/// mutually exclusive.
-///
-/// `disable_version_flag` frees `--version`/`-V` so it is not consumed as clap's
-/// auto-generated binary-version flag, matching `tcab run`/`tcab prompt` — though
-/// here the version is positional rather than a `--version` flag.
 /// A deployed environment, named by `--env`: the origin its edge serves (the
 /// backend under `/api`, the artifacts service under `/artifacts`), and for a
 /// reference implementation the Cloudflare Pages project it lands in (see
@@ -427,6 +218,24 @@ impl DeployEnv {
     }
 }
 
+/// Arguments for `tcab publish-reference`.
+///
+/// The command targets a case (by slug or folder name) at a single version and,
+/// for each targeted variant that declares a `reference_implementation`, builds
+/// it with the case's own `[build]` commands, deploys the static output to
+/// Cloudflare Pages, and records the served URL in the committed reference-builds
+/// lockfile.
+///
+/// `version` is positional and optional: omit it to target the case's newest
+/// version. Variant selection is `--variant <slug>` for exactly one, or
+/// `--all-variants` for every variant that declares a reference implementation;
+/// when neither is given the command defaults to all such variants (the flag is
+/// the explicit, self-documenting form of the default). The two selectors are
+/// mutually exclusive.
+///
+/// `disable_version_flag` frees `--version`/`-V` so it is not consumed as clap's
+/// auto-generated binary-version flag, matching `tcab seed`/`tcab prompt` — though
+/// here the version is positional rather than a `--version` flag.
 #[derive(Debug, Args)]
 #[command(disable_version_flag = true)]
 pub struct PublishReferenceArgs {
@@ -481,6 +290,47 @@ pub struct PublishReferenceArgs {
     /// `tcab capture-baselines`.
     #[arg(long)]
     pub skip_baselines: bool,
+}
+
+/// Arguments for `tcab publish-asset-reference`.
+///
+/// The asset-generation counterpart of [`PublishReferenceArgs`]: the case is named
+/// the same way, by slug (or folder name) and an optional positional version, and
+/// the variants are selected the same way. An asset reference is drawn rather than
+/// built, so there is no engine to choose and no baseline to capture, and its frames
+/// go through the environment's artifacts service rather than to a Pages project.
+///
+/// `disable_version_flag` frees `--version`/`-V` so it is not consumed as clap's
+/// auto-generated binary-version flag, matching `tcab publish-reference`.
+#[derive(Debug, Args)]
+#[command(disable_version_flag = true)]
+pub struct PublishAssetReferenceArgs {
+    /// Deployment environment whose artifacts service the frames are written
+    /// through. **Required** — with no default a publish can never silently target
+    /// prod.
+    #[arg(long, value_enum, value_name = "ENV")]
+    pub env: DeployEnv,
+
+    /// Slug (or folder name) of the asset-generation test case to publish a
+    /// reference for.
+    #[arg(value_name = "SLUG")]
+    pub slug: String,
+
+    /// Exact, immutable test case version. Omit to target the case's newest
+    /// version.
+    #[arg(value_name = "VERSION")]
+    pub version: Option<String>,
+
+    /// Publish the reference for exactly this variant (for example, `base`).
+    /// Mutually exclusive with `--all-variants`; errors if the named variant has
+    /// no reference implementation.
+    #[arg(long, value_name = "VARIANT", conflicts_with = "all_variants")]
+    pub variant: Option<String>,
+
+    /// Publish the reference for every variant that declares one. This is also the
+    /// default when neither `--variant` nor `--all-variants` is given.
+    #[arg(long)]
+    pub all_variants: bool,
 }
 
 /// Arguments for `tcab capture-baselines`.

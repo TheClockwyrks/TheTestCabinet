@@ -3,8 +3,8 @@
 #
 # Each case hands the script a stub `tcab`, a small script whose --version and
 # --help answers the case declares. The subject is the verdict: a binary that
-# answers both and lists every checked subcommand passes, and each way of
-# falling short fails with a message naming it.
+# answers both, lists every documented subcommand and none of the removed ones
+# passes, and each way of falling short fails with a message naming it.
 set -uo pipefail
 
 CI_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -74,7 +74,20 @@ esac
 STUB
 	chmod +x "$1"
 }
-readonly HELP="Commands: run validate harnesses publish orchestrators help"
+# The help in clap's shape: a command per line under `Commands:`, a blank line
+# after the list.
+help_listing() { # command...
+	printf 'The Test Cabinet\n\nUsage: tcab <COMMAND>\n\nCommands:\n'
+	for command in "$@"; do
+		printf '  %-24s %s\n' "$command" "What $command does"
+	done
+	printf '\nOptions:\n  -h, --help     Print help\n'
+}
+readonly DOCUMENTED=(validate seed prompt publish-reference publish-asset-reference
+	capture-baselines ingest analyze)
+readonly REMOVED=(run review publish harnesses orchestrators engines test-case-groups)
+HELP="$(help_listing "${DOCUMENTED[@]}" help)"
+readonly HELP
 
 run() { "$CI_DIR/smoke-binary.sh" "$@" 2>&1; }
 
@@ -88,12 +101,36 @@ out="$(run "$tmp/silent")"
 check_equal "a binary with no version fails" "1" "$?"
 check_contains "naming the version" "tcab --version produced no output" "$out"
 
-for missing in run validate harnesses publish orchestrators; do
-	fake_tcab "$tmp/no-$missing" "tcab 0.7.0" "${HELP/ $missing / }"
+for missing in "${DOCUMENTED[@]}"; do
+	kept=()
+	for command in "${DOCUMENTED[@]}"; do
+		[ "$command" = "$missing" ] || kept+=("$command")
+	done
+	fake_tcab "$tmp/no-$missing" "tcab 0.7.0" "$(help_listing "${kept[@]}" help)"
 	out="$(run "$tmp/no-$missing")"
 	check_equal "a help missing '$missing' fails" "1" "$?"
 	check_contains "naming '$missing'" "missing the '$missing' subcommand" "$out"
 done
+
+for removed in "${REMOVED[@]}"; do
+	fake_tcab "$tmp/with-$removed" "tcab 0.7.0" "$(help_listing "${DOCUMENTED[@]}" "$removed" help)"
+	out="$(run "$tmp/with-$removed")"
+	check_equal "a help still listing '$removed' fails" "1" "$?"
+	check_contains "naming '$removed'" "still lists the removed '$removed' subcommand" "$out"
+done
+
+# A documented name only mentioned in prose is not a listed command, and the
+# whole-name match keeps `publish-reference` from passing for `publish`.
+fake_tcab "$tmp/prose" "tcab 0.7.0" \
+	"$(help_listing seed prompt publish-reference publish-asset-reference capture-baselines ingest analyze)
+validate is mentioned here"
+out="$(run "$tmp/prose")"
+check_equal "a name outside the command list does not count" "1" "$?"
+check_contains "so the unlisted one is missing" "missing the 'validate' subcommand" "$out"
+
+fake_tcab "$tmp/crlf" "tcab 0.7.0" "$(help_listing "${DOCUMENTED[@]}" help | sed 's/$/\r/')"
+out="$(run "$tmp/crlf")"
+check_equal "a help with Windows line endings passes" "0" "$?"
 
 printf 'not a binary\n' >"$tmp/plain"
 out="$(run "$tmp/plain")"
