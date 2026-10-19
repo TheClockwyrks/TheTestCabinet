@@ -20,6 +20,12 @@ describe("runPhase", () => {
     expect(runPhase("starting")).toBe("starting");
   });
 
+  it("reads a run waiting to store its files as storing, not as running", () => {
+    // The driver holds the finished run's record while it waits on the stores; the
+    // run is still in flight, but it is no longer executing anything.
+    expect(runPhase("storing")).toBe("storing");
+  });
+
   it("maps every terminal state to null rather than to a phase", () => {
     // A finished run is not in-progress at all. Returning null forces each caller to
     // decide what to do with it (drop the row, or fall back) instead of silently

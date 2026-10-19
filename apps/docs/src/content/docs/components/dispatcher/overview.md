@@ -192,7 +192,7 @@ accepts. Its first report is refused, and it deletes its sandbox and exits.
 ## Lost drivers
 
 The backend believes a driver is executing every job it holds as `dispatched`,
-`starting`, or `running`. That belief outlives the driver when nobody is left to
+`starting`, `running` or `storing`. That belief outlives the driver when nobody is left to
 report its death:
 
 - the whole machine restarted, taking every driver pod and the dispatcher down

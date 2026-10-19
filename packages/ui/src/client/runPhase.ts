@@ -6,6 +6,8 @@ import type { InProgressRun } from "./types";
 // (claimed, the driver pod being created) and `starting` (the pod up, running
 // pre-run setup) are one waiting-to-begin phase to a viewer; only the queue cares
 // which. A held-back run reads as "pending", a free-but-unclaimed one as "queued".
+// A run whose driver holds its record while it waits to store the run's files
+// reads as "storing": it has finished running but has not finished yet.
 //
 // Terminal states map to `null` rather than to a phase: a finished run is not
 // in-progress at all, and every caller has something better to do with it than
@@ -19,16 +21,24 @@ import type { InProgressRun } from "./types";
 // itself depending on which source last touched a row.
 export function runPhase(state: string): InProgressRun["state"] | null {
   switch (state) {
-    case "queued":
+    case "queued": {
       return "queued";
-    case "pending":
+    }
+    case "pending": {
       return "pending";
+    }
     case "dispatched":
-    case "starting":
+    case "starting": {
       return "starting";
-    case "running":
+    }
+    case "running": {
       return "running";
-    default:
+    }
+    case "storing": {
+      return "storing";
+    }
+    default: {
       return null;
+    }
   }
 }

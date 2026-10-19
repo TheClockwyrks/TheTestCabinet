@@ -1,4 +1,4 @@
-import { render } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import type { InProgressRun } from "../../client/types";
 import { formatTimestamp } from "../format";
@@ -182,6 +182,22 @@ describe("run column in-progress cells", () => {
       ),
     );
     expect(container.textContent).toBe("0s");
+  });
+
+  it("labels a run waiting to store its files as storing them", () => {
+    const storing: InProgressRun = { ...startedRun, state: "storing" };
+    render(column("rating").renderActive(storing, ctx()));
+    expect(screen.getByText("storing files…")).toHaveAttribute(
+      "data-state",
+      "storing",
+    );
+  });
+
+  it("keeps counting a storing run's duration from its start", () => {
+    const storing: InProgressRun = { ...startedRun, state: "storing" };
+    const now = Date.parse(STARTED_AT) + 90_000;
+    render(column("duration").renderActive(storing, ctx({ now })));
+    expect(screen.getByText("1m 30s")).toBeInTheDocument();
   });
 
   it("dashes a start it cannot parse rather than printing NaN", () => {

@@ -157,6 +157,16 @@ describe("runListAction", () => {
     ).toEqual({ kind: "update", runId: "a", state: "pending" });
   });
 
+  it("patches a run that finished and waits to store its files as storing", () => {
+    // The driver reports `storing` while an upload waits on a store; the row stays
+    // in flight rather than being dropped or left reading "running".
+    expect(
+      runListAction(event("state-changed", "storing"), [
+        tracked("a", "running"),
+      ]),
+    ).toEqual({ kind: "update", runId: "a", state: "storing" });
+  });
+
   it("tracks a state change for a run it has never seen", () => {
     // Enqueued while the topic was off, or before this session began. The event
     // carries everything the row needs, so adopting it here is the same repair the

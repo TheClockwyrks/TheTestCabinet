@@ -1390,9 +1390,10 @@ export interface InProgressRun {
   // The run's live phase, mapped from the backend's fine-grained job state: still
   // waiting for a dispatcher slot ("queued"), deliberately held back because its
   // harness is at its parallelism cap ("pending"), spinning up the driver +
-  // container ("starting"), executing ("running"), or locally observed to have
-  // failed before it dropped out of the active list ("failed").
-  state: "queued" | "pending" | "starting" | "running" | "failed";
+  // container ("starting"), executing ("running"), finished running and waiting to
+  // store its files ("storing"), or locally observed to have failed before it
+  // dropped out of the active list ("failed").
+  state: "queued" | "pending" | "starting" | "running" | "storing" | "failed";
 }
 
 // One harness's operator-tunable configuration, as `GET /harness-config` reports it
@@ -1453,7 +1454,7 @@ export interface RunNotification {
 //     listing stale, which is a separate re-read.
 //
 // `state` is the backend's fine-grained job state, not the console's coarser
-// phase; `runEventPhase` maps it.
+// phase; `runPhase` maps it.
 export interface RunLifecycleEvent {
   kind: "enqueued" | "state-changed" | "finished";
   runId: string;
@@ -1482,6 +1483,7 @@ export interface RunLifecycleEvent {
     | "dispatched"
     | "starting"
     | "running"
+    | "storing"
     | "succeeded"
     | "failed"
     | "canceled";
