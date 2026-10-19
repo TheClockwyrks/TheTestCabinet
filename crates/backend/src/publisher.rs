@@ -273,8 +273,9 @@ impl RefresherHandle {
 }
 
 /// Regenerate the full snapshot, upload it (when R2 is configured), fire the
-/// deploy hook, and clear the dirty flag unless a mark landed while it ran. This is the one place the snapshot is
-/// produced; both the debounce loop and the forced path call it.
+/// deploy hook, and clear the dirty flag unless a mark landed while it ran. This
+/// is the one place the snapshot is produced; both the debounce loop and the
+/// forced path call it.
 #[tracing::instrument(
     name = "snapshot.run_refresh",
     skip(inner),

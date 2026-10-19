@@ -246,7 +246,6 @@ fn spawn_pending(state: &AppState, target: LaunchTarget, user_id: &str, id: &str
     tokio::spawn(task);
 }
 
-/// Log one launch pass's outcome. `cause` names what prompted it.
 /// Release every launch-pass claim whose lease has lapsed, logging rather than failing:
 /// a claim left in place still expires out under the lease, so a pass that finds it is
 /// only delayed.
@@ -267,6 +266,7 @@ async fn release_lapsed_claims(state: &AppState) {
     }
 }
 
+/// Log one launch pass's outcome. `cause` names what prompted it.
 fn log_pass(
     target: LaunchTarget,
     id: &str,
