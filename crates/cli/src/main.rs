@@ -1,15 +1,12 @@
 //! `tcab` — the command line interface for The Test Cabinet.
 //!
-//! The CLI is a thin shell over the run engine in [`test_cabinet_driver`]'s library,
-//! which owns all orchestration (resolving a test case version, seeding a repository, executing
-//! a run in a container, invoking the agent harness, collecting metrics, running
-//! validation, writing the run record, and publishing). The CLI exists so those
-//! capabilities can be scripted and so benchmark sweeps can be run in batch
-//! without a person driving the web console. See `docs/application.md`.
-//!
-//! Every subcommand here is a buildable stub: it parses its arguments faithfully
-//! and routes to a handler that calls into the run engine where the surface already
-//! exists and otherwise reports that the behavior is not implemented yet.
+//! The CLI operates on definitions: it validates a tree, analyzes its code, captures and
+//! publishes a case's references, ingests definitions into a backend, and inspects what a
+//! run would seed and prompt. It is a thin shell over the run engine in
+//! [`test_cabinet_driver`]'s library, which owns the resolution, seeding, validation and
+//! analysis it reuses. A run is launched from the console and executed by a driver; the
+//! CLI launches nothing. See
+//! <https://docs.testcabinet.ai/components/cli/overview/>.
 
 mod catalog;
 mod cli;
@@ -23,7 +20,7 @@ use tracing::Instrument;
 
 use crate::cli::{Cli, Command};
 
-/// Entry point. Async because orchestration in the run engine is async.
+/// Entry point. Async because the run engine and the backend client it reuses are async.
 ///
 /// Telemetry is initialized after the dotenv load so any OTLP configuration that
 /// lives in `.env.runner` is visible, and the returned guard is bound for the
@@ -40,7 +37,7 @@ async fn main() -> anyhow::Result<ExitCode> {
     load_dotenv()?;
 
     // Logs go to standard error, not standard output: `tcab` is a command line tool whose
-    // stdout is data — a run record, a prompt, an analysis document — and a log line
+    // stdout is data — a prompt, an analysis document — and a log line
     // interleaved into `tcab analyze --json | jq` makes that data unparseable. The services
     // keep logging to stdout, where a collector reads both streams alike.
     let _telemetry = test_cabinet_telemetry::init(
@@ -75,16 +72,12 @@ async fn main() -> anyhow::Result<ExitCode> {
 async fn dispatch(command: Command) -> anyhow::Result<ExitCode> {
     match command {
         Command::Validate(args) => return commands::validate::execute(args).await,
-        Command::Run(args) => commands::run::execute(args).await?,
-        Command::Review(args) => commands::publish::review(args).await?,
-        Command::Publish(args) => commands::publish::publish(args).await?,
-        Command::Harnesses(args) => commands::harnesses::execute(args).await?,
-        Command::Orchestrators(args) => commands::orchestrators::execute(args).await?,
-        Command::Engines(args) => commands::engines::execute(args).await?,
-        Command::TestCaseGroups(args) => commands::test_case_groups::execute(args).await?,
         Command::Seed(args) => commands::seed::execute(args).await?,
         Command::Prompt(args) => commands::prompt::execute(args).await?,
         Command::PublishReference(args) => commands::publish_reference::execute(args).await?,
+        Command::PublishAssetReference(args) => {
+            commands::publish_asset_reference::execute(args).await?
+        }
         Command::CaptureBaselines(args) => commands::capture_baselines::execute(args).await?,
         Command::Ingest(args) => commands::ingest::execute(args).await?,
         Command::Analyze(args) => commands::analyze::execute(args).await?,
@@ -95,17 +88,11 @@ async fn dispatch(command: Command) -> anyhow::Result<ExitCode> {
 /// The static subcommand name used to label the invocation's root span.
 fn command_name(command: &Command) -> &'static str {
     match command {
-        Command::Run(_) => "run",
         Command::Validate(_) => "validate",
-        Command::Review(_) => "review",
-        Command::Publish(_) => "publish",
-        Command::Harnesses(_) => "harnesses",
-        Command::Orchestrators(_) => "orchestrators",
-        Command::Engines(_) => "engines",
-        Command::TestCaseGroups(_) => "test-case-groups",
         Command::Seed(_) => "seed",
         Command::Prompt(_) => "prompt",
         Command::PublishReference(_) => "publish-reference",
+        Command::PublishAssetReference(_) => "publish-asset-reference",
         Command::CaptureBaselines(_) => "capture-baselines",
         Command::Ingest(_) => "ingest",
         Command::Analyze(_) => "analyze",
@@ -114,17 +101,18 @@ fn command_name(command: &Command) -> &'static str {
 
 /// Load environment variables from the runner env file before any command runs.
 ///
-/// Harnesses authenticate with an API key read from the host environment (for
-/// example `ANTHROPIC_API_KEY`); loading `.env.runner` here lets those keys live
-/// in a file alongside the project rather than being exported into every shell.
+/// The CLI reads its configuration from the environment: the backend URL and its
+/// service token, the Access credential a deployed environment's edge takes, the
+/// cold-storage root and the telemetry exporter. Loading `.env.runner` here lets those
+/// live in a file alongside the project rather than being exported into every shell.
 /// `dotenvy` searches the working directory and its parents and does **not**
 /// override variables already set in the environment, so an explicitly exported
-/// key still takes precedence over the file.
+/// value still takes precedence over the file.
 ///
 /// `.env.runner` is loaded first; a legacy `.env` is then loaded as a
 /// back-compat fallback (it cannot override anything `.env.runner` already set).
-/// A missing file is not an error — running with keys exported the old way is
-/// fully supported. Any other failure (an unreadable or malformed file) is
+/// A missing file is not an error — running with the variables exported is fully
+/// supported. Any other failure (an unreadable or malformed file) is
 /// surfaced so a typo in the file is not silently ignored.
 fn load_dotenv() -> anyhow::Result<()> {
     load_env_file(dotenvy::from_filename(".env.runner"))?;
