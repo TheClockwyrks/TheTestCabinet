@@ -68,6 +68,10 @@ trap 'rm -rf "$tmp"' EXIT
 COMMIT="0123456789abcdef0123456789abcdef01234567"
 PREVIOUS="89abcdef0123456789abcdef0123456789abcdef"
 IMAGES="tcab-backend tcab-dispatcher tcab-driver tcab-artifacts tcab-arena tcab-publisher tcab-web"
+# The repos service's image, built in microservice-repos and pinned to the submodule
+# pointer, which the throwaway repository holds no commit for: TCAB_PIN_GITLINKS
+# names it.
+REPOS="76543210fedcba9876543210fedcba9876543210"
 
 fresh_repo() {
 	local repo image
@@ -82,6 +86,7 @@ fresh_repo() {
 			printf '  - name: REPLACE_REGISTRY/%s\n    newName: testcabinet.azurecr.io/%s\n    newTag: unpinned\n' \
 				"$image" "${image/tcab-backend/the-test-cabinet-backend}"
 		done
+		printf '  - name: REPLACE_REGISTRY/tcab-repos\n    newName: testcabinet.azurecr.io/microservice-repos\n    newTag: unpinned\n'
 		printf 'patches:\n  - path: patch-env.yaml\n'
 	} >"$repo/deployments/k8s/overlays/staging/kustomization.yaml"
 	cp "$repo/deployments/k8s/overlays/staging/kustomization.yaml" "$repo/unpinned.yaml"
@@ -135,6 +140,7 @@ run() { # repo [env-assignment...] -- [argument...]
 	(
 		cd / || exit 1
 		env PATH="$repo/bin:$PATH" STUB_AZ_LOG="$repo/az.log" STUB_SENT="$repo/sent" \
+			TCAB_PIN_GITLINKS="microservice-repos=${REPOS}" \
 			"${assignments[@]}" "$repo/scripts/ci/pre-deploy.sh" "$@" 2>&1
 	)
 }
@@ -149,6 +155,7 @@ for image in $IMAGES; do
 	case "$image" in tcab-driver | tcab-publisher) continue ;; esac
 	check_contains "shows ${image} pinned" "${image/tcab-backend/the-test-cabinet-backend}:${COMMIT}" "$out"
 done
+check_contains "shows the repos image pinned to its pointer" "microservice-repos:${REPOS}" "$out"
 check_contains "shows the dispatcher's driver image" "value: \"testcabinet.azurecr.io/tcab-driver:${COMMIT}\"" "$out"
 check_contains "shows the dispatcher's publisher image" "value: \"testcabinet.azurecr.io/tcab-publisher:${COMMIT}\"" "$out"
 check_contains "shows the dispatcher's run-container tag" "name: TCAB_CONTAINER_TAG" "$out"
@@ -170,6 +177,7 @@ status=$?
 check_equal "passes" 0 "$status"
 overlay="$(cat "$repo/deployments/k8s/overlays/staging/kustomization.yaml")"
 check_equal "pins all seven images in place" 7 "$(grep -c "newTag: \"${COMMIT}\"" <<<"$overlay")"
+check_contains "pins the repos image to its pointer in place" "newTag: \"${REPOS}\"" "$overlay"
 check_contains "adds the dispatcher's patch in place" "TCAB_PUBLISHER_IMAGE" "$overlay"
 check_equal "hands the cluster two commands" 2 "$(wc -l <"$repo/az.log")"
 check_contains "reads first" "--command sh read-backend-commit.sh" "$(sed -n 1p "$repo/az.log")"

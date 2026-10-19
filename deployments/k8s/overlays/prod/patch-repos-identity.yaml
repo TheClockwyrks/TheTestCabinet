@@ -1,0 +1,45 @@
+# The repos service's Blob identity in PROD: the user-assigned managed identity
+# holding Storage Blob Data Contributor on the bundle container, federated to
+# system:serviceaccount:tcab-prod:tcab-repos through the testcabinet-prod-westus2-aks
+# OIDC issuer (Run plane, apps/docs/src/content/docs/deployment/kubernetes/run-plane.md
+# "Repos service"; the repos service's page, components/repos/overview.md "Storage").
+#
+#   Storage account tcabprodstore (RG testcabinet-prod-westus2-rg), private container bundles
+#   Identity        tcab-repos-prod
+#
+# The client id below is `unprovisioned` until that identity exists, and neither the
+# account nor the identity exists yet. Applied as it is, the webhook would project an
+# AZURE_CLIENT_ID no tenant knows, the service's start-up listing of the container
+# would be refused and the pod would never become ready.
+# scripts/ci/deploy-environment.sh (and pre-deploy.sh) therefore refuse any overlay
+# that renders this value, before retiring or applying anything (tcab-lib.sh's
+# ci_assert_identities_provisioned): the prod stage fails and prod keeps running what
+# it runs, exactly as for patch-artifacts-identity.yaml.
+#
+# Before promoting to master: create the container `bundles` in the account, the
+# identity, its Storage Blob Data Contributor assignment on the container and its
+# federated credential for system:serviceaccount:tcab-prod:tcab-repos; replace the
+# value below with the identity's clientId.
+#
+# The `azure.workload.identity/use` pod label is what makes the webhook project the
+# identity's token and variables. The local overlay carries neither, so its pod signs
+# with Shared Key against Azurite.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: tcab-repos
+  # the base pins tcab-prod; this overlay's `namespace:` directive retargets it on build
+  namespace: tcab-prod
+  annotations:
+    azure.workload.identity/client-id: "unprovisioned"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tcab-repos
+  namespace: tcab-prod
+spec:
+  template:
+    metadata:
+      labels:
+        azure.workload.identity/use: "true"

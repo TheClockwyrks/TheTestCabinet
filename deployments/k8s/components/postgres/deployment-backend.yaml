@@ -108,6 +108,11 @@ spec:
             # variable does not reach the postgres overlays and it is repeated here.
             - name: TCAB_ARTIFACTS_URL
               value: "http://tcab-artifacts:8790"
+            # The repos service as this pod reaches it, to read a run's bundle for a
+            # console's download and to prune a deleted run's bundle; repeated here
+            # for the same reason as TCAB_ARTIFACTS_URL.
+            - name: TCAB_REPOS_URL
+              value: "http://tcab-repos:8792"
             # The shared service token the dispatcher claims queued jobs with; MUST
             # match the dispatcher's TCAB_BACKEND_SERVICE_TOKEN or the queue never
             # drains. From the backend secret below.

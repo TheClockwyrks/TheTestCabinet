@@ -103,9 +103,11 @@ trigger:
 # never used, so a reference names one image for as long as the registry keeps
 # it. The forty zeros are the placeholder a render carries; see the header.
 
-# The repositories the jobs read beside this one: the contracts and engines
-# repositories, the `contracts/` and `engines/` submodules every build compiles
-# against, and the test-suites repository, the `test-suites/` submodule holding
+# The repositories the jobs read beside this one: the contracts, engines and
+# microservice-repos repositories, the `contracts/`, `engines/` and
+# `microservice-repos/` submodules every build compiles against, the last
+# because the patch table sends its source there and cargo loads every patch
+# path, and the test-suites repository, the `test-suites/` submodule holding
 # the catalog the tests over the committed catalog read and the performance
 # image bakes from. No job checks one out. A job that builds names them under
 # `uses:`, which puts them in the scope of the job's access token, and runs
@@ -119,6 +121,9 @@ resources:
     - repository: engines
       type: git
       name: the-test-cabinet/engines
+    - repository: microservice-repos
+      type: git
+      name: the-test-cabinet/microservice-repos
     - repository: test-suites
       type: git
       name: the-test-cabinet/test-suites
@@ -196,6 +201,7 @@ stages:
           repositories:
             - contracts
             - engines
+            - microservice-repos
             - test-suites
         variables:
           # The registry and the git checkouts, under the directory the cache
@@ -221,11 +227,12 @@ stages:
             fetchDepth: 1
             clean: true
 
-          # The contracts, engines and test-suites submodules, at the pinned
-          # commits; the job's `uses:` puts their repositories in the token's
-          # scope. The tests over the committed catalog read test-suites.
-          - script: scripts/ci/submodules.sh init contracts engines test-suites
-            displayName: Initialize the contracts, engines and test-suites submodules
+          # The contracts, engines, microservice-repos and test-suites
+          # submodules, at the pinned commits; the job's `uses:` puts their
+          # repositories in the token's scope. The tests over the committed
+          # catalog read test-suites.
+          - script: scripts/ci/submodules.sh init contracts engines microservice-repos test-suites
+            displayName: Initialize the contracts, engines, microservice-repos and test-suites submodules
             env:
               SYSTEM_ACCESSTOKEN: $(System.AccessToken)
 
@@ -387,17 +394,19 @@ stages:
           repositories:
             - contracts
             - engines
+            - microservice-repos
             - test-suites
         steps:
           - checkout: self
             fetchDepth: 1
             clean: true
 
-          # The contracts, engines and test-suites submodules, at the pinned
-          # commits; the job's `uses:` puts their repositories in the token's
-          # scope. The tests over the committed catalog read test-suites.
-          - script: scripts/ci/submodules.sh init contracts engines test-suites
-            displayName: Initialize the contracts, engines and test-suites submodules
+          # The contracts, engines, microservice-repos and test-suites
+          # submodules, at the pinned commits; the job's `uses:` puts their
+          # repositories in the token's scope. The tests over the committed
+          # catalog read test-suites.
+          - script: scripts/ci/submodules.sh init contracts engines microservice-repos test-suites
+            displayName: Initialize the contracts, engines, microservice-repos and test-suites submodules
             env:
               SYSTEM_ACCESSTOKEN: $(System.AccessToken)
 

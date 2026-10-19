@@ -1,0 +1,18 @@
+# The build context of the Dockerfile at the root, as an allowlist: everything
+# is left out, and what the build compiles is named back in. A COPY of a path
+# this file leaves out fails only when the image is next built, after the
+# gates, so the `build-context` gate holds every COPY source to this file.
+# Name a path back in with a comment saying what reads it, and never by a
+# wildcard family.
+*
+
+# The Rust workspace: its manifests, its lock, its configuration, the pinned
+# toolchain and the crates.
+!/Cargo.toml
+!/Cargo.lock
+!/.cargo
+!/rust-toolchain.toml
+!/crates
+
+# What a build leaves behind never enters the context.
+**/target

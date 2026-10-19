@@ -29,8 +29,9 @@
 
 // The driver binary's own modules: the backend job client, its configuration, the
 // Kubernetes sandbox runtime, the streaming sinks, the run-tree collection and upload,
-// and the cancellation disposition.
+// the implementation bundle, and the cancellation disposition.
 pub mod artifacts;
+pub mod bundle;
 pub mod cancel;
 pub mod client;
 pub mod collect;

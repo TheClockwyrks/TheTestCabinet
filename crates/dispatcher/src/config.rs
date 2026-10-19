@@ -48,6 +48,8 @@
 //! | `TCAB_CONTAINER_REGISTRY` / `TCAB_CONTAINER_TAG` | The registry/namespace and tag the driver resolves the run-container image from (the driver's `harness::resolve_run_image`); unset uses the compiled defaults (`testcabinet.azurecr.io` / `latest`). The Azure pipeline's deploy sets both to the ACR and the commit being deployed, pinning the run images to the same `<git-sha>` as the service images. |
 //! | `TCAB_CONTAINER_IMAGE_*` (one per run image — `_BASE_WASM`, `_FULL_STACK_2D`, `_FULL_STACK_3D`, `_SPRITE`, `_VOXEL`, …, `_BLENDER`, `_ADVERSARIAL`, `_PERFORMANCE`; the full set is `test_cabinet_contracts::harness::RUN_IMAGE_OVERRIDE_ENVS`) | Full per-image ref overrides (registry+name+tag) that bypass the registry/tag composition for one run image; unset composes from the registry/tag above. |
 //! | `TCAB_ARTIFACTS_URL` | The artifact service the driver uploads the produced run tree to before reporting terminal status; unset skips the upload (see the driver's `Config`). |
+//! | `TCAB_REPOS_URL` | The repos service the driver uploads the run's implementation bundle to before reporting terminal status; unset skips the upload (see the driver's `Config`). Forwarded into publish `Job`s as well. |
+//! | `TCAB_ARTIFACT_UPLOAD_WAIT_SECONDS` | How long the driver retries each upload, counted from its first failure (see the driver's `Config`). |
 //! | `OTEL_EXPORTER_OTLP_ENDPOINT` / `OTEL_EXPORTER_OTLP_HEADERS` / `OTEL_EXPORTER_OTLP_PROTOCOL` | Observability: forwarded so each driver `Job` exports its run/driver spans to the same OTLP collector as the services; unset leaves the driver on stdout-only logging. `OTEL_SERVICE_NAME` is **not** forwarded (the driver keeps its own `tcab-driver` name). |
 //! | `TCAB_ENV` | Tags the driver's telemetry with the same `deployment.environment.name` as the rest of the deployment. |
 //!
@@ -213,6 +215,12 @@ pub const PASSTHROUGH_K8S_VARS: &[&str] = &[
     // produced run tree to this artifact service before reporting terminal status.
     // Unset (a single-box dev cluster with no artifact service) skips the upload.
     "TCAB_ARTIFACTS_URL",
+    // The same for the repos service the driver uploads the run's implementation
+    // bundle to (the committed workspace as `git bundle --all`). Unset skips it.
+    "TCAB_REPOS_URL",
+    // How long the driver keeps retrying each of those uploads, counted from the
+    // upload's first failure. Unset leaves the driver's own default.
+    "TCAB_ARTIFACT_UPLOAD_WAIT_SECONDS",
     // Observability: forwarded so each per-run driver Job exports its run/driver
     // spans (service name `tcab-driver`) to the same OTLP collector — the in-cluster
     // Grafana LGTM stack — as the long-lived services, tagged with the same
@@ -239,7 +247,8 @@ pub const PASSTHROUGH_K8S_VARS: &[&str] = &[
 
 /// The variables the dispatcher passes through into each **publish** `Job`'s env
 /// verbatim — the artifact-service URL (the publisher downloads the run's
-/// `tree.tar` from it), the GitHub org / Cloudflare Pages project the publisher's
+/// `tree.tar` from it), the repos-service URL (publishing pushes the run's bundle
+/// from it), the GitHub org / Cloudflare Pages project the publisher's
 /// `PublishConfig::from_env` resolves, and the observability vars. The publisher
 /// never interprets the values the dispatcher reads here; it only forwards the ones
 /// that are set. The backend URL, job id, job token, and run id are *not* listed —
@@ -250,6 +259,9 @@ pub const PUBLISHER_PASSTHROUGH_VARS: &[&str] = &[
     // single-box dev cluster with no artifact service) leaves the publisher with no
     // tree to release — the publish path is only enabled in a full deployment.
     "TCAB_ARTIFACTS_URL",
+    // The repos service holding the run's implementation bundle, which publishing
+    // pushes to the run's public repository (`POST /runs/{id}/publish`).
+    "TCAB_REPOS_URL",
     // The publisher's `PublishConfig::from_env` reads these to choose
     // the GitHub org the public per-run repo lands in and the Cloudflare Pages
     // project the playable build deploys to. Both are required there (no compiled-in
@@ -453,8 +465,8 @@ pub struct Config {
     /// `_CPU_LIMIT`). See [`DEFAULT_PUBLISHER_MEMORY`].
     pub publisher_resources: DriverResources,
     /// The variables passed through into each publish `Job`'s env verbatim
-    /// (`TCAB_ARTIFACTS_URL`, `TCAB_GITHUB_ORG`, `TCAB_PAGES_PROJECT`, and the
-    /// observability vars that are set), collected once at startup. See
+    /// (`TCAB_ARTIFACTS_URL`, `TCAB_REPOS_URL`, `TCAB_GITHUB_ORG`,
+    /// `TCAB_PAGES_PROJECT`, and the observability vars that are set), collected once at startup. See
     /// [`PUBLISHER_PASSTHROUGH_VARS`].
     pub passthrough_publisher_env: Vec<(String, String)>,
 }

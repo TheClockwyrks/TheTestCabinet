@@ -44,10 +44,11 @@ resources:
     - pipeline: main
       source: the-test-cabinet
       trigger: none
-  # The contracts and engines repositories, the `contracts/` and `engines/`
-  # submodules every build compiles against, as in azure-pipelines.yml: a job
-  # that builds names them under `uses:` and runs
-  # `scripts/ci/submodules.sh init contracts engines`.
+  # The contracts, engines and microservice-repos repositories, the
+  # submodules every build compiles against, and test-suites, the catalog the
+  # binary jobs' driver tests read, as in azure-pipelines.yml: a job that
+  # builds names them under `uses:` and runs `scripts/ci/submodules.sh init`
+  # with their paths.
   repositories:
     - repository: contracts
       type: git
@@ -55,6 +56,12 @@ resources:
     - repository: engines
       type: git
       name: the-test-cabinet/engines
+    - repository: microservice-repos
+      type: git
+      name: the-test-cabinet/microservice-repos
+    - repository: test-suites
+      type: git
+      name: the-test-cabinet/test-suites
 
 pool:
   vmImage: ubuntu-24.04

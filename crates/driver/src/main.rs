@@ -280,6 +280,10 @@ async fn main() -> ExitCode {
             // terminal status — so by the time the console sees the run finish, its
             // build and media are already servable.
             finalize_artifacts(&config, &mut record).await;
+            // Commit the model's work on the collected copy and upload it to the repos
+            // service as a git bundle (when configured). A gg run that was already
+            // canceled when its finishing began waits on it for at most ten minutes.
+            finalize_bundle(&config, &record, cancel.is_canceled()).await;
             // For an adversarial run, also mirror the controller wasm + proof
             // replays into the *backend* store (the CLI does this at push). Without
             // it a backend-driven run is invisible to the arena and its replays
@@ -481,6 +485,9 @@ async fn report_canceled(
             // run that errored *after* collecting has a tree worth keeping, and the
             // upload is a no-op when there is nothing there.
             finalize_artifacts(config, &mut record).await;
+            // The bundle too, for whatever tree an errored wind-down left collected; a
+            // run with no collected repository has no bundle to write, which is logged.
+            finalize_bundle(config, &record, true).await;
             // Same for a gg run's session record: a cancellation that could not wind down
             // cleanly still leaves a salvaged, truncated record in the run tree, and this
             // is the only path that would mirror it.
@@ -595,6 +602,48 @@ async fn finalize_artifacts(config: &Config, record: &mut test_cabinet_driver::R
         tracing::warn!(run_id = %record.id, error = %err, "could not upload run artifacts");
     } else {
         tracing::info!(run_id = %record.id, "uploaded run artifacts to the artifact service");
+    }
+}
+
+/// Commit the run's implementation on the driver's collected copy and upload it to the
+/// repos service as a git bundle, when a repos service is configured (`TCAB_REPOS_URL`).
+///
+/// The upload is retried under the driver's retry policy for
+/// `TCAB_ARTIFACT_UPLOAD_WAIT_SECONDS` from its first failure, or for at most ten
+/// minutes when `already_canceled` (a gg run whose finishing began after the kill). A
+/// bundle that is still not stored is logged and never fatal: the run's record still
+/// reports, and the console offers no download for it.
+async fn finalize_bundle(
+    config: &Config,
+    record: &test_cabinet_driver::RunRecord,
+    already_canceled: bool,
+) {
+    use test_cabinet_driver::bundle::{BundleTarget, RetryPolicy, store_bundle};
+    let Some(repos_url) = config.repos_url.as_deref() else {
+        return;
+    };
+    let out_dir = config.work_dir.join("out");
+    let repo = out_dir.join(&record.id).join("implementation");
+    let mut policy = RetryPolicy::waiting_for(config.upload_wait);
+    if already_canceled {
+        policy = policy.for_canceled_run();
+    }
+    let target = BundleTarget {
+        repos_url,
+        run_id: &record.id,
+        job_id: &config.job_id,
+        job_token: &config.job_token,
+    };
+    match store_bundle(target, &repo, &out_dir, &policy).await {
+        Ok(()) => {
+            tracing::info!(run_id = %record.id, "uploaded the run's bundle to the repos service")
+        }
+        Err(err) => tracing::warn!(
+            run_id = %record.id,
+            runs_own = err.is_runs_own(),
+            error = %err,
+            "could not store the run's bundle",
+        ),
     }
 }
 
@@ -846,6 +895,9 @@ async fn report_failure(
             // inspection — upload them and stamp any build link, the same as a
             // succeeded run, before the terminal status is posted.
             finalize_artifacts(config, &mut record).await;
+            // A failed run takes the same finishing sequence: its collected repository,
+            // when it has one, is committed and uploaded as its bundle.
+            finalize_bundle(config, &record, false).await;
             // A `hung` or `timed_out` gg run never reaches artifact collection, but the
             // engine salvages its capture journal out of the container before teardown and
             // assembles it into the run tree all the same — so this is the one upload that

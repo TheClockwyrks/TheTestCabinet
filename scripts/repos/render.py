@@ -217,6 +217,26 @@ HOST_DISK_COMMAND = (
 )
 CHECKS_SOURCES = "$(Build.SourcesDirectory)"
 
+# The image an application's pipeline builds: on every gated push to `master`
+# and `staging`, natively once per architecture, each pushed to the registry
+# as `<name>:<commit>-<arch>`, then fused into the multi-arch `<name>:<commit>`
+# a deployment pins (the Repositories and Releasing development pages). The
+# amd64 build runs on a hosted agent and the arm64 one on the project's managed
+# arm64 pool, as the superrepo's own service images do; both push through the
+# Docker Registry service connection holding AcrPush on the registry, the one
+# the CI images are pulled through.
+IMAGE_KINDS = frozenset({"application"})
+IMAGE_STAGE = "image"
+IMAGE_BRANCHES = ("master", "staging")
+IMAGE_ARCHITECTURES = ("amd64", "arm64")
+ARM64_POOL = "pool-dev-linux-arm64-wus3-4c-eph-01"
+IMAGE_SCRIPT = "scripts/ci/image.sh"
+MANIFEST_SCRIPT = "scripts/ci/manifest.sh"
+BUILD_CONTEXT_GATE = "build-context"
+# The compiler every checkout builds with, which an image's Rust pin has to
+# name; the `build-context` gate holds the pins to it.
+RUST_TOOLCHAIN = KIT / "rust-toolchain.toml"
+
 
 class RenderError(Exception):
     """A render that cannot proceed, with the reason as its message."""
@@ -569,6 +589,105 @@ def ci_publish(kind: str) -> str:
     return "\n".join(lines)
 
 
+def builds_image(kind: str) -> bool:
+    """Whether the kind's pipeline builds and pushes the repository's image."""
+    return kind in IMAGE_KINDS
+
+
+def rust_channel(kit: Path = KIT) -> str:
+    """The channel the kit's rust-toolchain.toml pins, which an image's Rust pin names."""
+    path = kit / RUST_TOOLCHAIN.relative_to(KIT)
+    try:
+        channel = tomllib.loads(path.read_text(encoding="utf-8"))["toolchain"]["channel"]
+    except (OSError, KeyError, tomllib.TOMLDecodeError) as error:
+        raise RenderError(f"{path} pins no toolchain channel: {error}") from error
+    return str(channel)
+
+
+def _registry_login(indent: str) -> list[str]:
+    """The step logging in to the registry, retried: the token exchange is what times out, not the commit."""
+    return [
+        f"{indent}- task: Docker@2",
+        f"{indent}  displayName: Log in to the registry",
+        f"{indent}  retryCountOnTaskFailure: 2",
+        f"{indent}  inputs:",
+        f"{indent}    command: login",
+        f"{indent}    containerRegistry: {CI_IMAGE_ENDPOINT}",
+    ]
+
+
+def ci_image_stage(name: str, kind: str) -> str:
+    """The stage building the application's image, after the gates, on master and staging alone.
+
+    One job per architecture builds natively and pushes `<name>:<commit>-<arch>`
+    (`scripts/ci/image.sh`), with the job's token able to fetch the repositories
+    its manifests reach, as the Rust job does; a last job fuses the two into
+    `<name>:<commit>` (`scripts/ci/manifest.sh`). Nothing for a kind that
+    builds no image.
+    """
+    if not builds_image(kind):
+        return ""
+    steps = "          "
+    branches = ", ".join(f"'refs/heads/{branch}'" for branch in IMAGE_BRANCHES)
+    lines = [
+        f"  - stage: {IMAGE_STAGE}",
+        "    displayName: Image",
+        "    dependsOn: gates",
+        f"    condition: and(succeeded(), in(variables['Build.SourceBranch'], {branches}))",
+        "    jobs:",
+    ]
+    uses = uses_block(fetched_repositories(name))
+    for arch in IMAGE_ARCHITECTURES:
+        lines += [
+            f"      - job: {IMAGE_STAGE}_{arch}",
+            f"        displayName: Image ({arch})",
+            "        timeoutInMinutes: 120",
+            "        pool:",
+            "          vmImage: ubuntu-24.04" if arch == "amd64" else f"          name: {ARM64_POOL}",
+        ]
+        if uses:
+            lines.append(uses)
+        lines += [
+            "        steps:",
+            f"{steps}- checkout: self",
+            f"{steps}  fetchDepth: 1",
+            f"{steps}  clean: true",
+        ]
+        if arch == "amd64":
+            # A hosted agent's disk holds toolchains no job here uses; the
+            # managed arm64 pool hands every job a fresh VM of its own.
+            lines += [
+                f"{steps}- script: |",
+                f"{steps}    {HOST_DISK_COMMAND}",
+                f"{steps}    df -h /",
+                f"{steps}  displayName: Free the host's disk of the software the job never uses",
+            ]
+        lines += [
+            f"{steps}- script: scripts/ci/git-sources.sh",
+            f"{steps}  displayName: Fetch the project's dependencies from Azure",
+            f"{steps}  env:",
+            f"{steps}    SYSTEM_ACCESSTOKEN: $(System.AccessToken)",
+            *_registry_login(steps),
+            f'{steps}- script: {IMAGE_SCRIPT} {name} "$(Build.SourceVersion)"',
+            f"{steps}  displayName: Build and push the image ({arch})",
+        ]
+    lines += [
+        f"      - job: {IMAGE_STAGE}_manifest",
+        '        displayName: "Image: the multi-arch tag"',
+        "        dependsOn:",
+        *(f"          - {IMAGE_STAGE}_{arch}" for arch in IMAGE_ARCHITECTURES),
+        "        steps:",
+        f"{steps}- checkout: self",
+        f"{steps}  fetchDepth: 1",
+        f"{steps}  clean: true",
+        *_registry_login(steps),
+        f'{steps}- script: {MANIFEST_SCRIPT} "$(Build.SourceVersion)" {name}',
+        f"{steps}  displayName: Fuse the architectures",
+        f"{steps}  retryCountOnTaskFailure: 2",
+    ]
+    return "\n".join(lines)
+
+
 def crate_of(name: str) -> tuple[str, str]:
     """The directory under crates/ and the package name of a repository's scaffolded crate."""
     if name not in CRATES:
@@ -685,6 +804,12 @@ def variables(name: str, kind: str, description: str) -> Variables:
         "ci_npm_feed": ci_npm_feed(kind),
         "ci_kind_checks": ci_kind_checks(kind),
         "ci_publish": ci_publish(kind),
+        # The image an application builds: the conditional name of its
+        # Dockerfile, its `build-context` gate and its scripts, and its stage.
+        "ci_image": builds_image(kind),
+        "ci_image_stage": ci_image_stage(name, kind),
+        "image_registry": CI_REGISTRY,
+        "rust_channel": rust_channel() if shape.crate else "",
         "ci_image_endpoint": CI_IMAGE_ENDPOINT,
         "ci_registry": CI_REGISTRY,
         "ci_image_tag": ci_image_tag(),

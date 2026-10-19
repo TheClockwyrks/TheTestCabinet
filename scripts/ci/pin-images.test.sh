@@ -3,8 +3,11 @@
 #
 # Each case pins a temporary copy of this checkout's deployments/k8s, named to the
 # script by TCAB_K8S_ROOT, so the checkout itself is never touched. The subject is
-# the kustomization it writes: all seven images at the commit, the dispatcher's
-# patch once however often it runs, and its refusals.
+# the kustomization it writes: the seven images this repository builds at the
+# commit, the repos service's image at the commit its submodule pointer names, the
+# dispatcher's patch once however often it runs, and its refusals. The pointer is
+# handed to the script with TCAB_PIN_GITLINKS, since the commits pinned here are
+# not in any checkout, except in the case that reads it from this checkout's HEAD.
 #
 # The script ends by rendering the pinned overlay with kubectl. Where kubectl is
 # absent, a stub that renders nothing stands in for it, and the cases that need a
@@ -53,6 +56,8 @@ trap 'rm -rf "$tmp"' EXIT
 
 COMMIT="0123456789abcdef0123456789abcdef01234567"
 OTHER="fedcba9876543210fedcba9876543210fedcba98"
+REPOS="89abcdef0123456789abcdef0123456789abcdef"
+REPOS_OTHER="76543210fedcba9876543210fedcba9876543210"
 
 stub_path=""
 real_kubectl=1
@@ -72,18 +77,23 @@ fresh_tree() {
 	printf '%s' "$tree/k8s"
 }
 
-pin() { # tree overlay commit
-	(cd / && env PATH="${stub_path}$PATH" TCAB_K8S_ROOT="$1" "$CI_DIR/pin-images.sh" "$2" "$3" 2>&1)
+pin() { # tree overlay commit [repos-pointer]
+	(cd / && env PATH="${stub_path}$PATH" TCAB_K8S_ROOT="$1" \
+		TCAB_PIN_GITLINKS="microservice-repos=${4:-$REPOS}" "$CI_DIR/pin-images.sh" "$2" "$3" 2>&1)
 }
 
 for overlay in staging prod; do
-	echo "--- ${overlay}: seven pins ---"
+	echo "--- ${overlay}: eight pins ---"
 	tree="$(fresh_tree)"
 	out="$(pin "$tree" "$overlay" "$COMMIT")"
 	status=$?
 	check_equal "passes" 0 "$status"
 	kustomization="$(cat "$tree/overlays/${overlay}/kustomization.yaml")"
-	check_equal "all seven images are at the commit" 7 "$(grep -c "^    newTag: \"${COMMIT}\"$" <<<"$kustomization")"
+	check_equal "the seven images this repository builds are at the commit" 7 \
+		"$(grep -c "^    newTag: \"${COMMIT}\"$" <<<"$kustomization")"
+	check_contains "the repos image is at its submodule pointer" \
+		"$(printf '  - name: REPLACE_REGISTRY/tcab-repos\n    newName: testcabinet.azurecr.io/microservice-repos\n    newTag: "%s"' "$REPOS")" \
+		"$kustomization"
 	check_equal "none is left unpinned" 0 "$(grep -c 'newTag: unpinned' <<<"$kustomization")"
 	check_contains "the dispatcher's driver image is at the commit" \
 		"value: \"testcabinet.azurecr.io/tcab-driver:${COMMIT}\"" "$kustomization"
@@ -95,6 +105,8 @@ for overlay in staging prod; do
 		check_contains "the render runs the backend at the commit" \
 			"image: testcabinet.azurecr.io/the-test-cabinet-backend:${COMMIT}" "$rendered"
 		check_contains "the render sets the run-container tag" "value: ${COMMIT}" "$rendered"
+		check_contains "the render runs the repos service at its pointer" \
+			"image: testcabinet.azurecr.io/microservice-repos:${REPOS}" "$rendered"
 		check_equal "the render names no unpinned image" 0 "$(grep -c ':unpinned' <<<"$rendered")"
 	fi
 
@@ -102,10 +114,12 @@ for overlay in staging prod; do
 	pin "$tree" "$overlay" "$COMMIT" >/dev/null
 	check_equal "a second run with the same commit changes nothing" "$kustomization" \
 		"$(cat "$tree/overlays/${overlay}/kustomization.yaml")"
-	pin "$tree" "$overlay" "$OTHER" >/dev/null
+	pin "$tree" "$overlay" "$OTHER" "$REPOS_OTHER" >/dev/null
 	kustomization="$(cat "$tree/overlays/${overlay}/kustomization.yaml")"
 	check_equal "a run with another commit moves all seven" 7 "$(grep -c "^    newTag: \"${OTHER}\"$" <<<"$kustomization")"
+	check_equal "and the repos image to the other pointer" 1 "$(grep -c "^    newTag: \"${REPOS_OTHER}\"$" <<<"$kustomization")"
 	check_equal "and leaves the first commit nowhere" 0 "$(grep -c "$COMMIT" <<<"$kustomization")"
+	check_equal "and the first pointer nowhere" 0 "$(grep -c "$REPOS" <<<"$kustomization")"
 	check_equal "the dispatcher's patch is there once" 1 \
 		"$(grep -c '^  # BEGIN scripts/ci/pin-images.sh' <<<"$kustomization")"
 done
@@ -137,8 +151,41 @@ before="$(cat "$tree/overlays/prod/kustomization.yaml")"
 out="$(pin "$tree" prod "$COMMIT")"
 status=$?
 check_failed "fails" "$status"
-check_contains "counts the images it found" "names 6 of the 7 Test Cabinet images" "$out"
+check_contains "counts the images it found" "names 7 of the 8 Test Cabinet images" "$out"
 check_equal "leaves the overlay as it was" "$before" "$(cat "$tree/overlays/prod/kustomization.yaml")"
+
+echo "--- a submodule pointer that cannot be read ---"
+
+tree="$(fresh_tree)"
+before="$(cat "$tree/overlays/staging/kustomization.yaml")"
+# No TCAB_PIN_GITLINKS: the pointer is read from the commit's tree, and this checkout
+# holds no such commit.
+out="$(cd / && env PATH="${stub_path}$PATH" TCAB_K8S_ROOT="$tree" "$CI_DIR/pin-images.sh" staging "$COMMIT" 2>&1)"
+status=$?
+check_failed "fails" "$status"
+check_contains "names the pointer and the commit" \
+	"tcab-repos is pinned to the commit the submodule pointer microservice-repos names at ${COMMIT}" "$out"
+check_equal "leaves the overlay as it was" "$before" "$(cat "$tree/overlays/staging/kustomization.yaml")"
+for value in abc123 "${REPOS^^}"; do
+	out="$(pin "$tree" staging "$COMMIT" "$value")"
+	status=$?
+	check_failed "refuses the pointer '${value}'" "$status"
+done
+
+echo "--- the submodule pointer of a commit this checkout holds ---"
+
+head="$(git -C "$CI_DIR" rev-parse --verify --quiet HEAD 2>/dev/null || true)"
+gitlink="$(git -C "$CI_DIR" ls-tree "${head:-HEAD}" -- ../../microservice-repos 2>/dev/null | awk '$1 == "160000" { print $3 }')"
+if [ -n "$head" ] && [ -n "$gitlink" ]; then
+	tree="$(fresh_tree)"
+	out="$(cd / && env PATH="${stub_path}$PATH" TCAB_K8S_ROOT="$tree" "$CI_DIR/pin-images.sh" prod "$head" 2>&1)"
+	status=$?
+	check_equal "passes" 0 "$status"
+	check_contains "pins the repos image to the pointer in that commit's tree" \
+		"newTag: \"${gitlink}\"" "$(cat "$tree/overlays/prod/kustomization.yaml")"
+else
+	ok "(skipped: this checkout has no commit holding the microservice-repos pointer)"
+fi
 
 echo "--- an image the pin does not reach ---"
 

@@ -36,8 +36,10 @@
 #     arrived, which no cluster runs yet.
 #
 # Then, in every repository whose name starts with `tcab-` or `test-cabinet-`
-# and in no other (the CI images are ci-image-purge.sh's), each tagged manifest
-# is kept or deleted by its tags:
+# and in no other (the CI images are ci-image-purge.sh's; a split repository's
+# image, `microservice-repos` among them, is tagged with that repository's own
+# commits, which the commits above never name, so it is left whole), each tagged
+# manifest is kept or deleted by its tags:
 #
 #   - a commit tag, `<sha>` or `<sha>-<arch>`, keeps the manifest when its
 #     commit is kept;

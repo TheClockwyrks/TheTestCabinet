@@ -5404,10 +5404,12 @@ version = "0.0.0"
 dependencies = [
  "anyhow",
  "async-trait",
+ "axum",
  "base64",
  "cuid2",
  "flate2",
  "foray-core",
+ "futures-util",
  "hex",
  "ignore",
  "k8s-openapi",
@@ -7626,6 +7628,10 @@ version = "0.2.1"
 [[patch.unused]]
 name = "contract-codegen"
 version = "0.2.1"
+
+[[patch.unused]]
+name = "test-cabinet-repos"
+version = "0.0.0"
 
 [[patch.unused]]
 name = "foray-cli"

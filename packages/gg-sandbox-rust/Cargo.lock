@@ -287,3 +287,7 @@ version = "0.2.1"
 [[patch.unused]]
 name = "test-cabinet-telemetry"
 version = "0.2.1"
+
+[[patch.unused]]
+name = "test-cabinet-repos"
+version = "0.0.0"

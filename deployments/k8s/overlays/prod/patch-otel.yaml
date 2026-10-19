@@ -35,6 +35,20 @@ spec:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
+  name: tcab-repos
+  namespace: tcab-prod
+spec:
+  template:
+    spec:
+      containers:
+        - name: repos
+          env:
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: "http://tcab-lgtm:4318"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
   name: tcab-arena
   namespace: tcab-prod
 spec:

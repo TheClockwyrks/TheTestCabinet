@@ -61,10 +61,11 @@ deployments/k8s/
 # The project's own ignored paths, which .markdownlint-cli2.yaml, cspell.json and
 # eslint.config.js leave out too, so the gates never disagree about a path.
 /cold-storage/**
-# The contracts, engines and test-suites repositories, submodules whose own gates
-# format them.
+# The contracts, engines, microservice-repos and test-suites repositories,
+# submodules whose own gates format them.
 /contracts/**
 /engines/**
+/microservice-repos/**
 /test-suites/**
 /tasks/**/done/**
 /.claude/workflows/**

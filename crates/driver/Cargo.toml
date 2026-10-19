@@ -154,8 +154,13 @@ sha2 = { workspace = true }
 # if the driver dies mid-upload, leaving nothing to garbage-collect.
 tempfile = { workspace = true }
 tokio-util = { workspace = true }
+# The implementation bundle upload (`src/bundle.rs`) counts the chunks the body stream
+# hands over, which is how a stalled attempt is told from a slow one.
+futures-util = { workspace = true }
 
 [dev-dependencies]
+# A stub repos service for the bundle upload's tests (`src/bundle.test.rs`).
+axum = { workspace = true }
 # `test-util` enables paused/auto-advancing time so the runtime cap can be tested
 # without waiting out a real wall-clock timeout.
 tokio = { workspace = true, features = ["full", "test-util"] }
