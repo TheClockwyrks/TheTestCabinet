@@ -15,11 +15,8 @@
 // value, and it returns the reason when it does not so the field can show it and
 // the form can refuse to submit on it.
 //
-// This module is deliberately free of JSX, styling and anything app-shaped: the
-// Lattice designer (`apps/lattice-designer`) aliases straight to it, the same way
-// it already aliases the console's Lattice player, so the tool shares the rules
-// without depending on the console package. `NumberField.tsx` beside this file is
-// the themed control built on top of it.
+// This module is deliberately free of JSX, styling and anything app-shaped.
+// `NumberField.tsx` beside this file is the themed control built on top of it.
 
 import { useCallback, useState } from "react";
 

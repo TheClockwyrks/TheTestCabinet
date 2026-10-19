@@ -50,10 +50,6 @@ const PROJECTS = [
   { sources: "apps/web/src", tsconfig: "apps/web/tsconfig.json" },
   { sources: "packages/ui/src", tsconfig: "packages/ui/tsconfig.json" },
   { sources: "apps/site/src", tsconfig: "apps/site/tsconfig.json" },
-  {
-    sources: "apps/lattice-designer/src",
-    tsconfig: "apps/lattice-designer/tsconfig.json",
-  },
 ];
 
 /** The sources the type-checked rules read, each inside a project of its own. */
@@ -70,17 +66,13 @@ const TESTS = PROJECTS.flatMap(({ sources }) => [
  *
  * They are linted without the type-checked rules because a build's
  * configuration is not a member of the project it configures. A Vite plugin a
- * configuration loads (the gallery's two, the designer's scenario API) is part
- * of that configuration.
+ * configuration loads (the gallery's two) is part of that configuration.
  */
 const CONFIGS = [
   "eslint.config.js",
   "apps/web/vite.config.ts",
   "apps/site/vite.config.ts",
   "apps/site/vite-plugin-*.ts",
-  "apps/lattice-designer/vite.config.ts",
-  "apps/lattice-designer/vitest.config.ts",
-  "apps/lattice-designer/scenario-api.ts",
 ];
 
 /**

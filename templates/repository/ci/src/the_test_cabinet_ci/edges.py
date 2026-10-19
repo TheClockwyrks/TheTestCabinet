@@ -163,7 +163,6 @@ PACKAGES: Mapping[str, str] = {
     "@clockwyrks/run-stats": "ui-common",
     "@clockwyrks/site": "testcabinet.ai",
     "@clockwyrks/web": "console.testcabinet.ai",
-    "@clockwyrks/lattice-designer": "test-suites",
     "@clockwyrks/gg-sandbox": "gg",
 }
 
