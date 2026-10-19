@@ -6,10 +6,11 @@ zone: EDGE
 number: 4
 title: Slim tcab to the commands that operate on definitions
 type: generic
-state: open
+state: done
 depends_on:
   - ey5sbl6cm5bcwy5uvykmi6d1
 created: 2026-10-13T21:12:37.385950171Z
+done: 2026-10-19T09:11:34.411834274Z
 ---
 
 `tcab` declares run-side commands beside the ones that operate on
