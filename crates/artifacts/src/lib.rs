@@ -21,6 +21,10 @@
 //!   management (service token), and the reviewer's build/media reads, the reads
 //!   built on the [`playable`] resolvers. Every route is served at the root and
 //!   under the edge's `/artifacts` prefix.
+//! - [`build_rule`] — the pure pieces of the build-serving rule (traversal
+//!   guard, content type by name, HTML base relocation, build-output choice)
+//!   for serving a build held as objects, held to the contracts rule by golden
+//!   tests.
 //! - [`playable`] — resolving a run's build, proof, validation, showcase and
 //!   asset files for serving.
 //! - [`r2`] — the R2 object-store client. The backend's snapshot writes and the
@@ -35,6 +39,7 @@
 pub mod access;
 pub mod api;
 pub mod auth;
+pub mod build_rule;
 pub mod config;
 pub mod error;
 pub mod playable;
