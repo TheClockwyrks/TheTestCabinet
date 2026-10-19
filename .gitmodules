@@ -20,3 +20,7 @@
 	path = microservice-repos
 	url = ../microservice-repos
 	branch = master
+[submodule "gg.rocks"]
+	path = gg.rocks
+	url = ../gg.rocks
+	branch = master

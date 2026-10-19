@@ -19,6 +19,9 @@
     "gg": {
       "@clockwyrks/gg-sandbox": "packages/gg-sandbox"
     },
+    "gg.rocks": {
+      "@gg-rocks/web": "apps/web"
+    },
     "test-suites": {
       "@clockwyrks/lattice-designer": "tools/lattice-designer"
     }
