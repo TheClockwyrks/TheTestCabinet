@@ -28,7 +28,7 @@
 //
 // This is a STANDALONE tool: it has no dependencies and can be copied out of the
 // repo. Its rig-posing math mirrors the tested implementation in
-// `packages/voxel-runtime/src/{hierarchy,clips}.ts`, and it decodes the same per-part
+// `engines/packages/voxel-runtime/src/{hierarchy,clips}.ts`, and it decodes the same per-part
 // `.glb` geometry the runtime's `parseGlb` does into the `PartMesh` shape — keep them
 // in sync.
 //
@@ -123,7 +123,7 @@ function readJson(path) {
 // `POSITION`/`NORMAL`/`COLOR_0` VEC3 accessors + a U32 SCALAR index accessor). This
 // tool decodes that geometry into the flat `{ positions, normals, colors, indices }`
 // arrays below — it does NOT re-mesh — so one exporter serves them all identically.
-// The decoder mirrors `parseGlb` in `packages/voxel-runtime/src` and the Rust
+// The decoder mirrors `parseGlb` in `engines/packages/voxel-runtime/src` and the Rust
 // `glb_to_part_mesh` in `crates/model-core/src/gltf.rs`.
 
 const GLB_MAGIC = 0x46546c67; // 'glTF'
@@ -282,7 +282,7 @@ function translation(t) {
   return m;
 }
 
-// Keep in sync with `rotation` in packages/voxel-runtime/src/hierarchy.ts: x
+// Keep in sync with `rotation` in engines/packages/voxel-runtime/src/hierarchy.ts: x
 // (pitch) is negated relative to a right-handed rotation so a positive pitch
 // lifts a forward (+z) part up toward +y; y (yaw) and z (roll) are right-handed.
 function rotation(axis, angle) {
@@ -516,7 +516,7 @@ function normalizeRig(rig) {
   };
 }
 
-// ── F-curve sampling — mirrors packages/voxel-runtime/src/clips.ts ──────────────
+// ── F-curve sampling — mirrors engines/packages/voxel-runtime/src/clips.ts ──────
 // Normalised easing-preset handles in (u, w) space (a fraction of the segment's
 // time/value span), mirroring CSS `cubic-bezier` curves.
 const EASE_PRESETS = {

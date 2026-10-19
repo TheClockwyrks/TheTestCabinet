@@ -14,7 +14,7 @@
     { "path": "../../contracts/packages/run-record" },
     { "path": "../../contracts/packages/backend-api" },
     { "path": "../../packages/run-stats" },
-    { "path": "../../packages/voxel-runtime" },
-    { "path": "../../packages/particle-runtime" }
+    { "path": "../../engines/packages/voxel-runtime" },
+    { "path": "../../engines/packages/particle-runtime" }
   ]
 }

@@ -27,8 +27,8 @@
 # Cabinet itself and must match the types and checksum the
 # validator scores against, so they are compiled from THIS repository at
 # image-build time and a run records the image digest. The build context is the
-# repository root so the compile stage can see `crates/` and the committed training
-# fixtures under `test-cases/` (see `containers/build.sh`).
+# repository root so the compile stage can see the engines submodule's `crates/` and
+# the committed training fixtures under `test-cases/` (see `containers/build.sh`).
 #
 # This image inherits everything from base-wasm — the Node toolchain, the Rust +
 # `wasm32-unknown-unknown` toolchain, the unprivileged `node` run user, the `/work`
@@ -52,8 +52,11 @@ ARG BASE_IMAGE=test-cabinet-base-wasm:latest
 # glibc target matches the bookworm-based base.
 FROM docker.io/library/rust:1.97.1-bookworm AS lattice-build
 WORKDIR /build
-# The whole workspace is copied (minus `.dockerignore`'d paths) so cargo can
-# resolve the workspace graph.
+# The whole context is copied (minus `.dockerignore`'d paths): the engines
+# repository's workspace, a submodule at `engines/`, whose crates this stage
+# compiles, and the superrepo's `.cargo/` patch table, which cargo reads from the
+# working directory and which sends the engines workspace's own dependency on the
+# contracts repository to the `contracts/` submodule beside it.
 COPY . .
 # The `lattice` CLI (host target) — the oracle + local scorer baked onto PATH. The
 # wasm target is for the buildkit smoke build below.
@@ -81,7 +84,12 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
 	# Only the handful of workspace crates is dirtied; registry dependencies are
 	# fingerprinted by version+features, not mtime.
 	&& find /build -path /build/target -prune -o -type f -exec touch {} + \
-	&& cargo build --release -p lattice-cli \
+	# The engines repository is a library and commits no lock, so its workspace is
+	# resolved against the superrepo's: a copy of `Cargo.lock` that cargo trims to the
+	# engines graph and completes, which keeps every third-party crate at the version
+	# the services link rather than whatever is newest on the day the image builds.
+	&& cp Cargo.lock engines/Cargo.lock \
+	&& cargo build --release --manifest-path engines/Cargo.toml --target-dir target -p lattice-cli \
 	# target/ is a cache mount, not a layer, so the binary must be copied to a stable
 	# path INSIDE this RUN, before the mount is detached.
 	&& mkdir -p /out \
@@ -98,8 +106,8 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
 	--mount=type=cache,target=/usr/local/cargo/git \
 	--mount=type=cache,target=/tmp/buildkit-smoke,id=tcab-lattice-buildkit-smoke,sharing=locked \
 	mkdir -p /opt/lattice/buildkit \
-	&& cp -a crates/lattice-core /opt/lattice/buildkit/lattice-core \
-	&& cp -a crates/lattice-sdk /opt/lattice/buildkit/lattice-sdk \
+	&& cp -a engines/crates/lattice-core /opt/lattice/buildkit/lattice-core \
+	&& cp -a engines/crates/lattice-sdk /opt/lattice/buildkit/lattice-sdk \
 	&& cp containers/performance/buildkit/Cargo.toml /opt/lattice/buildkit/Cargo.toml \
 	&& rm -rf /opt/lattice/buildkit/lattice-core/target \
 		/opt/lattice/buildkit/lattice-sdk/target \

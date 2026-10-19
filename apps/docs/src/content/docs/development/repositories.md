@@ -73,8 +73,8 @@ The kind decides a repository's shape.
 | `client-tauri` | shell | The operator client for Windows, Linux, macOS and Android |
 | `test-suites` | content | The test cases and game jams, and the lattice factory designer |
 
-Every repository but `contracts`, `test-suites` and `cold-storage` is still a
-directory of the superrepo's own tree today.
+Every repository but `contracts`, `engines`, `test-suites` and `cold-storage` is
+still a directory of the superrepo's own tree today.
 
 ### Where each responsibility lives
 

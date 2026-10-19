@@ -63,7 +63,7 @@ const LOCAL_RUNS_URL = "/__local-runs__/index.json";
  * is a hash of its bytes and is published verbatim.
  *
  * The `img.` prefix MIRRORS `IMAGE_STORE_PREFIX` in
- * `packages/case-harness/src/replay/store.ts` and `VALIDATION_IMAGE_PREFIX` in
+ * `engines/packages/case-harness/src/replay/store.ts` and `VALIDATION_IMAGE_PREFIX` in
  * `contracts/crates/contracts/src/layout.rs`; a declared output never carries it, so asking here
  * first costs a declared name nothing.
  */

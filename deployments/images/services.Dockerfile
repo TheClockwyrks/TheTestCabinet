@@ -310,8 +310,9 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
 # time (crates/driver seeding → `.vendor/packages/`). Those libraries are read from a
 # host package store, so the driver image bakes one exactly as the base run image
 # does: `npm ci` over the npm workspace (the repo-root `.dockerignore` re-includes
-# the packages slice), then `scripts/stage-tcab-packages.mjs` builds the shippable
-# libraries and stages them under /opt/tcab-packages.
+# the packages slice, the engines and contracts submodules' packages among it), then
+# `scripts/stage-tcab-packages.mjs` builds the shippable libraries and stages them
+# under /opt/tcab-packages.
 FROM docker.io/library/node:24-bookworm-slim AS tcab-packages
 WORKDIR /repo
 COPY . .

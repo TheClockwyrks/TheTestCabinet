@@ -322,3 +322,53 @@ def test_the_generated_patch_table_is_what_the_check_reads() -> None:
     registered = set(graph.submodules(ROOT))
     assert set(graph.patches(ROOT)) == {render.public_source(repo) for repo in rust if repo in registered}
     assert graph.commented_patches(ROOT) == {render.public_source(repo) for repo in rust if repo not in registered}
+
+
+# One resolution as cargo writes it in two orders of its unused patches.
+_PACKAGES = '[[package]]\nname = "driver"\nversion = "0.0.0"\n'
+_CONTRACTS_UNUSED = '\n[[patch.unused]]\nname = "api-codegen"\nversion = "0.2.0"\n'
+_ENGINES_UNUSED = '\n[[patch.unused]]\nname = "foray-cli"\nversion = "0.0.0"\n'
+_CONTRACTS_FIRST = "version = 4\n\n" + _PACKAGES + _CONTRACTS_UNUSED + _ENGINES_UNUSED
+_ENGINES_FIRST = "version = 4\n\n" + _PACKAGES + _ENGINES_UNUSED + _CONTRACTS_UNUSED
+
+
+def _stub_cargo(lock: Path, writes: str, locked_stderr: str = "error: ... because --locked was passed"):
+    """A `subprocess.run` standing in for cargo: `--locked` refuses, the resolution writes `writes`."""
+    calls: list[list[str]] = []
+
+    def run(argv: list[str], **_: object) -> subprocess.CompletedProcess[str]:
+        calls.append(argv)
+        if "--locked" in argv:
+            return subprocess.CompletedProcess(argv, 101, "", locked_stderr)
+        lock.write_text(writes, encoding="utf-8")
+        return subprocess.CompletedProcess(argv, 0, "{}", "")
+
+    return run, calls
+
+
+def test_a_lock_cargo_writes_in_another_unused_order_is_current(tmp_path: Path) -> None:
+    lock = tmp_path / "Cargo.lock"
+    _write(lock, _CONTRACTS_FIRST)
+    mtime = lock.stat().st_mtime_ns
+    run, calls = _stub_cargo(lock, _ENGINES_FIRST)
+    assert graph.lock_problems(tmp_path, run=run) == []
+    assert [call[:3] for call in calls] == [["cargo", "metadata", "--locked"], ["cargo", "metadata", "--offline"]]
+    assert lock.read_text(encoding="utf-8") == _CONTRACTS_FIRST
+    assert lock.stat().st_mtime_ns == mtime
+
+
+def test_a_lock_cargo_resolves_differently_is_stale_and_left_as_committed(tmp_path: Path) -> None:
+    nested = tmp_path / "packages" / "guest" / "Cargo.lock"
+    _write(nested, _CONTRACTS_FIRST)
+    run, _ = _stub_cargo(nested, "version = 4\n\n" + _PACKAGES)
+    stale = "is not current against the checked-out crates; " + graph.LOCK_FIX
+    assert graph.lock_problems(tmp_path, run=run) == [f"packages/guest/Cargo.lock {stale}"]
+    assert nested.read_text(encoding="utf-8") == _CONTRACTS_FIRST
+
+
+def test_a_lock_check_failing_for_another_reason_is_left_to_the_gates(tmp_path: Path) -> None:
+    lock = tmp_path / "Cargo.lock"
+    _write(lock, _CONTRACTS_FIRST)
+    run, calls = _stub_cargo(lock, "", locked_stderr="error: failed to download `x`")
+    assert graph.lock_problems(tmp_path, run=run) == []
+    assert len(calls) == 1

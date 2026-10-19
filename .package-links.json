@@ -5,6 +5,16 @@
       "@clockwyrks/asset-contract": "packages/asset-contract",
       "@clockwyrks/backend-api": "packages/backend-api",
       "@clockwyrks/run-record": "packages/run-record"
+    },
+    "engines": {
+      "@clockwyrks/case-harness": "packages/case-harness",
+      "@clockwyrks/lattice-runtime": "packages/lattice-runtime",
+      "@clockwyrks/particle-runtime": "packages/particle-runtime",
+      "@clockwyrks/simple-2d": "packages/simple-2d",
+      "@clockwyrks/simple-3d": "packages/simple-3d",
+      "@clockwyrks/structured-2d": "packages/structured-2d",
+      "@clockwyrks/structured-3d": "packages/structured-3d",
+      "@clockwyrks/voxel-runtime": "packages/voxel-runtime"
     }
   }
 }

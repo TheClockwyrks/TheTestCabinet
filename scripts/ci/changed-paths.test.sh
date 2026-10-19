@@ -44,7 +44,7 @@ export GIT_AUTHOR_NAME=test GIT_AUTHOR_EMAIL=test@example.com
 export GIT_COMMITTER_NAME=test GIT_COMMITTER_EMAIL=test@example.com
 
 # A throwaway repository holding a copy of the script and a .gitmodules that
-# pins two submodules, at `cold-storage` and `contracts`.
+# pins three submodules, at `cold-storage`, `contracts` and `engines`.
 fresh_repo() {
 	local repo
 	repo="$(mktemp -d "$tmp/repoXXXXXX")"
@@ -52,6 +52,7 @@ fresh_repo() {
 	cp "$CI_DIR/changed-paths.sh" "$CI_DIR/tcab-lib.sh" "$repo/scripts/ci/"
 	printf '[submodule "cold-storage"]\n\tpath = cold-storage\n\turl = ../cold-storage\n' >"$repo/.gitmodules"
 	printf '[submodule "contracts"]\n\tpath = contracts\n\turl = ../contracts\n' >>"$repo/.gitmodules"
+	printf '[submodule "engines"]\n\tpath = engines\n\turl = ../engines\n' >>"$repo/.gitmodules"
 	printf '%s' "$repo"
 }
 
@@ -119,8 +120,6 @@ table "a crate reaches the Rust jobs and gg" "rust=true gg=true submodules=false
 	crates/backend/src/api.rs
 table "the lockfile reaches the Rust jobs and gg" "rust=true gg=true submodules=false" Cargo.lock
 table "a workspace manifest reaches the Rust jobs and gg" "rust=true gg=true submodules=false" Cargo.toml
-table "an engine reaches the Rust jobs and gg" "rust=true gg=true submodules=false" \
-	engines/simple-2d/engine.toml
 table "a harness, an orchestrator and a package reach both" "rust=true gg=true submodules=false" \
 	harnesses/pi/harness.toml orchestrators/one-shot/runner.sh packages/gg-sandbox/src/index.ts
 table "a script a Rust job runs reaches both" "rust=true gg=true submodules=false" \
@@ -146,6 +145,8 @@ table "gg's own scripts reach both" "rust=true gg=true submodules=false" \
 table "a submodule pin reaches submodule_pins alone" "rust=false gg=false submodules=true" cold-storage
 table "the contracts pin reaches the Rust jobs, gg and submodule_pins" "rust=true gg=true submodules=true" \
 	contracts
+table "the engines pin reaches the Rust jobs, gg and submodule_pins" "rust=true gg=true submodules=true" \
+	engines
 table ".gitmodules reaches submodule_pins alone" "rust=false gg=false submodules=true" .gitmodules
 table "the pin check reaches submodule_pins alone" "rust=false gg=false submodules=true" \
 	scripts/ci/submodule-pins.sh

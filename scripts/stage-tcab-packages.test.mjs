@@ -2,8 +2,9 @@
 //
 // A package staged by stage-tcab-packages.mjs is vendored into a model's workspace,
 // its `package.json` included, so the manifest is held to the strict vocabulary
-// list that scripts/ci/seeded-contract-check.sh holds the generated asset contract
-// to. A manifest published to the project's feed carries the feed's URL
+// list that the engines repository's scripts/ci/seeded-contract-check.sh (its
+// `seeded-contract` gate) holds the seeded packages and the generated asset
+// contract to. A manifest published to the project's feed carries the feed's URL
 // (`publishConfig`) and the project's `repository`, `homepage` and `bugs`, so the
 // staging script drops them; this stages the real closure and reads every manifest
 // it wrote.
@@ -19,14 +20,22 @@ import { fileURLToPath } from "node:url";
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
 // Read from the gate rather than copied, so the two lists cannot drift.
+const gate = readFileSync(
+  join(repoRoot, "engines/scripts/ci/seeded-contract-check.sh"),
+  "utf8",
+);
 const strict = (() => {
-  const gate = readFileSync(
-    join(repoRoot, "scripts/ci/seeded-contract-check.sh"),
-    "utf8",
-  );
   const source = gate.match(/^readonly STRICT='([^']+)'$/m)?.[1];
   assert.ok(source, "could not read STRICT from seeded-contract-check.sh");
   return new RegExp(source, "i");
+})();
+
+// The packages the gate holds to the list: the engines repository's own count
+// of what is seeded into a run, which must be what this script stages.
+const seeded = (() => {
+  const source = gate.match(/^readonly SEEDED=\(([^)]*)\)$/m)?.[1];
+  assert.ok(source, "could not read SEEDED from seeded-contract-check.sh");
+  return source.trim().split(/\s+/);
 })();
 
 // The validator harness is staged into the same store but never seeded into a run
@@ -72,6 +81,22 @@ test("no staged manifest keeps a registry field", () => {
       assert.ok(!(field in manifest), `${path} keeps ${field}`);
     }
   }
+});
+
+test("the gate checks every staged package a run is seeded with", () => {
+  const script = readFileSync(
+    join(repoRoot, "scripts/stage-tcab-packages.mjs"),
+    "utf8",
+  );
+  const list = script.match(/^const SHIPPABLE = \[([\s\S]*?)^\];$/m)?.[1];
+  assert.ok(list, "could not read SHIPPABLE from stage-tcab-packages.mjs");
+  const shippable = [
+    ...list.replace(/\/\/.*$/gm, "").matchAll(/"@clockwyrks\/([^"]+)"/g),
+  ].map((match) => match[1]);
+  const staged = shippable.filter(
+    (name) => !NEVER_SEEDED.has(`@clockwyrks/${name}`),
+  );
+  assert.deepEqual([...staged].sort(), [...seeded].sort());
 });
 
 test("no seeded manifest names what a model must not learn", () => {

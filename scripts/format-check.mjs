@@ -11,9 +11,8 @@
 //
 // `.prettierignore` is rendered from the project template, whose broad rules
 // also cover a few tracked sources this project has always formatted: the
-// Kubernetes manifests under `deployments/k8s/` and the case-harness fixture page
-// under `packages/case-harness/test/build/`. Those are checked in a pass of their
-// own that honours `.gitignore` alone (see `REINCLUDED`).
+// Kubernetes manifests under `deployments/k8s/`. Those are checked in a pass of
+// their own that honours `.gitignore` alone (see `REINCLUDED`).
 //
 // Prettier is handed the files git tracks rather than the checkout to expand:
 // a reference implementation's installed dependencies and built site are trees
@@ -128,12 +127,10 @@ const tracked = execFileSync("git", ["ls-files", "--stage", "-z"], {
 const targets = tracked.filter(known);
 
 // Tracked sources the template's `.prettierignore` leaves out that this project
-// formats anyway: the Kubernetes manifests (its `deployments/k8s/` rule) and the
-// case-harness fixture page (its `build/` rule, meant for build output, which
-// this directory is not). They are checked without that ignore file.
+// formats anyway: the Kubernetes manifests (its `deployments/k8s/` rule). They
+// are checked without that ignore file.
 const REINCLUDED = [
   (path) => path.startsWith("deployments/k8s/") && /\.(ya?ml|json)$/.test(path),
-  (path) => path.startsWith("packages/case-harness/test/build/"),
 ];
 const reincluded = (path) => REINCLUDED.some((test) => test(path));
 

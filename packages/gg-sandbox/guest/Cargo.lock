@@ -432,6 +432,70 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "29666d0abbfad1e3dc4dcf6144730dd3a3ab225bbbdac83319345b1b44ccfc1b"
 
 [[patch.unused]]
+name = "foray-cli"
+version = "0.0.0"
+
+[[patch.unused]]
+name = "foray-controller-sdk"
+version = "0.0.0"
+
+[[patch.unused]]
+name = "foray-core"
+version = "0.0.0"
+
+[[patch.unused]]
+name = "foray-fuel-probe"
+version = "0.0.0"
+
+[[patch.unused]]
+name = "foray-host"
+version = "0.0.0"
+
+[[patch.unused]]
+name = "foray-ref-border-soldier"
+version = "0.0.0"
+
+[[patch.unused]]
+name = "foray-ref-greedy-raider"
+version = "0.0.0"
+
+[[patch.unused]]
+name = "foray-ref-random"
+version = "0.0.0"
+
+[[patch.unused]]
+name = "lattice-cli"
+version = "0.0.0"
+
+[[patch.unused]]
+name = "lattice-core"
+version = "0.0.0"
+
+[[patch.unused]]
+name = "lattice-host"
+version = "0.0.0"
+
+[[patch.unused]]
+name = "lattice-ref-naive"
+version = "0.0.0"
+
+[[patch.unused]]
+name = "lattice-ref-transport"
+version = "0.0.0"
+
+[[patch.unused]]
+name = "lattice-sdk"
+version = "0.0.0"
+
+[[patch.unused]]
+name = "test-cabinet-engines"
+version = "0.0.0"
+
+[[patch.unused]]
+name = "test-cabinet-match-play"
+version = "0.0.0"
+
+[[patch.unused]]
 name = "api-codegen"
 version = "0.2.0"
 

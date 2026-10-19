@@ -73,7 +73,7 @@ describe("lattice reference scenarios", () => {
   const read = (path: string): Scenario =>
     JSON.parse(readFileSync(path, "utf8")) as Scenario;
 
-  // Mirrors `PLAYBACK_WINDOW_TICKS` in `crates/lattice-sdk/src/lib.rs`, which bounds
+  // Mirrors `PLAYBACK_WINDOW_TICKS` in `engines/crates/lattice-sdk/src/lib.rs`, which bounds
   // a submission's playback. The reference is cut to the same window so the two are
   // watched over identical ticks — a run's factory and the reference's are directly
   // comparable only if they cover the same stretch.

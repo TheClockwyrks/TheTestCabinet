@@ -20,7 +20,7 @@ test-cabinet-contracts = { workspace = true }
 # The suite runtime and manifest loaders, whose error the catalogs return.
 test-cabinet-suites = { workspace = true }
 # The built-in engine catalog ingest resolves a version's engines against.
-test-cabinet-engines = { path = "../engines" }
+test-cabinet-engines = { workspace = true }
 # Secret scrubbing of the documents the snapshot publishes.
 test-cabinet-redact = { workspace = true }
 # The R2 client the snapshot refresh and ingest write and list the public bucket
