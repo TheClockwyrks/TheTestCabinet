@@ -1,0 +1,35 @@
+# Retarget the edge component's tunnel configuration at staging: the tcab-staging
+# tunnel and the staging hostnames, replacing the component's config.yaml (prod's,
+# components/edge/config.yaml) whole. The ingress rules are the same as prod's and
+# the Edge page's (apps/docs/src/content/docs/deployment/kubernetes/edge.md); keep
+# the two files in step.
+#
+# The component generates the ConfigMap with a content-hash suffix, and kustomize
+# computes that suffix after this patch, so a change here rolls the tunnel's pods.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: tcab-cloudflared
+  # generated without a namespace; the `namespace:` directive sets it on build
+data:
+  config.yaml: |
+    tunnel: b9475bb2-3da4-4182-8c74-d12c45a47726 # tcab-staging
+    credentials-file: /etc/cloudflared/credentials/credentials.json
+    # The readiness probe reads /ready here; nothing outside the pod reaches it.
+    metrics: 0.0.0.0:2000
+    no-autoupdate: true
+    ingress:
+      - hostname: console.staging.testcabinet.ai
+        path: ^/api/
+        service: http://tcab-backend:8787
+      - hostname: console.staging.testcabinet.ai
+        path: ^/artifacts/
+        service: http://tcab-artifacts:8790
+      - hostname: console.staging.testcabinet.ai
+        path: ^/arena/
+        service: http://tcab-arena:8791
+      - hostname: console.staging.testcabinet.ai
+        service: http://tcab-web:8080
+      - hostname: grafana.staging.testcabinet.ai
+        service: http://tcab-lgtm:3000
+      - service: http_status:404

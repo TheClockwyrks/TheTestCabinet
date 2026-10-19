@@ -37,8 +37,8 @@ resources:
 # (and the OTLP port, for host/devcontainer processes) with
 # `make -C deployments/local local-grafana`.
 #
-# The web console is deliberately NOT served in the cluster locally (prod still is —
-# via the internal-ingress component in the prod overlay). Baking the console
+# The web console is deliberately NOT served in the cluster locally (staging and prod
+# serve it behind the edge component). Baking the console
 # into an in-cluster pod forces a full image rebuild + re-import on every UI edit,
 # which makes iterating on the console painfully slow. Locally we run it straight from
 # source instead: `npm run -w apps/web dev` serves it on 127.0.0.1:1430 and proxies
@@ -124,15 +124,6 @@ patches:
       kind: NetworkPolicy
       metadata:
         name: tcab-allow-services-from-runners
-  - target:
-      kind: NetworkPolicy
-      name: tcab-allow-arena-from-console
-    patch: |-
-      $patch: delete
-      apiVersion: networking.k8s.io/v1
-      kind: NetworkPolicy
-      metadata:
-        name: tcab-allow-arena-from-console
   - target:
       kind: NetworkPolicy
       name: tcab-allow-artifacts-from-drivers

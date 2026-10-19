@@ -1,15 +1,14 @@
-# Set the in-cluster web console's runtime config to the internal-ingress https
-# hostnames.
+# Set the in-cluster web console's runtime backend URL to the backend's route on the
+# environment's origin, https://console.testcabinet.ai/api, which the edge routes to tcab-backend.
 #
 # The single tcab-web image is environment-agnostic (one build per git-sha), so the
 # backend URL is injected at RUNTIME via env: the image's entrypoint `envsubst`s a
 # /config.js the SPA reads (window.__TCAB_CONFIG__). The components/web Deployment
-# (pulled in by the internal-ingress component) ships the env key with an empty
-# default; this overlay patches it to the prod https name the ingress routes
-# (api.tcab.testcabinet.ai → tcab-backend).
+# (nested in the edge component) ships the env key with an empty default.
 #
-# It is an env VALUE the kustomize `images:` transformer cannot reach, hence a patch
-# (same rationale as the dispatcher image-value patches).
+# Interim: the console is same-origin with every service it uses and is to address
+# them relatively, carrying no service URL (Edge page, "Hostnames and paths"); this
+# patch and the variable go once the console does.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -22,4 +21,4 @@ spec:
         - name: web
           env:
             - name: TCAB_WEB_BACKEND_URL
-              value: "https://api.tcab.testcabinet.ai"
+              value: "https://console.testcabinet.ai/api"

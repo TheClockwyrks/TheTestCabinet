@@ -214,7 +214,7 @@ pub fn router(state: AppState) -> Router {
         // Outermost, so it sees the final response of every route. The listings
         // are the reason: `GET /runs` hands back whole run records, which reaches
         // megabytes of JSON on a populated deployment — fast to produce, but slow
-        // to *deliver* to a console sitting behind a VPN or any other thin link,
+        // to *deliver* to a console sitting at the end of a thin link,
         // where it dominates the page load. JSON compresses roughly an order of
         // magnitude, so this is the difference between a snappy console and one
         // that appears hung.

@@ -3,10 +3,10 @@
 #
 # Serves the browser console (apps/web) as STATIC assets behind nginx. Unlike the
 # other service images this carries no Rust binary and no Playwright/Chromium — it
-# is a `vite build` of the SPA copied into an nginx web root. The in-cluster
-# internal-ingress component fronts it at the private console hostname (see
-# deployments/k8s/components/internal-ingress and tasks/context.md); it is never
-# exposed publicly.
+# is a `vite build` of the SPA copied into an nginx web root. In the cluster the
+# edge component routes `/` of the environment's origin to it through the
+# Cloudflare Tunnel, behind Cloudflare Access (see deployments/k8s/components/edge);
+# it has no public Service of its own.
 #
 # Runtime config, NOT a build-time bake. CI builds ONE tcab-web:<git-sha> image
 # shared by every overlay (mirroring tcab-publisher), so the backend URL

@@ -1,0 +1,99 @@
+# The tunnel's connector: two replicas of cloudflared holding the environment's
+# named tunnel open, outbound to Cloudflare's edge over 443. Each replica registers
+# its own connections, so a restart or a node drain of one keeps the tunnel up.
+#
+# It binds no port anything else connects to, so it has no Service, and it calls no
+# Kubernetes API, so it mounts no ServiceAccount token. Its two mounts are its
+# configuration (the generated tcab-cloudflared ConfigMap) and the tunnel's
+# credentials file (the tcab-cloudflared Secret, key credentials.json, materialised
+# from Key Vault by components/keyvault-csi).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tcab-cloudflared
+  namespace: tcab-prod
+  labels:
+    app.kubernetes.io/name: tcab-cloudflared
+    app.kubernetes.io/part-of: test-cabinet
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: tcab-cloudflared
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: tcab-cloudflared
+        app.kubernetes.io/part-of: test-cabinet
+    spec:
+      automountServiceAccountToken: false
+      # Prefer the two replicas on different nodes, so one node's loss leaves a
+      # connector running.
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                topologyKey: kubernetes.io/hostname
+                labelSelector:
+                  matchLabels:
+                    app.kubernetes.io/name: tcab-cloudflared
+      securityContext:
+        # The image's user is the distroless `nonroot`, named rather than numbered,
+        # so runAsNonRoot can only be verified with the uid stated.
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: cloudflared
+          # Third-party, pinned to an exact release rather than a moving tag.
+          image: cloudflare/cloudflared:2026.9.3
+          args:
+            - tunnel
+            - --config
+            - /etc/cloudflared/config/config.yaml
+            - run
+          resources:
+            # Memory request == limit, as on every always-on service (see
+            # "Memory ceilings" in deployment/kubernetes/overview.md): 256Mi is
+            # many times what a connector holds.
+            requests:
+              cpu: 50m
+              memory: 256Mi
+            limits:
+              memory: 256Mi
+          ports:
+            - name: metrics
+              containerPort: 2000
+          # /ready answers 200 once the connector has at least one live
+          # connection to Cloudflare's edge.
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 2000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: config
+              mountPath: /etc/cloudflared/config
+              readOnly: true
+            - name: credentials
+              mountPath: /etc/cloudflared/credentials
+              readOnly: true
+      volumes:
+        - name: config
+          configMap:
+            name: tcab-cloudflared
+        - name: credentials
+          secret:
+            secretName: tcab-cloudflared
+            items:
+              - key: credentials.json
+                path: credentials.json

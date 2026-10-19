@@ -1,6 +1,10 @@
-# Optional NetworkPolicy. With no public Ingress, reachability is already limited
-# to the cluster network; this tightens it. Your cluster needs a NetworkPolicy-
-# enforcing CNI (Calico, Cilium, etc.) for these to take effect.
+# Optional NetworkPolicy. Nothing outside the cluster connects in (the edge's
+# tunnel is outbound), so reachability is already limited to the cluster network;
+# this tightens it. The console reaches the backend, the artifacts service and the
+# arena through the edge, so no console-to-service flow exists here: the edge
+# component (components/edge) adds the flows from its tunnel's pods. Your cluster
+# needs a NetworkPolicy-enforcing CNI (Calico, Cilium, etc.) for these to take
+# effect.
 #
 # Pod labels this policy selects on (set by the dispatcher + driver):
 #   - dispatcher pod:  app.kubernetes.io/name: tcab-dispatcher
@@ -55,28 +59,6 @@ spec:
         - podSelector:
             matchLabels:
               app.kubernetes.io/name: tcab-arena
----
-# Let the console reach the arena service to run matches/tournaments and stream live
-# tournament progress. Like the backend and artifact services, the console reaches it
-# via the same private-network boundary the deployment fronts these with; this allow
-# admits the in-cluster callers (no public Ingress rule lives here). The arena holds
-# no inbound dependency of its own beyond the console — it is a leaf compute service.
-apiVersion: networking.k8s.io/v1
-kind: NetworkPolicy
-metadata:
-  name: tcab-allow-arena-from-console
-  namespace: tcab-prod
-spec:
-  podSelector:
-    matchLabels:
-      app.kubernetes.io/name: tcab-arena
-  policyTypes: ["Ingress"]
-  ingress:
-    # No in-cluster pod posts to the arena (the console does, over the boundary); an
-    # empty `from` with the port keeps the rule explicit without widening ingress.
-    - ports:
-        - protocol: TCP
-          port: 8791
 ---
 # Let the artifact service's two callers in: a driver Job pod uploading its produced
 # run tree, and the backend managing that tree's lifetime (pruning a deleted run's

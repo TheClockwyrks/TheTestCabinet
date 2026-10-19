@@ -1,13 +1,11 @@
 # Web-console component — the in-cluster tcab-web console Deployment + ClusterIP
 # Service, as a reusable, environment-agnostic unit.
 #
-# It is consumed two ways, both of which patch the runtime backend URL the single
-# environment-agnostic image reads from /config.js at start (see web.yaml):
-#   - by the `internal-ingress` component (prod), which adds the ingress routes,
-#     cert-manager ClusterIssuer, and ingress-source NetworkPolicy in front of it;
-#   - directly by the `local` overlay, which serves the console over a
-#     `kubectl port-forward` (no ingress) and points it at the host-forwarded
-#     backend — see overlays/local/patch-web-config.yaml.
+# The edge component (components/edge) nests it, so the staging and prod overlays
+# serve the console in-cluster behind the Cloudflare Tunnel; an overlay can also
+# include it directly to serve the console without the edge. The local overlay
+# includes neither: locally the console runs from source against a port-forwarded
+# backend.
 #
 # The including overlay's `namespace:` directive retargets the resources here and its
 # `images:` transformer rewrites the tcab-web image, exactly as for the base.
