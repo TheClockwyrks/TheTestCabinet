@@ -24,6 +24,7 @@ use crate::preview::AssetPreview;
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender, unbounded_channel};
 
 use crate::client::JobClient;
+use crate::sigterm::{Stage, StageCell};
 
 /// One item handed to the relay: a harness event or an asset-preview frame. They
 /// share one channel so the relay drains them in production order, then splits
@@ -47,12 +48,20 @@ pub fn channel() -> (UnboundedSender<Outbound>, UnboundedReceiver<Outbound>) {
 /// the async send.
 pub struct BackendEventSink {
     tx: UnboundedSender<Outbound>,
+    stage: Option<Arc<StageCell>>,
 }
 
 impl BackendEventSink {
     /// Build a sink that pushes onto `tx`.
     pub fn new(tx: UnboundedSender<Outbound>) -> Self {
-        Self { tx }
+        Self { tx, stage: None }
+    }
+
+    /// Also move `stage` through the stages the run engine reports, for the
+    /// driver's `SIGTERM` handling.
+    pub fn with_stage(mut self, stage: Arc<StageCell>) -> Self {
+        self.stage = Some(stage);
+        self
     }
 }
 
@@ -62,6 +71,12 @@ impl crate::EventSink for BackendEventSink {
         // which the driver only does after the run ends; an event arriving then is
         // safely discarded rather than panicking the run.
         let _ = self.tx.send(Outbound::Event(event.clone()));
+    }
+
+    fn stage(&mut self, stage: Stage) {
+        if let Some(cell) = &self.stage {
+            cell.set(stage);
+        }
     }
 }
 

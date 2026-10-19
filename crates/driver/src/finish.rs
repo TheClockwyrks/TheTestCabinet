@@ -45,6 +45,7 @@ use crate::artifacts::{RunWait, StoreWait, TreeStore, UploadEnd, store_run_tree}
 use crate::bundle::{BundleTarget, store_bundle};
 use crate::client::{ClientError, JobClient, StoreFields};
 use crate::retry::{FinalFailure, RetryEnd, RetryFailure, RetryPolicy, retry_call};
+use crate::sigterm::StageCell;
 
 /// How long one attempt of a report may go unanswered before it is abandoned as a
 /// failed attempt and retried. Without it a backend that accepts the connection
@@ -77,6 +78,10 @@ pub struct FinishTarget<'a> {
     /// whenever the runtime waits on the network, and would end an attempt the stub
     /// is answering.
     pub attempt_timeout: Option<Duration>,
+    /// The run's [stage cell](crate::sigterm::StageCell), in which the finishing
+    /// records its held report and whether it landed, for the driver's `SIGTERM`
+    /// handling. `None` records nothing.
+    pub stage: Option<&'a StageCell>,
 }
 
 /// The outcome the run reached, which its terminal report carries unless a
@@ -183,7 +188,7 @@ impl Finished {
 /// A report attempt's failure: the backend's answer, or no answer within
 /// [`REPORT_ATTEMPT_TIMEOUT`].
 #[derive(Debug, thiserror::Error)]
-enum ReportError {
+pub(crate) enum ReportError {
     #[error(transparent)]
     Client(#[from] ClientError),
     #[error("the backend did not answer within {} seconds", .0.as_secs())]
@@ -200,7 +205,7 @@ impl FinalFailure for ReportError {
 }
 
 /// One report attempt, bounded by `limit` when there is one.
-async fn timed(
+pub(crate) async fn timed(
     limit: Option<Duration>,
     report: impl Future<Output = Result<(), ClientError>>,
 ) -> Result<(), ReportError> {
@@ -301,6 +306,9 @@ pub async fn finish<M: Mirrors>(
     };
 
     // 1. The held report.
+    if let Some(stage) = target.stage {
+        stage.hold(&record, detail.as_deref());
+    }
     let held = retry_call(&report_policy, "the held report", watch.canceled(), || {
         timed(
             target.attempt_timeout,
@@ -309,6 +317,11 @@ pub async fn finish<M: Mirrors>(
     })
     .await;
     let held = log_report("storing", &record.id, held);
+    if held == ReportEnd::Landed
+        && let Some(stage) = target.stage
+    {
+        stage.held_landed();
+    }
 
     // 2. The uploads, unless a cancellation already ended the waiting.
     let tree = if watch.seen() {

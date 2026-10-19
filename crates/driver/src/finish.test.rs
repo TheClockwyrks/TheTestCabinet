@@ -299,6 +299,7 @@ async fn run(
         upload_wait: Duration::from_secs(3600),
         report_wait,
         attempt_timeout,
+        stage: None,
     };
     finish(
         &target,
@@ -592,6 +593,7 @@ async fn a_refused_terminal_report_ends_the_finishing_successfully() {
         upload_wait: Duration::from_secs(3600),
         report_wait: Duration::from_secs(3600),
         attempt_timeout: None,
+        stage: None,
     };
 
     let finished = finish(

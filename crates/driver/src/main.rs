@@ -6,7 +6,10 @@
 //! storage through [`finish`](test_cabinet_driver::finish): the held `storing`
 //! report carrying the record, the run tree and bundle uploads, and the terminal
 //! status carrying the produced (or failed) record — and exits, successfully once
-//! that terminal status landed or was refused. There is no server and no flags;
+//! that terminal status landed or was refused. A `SIGTERM` is handled as
+//! [`sigterm`](test_cabinet_driver::sigterm) sets: a run holding its record keeps
+//! finishing, one that holds none is reported `failed` as `infrastructure`, and
+//! either way the sandbox is deleted first. There is no server and no flags;
 //! everything arrives through `TCAB_*` env (see
 //! [`config`](test_cabinet_driver::config)).
 
@@ -28,6 +31,10 @@ use test_cabinet_driver::finish::{
 };
 use test_cabinet_driver::kubernetes::KubernetesContainerRuntime;
 use test_cabinet_driver::run::{RunFailure, drive};
+use test_cabinet_driver::sigterm::{
+    INTERRUPTED_ATTEMPT_TIMEOUT, INTERRUPTED_REPORT_WAIT, SANDBOX_SWEEP_INTERVAL, Sandbox,
+    ShutdownTarget, Stage, StageCell, run_until_shutdown,
+};
 use test_cabinet_driver::sink;
 
 /// How often the driver polls its own job's state to notice an operator
@@ -50,12 +57,6 @@ const CANCEL_POLL_INTERVAL: Duration = Duration::from_secs(3);
 /// this grace: there is no session to wind down, and holding the driver — and with it a
 /// dispatcher scheduling slot — open for twenty minutes would buy nothing.
 const CANCEL_WINDDOWN_GRACE: Duration = Duration::from_secs(1200);
-
-/// How long a destroyed run waits before sweeping for its sandbox a second time, to
-/// catch a sandbox whose creation landed after the first sweep listed. Long enough for
-/// an in-flight create to have been persisted, short enough to keep the destroy path's
-/// promise of freeing the run's scheduling slot in seconds.
-const SANDBOX_SWEEP_INTERVAL: Duration = Duration::from_secs(2);
 
 #[tokio::main]
 async fn main() -> ExitCode {
@@ -110,6 +111,96 @@ async fn main() -> ExitCode {
         config.job_token.clone(),
     ));
 
+    // Handle `SIGTERM` from here on: the signal is registered before the first
+    // report, so the pod's termination is always the driver's to act on.
+    let shutdown = sigterm();
+    let started_at = OffsetDateTime::now_utc();
+    let stage = Arc::new(StageCell::new());
+    // Filled by `drive` the moment the definition materializes, so the fallback
+    // cancellation path — a gg session that would not wind down inside its grace,
+    // which therefore never hands a return value back — and an interrupted run can
+    // still be recorded against the run's real case identity and test type.
+    let resolved: std::sync::Mutex<Option<test_cabinet_driver::TestCaseVersion>> =
+        std::sync::Mutex::new(None);
+    let out_dir = config.work_dir.join("out");
+
+    run_until_shutdown(
+        &stage,
+        run_job(
+            &config, &client, &run_id, &request, started_at, &stage, &resolved,
+        ),
+        shutdown,
+        &ShutdownTarget {
+            client: &client,
+            report_wait: INTERRUPTED_REPORT_WAIT,
+            attempt_timeout: Some(INTERRUPTED_ATTEMPT_TIMEOUT),
+            sweep_interval: SANDBOX_SWEEP_INTERVAL,
+        },
+        &DriverSandbox(&config),
+        |state, detail| {
+            let test_case = resolved.lock().ok().and_then(|slot| slot.clone());
+            write_failed_record(
+                &out_dir,
+                &run_id,
+                &request,
+                test_case.as_ref(),
+                started_at,
+                state,
+                detail,
+                &[],
+            )
+            .map_err(|err| {
+                tracing::warn!(error = %err, "could not build the interrupted run's record");
+            })
+            .ok()
+        },
+    )
+    .await
+}
+
+/// Resolve on the driver's first `SIGTERM`. A signal handler that cannot be
+/// installed is logged and never resolves, leaving the signal's default action.
+fn sigterm() -> impl std::future::Future<Output = ()> {
+    let signal = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate());
+    async move {
+        match signal {
+            Ok(mut signal) => {
+                if signal.recv().await.is_some() {
+                    return;
+                }
+            }
+            Err(err) => {
+                tracing::warn!(error = %err, "could not install the SIGTERM handler");
+            }
+        }
+        std::future::pending().await
+    }
+}
+
+/// The run's sandbox, as [`run_until_shutdown`] deletes it.
+struct DriverSandbox<'a>(&'a Config);
+
+impl Sandbox for DriverSandbox<'_> {
+    async fn teardown(&self) -> bool {
+        teardown_sandbox(self.0).await
+    }
+}
+
+/// Run the job: report `starting`, drive the run against an operator's
+/// cancellation and finish it. Its exit code is the driver's unless `SIGTERM`
+/// interrupts it ([`run_until_shutdown`]).
+///
+/// `stage` is moved through the run's stages; `resolved` is filled by `drive` the
+/// moment the definition materializes.
+async fn run_job(
+    config: &Config,
+    client: &Arc<JobClient>,
+    run_id: &str,
+    request: &test_cabinet_driver::RunRequest,
+    started_at: OffsetDateTime,
+    stage: &Arc<StageCell>,
+    resolved: &std::sync::Mutex<Option<test_cabinet_driver::TestCaseVersion>>,
+) -> ExitCode {
     // Mark the job starting before any work, so the console shows it left the queue
     // and is spinning up (pre-run container setup). The driver advances it to
     // `running` from inside `drive` once setup finishes and the harness session is
@@ -120,19 +211,10 @@ async fn main() -> ExitCode {
         return ExitCode::FAILURE;
     }
 
-    let started_at = OffsetDateTime::now_utc();
-
     // The relay drains the channel and streams events/preview to the backend. The
     // sinks (held inside `drive`) push onto `tx`; the relay owns `rx`.
     let (tx, rx) = sink::channel();
     let relay = tokio::spawn(sink::relay_task(client.clone(), rx));
-
-    // Filled by `drive` the moment the definition materializes, so the fallback
-    // cancellation path below — a gg session that would not wind down inside its grace,
-    // which therefore never hands a return value back — can still record the killed run
-    // against its real case identity and test type.
-    let resolved: std::sync::Mutex<Option<test_cabinet_driver::TestCaseVersion>> =
-        std::sync::Mutex::new(None);
 
     // Race the run against an operator cancellation. `wait_for_cancellation` resolves
     // only when the backend reports this job `canceled`, and what happens then depends
@@ -165,14 +247,14 @@ async fn main() -> ExitCode {
     // it. This is the same both locally (a k3d cluster) and in production: both drive a
     // run through a driver pod that polls its backend job here.
     let cancel = RunCancellation::new();
-    let disposition = cancel_disposition(&request);
+    let disposition = cancel_disposition(request);
     let raced = race_cancellation(
-        drive(&config, &run_id, &request, &tx, &client, &resolved, &cancel),
+        drive(config, run_id, request, &tx, client, resolved, &cancel, stage),
         // Announce the kill where it is observed rather than where it is acted on: the
         // wind-down branch says nothing more for up to twenty minutes, and an operator
         // watching the driver's logs needs to see that the kill landed now.
         async {
-            wait_for_cancellation(&client).await;
+            wait_for_cancellation(client).await;
             match disposition {
                 CancelDisposition::WindDown => tracing::info!(
                     job_id = %config.job_id,
@@ -190,6 +272,9 @@ async fn main() -> ExitCode {
         CANCEL_WINDDOWN_GRACE,
     )
     .await;
+    // The run's own stages are over, wherever the race ended: from here the driver
+    // is finishing, which a `SIGTERM` does not cut short.
+    stage.set(Stage::Finishing);
 
     let outcome = match raced {
         CancelRace::Finished(outcome) => Some(outcome),
@@ -226,7 +311,7 @@ async fn main() -> ExitCode {
             // own active deadline (hours) ends it. Nothing re-runs the Job (the
             // dispatcher creates it with a zero backoff limit) and the backend job is
             // already terminally `canceled`, so failing costs only the reap it buys.
-            if !teardown_sandbox(&config).await {
+            if !teardown_sandbox(config).await {
                 return ExitCode::FAILURE;
             }
             // Sweep once more, a beat later. Dropping the run future cancels whatever
@@ -238,7 +323,7 @@ async fn main() -> ExitCode {
             // own active deadline (hours) hit. A second pass costs a couple of seconds
             // against a wait this path exists to cut from twenty minutes.
             tokio::time::sleep(SANDBOX_SWEEP_INTERVAL).await;
-            if !teardown_sandbox(&config).await {
+            if !teardown_sandbox(config).await {
                 return ExitCode::FAILURE;
             }
             return ExitCode::SUCCESS;
@@ -269,15 +354,16 @@ async fn main() -> ExitCode {
             // everything the run had streamed.
             let test_case = resolved.lock().ok().and_then(|slot| slot.clone());
             let exit = report_canceled(
-                &client,
-                &config,
-                &run_id,
-                &request,
+                client,
+                config,
+                run_id,
+                request,
                 started_at,
                 test_case.as_ref(),
+                stage,
             )
             .await;
-            teardown_sandbox(&config).await;
+            teardown_sandbox(config).await;
             exit
         }
         Some(Ok(record)) => {
@@ -305,15 +391,15 @@ async fn main() -> ExitCode {
             );
             let out_dir = config.work_dir.join("out");
             let finished = finish(
-                &finish_target(&config, &client, &out_dir),
+                &finish_target(config, client, &out_dir, stage),
                 Some(record),
                 RunOutcome::Succeeded,
                 already_canceled,
-                &BackendMirrors::new(&config, MirrorSet::All),
+                &BackendMirrors::new(config, MirrorSet::All),
             )
             .await;
             if already_canceled {
-                teardown_sandbox(&config).await;
+                teardown_sandbox(config).await;
             }
             finished.exit_code()
         }
@@ -329,7 +415,7 @@ async fn main() -> ExitCode {
                     job_id = %config.job_id,
                     "run canceled before its session was launched; recording nothing"
                 );
-                if !teardown_sandbox(&config).await {
+                if !teardown_sandbox(config).await {
                     return ExitCode::FAILURE;
                 }
                 return ExitCode::SUCCESS;
@@ -346,18 +432,19 @@ async fn main() -> ExitCode {
                     "the canceled run errored while winding down; recording what is held",
                 );
                 let exit = report_canceled(
-                    &client,
-                    &config,
-                    &run_id,
-                    &request,
+                    client,
+                    config,
+                    run_id,
+                    request,
                     started_at,
                     failure.test_case.as_ref(),
+                    stage,
                 )
                 .await;
-                teardown_sandbox(&config).await;
+                teardown_sandbox(config).await;
                 return exit;
             }
-            report_failure(&client, &config, &run_id, &request, started_at, failure).await
+            report_failure(client, config, run_id, request, started_at, failure, stage).await
         }
     }
 }
@@ -422,6 +509,7 @@ async fn report_canceled(
     request: &test_cabinet_driver::RunRequest,
     started_at: OffsetDateTime,
     test_case: Option<&test_cabinet_driver::TestCaseVersion>,
+    stage: &StageCell,
 ) -> ExitCode {
     // The backend holds the streamed events, so the locally-written `events.jsonl`
     // (lost with the ephemeral pod anyway) is immaterial — an empty slice, exactly as
@@ -449,7 +537,7 @@ async fn report_canceled(
     // gg session record in the run tree, which the mirrors carry to the backend store.
     let out_dir = config.work_dir.join("out");
     finish(
-        &finish_target(config, client, &out_dir),
+        &finish_target(config, client, &out_dir, stage),
         Some(record),
         RunOutcome::Canceled,
         true,
@@ -460,7 +548,9 @@ async fn report_canceled(
 }
 
 /// Tear down the run's sandbox, reporting whether it is now gone. Called on **every**
-/// cancellation path, and the reason each of them is correct.
+/// cancellation path, and the reason each of them is correct, and on `SIGTERM`
+/// ([`DriverSandbox`]), so an interrupted run leaves nothing for the dispatcher's
+/// reaper.
 ///
 /// The harness is its own process inside the sandbox, so neither dropping the run future
 /// nor the engine returning ends it: the host only ever held the `exec` stream. On the
@@ -501,7 +591,7 @@ async fn teardown_sandbox(config: &Config) -> bool {
         Ok(()) => {
             tracing::info!(
                 job_id = %config.job_id,
-                "tore down the canceled run's sandbox"
+                "tore down the run's sandbox"
             );
             true
         }
@@ -509,7 +599,7 @@ async fn teardown_sandbox(config: &Config) -> bool {
             tracing::warn!(
                 job_id = %config.job_id,
                 error = %err,
-                "could not tear down the canceled run's sandbox"
+                "could not tear down the run's sandbox"
             );
             false
         }
@@ -750,6 +840,7 @@ async fn report_failure(
     request: &test_cabinet_driver::RunRequest,
     started_at: OffsetDateTime,
     failure: RunFailure,
+    stage: &StageCell,
 ) -> ExitCode {
     tracing::warn!(detail = %failure.detail, "run failed; reporting to the backend");
     let record = match write_failed_record(
@@ -778,7 +869,7 @@ async fn report_failure(
     // delivered, so the exit code follows the report alone.
     let out_dir = config.work_dir.join("out");
     finish(
-        &finish_target(config, client, &out_dir),
+        &finish_target(config, client, &out_dir, stage),
         record,
         RunOutcome::Failed {
             detail: failure.detail,
@@ -795,6 +886,7 @@ fn finish_target<'a>(
     config: &'a Config,
     client: &'a JobClient,
     out_dir: &'a std::path::Path,
+    stage: &'a StageCell,
 ) -> FinishTarget<'a> {
     FinishTarget {
         client,
@@ -806,6 +898,7 @@ fn finish_target<'a>(
         upload_wait: config.upload_wait,
         report_wait: config.report_wait,
         attempt_timeout: Some(REPORT_ATTEMPT_TIMEOUT),
+        stage: Some(stage),
     }
 }
 
