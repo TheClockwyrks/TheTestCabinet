@@ -428,6 +428,21 @@ def typescript_workspace(kind: str) -> str:
     return "." if TYPESCRIPT_CHECK in kind_checks(kind) else ""
 
 
+# The members the root `package.json` of a kind carrying an npm workspace
+# names: the published packages under `packages/` and the pages and apps under
+# `apps/`, the layout the monorepo had, except in a content repository, whose
+# workspace holds the tools its content is authored with, under `tools/`.
+NPM_WORKSPACES: dict[str, tuple[str, ...]] = {"content": ("tools/*",)}
+DEFAULT_NPM_WORKSPACES = ("packages/*", "apps/*")
+
+
+def npm_workspaces(kind: str) -> list[str]:
+    """The member patterns of the kind's npm workspace, or none for a kind without one."""
+    if not typescript_workspace(kind):
+        return []
+    return list(NPM_WORKSPACES.get(kind, DEFAULT_NPM_WORKSPACES))
+
+
 def npm_feed_step() -> str:
     """The step writing the job's access token as npm's credential for the feed."""
     return (
@@ -677,6 +692,9 @@ def variables(name: str, kind: str, description: str) -> Variables:
         "pipeline_only_of_kind": pipeline_only_of_kind(kind),
         "pipeline_only_of_repository": pipeline_only_of_repository(name, kind),
         "typescript_workspace": typescript_workspace(kind),
+        "npm_workspaces": npm_workspaces(kind),
+        # The same members as Markdown code spans, for the layout tables.
+        "npm_workspace_dirs": ", ".join(f"`{pattern.removesuffix('*')}`" for pattern in npm_workspaces(kind)),
         "host_disk_command": HOST_DISK_COMMAND,
         "rust_crate": shape.crate,
         "commits_lock": shape.commits_lock,

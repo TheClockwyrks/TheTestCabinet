@@ -61,14 +61,15 @@ class Kind(NamedTuple):
 # The kinds of the Repositories development page. A `tool` is shaped as a
 # library is, and its binaries are also baked into the run-container images; a
 # `shell` is a Tauri workspace, a binary crate that commits its lock beside an
-# npm workspace.
+# npm workspace; a `content` repository carries no crate, and its npm workspace
+# holds the tools its content is authored with.
 KINDS: Mapping[str, Kind] = {
     "library": Kind(crate="library", commits_lock=False, typescript=True),
     "tool": Kind(crate="library", commits_lock=False, typescript=True),
     "application": Kind(crate="binary", commits_lock=True, typescript=True),
     "shell": Kind(crate="binary", commits_lock=True, typescript=True),
     "site": Kind(crate="", commits_lock=False, typescript=True),
-    "content": Kind(crate="", commits_lock=False, typescript=False),
+    "content": Kind(crate="", commits_lock=False, typescript=True),
 }
 
 # Every repository the kit renders, by kind, in the order of the Repositories

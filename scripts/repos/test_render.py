@@ -181,6 +181,32 @@ def test_each_kind_is_rendered_its_shape(kind: str, rendered: Callable[[str], Pa
         assert ("/Cargo.lock" in (root / ".gitignore").read_text(encoding="utf-8")) is not shape.commits_lock
 
 
+@pytest.mark.parametrize("kind", KINDS)
+def test_each_kind_is_rendered_its_npm_workspace(kind: str, rendered: Callable[[str], Path]) -> None:
+    """Every kind carries the workspace; a content repository's members are its authoring tools."""
+    assert EDGES.KINDS[kind].typescript
+    root = rendered(ONE_OF_EACH[kind])
+    manifest = json.loads((root / "package.json").read_text(encoding="utf-8"))
+    members = ["tools/*"] if kind == "content" else ["packages/*", "apps/*"]
+    assert manifest["workspaces"] == members
+    assert manifest["private"] is True
+    assert {"build", "typecheck", "test"} <= set(manifest["scripts"])
+    claude = (root / "CLAUDE.md").read_text(encoding="utf-8")
+    dirs = ", ".join(f"`{member.removesuffix('*')}`" for member in members)
+    assert f"| {dirs} | The npm workspace's members" in claude
+    pipeline = (root / "azure-pipelines.yml").read_text(encoding="utf-8")
+    checks = _job(pipeline, "checks")
+    assert checks.index(f"- script: {render.NPM_FEED_SCRIPT} ") < checks.index("gate run typescript")
+
+
+def test_a_kind_without_a_workspace_names_no_members(monkeypatch: pytest.MonkeyPatch) -> None:
+    shape = EDGES.KINDS["content"]
+    monkeypatch.setattr(render.edge_table(), "KINDS", {**EDGES.KINDS, "content": shape._replace(typescript=False)})
+    assert render.npm_workspaces("content") == []
+    assert render.typescript_workspace("content") == ""
+    assert render.ci_npm_feed("content") == ""
+
+
 def _job(pipeline: str, job: str) -> str:
     """One job of a rendered pipeline's gates stage, up to the next job or stage."""
     found = re.search(rf"^      - job: {job}\n((?:(?!      - job: |  - stage: ).*\n)*)", pipeline, re.MULTILINE)

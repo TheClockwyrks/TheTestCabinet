@@ -33,7 +33,7 @@ accordingly.
 | `crates/` | The Rust crates; every directory here is a workspace member |
 {% endif %}
 {% if typescript_workspace %}
-| `packages/`, `apps/` | The npm workspace's members, under the root `package.json` |
+| {{npm_workspace_dirs}} | The npm workspace's members, under the root `package.json` |
 {% endif %}
 | [`ci/`](ci/README.md) | The gates, one file per gate, with the runner that executes them |
 | `.copier-answers.yml` | The answers this repository was rendered with and the superrepo commit its kit was last updated from; copier maintains it, and `scripts/repos/render.py --update` in the superrepo merges a kit change in from it |
