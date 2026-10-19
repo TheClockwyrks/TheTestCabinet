@@ -174,10 +174,11 @@ pub struct Config {
     /// driver, which the backend also ships beside itself and never links.
     ///
     /// The backend image bakes them in and points this at `/opt/gg-reference`. A
-    /// developer running the binary from a checkout gets the default below and fills
-    /// it with `scripts/gg-reference.sh`; until they do, the reference endpoints
-    /// answer `503` naming that script, and nothing else about the backend is
-    /// affected.
+    /// developer running the binary from a checkout writes them with
+    /// `scripts/gg-reference.sh` in the gg checkout and points this at the directory
+    /// it wrote (`gg/target/gg-reference`), or leaves it at the default below and
+    /// writes them there; until they do, the reference endpoints answer `503` naming
+    /// that script, and nothing else about the backend is affected.
     pub gg_reference: PathBuf,
     /// The base URL of the **artifact service** as the backend itself reaches it
     /// (`TCAB_ARTIFACTS_URL`) — the same in-cluster Service address the dispatcher
@@ -393,8 +394,8 @@ fn env_or(key: &str, default: &str) -> String {
 /// variable ([`Config::from_env`]), rather than from the working directory: a backend
 /// started by systemd or a container has a working directory nobody chose, whereas the
 /// checkout is by definition the tree this backend was pointed at. `target/` under it is
-/// where `scripts/gg-reference.sh` writes, and where every other build output in this
-/// repository already goes.
+/// where every build output already goes, and `scripts/gg-reference.sh` in the gg checkout
+/// writes there when given the path.
 ///
 /// A pure function taking the resolved value rather than reading the environment itself,
 /// so the derivation is testable without mutating process-global state (see

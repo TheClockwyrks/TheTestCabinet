@@ -3,14 +3,14 @@
 # never renders it; azure-pipelines.yml, which the template does render,
 # triggers on branches alone.
 #
-# A tag releases three things, as it did before the template:
+# A tag releases two things:
 #
 #   tcab-linux, tcab-windows  the smoke-tested `tcab` binary of each platform,
 #                             kept as this run's artifacts
-#   gg                        the static binaries and reference documents,
-#                             uploaded to the `gg-releases` blob container
-#                             once `gg --version` matches the tag
 #   the tag                   pushed to the GitHub mirror
+#
+# gg is released by a tag of its own repository, whose pipeline uploads its
+# binaries and reference documents and pushes its toolchain image.
 #
 # THE GATE. The first job, `gated`, waits until a run of the main pipeline at
 # the tagged commit has passed its check jobs, and fails when one of them
@@ -21,12 +21,12 @@
 # main run's image jobs, deploys and docs never gate a release.
 #
 # The job bodies are the main pipeline's own, from .azure/tcab/, given the tag
-# behaviour: the binaries are published and gg's version is gated.
+# behaviour: the binaries are published.
 #
 # Credentials, beyond the main pipeline's: the run's build identity may view
 # and queue runs of the main pipeline, and this pipeline is authorized for
-# `the-test-cabinet-acr`, `tcab-gg-publish`, the `github-mirror-key` secure
-# file and the `contracts` and `engines` repositories. `resources.pipelines` names the main pipeline by its name in Azure
+# `the-test-cabinet-acr`, the `github-mirror-key` secure
+# file and the `contracts`, `engines` and `gg` repositories. `resources.pipelines` names the main pipeline by its name in Azure
 # DevOps, which is how its definition id reaches the gate.
 
 trigger:
@@ -44,11 +44,11 @@ resources:
     - pipeline: main
       source: the-test-cabinet
       trigger: none
-  # The contracts, engines and microservice-repos repositories, the
-  # submodules every build compiles against, and test-suites, the catalog the
-  # binary jobs' driver tests read, as in azure-pipelines.yml: a job that
-  # builds names them under `uses:` and runs `scripts/ci/submodules.sh init`
-  # with their paths.
+  # The contracts, engines, gg and microservice-repos repositories, the
+  # submodules every build reads through the patch table, and test-suites, the
+  # catalog the binary jobs' driver tests read, as in azure-pipelines.yml: a job
+  # that builds names them under `uses:` and runs `scripts/ci/submodules.sh
+  # init` with their paths.
   repositories:
     - repository: contracts
       type: git
@@ -56,6 +56,9 @@ resources:
     - repository: engines
       type: git
       name: the-test-cabinet/engines
+    - repository: gg
+      type: git
+      name: the-test-cabinet/gg
     - repository: microservice-repos
       type: git
       name: the-test-cabinet/microservice-repos
@@ -93,24 +96,9 @@ jobs:
         - gated
       publish: true
 
-  - template: .azure/tcab/gg-jobs.yml
-    parameters:
-      rustImage: testcabinet.azurecr.io/ubuntu-the-test-cabinet-rust-cicd:${{ variables.ciImageTag }}
-      arm64Pool: pool-dev-linux-arm64-wus3-4c-eph-01
-      dependsOn:
-        - gated
-      versionGate: true
-
-  - template: .azure/tcab/gg-publish-job.yml
-    parameters:
-      dependsOn:
-        - gg_amd64
-        - gg_arm64
-
   - template: .azure/tcab/mirror-job.yml
     parameters:
       url: https://github.com/TheClockwyrks/TheTestCabinet
       dependsOn:
         - binary_linux
         - binary_windows
-        - gg_publish

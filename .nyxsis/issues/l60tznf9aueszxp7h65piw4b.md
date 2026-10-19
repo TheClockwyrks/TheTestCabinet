@@ -6,10 +6,11 @@ zone: REPOS
 number: 10
 title: Extract gg into its own repository and consume it as a release
 type: generic
-state: open
+state: done
 depends_on:
   - txf8l556rdhfmbw9k1bxwvet
 created: 2026-10-13T21:12:58.662570282Z
+done: 2026-10-19T21:03:05.604802507Z
 ---
 
 gg lives in `crates/gg` with its sandbox artifacts, SDK packages and

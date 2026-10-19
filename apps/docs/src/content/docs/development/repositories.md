@@ -73,8 +73,8 @@ The kind decides a repository's shape.
 | `client-tauri` | shell | The operator client for Windows, Linux, macOS and Android |
 | `test-suites` | content | The test cases and game jams, and the lattice factory designer |
 
-Every repository but `contracts`, `engines`, `test-suites` and `cold-storage` is
-still a directory of the superrepo's own tree today.
+Every repository but `contracts`, `engines`, `gg`, `test-suites` and
+`cold-storage` is still a directory of the superrepo's own tree today.
 
 ### Where each responsibility lives
 
@@ -343,6 +343,9 @@ and the kit's `edges.py` hold:
   allowlist, the `build-context` gate, and the image stage that builds the
   image natively on an amd64 and an arm64 agent and fuses the two into
   `<name>:<commit>` (`IMAGE_KINDS` in `render.py`);
+- the includes of the jobs, stages and Rust setup steps a repository writes
+  itself, which `PROJECT_PIPELINE` names with the stages the mirror waits on,
+  and the Rust job's time limit (`RUST_TIMEOUTS`);
 - for a `tool`, the image job that bakes its binaries, and for a `shell`, the
   bundle jobs;
 - the mirror, the feed and the branches.
@@ -420,6 +423,24 @@ the repository writes under `ci/gates/`, and the kit leaves it to the
 repository; `EXTRA_GATES` in `render.py` names it and the job it runs in, and
 the render gives it one step there. Every gate a repository adds is hookless,
 and the rendered `ci/tests/test_wiring.py` holds each to its one step.
+
+A repository whose pipeline runs work beyond the kit's, such as `gg`, which
+releases its binaries, its reference and its toolchains image on a tag, writes
+it as the superrepo writes its own: its jobs in `.azure/project/jobs.yml`,
+which the gates stage includes after the kit's jobs, and its stages in
+`.azure/project/stages.yml`, which the pipeline includes after the publish
+stage. `PROJECT_PIPELINE` in `render.py` names the repository and its stages,
+and the kit leaves both files to it. Each is handed the image of the Rust
+track, the registry, the service connection to it and the arm64 agent pool as
+the parameters `rustImage`, `registry`, `registryEndpoint` and `arm64Pool`. The
+mirror stage waits on each of the repository's stages as on the publish, and
+the rendered `ci/tests/test_wiring.py` holds the includes to the parameters
+each file declares, each stage to depending on the gates, and both files to
+running no gate. Such a repository's Rust job also takes the steps of
+`.azure/project/setup-steps.yml` after it fetched its dependencies and before
+its first check, which is where gg provisions the toolchains its build script
+needs, and `RUST_TIMEOUTS` gives a Rust job whose cold build outlasts the
+kit's hour a longer limit.
 
 A repository's `azure-pipelines.yml` runs on every push to `master`, `staging`
 and `nightly` and to a `v*` tag. The gates stage runs the Rust gates in the

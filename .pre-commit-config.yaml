@@ -149,8 +149,9 @@ repos:
         # A test reads its script beside it, and the pipeline scripts read
         # both compose files and the declaration that names them, so a change
         # to any of them re-judges the tests. Runs every test, so it takes no
-        # paths.
-        files: '^scripts/.*\.(sh|py)$|^ci/images/|^\.devcontainer/([^/]+/)?devcontainer\.json$|^\.devcontainer/docker-compose(\.[^/]+)?\.yml$|^\.pre-commit-config\.yaml$|^ci/gates/shell-tests\.py$'
+        # paths. The gg pin moves the gg checkout's test of the compose file's
+        # language images, which it runs too.
+        files: '^gg$|^scripts/.*\.(sh|py)$|^ci/images/|^\.devcontainer/([^/]+/)?devcontainer\.json$|^\.devcontainer/docker-compose(\.[^/]+)?\.yml$|^\.pre-commit-config\.yaml$|^ci/gates/shell-tests\.py$'
         pass_filenames: false
 
       - id: rust-fmt
@@ -318,7 +319,7 @@ repos:
         description: Typecheck the documentation site against its content schema.
         entry: uv run --quiet --project ci gate run docs-typecheck
         language: system
-        files: '^apps/docs/|^package(-lock)?\.json$|^ci/gates/docs-typecheck\.py$'
+        files: '^apps/docs/|^gg$|^package(-lock)?\.json$|^ci/gates/docs-typecheck\.py$'
         pass_filenames: false
 
       - id: docs-build
@@ -326,7 +327,7 @@ repos:
         description: Build the documentation site.
         entry: uv run --quiet --project ci gate run docs-build
         language: system
-        files: '^apps/docs/|^package(-lock)?\.json$|^ci/gates/docs-build\.py$'
+        files: '^apps/docs/|^gg$|^package(-lock)?\.json$|^ci/gates/docs-build\.py$'
         pass_filenames: false
 
       # The Python every uv project is written in, the gates' first. ruff reads
@@ -363,7 +364,7 @@ repos:
         name: "Dockerfile build contexts"
         entry: uv run --quiet --project ci gate run build-context
         language: system
-        files: '(^|/)[^/]*[Dd]ockerfile[^/]*$|(^|/)\.dockerignore$|^rust-toolchain\.toml$|^packages/gg-sandbox|^scripts/stage-tcab-packages\.mjs$|^scripts/ci/build-context\.sh$|^ci/gates/build-context\.py$'
+        files: '(^|/)[^/]*[Dd]ockerfile[^/]*$|(^|/)\.dockerignore$|^rust-toolchain\.toml$|^gg$|^scripts/stage-tcab-packages\.mjs$|^scripts/ci/build-context\.sh$|^ci/gates/build-context\.py$'
         pass_filenames: false
 
       - id: k8s-deploy-sets

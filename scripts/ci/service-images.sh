@@ -5,8 +5,7 @@
 #   scripts/ci/service-images.sh <sha>
 #
 # It runs scripts/ci/service-image.sh once per service, in a fixed order, and that
-# script's arguments and environment (TCAB_PREBUILT_GG for the two images that bake
-# this run's gg) are the whole contract; this one adds the order and the builder.
+# script's arguments are the whole contract; this one adds the order and the builder.
 #
 # WHY ONE JOB BUILDS THE SEVEN. Six of the services are targets of
 # deployments/images/services.Dockerfile, and every one of them is assembled from
@@ -20,7 +19,7 @@
 # and shares nothing, so it goes last, after the images that wait on the compile.
 #
 # The order is the Rust services first, `driver` after `backend` (both take the
-# prebuilt gg, and the driver is the larger assembly), then `web`. A failure stops
+# pinned gg release, and the driver is the larger assembly), then `web`. A failure stops
 # the job at the failing service, which the last line names; a re-run of the same
 # commit takes every stage already pushed to the registry cache, the compiled
 # `build` stage included, so the re-run compiles nothing that already succeeded.

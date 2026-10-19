@@ -82,13 +82,15 @@ test: treat it as one, and fix it or the code under it.
 The one exception: nextest does not execute doctests. When a change touches
 doctests, additionally run `cargo test --workspace --doc` to cover them.
 
-`crates/gg/Cargo.toml` sets `test = false`, so neither `cargo nextest run
---workspace` nor the `rust-test` gate runs gg's suite; the project's
-`gg_tests_<k>` CI jobs do. After any change under `crates/gg/`, run it locally:
+gg is the `gg` repository, checked out at `gg/`. Its `crates/gg/Cargo.toml`
+sets `test = false`, so neither `cargo nextest run --workspace` nor the
+`rust-test` gate runs gg's suite; gg's own `gg_tests_<k>` CI jobs do. After any
+change in the gg checkout, run its gates and its suite there:
 
 ```sh
-scripts/ci/gg-test.sh        # the whole suite
-scripts/ci/gg-test.sh 1/4    # one hash partition of it, as CI runs it
+cd gg && make gate           # gg's own gates
+scripts/ci/gg-test.sh        # the whole suite, from the gg checkout
+scripts/ci/gg-test.sh 1/4    # one hash partition of it, as gg's CI runs it
 ```
 
 ## Gates
@@ -100,7 +102,7 @@ gates for what it touched:
 | Change | Gates |
 | --- | --- |
 | Rust (`crates/`, `Cargo.*`) | `rust-fmt`, `rust-clippy`, `rust-doc`, `rust-test`, `rust-doctest` |
-| `crates/gg/` | the above, plus `scripts/ci/gg-test.sh` |
+| `gg/` | its own `make gate`, plus its `scripts/ci/gg-test.sh` |
 | `contracts/` | its own `make gate` (`contract-drift` among them, after `npm run gen:contract` in that checkout when a contract or backend API type changed) |
 | `engines/` | its own `make gate` (`seeded-contract` among them) |
 | `apps/web/` | `web-lint`, `web-typecheck`, `web-test`, `web-browser-test`, `web-build` |

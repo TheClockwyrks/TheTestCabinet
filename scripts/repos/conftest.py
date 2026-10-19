@@ -90,12 +90,50 @@ def add_own_gates(root: Path, name: str) -> list[str]:
     return added
 
 
+def add_own_pipeline(root: Path, name: str, kind: str) -> list[str]:
+    """Write a stand-in for each pipeline template the repository writes itself, as its first commit carries them.
+
+    The kit includes the repository's own jobs and stages and leaves the files
+    to it, so a bare render includes templates it does not hold. Each stand-in
+    declares the parameters the pipeline hands it, the stages file the stages
+    the kit's table names, each after the gates, and the setup steps, for a
+    repository whose Rust job takes them, one step.
+    """
+    if name not in render.PROJECT_PIPELINE:
+        return []
+    declared = ["parameters:"]
+    for key in render.project_parameters(name, kind):
+        declared += [f"  - name: {key}", "    type: string"]
+    jobs = [*declared, "", "jobs:", "  - job: own", "    steps:", "      - script: echo own"]
+    stages = [*declared, "", "stages:"]
+    for stage in render.project_stages(name):
+        stages += [
+            f"  - stage: {stage}",
+            "    dependsOn: gates",
+            "    condition: and(succeeded(), startsWith(variables['Build.SourceBranch'], 'refs/tags/v'))",
+            "    jobs:",
+            f"      - job: {stage}",
+            "        steps:",
+            f"          - script: echo {stage}",
+        ]
+    files = [(render.PROJECT_JOBS, jobs), (render.PROJECT_STAGES, stages)]
+    if render.ci_project_setup(name, kind):
+        files.append((render.PROJECT_SETUP, ["steps:", "  - script: echo setup"]))
+    written = []
+    for relative, lines in files:
+        path = root / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        written.append(relative)
+    return written
+
+
 @pytest.fixture(scope="session")
 def rendered(mini_superrepo: Path, tmp_path_factory: pytest.TempPathFactory) -> Callable[[str], Path]:
     """A repository rendered from the session's superrepo, once per name, committed as bootstrap would.
 
-    The gates the repository adds itself are written beside the kit's, as a
-    repository's scaffold commit carries them.
+    The gates and pipeline templates the repository adds itself are written
+    beside the kit's, as a repository's scaffold commit carries them.
     """
     done: dict[str, Path] = {}
     base = tmp_path_factory.mktemp("rendered")
@@ -105,6 +143,7 @@ def rendered(mini_superrepo: Path, tmp_path_factory: pytest.TempPathFactory) -> 
             root = base / name
             render.render(root, name, render.repositories()[name], f"The {name} repository", source=mini_superrepo)
             add_own_gates(root, name)
+            add_own_pipeline(root, name, render.repositories()[name])
             git(["init", "--quiet", "--initial-branch=master"], root)
             commit(root, "chore: scaffold")
             done[name] = root

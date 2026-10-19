@@ -13,6 +13,9 @@
 	path = engines
 	url = ../engines
 	branch = master
+[submodule "gg"]
+	path = gg
+	url = ../gg
 [submodule "microservice-repos"]
 	path = microservice-repos
 	url = ../microservice-repos

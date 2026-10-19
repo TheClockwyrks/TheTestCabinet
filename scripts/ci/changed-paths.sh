@@ -4,7 +4,6 @@
 # answer:
 #
 #   rust        rust_build, binary_linux, binary_windows
-#   gg          the gg_tests_<k>_of_N partitions
 #   submodules  submodule_pins
 #
 # Each answer is printed as an output variable of the step,
@@ -25,7 +24,7 @@
 # is one that group's jobs are known never to read, so a path with no rule here
 # runs everything, and a new directory costs a run until a rule says otherwise.
 # The one allowlist is `submodules`, whose job reads nothing but the pins. The
-# rules are in `reaches_rust`, `reaches_gg` and `reaches_submodules`, and
+# rules are in `reaches_rust` and `reaches_submodules`, and
 # changed-paths.test.sh is their table test.
 #
 #   scripts/ci/changed-paths.sh [--reason <Build.Reason>] [--paths-from <file>]
@@ -38,7 +37,7 @@ set -euo pipefail
 # shellcheck source=scripts/ci/tcab-lib.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/tcab-lib.sh"
 
-readonly GROUPS_IN_ORDER=(rust gg submodules)
+readonly GROUPS_IN_ORDER=(rust submodules)
 
 usage() {
 	echo "usage: scripts/ci/changed-paths.sh [--reason <Build.Reason>] [--paths-from <file>]" >&2
@@ -87,12 +86,14 @@ is_pipeline() { # path
 # prose, every shell test, and the scripts only the image, deploy and release
 # jobs run. Of the submodule pins, contracts' and engines' reach them, since the
 # patch table builds their crates from the checkouts and every Rust job
-# initializes both with scripts/ci/submodules.sh, and test-suites' does, since
-# the core and backend suites read the committed catalog from that checkout.
+# initializes both with scripts/ci/submodules.sh, gg's does, since cargo loads the
+# crate the patch table names for it and the lock records its version, and
+# test-suites' does, since the core and backend suites read the committed
+# catalog from that checkout.
 reaches_rust() { # path
 	is_pipeline "$1" && return 0
 	case "$1" in
-		contracts | engines | test-suites | scripts/ci/submodules.sh) return 0 ;;
+		contracts | engines | gg | test-suites | scripts/ci/submodules.sh) return 0 ;;
 		apps/docs/* | apps/web/* | apps/site/*) return 1 ;;
 		tasks/* | .github/* | .devcontainer/* | .claude/* | .vscode/*) return 1 ;;
 		deployments/*) return 1 ;;
@@ -110,11 +111,10 @@ reaches_rust() { # path
 			scripts/ci/ci-image-purge.sh | scripts/ci/ci-image.sh | \
 			scripts/ci/deploy-docs.sh | \
 			scripts/ci/deploy-environment.sh | scripts/ci/deploy.sh | \
-			scripts/ci/gg-dist.sh | scripts/ci/gg-prebuilt.sh | \
-			scripts/ci/gg-version-gate.sh | scripts/ci/k8s-deploy-sets.sh | \
+			scripts/ci/gg-release.sh | scripts/ci/k8s-deploy-sets.sh | \
 			scripts/ci/manifest.sh | scripts/ci/mirror.sh | scripts/ci/npm-install.sh | \
 			scripts/ci/pin-images.sh | scripts/ci/post-deploy.sh | \
-			scripts/ci/pre-deploy.sh | scripts/ci/publish-gg.sh | \
+			scripts/ci/pre-deploy.sh | \
 			scripts/ci/registry-purge.sh | scripts/ci/report-disk.sh | \
 			scripts/ci/require-gated-commit.sh | scripts/ci/retire-legacy-backend.sh | \
 			scripts/ci/run-image-inputs.sh | scripts/ci/run-images.sh | \
@@ -127,21 +127,6 @@ reaches_rust() { # path
 	for pin in $(submodule_paths); do
 		[[ "$1" == "$pin" ]] && return 1
 	done
-	return 0
-}
-
-# Whether the gg test partitions read the path: what reaches the Rust jobs,
-# less what only the core and CLI suites and the release build read.
-reaches_gg() { # path
-	is_pipeline "$1" && return 0
-	reaches_rust "$1" || return 1
-	case "$1" in
-		test-suites | containers/*) return 1 ;;
-		scripts/ci/release-build.sh | scripts/ci/release-test.sh | \
-			scripts/ci/release-doctest.sh | scripts/ci/binary-smoke.sh | \
-			scripts/ci/smoke-binary.sh | scripts/ci/install-nextest.sh | \
-			scripts/ci/rust-build.sh) return 1 ;;
-	esac
 	return 0
 }
 

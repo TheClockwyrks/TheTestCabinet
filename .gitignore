@@ -290,13 +290,6 @@ tmp/
 !/apps/web/.env.development
 !/apps/web/.env.example
 **/*.rs.bk
-/crates/gg/src/sandbox/checkers/*
-!/crates/gg/src/sandbox/checkers/java.compiler.java
-!/crates/gg/src/sandbox/checkers/java.toolchain.json
-!/crates/gg/src/sandbox/checkers/jvm.backend.java
-!/crates/gg/src/sandbox/checkers/kotlin.compiler.java
-!/crates/gg/src/sandbox/checkers/kotlin.toolchain.json
-/crates/gg/src/sandbox/guests/
 /runs/
 .claude/workflows/
 .claude/worktrees/

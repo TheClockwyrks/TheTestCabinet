@@ -151,6 +151,42 @@ EXTRA_GATES: dict[str, dict[str, tuple[str, ...]]] = {
 # The jobs of the gates stage an extra gate may name.
 GATE_JOBS = ("rust", "checks")
 
+# The repositories whose pipeline runs jobs and stages of their own beyond the
+# kit's, as the superrepo's pipeline runs the files under its `.azure/project/`.
+# Such a repository writes two templates the kit leaves to it: `PROJECT_JOBS`,
+# included at the end of the gates stage, so its jobs are gated with the kit's
+# and the mirror waits on them through the stage, and `PROJECT_STAGES`,
+# included after the publish stage, whose stages each run after the gates on
+# the tags or branches their own conditions name. The table names those
+# stages, and the mirror stage waits on each, so a ref is mirrored only once
+# what the repository releases from it is out. gg's `release` stage publishes
+# its binaries, its reference and its toolchains image on a tag.
+PROJECT_PIPELINE: dict[str, tuple[str, ...]] = {"gg": ("release",)}
+PROJECT_JOBS = ".azure/project/jobs.yml"
+PROJECT_STAGES = ".azure/project/stages.yml"
+# The steps such a repository's Rust job takes after it fetched its
+# dependencies and before its first gate, which the kit includes there without
+# parameters, as the superrepo's Rust job includes its own
+# `.azure/project/setup-steps.yml`: what compiling the workspace needs beyond
+# the track's image. gg's build script reflects every arm's catalogue with that
+# arm's toolchain and the workspace's `typescript`, so its setup provisions
+# them from a cache before clippy compiles anything.
+PROJECT_SETUP = ".azure/project/setup-steps.yml"
+# The stages the kit's pipeline declares itself, which no project stage may be.
+KIT_STAGES = ("gates", "publish", "mirror")
+# The organisation's arm64 agent pool, where an arm64 build runs natively: the
+# clusters' nodes are arm64 and a hosted agent is x86_64. A project's jobs are
+# handed it as the `arm64Pool` parameter, which the superrepo's
+# `.azure/project/jobs.yml` defaults to the same pool, and an application's
+# image stage builds its arm64 image on it.
+ARM64_POOL = "pool-dev-linux-arm64-wus3-4c-eph-01"
+# The minutes a Rust job may run, and the repositories given longer. A cold
+# gg build compiles every arm's guest and restores its toolchains first, which
+# outlasts the hour the kit's Rust job is given, as the superrepo's Rust job,
+# which compiled gg in the workspace, was given two.
+RUST_TIMEOUT = 60
+RUST_TIMEOUTS: dict[str, int] = {"gg": 120}
+
 # The crate a render scaffolds in each repository carrying one: its directory
 # under crates/ and its package name. The monorepo's crates keep their
 # directories when a repository is extracted, so the scaffold is named as the
@@ -229,7 +265,6 @@ IMAGE_KINDS = frozenset({"application"})
 IMAGE_STAGE = "image"
 IMAGE_BRANCHES = ("master", "staging")
 IMAGE_ARCHITECTURES = ("amd64", "arm64")
-ARM64_POOL = "pool-dev-linux-arm64-wus3-4c-eph-01"
 IMAGE_SCRIPT = "scripts/ci/image.sh"
 MANIFEST_SCRIPT = "scripts/ci/manifest.sh"
 BUILD_CONTEXT_GATE = "build-context"
@@ -558,6 +593,81 @@ def pipeline_only_of_kind(kind: str) -> str:
     return " ".join(check.id for check in kind_checks(kind))
 
 
+def project_stages(name: str) -> tuple[str, ...]:
+    """The stages the repository's own `PROJECT_STAGES` declares, or none for a repository without them."""
+    stages = PROJECT_PIPELINE.get(name, ())
+    for stage in stages:
+        if not re.fullmatch(r"[a-z][a-z0-9_]*", stage):
+            raise RenderError(f"{stage!r} is not shaped like a stage id (lower case, digits and underscores)")
+        if stage in KIT_STAGES:
+            raise RenderError(f"{name}'s own stage {stage!r} is one the kit's pipeline declares")
+    if name in PROJECT_PIPELINE and not stages:
+        raise RenderError(f"{name} runs a pipeline of its own and names none of its stages")
+    if len(set(stages)) != len(stages):
+        raise RenderError(f"{name} names one of its own stages twice: {list(stages)}")
+    return stages
+
+
+def project_parameters(name: str, kind: str) -> dict[str, str]:
+    """What the pipeline hands each of the repository's own templates, by parameter, or nothing.
+
+    A template cannot read the pipeline's resources, so what a job needs to
+    run beside the kit's is passed in: the image of the repository's Rust
+    track at the commit its container resource pins (for a kind carrying a
+    crate), the registry and the Docker Registry service connection that
+    pulls and pushes there, and the arm64 agent pool.
+    """
+    if name not in PROJECT_PIPELINE:
+        return {}
+    parameters = {}
+    if edge_table().KINDS[kind].crate:
+        parameters["rustImage"] = image_reference(rust_track(name))
+    parameters["registry"] = CI_REGISTRY
+    parameters["registryEndpoint"] = CI_IMAGE_ENDPOINT
+    parameters["arm64Pool"] = ARM64_POOL
+    return parameters
+
+
+def _include(template: str, parameters: dict[str, str], indent: int) -> str:
+    pad = " " * indent
+    lines = [f"{pad}- template: {template}", f"{pad}  parameters:"]
+    lines += [f"{pad}    {key}: {value}" for key, value in parameters.items()]
+    return "\n".join(lines)
+
+
+def ci_project_jobs(name: str, kind: str) -> str:
+    """The gates stage's include of the repository's own jobs, or nothing."""
+    if name not in PROJECT_PIPELINE:
+        return ""
+    return _include(PROJECT_JOBS, project_parameters(name, kind), 6)
+
+
+def ci_project_stages(name: str, kind: str) -> str:
+    """The include of the repository's own stages, after the publish stage, or nothing."""
+    if not project_stages(name):
+        return ""
+    return _include(PROJECT_STAGES, project_parameters(name, kind), 2)
+
+
+def ci_project_setup(name: str, kind: str) -> str:
+    """The Rust job's include of the repository's own setup steps, or nothing."""
+    if name not in PROJECT_PIPELINE or not edge_table().KINDS[kind].crate:
+        return ""
+    return f"          - template: {PROJECT_SETUP}"
+
+
+def rust_timeout(name: str) -> int:
+    """The minutes the repository's Rust job may run."""
+    return RUST_TIMEOUTS.get(name, RUST_TIMEOUT)
+
+
+def python_dict(mapping: dict[str, str]) -> str:
+    """A mapping of strings as a Python literal laid out as `ruff format` lays it out, one entry a line."""
+    if not mapping:
+        return "{}"
+    return "{\n" + "".join(f"    {json.dumps(key)}: {json.dumps(value)},\n" for key, value in mapping.items()) + "}"
+
+
 def ci_publish(kind: str) -> str:
     """The stage publishing the workspace's public packages on a tag.
 
@@ -804,6 +914,15 @@ def variables(name: str, kind: str, description: str) -> Variables:
         "ci_npm_feed": ci_npm_feed(kind),
         "ci_kind_checks": ci_kind_checks(kind),
         "ci_publish": ci_publish(kind),
+        "ci_project_jobs": ci_project_jobs(name, kind),
+        "ci_project_stages": ci_project_stages(name, kind),
+        "ci_project_setup": ci_project_setup(name, kind),
+        "project_setup": PROJECT_SETUP if ci_project_setup(name, kind) else "",
+        "rust_timeout": rust_timeout(name),
+        "project_stages": list(project_stages(name)),
+        # The same stages and parameters as Python literals, for ci/tests/test_wiring.py.
+        "project_stages_list": json.dumps(list(project_stages(name))),
+        "project_parameters_dict": python_dict(project_parameters(name, kind)),
         # The image an application builds: the conditional name of its
         # Dockerfile, its `build-context` gate and its scripts, and its stage.
         "ci_image": builds_image(kind),

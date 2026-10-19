@@ -7,10 +7,11 @@
 # `<image>:<sha>-amd64` and `<image>:<sha>-arm64`, and then the fused
 # multi-arch `<image>:<sha>`, a manifest list naming those two, into the eight
 # service repositories (`tcab-*`) and the run-image repositories
-# (`test-cabinet-*`, `test-cabinet-gg-toolchains` and
-# `test-cabinet-audio-store` included). The registry is on the Basic tier,
-# which has no retention policy, so without this every image ever pushed stays
-# for ever. The pipeline runs it at the end of the staging and prod
+# (`test-cabinet-*`, `test-cabinet-audio-store` included). The toolchain image
+# gg's pipeline pushes, `test-cabinet-gg-toolchains:<version>`, carries a
+# version tag, not a commit's, so nothing here removes it. The registry is on
+# the Basic tier, which has no retention policy, so without this every image
+# ever pushed stays for ever. The pipeline runs it at the end of the staging and prod
 # deployments, once the clusters have moved on to the commit; run by hand,
 # `--dry-run` prints what it would delete and deletes nothing.
 #

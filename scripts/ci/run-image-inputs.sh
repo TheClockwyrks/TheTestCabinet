@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Prints, for every run-container image and the two builder images, a digest of the
+# Prints, for every run-container image and the asset-tooling builder, a digest of the
 # inputs its build reads, and the images it is built from.
 #
 #   scripts/ci/run-image-inputs.sh [<name>...]
 #
 # One line per image, `<name> <digest> <parent>[,<parent>...]` (`-` when it has no
-# parent), for every name containers/image-names.sh lists plus `tools` and
-# `gg-toolchains`, or for the names given. The digest is 32 hex characters of a
+# parent), for every name containers/image-names.sh lists plus `tools`, or for the names
+# given. The digest is 32 hex characters of a
 # SHA-256 over:
 #
 #   - INPUTS_SCHEMA below, bumped by hand when what a build does changes without any
@@ -27,7 +27,11 @@
 #     too seldom.
 #   - the digests of the images it is built from (its `FROM` parents and the builder
 #     stages it copies out of), so a change anywhere below an image reaches it.
-#   - for gg-toolchains, the two files its build arguments are read from.
+#   - for every `-gg` variant, the reference of the gg toolchain image it copies its tree
+#     out of: `test-cabinet-gg-toolchains:<version>`, the release the driver pins
+#     (scripts/ci/gg-release.sh toolchains-image, or GG_TOOLCHAINS_IMAGE as
+#     containers/build.sh takes it). The gg repository publishes a version once, so the
+#     tag names the tree, and a bump of the pin rebuilds every variant.
 #
 # scripts/ci/run-images.sh writes this table and containers/build.sh reads it in its
 # reuse mode: an image whose digest already names a pushed image in the registry is
@@ -50,12 +54,12 @@ readonly CONTAINERS="containers"
 parents_of() {
 	local name="$1"
 	case "$name" in
-		tools | gg-toolchains | base | blender) echo "-" ;;
+		tools | base | blender) echo "-" ;;
 		base-wasm) echo "base" ;;
 		adversarial | performance) echo "base-wasm" ;;
 		full-stack-2d | full-stack-3d) echo "base-wasm,tools" ;;
 		game-jam) echo "full-stack-2d" ;;
-		*-gg) echo "${name%-gg},gg-toolchains" ;;
+		*-gg) echo "${name%-gg}" ;;
 		*) echo "base,tools" ;;
 	esac
 }
@@ -149,8 +153,8 @@ digest_of() {
 			parts+="$(listing "${source#./}")"$'\n'
 		fi
 	done < <(context_sources "$dockerfile")
-	if [[ "$name" == gg-toolchains ]]; then
-		parts+="$(listing rust-toolchain.toml packages/gg-sandbox-rust/rust-version.sh)"$'\n'
+	if [[ "$name" == *-gg ]]; then
+		parts+="gg-toolchains ${GG_TOOLCHAINS_REF}"$'\n'
 	fi
 	parents="$(parents_of "$name")"
 	if [[ "$parents" != "-" ]]; then
@@ -162,6 +166,13 @@ digest_of() {
 	echo "${DIGESTS[$name]}"
 }
 
+# The gg toolchain image the `-gg` variants copy, read once.
+GG_TOOLCHAINS_REF="${GG_TOOLCHAINS_IMAGE:-}"
+if [[ -z "$GG_TOOLCHAINS_REF" ]]; then
+	GG_TOOLCHAINS_REF="$(scripts/ci/gg-release.sh toolchains-image)"
+fi
+readonly GG_TOOLCHAINS_REF
+
 main() {
 	local -a names=()
 	mapfile -t GITLINKS < <(git ls-files -s | awk -F '\t' '$1 ~ /^160000 / { print $2 }')
@@ -169,7 +180,7 @@ main() {
 		names=("$@")
 	else
 		mapfile -t names < <("${CONTAINERS}/image-names.sh")
-		names=(tools gg-toolchains "${names[@]}")
+		names=(tools "${names[@]}")
 	fi
 	local name digest
 	for name in "${names[@]}"; do

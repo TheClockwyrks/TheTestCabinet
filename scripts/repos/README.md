@@ -61,8 +61,11 @@ carrying one is scaffolded with (`CRATES`, directories and names kept from the
 monorepo), the Rust track (`RUST_TRACKS`: the repositories whose suite drives a
 browser run in the `rust-browser` image), the image pins (`ciImageTag` from
 `ci/images/tags.yml`), the feed (`FEED_REGISTRY`), the long-lived branches
-(`BRANCHES`), the release tags each dependent pins (`TAGS`) and the kinds
-whose pipeline builds and pushes an image (`IMAGE_KINDS`).
+(`BRANCHES`), the release tags each dependent pins (`TAGS`), the kinds whose
+pipeline builds and pushes an image (`IMAGE_KINDS`), the repositories whose
+pipeline includes jobs, stages and Rust setup steps they write themselves under
+`.azure/project/`, with the stages the mirror waits on (`PROJECT_PIPELINE`), and
+the Rust jobs given more than an hour (`RUST_TIMEOUTS`).
 
 ## The two records
 

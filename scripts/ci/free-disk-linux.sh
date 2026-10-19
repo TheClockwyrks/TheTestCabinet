@@ -22,7 +22,7 @@
 # Python, PyPy, Ruby, Go and Node the image preinstalls, not just CodeQL), Swift,
 # the Google Cloud and AWS CLIs, vcpkg, and the Edge and Chrome installs. No job
 # that runs this uses any of them on the host: the checks run inside the CI
-# images, gg's Node is downloaded by gg-ci-toolchains.sh, and the host's own
+# images, Node is downloaded by provision-node.sh, and the host's own
 # tasks are Cache, Docker, AzureCLI (az lives in /opt/az, which stays) and the
 # test-result publish, which run on the agent's bundled Node.
 #

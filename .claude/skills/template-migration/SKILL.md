@@ -145,17 +145,19 @@ everywhere else.
 - The devcontainer's build context and its own steps: the `dev` service in
   `.devcontainer/docker-compose.yml` builds from the repository root
   (`context: ..`, `dockerfile: ./.devcontainer/ubuntu.dockerfile`), because
-  the last of the project's steps installs gg's toolchains with the
-  repository's installers; keep it, and write every `COPY` in
+  the last of the project's steps installs gg's toolchains with gg's
+  installers from the `gg/` checkout; keep it, and write every `COPY` in
   `ubuntu.dockerfile` from the root (`./.devcontainer/...`), the template's
   own included. At the comment the template leaves for a project's steps, keep
   `system/packages.sh` (as root), `languages/rust/targets.sh` (the musl
   target), `tools/helm.sh` and the gg toolchain step with its staged slice of
-  the repository, each a `COPY` of only what it runs. The anchor keeps the
+  the `gg/` checkout, each a `COPY` of only what it runs. The anchor keeps the
   project's `NODE_VERSION` and `NEXTEST_VERSION`, which no Dockerfile reads:
-  `scripts/ci/gg-ci-toolchains.sh` and `scripts/repos/test_render.py` read
-  them, and each moves with the Node or cargo-nextest the toolchain image a
-  new template version names holds. The Rust CI image carries the same
+  `scripts/ci/provision-node.sh` and `scripts/repos/test_render.py` read
+  them (gg's `scripts/ci/gg-ci-toolchains.sh` pins the same Node, which its
+  `gg-image-toolchains.test.sh` holds to this file), and each moves with the
+  Node or cargo-nextest the toolchain image a new template version names
+  holds. The Rust CI image carries the same
   packages and musl target in a step of the project's own, and its
   `.dockerignore` and the image pipeline's path filter admit
   `.devcontainer/languages/rust/targets.sh`; keep all three.
@@ -164,17 +166,19 @@ everywhere else.
   `toolchain_python`, `toolchain_jvm`, `toolchain_dotnet`, `toolchain_ruby`,
   `toolchain_swift` and `toolchain_purescript`, and no to
   `toolchain_rust_nightly` and `toolchain_ecmascript` (gg builds on the stable
-  toolchain, and its TypeScript and jco are the npm workspace's locks). The gg
-  step runs `scripts/ci/gg-image-toolchains.sh` before its installers, which
-  links each arm's default home to the image's tree, and that script is in the
-  slice's `scripts/ci` COPY. Each arm's pin under
+  toolchain, and its TypeScript and jco are its npm workspace's locks). The gg
+  step runs gg's `scripts/ci/gg-image-toolchains.sh` before its installers,
+  which links each arm's default home to the image's tree, and that script is
+  in the slice's `gg/scripts/ci` COPY. Each arm's pin under gg's
   `packages/gg-sandbox-*/<lang>-version.sh` (and componentize-py's in
   `packages/gg-sandbox-python/build.sh`) is the version its image's tag names,
   so an update that moves one of those images moves the pin, and what the pin
-  moves (a checker manifest, a test's text, a probe fixture), in the same
-  change. `scripts/ci/gg-image-toolchains.test.sh` fails the shell-tests gate
-  until they agree, and the image build fails on the link script if they do
-  not. Two pins move differently. The wasm-components image's `wit-bindgen` is
+  moves (a checker manifest, a test's text, a probe fixture), in a change to
+  the `gg` repository that the update then brings in by moving the `gg/` pin.
+  `gg/scripts/ci/gg-image-toolchains.test.sh`, which the shell-tests gate runs
+  from the checkout, fails until they agree, and the image build fails on
+  the link script if they do not. Two pins move differently. The
+  wasm-components image's `wit-bindgen` is
   pinned in the C++ and Swift version files and is read by the Rust arm from
   `packages/gg-sandbox-rust/Cargo.lock`, so moving it also moves the
   `wit-bindgen` requirement in that crate's and `packages/gg-sandbox/guest/`'s

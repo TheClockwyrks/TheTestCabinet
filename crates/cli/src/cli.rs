@@ -426,7 +426,7 @@ pub struct IngestArgs {
 #[derive(Debug, Args)]
 #[command(disable_version_flag = true)]
 pub struct AnalyzeArgs {
-    /// Root of the source tree to analyse (for example, `crates/gg`).
+    /// Root of the source tree to analyse (for example, `crates/driver`).
     #[arg(value_name = "DIR")]
     pub path: String,
 
