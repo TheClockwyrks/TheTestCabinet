@@ -2,9 +2,12 @@
 //!
 //! Resolves its configuration from the environment the dispatcher set, reports
 //! `running` to the backend, drives the one run it was created for while streaming
-//! the live events and preview frames back, then reports the terminal status
-//! carrying the produced (or failed) record — and exits. There is no server and no
-//! flags; everything arrives through `TCAB_*` env (see
+//! the live events and preview frames back, then hands the finished run to durable
+//! storage through [`finish`](test_cabinet_driver::finish): the held `storing`
+//! report carrying the record, the run tree and bundle uploads, and the terminal
+//! status carrying the produced (or failed) record — and exits, successfully once
+//! that terminal status landed or was refused. There is no server and no flags;
+//! everything arrives through `TCAB_*` env (see
 //! [`config`](test_cabinet_driver::config)).
 
 use std::process::ExitCode;
@@ -18,8 +21,11 @@ use time::OffsetDateTime;
 use test_cabinet_driver::cancel::{
     CancelDisposition, CancelRace, cancel_disposition, race_cancellation,
 };
-use test_cabinet_driver::client::{JobClient, StoreFields};
+use test_cabinet_driver::client::JobClient;
 use test_cabinet_driver::config::{Config, DriverRuntime};
+use test_cabinet_driver::finish::{
+    FinishTarget, Mirrors, REPORT_ATTEMPT_TIMEOUT, RunOutcome, finish,
+};
 use test_cabinet_driver::kubernetes::KubernetesContainerRuntime;
 use test_cabinet_driver::run::{RunFailure, drive};
 use test_cabinet_driver::sink;
@@ -262,7 +268,7 @@ async fn main() -> ExitCode {
             // exists so a session that stops responding cannot cost the operator
             // everything the run had streamed.
             let test_case = resolved.lock().ok().and_then(|slot| slot.clone());
-            report_canceled(
+            let exit = report_canceled(
                 &client,
                 &config,
                 &run_id,
@@ -272,99 +278,44 @@ async fn main() -> ExitCode {
             )
             .await;
             teardown_sandbox(&config).await;
-            ExitCode::SUCCESS
+            exit
         }
-        Some(Ok(mut record)) => {
-            // Upload the produced tree to the artifact service (when configured) and
-            // stamp the playable-build link on the record, *before* reporting the
-            // terminal status — so by the time the console sees the run finish, its
-            // build and media are already servable.
-            finalize_artifacts(&config, &mut record).await;
-            // Commit the model's work on the collected copy and upload it to the repos
-            // service as a git bundle (when configured). A gg run that was already
-            // canceled when its finishing began waits on it for at most ten minutes.
-            finalize_bundle(&config, &record, cancel.is_canceled()).await;
-            // For an adversarial run, also mirror the controller wasm + proof
-            // replays into the *backend* store (the CLI does this at push). Without
-            // it a backend-driven run is invisible to the arena and its replays
-            // 404 — a no-op for any other run type.
-            finalize_adversarial_backend_upload(&config, &record).await;
-            // For a performance run, mirror each passing case's scored scenario the
-            // same way — browser playback fetches it from the backend store and
-            // re-simulates it, so without this a backend-driven run's playback has
-            // nothing to load. A no-op for any other run type.
-            finalize_performance_backend_upload(&config, &record).await;
-            // Mirror the run's proof-of-implementation media into the *backend*
-            // store too. The artifact service only serves the session that produced
-            // the run; the public snapshot reads proof from the backend store, so
-            // without this proof never reaches the published site.
-            finalize_proof_backend_upload(&config, &record).await;
-            // Same for a run's synthesized *actual* validation media (the model
-            // build's per-review-item debug-script outputs): the public snapshot reads
-            // it from the backend store, so mirror it there or the published site
-            // degrades the reviewer's automated-validation side-by-side to
-            // presence-only.
-            finalize_validation_backend_upload(&config, &record).await;
-            // Same for an asset-generation run's media (regenerated/preview image +
-            // action log): the public snapshot reads it from the backend store, so
-            // mirror it there or the published asset result view has nothing to show.
-            finalize_asset_backend_upload(&config, &record).await;
-            // Same for the run's showcase files (the carousel media and any image the
-            // description references): the public snapshot reads them from the backend
-            // store, so mirror them there or the published Play tab renders the
-            // description with broken images and an empty carousel.
-            finalize_showcase_backend_upload(&config, &record).await;
-            // For a gg run captured with the (debug-only) replay capability, mirror its
-            // `.gg/replay.json` record into the backend store so `GET /runs/{id}/replay`
-            // can serve it to a replay driver. A no-op for any run that captured none.
-            finalize_replay_backend_upload(&config, &record).await;
-            // Same for the run's code-analysis document, which every harness produces:
-            // the per-run Code tab reads it from the backend store, so mirror it there or
-            // the tab degrades to the bounded summary on the record alone.
-            finalize_code_analysis_backend_upload(&config, &record).await;
-
-            // A gg run that wound down for an operator's kill took this same path — it
+        Some(Ok(record)) => {
+            // A gg run that wound down for an operator's kill takes this same path — it
             // is an ordinary engine outcome, produced by the ordinary post-session
-            // stages, and every upload above applies to it exactly as it does to a run
-            // that finished on its own. Only the terminal status differs. The latch is
-            // raised on the wind-down branch alone, so this is a gg-only branch: a
-            // destroyed run returned above and never reaches here.
+            // stages, and the whole finishing sequence applies to it exactly as it does
+            // to a run that finished on its own. Only the terminal status differs: it is
+            // `canceled`, carrying the record. The latch is raised on the wind-down
+            // branch alone, so a destroyed run returned above and never reaches here.
             //
-            // The branch is on whether the run was *canceled*, not on the record's own
-            // state, because those can honestly disagree: a run that reached its own
-            // ending in the moment between the kill landing and the driver noticing it
-            // hands back a `completed` record against an already-`canceled` job. Its
-            // state is recorded as what it truly was, but it is still handed over as a
-            // cancellation — the only status the backend accepts on a canceled job, and
-            // the difference between retaining that run and silently discarding it.
-            if cancel.is_canceled() {
-                tracing::info!(
-                    run_id = %record.id,
-                    state = ?record.status.state,
-                    "canceled run wound down and produced a record; reporting canceled"
-                );
-                if let Err(err) = client
-                    .post_status_canceled(record, StoreFields::default())
-                    .await
-                {
-                    // The job is already terminal and the operator has their answer;
-                    // failing the driver over the record post would only make the pod
-                    // look broken. Log it and exit cleanly.
-                    tracing::warn!(error = %err, "could not report `canceled` to the backend");
-                }
+            // The terminal status follows whether the run was *canceled*, not the
+            // record's own state, because those can honestly disagree: a run that
+            // reached its own ending in the moment between the kill landing and the
+            // driver noticing it hands back a `completed` record against an
+            // already-`canceled` job. Its state is recorded as what it truly was, but it
+            // is still handed over as a cancellation — the only status the backend
+            // accepts on a canceled job, and the difference between retaining that run
+            // and silently discarding it.
+            let already_canceled = cancel.is_canceled();
+            tracing::info!(
+                run_id = %record.id,
+                state = ?record.status.state,
+                already_canceled,
+                "run produced a record; handing it to durable storage"
+            );
+            let out_dir = config.work_dir.join("out");
+            let finished = finish(
+                &finish_target(&config, &client, &out_dir),
+                Some(record),
+                RunOutcome::Succeeded,
+                already_canceled,
+                &BackendMirrors::new(&config, MirrorSet::All),
+            )
+            .await;
+            if already_canceled {
                 teardown_sandbox(&config).await;
-                return ExitCode::SUCCESS;
             }
-
-            tracing::info!(run_id = %record.id, "run produced a record; reporting succeeded");
-            if let Err(err) = client
-                .post_status_succeeded(record, StoreFields::default())
-                .await
-            {
-                eprintln!("could not report `succeeded` to the backend: {err}");
-                return ExitCode::FAILURE;
-            }
-            ExitCode::SUCCESS
+            finished.exit_code()
         }
         Some(Err(failure)) => {
             // The kill landed before the session was launched — during the driver's own
@@ -394,7 +345,7 @@ async fn main() -> ExitCode {
                     detail = %failure.detail,
                     "the canceled run errored while winding down; recording what is held",
                 );
-                report_canceled(
+                let exit = report_canceled(
                     &client,
                     &config,
                     &run_id,
@@ -404,7 +355,7 @@ async fn main() -> ExitCode {
                 )
                 .await;
                 teardown_sandbox(&config).await;
-                return ExitCode::SUCCESS;
+                return exit;
             }
             report_failure(&client, &config, &run_id, &request, started_at, failure).await
         }
@@ -455,15 +406,15 @@ const CANCELED_DETAIL: &str = "canceled by operator";
 /// It is worth building anyway because of what it anchors: the gg run's telemetry —
 /// nearly all of what it produced — was streamed as it happened and is already in the
 /// backend's hands, and without a record to attach it to the killed run never reaches the
-/// run list at all. Everything here is best-effort — the job is already terminal and the
-/// sandbox teardown still has to happen, so a failure to record is logged, never fatal.
+/// run list at all. A record that cannot be built is logged and nothing is posted, the job
+/// being already terminal; one that is built takes the whole finishing sequence, and the
+/// exit code follows its terminal report.
 ///
 /// Both call sites are on the wind-down branch, so this is reached for a gg run only, and
 /// only for one whose session had been launched. A canceled run of any other harness, and
 /// a gg run killed before its session was launched, is destroyed and recorded nowhere,
 /// which is what the operator asked for: there is no early state to anchor, because there
 /// was no session that could be asked to leave one.
-#[allow(clippy::too_many_arguments)]
 async fn report_canceled(
     client: &JobClient,
     config: &Config,
@@ -471,7 +422,7 @@ async fn report_canceled(
     request: &test_cabinet_driver::RunRequest,
     started_at: OffsetDateTime,
     test_case: Option<&test_cabinet_driver::TestCaseVersion>,
-) {
+) -> ExitCode {
     // The backend holds the streamed events, so the locally-written `events.jsonl`
     // (lost with the ephemeral pod anyway) is immaterial — an empty slice, exactly as
     // `report_failure` passes.
@@ -485,37 +436,27 @@ async fn report_canceled(
         CANCELED_DETAIL,
         &[],
     ) {
-        Ok(mut record) => {
-            // Upload whatever happens to be in the out directory. On this path the
-            // engine never reached artifact collection, so it is usually empty — but a
-            // run that errored *after* collecting has a tree worth keeping, and the
-            // upload is a no-op when there is nothing there.
-            finalize_artifacts(config, &mut record).await;
-            // The bundle too, for whatever tree an errored wind-down left collected; a
-            // run with no collected repository has no bundle to write, which is logged.
-            finalize_bundle(config, &record, true).await;
-            // Same for a gg run's session record: a cancellation that could not wind down
-            // cleanly still leaves a salvaged, truncated record in the run tree, and this
-            // is the only path that would mirror it.
-            finalize_replay_backend_upload(config, &record).await;
-            // The code analysis is a no-op here in practice — this path is reached when
-            // the engine never got to the post-run seam — but it is wired for the same
-            // reason the replay upload is: whatever *did* land in the run tree is the only
-            // account of the run, and this is the only path that would mirror it.
-            finalize_code_analysis_backend_upload(config, &record).await;
-            record
-        }
+        Ok(record) => record,
         Err(err) => {
             tracing::warn!(error = %err, "could not build the canceled run record");
-            return;
+            return ExitCode::SUCCESS;
         }
     };
-    if let Err(err) = client
-        .post_status_canceled(record, StoreFields::default())
-        .await
-    {
-        tracing::warn!(error = %err, "could not report `canceled` to the backend");
-    }
+    // The canceled run takes the whole finishing sequence. On this path the engine
+    // never reached artifact collection, so the out directory is usually empty — but a
+    // run that errored *after* collecting has a tree and a bundle worth keeping, and a
+    // cancellation that could not wind down cleanly still leaves a salvaged, truncated
+    // gg session record in the run tree, which the mirrors carry to the backend store.
+    let out_dir = config.work_dir.join("out");
+    finish(
+        &finish_target(config, client, &out_dir),
+        Some(record),
+        RunOutcome::Canceled,
+        true,
+        &BackendMirrors::new(config, MirrorSet::Canceled),
+    )
+    .await
+    .exit_code()
 }
 
 /// Tear down the run's sandbox, reporting whether it is now gone. Called on **every**
@@ -572,88 +513,6 @@ async fn teardown_sandbox(config: &Config) -> bool {
             );
             false
         }
-    }
-}
-
-/// Upload the produced run tree to the artifact service and stamp the run's
-/// playable-build link onto `record`, when an artifact service is configured
-/// (`TCAB_ARTIFACTS_URL`).
-///
-/// The link is set root-relative (`/runs/{id}/build/`) — the console prefixes the
-/// artifact base URL it learned from the backend's `/config` — and only when the
-/// run produced a static build to serve, mirroring what the worker set at list
-/// time. An upload failure is logged but never fatal: the record itself still
-/// reaches the backend (only its servable artifacts are missing), and the run
-/// outcome is unchanged. When `TCAB_ARTIFACTS_URL` is unset (a local setup with no
-/// artifact service) this is a no-op and the record carries no playable link.
-async fn finalize_artifacts(config: &Config, record: &mut test_cabinet_driver::RunRecord) {
-    let Some(artifacts_url) = config.artifacts_url.as_deref() else {
-        return;
-    };
-    let out_dir = config.work_dir.join("out");
-
-    if let Some(link) = test_cabinet_driver::artifacts::playable_build_link(&out_dir, &record.id) {
-        record.links.playable_build = Some(link);
-    }
-
-    if let Err(err) = test_cabinet_driver::artifacts::upload_run_tree(
-        artifacts_url,
-        &record.id,
-        &config.job_id,
-        &out_dir,
-        &config.job_token,
-    )
-    .await
-    {
-        // A missing upload leaves the run inspectable (its record is still posted),
-        // it just cannot be played from the reviewer UI — worth a warning, not a
-        // failed run.
-        tracing::warn!(run_id = %record.id, error = %err, "could not upload run artifacts");
-    } else {
-        tracing::info!(run_id = %record.id, "uploaded run artifacts to the artifact service");
-    }
-}
-
-/// Commit the run's implementation on the driver's collected copy and upload it to the
-/// repos service as a git bundle, when a repos service is configured (`TCAB_REPOS_URL`).
-///
-/// The upload is retried under the driver's retry policy for
-/// `TCAB_ARTIFACT_UPLOAD_WAIT_SECONDS` from its first failure, or for at most ten
-/// minutes when `already_canceled` (a gg run whose finishing began after the kill). A
-/// bundle that is still not stored is logged and never fatal: the run's record still
-/// reports, and the console offers no download for it.
-async fn finalize_bundle(
-    config: &Config,
-    record: &test_cabinet_driver::RunRecord,
-    already_canceled: bool,
-) {
-    use test_cabinet_driver::bundle::{BundleTarget, store_bundle};
-    use test_cabinet_driver::retry::RetryPolicy;
-    let Some(repos_url) = config.repos_url.as_deref() else {
-        return;
-    };
-    let out_dir = config.work_dir.join("out");
-    let repo = out_dir.join(&record.id).join("implementation");
-    let mut policy = RetryPolicy::waiting_for(config.upload_wait);
-    if already_canceled {
-        policy = policy.for_canceled_run();
-    }
-    let target = BundleTarget {
-        repos_url,
-        run_id: &record.id,
-        job_id: &config.job_id,
-        job_token: &config.job_token,
-    };
-    match store_bundle(target, &repo, &out_dir, &policy, std::future::pending()).await {
-        Ok(()) => {
-            tracing::info!(run_id = %record.id, "uploaded the run's bundle to the repos service")
-        }
-        Err(err) => tracing::warn!(
-            run_id = %record.id,
-            runs_own = err.is_runs_own(),
-            error = %err,
-            "could not store the run's bundle",
-        ),
     }
 }
 
@@ -880,6 +739,10 @@ async fn finalize_showcase_backend_upload(
 /// ephemeral pod anyway) is immaterial; an empty slice is passed here. The
 /// resolved version, when the failure happened after resolution, gives the record
 /// its real test type and version.
+///
+/// A built record takes the whole finishing sequence (held report, uploads, terminal
+/// report); without one the `failed` report is made alone. The exit code follows the
+/// terminal report.
 async fn report_failure(
     client: &JobClient,
     config: &Config,
@@ -899,23 +762,7 @@ async fn report_failure(
         &failure.detail,
         &[],
     ) {
-        Ok(mut record) => {
-            // A failed run rarely produced a static build, but it may have collected
-            // partial artifacts (proof media, an asset frame) worth retaining for
-            // inspection — upload them and stamp any build link, the same as a
-            // succeeded run, before the terminal status is posted.
-            finalize_artifacts(config, &mut record).await;
-            // A failed run takes the same finishing sequence: its collected repository,
-            // when it has one, is committed and uploaded as its bundle.
-            finalize_bundle(config, &record, false).await;
-            // A `hung` or `timed_out` gg run never reaches artifact collection, but the
-            // engine salvages its capture journal out of the container before teardown and
-            // assembles it into the run tree all the same — so this is the one upload that
-            // routinely has something to do on the failure path. Without it the replay of
-            // exactly the run most worth replaying would stop at the driver pod.
-            finalize_replay_backend_upload(config, &record).await;
-            Some(record)
-        }
+        Ok(record) => Some(record),
         Err(err) => {
             // The record is a courtesy for inspection; if it cannot even be built,
             // still report the failure with its reason so the console is not left
@@ -924,14 +771,106 @@ async fn report_failure(
             None
         }
     };
-    if let Err(err) = client
-        .post_status_failed(failure.detail, record, StoreFields::default())
-        .await
-    {
-        eprintln!("could not report `failed` to the backend: {err}");
-        return ExitCode::FAILURE;
+    // A failed run whose record was built takes the same finishing sequence as a
+    // succeeded one: a failed run rarely produced a static build, but it may have
+    // collected partial artifacts (proof media, an asset frame, its repository) worth
+    // retaining. The run failed, but the driver did its job once the report is
+    // delivered, so the exit code follows the report alone.
+    let out_dir = config.work_dir.join("out");
+    finish(
+        &finish_target(config, client, &out_dir),
+        record,
+        RunOutcome::Failed {
+            detail: failure.detail,
+        },
+        false,
+        &BackendMirrors::new(config, MirrorSet::Failed),
+    )
+    .await
+    .exit_code()
+}
+
+/// Where this driver's finishing calls go, from its configuration.
+fn finish_target<'a>(
+    config: &'a Config,
+    client: &'a JobClient,
+    out_dir: &'a std::path::Path,
+) -> FinishTarget<'a> {
+    FinishTarget {
+        client,
+        artifacts_url: config.artifacts_url.as_deref(),
+        repos_url: config.repos_url.as_deref(),
+        job_id: &config.job_id,
+        job_token: &config.job_token,
+        out_dir,
+        upload_wait: config.upload_wait,
+        report_wait: config.report_wait,
+        attempt_timeout: Some(REPORT_ATTEMPT_TIMEOUT),
     }
-    // The run failed, but the driver did its job: it reported the failure with a
-    // specific reason. Exit successfully so the Job is not retried by the cluster.
-    ExitCode::SUCCESS
+}
+
+/// Which of the best-effort backend-store mirrors a finishing path makes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum MirrorSet {
+    /// A run that produced its record: every mirror.
+    All,
+    /// A failed run: the gg session record, which a `hung` or `timed_out` gg run
+    /// salvages into its tree even though it never reached artifact collection —
+    /// the replay of exactly the run most worth replaying.
+    Failed,
+    /// A canceled run the driver recorded itself: the gg session record a
+    /// cancellation that could not wind down cleanly still salvages, and the code
+    /// analysis, whatever did land in the run tree being the only account of the
+    /// run.
+    Canceled,
+}
+
+/// The best-effort mirrors of a run's media into the backend store, made by
+/// [`finish`] between the uploads and the terminal report. Each logs its own
+/// failure and never fails the run.
+struct BackendMirrors<'a> {
+    config: &'a Config,
+    set: MirrorSet,
+}
+
+impl<'a> BackendMirrors<'a> {
+    fn new(config: &'a Config, set: MirrorSet) -> Self {
+        Self { config, set }
+    }
+}
+
+impl Mirrors for BackendMirrors<'_> {
+    async fn mirror(&self, record: &test_cabinet_driver::RunRecord) {
+        let config = self.config;
+        if self.set == MirrorSet::All {
+            // For an adversarial run, mirror the controller wasm + proof replays into
+            // the *backend* store (the CLI does this at push). Without it a
+            // backend-driven run is invisible to the arena and its replays 404 — a
+            // no-op for any other run type.
+            finalize_adversarial_backend_upload(config, record).await;
+            // For a performance run, mirror each passing case's scored scenario the
+            // same way — browser playback fetches it from the backend store and
+            // re-simulates it. A no-op for any other run type.
+            finalize_performance_backend_upload(config, record).await;
+            // The run's proof-of-implementation media: the public snapshot reads proof
+            // from the backend store, so without this proof never reaches the
+            // published site.
+            finalize_proof_backend_upload(config, record).await;
+            // The run's synthesized *actual* validation media: the public snapshot
+            // reads it from the backend store for the reviewer's side-by-side.
+            finalize_validation_backend_upload(config, record).await;
+            // An asset-generation run's media (regenerated/preview image + action log).
+            finalize_asset_backend_upload(config, record).await;
+            // The run's showcase files (the carousel media and any image the
+            // description references), for the published Play tab.
+            finalize_showcase_backend_upload(config, record).await;
+        }
+        // A gg run's `.gg/replay.json` record, so `GET /runs/{id}/replay` can serve it
+        // to a replay driver. A no-op for any run that captured none.
+        finalize_replay_backend_upload(config, record).await;
+        if self.set != MirrorSet::Failed {
+            // The run's code-analysis document, for the per-run Code tab.
+            finalize_code_analysis_backend_upload(config, record).await;
+        }
+    }
 }

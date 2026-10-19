@@ -15,7 +15,8 @@
 //! A finished run is handed over twice: first in the held `storing` report
 //! ([`JobClient::post_status_storing`]), which the backend keeps against the job
 //! before the uploads begin, then in the terminal report, which also says whether
-//! the run tree was stored ([`StoreFields`]). Both are made under the driver's
+//! the run tree was stored ([`StoreFields`]), in the sequence
+//! [`finish`](crate::finish) makes. Both are made under the driver's
 //! [retry policy](crate::retry); [`ClientError::is_refused`] tells a request the
 //! backend refused, which ends the retrying at once, from every other failure.
 
@@ -301,9 +302,11 @@ impl JobClient {
     /// events the relay accumulated and attaches it to the job, so the killed run stays
     /// visible and inspectable in the run list.
     ///
-    /// Reached for a canceled [gg](crate::gg) run alone, the one harness with
-    /// a wind-down to ask for. A canceled run of any other is destroyed by the driver,
-    /// which posts nothing after the kill (see the [`cancel`](crate::cancel) module).
+    /// Reached for a canceled [gg](crate::gg) run, the one harness with a wind-down
+    /// to ask for, and for a run of any harness whose job is canceled while its
+    /// finishing waits (see [`finish`](crate::finish)). A run of any other harness
+    /// canceled before its finishing began is destroyed by the driver, which posts
+    /// nothing after the kill (see the [`cancel`](crate::cancel) module).
     pub async fn post_status_canceled(
         &self,
         record: RunRecord,

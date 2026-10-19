@@ -10,9 +10,10 @@
 //! to the backend to verify. Because that token was minted for the **job id** (a
 //! different UUID from the run/record id in the upload path, which is the store
 //! key), the driver sends its job id in the `x-tcab-job-id` header so the service
-//! verifies against the right job. The upload happens *before* the terminal status
-//! is posted, so by the time the console sees the run finish its artifacts are
-//! already servable.
+//! verifies against the right job. The upload happens after the held `storing`
+//! report and *before* the terminal status is posted (see
+//! [`finish`](crate::finish)), so by the time the console sees the run finish its
+//! artifacts are already servable.
 //!
 //! The driver's copy is the only one until the service acknowledges it, and the pod
 //! is discarded afterwards. So a failed upload is sorted into one of two
