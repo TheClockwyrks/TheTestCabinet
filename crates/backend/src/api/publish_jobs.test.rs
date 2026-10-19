@@ -94,6 +94,7 @@ fn terminal_from_row_reconstructs_succeeded_and_failed() {
         detail: None,
         created_at: "2026-06-27T00:00:00Z".to_string(),
         updated_at: "2026-06-27T00:01:00Z".to_string(),
+        lease_expires_at: None,
     };
     let result = terminal_from_row(&succeeded);
     assert_eq!(result.state, PublishState::Succeeded);
