@@ -3,9 +3,10 @@
 The scripts the Azure pipelines run. Azure Pipelines is the project's only CI: it
 gates every commit on Linux and Windows, mirrors gated commits to GitHub, builds
 every image into the Test Cabinet Azure Container Registry, deploys staging,
-production and the docs site, and publishes `tcab` and gg on a release tag. The
-GitHub repository is a mirror and runs nothing (see
-[`.github/README.md`](../../.github/README.md)).
+production and the docs site, and publishes `tcab` on a release tag. gg is built,
+tested and released by its own repository's pipeline; this one consumes the release
+the driver pins (`gg-release.sh`). The GitHub repository is a mirror and runs
+nothing (see [`.github/README.md`](../../.github/README.md)).
 
 Every job delegates to a script here or to a gate under [`ci/gates/`](../../ci/gates/),
 so a failing job reproduces locally by running the same command. The YAML names the
@@ -47,14 +48,13 @@ files it includes from [`.azure/project/`](../../.azure/project/), which are the
 project's own, and in the job and step templates under
 [`.azure/tcab/`](../../.azure/tcab/) those files and the release pipeline share.
 
-| Stage        | Owner    | Runs on                  | What it runs                                                                                                                                                                                                                                |
-| ------------ | -------- | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `gates`      | template | every run                | the template's `rust` and `web` jobs, one step per gate; then the project's jobs from `.azure/project/jobs.yml` (below)                                                                                                                     |
-| `publish`    | template | `staging`, gates passed  | `the-test-cabinet-backend`, built from `deployments/images/backend.Dockerfile` (a retag of `tcab-backend:<commit>`) by `build-image.sh`, pushed as `<commit>` and `latest`                                                                  |
-| `deploy`     | template | `staging`, after publish | environment `tcab-staging`: `.azure/project/deploy-steps.yml` before (`pre-deploy.sh`) and after (`settle-workloads.sh --after-failure`, on failure only) the template's `deploy.sh`, which runs `post-deploy.sh` once the backend is ready |
-| `prod`       | project  | `master`, gates passed   | `publish_backend` (the template's `.azure/publish-image.yml`, the same retag), then `deploy_prod` (environment `tcab-prod`) running `deploy-environment.sh prod <commit>`                                                                   |
-| `gg_release` | project  | `master`, gates passed   | `gg_publish`: `publish-gg.sh` uploads the `gg-<arch>` artifacts of the gates stage                                                                                                                                                          |
-| `docs`       | project  | `master` and `staging`   | `deploy-docs.sh <branch>` to the branch's Cloudflare Pages project                                                                                                                                                                          |
+| Stage     | Owner    | Runs on                  | What it runs                                                                                                                                                                                                                                |
+| --------- | -------- | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `gates`   | template | every run                | the template's `rust` and `web` jobs, one step per gate; then the project's jobs from `.azure/project/jobs.yml` (below)                                                                                                                     |
+| `publish` | template | `staging`, gates passed  | `the-test-cabinet-backend`, built from `deployments/images/backend.Dockerfile` (a retag of `tcab-backend:<commit>`) by `build-image.sh`, pushed as `<commit>` and `latest`                                                                  |
+| `deploy`  | template | `staging`, after publish | environment `tcab-staging`: `.azure/project/deploy-steps.yml` before (`pre-deploy.sh`) and after (`settle-workloads.sh --after-failure`, on failure only) the template's `deploy.sh`, which runs `post-deploy.sh` once the backend is ready |
+| `prod`    | project  | `master`, gates passed   | `publish_backend` (the template's `.azure/publish-image.yml`, the same retag), then `deploy_prod` (environment `tcab-prod`) running `deploy-environment.sh prod <commit>`                                                                   |
+| `docs`    | project  | `master` and `staging`   | `deploy-docs.sh <branch>` to the branch's Cloudflare Pages project                                                                                                                                                                          |
 
 ### The gates stage
 
@@ -71,7 +71,7 @@ script in this directory:
 
 `.azure/project/setup-steps.yml` adds, in the template's `rust` job, a second disk
 reclaim (`free-disk-linux.sh`, which also removes `/usr/local/lib/android`), Node and
-gg's toolchains (below) and a coloured cargo log; in its `web` job, the workspace
+the npm workspace (below) and a coloured cargo log; in its `web` job, the workspace
 packages (`npm run build:packages`) and Astro's telemetry off.
 `.azure/project/steps.yml` prunes the linked binaries (`cargo-target-prune.sh`)
 before the `rust` job's build output is cached. Both jobs run the project's gates and
@@ -82,50 +82,45 @@ immutable and some hold files those hooks would rewrite.
 
 The project's jobs, from `.azure/project/jobs.yml`:
 
-| Job                                        | Runs on                         | Runs in                           | Scripts                                                                                                                                                                                                                                                                               |
-| ------------------------------------------ | ------------------------------- | --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `paths`                                    | every run                       | hosted `ubuntu-24.04`             | `changed-paths.sh`, over a two-deep checkout: which of the check jobs below a pull request reaches, as the `detect.rust`, `detect.gg` and `detect.submodules` outputs                                                                                                                 |
-| `gg_tests_<k>_of_4` ×4                     | every push; a PR reaching gg    | Rust CI image, 120 min            | `gg-test-build.sh`, `gg-test.sh <k>/4`, `cargo-target-prune.sh`                                                                                                                                                                                                                       |
-| `rust_build`                               | every push; a PR reaching Rust  | Rust CI image, 150 min            | `rust-build.sh`, then `rust-build.sh --seed` when no seed is cached, `cargo-target-prune.sh`                                                                                                                                                                                          |
-| `binary_linux`                             | every push; a PR reaching Rust  | Rust CI image, 90 min             | `release-build.sh`, `release-test.sh`, `release-doctest.sh`, `binary-smoke.sh`, `cargo-target-prune.sh`                                                                                                                                                                               |
-| `binary_windows`                           | every push; a PR reaching Rust  | hosted `windows-2022`             | `install-nextest.sh`, then the same four and the prune, through Git Bash                                                                                                                                                                                                              |
-| `submodule_pins`                           | every push; a PR touching a pin | hosted `ubuntu-24.04`             | `submodule-pins.sh`, with the job token and a checkout of each submodule's repository                                                                                                                                                                                                 |
-| `gg_amd64`, `gg_arm64`                     | `master`, `staging`             | Rust CI image; arm64 pool         | `gg-dist.sh`, kept as the `gg-<arch>` artifact                                                                                                                                                                                                                                        |
-| `checks`                                   | every run                       | agentless                         | none: it succeeds when `paths` and the template's `rust` and `web` did, and every check job above did or was skipped by `paths`                                                                                                                                                       |
-| `mirror`                                   | `master`, `staging`, `nightly`  | hosted `ubuntu-24.04`             | `mirror.sh`, once `checks` passed and each gg build passed or was skipped; a failed push is a warning, not a failed stage                                                                                                                                                             |
-| `audiostore_<arch>`, `audiostore_manifest` | `master`, `staging`             | hosted amd64; arm64 pool          | `submodules.sh init --build-context`, `audio-store-image.sh`, then `manifest.sh`                                                                                                                                                                                                      |
-| `runimages_<arch>`, `runimages_manifest`   | `master`, `staging`             | hosted amd64; arm64 pool, 360 min | `submodules.sh init --build-context`, `free-disk-linux.sh` on both architectures, `report-disk.sh` either side of `run-images.sh` with this run's gg, then `manifest.sh` over `containers/image-names.sh` and the gg toolchain builder                                                |
-| `services_<arch>`, `services_manifest`     | `master`, `staging`             | hosted amd64; arm64 pool, 240 min | `submodules.sh init --build-context`, `free-disk-linux.sh` on amd64, `gg-prebuilt.sh` stages this run's `gg-<arch>`, then `service-images.sh`, which runs `service-image.sh` per service on one builder, `report-disk.sh` after it, then `manifest.sh` over the eight `tcab-*` images |
+| Job                                        | Runs on                         | Runs in                           | Scripts                                                                                                                                                                                                                               |
+| ------------------------------------------ | ------------------------------- | --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `paths`                                    | every run                       | hosted `ubuntu-24.04`             | `changed-paths.sh`, over a two-deep checkout: which of the check jobs below a pull request reaches, as the `detect.rust` and `detect.submodules` outputs                                                                              |
+| `rust_build`                               | every push; a PR reaching Rust  | Rust CI image, 150 min            | `rust-build.sh`, then `rust-build.sh --seed` when no seed is cached, `cargo-target-prune.sh`                                                                                                                                          |
+| `binary_linux`                             | every push; a PR reaching Rust  | Rust CI image, 90 min             | `release-build.sh`, `release-test.sh`, `release-doctest.sh`, `binary-smoke.sh`, `cargo-target-prune.sh`                                                                                                                               |
+| `binary_windows`                           | every push; a PR reaching Rust  | hosted `windows-2022`             | `install-nextest.sh`, then the same four and the prune, through Git Bash                                                                                                                                                              |
+| `submodule_pins`                           | every push; a PR touching a pin | hosted `ubuntu-24.04`             | `submodule-pins.sh`, with the job token and a checkout of each submodule's repository                                                                                                                                                 |
+| `checks`                                   | every run                       | agentless                         | none: it succeeds when `paths` and the template's `rust` and `web` did, and every check job above did or was skipped by `paths`                                                                                                       |
+| `mirror`                                   | `master`, `staging`, `nightly`  | hosted `ubuntu-24.04`             | `mirror.sh`, once `checks` passed; a failed push is a warning, not a failed stage                                                                                                                                                     |
+| `audiostore_<arch>`, `audiostore_manifest` | `master`, `staging`             | hosted amd64; arm64 pool          | `submodules.sh init --build-context`, `audio-store-image.sh`, then `manifest.sh`                                                                                                                                                      |
+| `runimages_<arch>`, `runimages_manifest`   | `master`, `staging`             | hosted amd64; arm64 pool, 360 min | `submodules.sh init --build-context`, `free-disk-linux.sh` on both architectures, `report-disk.sh` either side of `run-images.sh`, which self-checks with the pinned gg release, then `manifest.sh` over `containers/image-names.sh`  |
+| `services_<arch>`, `services_manifest`     | `master`, `staging`             | hosted amd64; arm64 pool, 240 min | `submodules.sh init --build-context`, `free-disk-linux.sh` on amd64, then `service-images.sh`, which runs `service-image.sh` per service on one builder, `report-disk.sh` after it, then `manifest.sh` over the eight `tcab-*` images |
 
-The **check jobs** are the template's `rust` and `web`, the gg test partitions,
+The **check jobs** are the template's `rust` and `web`,
 `rust_build`, both binary jobs and `submodule_pins`. A push runs them all; a pull
 request runs the template's two and the project ones its change reaches, which
-`paths` decides (`changed-paths.sh`, below). The image jobs wait on `checks`
-and both gg builds. They sit in the gates stage on purpose: the template's publish
+`paths` decides (`changed-paths.sh`, below). The image jobs wait on `checks`. They sit
+in the gates stage on purpose: the template's publish
 stage waits on that stage, so `tcab-backend:<commit>` (which `backend.Dockerfile`
 retags) and every image the staging overlay pins exist before it runs. Every image
 is built natively, amd64 on a hosted agent and arm64 on the organisation's pool
 `pool-dev-linux-arm64-wus3-4c-eph-01`, pushed as `<image>:<commit>-<arch>`, and
 fused by `manifest.sh` into the multi-arch `<image>:<commit>` a deployment pins.
 
-The **backend and driver images bake this run's gg** rather than linking one of their
-own. The services job of each architecture downloads the `gg-<arch>` artifact of the
-matching `gg_<arch>` job and `gg-prebuilt.sh <artifact-dir> <out-dir>` stages it: it
-checks that the binary runs on the agent and that the reference tarball unpacks, then
-writes `gg` and `gg-reference/`. `service-image.sh` reads that directory from
-`TCAB_PREBUILT_GG`, for `backend` and `driver` only, and passes it as
-`--build-context gg-build=<dir>`, which
-replaces the `gg-build` stage of `deployments/images/services.Dockerfile`. So the
-driver bakes the binary the run images were self-checked against and the backend the
-documents it projected, instead of a second, ungated link. The stage itself remains
-for the offline local build (`make -C deployments/local images`), which no pipeline
-job exercises any more. `gg-dist.sh` packs `gg-reference.tar.gz` on both
-architectures for this, so `gg reference --out` is gated on each; the documents are
-architecture-independent, and `gg_publish` copies the three objects it uploads by
-name, taking the x86_64 tarball.
+The **backend and driver images bake the pinned gg release** rather than building gg.
+The `gg-release` stage of `deployments/images/services.Dockerfile` runs
+`gg-release.sh fetch`, which reads the version the driver compiles in
+(`crates/driver/gg-release-version`), downloads the static `gg-<target>` of the
+build's architecture and `gg-reference.tar.gz` from the `gg-releases` container,
+refuses a binary whose `gg --version` is not that version and a tarball without
+`gg-reference/index.json`, and writes `gg` and `gg-reference/`. The driver bakes the
+binary at `/usr/local/lib/tcab/gg` (`TCAB_GG_BINARY`) and the backend the documents
+at `/opt/gg-reference` (`TCAB_GG_REFERENCE`). The stage's cache is keyed on the pin
+file and the two scripts alone, so a bump of the pin is what fetches it again. The run
+images' `gg selfcheck` uses the same fetch, and their `-gg` variants copy the
+toolchain image `gg-release.sh toolchains-image` names, which gg's pipeline pushes.
 
 **One job builds the eight service images of an architecture.** `services_<arch>` waits
-on `checks`, both gg builds and `audiostore_manifest` (the driver bakes the audio
+on `checks` and `audiostore_manifest` (the driver bakes the audio
 store), and `service-images.sh` runs `service-image.sh` once per service, in the order
 backend, auth, dispatcher, driver, artifacts, arena, publisher, web, on one
 `docker-container` builder (`tcab-ci`). The `build` stage of
@@ -188,13 +183,6 @@ repository it cannot read stops it.
 
 ### The Rust jobs and their caches
 
-gg's unit tests are not in the template's `rust-test` gate. That gate runs the whole
-workspace in one job capped at 120 minutes, and gg's suite alone takes longer, so
-`crates/gg/Cargo.toml` sets `test = false` on gg's lib and bin, and `gg-test.sh`
-runs the suite with `cargo nextest run -p test-cabinet-gg --lib`, whose `--lib`
-overrides it. `make gate` therefore does not run gg's tests; a change under
-`crates/gg/` runs `scripts/ci/gg-test.sh` too.
-
 Every project job that compiles Rust in a container runs in the template's Rust CI
 image at the commit `ci/images/tags.yml` pins as `ciImageTag`. A template cannot
 read that variable, so the root pipelines name the image,
@@ -213,14 +201,11 @@ Those jobs take the template `rust` job's variables (`CARGO_HOME` under
 `line-tables-only`) and the same first steps, from `.azure/tcab/rust-job-steps.yml`,
 so what they compile carries the fingerprints that job's would:
 
-| Cache (key prefix)           | Path                                  | Saved by                                                              | Restored by                                                                 |
-| ---------------------------- | ------------------------------------- | --------------------------------------------------------------------- | --------------------------------------------------------------------------- |
-| `cargo-home \| v1`           | `$(Pipeline.Workspace)/ci-cache`      | the template's `rust` job and every Rust container job                | the same                                                                    |
-| `gg-toolchains \| v1`        | `$(Pipeline.Workspace)/gg-toolchains` | every job taking `.azure/tcab/gg-toolchains-steps.yml`                | the same, per flavor (Rust CI image or host)                                |
-| `cargo-target \| v1`         | `target`                              | the template's `rust` job; `rust_build` with the `"tcab-seed"` suffix | the template's `rust` job, whose restore key matches the seed; `rust_build` |
-| `cargo-target-gg \| v1`      | `target`                              | `gg_tests_<k>_of_4`                                                   | the same                                                                    |
-| `cargo-target-release \| v1` | `target`                              | `binary_linux`                                                        | the same                                                                    |
-| `cargo-target-gg-dist \| v1` | `target`                              | `gg_amd64`                                                            | the same                                                                    |
+| Cache (key prefix)           | Path                             | Saved by                                                              | Restored by                                                                 |
+| ---------------------------- | -------------------------------- | --------------------------------------------------------------------- | --------------------------------------------------------------------------- |
+| `cargo-home \| v1`           | `$(Pipeline.Workspace)/ci-cache` | the template's `rust` job and every Rust container job                | the same                                                                    |
+| `cargo-target \| v1`         | `target`                         | the template's `rust` job; `rust_build` with the `"tcab-seed"` suffix | the template's `rust` job, whose restore key matches the seed; `rust_build` |
+| `cargo-target-release \| v1` | `target`                         | `binary_linux`                                                        | the same                                                                    |
 
 Cache@2 saves only after every step of a job succeeded. So a cold template `rust`
 job that outlasts its 120 minutes would never warm itself; **the seed** is what warms
@@ -231,15 +216,12 @@ saved under a key the `rust` job's restore key matches. A failing seed is report
 does not fail the job. Expect the first run after adoption, a `rust-toolchain.toml`
 bump or a cache expiry to be slow, and the template's `rust` job to need a second run.
 
-**gg's toolchains and Node** come from `gg-ci-toolchains.sh <cache-dir>`, the one
-provisioner for every job that builds or tests Rust (its header has the detail). It
-installs Node at the `NODE_VERSION` pin into the cache, links the install locations
-under `$HOME` into it, and runs `install-gg-toolchains.sh` and
-`install-gg-build-toolchains.sh`, which are idempotent against their pins, so a warm
-cache costs seconds. The one download a warm cache cannot avoid is the
-`wasm32-wasip1` standard library, which `install-rust-wasm.sh` adds to the image's
-toolchain outside the cache. `--node-only` provisions Node alone, for
-`binary_linux`, the audio store and the docs.
+**Node** comes from `provision-node.sh <dir>`, through
+`.azure/tcab/node-steps.yml`, for every job that builds or tests Rust, the audio store
+and the docs. It installs Node at the `NODE_VERSION` pin of the dev container's
+compose file into `<dir>/node` and puts it on PATH for the job's later steps; the
+steps' `npmInstall` parameter adds `npm-install.sh`, which the Rust jobs other than
+`binary_linux` take.
 
 ## The release pipeline
 
@@ -256,48 +238,47 @@ minutes.
 
 Then, from the same job templates as the main pipeline: `binary_linux` and
 `binary_windows`, publishing the smoke-tested `tcab-linux` and `tcab-windows`
-artifacts; `gg_amd64` and `gg_arm64`, each running `gg-version-gate.sh`, which fails
-a gg whose version is not the tag's; `gg_publish`; and `mirror`, which pushes the tag.
+artifacts, and `mirror`, which pushes the tag. gg is released by its own repository.
 
 ## Scripts
 
-| Script                                                                                                | What it does                                                                                                                                                                    | Test                                  |
-| ----------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------- |
-| `gg-ci-toolchains.sh <cache-dir> [--node-only]`                                                       | Node at the pin, `$HOME`'s install locations linked into the cache, gg's toolchains; `##vso` PATH lines for later steps                                                         | `gg-ci-toolchains.test.sh`            |
-| `changed-paths.sh [--reason <Build.Reason>] [--paths-from <file>]`                                    | which check-job groups a pull request reaches, from the merge commit's diff against its first parent, as `##vso` output variables; every group on any other run                 | `changed-paths.test.sh`               |
-| `require-gated-commit.sh <commit> <source-ref>`                                                       | the release gate above, through the Azure DevOps REST API and the job token                                                                                                     | `require-gated-commit.test.sh`        |
-| `rust-build.sh [--seed]`                                                                              | `cargo build --workspace --all-targets`, the only check that links every target; `--seed` builds what the template's `rust` job compiles                                        | `rust-build.test.sh`                  |
-| `gg-test-build.sh`                                                                                    | `cargo nextest run --no-run -p test-cabinet-gg --lib`, what `gg-test.sh` runs                                                                                                   | `gg-test-build.test.sh`               |
-| `gg-test.sh [k/N]`                                                                                    | gg's suite, `cargo nextest run -p test-cabinet-gg --lib`, whole or one `hash:k/N` partition                                                                                     | `gg-test.test.sh`                     |
-| `cargo-target-prune.sh`                                                                               | remove what cargo linked from `target/`, so a saved build output holds the libraries and fits the agent's disk                                                                  | `cargo-target-prune.test.sh`          |
-| `free-disk-linux.sh`                                                                                  | remove the hosted image's unused SDKs, `/usr/local/lib/android` included, and its preloaded container images, best-effort; readings from `report-disk.sh` either side           | `free-disk-linux.test.sh`             |
-| `report-disk.sh [label]`                                                                              | print the room left on `/`, the container store and the agent work folder, and `docker system df`; always exits 0                                                               | `report-disk.test.sh`                 |
-| `install-gg-toolchains.sh`                                                                            | every toolchain a gg run and gg's reflectors execute (about 1.9 GB), from the per-arm `install-*.sh`                                                                            | `install-gg-toolchains.test.sh`       |
-| `install-gg-build-toolchains.sh`                                                                      | the full .NET SDK and wasi-sdk only the C# guest's link needs (about 1.4 GB; in the devcontainer the SDK is linked to the dotnet image's)                                       | `install-gg-build-toolchains.test.sh` |
-| `gg-image-toolchains.sh`                                                                              | in the devcontainer only, link gg's arms' default homes to the template's language images before the installers run, failing on a pin the image does not hold                   | `gg-image-toolchains.test.sh`         |
-| `install-gg-build-tools.sh`                                                                           | warm the package-manager-delivered tools gg's artifact builds resolve, so `cargo build` stays offline                                                                           | `install-gg-build-tools.test.sh`      |
-| `install-nextest.sh`                                                                                  | cargo-nextest at `NEXTEST_VERSION`, for the Windows leg                                                                                                                         | `install-nextest.test.sh`             |
-| `install-playwright-chromium.sh`                                                                      | Playwright's Chromium and its system libraries at the `PLAYWRIGHT_IMAGE` tag, started once, for a machine outside the devcontainer; run as root                                 | `install-playwright-chromium.test.sh` |
-| `release-build.sh`, `release-test.sh`, `release-doctest.sh`                                           | release build, nextest run and doctests of `test-cabinet-{contracts,suites,engines,core,cli}`                                                                                   | each its `<name>.test.sh`             |
-| `binary-smoke.sh`, `smoke-binary.sh`                                                                  | hand the release `tcab` to the smoke check, and the check itself (`--version`, `--help`, the documented commands listed and the removed ones not)                               | each its `<name>.test.sh`             |
-| `submodule-pins.sh [--branch <b>]`                                                                    | every submodule pin is an ancestor of that submodule's branch of the same name, or of its `master`, fetched commits-only                                                        | `submodule-pins.test.sh`              |
-| `submodules.sh init\|list [--build-context] [<path>...]`, `submodules.sh check`                       | initialize only the named submodules, and those the root `.dockerignore` admits, one deep and never recursively; `check` holds the `submodule_pins` job's list to `.gitmodules` | `submodules.test.sh`                  |
-| `gg-dist.sh <out-dir>`                                                                                | the static musl `gg-<target>` for this architecture, plus `gg-reference.tar.gz` on both                                                                                         | `gg-dist.test.sh`                     |
-| `gg-version-gate.sh <gg> <ref>`                                                                       | on a tag, `gg --version` must equal the tag without its `v`                                                                                                                     | `gg-version-gate.test.sh`             |
-| `publish-gg.sh <dist-dir> <ref>`                                                                      | re-run the version gate, upload gg's objects to `v<version>/` in the `gg-releases` container                                                                                    | `publish-gg.test.sh`                  |
-| `mirror.sh [--url <mirror>] [--allow-rewrite] <key-file> <ref>`                                       | push the built branch with its tags, or the tag, to the declared mirror, refusing a non-ancestor head                                                                           | `mirror.test.sh`                      |
-| `audio-store-image.sh <commit>`                                                                       | build and push `test-cabinet-audio-store:<commit>-<arch>`                                                                                                                       | `audio-store-image.test.sh`           |
-| `run-images.sh <gg> <commit>`                                                                         | every run-container image, self-checked with `gg selfcheck`, pushed per architecture, reclaiming disk as it goes (`RECLAIM=1`)                                                  | `run-images.test.sh`                  |
-| `run-image-inputs.sh [<name>...]`                                                                     | the inputs table `run-images.sh` hands `containers/build.sh` as `REUSE_INPUTS`: one `<name> <digest> <parents>` line per run image and builder, from the index                  | `run-image-inputs.test.sh`            |
-| `gg-prebuilt.sh <artifact-dir> <out-dir>`                                                             | stage a `gg-<arch>` artifact as the `gg-build` build context the backend and driver bake, checking it first                                                                     | `gg-prebuilt.test.sh`                 |
-| `service-image.sh <service> <commit>`                                                                 | one service image, pushed per architecture; `TCAB_PREBUILT_GG` replaces the `gg-build` stage for `backend` and `driver`                                                         | `service-image.test.sh`               |
-| `service-images.sh <commit>`                                                                          | every service image of one architecture, on one builder: `service-image.sh` per service in a fixed order                                                                        | `service-images.test.sh`              |
-| `registry-purge.sh [--dry-run] [--keep <sha>]... [--keep-count <n>] [--no-cluster]`                   | delete the `tcab-*` and `test-cabinet-*` images no environment runs, after each deployment; the policy is under _Registry retention_                                            | `registry-purge.test.sh`              |
-| `ci-image-purge.sh [--dry-run] <rust\|rust-browser\|web>`                                             | delete the track's CI images no live branch pins in `ci/images/tags.yml` or a submodule repository's pipeline, after the CI-images pipeline pushes                              | `ci-image-purge.test.sh`              |
-| `manifest.sh <commit> <image>...`                                                                     | fuse each image's two architecture tags into the multi-arch `<commit>` tag                                                                                                      | `manifest.test.sh`                    |
-| `deploy-environment.sh <staging\|prod> <commit>`                                                      | roll an environment's cluster to one commit's images and wait on every workload; `--render` prints the set                                                                      | `deploy-environment.test.sh`          |
-| `pre-deploy.sh`, `post-deploy.sh`, `settle-workloads.sh`, `pin-images.sh`, `retire-legacy-backend.sh` | the staging deploy's project steps around the template's `deploy.sh`; each header says what it does                                                                             | each has its `.test.sh`               |
-| `deploy-docs.sh <branch>`                                                                             | build `apps/docs` and deploy it to `test-cabinet-docs` (`master`) or `test-cabinet-docs-staging` (`staging`)                                                                    | `deploy-docs.test.sh`                 |
+| Script                                                                                                | What it does                                                                                                                                                                     | Test                                  |
+| ----------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------- |
+| `provision-node.sh <dir>`                                                                             | Node at the dev container's `NODE_VERSION` pin into `<dir>/node`, and the `##vso` PATH line for later steps                                                                      | `provision-node.test.sh`              |
+| `changed-paths.sh [--reason <Build.Reason>] [--paths-from <file>]`                                    | which check-job groups a pull request reaches, from the merge commit's diff against its first parent, as `##vso` output variables; every group on any other run                  | `changed-paths.test.sh`               |
+| `require-gated-commit.sh <commit> <source-ref>`                                                       | the release gate above, through the Azure DevOps REST API and the job token                                                                                                      | `require-gated-commit.test.sh`        |
+| `rust-build.sh [--seed]`                                                                              | `cargo build --workspace --all-targets`, the only check that links every target; `--seed` builds what the template's `rust` job compiles                                         | `rust-build.test.sh`                  |
+| `gg-test-build.sh`                                                                                    | `cargo nextest run --no-run -p test-cabinet-gg --lib`, what `gg-test.sh` runs                                                                                                    | `gg-test-build.test.sh`               |
+| `gg-test.sh [k/N]`                                                                                    | gg's suite, `cargo nextest run -p test-cabinet-gg --lib`, whole or one `hash:k/N` partition                                                                                      | `gg-test.test.sh`                     |
+| `cargo-target-prune.sh`                                                                               | remove what cargo linked from `target/`, so a saved build output holds the libraries and fits the agent's disk                                                                   | `cargo-target-prune.test.sh`          |
+| `free-disk-linux.sh`                                                                                  | remove the hosted image's unused SDKs, `/usr/local/lib/android` included, and its preloaded container images, best-effort; readings from `report-disk.sh` either side            | `free-disk-linux.test.sh`             |
+| `report-disk.sh [label]`                                                                              | print the room left on `/`, the container store and the agent work folder, and `docker system df`; always exits 0                                                                | `report-disk.test.sh`                 |
+| `install-gg-toolchains.sh`                                                                            | every toolchain a gg run and gg's reflectors execute (about 1.9 GB), from the per-arm `install-*.sh`                                                                             | `install-gg-toolchains.test.sh`       |
+| `install-gg-build-toolchains.sh`                                                                      | the full .NET SDK and wasi-sdk only the C# guest's link needs (about 1.4 GB; in the devcontainer the SDK is linked to the dotnet image's)                                        | `install-gg-build-toolchains.test.sh` |
+| `gg-image-toolchains.sh`                                                                              | in the devcontainer only, link gg's arms' default homes to the template's language images before the installers run, failing on a pin the image does not hold                    | `gg-image-toolchains.test.sh`         |
+| `install-gg-build-tools.sh`                                                                           | warm the package-manager-delivered tools gg's artifact builds resolve, so `cargo build` stays offline                                                                            | `install-gg-build-tools.test.sh`      |
+| `install-nextest.sh`                                                                                  | cargo-nextest at `NEXTEST_VERSION`, for the Windows leg                                                                                                                          | `install-nextest.test.sh`             |
+| `install-playwright-chromium.sh`                                                                      | Playwright's Chromium and its system libraries at the `PLAYWRIGHT_IMAGE` tag, started once, for a machine outside the devcontainer; run as root                                  | `install-playwright-chromium.test.sh` |
+| `release-build.sh`, `release-test.sh`, `release-doctest.sh`                                           | release build, nextest run and doctests of `test-cabinet-{contracts,suites,engines,core,cli}`                                                                                    | each its `<name>.test.sh`             |
+| `binary-smoke.sh`, `smoke-binary.sh`                                                                  | hand the release `tcab` to the smoke check, and the check itself (`--version`, `--help`, the documented commands listed and the removed ones not)                                | each its `<name>.test.sh`             |
+| `submodule-pins.sh [--branch <b>]`                                                                    | every submodule pin is an ancestor of that submodule's branch of the same name, or of its `master`, fetched commits-only                                                         | `submodule-pins.test.sh`              |
+| `submodules.sh init\|list [--build-context] [<path>...]`, `submodules.sh check`                       | initialize only the named submodules, and those the root `.dockerignore` admits, one deep and never recursively; `check` holds the `submodule_pins` job's list to `.gitmodules`  | `submodules.test.sh`                  |
+| `gg-dist.sh <out-dir>`                                                                                | the static musl `gg-<target>` for this architecture, plus `gg-reference.tar.gz` on both                                                                                          | `gg-dist.test.sh`                     |
+| `gg-version-gate.sh <gg> <ref>`                                                                       | on a tag, `gg --version` must equal the tag without its `v`                                                                                                                      | `gg-version-gate.test.sh`             |
+| `publish-gg.sh <dist-dir> <ref>`                                                                      | re-run the version gate, upload gg's objects to `v<version>/` in the `gg-releases` container                                                                                     | `publish-gg.test.sh`                  |
+| `mirror.sh [--url <mirror>] [--allow-rewrite] <key-file> <ref>`                                       | push the built branch with its tags, or the tag, to the declared mirror, refusing a non-ancestor head                                                                            | `mirror.test.sh`                      |
+| `audio-store-image.sh <commit>`                                                                       | build and push `test-cabinet-audio-store:<commit>-<arch>`                                                                                                                        | `audio-store-image.test.sh`           |
+| `gg-release.sh version\|toolchains-image\|fetch <out-dir>`                                            | the gg release the driver pins: its version, the toolchain image the `-gg` variants copy, or the binary and reference documents, checked                                         | `gg-release.test.sh`                  |
+| `run-images.sh <commit>`                                                                              | every run-container image, self-checked with `gg selfcheck` (`TCAB_GG_BINARY`, or the pinned release fetched), pushed per architecture, reclaiming disk as it goes (`RECLAIM=1`) | `run-images.test.sh`                  |
+| `run-image-inputs.sh [<name>...]`                                                                     | the inputs table `run-images.sh` hands `containers/build.sh` as `REUSE_INPUTS`: one `<name> <digest> <parents>` line per run image and builder, from the index                   | `run-image-inputs.test.sh`            |
+| `service-image.sh <service> <commit>`                                                                 | one service image, pushed per architecture                                                                                                                                       | `service-image.test.sh`               |
+| `service-images.sh <commit>`                                                                          | every service image of one architecture, on one builder: `service-image.sh` per service in a fixed order                                                                         | `service-images.test.sh`              |
+| `registry-purge.sh [--dry-run] [--keep <sha>]... [--keep-count <n>] [--no-cluster]`                   | delete the `tcab-*` and `test-cabinet-*` images no environment runs, after each deployment; the policy is under _Registry retention_                                             | `registry-purge.test.sh`              |
+| `ci-image-purge.sh [--dry-run] <rust\|rust-browser\|web>`                                             | delete the track's CI images no live branch pins in `ci/images/tags.yml` or a submodule repository's pipeline, after the CI-images pipeline pushes                               | `ci-image-purge.test.sh`              |
+| `manifest.sh <commit> <image>...`                                                                     | fuse each image's two architecture tags into the multi-arch `<commit>` tag                                                                                                       | `manifest.test.sh`                    |
+| `deploy-environment.sh <staging\|prod> <commit>`                                                      | roll an environment's cluster to one commit's images and wait on every workload; `--render` prints the set                                                                       | `deploy-environment.test.sh`          |
+| `pre-deploy.sh`, `post-deploy.sh`, `settle-workloads.sh`, `pin-images.sh`, `retire-legacy-backend.sh` | the staging deploy's project steps around the template's `deploy.sh`; each header says what it does                                                                              | each has its `.test.sh`               |
+| `deploy-docs.sh <branch>`                                                                             | build `apps/docs` and deploy it to `test-cabinet-docs` (`master`) or `test-cabinet-docs-staging` (`staging`)                                                                     | `deploy-docs.test.sh`                 |
 
 Every script in this directory has its table test beside it, `<name>.test.sh`, the
 ones not listed above included: the per-arm installers (`install-java.sh`,
@@ -315,15 +296,15 @@ script calls on `PATH`, no network, no registry and no cluster.
 
 No job holds a stored credential of its own:
 
-| Name                                                                                                                                                | Kind                                                                             | Used by                                                                                 |
-| --------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
-| `the-test-cabinet-acr`                                                                                                                              | Docker Registry connection (workload identity), `AcrPush` and `AcrDelete`        | every container job's image pull, the image jobs' pushes, the CI images and their purge |
-| `tcab-deploy`                                                                                                                                       | Azure Resource Manager connection (workload identity), `AcrPush` and `AcrDelete` | the publish stage and `publish_backend`, both deploys and the registry purge after each |
-| `tcab-gg-publish`                                                                                                                                   | Azure Resource Manager connection (workload identity)                            | `gg_publish` (Storage Blob Data Contributor on `testcabinetartifacts`)                  |
-| `github-mirror-key`                                                                                                                                 | secure file, a deploy key with write access to the mirror                        | `mirror`                                                                                |
-| `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`                                                                                                     | secret pipeline variables                                                        | `docs`                                                                                  |
-| `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_AUDIO_R2_BUCKET`, `CLOUDFLARE_AUDIO_R2_PRESIGN_ACCESS_KEY_ID`, `CLOUDFLARE_AUDIO_R2_PRESIGN_SECRET_ACCESS_KEY` | secret pipeline variables                                                        | `audiostore_<arch>`                                                                     |
-| the job token (`System.AccessToken`)                                                                                                                | per run                                                                          | `submodule_pins`; the release gate, which may view and queue main runs                  |
+| Name                                                                                                                                                | Kind                                                                             | Used by                                                                                                       |
+| --------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `the-test-cabinet-acr`                                                                                                                              | Docker Registry connection (workload identity), `AcrPush` and `AcrDelete`        | every container job's image pull, the image jobs' pushes, the CI images and their purge                       |
+| `tcab-deploy`                                                                                                                                       | Azure Resource Manager connection (workload identity), `AcrPush` and `AcrDelete` | the publish stage and `publish_backend`, both deploys and the registry purge after each                       |
+| `tcab-gg-publish`                                                                                                                                   | Azure Resource Manager connection (workload identity)                            | none since gg's release moved to its own repository (Storage Blob Data Contributor on `testcabinetartifacts`) |
+| `github-mirror-key`                                                                                                                                 | secure file, a deploy key with write access to the mirror                        | `mirror`                                                                                                      |
+| `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`                                                                                                     | secret pipeline variables                                                        | `docs`                                                                                                        |
+| `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_AUDIO_R2_BUCKET`, `CLOUDFLARE_AUDIO_R2_PRESIGN_ACCESS_KEY_ID`, `CLOUDFLARE_AUDIO_R2_PRESIGN_SECRET_ACCESS_KEY` | secret pipeline variables                                                        | `audiostore_<arch>`                                                                                           |
+| the job token (`System.AccessToken`)                                                                                                                | per run                                                                          | `submodule_pins`; the release gate, which may view and queue main runs                                        |
 
 `tcab-deploy` holds "Azure Kubernetes Service RBAC Admin" on each cluster's
 application namespace and the custom "Test Cabinet AKS Command Invoke" role

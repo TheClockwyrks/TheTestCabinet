@@ -238,131 +238,61 @@
 # containers/README.md#the-shippable-test-cabinet-packages). The script is the one
 # extra file that build needs beyond the console's slice, so re-include it.
 !/scripts/stage-tcab-packages.mjs
-# The driver service image (services.Dockerfile, `--target driver`) bakes in a
-# static-musl `gg` harness, building it in a stage that runs
-# scripts/build-gg-static.sh (which `cargo build`s test-cabinet-gg for the musl
-# target). That build reaches much further into this repository than a `cargo build`
-# normally does, and the next three blocks are why.
-#
-# COMPILING gg NOW MEANS REFLECTING ELEVEN SDKs — AND BUILDING EVERY ONE OF THEIR
-# ARTIFACTS. gg's responses-as-code capability drives a model in one of eleven program
-# languages, and TWO things per arm are generated on the way to a gg binary.
-#
-# What the model is *told* each language offers — every module, signature, argument, type
-# and type member — is a signature catalogue reflected out of that language's own SDK by
-# that language's own documentation tool. Those catalogues used to be committed under
-# crates/gg/src/sandbox/guests/, which is what let this stage compile gg from crates/
-# alone. They are not committed any more: crates/gg/build.rs runs
-# scripts/gg-signatures.sh on every build, so the catalogue embedded in a gg binary is
-# reflected from the SDK sources of the same checkout and cannot describe a surface the
-# guest does not export.
-#
-# What a model's program is COMPILED AND EVALUATED AGAINST went the same way, one arm at
-# a time, and the move is COMPLETE: an SDK jar, a compiler, a compiled library set, a
-# guest archive, and finally the four baked interpreters — the TypeScript/JavaScript,
-# Python, Ruby and C# guest components, 14 to 35 MB apiece. Every arm has a crate under
-# crates/gg-sandbox-artifacts/ whose build script runs that arm's
-# packages/gg-sandbox*/build.sh into its own OUT_DIR, and crates/gg include_bytes!s the
-# result. So this stage does not merely read those packages' sources — it compiles them,
-# and crates/gg/src/sandbox/guests/ does not exist any more.
-#
-# ONE ARM COSTS THIS STAGE SOMETHING THE OTHERS DO NOT, and it is not a context entry:
-# csharp's build wants a whole .NET SDK and an unpruned wasi-sdk, ~1.4 GB installed by
-# scripts/ci/install-gg-build-toolchains.sh — which is NOT part of the eleven-arm
-# install-gg-toolchains.sh list every image already runs. A stage that builds gg needs
-# both lists. That is a Dockerfile concern rather than a context one, and it is recorded
-# here because this is where somebody reading "why does gg need all of packages/" will
-# look for the rest of the price.
-#
-# The price of both is paid right here: the ten guest packages and the scripts that
-# reflect and build them are build inputs of the driver image now, exactly as crates/ is.
-#
-# So the whole of every guest package rides along. Each is a few hundred kB of sources,
-# tools and pins (the big directories inside them — .build/, .spago/, output/ — are
-# re-excluded at the end of this file), and each is named as a directory rather than as
-# a file list on purpose: a reflection reads an arm's whole `src`/`Sources` tree, and
-# the failure mode of missing one file is not a warning but "no such file" partway
-# through an image build, minutes in.
+# THE gg GUEST PACKAGES, whole. No image compiles gg any more: the driver and backend
+# images fetch the gg release the driver pins (services.Dockerfile's `gg-release` stage).
+# Two readers are left. The devcontainer image's gg layer (.devcontainer/ubuntu.dockerfile)
+# installs gg's program-language toolchains with the installers under scripts/ci, against
+# a slice of these packages it stages file by file: every arm's pin, the files those pins
+# read, and the Rust arm's and the ECMAScript guest's lockfiles, which an installer fetches
+# by directory. And crates/gg is still a member of this workspace, whose `include_str!`
+# sources reach into the packages like any member's (scripts/ci/build-context.sh holds
+# every member's to this file), so each package is named as a directory rather than as the
+# slice's file list.
 !/packages/gg-sandbox
 !/packages/gg-sandbox-python
 !/packages/gg-sandbox-ruby
 !/packages/gg-sandbox-purescript
 !/packages/gg-sandbox-java
+!/packages/gg-sandbox-jvm
 !/packages/gg-sandbox-kotlin
 !/packages/gg-sandbox-rust
 !/packages/gg-sandbox-swift
 !/packages/gg-sandbox-cpp
 !/packages/gg-sandbox-csharp
-# The eleventh entry is not an arm, and that is exactly why it was missed: nothing is
-# compiled or reflected out of `packages/gg-sandbox-jvm` on its own. It holds the
-# canonical ABI, the wire encoding and the one vendored TeaVM runtime class that the java
-# and kotlin arms BOTH compile into their own jars, so it is an input of two builds while
-# looking like the package of none. Its absence took a `make local-rebuild` down
-# mid-`cargo build` with `find: '/src/packages/gg-sandbox-jvm/src': No such file or
-# directory`, reported by the kotlin arm's crate rather than by a COPY — which is why the
-# COPY-reading half of scripts/ci/build-context.sh could not see it coming, and why that
-# script now also asserts every `packages/gg-sandbox*` directory survives this file.
-!/packages/gg-sandbox-jvm
-# And the scripts that drive all of that, which is a CLOSURE rather than a file: the
-# gg-build stage runs scripts/build-gg-static.sh, whose cargo build runs
-# scripts/gg-signatures.sh, which runs the ten per-arm reflectors; the stage separately
-# runs scripts/ci/install-gg-toolchains.sh, which runs eight per-arm installers and
-# sources scripts/ci/tcab-lib.sh beside them. The two entry points are named. The installer
-# family is admitted as a DIRECTORY, because enumerating that half is precisely the trap
-# this file's own history records twice — the Blender helpers and the Java arm's
-# installer — and because it is the half that grows every time an arm is added. (The
-# per-arm installer entries enumerated further up are now redundant with this, and stay:
-# they exist for containers/gg-toolchains/Dockerfile, which COPYs each one BY NAME, and
-# scripts/ci/build-context.sh reads this file path by path to check those named COPYs. A
-# reader deleting one of them should have to think about that first.)
-#
-# What is deliberately NOT admitted is scripts/ as a whole, and the reason is this file's
-# opening paragraph. Seven Dockerfiles built from this context do `COPY . .` — the shared
-# asset-tooling builder that compiles ~20 Rust binaries, the adversarial and performance
-# run images, the web console image and all three service targets — so anything admitted
-# here busts the layer cache of every one of them. The ten guest packages above are worth
-# that: the driver image genuinely compiles their reflections into the binary it bakes.
-# The ~30 unrelated top-level scripts (media backfills, cluster re-ingests, sample-pack
-# tooling) are not, and admitting them would mean editing any
-# one of them recompiled the asset tooling from scratch.
-!/scripts/build-gg-static.sh
-# The gg build's own shared shell, ENUMERATED, and the enumeration is load-bearing.
-# `gg-signatures.sh` and `gg-artifacts.sh` both source `gg-arms.sh` (the one list of the arms),
-# every arm's `build.sh` sources `gg-artifacts-out-dir.sh`, and the pinned-download and npm-tool
-# resolvers are sourced by the arms' `bindings.sh` and by two installers. This used to be one
-# line, `!/scripts/gg-*.sh`, and it cannot be: A RE-INCLUSION MUST NEVER CARRY A WILDCARD.
-# BuildKit's context sender skips an ignored directory outright only while it can prove no
-# negated pattern is rooted beneath it, and it proves that by string prefix — so the moment ANY
-# `!` pattern in this file contains a `*`, `?` or `[`, the proof is off for every directory and
-# the sender walks the ENTIRE working tree (node_modules, target/, tmp/ — ~650,000 entries on a
-# developer machine) to ship the ~200 kB it keeps. That cost twenty seconds per build, and it
-# meant one unreadable entry anywhere in the tree — a transient `bad file descriptor` on a
-# shared mount, under tmp/, in a directory no image reads — failed `make local-rebuild`. A
-# literal list keeps the walk to the paths named here. scripts/ci/build-context.sh enforces
-# both halves: no negation anywhere in an allowlist may contain a wildcard, and every tracked
-# `scripts/gg-*.sh` must still survive this file, so the list below cannot silently fall behind.
+# gg's shared build shell, ENUMERATED, and the enumeration is load-bearing: the
+# devcontainer image COPYs `./scripts/gg-*.sh`, which takes whatever this file admits. This
+# used to be one line, `!/scripts/gg-*.sh`, and it cannot be: A RE-INCLUSION MUST NEVER
+# CARRY A WILDCARD. BuildKit's context sender skips an ignored directory outright only while
+# it can prove no negated pattern is rooted beneath it, and it proves that by string prefix —
+# so the moment ANY `!` pattern in this file contains a `*`, `?` or `[`, the proof is off for
+# every directory and the sender walks the ENTIRE working tree (node_modules, target/, tmp/ —
+# ~650,000 entries on a developer machine) to ship the ~200 kB it keeps. That cost twenty
+# seconds per build, and it meant one unreadable entry anywhere in the tree — a transient
+# `bad file descriptor` on a shared mount, under tmp/, in a directory no image reads — failed
+# `make local-rebuild`. A literal list keeps the walk to the paths named here.
+# scripts/ci/build-context.sh enforces both halves: no negation anywhere in an allowlist may
+# contain a wildcard, and every tracked `scripts/gg-*.sh` must still survive this file, so the
+# list below cannot silently fall behind.
 !/scripts/gg-arms.sh
 !/scripts/gg-artifacts-out-dir.sh
 !/scripts/gg-artifacts.sh
-# The lock-order helpers gg's build shell and the installer source, and their table test, which no
-# image runs but which the devcontainer image's `./scripts/gg-*.sh` COPY names all the same.
 !/scripts/gg-cargo-lock.sh
 !/scripts/gg-cargo-lock.test.sh
 !/scripts/gg-downloads.sh
 !/scripts/gg-npm-tools.sh
-# The table test of the npm-tool resolver. No image runs it; it is here because it
-# is one of the `scripts/gg-*.sh` family the gate keeps complete, and the devcontainer
-# image's `./scripts/gg-*.sh` COPY would otherwise name a file the context lacks.
 !/scripts/gg-npm-tools.test.sh
 # The committed lock of each npm-delivered build tool's tree, which the resolver
-# installs with `npm ci`. Every image that runs install-gg-build-tools.sh — the
-# devcontainer image at build time, the driver's gg stage — reads the lock out of
-# the context beside the resolver. A directory, named without a wildcard.
+# installs with `npm ci`. The devcontainer image runs install-gg-build-tools.sh at build
+# time and reads the lock out of the context beside the resolver. A directory, named
+# without a wildcard.
 !/scripts/gg-npm-locks
 !/scripts/gg-probe-fixtures.sh
 !/scripts/gg-reference.sh
 !/scripts/gg-scratch-lock.sh
 !/scripts/gg-signatures.sh
+# The CI scripts: the toolchain installers the devcontainer and gg toolchain images run,
+# and scripts/ci/gg-release.sh with the pin it reads, which services.Dockerfile's
+# `gg-release` stage bind-mounts to fetch the release the driver pins.
 !/scripts/ci
 # This image is also the one service Dockerfile that COPYs sibling files from its
 # own deployments/images/ directory (the nginx server block) — the Rust images embed
@@ -400,26 +330,17 @@
 # and the copies weigh tens of megabytes.
 /crates/*/testdata/
 /engines/crates/*/testdata/
-# The guest packages' own scratch, which the block above would otherwise admit and
-# which dwarfs everything else in this context: measured on a developer machine that
+# The guest packages' own scratch, which the directories above would otherwise admit
+# and which dwarfs everything else in this context: measured on a developer machine that
 # has built every arm by hand, the ten packages are ~6 MB of sources and ~420 MB of
 # these — 179 MB of PureScript `.build`, 123 MB of Rust, 75 MB of C#, 54 MB of Swift,
-# 34 MB of `purs` output. Every one of them is regenerated inside the image by the
-# reflection that needs it, so admitting them would cost a `make images` several
-# hundred megabytes of context transfer to ship files the build immediately
-# overwrites.
+# 34 MB of `purs` output. No image reads them.
 **/.build/
 **/.spago/
 **/__pycache__/
 /packages/gg-sandbox-purescript/output/
-# The Rust arm's WIT bindings are GENERATED into its source tree (bindings.sh writes
-# src/bindings.rs, which is gitignored). They are a pure function of crates/gg/wit and
-# the pinned wit-bindgen, and `signatures.sh` rewrites them UNCONDITIONALLY rather than
-# when the file is missing — it spends a paragraph on why, and cites this line as the
-# other half of the same invariant. So a copy carried in from a developer's machine
-# would not be used; it would be overwritten. Keeping it out buys the two things that
-# are left, which are enough on their own: a context that does not carry a file the
-# build is about to rewrite, and a layer cache that does not churn on it.
+# The Rust arm's WIT bindings, GENERATED into its source tree (bindings.sh writes
+# src/bindings.rs, which is gitignored); no image reads them either.
 /packages/gg-sandbox-rust/src/bindings.rs
 
 # TypeScript's incremental build state. `packages/ui/tsconfig.tsbuildinfo` is gitignored

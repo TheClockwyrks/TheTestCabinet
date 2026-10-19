@@ -2,14 +2,16 @@
 # Builds every run-container image for this machine's architecture and pushes each
 # to the registry as `test-cabinet-<name>:<sha>-<arch>`.
 #
-#   scripts/ci/run-images.sh <gg-binary> <sha>
+#   scripts/ci/run-images.sh <sha>
 #
 # The images are the ones containers/image-names.sh lists, which is the set a run
-# resolves, plus the gg toolchain builder the `-gg` variants copy out of. They are
-# built by containers/build.sh with `--gg-selfcheck`, which drives `gg selfcheck`
-# inside each `-gg` environment representative between its build and its push, so a
-# variant carrying a dead language arm never reaches the registry. <gg-binary> is the
-# static gg the pipeline built for this architecture.
+# resolves. The `-gg` variants copy their toolchain tree out of the
+# `test-cabinet-gg-toolchains` image of the gg release the driver pins. They are built by
+# containers/build.sh with `--gg-selfcheck`, which drives `gg selfcheck` inside each `-gg`
+# environment representative between its build and its push, so a variant carrying a
+# dead language arm never reaches the registry. The gg it drives is that same release,
+# fetched for this architecture by scripts/ci/gg-release.sh, or the file TCAB_GG_BINARY
+# names when it is set.
 #
 # The build is native: the pipeline runs this once on an amd64 agent and once on an
 # arm64 agent, and scripts/ci/manifest.sh fuses the arch tags into the multi-arch
@@ -20,16 +22,25 @@ set -euo pipefail
 # shellcheck source=/dev/null
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/tcab-lib.sh"
 
-if [[ $# -ne 2 ]]; then
-	echo "usage: scripts/ci/run-images.sh <gg-binary> <sha>" >&2
+if [[ $# -ne 1 ]]; then
+	echo "usage: scripts/ci/run-images.sh <sha>" >&2
 	exit 1
 fi
-readonly GG_BINARY="$1"
-readonly SHA="$2"
+readonly SHA="$1"
 
 arch="$(ci_arch)"
 log_file="$(mktemp)"
-trap 'rm -f "$log_file"' EXIT
+inputs_file="$(mktemp)"
+gg_dir="$(mktemp -d)"
+trap 'rm -rf "$log_file" "$inputs_file" "$gg_dir"' EXIT
+
+if [[ -n "${TCAB_GG_BINARY:-}" ]]; then
+	GG_BINARY="$TCAB_GG_BINARY"
+else
+	scripts/ci/gg-release.sh fetch "$gg_dir"
+	GG_BINARY="$gg_dir/gg"
+fi
+readonly GG_BINARY
 
 mapfile -t names < <(./containers/image-names.sh)
 
@@ -46,8 +57,6 @@ mapfile -t names < <(./containers/image-names.sh)
 # already names instead of building and pushing it again (its header section "Reusing
 # what the registry already holds"). The table is written here, from this checkout's
 # index, so the digests describe the commit being built.
-inputs_file="$(mktemp)"
-trap 'rm -f "$log_file" "$inputs_file"' EXIT
 scripts/ci/run-image-inputs.sh >"$inputs_file"
 log "building ${#names[@]} run images as ${CI_REGISTRY}/test-cabinet-<name>:${SHA}-${arch}, reusing those whose inputs are unchanged"
 PUSH=1 RECLAIM=1 REUSE_INPUTS="$inputs_file" IMAGE_REGISTRY="$CI_REGISTRY" IMAGE_TAG="${SHA}-${arch}" \

@@ -4,8 +4,8 @@
 #
 # A copy of the script runs in a throwaway git repository holding a small
 # containers/ tree: a base, a tools builder that copies the whole context, an asset
-# image, a gg variant and a gg-toolchains builder. The subject is what moves each
-# image's digest and what does not.
+# image and gg variants, with the driver's gg pin beside it. The subject is what moves
+# each image's digest and what does not.
 set -uo pipefail
 
 CI_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -49,9 +49,10 @@ tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 
 repo="$tmp/repo"
-mkdir -p "$repo/scripts/ci" "$repo/containers"/{base,base-wasm,tools,sprite,gg,gg-toolchains,blender} \
-	"$repo/crates/a" "$repo/docs" "$repo/packages/gg-sandbox-rust" "$repo/scripts/ci"
-cp "$CI_DIR/run-image-inputs.sh" "$CI_DIR/tcab-lib.sh" "$repo/scripts/ci/"
+mkdir -p "$repo/scripts/ci" "$repo/containers"/{base,base-wasm,tools,sprite,gg,blender} \
+	"$repo/crates/a" "$repo/crates/driver" "$repo/docs" "$repo/scripts/ci"
+cp "$CI_DIR/run-image-inputs.sh" "$CI_DIR/gg-release.sh" "$CI_DIR/tcab-lib.sh" "$repo/scripts/ci/"
+echo '0.7.1' >"$repo/crates/driver/gg-release-version"
 cat >"$repo/containers/image-names.sh" <<'NAMES'
 #!/usr/bin/env bash
 printf '%s\n' base base-wasm base-wasm-gg sprite sprite-gg blender blender-gg
@@ -65,16 +66,13 @@ printf 'ARG BASE_IMAGE\nFROM ${BASE_IMAGE}\nRUN true\n' >"$repo/containers/base-
 printf 'FROM rust:1 AS build\nWORKDIR /src\nCOPY . .\nRUN cargo build\nFROM scratch\nCOPY --from=build /out /out\n' >"$repo/containers/tools/Dockerfile"
 printf 'ARG TOOLS_IMAGE\nARG BASE_IMAGE\nFROM ${TOOLS_IMAGE} AS tools\nFROM ${BASE_IMAGE}\nCOPY --from=tools /out/draw /usr/local/bin/draw\n' >"$repo/containers/sprite/Dockerfile"
 printf 'ARG BASE_IMAGE\nARG GG_TOOLCHAINS_IMAGE\nFROM ${GG_TOOLCHAINS_IMAGE} AS ggtools\nFROM ${BASE_IMAGE}\nCOPY --link --from=ggtools /opt /opt\n' >"$repo/containers/gg/Dockerfile"
-printf 'FROM debian AS build\nCOPY scripts/ci/install-java.sh \\\n  /tmp/install-java.sh\nRUN sh /tmp/install-java.sh\nFROM scratch\nCOPY --from=build /opt/gg /opt/gg\n' >"$repo/containers/gg-toolchains/Dockerfile"
-printf 'FROM ubuntu:26.04\n# COPY not-a-source /x\nCOPY containers/blender/export.py /opt/export.py\n' >"$repo/containers/blender/Dockerfile"
+printf 'FROM ubuntu:26.04\n# COPY not-a-source /x\nCOPY scripts/ci/install-java.sh \\\n  /tmp/install-java.sh\nCOPY containers/blender/export.py /opt/export.py\n' >"$repo/containers/blender/Dockerfile"
 }
 echo 'print("export")' >"$repo/containers/blender/export.py"
 echo 'echo java' >"$repo/scripts/ci/install-java.sh"
 echo 'fn main() {}' >"$repo/crates/a/main.rs"
 echo 'prose' >"$repo/docs/page.md"
-echo 'RUST=1' >"$repo/packages/gg-sandbox-rust/rust-version.sh"
-echo '[toolchain]' >"$repo/rust-toolchain.toml"
-printf '*\n!/crates\n!/Cargo.toml\n!/packages/gg-sandbox-rust\n!/sub/crates\n' >"$repo/.dockerignore"
+printf '*\n!/crates\n!/Cargo.toml\n!/sub/crates\n' >"$repo/.dockerignore"
 echo '[workspace]' >"$repo/Cargo.toml"
 # A submodule the allowlist reaches into, as the index holds one: a gitlink and
 # none of its files. The pins are made-up commit ids; nothing fetches them.
@@ -91,17 +89,18 @@ change() { (cd "$repo" && printf '%s\n' "$2" >>"$1" && git add -- "$1"); }
 revert() { (cd "$repo" && git checkout -q -- . && git reset -q --hard HEAD); }
 
 out="$(run)"
-check_equal "lists tools, gg-toolchains and every run image" \
-	"tools gg-toolchains base base-wasm base-wasm-gg sprite sprite-gg blender blender-gg" \
+check_equal "lists tools and every run image" \
+	"tools base base-wasm base-wasm-gg sprite sprite-gg blender blender-gg" \
 	"$(awk '{print $1}' <<<"$out" | tr '\n' ' ' | sed 's/ $//')"
-check_equal "a digest is 32 hex characters" "9" "$(grep -cE '^[a-z0-9-]+ [0-9a-f]{32} ' <<<"$out")"
+check_equal "a digest is 32 hex characters" "8" "$(grep -cE '^[a-z0-9-]+ [0-9a-f]{32} ' <<<"$out")"
 check_equal "parents: base has none" "base $(digest base) -" "$(run base)"
 check_equal "parents: an asset image is from base and tools" "base,tools" "$(run sprite | awk '{print $3}')"
-check_equal "parents: a gg variant is from its image and gg-toolchains" "sprite,gg-toolchains" "$(run sprite-gg | awk '{print $3}')"
+check_equal "parents: a gg variant is from its image alone" "sprite" "$(run sprite-gg | awk '{print $3}')"
 check_equal "the table is deterministic" "$out" "$(run)"
 
 base0="$(digest base)"; wasm0="$(digest base-wasm)"; tools0="$(digest tools)"; sprite0="$(digest sprite)"
-spritegg0="$(digest sprite-gg)"; blender0="$(digest blender)"; ggtc0="$(digest gg-toolchains)"; wasmgg0="$(digest base-wasm-gg)"
+spritegg0="$(digest sprite-gg)"; blender0="$(digest blender)"; wasmgg0="$(digest base-wasm-gg)"
+blendergg0="$(digest blender-gg)"
 
 change containers/base/Dockerfile 'RUN echo changed'
 check_differs "the Dockerfile moves the image" "$base0" "$(digest base)"
@@ -116,7 +115,6 @@ change crates/a/main.rs '// a change under crates'
 check_differs "an allowlisted context file moves the image that copies the context" "$tools0" "$(digest tools)"
 check_differs "and the images built out of it" "$sprite0" "$(digest sprite)"
 check_equal "but not base" "$base0" "$(digest base)"
-check_equal "nor gg-toolchains" "$ggtc0" "$(digest gg-toolchains)"
 revert
 
 (cd "$repo" && git update-index --cacheinfo "160000,${PIN_B},sub")
@@ -140,14 +138,22 @@ check_equal "and nothing else" "$sprite0" "$(digest sprite)"
 revert
 
 change scripts/ci/install-java.sh 'echo more'
-check_differs "a continued COPY line's source moves gg-toolchains" "$ggtc0" "$(digest gg-toolchains)"
-check_differs "and every gg variant" "$wasmgg0" "$(digest base-wasm-gg)"
-check_equal "but not the variant's parent" "$wasm0" "$(digest base-wasm)"
+check_differs "a continued COPY line's source moves its image" "$blender0" "$(digest blender)"
+check_differs "and its gg variant" "$blendergg0" "$(digest blender-gg)"
 revert
 
-change rust-toolchain.toml 'channel = "x"'
-check_differs "the Rust pin moves gg-toolchains" "$ggtc0" "$(digest gg-toolchains)"
-revert
+check_equal "the gg toolchain image is the pinned release's" "$spritegg0" \
+	"$(cd "$repo" && GG_TOOLCHAINS_IMAGE=testcabinet.azurecr.io/test-cabinet-gg-toolchains:0.7.1 \
+		scripts/ci/run-image-inputs.sh sprite-gg | awk '{print $2}')"
+check_differs "another toolchain image moves every gg variant" "$spritegg0" \
+	"$(cd "$repo" && GG_TOOLCHAINS_IMAGE=registry.test/test-cabinet-gg-toolchains:0.8.0 \
+		scripts/ci/run-image-inputs.sh sprite-gg | awk '{print $2}')"
+(cd "$repo" && echo '0.8.0' >crates/driver/gg-release-version)
+check_differs "and so does a bump of the driver's pin: sprite-gg" "$spritegg0" "$(digest sprite-gg)"
+check_differs "base-wasm-gg" "$wasmgg0" "$(digest base-wasm-gg)"
+check_equal "but not the variant's parent" "$wasm0" "$(digest base-wasm)"
+check_equal "nor any other image" "$sprite0" "$(digest sprite)"
+(cd "$repo" && echo '0.7.1' >crates/driver/gg-release-version)
 
 (cd "$repo" && sed -i 's/^schema=.*//; s/^readonly INPUTS_SCHEMA=.*/readonly INPUTS_SCHEMA="v2"/' scripts/ci/run-image-inputs.sh)
 check_differs "a schema bump moves every image" "$base0" "$(digest base)"

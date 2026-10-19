@@ -17,7 +17,9 @@
 #
 # What it checks, per tracked Dockerfile, for every `COPY`/`ADD` that reads the
 # build context (`--from=` copies read an earlier stage, and remote `ADD` sources
-# read the network — neither touches the context):
+# read the network — neither touches the context), and for every `RUN` bind mount
+# of a context path (`--mount=type=bind,source=<path>` without `from=`), which reads
+# the context exactly as a COPY does and fails the same way:
 #   1. the source path exists in the repository, and
 #   2. the allowlist that applies to THAT Dockerfile leaves it in the context.
 #
@@ -400,6 +402,32 @@ copy_instructions() {
 	' "$1"
 }
 
+# Print `<line-number> COPY <source> /bind-mount` for every `--mount=type=bind` of a
+# context path, so check_dockerfile holds the mounted source to the allowlist like a
+# COPY's. A mount naming `from=` reads a stage or an image, never the context, and a
+# bind mount without `source=` mounts the context root, which is the allowlist's own
+# answer.
+bind_mount_sources() {
+	awk '
+		/^[[:space:]]*#/ { next }
+		{
+			rest = $0
+			while (match(rest, /--mount=[^[:space:]\\]+/)) {
+				spec = substr(rest, RSTART + 8, RLENGTH - 8)
+				rest = substr(rest, RSTART + RLENGTH)
+				if (spec !~ /(^|,)type=bind(,|$)/ || spec ~ /(^|,)from=/) continue
+				n = split(spec, fields, ",")
+				for (i = 1; i <= n; i++) {
+					if (fields[i] ~ /^(source|src)=/) {
+						sub(/^(source|src)=/, "", fields[i])
+						print NR, "COPY " fields[i] " /bind-mount"
+					}
+				}
+			}
+		}
+	' "$1"
+}
+
 log "verify every Dockerfile COPY can see its source in the build context"
 self_test
 
@@ -493,7 +521,10 @@ check_dockerfile() {
 				problems=$((problems + 1))
 			fi
 		done
-	done < <(copy_instructions "$dockerfile")
+	done < <(
+		copy_instructions "$dockerfile"
+		bind_mount_sources "$dockerfile"
+	)
 }
 
 # Pass one: the root allowlist, which can apply to every Dockerfile here — to all but
@@ -514,62 +545,14 @@ for dockerfile in "${dockerfiles[@]}"; do
 	check_dockerfile "$dockerfile" "$sibling"
 done
 
-# --- what a COPY cannot tell you --------------------------------------------
+# --- what a COPY cannot tell you: the trees baked in with include_str! ---------
 
-# Everything above reads `COPY` sources, and there is one build input in this
-# repository that no `COPY` names: the gg guest packages. The driver image's gg stage
-# does `COPY . .` and then `cargo build`, and it is the BUILD — crates/gg/build.rs
-# reflecting eleven signature catalogues, and the eleven crates under
-# crates/gg-sandbox-artifacts/ running each arm's `packages/gg-sandbox*/build.sh` —
-# that reads them. A whole-context copy is deliberately unchecked above, because it
-# takes whatever the allowlist admits; so a `packages/gg-sandbox*` directory the
-# allowlist forgets is invisible to every check in this file and to every other gate
-# in the repository. It surfaces as a compiler or a `find` saying "no such file or
-# directory" minutes into an image build, blamed on the arm rather than on the
-# context.
-#
-# That has now happened: `packages/gg-sandbox-jvm`, the crossing the java and kotlin
-# arms both compile, was split out of the java arm and the allowlist was not widened,
-# which took `make local-rebuild` down. So the rule is asserted here rather than left
-# to be rediscovered — the whole of every guest package rides along, which is what the
-# root .dockerignore says in prose right above its own entries.
-#
-# The directory itself must survive, not merely something under it: these are read as
-# trees, so `context_includes_dir`'s weaker question (does the copy transfer
-# ANYTHING) would pass a package admitted only through a `*-version.sh` glob and
-# still leave the build without an `src`.
-#
-# Root allowlist only, and here that phrase means what it says rather than "the file
-# that happened to be loaded": this is a statement about the builds that COMPILE gg,
-# every one of which reads the root allowlist.
-load_dockerignore "$REPO_ROOT/.dockerignore"
-mapfile -t guest_packages < <(
-	git ls-files 'packages/gg-sandbox*' | cut -d/ -f1-2 | sort -u |
-		while IFS= read -r candidate; do
-			[[ -d "$REPO_ROOT/$candidate" ]] && printf '%s\n' "$candidate"
-		done
-)
-((${#guest_packages[@]} > 0)) || {
-	echo "error: no packages/gg-sandbox* directories found; this check would pass vacuously." >&2
-	exit 1
-}
-for package in "${guest_packages[@]}"; do
-	checked=$((checked + 1))
-	context_includes "$package" && continue
-	echo "error: .dockerignore keeps '$package' OUT of the build context, and gg's build reads it." >&2
-	echo "       No COPY names it — the driver image's gg stage copies the whole context and then" >&2
-	echo "       compiles, so this fails as 'no such file or directory' from inside an arm's build." >&2
-	echo "       Fix: add '!/$package' to the .dockerignore allowlist, with a comment saying what reads it." >&2
-	problems=$((problems + 1))
-done
 
-# --- what a COPY cannot tell you, part two: the trees baked in with include_str! ---
-
-# The gg guest packages are not the only build input no `COPY` names. `crates/driver`
-# and `crates/engines` BAKE three directories into the binaries verbatim — the
+# Everything above reads `COPY` sources, and some build inputs are named by no `COPY`.
+# `crates/driver` and `crates/engines` BAKE three directories into the binaries verbatim — the
 # built-in orchestrators' manifests and runner scripts and the harness manifests
 # (the driver), and the engine manifests (engines) — with `include_str!` paths that climb out of `crates/` with `../../../`. They ride
-# in on the same `COPY . .` the gg arms do, so the allowlist is the only thing that
+# in on the build stage's `COPY . .`, so the allowlist is the only thing that
 # decides whether the compiler can read them, and nothing above looks at them.
 #
 # That has now happened too, and it is the worst-behaved shape of the three. When
@@ -706,7 +689,7 @@ while IFS= read -r hit; do
 	problems=$((problems + 1))
 done < <(grep -Hno 'include_\(str\|bytes\)! *( *"[^"]*"' -- "${rust_sources[@]}" || true)
 
-# --- what a COPY cannot tell you, part three: the host package store ---------
+# --- what a COPY cannot tell you, part two: the host package store -----------
 
 # The third build input no `COPY` names. The services image's `tcab-packages` stage
 # (deployments/images/services.Dockerfile) does `COPY . .`, `npm ci`, and then
@@ -899,10 +882,11 @@ for ignore_file in "${ignore_files[@]}"; do
 	done
 done
 
-# --- what a COPY cannot tell you, part four: the paths the toolchain installers read ---
+# --- what a COPY cannot tell you, part three: the paths the toolchain installers read ---
 
 # `scripts/ci/install-gg-toolchains.sh` and the per-arm installers it runs are copied into
-# the driver image's gg stage (`deployments/images/services.Dockerfile`), along with a
+# the devcontainer image (`.devcontainer/ubuntu.dockerfile`) and the per-arm installers
+# into the gg toolchain image (`containers/gg-toolchains/Dockerfile`), along with a
 # slice of `packages/`, and they read pins, lockfiles and manifests out of that
 # slice by `$REPO_ROOT/<path>`. No COPY names those files, so nothing above sees them; a
 # missing one fails the image build minutes in with cargo's "manifest path ... does not
@@ -945,12 +929,12 @@ done
 installer_ignore_files=(".dockerignore")
 installer_dockerfiles=0
 for dockerfile in "${dockerfiles[@]}"; do
-	grep -q 'install-gg-toolchains\.sh' "$REPO_ROOT/$dockerfile" || continue
+	grep -qE '^[^#]*scripts/ci/install-' "$REPO_ROOT/$dockerfile" || continue
 	installer_dockerfiles=$((installer_dockerfiles + 1))
 	[[ -f "$REPO_ROOT/$dockerfile.dockerignore" ]] && installer_ignore_files+=("$dockerfile.dockerignore")
 done
 ((installer_dockerfiles > 0)) || {
-	echo "error: no Dockerfile names scripts/ci/install-gg-toolchains.sh; the installer-input check would pass vacuously." >&2
+	echo "error: no Dockerfile copies a scripts/ci/install-*.sh; the installer-input check would pass vacuously." >&2
 	exit 1
 }
 for ignore_file in "${installer_ignore_files[@]}"; do
@@ -959,7 +943,7 @@ for ignore_file in "${installer_ignore_files[@]}"; do
 		installer_checked=$((installer_checked + 1))
 		context_includes "$path" && continue
 		echo "error: $ignore_file keeps '$path' OUT of the build context, and a toolchain installer reads it." >&2
-		echo "       scripts/ci/install-gg-toolchains.sh runs in images built against this allowlist, so the" >&2
+		echo "       scripts/ci/install-*.sh run in images built against this allowlist, so the" >&2
 		echo "       image build fails partway through the install. Fix: add '!/$path' to $ignore_file, with a comment." >&2
 		problems=$((problems + 1))
 	done
@@ -1092,13 +1076,13 @@ done < <(
 
 ((problems == 0)) || {
 	echo >&2
-	echo "$problems build-context problem(s) found across ${#dockerfiles[@]} Dockerfiles, ${#guest_packages[@]} gg guest packages, $baked_checked baked-in includes, $staged_checked staged packages, $installer_checked installer inputs, ${#ignored_paths[@]} git-ignored paths, $shape_checked re-inclusions, $family_checked enumerated-family files and $rust_pins_checked Rust pins." >&2
+	echo "$problems build-context problem(s) found across ${#dockerfiles[@]} Dockerfiles, $baked_checked baked-in includes, $staged_checked staged packages, $installer_checked installer inputs, ${#ignored_paths[@]} git-ignored paths, $shape_checked re-inclusions, $family_checked enumerated-family files and $rust_pins_checked Rust pins." >&2
 	exit 1
 }
 
 # A count of CHECKS rather than of distinct paths: a Dockerfile with a sibling
 # allowlist has its sources checked against both, which is the point.
-echo "$checked context-source check(s) — every COPY across ${#dockerfiles[@]} Dockerfiles, against each allowlist that can apply to it, plus the ${#guest_packages[@]} packages/gg-sandbox* trees the driver image's gg stage compiles, the $baked_checked path(s) the workspace bakes in with include_str! and the $staged_checked package(s) $STAGING_SCRIPT bakes into the host package store — all survive."
+echo "$checked context-source check(s) — every COPY across ${#dockerfiles[@]} Dockerfiles, against each allowlist that can apply to it (every RUN bind mount of a context path among them), plus the $baked_checked path(s) the workspace bakes in with include_str! and the $staged_checked package(s) $STAGING_SCRIPT bakes into the host package store — all survive."
 echo "$installer_checked installer-input check(s) — ${#installer_inputs[@]} tracked path(s) scripts/ci/install-*.sh read, against each of the ${#installer_ignore_files[@]} allowlist(s) an installer-running image is built against — all survive."
 echo "$ignored_checked exclusion check(s) — ${#ignored_paths[@]} git-ignored path(s) against each allowlist — none reach the build context."
 echo "$shape_checked re-inclusion(s) across ${#ignore_files[@]} allowlist(s) name a path rather than a wildcard family, and $family_checked file(s) of the families those allowlists enumerate all survive."

@@ -141,8 +141,9 @@ works because a binary copies fine; a JDK does not.
 
 So each run image has a `<name>-gg` variant: the same image plus the toolchain tree,
 one `COPY` on top of its parent
-([`gg/Dockerfile`](gg/Dockerfile), copying out of the builder in
-[`gg-toolchains/Dockerfile`](gg-toolchains/Dockerfile)). Three facts shape it:
+([`gg/Dockerfile`](gg/Dockerfile), copying out of the toolchain image gg's own
+repository publishes as `test-cabinet-gg-toolchains:<version>`, at the version the
+driver pins). Three facts shape it:
 
 - **Every toolchain is present together.** A program's language is resolved _per
   agent_, so one run may drive a C# agent and a Python agent at the same time. An
@@ -186,10 +187,9 @@ containers/
 │                               #   run's responses-as-code programs may need, under
 │                               #   /opt/gg (purs+esbuild, a JDK+TeaVM, the Kotlin
 │                               #   compiler, a pruned rustc, a pruned Swift + its wasm
-│                               #   SDK, wasi-sdk, a pruned .NET). Not a run image — the
-│                               #   `-gg` variants `COPY --from` it — but it IS published,
-│                               #   so the tree inside them is pullable and pinned by
-│                               #   digest on its own
+│                               #   SDK, wasi-sdk, a pruned .NET). Leaving with gg for
+│                               #   gg's repository, whose pipeline publishes it; build.sh
+│                               #   no longer builds it
 ├── gg/Dockerfile               # ONE parameterized `<parent>-gg` variant: any run image
 │                               #   plus that tree
 ├── sprite/Dockerfile           # the base image plus the baked-in `draw` binary
@@ -753,9 +753,9 @@ in it. The third constraint on
 self-contained _and proven where it runs_; this flag is the second half of that
 sentence made mechanical.
 
-`--gg-selfcheck <PATH-TO-GG>` takes a `gg` binary — build one with
-`scripts/build-gg-static.sh`, which is the same static-musl artifact a deployment
-copies into a run container — and, for each variant it builds, drives
+`--gg-selfcheck <PATH-TO-GG>` takes a `gg` binary — fetch the pinned release with
+`scripts/ci/gg-release.sh fetch <dir>`, the same static-musl binary the driver image
+bakes and copies into a run container — and, for each variant it builds, drives
 [`gg selfcheck`](../apps/docs/src/content/docs/gg/languages/selfcheck.md) inside the
 image it has just built: every registered language arm's real bootstrap turn, real
 toolchain resolution, real compiler, real guest. The binary is installed the way a run
@@ -794,11 +794,13 @@ fails if any `-gg` variant's environment has no representative — which is what
 gated build whose selection contains no representative is refused rather than quietly
 passing.
 
-The Azure pipeline's `scripts/ci/run-images.sh` passes the flag on every build that
+The Azure pipeline's `scripts/ci/run-images.sh` fetches the pinned release (or takes
+`TCAB_GG_BINARY`), passes the flag on every build that
 publishes, and then requires `build.sh`'s `gg selfcheck ok:` line for each representative
 by name to assert the gate ran at all — a refactor that drops the flag fails there instead
 of silently publishing. Locally,
-`make -C deployments/local run-images-gg-selfcheck` builds the binary and runs the same
+`make -C deployments/local run-images-gg-selfcheck` fetches the pinned release (or takes
+`TCAB_GG_BINARY`) and runs the same
 command against the `:local` images.
 
 ### The shared asset-tooling builder
@@ -835,27 +837,18 @@ stages (with the same cache mounts applied directly).
 
 ### The gg toolchain builder
 
-`gg-toolchains/Dockerfile` is a second builder of exactly the same shape and for exactly
-the same reason: it assembles every language toolchain a gg run's programs may be compiled
-with under one prefix (`/opt/gg/toolchains`), exports it as a `scratch` image, and each
-`-gg` variant resolves it through a `GG_TOOLCHAINS_IMAGE` build arg and copies the tree
-out. It is not a run image and never appears in `image-names.sh` — that list is the set of
-images a _run resolves_, and `build.sh`'s `build_one` dispatches on it by name, so an
-entry would route `make run-images` through the asset-image builder. (The Rust suite is
-not what blocks it: that test keeps a `NOT_A_RUN_IMAGE` exception list, which already
-holds `base`.) Like the asset tooling it is **always** rebuilt when any variant is
-selected, because it carries the compilers a run's programs are judged by.
-
-Unlike the asset tooling it **is** pushed under `PUSH=1`, and the difference between the
-two is worth stating. The asset tooling is ~20 Rust binaries compiled from this checkout
-behind cargo cache mounts, so a registry copy would save nothing. This tree is ~1.9 GB
-fetched from five upstreams and pruned, and it is byte-identical in every `-gg` variant —
-so publishing it means the tree inside those variants is pullable and pinned by digest on
-its own terms rather than only inspectable by taking a run image apart, and
-`./build.sh <name>-gg` can be pointed at the published tag through `GG_TOOLCHAINS_IMAGE`
-instead of paying for the fetch again. Because it is not in `image-names.sh`, the pipeline's
-run-image manifest job, which is driven by that list, appends it to the images it hands
-`scripts/ci/manifest.sh`.
+The toolchain tree is gg's: gg's repository builds every language toolchain a gg run's
+programs may be compiled with under one prefix (`/opt/gg/toolchains`), exports it as a
+`scratch` image and publishes it, multi-arch, as `test-cabinet-gg-toolchains:<version>`
+with each gg release. Each `-gg` variant resolves it through a `GG_TOOLCHAINS_IMAGE` build
+arg and copies the tree out. `build.sh` builds none of it: `GG_TOOLCHAINS_IMAGE` defaults
+to the image of the release the driver pins (`scripts/ci/gg-release.sh toolchains-image`,
+reading `crates/driver/gg-release-version`), which it pulls before the first `-gg`
+variant when the local store does not already hold it, so the tree a run's programs are
+compiled with is exactly the one released with the gg that runs them. Pointing
+`GG_TOOLCHAINS_IMAGE` at another tag tries a different tree. The registry needs a login
+for that pull (`az acr login -n testcabinet`). It is not a run image and never appears in
+`image-names.sh`, and the pipeline's run-image manifest job no longer handles it.
 
 Publishing it is one more copy of the tree in the registry; the variants themselves add
 none. `gg/Dockerfile` copies `/opt` (the builder image's whole filesystem, which is
@@ -867,7 +860,8 @@ twenty-seven distinct blobs. The comment on that `COPY` carries the measurement 
 `build.sh` prints each variant's layer digest as it builds, so the next build reports it.
 
 Three constraints bind every toolchain added to it, and all three are written down in the
-Dockerfile's header. It must be **relocatable and distribution-portable** — the same tree
+header of its Dockerfile in gg's repository. It must be **relocatable and
+distribution-portable** — the same tree
 is copied to the same absolute path onto the Debian-based images and onto `blender-gg`,
 whose parent is Ubuntu. And it must be drivable **isolated per invocation**: several
 compilers run concurrently inside one run, and a shared build strategy and a shared output
@@ -1046,10 +1040,8 @@ builder prune is `docker builder prune --all`, which takes every `--mount=type=c
 record in the builder — and on a development box the default builder is the one BuildKit
 instance the whole Docker daemon shares. So it would also take
 [`deployments/images/services.Dockerfile`](../deployments/images/services.Dockerfile)'s
-`gg-toolchains`, `gg-target`, `rustup-gg` and `gg-toolchain-downloads` mounts, which is
-the ~1.9 GB of downloaded language SDKs and the gg link that
-[`deployments/local/Makefile`](../deployments/local/Makefile) names as the slowest thing
-in the repository, plus every other project's build cache on that daemon. The `PUSH=1`
+cargo mounts, which hold the services' release compile, plus every other project's build
+cache on that daemon. The `PUSH=1`
 command above therefore leaves your local store and builder untouched;
 [`scripts/ci/run-images.sh`](../scripts/ci/run-images.sh) is the only caller that sets
 `RECLAIM`, and there the daemon belongs to a single-use agent. `RECLAIM` without `PUSH` is
@@ -1066,7 +1058,7 @@ pushed image is not built.
 
 The table is what [`scripts/ci/run-image-inputs.sh`](../scripts/ci/run-image-inputs.sh)
 prints: one `<name> <digest> <parents>` line for every image `image-names.sh` lists plus
-the `tools` and `gg-toolchains` builders. An image's digest covers its Dockerfile, every
+the `tools` builder. An image's digest covers its Dockerfile, every
 context path the Dockerfile copies (as `git ls-files -s` records them, so the index and
 not the working tree is what is described; a Dockerfile that copies `.` reads the whole
 context, which is the root `.dockerignore`'s listing; a path under a submodule, such as

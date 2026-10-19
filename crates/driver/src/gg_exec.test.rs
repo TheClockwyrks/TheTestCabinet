@@ -691,6 +691,35 @@ fn the_release_url_override_tolerates_a_trailing_slash_and_ignores_an_empty_valu
 #[test]
 fn the_default_release_version_is_a_real_published_version() {
     assert_ne!(DEFAULT_RELEASE_VERSION, "0.0.0");
+    // The pin is read from `crates/driver/gg-release-version`, which
+    // `scripts/ci/gg-release.sh` reads too: one line holding a release version,
+    // with the file's newline trimmed off and nothing else around it.
+    let (core, prerelease) = DEFAULT_RELEASE_VERSION
+        .split_once('-')
+        .map_or((DEFAULT_RELEASE_VERSION, None), |(core, pre)| {
+            (core, Some(pre))
+        });
+    let parts: Vec<&str> = core.split('.').collect();
+    assert_eq!(
+        parts.len(),
+        3,
+        "the pin `{DEFAULT_RELEASE_VERSION}` is not MAJOR.MINOR.PATCH"
+    );
+    for part in parts {
+        assert!(
+            !part.is_empty() && part.bytes().all(|b| b.is_ascii_digit()),
+            "the pin `{DEFAULT_RELEASE_VERSION}` is not MAJOR.MINOR.PATCH"
+        );
+    }
+    if let Some(pre) = prerelease {
+        assert!(
+            !pre.is_empty()
+                && pre
+                    .bytes()
+                    .all(|b| b.is_ascii_alphanumeric() || b == b'.' || b == b'-'),
+            "the pin `{DEFAULT_RELEASE_VERSION}` has a malformed prerelease"
+        );
+    }
 
     let install = resolve_install_with(
         env_map(&[("TCAB_GG_INSTALL", "release")]),

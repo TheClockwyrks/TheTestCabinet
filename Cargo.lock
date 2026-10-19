@@ -7620,14 +7620,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b8848ee67ecc8aedbaf3e4122217aff892639231befc6a1b58d29fff4c2cabaa"
 
 [[patch.unused]]
-name = "api-codegen"
-version = "0.2.1"
-
-[[patch.unused]]
-name = "contract-codegen"
-version = "0.2.1"
-
-[[patch.unused]]
 name = "foray-cli"
 version = "0.0.0"
 
@@ -7666,3 +7658,11 @@ version = "0.0.0"
 [[patch.unused]]
 name = "lattice-sdk"
 version = "0.0.0"
+
+[[patch.unused]]
+name = "api-codegen"
+version = "0.2.1"
+
+[[patch.unused]]
+name = "contract-codegen"
+version = "0.2.1"

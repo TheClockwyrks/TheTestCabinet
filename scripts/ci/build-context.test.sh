@@ -121,6 +121,25 @@ check_equal "fails" "1" "$?"
 check_contains "naming the Dockerfile and the source" "$dockerfile:" "$out"
 check_contains "and that it is absent" "copies 'scripts/ci/no-such-helper.sh', which does not exist in the repository." "$out"
 
+echo "--- a RUN bind mount of a path that does not exist ---"
+repo="$(fresh_repo)"
+dockerfile="deployments/images/services.Dockerfile"
+own "$repo/$dockerfile"
+sed -i 's#source=crates/driver/gg-release-version#source=crates/driver/no-such-pin#' "$repo/$dockerfile"
+out="$(run "$repo")"
+check_equal "fails" "1" "$?"
+check_contains "naming the Dockerfile and the mounted source" \
+	"copies 'crates/driver/no-such-pin', which does not exist in the repository." "$out"
+
+echo "--- a RUN bind mount of a path the allowlist drops ---"
+repo="$(fresh_repo)"
+own "$repo/.dockerignore"
+printf '\n/crates/driver/gg-release-version\n' >>"$repo/.dockerignore"
+out="$(run "$repo")"
+check_equal "fails" "1" "$?"
+check_contains "naming the source and the allowlist" \
+	"copies 'crates/driver/gg-release-version', which .dockerignore keeps OUT of the build context." "$out"
+
 echo "--- a case image pinning another Rust ---"
 repo="$(fresh_repo)"
 own "$repo/containers/base-wasm/Dockerfile"

@@ -120,22 +120,30 @@ const ENV_RELEASE_TARGET: &str = "TCAB_GG_RELEASE_TARGET";
 
 /// The base URL gg releases are downloaded from by default: the `gg-releases` container
 /// of the `testcabinetartifacts` Azure Blob Storage account, which the Azure pipeline's gg
-/// upload (`scripts/ci/publish-gg.sh`) publishes to. The container is anonymously
-/// readable, so the download needs no credential.
+/// upload (`scripts/ci/publish-gg.sh` in the `gg` repository) publishes to. The container
+/// is anonymously readable, so the download needs no credential. `scripts/ci/gg-release.sh`
+/// fetches from the same base, and its test holds the two equal.
 pub const DEFAULT_RELEASE_BASE_URL: &str =
     "https://testcabinetartifacts.blob.core.windows.net/gg-releases";
 
 /// The `gg` release a [`GgInstall::Release`] defaults to: the one pin of the gg
 /// version a deployment runs.
 ///
-/// It is a literal, independent of any crate's version. gg is released by a `v*` tag of
-/// its own repository, whose release jobs refuse a tag that differs from what the built
-/// `gg --version` reports; the version a run actually used is read back out of the run
-/// container and recorded as its
+/// It is the one line of `crates/driver/gg-release-version`, independent of any crate's
+/// version, and read from that file rather than written here so that the image builds and
+/// scripts take the same pin without a second literal: `scripts/ci/gg-release.sh` is how
+/// every one of them reads it, and `deployments/images/services.Dockerfile` fetches that
+/// release into the driver image (the binary) and the backend image (its reference
+/// documents), while the `-gg` run images copy the `test-cabinet-gg-toolchains` image of
+/// the same version.
+///
+/// gg is released by a `v*` tag of its own repository, whose release jobs refuse a tag
+/// that differs from what the built `gg --version` reports; the version a run actually
+/// used is read back out of the run container and recorded as its
 /// [`harness_version`](crate::run_record::RunSubject::harness_version), so the pin
 /// decides only which published release is fetched. Bumping it is how a deployment
 /// moves to a new gg, and `TCAB_GG_RELEASE_VERSION` overrides it per deployment.
-pub const DEFAULT_RELEASE_VERSION: &str = "0.7.0";
+pub const DEFAULT_RELEASE_VERSION: &str = include_str!("../gg-release-version").trim_ascii();
 
 /// How the `gg` binary is put into the run container.
 ///

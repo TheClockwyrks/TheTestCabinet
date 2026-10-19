@@ -102,17 +102,21 @@ cat >"$inputs" <<TABLE
 tools d1 -
 base d2 -
 sprite d3 base,tools
-gg-toolchains d4 -
-sprite-gg d5 sprite,gg-toolchains
+sprite-gg d5 sprite
 TABLE
 
 reg="registry.test/ns"
 prefix="test-cabinet-"
+# The gg release's toolchain image, which the gg repository publishes: in the registry
+# before any build, and never built here.
+tc="registry.test/gg/test-cabinet-gg-toolchains:0.7.1"
+fresh_registry() { printf '%s\n' "$tc" >"$tmp/registry"; }
 run() {
 	: >"$tmp/log"
 	(cd "$HERE/.." && PATH="$tmp/bin:$PATH" STUB_LOG="$tmp/log" STUB_LOCAL="$tmp/local" STUB_REGISTRY="$tmp/registry" \
 		STUB_PUSH_FAIL_REF="${STUB_PUSH_FAIL_REF:-}" STUB_PUSH_FAILS="$tmp/push-fails" REGISTRY_RETRY_DELAY=0 \
 		DOCKER="$tmp/docker" PUSH=1 RECLAIM=1 REUSE_INPUTS="${REUSE_INPUTS:-$inputs}" \
+		GG_TOOLCHAINS_IMAGE="${GG_TOOLCHAINS_IMAGE-$tc}" \
 		IMAGE_REGISTRY="$reg" IMAGE_TAG=sha1-amd64 containers/build.sh "$@" 2>&1)
 }
 builds() { grep -E '^build ' "$tmp/log" | grep -oE -- '-t [^ ]+' | cut -d' ' -f2 | tr '\n' ' '; }
@@ -120,14 +124,16 @@ retags() { grep -E '^buildx imagetools create' "$tmp/log" | awk '{print $5}' | t
 pulls() { grep -E '^pull ' "$tmp/log" | awk '{print $NF}' | tr '\n' ' '; }
 
 echo "an empty registry builds everything and pushes each image under both tags"
-: >"$tmp/local"; : >"$tmp/registry"
+: >"$tmp/local"; fresh_registry
 out="$(run base sprite sprite-gg)"
 check_equal "the build passes" "0" "$?"
-check_equal "every image is built" \
-	"${prefix}tools:sha1-amd64 ${prefix}gg-toolchains:sha1-amd64 ${prefix}base:sha1-amd64 ${prefix}sprite:sha1-amd64 ${prefix}sprite-gg:sha1-amd64 " \
+check_equal "every image is built, the gg toolchains not among them" \
+	"${prefix}tools:sha1-amd64 ${prefix}base:sha1-amd64 ${prefix}sprite:sha1-amd64 ${prefix}sprite-gg:sha1-amd64 " \
 	"$(builds)"
+check_equal "the toolchain image is pulled, once" "$tc " "$(pulls)"
+check_contains "and the variant copies it" "--build-arg GG_TOOLCHAINS_IMAGE=$tc" "$(grep -E '^build ' "$tmp/log")"
 check_equal "nothing is retagged" "" "$(retags)"
-for pair in tools:d1 base:d2 sprite:d3 gg-toolchains:d4 sprite-gg:d5; do
+for pair in tools:d1 base:d2 sprite:d3 sprite-gg:d5; do
 	name="${pair%%:*}"; digest="${pair##*:}"
 	check_contains "$name is pushed under its inputs tag" "${reg}/${prefix}${name}:inputs-${digest}-amd64" "$(cat "$tmp/registry")"
 done
@@ -139,9 +145,11 @@ check_contains "and its reference line" "==> sprite-gg reference: ${reg}/${prefi
 for name in sprite sprite-gg; do
 	check_equal "the reclaimed $name has no tag left in the local store" "" "$(grep -F "${prefix}${name}:" "$tmp/local" | tr '\n' ' ')"
 done
-for name in tools gg-toolchains base; do
+for name in tools base; do
 	check_contains "$name, which the reclaim keeps, is still local" "${prefix}${name}:sha1-amd64" "$(cat "$tmp/local")"
 done
+check_contains "so is the toolchain image, which it never reaches" "$tc" "$(cat "$tmp/local")"
+check_lacks "which is pushed nowhere" "test-cabinet-gg-toolchains:sha1" "$(cat "$tmp/registry")"
 check_lacks "and no reclaim is reported as failed" "NOT reclaimed" "$out"
 
 echo "a registry holding every inputs tag builds nothing"
@@ -151,11 +159,10 @@ check_equal "the build passes" "0" "$?"
 check_equal "nothing is built" "" "$(builds)"
 check_equal "nothing is pulled" "" "$(pulls)"
 check_equal "every image but tools is retagged for the commit" \
-	"${reg}/${prefix}gg-toolchains:sha1-amd64 ${reg}/${prefix}base:sha1-amd64 ${reg}/${prefix}sprite:sha1-amd64 ${reg}/${prefix}sprite-gg:sha1-amd64 " \
+	"${reg}/${prefix}base:sha1-amd64 ${reg}/${prefix}sprite:sha1-amd64 ${reg}/${prefix}sprite-gg:sha1-amd64 " \
 	"$(retags)"
 check_contains "and says so" "==> reusing ${prefix}sprite-gg:sha1-amd64: its inputs are unchanged" "$out"
 check_contains "with the reference line a build prints" "==> sprite-gg reference: ${reg}/${prefix}sprite-gg@sha256:manifest-sha1-amd64" "$out"
-check_equal "gg-toolchains is retagged once, though two rules reach it" "1" "$(grep -c 'imagetools create --tag registry.test/ns/test-cabinet-gg-toolchains:sha1-amd64' "$tmp/log")"
 
 echo "a changed child pulls its reused parents and builds"
 : >"$tmp/local"
@@ -163,8 +170,8 @@ sed -i 's/^sprite-gg d5 /sprite-gg d6 /' "$inputs"
 out="$(run base sprite sprite-gg)"
 check_equal "the build passes" "0" "$?"
 check_equal "only the child is built" "${prefix}sprite-gg:sha1-amd64 " "$(builds)"
-check_equal "its parents are pulled from their inputs tags" \
-	"${reg}/${prefix}sprite:inputs-d3-amd64 ${reg}/${prefix}gg-toolchains:inputs-d4-amd64 " "$(pulls)"
+check_equal "its parent is pulled from its inputs tag, and the toolchain image for the build" \
+	"${reg}/${prefix}sprite:inputs-d3-amd64 $tc " "$(pulls)"
 check_contains "the child is pushed under its new inputs tag" "${reg}/${prefix}sprite-gg:inputs-d6-amd64" "$(cat "$tmp/registry")"
 check_contains "sprite is retagged, not built" "${reg}/${prefix}sprite:sha1-amd64" "$(retags)"
 
@@ -175,8 +182,8 @@ out="$(run base sprite sprite-gg)"
 check_equal "the build passes" "0" "$?"
 check_equal "base, sprite and the variant are built" \
 	"${prefix}base:sha1-amd64 ${prefix}sprite:sha1-amd64 ${prefix}sprite-gg:sha1-amd64 " "$(builds)"
-check_equal "tools and gg-toolchains are pulled" \
-	"${reg}/${prefix}tools:inputs-d1-amd64 ${reg}/${prefix}gg-toolchains:inputs-d4-amd64 " "$(pulls)"
+check_equal "tools is pulled, and the toolchain image for the variant" \
+	"${reg}/${prefix}tools:inputs-d1-amd64 $tc " "$(pulls)"
 
 echo "one variant selected alone reuses its whole parent chain without a pull"
 : >"$tmp/local"
@@ -185,7 +192,7 @@ check_equal "the build passes" "0" "$?"
 check_equal "nothing is built" "" "$(builds)"
 check_equal "nothing is pulled" "" "$(pulls)"
 check_equal "the variant and its parent chain are retagged (base too: the rule that wants it present reaches it)" \
-	"${reg}/${prefix}gg-toolchains:sha1-amd64 ${reg}/${prefix}base:sha1-amd64 ${reg}/${prefix}sprite:sha1-amd64 ${reg}/${prefix}sprite-gg:sha1-amd64 " \
+	"${reg}/${prefix}base:sha1-amd64 ${reg}/${prefix}sprite:sha1-amd64 ${reg}/${prefix}sprite-gg:sha1-amd64 " \
 	"$(retags)"
 
 echo "a table that names a parent it does not list is refused"
@@ -198,7 +205,7 @@ check_contains "and says which" "sprite-gg is built from sprite, which the table
 check_equal "before anything is built" "" "$(builds)"
 
 echo "a push the registry refuses for a moment is retried, and the build passes"
-: >"$tmp/local"; : >"$tmp/registry"
+: >"$tmp/local"; fresh_registry
 variant="${reg}/${prefix}sprite-gg:sha1-amd64"
 pushes_of() { grep -cxF "push $1" "$tmp/log" || true; }
 echo 2 >"$tmp/push-fails"
@@ -213,7 +220,7 @@ check_contains "with its reference line" "==> sprite-gg reference: ${reg}/${pref
 # so a refused push was followed by the inputs tag, a reference line, a reclaim and exit 0,
 # and the commit's tag was only found missing when the architectures were fused.
 echo "a push the registry keeps refusing ends the build there"
-: >"$tmp/local"; : >"$tmp/registry"
+: >"$tmp/local"; fresh_registry
 echo 99 >"$tmp/push-fails"
 out="$(STUB_PUSH_FAIL_REF="$variant" run base sprite sprite-gg)" && status=0 || status=$?
 check_equal "with exit 1" "1" "$status"
@@ -223,6 +230,14 @@ check_lacks "no commit tag reached the registry" "$variant" "$(cat "$tmp/registr
 check_lacks "no inputs tag was pushed for it" "${reg}/${prefix}sprite-gg:inputs-" "$(cat "$tmp/registry")"
 check_lacks "no reference line was printed for it" "==> sprite-gg reference:" "$out"
 check_lacks "and it was not reclaimed" "reclaiming ${prefix}sprite-gg:" "$out"
+
+echo "without GG_TOOLCHAINS_IMAGE the variant copies the toolchains of the driver's pin"
+: >"$tmp/local"; fresh_registry
+pinned="testcabinet.azurecr.io/test-cabinet-gg-toolchains:$("$HERE/../scripts/ci/gg-release.sh" version)"
+out="$(GG_TOOLCHAINS_IMAGE="" REGISTRY_ATTEMPTS=1 run base sprite sprite-gg)" && status=0 || status=$?
+check_contains "it pulls that image" "pulling $pinned" "$out"
+check_equal "and, the stub registry lacking it, fails before building the variant" "1" "$status"
+check_lacks "which is not built" "${prefix}sprite-gg:sha1-amd64" "$(builds)"
 
 echo "a retry count that is not a positive integer is refused"
 out="$(REGISTRY_ATTEMPTS=0 run base 2>&1)" && status=0 || status=$?
