@@ -94,13 +94,32 @@ const args = process.argv.slice(2);
 const manifestsOnly = args.includes("--manifests-only");
 const positional = args.filter((arg) => arg !== "--manifests-only");
 const outDir = resolve(positional[0] ?? "/opt/tcab-packages");
-// The package directories of the npm workspace: this repository's own, and the
-// contracts repository's (the `contracts/` submodule), which holds
+// The package directories of the npm workspace: this repository's own, the engines
+// repository's (the `engines/` submodule), which holds every package staged here,
+// and the contracts repository's (the `contracts/` submodule), which holds
 // @clockwyrks/asset-contract, a dependency of the voxel and particle runtimes.
 const packagesDirs = [
   join(repoRoot, "packages"),
+  join(repoRoot, "engines", "packages"),
   join(repoRoot, "contracts", "packages"),
 ];
+
+// A `files` pattern as a regular expression over a path relative to the package:
+// `**` crosses directories, `*` stays within one, and a pattern naming a
+// directory matches everything beneath it.
+function globPattern(glob) {
+  const body = glob
+    .replace(/^\.?\/+|\/+$/g, "")
+    .split(/(\*\*\/?|\*)/)
+    .map((part) => {
+      if (part === "**/") return "(?:.*/)?";
+      if (part === "**") return ".*";
+      if (part === "*") return "[^/]*";
+      return part.replace(/[.+?^${}()|[\]\\]/g, "\\$&");
+    })
+    .join("");
+  return new RegExp(`^${body}(?:/.*)?$`);
+}
 
 // Map every in-repo package name -> { dir, pkg } by reading each directory's
 // */package.json.
@@ -125,8 +144,8 @@ const visit = (name) => {
   const entry = byName.get(name);
   if (!entry)
     throw new Error(
-      `shippable package ${name} not found under packages/ or contracts/packages/` +
-        " (is the contracts submodule checked out?)",
+      `shippable package ${name} not found under packages/, engines/packages/ or` +
+        " contracts/packages/ (are the engines and contracts submodules checked out?)",
     );
   closure.add(name);
   for (const dep of Object.keys(entry.pkg.dependencies ?? {})) {
@@ -204,15 +223,26 @@ for (const name of members) {
     `${JSON.stringify(staged, null, 2)}\n`,
   );
 
-  // Copy the files the package publishes (default ["dist"]).
-  for (const file of manifestsOnly ? [] : (pkg.files ?? ["dist"])) {
+  // Copy the files the package publishes (default ["dist"]). An entry starting
+  // with `!` excludes what it matches from the entries before it, as npm reads
+  // the field (`"!dist/tsconfig.tsbuildinfo"`).
+  const files = pkg.files ?? ["dist"];
+  const excluded = files
+    .filter((file) => file.startsWith("!"))
+    .map((file) => globPattern(file.slice(1)));
+  const kept = (src) => {
+    const path = relative(dir, src).split(/[\\/]/).join("/");
+    return !excluded.some((pattern) => pattern.test(path));
+  };
+  for (const file of manifestsOnly ? [] : files) {
+    if (file.startsWith("!")) continue;
     const src = join(dir, file);
     if (!existsSync(src)) {
       throw new Error(
         `${name} declares files entry "${file}" but ${src} does not exist`,
       );
     }
-    cpSync(src, join(dest, file), { recursive: true });
+    cpSync(src, join(dest, file), { recursive: true, filter: kept });
   }
   console.log(`staged ${name} -> ${dest}`);
 }

@@ -1,7 +1,8 @@
 # Keep the build context lean AND stable. Both the run-container builds
 # (containers/*/Dockerfile — the shared tooling builder in containers/tools/, which
 # compiles every asset binary from crates/, plus the adversarial and performance
-# images, which compile the Foray/Lattice tooling in their own stages) and the
+# images, which compile the Foray/Lattice tooling from the engines submodule in their
+# own stages) and the
 # service-image builds (deployments/images/services.Dockerfile, which compiles the
 # backend/auth/dispatcher/driver/artifacts/arena/publisher crates) use the
 # repository root as their context. Almost every one of those builds is just a `cargo
@@ -30,7 +31,7 @@
 # SUBMODULES. A path in a submodule is re-included like any other, by naming it (the
 # submodule's own path, or a path inside it, never a wildcard), and `*` below keeps
 # every submodule this file does not name out of the context, cold-storage's ~2 GB
-# of baseline media included. contracts is the one named, below. What a submodule
+# of baseline media included. contracts and engines are the ones named, below. What a submodule
 # path adds is a precondition: the build reads what the checkout it runs in holds,
 # and a checkout leaves every submodule empty until it is initialized. So the
 # image jobs run `scripts/ci/submodules.sh init --build-context`, which
@@ -44,12 +45,12 @@
 *
 
 # …then re-include the Rust workspace and the few files a build embeds. All
-# workspace members live under crates/. The workspace names the contracts
-# repository's crates by their public source, and the patch table in .cargo/ sends
-# that source to the contracts/ submodule, whose crates inherit their version and
+# workspace members live under crates/. The workspace names the contracts and
+# engines repositories' crates by their public sources, and the patch table in
+# .cargo/ sends each source to its submodule, whose crates inherit their version and
 # dependencies from its own workspace manifest, so cargo reads that too. This is
 # the complete set cargo needs to resolve and compile any crate; resolving the lock
-# still fetches the patched source, the public mirror, over the network.
+# still fetches the patched sources, the public mirrors, over the network.
 !/Cargo.toml
 !/Cargo.lock
 !/rust-toolchain.toml
@@ -57,16 +58,19 @@
 !/crates
 !/contracts/Cargo.toml
 !/contracts/crates
-# crates/driver and crates/engines bake these three trees into the binary verbatim via
-# include_str! (core the built-in orchestrator runner scripts and the harness
-# manifests, engines the built-in engine manifests), so they must be present in the
-# context even though they are not Rust sources. A tree that is baked in but not
-# re-included here does not fail at COPY like a missing Dockerfile source does — it
-# fails much later, as `error: couldn't read ...: No such file or directory` from the
-# compiler, which is how engines/ was missed when engines landed.
+!/engines/Cargo.toml
+!/engines/crates
+# crates/driver and the engines repository's crates/engines bake these three trees
+# into the binary verbatim via include_str! (the driver the built-in orchestrator
+# runner scripts and the harness manifests, engines the built-in engine manifests,
+# engines/engines/<slug>/engine.toml), so they must be present in the context even
+# though they are not Rust sources. A tree that is baked in but not re-included here
+# does not fail at COPY like a missing Dockerfile source does — it fails much later,
+# as `error: couldn't read ...: No such file or directory` from the compiler, which
+# is how the engine manifests were missed when engines landed.
 !/orchestrators
 !/harnesses
-!/engines
+!/engines/engines
 
 # The backend service image (services.Dockerfile, `--target backend`) bakes the
 # Playwright browser-driver into its runtime to render references at ingest, so the
@@ -86,8 +90,8 @@
 # "buildkit" — the verbatim engine crates plus a de-workspaced root Cargo.toml that
 # re-supplies their `workspace = true` inheritance — which they `cp` from the build
 # context and smoke-build standalone (see containers/{adversarial,performance}/Dockerfile).
-# The crates ride in under !/crates, but these de-workspaced root manifests live
-# outside it, so re-include them explicitly or the COPY/cp stages can't see them.
+# The crates ride in under !/engines/crates, but these de-workspaced root manifests
+# live outside it, so re-include them explicitly or the COPY/cp stages can't see them.
 !/containers/adversarial/buildkit/Cargo.toml
 !/containers/performance/buildkit/Cargo.toml
 
@@ -172,9 +176,12 @@
 #     plus its workspace deps @clockwyrks/ui, @clockwyrks/run-record and
 #     @clockwyrks/backend-api, which Vite resolves to their TypeScript sources
 #     (packages/ui exports ./src/*), and
-#     @clockwyrks/run-stats, @clockwyrks/voxel-runtime and
-#     @clockwyrks/particle-runtime, whose compiled subpaths the ui library
-#     imports (run-stats' scoring rules and rollup; the two runtimes' `./three`).
+#     @clockwyrks/run-stats, @clockwyrks/voxel-runtime,
+#     @clockwyrks/particle-runtime and @clockwyrks/lattice-runtime, whose
+#     compiled subpaths the ui library imports (run-stats' scoring rules and
+#     rollup; the voxel and particle runtimes' `./three`; the lattice runtime's
+#     renderer and its `lattice-core.wasm`).
+#     The runtimes are the engines repository's, under engines/packages/.
 #     The Dockerfile builds their dist/ before the console — the sources ride
 #     along here, dist/ is re-excluded below and rebuilt in-image.
 # node_modules/ and dist/ are re-excluded below (those re-exclusions come last and
@@ -191,8 +198,11 @@
 !/contracts/packages/backend-api
 !/packages/run-stats
 !/packages/ui
-!/packages/voxel-runtime
-!/packages/particle-runtime
+# The engines packages extend the engines repository's own base tsconfig.
+!/engines/tsconfig.base.json
+!/engines/packages/voxel-runtime
+!/engines/packages/particle-runtime
+!/engines/packages/lattice-runtime
 # The rig/animation half of the generated contract. `run-record` re-exports it, so
 # the console needs it for the same reason it needs `run-record`; separately, it is
 # what the two runtimes above now depend on, so the staging script pulls it into the
@@ -204,21 +214,21 @@
 # BASE image below, whose staging script bakes them into the package store beside
 # the shippable packages — an engine runtime is seeded per run rather than named
 # by a case, so each appears in that script's list and in no case manifest.
-!/packages/simple-2d
-!/packages/structured-2d
-!/packages/simple-3d
-!/packages/structured-3d
+!/engines/packages/simple-2d
+!/engines/packages/structured-2d
+!/engines/packages/simple-3d
+!/engines/packages/structured-3d
 # The shared engineless (`none`) validator harness and canvas recorder. Nothing
 # bundles it and no COPY names it: scripts/stage-tcab-packages.mjs bakes it into the
 # package store beside the engine runtimes, and contracts/crates/suites' vitest validator
 # (vitest_validator.rs, `stage_case_harness`) later copies its sources out of that
 # store into a case's staged validator project. So the driver image must carry its
 # sources, and a build context missing them fails inside the staging script
-# ("shippable package @clockwyrks/case-harness not found under packages/"), taking
-# every service image on services.Dockerfile down with it. scripts/ci/build-context.sh
-# asserts every name in that script's SHIPPABLE list survives this allowlist, because
-# a `COPY . .` stage is invisible to the COPY-source checks.
-!/packages/case-harness
+# ("shippable package @clockwyrks/case-harness not found ..."), taking every service
+# image on services.Dockerfile down with it. scripts/ci/build-context.sh asserts every
+# name in that script's SHIPPABLE list survives this allowlist, because a `COPY . .`
+# stage is invisible to the COPY-source checks.
+!/engines/packages/case-harness
 # The run-container BASE image (containers/base/Dockerfile) reuses this same npm
 # slice: its builder stage `npm ci`s the workspace and runs the staging script to
 # bake the shippable @clockwyrks packages — and the simple-2d engine runtime —
@@ -332,6 +342,10 @@
 !/scripts/gg-arms.sh
 !/scripts/gg-artifacts-out-dir.sh
 !/scripts/gg-artifacts.sh
+# The lock-order helpers gg's build shell and the installer source, and their table test, which no
+# image runs but which the devcontainer image's `./scripts/gg-*.sh` COPY names all the same.
+!/scripts/gg-cargo-lock.sh
+!/scripts/gg-cargo-lock.test.sh
 !/scripts/gg-downloads.sh
 !/scripts/gg-npm-tools.sh
 # The table test of the npm-tool resolver. No image runs it; it is here because it
@@ -383,6 +397,7 @@
 # The copies of committed case versions the Rust tests read. No image builds a test,
 # and the copies weigh tens of megabytes.
 /crates/*/testdata/
+/engines/crates/*/testdata/
 # The guest packages' own scratch, which the block above would otherwise admit and
 # which dwarfs everything else in this context: measured on a developer machine that
 # has built every arm by hand, the ten packages are ~6 MB of sources and ~420 MB of

@@ -7,14 +7,15 @@
 # FNV-1a checksum an engine's output is compared by — plus the straightforward
 # reference simulation the floor starter delegates to) and `lattice-sdk` (the
 # guest-side ABI glue and the re-exported contract types), copied UNMODIFIED from
-# `crates/` at image-build time (see `containers/performance/Dockerfile`). A run's
-# `engine/Cargo.toml` path-depends on the two crates under this directory.
+# the engines repository's `crates/` (the `engines/` submodule) at image-build
+# time (see `containers/performance/Dockerfile`). A run's `engine/Cargo.toml`
+# path-depends on the two crates under this directory.
 #
 # The crate sources are copied verbatim — so they can never drift from the types
 # and checksum the validator scores against — but they inherit their package fields
-# and dependency versions from the *repository* workspace via `workspace = true`.
+# and dependency versions from the engines repository's workspace via `workspace = true`.
 # This root re-supplies that inheritance so the copies build standalone inside the
-# image. The values below MIRROR the repository root `Cargo.toml`'s
+# image. The values below MIRROR the engines repository's root `Cargo.toml`'s
 # `[workspace.package]`, the `[workspace.dependencies]` entries those two crates
 # reference (`serde`, `serde_json`, `schemars`), and the `[workspace.lints]` both
 # crates opt into with `[lints] workspace = true`; a mismatch after a version bump
@@ -37,7 +38,7 @@ schemars = "1"
 
 # Both copied crates opt into the workspace lint policy with `[lints] workspace =
 # true`, so this root must re-supply it for the standalone build. Mirrors the
-# repository root `Cargo.toml`'s `[workspace.lints.rust]` / `[workspace.lints.clippy]`.
+# engines repository's root `Cargo.toml`'s `[workspace.lints.rust]` / `[workspace.lints.clippy]`.
 [workspace.lints.rust]
 warnings = "deny"
 

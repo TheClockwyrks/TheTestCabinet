@@ -7,7 +7,8 @@
 //! kind — can be malformed without a test failing:
 //!
 //!   - orchestrators (`orchestrators/<slug>/…`)      via [`OrchestratorCatalog`]
-//!   - engines       (`engines/<slug>/engine.toml`)   via `built_in_catalog`
+//!   - engines       (`engines/engines/<slug>/engine.toml`, the engines
+//!     submodule's)                                   via `built_in_catalog`
 //!   - harnesses     (`harnesses/<slug>/harness.toml`) via [`DefaultHarnessRegistry`]
 //!   - test-case groups (`test-case-groups/<slug>/test-case-group.toml`)
 //!     via [`TestCaseGroupCatalog`]
@@ -98,7 +99,9 @@ fn every_orchestrator_manifest_loads() {
 fn every_engine_manifest_loads() {
     let catalog = test_cabinet_driver::engine::built_in_catalog();
 
-    let on_disk: BTreeSet<String> = subdirs(&repo_root().join("engines"))
+    // The manifests are the engines repository's, at `engines/<slug>/` of its
+    // checkout, which the superrepo holds as the `engines` submodule.
+    let on_disk: BTreeSet<String> = subdirs(&repo_root().join("engines").join("engines"))
         .iter()
         .filter_map(|path| path.file_name()?.to_str().map(str::to_owned))
         .collect();

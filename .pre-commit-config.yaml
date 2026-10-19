@@ -370,13 +370,6 @@ repos:
         files: '(^|/)\.frozen$|^(test-cases|game-jams)/|^scripts/(freeze|lib/frozen)\.sh$|^ci/gates/frozen-paths\.py$'
         pass_filenames: false
 
-      - id: seeded-contract
-        name: "seeded contract vocabulary"
-        entry: uv run --quiet --project ci gate run seeded-contract
-        language: system
-        files: '^packages/|^scripts/stage-tcab-packages\.mjs$|^scripts/ci/seeded-contract-check\.sh$|^ci/gates/seeded-contract\.py$'
-        pass_filenames: false
-
       - id: spec-vocabulary
         name: "seeded spec vocabulary"
         entry: uv run --quiet --project ci gate run spec-vocabulary
@@ -434,7 +427,8 @@ repos:
         name: "script library tests (node --test)"
         entry: uv run --quiet --project ci gate run scripts-test
         language: system
-        # The library, the staging script and its test, the gate whose STRICT list
-        # that test reads, and the manifests the staging script writes from.
-        files: '^scripts/lib/.*\.m?js$|^scripts/[^/]+\.test\.mjs$|^scripts/stage-tcab-packages\.mjs$|^scripts/ci/seeded-contract-check\.sh$|^packages/[^/]+/package\.json$|^ci/gates/scripts-test\.py$'
+        # The library, the staging script and its test, the manifests the staging
+        # script writes from, and the engines pin, whose checkout holds the staged
+        # packages and the gate script whose STRICT list that test reads.
+        files: '^scripts/lib/.*\.m?js$|^scripts/[^/]+\.test\.mjs$|^scripts/stage-tcab-packages\.mjs$|^engines$|^packages/[^/]+/package\.json$|^ci/gates/scripts-test\.py$'
         pass_filenames: false

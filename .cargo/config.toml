@@ -91,9 +91,23 @@ test-cabinet-redact = { path = "contracts/crates/redact" }
 test-cabinet-suites = { path = "contracts/crates/suites" }
 test-cabinet-telemetry = { path = "contracts/crates/telemetry" }
 
-# engines is not checked out; the table joins once it is bootstrapped:
-#   [patch."https://github.com/TheClockwyrks/engines"]
-#   test-cabinet-engines = { path = "engines/crates/engines" }
+[patch."https://github.com/TheClockwyrks/engines"]
+test-cabinet-engines = { path = "engines/crates/engines" }
+foray-cli = { path = "engines/crates/foray-cli" }
+foray-controller-sdk = { path = "engines/crates/foray-controller-sdk" }
+foray-core = { path = "engines/crates/foray-core" }
+foray-fuel-probe = { path = "engines/crates/foray-fuel-probe" }
+foray-host = { path = "engines/crates/foray-host" }
+foray-ref-border-soldier = { path = "engines/crates/foray-ref-border-soldier" }
+foray-ref-greedy-raider = { path = "engines/crates/foray-ref-greedy-raider" }
+foray-ref-random = { path = "engines/crates/foray-ref-random" }
+lattice-cli = { path = "engines/crates/lattice-cli" }
+lattice-core = { path = "engines/crates/lattice-core" }
+lattice-host = { path = "engines/crates/lattice-host" }
+lattice-ref-naive = { path = "engines/crates/lattice-ref-naive" }
+lattice-ref-transport = { path = "engines/crates/lattice-ref-transport" }
+lattice-sdk = { path = "engines/crates/lattice-sdk" }
+test-cabinet-match-play = { path = "engines/crates/match-play" }
 
 # ui-common is not checked out; the table joins once it is bootstrapped:
 #   [patch."https://github.com/TheClockwyrks/ui-common"]

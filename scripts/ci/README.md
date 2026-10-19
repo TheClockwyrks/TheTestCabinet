@@ -66,7 +66,6 @@ script in this directory:
 
 | Gate              | Script it runs                                              |
 | ----------------- | ----------------------------------------------------------- |
-| `seeded-contract` | `seeded-contract-check.sh`                                  |
 | `spec-vocabulary` | `spec-vocabulary-check.mjs`                                 |
 | `audio-packs`     | `audio-packs-check.mjs`                                     |
 | `build-context`   | `build-context.sh`                                          |
@@ -307,8 +306,8 @@ ones not listed above included: the per-arm installers (`install-java.sh`,
 `install-kotlin.sh`, `install-purescript.sh`, `install-wasi-sdk.sh`,
 `install-dotnet.sh`, `install-swift.sh`, `install-rust-wasm.sh`,
 `install-wit-bindgen.sh`, `install-adapter.sh`, `install-uv.sh`), their shared
-`fetch.sh`, `tcab-lib.sh`, and the gate scripts `build-context.sh` and
-`seeded-contract-check.sh`. The workspace template requires
+`fetch.sh`, `tcab-lib.sh`, and the gate script `build-context.sh`. The workspace
+template requires
 it (its render check fails a script here without one), and a new script comes with
 its test. The `shell-tests` gate runs every `scripts/*.test.sh` and
 `scripts/ci/*.test.sh`, each hermetic: temporary directories, stubs of the tools the

@@ -73,8 +73,8 @@ The kind decides a repository's shape.
 | `client-tauri` | shell | The operator client for Windows, Linux, macOS and Android |
 | `test-suites` | content | The test cases and game jams, and the lattice factory designer |
 
-Every repository but `contracts`, `test-suites` and `cold-storage` is still a
-directory of the superrepo's own tree today.
+Every repository but `contracts`, `engines`, `test-suites` and `cold-storage` is
+still a directory of the superrepo's own tree today.
 
 ### Where each responsibility lives
 
@@ -227,11 +227,11 @@ repository has none:
 ```toml
 [workspace.dependencies.test-cabinet-contracts]
 git = "https://github.com/TheClockwyrks/contracts"
-tag = "v0.1.0"
+tag = "v0.2.1"
 ```
 
 The render writes the tag `TAGS` in `scripts/repos/render.py` records for the
-repository, `v0.1.0` for `contracts`, and `branch = "master"` for one it records
+repository, `v0.2.1` for `contracts`, and `branch = "master"` for one it records
 none for. A new tag is recorded there, and reaches a dependent with its next
 `render.py --update`.
 

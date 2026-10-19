@@ -33,12 +33,13 @@ FROM docker.io/library/node:24-bookworm-slim AS build
 WORKDIR /src
 COPY . .
 # Deterministic, lockfile-pinned install of the whole workspace, then build the
-# web console. run-record, backend-api, run-stats, voxel-runtime and particle-runtime
-# are built first: the console's `tsc -b` needs the two contract packages' compiled
-# types, and the @clockwyrks/ui library it bundles from source imports run-stats'
-# `.`/`./rollup` subpaths and voxel-runtime's and particle-runtime's `./three` subpaths, whose
-# typings only resolve once each package's dist/ exists (none of the three is a tsc
-# project reference of the console, so they must be built explicitly). The npm
+# web console. run-record, backend-api, run-stats, voxel-runtime, particle-runtime and
+# lattice-runtime are built first: the console's `tsc -b` needs the two contract
+# packages' compiled types, and the @clockwyrks/ui library it bundles from source
+# imports run-stats' `.`/`./rollup` subpaths, voxel-runtime's and particle-runtime's
+# `./three` subpaths and lattice-runtime's root (the Lattice renderer and engine),
+# whose code and typings only resolve once each package's dist/ exists, so they are
+# built explicitly. The npm
 # cache is a BuildKit cache mount so re-installs reuse the downloaded tarballs
 # across builds instead of refetching every dependency.
 RUN --mount=type=cache,target=/root/.npm \
@@ -48,6 +49,7 @@ RUN --mount=type=cache,target=/root/.npm \
     && npm run build -w @clockwyrks/run-stats \
     && npm run build -w @clockwyrks/voxel-runtime \
     && npm run build -w @clockwyrks/particle-runtime \
+    && npm run build -w @clockwyrks/lattice-runtime \
     && npm run build -w @clockwyrks/web
 
 # ── Runtime stage ────────────────────────────────────────────────────────────

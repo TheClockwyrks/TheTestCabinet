@@ -27,7 +27,7 @@
 #   vendored sources  `swift-numerics` — compiled into that arm's curated archive.
 #   the Rust arm's    `packages/gg-sandbox-rust/Cargo.lock` is a SEPARATE lockfile from the
 #   cargo closure    workspace's, so nothing else in this repository warms it, and that arm's build
-#                     runs `cargo build --locked --offline` against it.
+#                     runs `cargo build --offline` against it.
 #   the ECMAScript    `packages/gg-sandbox/guest/Cargo.lock`, a THIRD lockfile, for the same reason:
 #   guest's closure   quickjs and `rquickjs` are compiled for `wasm32-wasip1` out of a package that
 #                     is deliberately not in the workspace.
@@ -57,6 +57,8 @@ source "$REPO_ROOT/scripts/gg-npm-tools.sh"
 source "$REPO_ROOT/scripts/gg-downloads.sh"
 # shellcheck source=scripts/ci/fetch.sh
 source "$REPO_ROOT/scripts/ci/fetch.sh"
+# shellcheck source=scripts/gg-cargo-lock.sh
+source "$REPO_ROOT/scripts/gg-cargo-lock.sh"
 
 # Three of the resolutions below are `npm install --prefix`, and npm is the ONE prerequisite this
 # script assumes rather than installs — like `uv` and `cargo` below, and for the same reason: a
@@ -193,21 +195,26 @@ echo "componentize-py $PY_COMPONENTIZE and the pinned wheels are in uv's cache"
 
 # --- the Rust arm's own lockfile ---------------------------------------------------------------
 #
-# `cargo fetch --locked` populates `CARGO_HOME` with exactly what that lockfile names, which is what
-# lets that arm's `build.sh` run `cargo build --locked --offline`. The workspace's own `cargo fetch`
-# does not cover it: this is a separate package with a separate lockfile and a curated dependency set
-# of its own.
+# `cargo fetch` populates `CARGO_HOME` with exactly what that lockfile names, which is what lets that
+# arm's `build.sh` run `cargo build --offline`. The workspace's own `cargo fetch` does not cover it:
+# this is a separate package with a separate lockfile and a curated dependency set of its own.
+# `--locked` only where no patch table shapes the fetch: under the superrepo's, cargo writes the
+# lock's `[[patch.unused]]` block in no stable order, so the flag would refuse it at random and a
+# fetch that merely reordered the lock puts it back (scripts/gg-cargo-lock.sh).
 log "the rust arm's curated crate set (a separate Cargo.lock from the workspace's)"
 if command -v cargo >/dev/null 2>&1; then
-	cargo fetch --locked --manifest-path "$REPO_ROOT/packages/gg-sandbox-rust/Cargo.toml"
+	mapfile -t locked < <(cargo_locked_args "$REPO_ROOT/packages/gg-sandbox-rust")
+	cargo_keeping_lock_order "$REPO_ROOT/packages/gg-sandbox-rust/Cargo.lock" \
+		cargo fetch ${locked[@]+"${locked[@]}"} --manifest-path "$REPO_ROOT/packages/gg-sandbox-rust/Cargo.toml"
 	# The ECMAScript guest, which is a THIRD lockfile for the same reason: quickjs and `rquickjs`
 	# are compiled for `wasm32-wasip1` out of a package that is deliberately not in the workspace,
-	# and `packages/gg-sandbox/guest.sh` builds it `--locked --offline` inside an ordinary
-	# `cargo build`.
-	cargo fetch --locked --manifest-path "$REPO_ROOT/packages/gg-sandbox/guest/Cargo.toml"
+	# and `packages/gg-sandbox/guest.sh` builds it `--offline` inside an ordinary `cargo build`.
+	mapfile -t locked < <(cargo_locked_args "$REPO_ROOT/packages/gg-sandbox/guest")
+	cargo_keeping_lock_order "$REPO_ROOT/packages/gg-sandbox/guest/Cargo.lock" \
+		cargo fetch ${locked[@]+"${locked[@]}"} --manifest-path "$REPO_ROOT/packages/gg-sandbox/guest/Cargo.toml"
 else
 	echo "warning: no \`cargo\` on PATH, so the rust arm's crate set and the ECMAScript guest's" >&2
-	echo "         were not fetched. Both build \`--locked --offline\` and will fail until this" >&2
+	echo "         were not fetched. Both build \`--offline\` and will fail until this" >&2
 	echo "         is run on a machine that has one." >&2
 fi
 

@@ -30,11 +30,13 @@ What is asked:
   produces, links nothing else, and an installed workspace naming a linked
   package resolves it to the sibling checkout;
 - with a repository carrying crates checked out, the superrepo's `Cargo.lock`
-  is current against it (`cargo metadata --locked --offline`), since the
-  workspace depends on those crates by path and a pin bump that moves a
-  crate's version or dependencies leaves the lock stale; and so is the lock of
-  each Cargo workspace nested under `packages/`, which records the patch
-  table's entries it does not use as `[[patch.unused]]`.
+  is current against it, since the workspace depends on those crates by path
+  and a pin bump that moves a crate's version or dependencies leaves the lock
+  stale; and so is the lock of each Cargo workspace nested under `packages/`,
+  which records the patch table's entries it does not use as
+  `[[patch.unused]]`. Cargo writes that block in an order that is not stable
+  between runs, so a lock is current when cargo's own resolution of it
+  differs at most in that order (see `the_test_cabinet_ci.lockfile`).
 
 The data edges, the ones no manifest can name (a run reading a suite, a CLI
 pinning gg's released binary), are reported as notes and never refused.
@@ -48,6 +50,7 @@ from __future__ import annotations
 
 import configparser
 import importlib.util
+import os
 import re
 import shutil
 import subprocess
@@ -57,6 +60,8 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from types import ModuleType
+
+from the_test_cabinet_ci import lockfile
 
 GITMODULES = ".gitmodules"
 CARGO_CONFIG = Path(".cargo") / "config.toml"
@@ -68,14 +73,14 @@ RENDER = Path("scripts") / "repos" / "render.py"
 LINK_SCRIPT = "scripts/repos/link-packages.sh"
 PATCH_SCRIPT = "scripts/repos/sources.py patch-table --write"
 PIPELINE = "azure-pipelines.yml"
-# What holds the superrepo's lock to the checked-out crates, run from its root.
+# What holds a lock under the superrepo to the checked-out crates, run from
+# its workspace: first as it stands, then letting cargo write its own
+# resolution to compare with the committed one.
 LOCK_CHECK = ("cargo", "metadata", "--locked", "--offline", "--format-version", "1")
+LOCK_RESOLVE = ("cargo", "metadata", "--offline", "--format-version", "1")
 # What cargo says when `--locked` stopped it rewriting the lock, as against
 # failing for another reason (a crate this machine never downloaded).
 LOCK_STALE = "because --locked was passed"
-# The Cargo workspaces nested under the superrepo whose committed locks its
-# builds read with `--locked`: gg's guest and Rust library-set workspaces.
-NESTED_LOCKS = ("packages/*/Cargo.lock", "packages/*/*/Cargo.lock")
 # The pin-bump procedure the Repositories development page states.
 LOCK_FIX = (
     "regenerate it offline (`cargo update --offline -p <each crate of the bumped repository>` at the root,"
@@ -192,25 +197,43 @@ class Report:
         return not self.problems
 
 
-def lock_problems(root: Path) -> list[str]:
+def lock_problems(
+    root: Path,
+    run: Callable[..., subprocess.CompletedProcess[str]] = subprocess.run,
+) -> list[str]:
     """Each committed lock under the superrepo that is not current against the checkouts.
 
-    The root `Cargo.lock` and every lock `NESTED_LOCKS` matches. `--no-deps`
-    would skip the resolution that compares a lock to its manifests, so the
-    check resolves the whole graph, offline, from what cargo has already
-    downloaded. A lock is stale only when cargo would rewrite it; a resolution
-    that fails for another reason (a machine that never fetched the crates) is
-    left to the `--locked` gates that do fetch them.
+    The root `Cargo.lock` and every lock `lockfile.NESTED_LOCKS` matches.
+    `--no-deps` would skip the resolution that compares a lock to its
+    manifests, so the check resolves the whole graph, offline, from what cargo
+    has already downloaded. A lock `--locked` accepts is current. One it
+    refuses is resolved again without the flag, which lets cargo write its own
+    resolution, and the lock is put back as it was, bytes and modification
+    time, whatever cargo wrote: it is stale only when that resolution differs
+    from it beyond the order of the `[[patch.unused]]` block, which cargo does
+    not hold stable. A resolution that fails for another reason (a machine
+    that never fetched the crates) is left to the gates that do fetch them.
+
+    `run` stands in for `subprocess.run` in a test.
     """
-    locks = [root / "Cargo.lock", *sorted(lock for pattern in NESTED_LOCKS for lock in root.glob(pattern))]
     problems = []
-    for lock in locks:
-        if not lock.is_file():
+    for lock in lockfile.superrepo_locks(root):
+        ran = run(list(LOCK_CHECK), cwd=lock.parent, capture_output=True, text=True, check=False)
+        if ran.returncode == 0 or LOCK_STALE not in ran.stderr:
             continue
-        ran = subprocess.run(list(LOCK_CHECK), cwd=lock.parent, capture_output=True, text=True, check=False)
-        if ran.returncode != 0 and LOCK_STALE in ran.stderr:
-            name = lock.relative_to(root).as_posix()
-            problems.append(f"{name} is not current against the checked-out crates; {LOCK_FIX}")
+        text = lock.read_text(encoding="utf-8")
+        stat = lock.stat()
+        try:
+            resolved = run(list(LOCK_RESOLVE), cwd=lock.parent, capture_output=True, text=True, check=False)
+            written = lock.read_text(encoding="utf-8") if lock.is_file() else ""
+        finally:
+            if not lock.is_file() or lock.read_text(encoding="utf-8") != text:
+                lock.write_text(text, encoding="utf-8")
+                os.utime(lock, ns=(stat.st_atime_ns, stat.st_mtime_ns))
+        if resolved.returncode == 0 and lockfile.same_resolution(text, written):
+            continue
+        name = lock.relative_to(root).as_posix()
+        problems.append(f"{name} is not current against the checked-out crates; {LOCK_FIX}")
     return problems
 
 

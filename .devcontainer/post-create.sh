@@ -25,11 +25,12 @@
 # catalogues are reflected with; everything else that build needs is in the
 # image, so a container is ready to build the workspace when this returns.
 #
-# tools/submodule-checkout.sh populates `contracts/`, the contracts repository
-# whose crates and packages the workspace builds against, and `test-suites/`,
-# the suites checkout The Test Cabinet ingests from. It names those two alone,
-# because cold-storage beside them is optional and about 2 GB. It runs ahead of
-# `npm ci`, which lists contracts' packages in the npm workspace, and after
+# tools/submodule-checkout.sh populates `contracts/` and `engines/`, the contracts
+# and engines repositories whose crates and packages the workspace builds against,
+# and `test-suites/`, the suites checkout The Test Cabinet ingests from. It names
+# those three alone, because cold-storage beside them is optional and about 2 GB.
+# It runs ahead of `npm ci`, which lists contracts' and engines' packages in the
+# npm workspace, and after
 # tools/ssh-agent.sh, because the clone goes through the host agent that script
 # publishes: this runs before post-start.sh, so the agent is published here
 # first (the script is idempotent, and post-start.sh publishes it again). The

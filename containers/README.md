@@ -111,13 +111,15 @@ full set is whatever [`build.sh`](#building) builds; the notable ones:
   [adversarial](../apps/docs/src/content/docs/testing/adversarial/overview.md)
   run executes in — **base-wasm** (which supplies the Rust + `wasm32-unknown-unknown`
   toolchain a model's controller builds to a wasm core module with in-container)
-  plus the Foray tooling compiled from `crates/`: the baked-in `foray` CLI, the
+  plus the Foray tooling compiled from the engines submodule's `engines/crates/`: the
+  baked-in `foray` CLI, the
   controller buildkit, and the reference modules + map; and
 - the **performance** image, which every
   [performance](../apps/docs/src/content/docs/testing/performance/overview.md)
   run executes in — **base-wasm** (which supplies the Rust + `wasm32-unknown-unknown`
   toolchain a model's engine builds to a wasm core module with in-container) plus
-  the Lattice tooling compiled from `crates/`: the baked-in `lattice` CLI, the
+  the Lattice tooling compiled from the engines submodule's `engines/crates/`: the
+  baked-in `lattice` CLI, the
   engine buildkit, the reference engines, and the committed training scenarios.
 
 With one exception, none is a per-harness image — a run installs the selected
@@ -332,8 +334,9 @@ effect is a `system.json` a game plays by **simulating it live**, and a voxel/me
 rig is **posed** at runtime. A game that consumes one needs the _runtime that
 plays it_, not just the asset. Those runtimes already exist in this repo as the
 `@clockwyrks/*` libraries the in-repo viewers use
-([`@clockwyrks/particle-runtime`](../packages/particle-runtime),
-[`@clockwyrks/voxel-runtime`](../packages/voxel-runtime)); an end-to-end case
+([`@clockwyrks/particle-runtime`](../engines/packages/particle-runtime),
+[`@clockwyrks/voxel-runtime`](../engines/packages/voxel-runtime), from the
+`engines` repository, checked out at `engines/`); an end-to-end case
 names the ones it needs with the manifest's
 [`packages`](../apps/docs/src/content/docs/testing/end-to-end/overview.md#packages)
 key, and the run consumes them as ordinary installed dependencies.
@@ -350,15 +353,16 @@ within the store, so the staged set resolves with no npm-published
 `@clockwyrks/*` package required.
 
 Staging is done by
-[`scripts/stage-tcab-packages.mjs`](../scripts/stage-tcab-packages.mjs), run in a builder
-stage of the shared services Dockerfile (the build context is the repository root, so the
-stage can see `packages/`). The script builds the npm workspace, then for each package in
-its **shippable list** copies the package's `package.json` and the files its `files` field
-publishes into `/opt/tcab-packages/@clockwyrks/<name>/`, pulling in and rewriting
-transitive `@clockwyrks/*` dependencies. The staged `package.json` drops the dev-only
-fields (`private`, `scripts`, `devDependencies`) and the registry ones
-(`publishConfig`, `repository`, `homepage`, `bugs`): it is vendored into a model's
-workspace, where a feed URL or the project's repository would name the project, and
+[`scripts/stage-tcab-packages.mjs`](../scripts/stage-tcab-packages.mjs), run in a
+builder stage of the shared services Dockerfile (the build context is the repository
+root, so the stage can see `engines/packages/` and `contracts/packages/`). The script
+builds the npm workspace, then for each package in its **shippable list** copies the
+package's `package.json` and the files its `files` field publishes into
+`/opt/tcab-packages/@clockwyrks/<name>/`, pulling in and rewriting transitive
+`@clockwyrks/*` dependencies. The staged `package.json` drops the dev-only fields
+(`private`, `scripts`, `devDependencies`) and the registry ones (`publishConfig`,
+`repository`, `homepage`, `bugs`): it is vendored into a model's workspace, where a feed
+URL or the project's repository would name the project, and
 `scripts/stage-tcab-packages.test.mjs` stages the real set and holds every seeded
 manifest to the seeded-contract gate's strict list. The runtime stage `COPY --from`s
 that tree in.
@@ -377,7 +381,7 @@ validation host, or a clone of the published repo — with no absolute path to b
 The model imports the library like any other dependency (see
 [Packages](../apps/docs/src/content/docs/testing/end-to-end/overview.md#packages)).
 
-**Engine runtimes share the store.** An [engine](../engines/README.md) is the
+**Engine runtimes share the store.** An [engine](../engines/engines/README.md) is the
 runtime a produced game is built on, and its package is staged into the same store
 by the same script. An engine is selected per run rather than declared by a case,
 so seeding vendors the selected engine into `.vendor/engine/` and writes its `file:`
@@ -407,8 +411,8 @@ To add one:
 
 1. **Make the package shippable.** It must build to a `dist/` with a package
    `exports` map and a `files` field listing what to publish (as
-   `packages/particle-runtime` and `packages/voxel-runtime` already do). It should
-   be framework-agnostic and MIT-licensed; a peer dependency the _game_ provides
+   `engines/packages/particle-runtime` and `engines/packages/voxel-runtime` already
+   do). It should be framework-agnostic and MIT-licensed; a peer dependency the _game_ provides
    (for example `three`) is fine, since the game installs it, but a hard dependency
    on an npm-published package is not.
 2. **Add it to the shippable list** in
@@ -525,15 +529,17 @@ someone needs a run container. Run it after adding a `COPY`.
 
 **And after baking a new tree into a binary with `include_str!`**, which is the same
 mistake with a different corpse. `crates/driver` embeds the built-in orchestrators and
-the harness manifests, and `crates/engines` the engine manifests, from directories
-their `include_str!` paths climb out of `crates/` to reach, and the whole-context
+the harness manifests, and the engines repository's `crates/engines` the engine
+manifests (`engines/engines/`), from directories their `include_str!` paths climb out
+of `crates/` to reach, and the whole-context
 `COPY` those builds do succeeds whatever the allowlist admits — so a tree that was
 never re-included fails minutes later as
 ``error: couldn't read `crates/engines/src/../../../engines/none/engine.toml` ``, which
-reads as a broken checkout. That is how `!/engines` came to be missing when engines
+reads as a broken checkout. That is how the engine manifests came to be missing when engines
 landed, taking every service image (all six are built by the one cargo stage that
 compiles `test-cabinet-engines`) and `make local-up` with it. The gate reads those
-paths out of the Rust sources now, so the list cannot fall behind.
+paths out of the Rust sources now, those of the submodules the context admits
+included, so the list cannot fall behind.
 
 **And after adding a `packages/gg-sandbox*` package**, which is the same mistake
 without a `COPY` to point at. The driver image's gg stage copies the whole context
@@ -653,7 +659,8 @@ world-readable, with a run-user-owned cargo registry — see the **base-wasm** s
 above). This image adds only the Foray tooling.
 
 Like the asset-generation images, this one **also bakes in The Test Cabinet's own
-tooling**, compiled from `crates/` in a multi-stage build and copied under
+tooling**, compiled from the engines submodule's `engines/crates/` in a multi-stage
+build and copied under
 `/usr/local/bin` and `/opt/foray`:
 
 - the **`foray` CLI** (`/usr/local/bin/foray`) — the binary a model runs its
@@ -693,7 +700,8 @@ Rust toolchain from base-wasm (system-wide, world-readable, with a run-user-owne
 cargo registry). This image adds only the Lattice tooling.
 
 Like the adversarial image, this one **also bakes in The Test Cabinet's own
-tooling**, compiled from `crates/` in a multi-stage build and copied under
+tooling**, compiled from the engines submodule's `engines/crates/` in a multi-stage
+build and copied under
 `/usr/local/bin` and `/opt/lattice`:
 
 - the **`lattice` CLI** (`/usr/local/bin/lattice`) — the binary a model runs to

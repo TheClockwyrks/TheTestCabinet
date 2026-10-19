@@ -14,7 +14,7 @@
 // sprite sheet) itself — the Engine is pure wasm with no DOM, so it runs unchanged
 // in a worker, but the Renderer needs a canvas and stays on the main thread.
 
-import { Engine, type Snapshot } from "./renderer";
+import { Engine, type Snapshot } from "@clockwyrks/lattice-runtime";
 
 /** A message the overlay posts to the worker. */
 export type PlaybackWorkerRequest = {

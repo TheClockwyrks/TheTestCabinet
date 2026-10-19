@@ -9,3 +9,7 @@
 	path = contracts
 	url = ../contracts
 	branch = master
+[submodule "engines"]
+	path = engines
+	url = ../engines
+	branch = master

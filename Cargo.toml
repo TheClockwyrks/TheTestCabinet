@@ -1,7 +1,6 @@
 [workspace]
 resolver = "3"
 members = [
-	"crates/engines",
 	"crates/cli",
 	"crates/gg",
 	# The shared build-script body behind every gg program-language ARTIFACT crate, and the arm
@@ -52,21 +51,6 @@ members = [
 	"crates/sfx-synth",
 	"crates/sfx-sample",
 	"crates/music",
-	"crates/foray-core",
-	"crates/foray-host",
-	"crates/foray-cli",
-	"crates/foray-controller-sdk",
-	"crates/foray-ref-random",
-	"crates/foray-ref-greedy-raider",
-	"crates/foray-ref-border-soldier",
-	"crates/foray-fuel-probe",
-	"crates/lattice-core",
-	"crates/lattice-host",
-	"crates/lattice-cli",
-	"crates/lattice-sdk",
-	"crates/lattice-ref-naive",
-	"crates/lattice-ref-transport",
-	"crates/match-play",
 	"crates/backend",
 	"crates/driver",
 	"crates/dispatcher",
@@ -77,10 +61,10 @@ members = [
 	"crates/entities",
 	"crates/migration",
 ]
-# The contracts repository, a submodule, is a workspace of its own. Its crates are
-# named under `[workspace.dependencies]` by their public source, and the patch table
-# of `.cargo/config.toml` builds them from the checkout.
-exclude = ["contracts"]
+# The contracts and engines repositories, submodules, are workspaces of their own.
+# Their crates are named under `[workspace.dependencies]` by their public source, and
+# the patch table of `.cargo/config.toml` builds them from the checkouts.
+exclude = ["contracts", "engines"]
 
 [workspace.package]
 edition = "2024"
@@ -103,53 +87,20 @@ warnings = "deny"
 [workspace.lints.clippy]
 all = "deny"
 
-# `foray-core` is a `cdylib` (it compiles to `wasm32-unknown-unknown` for the
-# browser playback ABI — see `crates/foray-core/Cargo.toml`). On the NATIVE host
-# the same `cdylib` is still emitted as an (otherwise unused) `.so`, and rustc's
-# *incremental* codegen for a `cdylib` split across the dev profile's many codegen
-# units intermittently drops a `*.rcgu.o` object, so the linker fails with
-# "cannot find …rcgu.o: No such file or directory" on a second incremental build.
-# Pinning this one package to a single codegen unit makes incremental codegen emit
-# one object and removes the race; it only affects `foray-core`'s native compile,
-# not the wasm build the browser performs.
+# `foray-core` and `lattice-core`, from the engines repository, are `cdylib`s (each
+# compiles to `wasm32-unknown-unknown` for the browser playback ABI), so on the native
+# host rustc's incremental codegen for the otherwise unused `.so`, split across the dev
+# profile's codegen units, intermittently drops a `*.rcgu.o` object and fails the link.
+# One codegen unit removes the race. `lattice-core` is the Lattice oracle, written for
+# clarity rather than speed, so the performance validator's tests run it optimised;
+# its integer fixed-point answers are the same at either level. The engines
+# repository's own manifest carries the same pins and their full account.
 [profile.dev.package.foray-core]
 codegen-units = 1
 
-# `lattice-core` is a `cdylib` for the identical reason `foray-core` is (above):
-# it is retained as a `cdylib` for parity and a future browser replay renderer,
-# so on the NATIVE host rustc emits an (otherwise unused) `.so`, and incremental
-# codegen split across the dev profile's many codegen units intermittently drops
-# a `*.rcgu.o` object, failing the linker on a second incremental build. Pinning
-# this package to a single codegen unit removes the race — see the `foray-core`
-# rationale above. It only affects the native compile, not the wasm build.
-#
-# `opt-level` is pinned for a separate reason. `lattice-core` is the lattice
-# **oracle**, and it is deliberately written for clarity rather than speed — the
-# per-tick advance walks explicit item lists, which is the whole point of the test
-# case (reproducing its outputs with far less work is what a submission is graded
-# on). `lattice-cli`'s three bus-invariant generate tests each solve fourteen
-# 30,000-tick bus scenarios; unoptimised, one 48x32 scenario takes 7.0s and one
-# 72x40 takes 10.8s, so each test would take minutes. Optimised, the same solves
-# take 0.39s and 0.57s (~19x) and the whole `lattice-cli` suite runs in 6.9s.
-# This cannot move the oracle's answers: the
-# engine is pure integer fixed-point (the crate contains no float at all), and the
-# solved output is byte-identical either way. Nor does it cost build time — a
-# forced rebuild of the crate measures 2.15s at either level.
 [profile.dev.package.lattice-core]
 codegen-units = 1
 opt-level = 3
-
-# The two reference engines are `cdylib`s (they compile to
-# `wasm32-unknown-unknown` to load in the sandbox), so on the NATIVE host `cargo
-# test` hits the same intermittent incremental-codegen `*.rcgu.o` race the
-# `foray-core`/`lattice-core` pins above describe. Pin each to one codegen unit
-# for the dev profile so the native test build is reliable; it does not affect the
-# wasm release build the validator and container produce.
-[profile.dev.package.lattice-ref-naive]
-codegen-units = 1
-
-[profile.dev.package.lattice-ref-transport]
-codegen-units = 1
 
 # Cranelift compiles gg's responses-as-code sandbox components (`crates/gg/src/sandbox`)
 # in test processes, and `cargo nextest` runs ONE PROCESS PER TEST. The test suite's
@@ -226,11 +177,18 @@ opt-level = 3
 # path into `contracts/`: inside the superrepo the patch table of
 # `.cargo/config.toml` sends this source to the sibling checkout, which may hold
 # crates and changes the tag does not yet carry.
-test-cabinet-contracts = { git = "https://github.com/TheClockwyrks/contracts", tag = "v0.1.0" }
-test-cabinet-suites = { git = "https://github.com/TheClockwyrks/contracts", tag = "v0.1.0" }
-test-cabinet-telemetry = { git = "https://github.com/TheClockwyrks/contracts", tag = "v0.1.0" }
-test-cabinet-redact = { git = "https://github.com/TheClockwyrks/contracts", tag = "v0.1.0" }
-test-cabinet-backend-client = { git = "https://github.com/TheClockwyrks/contracts", tag = "v0.1.0" }
+test-cabinet-contracts = { git = "https://github.com/TheClockwyrks/contracts", tag = "v0.2.1" }
+test-cabinet-suites = { git = "https://github.com/TheClockwyrks/contracts", tag = "v0.2.1" }
+test-cabinet-telemetry = { git = "https://github.com/TheClockwyrks/contracts", tag = "v0.2.1" }
+test-cabinet-redact = { git = "https://github.com/TheClockwyrks/contracts", tag = "v0.2.1" }
+test-cabinet-backend-client = { git = "https://github.com/TheClockwyrks/contracts", tag = "v0.2.1" }
+# The crates of the engines repository, named the same way at its tag. The engine
+# catalog, the match runner, and the Foray and Lattice rules the validators and the
+# arena record a match or a case's state in.
+test-cabinet-engines = { git = "https://github.com/TheClockwyrks/engines", tag = "v1.1.1" }
+test-cabinet-match-play = { git = "https://github.com/TheClockwyrks/engines", tag = "v1.1.1" }
+foray-core = { git = "https://github.com/TheClockwyrks/engines", tag = "v1.1.1" }
+lattice-core = { git = "https://github.com/TheClockwyrks/engines", tag = "v1.1.1", default-features = false }
 # Shared runtime dependencies inherited by member crates via { workspace = true }.
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -344,14 +302,14 @@ reqwest = { version = "0.12", default-features = false, features = [
 	"stream",
 ] }
 
-# The wasm host for the Foray adversarial case (`crates/foray-host`). wasmtime is
-# pure Rust (no system packages), so it builds on the same minimal hosts as the
-# rest of the workspace. The host loads the two competing controller modules,
-# meters each per-tick invocation with fuel, and caps linear memory. `cranelift`
-# is the JIT (default); `cache` is dropped because matches run in ephemeral run
-# containers where a compile cache buys nothing. Pinned to the major version the
-# host was written against so an automatic minor bump never silently changes the
-# fuel/epoch semantics the sandbox relies on.
+# The wasm runtime of gg's sandbox and of the Foray and Lattice hosts (`foray-host`,
+# `lattice-host`, in the engines repository), which the driver and the arena link
+# through the match runner. wasmtime is pure Rust (no system packages), so it builds
+# on the same minimal hosts as the rest of the workspace. `cranelift` is the JIT
+# (default); `cache` is dropped because matches run in ephemeral run containers
+# where a compile cache buys nothing. Pinned to the major version the hosts were
+# written against, the engines repository's own pin, so an automatic minor bump
+# never silently changes the fuel/epoch semantics the sandbox relies on.
 #
 # `gc` and `gc-null` are here for **gg's C++ program language**, and they are the one entry in
 # this file that a language arm asked for. C++ exceptions compile to the wasm exception-handling
@@ -363,7 +321,7 @@ reqwest = { version = "0.12", default-features = false, features = [
 # objects. Without both, a C++ program that so much as links libc++'s `eh` build is refused with
 # *exceptions proposal not enabled* — measured, on this pinned release.
 #
-# Cargo features are additive across a workspace, so this reaches `foray-host` and `lattice-host`
+# Cargo features are additive across a build, so this reaches `foray-host` and `lattice-host`
 # too. What it changes for them is that `WasmFeatures::default()` gains `GC_TYPES`, which would
 # widen what a submitted controller may contain; both now turn it back off explicitly on their own
 # `Config`, so the modules they accept are what they were. gg's engine is a third, separate

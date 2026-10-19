@@ -1,7 +1,8 @@
-import { describe, expect, it } from "vitest";
+import type { Snapshot } from "@clockwyrks/lattice-runtime";
 import type { PerformanceSnapshotCheck } from "@clockwyrks/run-record";
+import { describe, expect, it } from "vitest";
+
 import { firstDrift } from "./drift";
-import type { Snapshot } from "./renderer";
 
 /** A frame carrying only what the gate reads: its tick and its checksum. */
 function frame(tick: number, checksum: string): Snapshot {

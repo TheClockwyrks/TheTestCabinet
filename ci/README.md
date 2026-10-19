@@ -144,7 +144,6 @@ This project's own gates, wired in the same way:
 | Id | Name | Track | Hook |
 | --- | --- | --- | --- |
 | `frozen-paths` | frozen test-case versions | web | yes |
-| `seeded-contract` | seeded contract vocabulary | web | yes |
 | `spec-vocabulary` | seeded spec vocabulary | web | yes |
 | `spec-prose` | spec prose (markdownlint, cspell) | web | yes |
 | `audio-packs` | audio pack declarations | web | yes |

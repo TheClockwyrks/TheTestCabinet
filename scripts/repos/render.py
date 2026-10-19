@@ -185,8 +185,9 @@ CRATES: dict[str, tuple[str, str]] = {
 # The release tag each repository's dependents pin, for the repositories that
 # have cut one. A manifest names a dependency at its public source on this tag,
 # and on the `master` branch while the repository has none. `contracts` cut
-# `v0.1.0`, whose run published its packages to the feed at 0.1.0.
-TAGS: dict[str, str] = {"contracts": "v0.1.0"}
+# `v0.2.1` and `engines` `v1.1.1`, whose runs published their packages to the
+# feed at those versions.
+TAGS: dict[str, str] = {"contracts": "v0.2.1", "engines": "v1.1.1"}
 
 # The npm registry of the `the-test-cabinet` feed of the project's Azure
 # Artifacts, as the Repositories development page names it. A tag's run

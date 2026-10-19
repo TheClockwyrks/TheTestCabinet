@@ -24,7 +24,8 @@
 # reference modules are part of The Test Cabinet itself and must match the engine
 # the validator scores against, so they are compiled from THIS repository at
 # image-build time and a run records the image digest. The build context is the
-# repository root so the compile stage can see `crates/` (see `containers/build.sh`).
+# repository root so the compile stage can see the engines submodule's `crates/`
+# (see `containers/build.sh`).
 #
 # This image inherits everything from base-wasm — the Node toolchain, the Rust +
 # `wasm32-unknown-unknown` toolchain, the unprivileged `node` run user, the `/work`
@@ -48,8 +49,11 @@ ARG BASE_IMAGE=test-cabinet-base-wasm:latest
 # copied into the final image. The glibc target matches the bookworm-based base.
 FROM docker.io/library/rust:1.97.1-bookworm AS foray-build
 WORKDIR /build
-# The whole workspace is copied (minus `.dockerignore`'d paths) so cargo can
-# resolve the workspace graph.
+# The whole context is copied (minus `.dockerignore`'d paths): the engines
+# repository's workspace, a submodule at `engines/`, whose crates this stage
+# compiles, and the superrepo's `.cargo/` patch table, which cargo reads from the
+# working directory and which sends the engines workspace's own dependency on the
+# contracts repository to the `contracts/` submodule beside it.
 COPY . .
 # The cargo registry/git caches are BuildKit cache mounts shared with every other
 # image in the repository (they take the default id, their target path), so the
@@ -74,12 +78,18 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
 	# Only the handful of workspace crates is dirtied; registry dependencies are
 	# fingerprinted by version+features, not mtime.
 	&& find /build -path /build/target -prune -o -type f -exec touch {} + \
+	# The engines repository is a library and commits no lock, so its workspace is
+	# resolved against the superrepo's: a copy of `Cargo.lock` that cargo trims to the
+	# engines graph and completes, which keeps every third-party crate at the version
+	# the services link rather than whatever is newest on the day the image builds.
+	&& cp Cargo.lock engines/Cargo.lock \
 	# The `foray` CLI (host target) — the local match runner baked onto PATH below.
-	&& cargo build --release -p foray-cli \
+	&& cargo build --release --manifest-path engines/Cargo.toml --target-dir target -p foray-cli \
 	# The three reference controllers, compiled to `wasm32-unknown-unknown` core
 	# modules — the baselines a model plays against. Each crate is a `cdylib` named
 	# `foray_ref_*`, so it emits `foray_ref_<name>.wasm`.
-	&& cargo build --release --target wasm32-unknown-unknown \
+	&& cargo build --release --manifest-path engines/Cargo.toml --target-dir target \
+		--target wasm32-unknown-unknown \
 		-p foray-ref-border-soldier -p foray-ref-greedy-raider -p foray-ref-random \
 	# target/ is a cache mount, not a layer, so every artifact the run image needs
 	# must be copied to a stable path INSIDE this RUN, before the mount is detached.
@@ -104,8 +114,8 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
 	--mount=type=cache,target=/usr/local/cargo/git \
 	--mount=type=cache,target=/tmp/buildkit-smoke,id=tcab-foray-buildkit-smoke,sharing=locked \
 	mkdir -p /opt/foray/buildkit \
-	&& cp -a crates/foray-core /opt/foray/buildkit/foray-core \
-	&& cp -a crates/foray-controller-sdk /opt/foray/buildkit/foray-controller-sdk \
+	&& cp -a engines/crates/foray-core /opt/foray/buildkit/foray-core \
+	&& cp -a engines/crates/foray-controller-sdk /opt/foray/buildkit/foray-controller-sdk \
 	&& cp containers/adversarial/buildkit/Cargo.toml /opt/foray/buildkit/Cargo.toml \
 	&& rm -rf /opt/foray/buildkit/foray-core/target \
 		/opt/foray/buildkit/foray-controller-sdk/target \
@@ -147,10 +157,10 @@ COPY --from=foray-build /opt/foray/buildkit /opt/foray/buildkit
 COPY --from=foray-build /out/references/border-soldier.wasm /opt/foray/references/border-soldier.wasm
 COPY --from=foray-build /out/references/greedy-raider.wasm /opt/foray/references/greedy-raider.wasm
 COPY --from=foray-build /out/references/random.wasm /opt/foray/references/random.wasm
-COPY crates/foray-ref-border-soldier/src/lib.rs /opt/foray/references/border-soldier/lib.rs
-COPY crates/foray-ref-greedy-raider/src/lib.rs /opt/foray/references/greedy-raider/lib.rs
-COPY crates/foray-ref-random/src/lib.rs /opt/foray/references/random/lib.rs
-COPY crates/foray-core/maps/mirror-32x16.toml /opt/foray/maps/mirror-32x16.toml
+COPY engines/crates/foray-ref-border-soldier/src/lib.rs /opt/foray/references/border-soldier/lib.rs
+COPY engines/crates/foray-ref-greedy-raider/src/lib.rs /opt/foray/references/greedy-raider/lib.rs
+COPY engines/crates/foray-ref-random/src/lib.rs /opt/foray/references/random/lib.rs
+COPY engines/crates/foray-core/maps/mirror-32x16.toml /opt/foray/maps/mirror-32x16.toml
 
 # Make everything under /opt/foray world-readable (and directories traversable) so
 # the unprivileged run user can read the buildkit, references, and map and build a

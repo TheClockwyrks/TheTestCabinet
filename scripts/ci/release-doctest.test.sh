@@ -72,6 +72,7 @@ fresh_repo() { # script
 	repo="$(mktemp -d "$tmp/repoXXXXXX")"
 	mkdir -p "$repo/scripts/ci" "$repo/bin"
 	cp "$CI_DIR/$1" "$CI_DIR/tcab-lib.sh" "$repo/scripts/ci/"
+	cp "$CI_DIR/../gg-cargo-lock.sh" "$repo/scripts/"
 	cat >"$repo/bin/cargo" <<'STUB'
 #!/usr/bin/env bash
 echo "cargo $* [cwd=$PWD]" >>"$STUB_LOG"
@@ -86,18 +87,27 @@ run() { # repo script args...
 	local repo="$1" script="$2"
 	shift 2
 	: >"$tmp/cargo.log"
-	(cd "$tmp" && STUB_LOG="$tmp/cargo.log" PATH="$repo/bin:$PATH" "$repo/scripts/ci/$script" "$@" 2>&1)
+	(cd "$tmp" && STUB_LOG="$tmp/cargo.log" CARGO_HOME="$tmp/cargo-home" PATH="$repo/bin:$PATH" "$repo/scripts/ci/$script" "$@" 2>&1)
 }
 
 repo="$(fresh_repo release-doctest.sh)"
 out="$(run "$repo" release-doctest.sh)"
 check_equal "a passing cargo passes" "0" "$?"
 check_equal "runs exactly one cargo, from the repository root" \
-	"cargo test --release --locked -p test-cabinet-engines -p test-cabinet-driver -p test-cabinet-cli --doc [cwd=$repo]" "$(cat "$tmp/cargo.log")"
+	"cargo test --release --locked -p test-cabinet-driver -p test-cabinet-cli --doc [cwd=$repo]" "$(cat "$tmp/cargo.log")"
 check_contains "and logs the step" "==> " "$out"
 
 out="$(STUB_CARGO_EXIT_1=101 run "$repo" release-doctest.sh)"
 check_equal "a failing cargo fails the step with its status" "101" "$?"
+
+# Under a patch table cargo writes the lock's unused patches in no stable order, so the
+# build runs without `--locked` (scripts/gg-cargo-lock.sh).
+mkdir -p "$repo/.cargo"
+printf '[patch."https://github.com/TheClockwyrks/engines"]\nx = { path = "x" }\n' >"$repo/.cargo/config.toml"
+out="$(run "$repo" release-doctest.sh)"
+check_equal "under a patch table it builds without --locked" \
+	"cargo test --release -p test-cabinet-driver -p test-cabinet-cli --doc [cwd=$repo]" "$(cat "$tmp/cargo.log")"
+rm -r "$repo/.cargo"
 
 echo
 echo "release-doctest.test.sh: ${pass} passed, ${fail} failed"

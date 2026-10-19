@@ -6,10 +6,11 @@ zone: REPOS
 number: 9
 title: Extract the engines into the engines repository
 type: generic
-state: open
+state: done
 depends_on:
   - txf8l556rdhfmbw9k1bxwvet
 created: 2026-10-13T21:12:49.120380544Z
+done: 2026-10-19T08:39:50.218928574Z
 ---
 
 The authored engines, the voxel and particle runtimes, `case-harness` and the

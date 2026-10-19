@@ -287,7 +287,6 @@ tmp/
 # prebuild (scripts/copy-contract-schemas.mjs).
 /apps/docs/public/schema/
 !/crates/backend/src/coverage/
-!/packages/case-harness/test/host/root/dist/
 !/apps/web/.env.development
 !/apps/web/.env.example
 /test-cases/**/reference/.rendered/
