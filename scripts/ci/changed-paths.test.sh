@@ -44,15 +44,17 @@ export GIT_AUTHOR_NAME=test GIT_AUTHOR_EMAIL=test@example.com
 export GIT_COMMITTER_NAME=test GIT_COMMITTER_EMAIL=test@example.com
 
 # A throwaway repository holding a copy of the script and a .gitmodules that
-# pins three submodules, at `cold-storage`, `contracts` and `engines`.
+# pins four submodules, at `cold-storage`, `contracts`, `engines` and
+# `test-suites`.
 fresh_repo() {
 	local repo
 	repo="$(mktemp -d "$tmp/repoXXXXXX")"
 	mkdir -p "$repo/scripts/ci"
 	cp "$CI_DIR/changed-paths.sh" "$CI_DIR/tcab-lib.sh" "$repo/scripts/ci/"
-	printf '[submodule "cold-storage"]\n\tpath = cold-storage\n\turl = ../cold-storage\n' >"$repo/.gitmodules"
-	printf '[submodule "contracts"]\n\tpath = contracts\n\turl = ../contracts\n' >>"$repo/.gitmodules"
-	printf '[submodule "engines"]\n\tpath = engines\n\turl = ../engines\n' >>"$repo/.gitmodules"
+	local name
+	for name in cold-storage contracts engines test-suites; do
+		printf '[submodule "%s"]\n\tpath = %s\n\turl = ../%s\n' "$name" "$name" "$name"
+	done >"$repo/.gitmodules"
 	printf '%s' "$repo"
 }
 
@@ -111,7 +113,7 @@ table "Markdown outside crates reaches nothing" "rust=false gg=false submodules=
 table "Markdown inside crates reaches the Rust jobs" "rust=true gg=true submodules=false" \
 	crates/gg/src/probe_fixtures/errata.md
 table "a shell test reaches nothing" "rust=false gg=false submodules=false" \
-	scripts/ci/gg-test.test.sh scripts/devcontainer-setup.test.sh scripts/lib/audio-packs.test.mjs
+	scripts/ci/gg-test.test.sh scripts/devcontainer-setup.test.sh scripts/lib/audio-store.test.mjs
 table "lint configuration reaches nothing" "rust=false gg=false submodules=false" \
 	.cspell/project-words.txt cspell.json .prettierrc.json .prettierignore .markdownlint.yaml \
 	eslint.config.mjs .pre-commit-config.yaml Makefile .editorconfig .gitignore .copier-answers.yml LICENSE
@@ -126,16 +128,10 @@ table "a script a Rust job runs reaches both" "rust=true gg=true submodules=fals
 	scripts/ci/gg-ci-toolchains.sh
 table "an installer reaches both" "rust=true gg=true submodules=false" scripts/ci/install-java.sh
 table "a script with no rule reaches both" "rust=true gg=true submodules=false" \
-	scripts/freeze.sh scripts/lib/frozen.sh scripts/ci/some-new-script.sh
+	scripts/vendor-lattice-assets.mjs scripts/lib/siblings.sh scripts/ci/some-new-script.sh
 table "a directory with no rule reaches both" "rust=true gg=true submodules=false" \
 	brand-new-area/thing.txt
 
-table "a test case reaches the Rust jobs, not gg" "rust=true gg=false submodules=false" \
-	test-cases/end-to-end/easy/carom/v1.0.0/case.toml
-table "a test case's prose too" "rust=true gg=false submodules=false" \
-	test-cases/end-to-end/easy/carom/v1.0.0/spec.md test-cases/end-to-end/easy/carom/README.md
-table "a game jam reaches the Rust jobs, not gg" "rust=true gg=false submodules=false" \
-	game-jams/spring/jam.toml
 table "the release scripts reach the Rust jobs, not gg" "rust=true gg=false submodules=false" \
 	scripts/ci/release-build.sh scripts/ci/binary-smoke.sh scripts/ci/install-nextest.sh \
 	scripts/ci/rust-build.sh
@@ -147,6 +143,8 @@ table "the contracts pin reaches the Rust jobs, gg and submodule_pins" "rust=tru
 	contracts
 table "the engines pin reaches the Rust jobs, gg and submodule_pins" "rust=true gg=true submodules=true" \
 	engines
+table "the test-suites pin reaches the Rust jobs and submodule_pins, not gg" \
+	"rust=true gg=false submodules=true" test-suites
 table ".gitmodules reaches submodule_pins alone" "rust=false gg=false submodules=true" .gitmodules
 table "the pin check reaches submodule_pins alone" "rust=false gg=false submodules=true" \
 	scripts/ci/submodule-pins.sh
@@ -165,7 +163,7 @@ table "the script library reaches everything" "rust=true gg=true submodules=true
 	scripts/ci/tcab-lib.sh
 
 table "a mixed change is the union" "rust=true gg=false submodules=true" \
-	apps/docs/src/content/docs/index.md test-cases/x/v1.0.0/spec.md cold-storage
+	apps/docs/src/content/docs/index.md scripts/ci/release-test.sh cold-storage
 table "no changed path reaches nothing" "rust=false gg=false submodules=false" ""
 
 out="$(classify crates/core/src/lib.rs apps/docs/x.md)"

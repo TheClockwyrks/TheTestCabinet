@@ -66,8 +66,6 @@ script in this directory:
 
 | Gate              | Script it runs                                              |
 | ----------------- | ----------------------------------------------------------- |
-| `spec-vocabulary` | `spec-vocabulary-check.mjs`                                 |
-| `audio-packs`     | `audio-packs-check.mjs`                                     |
 | `build-context`   | `build-context.sh`                                          |
 | `k8s-deploy-sets` | `k8s-deploy-sets.sh`, over `deploy-environment.sh --render` |
 

@@ -289,7 +289,6 @@ tmp/
 !/crates/backend/src/coverage/
 !/apps/web/.env.development
 !/apps/web/.env.example
-/test-cases/**/reference/.rendered/
 **/*.rs.bk
 /crates/gg/src/sandbox/checkers/*
 !/crates/gg/src/sandbox/checkers/java.compiler.java

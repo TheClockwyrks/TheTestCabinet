@@ -6,8 +6,10 @@
   "type": "module",
 {% if typescript_workspace %}
   "workspaces": [
-    "packages/*",
-    "apps/*"
+{% for pattern in npm_workspaces %}
+    "{{pattern}}"{% if not loop.last %},{% endif %}
+
+{% endfor %}
   ],
 {% endif %}
   "scripts": {

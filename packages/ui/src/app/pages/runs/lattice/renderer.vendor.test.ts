@@ -21,15 +21,14 @@ import { describe, expect, it } from "vitest";
 const here = dirname(fileURLToPath(import.meta.url));
 // here = packages/ui/src/app/pages/runs/lattice  ->  repo root is seven levels up.
 const repoRoot = join(here, "..", "..", "..", "..", "..", "..", "..");
+// The lattice version lives in the test-suites checkout beside this one.
+const version = join(
+  repoRoot,
+  "test-suites/test-cases/performance/hard/lattice/v1.0.0",
+);
 
-const BUNDLE = join(
-  repoRoot,
-  "test-cases/performance/hard/lattice/v1.0.0/replay/assets",
-);
-const CASES = join(
-  repoRoot,
-  "test-cases/performance/hard/lattice/v1.0.0/cases",
-);
+const BUNDLE = join(version, "replay/assets");
+const CASES = join(version, "cases");
 const VENDORED = join(here, "assets");
 
 // Kept in sync with scripts/vendor-lattice-assets.mjs (the engine and the renderer

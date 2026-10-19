@@ -119,11 +119,11 @@ fn the_default_roots_are_the_checkout_s_own_trees() {
     // touches no other test.
     // SAFETY: as above.
     unsafe { std::env::remove_var(test_cabinet_contracts::cold_storage::COLD_STORAGE_DIR_ENV) };
-    let checkout = Path::new("/srv/checkout");
+    let checkout = Path::new("/srv/test-suites");
     let roots = IngestRoots::for_checkout(checkout);
     assert_eq!(roots.definitions, checkout);
     assert_eq!(roots.suites, checkout.join("test-suites"));
-    assert_eq!(roots.cold_storage, checkout.join("cold-storage"));
+    assert_eq!(roots.cold_storage, Path::new("/srv/cold-storage"));
     assert_eq!(roots.test_cases(), checkout.join("test-cases"));
     assert_eq!(roots.test_case_groups(), checkout.join("test-case-groups"));
     assert_eq!(

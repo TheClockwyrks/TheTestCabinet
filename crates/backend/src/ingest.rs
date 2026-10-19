@@ -8,10 +8,10 @@
 //! shares the same baseline.
 //!
 //! A version's baseline validation media is not in its folder: it lives in the
-//! checkout's cold-storage submodule (see [`ColdStorage`]). Ingest copies it into the
-//! stored version under `validation-baseline/`, so the store serves and snapshots it
-//! as part of the version. A checkout without the submodule ingests every version
-//! with no baseline media.
+//! cold-storage checkout beside the catalog checkout (see [`ColdStorage`]). Ingest
+//! copies it into the stored version under `validation-baseline/`, so the store
+//! serves and snapshots it as part of the version. Without that checkout every
+//! version ingests with no baseline media.
 //!
 //! Container images are **not** ingested from the checkout: they are distributed
 //! via a registry and pulled by digest by each runner from its own

@@ -4,7 +4,7 @@ Every npm workspace with a `test` script runs its suite here, except two that
 have gates of their own: `apps/web`, whose jsdom and browser projects are
 `web-test` and `web-browser-test`, and `apps/docs`, which `docs-typecheck` and
 `docs-build` answer for. The shared UI library, the engines, the runtimes, the
-statistics, the case harness and the lattice designer are all in it, and so is
+statistics and the case harness are all in it, and so is
 the recording parity suite in `packages/ui`, which holds the console's copy of
 each engine's recording contract to what that engine writes.
 

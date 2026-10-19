@@ -15,6 +15,9 @@
       "@clockwyrks/structured-2d": "packages/structured-2d",
       "@clockwyrks/structured-3d": "packages/structured-3d",
       "@clockwyrks/voxel-runtime": "packages/voxel-runtime"
+    },
+    "test-suites": {
+      "@clockwyrks/lattice-designer": "tools/lattice-designer"
     }
   }
 }

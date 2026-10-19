@@ -61,14 +61,15 @@ class Kind(NamedTuple):
 # The kinds of the Repositories development page. A `tool` is shaped as a
 # library is, and its binaries are also baked into the run-container images; a
 # `shell` is a Tauri workspace, a binary crate that commits its lock beside an
-# npm workspace.
+# npm workspace; a `content` repository carries no crate, and its npm workspace
+# holds the tools its content is authored with.
 KINDS: Mapping[str, Kind] = {
     "library": Kind(crate="library", commits_lock=False, typescript=True),
     "tool": Kind(crate="library", commits_lock=False, typescript=True),
     "application": Kind(crate="binary", commits_lock=True, typescript=True),
     "shell": Kind(crate="binary", commits_lock=True, typescript=True),
     "site": Kind(crate="", commits_lock=False, typescript=True),
-    "content": Kind(crate="", commits_lock=False, typescript=False),
+    "content": Kind(crate="", commits_lock=False, typescript=True),
 }
 
 # Every repository the kit renders, by kind, in the order of the Repositories
@@ -162,7 +163,6 @@ PACKAGES: Mapping[str, str] = {
     "@clockwyrks/run-stats": "ui-common",
     "@clockwyrks/site": "testcabinet.ai",
     "@clockwyrks/web": "console.testcabinet.ai",
-    "@clockwyrks/lattice-designer": "test-suites",
     "@clockwyrks/gg-sandbox": "gg",
 }
 
@@ -280,6 +280,12 @@ NPM_FIELDS = ("dependencies", "devDependencies", "peerDependencies", "optionalDe
 # Directories a walk for manifests never enters: build output and installed
 # packages hold manifests of other people's crates and packages.
 SKIPPED = frozenset({"target", "node_modules", ".git", "dist"})
+# The trees at the root of a `content` repository that hold the content itself:
+# the catalog's versions and the suite trees. A manifest there is a seeded
+# workspace's or a reference implementation's, built inside a run's own tree
+# from what the run vendors into it, never a build of the repository, so the
+# walk leaves those trees to the content's own gates.
+CONTENT_TREES = frozenset({"test-cases", "game-jams", "test-case-groups", "test-suites"})
 
 
 def edges_of(repo: str) -> tuple[Edge, ...]:
@@ -337,9 +343,24 @@ def describe(repo: str) -> str:
 # --- Rust ---------------------------------------------------------------------
 
 
-def manifests(root: Path, name: str = "Cargo.toml") -> list[Path]:
-    """Every manifest called `name` under `root`, outside build output and installed packages."""
-    return [path for path in sorted(root.rglob(name)) if not SKIPPED & set(path.relative_to(root).parts)]
+def manifests(root: Path, name: str = "Cargo.toml", content: frozenset[str] = frozenset()) -> list[Path]:
+    """Every manifest called `name` under `root`, outside build output, installed packages and `content`.
+
+    `content` names the trees at the root that hold content rather than the
+    repository's build ([`content_trees`]).
+    """
+    found = []
+    for path in sorted(root.rglob(name)):
+        parts = path.relative_to(root).parts
+        if SKIPPED & set(parts) or (len(parts) > 1 and parts[0] in content):
+            continue
+        found.append(path)
+    return found
+
+
+def content_trees(repo: str) -> frozenset[str]:
+    """The trees at a repository's root whose manifests are content: `CONTENT_TREES` in a `content` repository."""
+    return CONTENT_TREES if REPOSITORIES.get(repo) == "content" else frozenset()
 
 
 def declared(manifest: Mapping[str, object]) -> list[tuple[str, str, Mapping[str, object]]]:
@@ -379,7 +400,7 @@ def _leaves(root: Path, base: Path, relative: str) -> bool:
 def rust_violations(root: Path, repo: str) -> list[str]:
     """Every Rust dependency under `root` the edges of `repo` refuse, one line each."""
     found: list[str] = []
-    for path in manifests(root):
+    for path in manifests(root, content=content_trees(repo)):
         manifest = tomllib.loads(path.read_text(encoding="utf-8"))
         where = path.relative_to(root)
         for section, crate, entry in declared(manifest):
@@ -426,7 +447,7 @@ def npm_violations(root: Path, repo: str) -> list[str]:
     """Every npm dependency under `root` the edges of `repo` refuse, one line each."""
     own = own_packages(root)
     found: list[str] = []
-    for path in manifests(root, "package.json"):
+    for path in manifests(root, "package.json", content_trees(repo)):
         manifest = _package_json(path)
         where = path.relative_to(root)
         for field in NPM_FIELDS:

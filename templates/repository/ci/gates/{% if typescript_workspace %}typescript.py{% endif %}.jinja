@@ -3,8 +3,9 @@
 The gate's id is `typescript`. The workspace is the repository root: its
 `package.json` names the packages under `workspaces` (`packages/*` and
 `apps/*`, the layout the monorepo had, so a path a build or a Dockerfile names
-does not move when a repository is extracted), and `package-lock.json` beside
-it is its lock file, which the repository commits. The same manifest carries
+does not move when a repository is extracted, or `tools/*` in a content
+repository, the tools its content is authored with), and `package-lock.json`
+beside it is its lock file, which the repository commits. The same manifest carries
 the prose tools the other gates run, and the kit merges its changes to it on
 an update.
 

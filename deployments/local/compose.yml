@@ -30,7 +30,8 @@ services:
       TCAB_BACKEND_BIND: "0.0.0.0:8787"
       TCAB_BACKEND_DATABASE_URL: "sqlite:///state/tcab-backend.sqlite?mode=rwc"
       TCAB_BACKEND_STORE: "/state/tcab-store"
-      TCAB_BACKEND_CHECKOUT: "/checkout"
+      # The test suites checkout, with cold-storage beside it.
+      TCAB_BACKEND_CHECKOUT: "/checkout/test-suites"
       TCAB_ENV: "local"
     ports:
       - "127.0.0.1:8787:8787"

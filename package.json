@@ -25,12 +25,10 @@
     "lint:docs": "npm run lint:md && npm run spell",
     "lint:md": "markdownlint-cli2",
     "lint:prune": "eslint --config eslint.config.js --prune-suppressions .",
-    "lint:specs": "uv run --quiet --project ci gate run spec-prose",
     "spell": "cspell lint --no-progress --cache",
     "test": "npm run test --workspaces --if-present",
     "test:scripts": "node --test scripts/*.test.mjs scripts/lib/*.test.mjs",
-    "typecheck": "npm run typecheck --workspaces --if-present",
-    "typecheck:validators": "node scripts/typecheck-validators.mjs"
+    "typecheck": "npm run typecheck --workspaces --if-present"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",

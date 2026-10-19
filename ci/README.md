@@ -143,19 +143,14 @@ This project's own gates, wired in the same way:
 
 | Id | Name | Track | Hook |
 | --- | --- | --- | --- |
-| `frozen-paths` | frozen test-case versions | web | yes |
-| `spec-vocabulary` | seeded spec vocabulary | web | yes |
-| `spec-prose` | spec prose (markdownlint, cspell) | web | yes |
-| `audio-packs` | audio pack declarations | web | yes |
 | `build-context` | Dockerfile build contexts | web | yes |
 | `k8s-deploy-sets` | kubernetes deploy sets | web | yes |
 | `ci-image-pins` | project jobs pin the Rust CI image | web | yes |
 | `scripts-test` | script library tests (node --test) | web | yes |
 | `workspace-test` | npm workspace tests (vitest) | web | no |
-| `validators-typecheck` | validator projects typecheck (tsc) | web | no |
 | `site-build` | gallery build (vite build) | web | no |
 
-The three without a hook build the workspace packages, or the Rust workspace,
+The two without a hook build the workspace packages, or the Rust workspace,
 before they check anything, which is more than a commit waits on; `HOOKLESS`
 in `tests/test_wiring.py` names them, with `rust-test` and `rust-doctest`.
 `scripts-test` and `workspace-test` run tests, so their steps name an

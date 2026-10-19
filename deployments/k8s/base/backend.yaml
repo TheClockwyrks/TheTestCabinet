@@ -47,8 +47,10 @@ spec:
               value: "sqlite:///state/tcab-backend.sqlite?mode=rwc"
             - name: TCAB_BACKEND_STORE
               value: "/state/tcab-store"
+            # The test suites checkout inside the superproject's clone, with the
+            # cold-storage checkout beside it.
             - name: TCAB_BACKEND_CHECKOUT
-              value: "/state/checkout"
+              value: "/state/checkout/test-suites"
             # The artifact service as this pod reaches it, to prune a deleted run's
             # tree, sweep the trees no run row references and write the public
             # snapshot. The console reaches the same service at `/artifacts/` of its
