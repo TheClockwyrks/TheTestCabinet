@@ -128,7 +128,9 @@ The route takes the service token. The request body is optional JSON:
 
 `refresh` has the deployed backend's ingest sidecar refresh its `test-suites`
 checkout, and the `cold-storage` clone beside it, to the tip of the branch the
-environment ingests before the scan. A backend with no sidecar ignores it.
+environment ingests before the scan. A backend with no sidecar ignores it. When
+the suites' update fails and the scan continues without it, the streamed feed
+opens with a `notice` line carrying the message the caller prints.
 
 Each `testCases` entry is either a bare case id, its slug or folder name,
 expanding to every version the case declares (`"carom"`), or a version-qualified
@@ -187,6 +189,8 @@ as each version finishes. Both paths run the identical scan. The lines are
 discriminated by an `event` tag:
 
 ```jsonc
+{ "event": "notice",                               // a refresh's notice, before the scan
+  "message": "ingest: test suites update failed; ingesting without them" }
 { "event": "start", "total": 31 }                  // once, before the first version
 { "event": "version", "index": 1, "total": 31,     // one per completed version
   "slug": "carom", "version": "v1.0.0",

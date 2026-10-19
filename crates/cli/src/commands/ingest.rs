@@ -18,7 +18,9 @@
 use std::sync::Arc;
 
 use anyhow::Context;
-use test_cabinet_backend_client::{HttpBackendClient, IngestMode, IngestProgress, IngestSummary};
+use test_cabinet_backend_client::{
+    HttpBackendClient, IngestMode, IngestProgress, IngestSummary, ingest_body,
+};
 use test_cabinet_driver::remote_backend::{
     AZ_LOGIN, AzLogin, RemoteBackend, SystemAzRunner, az_login, remote_target,
 };
@@ -65,7 +67,10 @@ async fn ingest_local(args: &IngestArgs, scope: &str) -> anyhow::Result<IngestSu
     // The run engine's error already names the ingest and the backend it was against, so no
     // context is added over it.
     Ok(client
-        .ingest(&args.targets, args.force, mode, &mut on_progress)
+        .ingest(
+            &ingest_body(&args.targets, args.force, mode),
+            &mut on_progress,
+        )
         .await?)
 }
 
@@ -158,6 +163,9 @@ fn print_progress(progress: &IngestProgress) {
         // Reported as it arrives so the feed reads in order; the scan's failure is
         // carried out of the call as the command's error.
         IngestProgress::Error { message } => eprintln!("  ingest error: {message}"),
+        // A notice the scan continues after, such as the refresh's failed suites
+        // update; it is printed as the backend words it.
+        IngestProgress::Notice { message } => eprintln!("{message}"),
     }
 }
 
