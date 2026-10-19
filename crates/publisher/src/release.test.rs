@@ -7,11 +7,9 @@ use std::sync::Mutex;
 
 use super::*;
 use test_cabinet_backend_client::{
-    BackendClient, PublishAck, PublishedRun, ResolvedArtifact, ResolvedReference,
-    Result as ClientResult, RunPage,
+    BackendClient, ResolvedArtifact, ResolvedReference, Result as ClientResult,
 };
 use test_cabinet_contracts::metrics::{Cost, RunMetrics, TokenCounts};
-use test_cabinet_contracts::review::Writeup;
 use test_cabinet_contracts::run_record::{
     HarnessSlug, RunEnvironment, RunLinks, RunState, RunStatus, RunSubject, RunTooling,
 };
@@ -338,25 +336,6 @@ impl BackendClient for MockBackend {
     }
     async fn prompt_template(&self, _slug: &str, _version: &str) -> ClientResult<String> {
         Ok(String::new())
-    }
-    async fn submit_review(&self, _run_id: &str, _review: &Writeup) -> ClientResult<()> {
-        Ok(())
-    }
-    async fn publish_run(&self, run_id: &str) -> ClientResult<PublishAck> {
-        Ok(PublishAck {
-            publish_job_id: format!("pj-{run_id}"),
-            live_url: format!("/publish-jobs/pj-{run_id}/live"),
-        })
-    }
-    async fn list_runs(
-        &self,
-        _before: Option<&str>,
-        _limit: Option<usize>,
-    ) -> ClientResult<RunPage> {
-        unimplemented!("not exercised by release tests")
-    }
-    async fn read_run(&self, _id: &str) -> ClientResult<PublishedRun> {
-        unimplemented!("not exercised by release tests")
     }
 }
 
