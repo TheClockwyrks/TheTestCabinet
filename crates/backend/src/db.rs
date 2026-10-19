@@ -30,6 +30,7 @@ use sea_orm::{
     RelationTrait, Select, TransactionTrait,
 };
 use serde::{Deserialize, Serialize};
+use test_cabinet_contracts::event::HarnessEvent;
 use test_cabinet_contracts::match_play::TournamentRecord;
 use test_cabinet_contracts::metrics::{Cost, TokenPrices};
 use test_cabinet_contracts::reference_lock::ReferenceBuildEntry;
@@ -39,10 +40,10 @@ use test_cabinet_contracts::run_record::{
 use test_cabinet_entities::{
     backfill_state, case_reference_build, case_reference_sheet, comparison, coverage_group,
     coverage_plan, coverage_plan_cell_retry, coverage_settings, gg_agent, gg_config, gg_dashboard,
-    gg_saved_query, harness_config, job, ladder, ladder_dispatch, ladder_dispatch_climber,
-    ladder_dispatch_outcome, ladder_rung, model, model_alias, model_price, model_probe,
-    model_probe_item, publish_job, review, review_plan, review_revision, run, run_link,
-    snapshot_state, tournament,
+    gg_saved_query, harness_config, job, job_event, ladder, ladder_dispatch,
+    ladder_dispatch_climber, ladder_dispatch_outcome, ladder_rung, model, model_alias, model_price,
+    model_probe, model_probe_item, publish_job, review, review_plan, review_revision, run,
+    run_link, snapshot_state, tournament,
 };
 use test_cabinet_suites::test_case::{TestType, version_key};
 use time::OffsetDateTime;
@@ -335,7 +336,8 @@ pub struct StoredRun {
     /// pushed. Not part of the run record itself.
     pub published_at: Option<String>,
     /// The run's recorded normalized event stream, stored verbatim as a JSON
-    /// array string (the `run.events_json` column). `None` for a run that
+    /// array string (the `run.events_json` column): its job's stored events in
+    /// sequence order when the record was persisted. `None` for a run that
     /// recorded none. Re-emitted into the snapshot and served by
     /// `GET /runs/{id}/events`.
     pub events_json: Option<String>,
@@ -1040,6 +1042,9 @@ impl Db {
         // records the attempt's job id and reaches the retry's run through its
         // `retried_by`, which nothing else links back to. It keeps that link and
         // loses the run.
+        //
+        // A deleted job's stored events (`job_event`) go with it through their
+        // `ON DELETE CASCADE` foreign key.
         run::Entity::delete_by_id(run_id.to_string())
             .exec(&txn)
             .await?;
@@ -7242,6 +7247,7 @@ impl Db {
             return Ok(None);
         };
         let withdrawn = if CANCELABLE_WAITING_STATES.contains(&retry.state.as_str()) {
+            // Any events it stored cascade with it (`job_event`).
             job::Entity::delete_by_id(retry_id).exec(&txn).await?;
             WithdrawnRetry::Deleted(retry)
         } else if IN_FLIGHT_STATES.contains(&retry.state.as_str()) {
@@ -7275,6 +7281,108 @@ impl Db {
         }
         txn.commit().await?;
         Ok(())
+    }
+
+    /// Store a batch of job `job_id`'s events, the first at sequence `first_sequence`
+    /// and each following one a sequence higher, in one transaction (the driver's
+    /// events page, "Delivery to the backend").
+    ///
+    /// An event whose `(job, sequence)` key is already stored is skipped, so a resent
+    /// batch, or one overlapping a batch already stored, stores only what is new. Returns
+    /// the events this call stored, with their sequences, in sequence order: the ones to
+    /// fan out to the job's live subscribers. Each insert is skipped on conflict rather
+    /// than checked beforehand, so two deliveries of one batch racing on PostgreSQL each
+    /// report only the events they actually wrote.
+    ///
+    /// The job's row must exist (the key's foreign key); a sequence past `i64::MAX` is
+    /// refused with [`BackendError::BadRequest`] before anything is written.
+    pub async fn store_job_events(
+        &self,
+        job_id: &str,
+        first_sequence: u64,
+        events: &[HarnessEvent],
+    ) -> Result<Vec<(u64, HarnessEvent)>> {
+        let mut rows = Vec::with_capacity(events.len());
+        for (offset, event) in (0u64..).zip(events) {
+            let out_of_range = || {
+                BackendError::BadRequest(format!(
+                    "event sequence {first_sequence} + {offset} is out of range"
+                ))
+            };
+            let sequence = first_sequence
+                .checked_add(offset)
+                .ok_or_else(out_of_range)?;
+            let key = i64::try_from(sequence).map_err(|_| out_of_range())?;
+            rows.push((sequence, key, serde_json::to_string(event)?, event));
+        }
+
+        let txn = self.conn().begin().await?;
+        let mut stored = Vec::new();
+        for (sequence, key, event_json, event) in rows {
+            let inserted = job_event::Entity::insert(job_event::ActiveModel {
+                job_id: Set(job_id.to_string()),
+                sequence: Set(key),
+                event_json: Set(event_json),
+            })
+            .on_conflict(
+                OnConflict::columns([job_event::Column::JobId, job_event::Column::Sequence])
+                    .do_nothing()
+                    .to_owned(),
+            )
+            .exec_without_returning(&txn)
+            .await?;
+            if inserted > 0 {
+                stored.push((sequence, event.clone()));
+            }
+        }
+        txn.commit().await?;
+        Ok(stored)
+    }
+
+    /// Job `job_id`'s stored events in sequence order: its recorded stream. Empty for a
+    /// job with none stored, or an unknown job.
+    pub async fn job_events(&self, job_id: &str) -> Result<Vec<HarnessEvent>> {
+        Ok(self
+            .job_events_after(job_id, None)
+            .await?
+            .into_iter()
+            .map(|(_, event)| event)
+            .collect())
+    }
+
+    /// Job `job_id`'s stored events with their sequences, in sequence order, keeping
+    /// only those after `after` when it is given. The live stream replays these as its
+    /// backlog and reads the ones after the last it delivered when its subscriber falls
+    /// behind the fan-out.
+    pub async fn job_events_after(
+        &self,
+        job_id: &str,
+        after: Option<u64>,
+    ) -> Result<Vec<(u64, HarnessEvent)>> {
+        let mut query = job_event::Entity::find().filter(job_event::Column::JobId.eq(job_id));
+        if let Some(after) = after {
+            // A sequence past the signed range was never stored (the store refuses one),
+            // so nothing follows it.
+            let Ok(after) = i64::try_from(after) else {
+                return Ok(Vec::new());
+            };
+            query = query.filter(job_event::Column::Sequence.gt(after));
+        }
+        query
+            .order_by_asc(job_event::Column::Sequence)
+            .all(&self.conn())
+            .await?
+            .into_iter()
+            .map(|row| {
+                let sequence = u64::try_from(row.sequence).map_err(|_| {
+                    BackendError::Internal(format!(
+                        "job `{job_id}` holds the negative event sequence {}",
+                        row.sequence
+                    ))
+                })?;
+                Ok((sequence, serde_json::from_str(&row.event_json)?))
+            })
+            .collect()
     }
 
     /// Fetch one job by id.
@@ -9565,3 +9673,7 @@ impl Db {
 #[cfg(test)]
 #[path = "db.lease.test.rs"]
 mod lease_tests;
+
+#[cfg(test)]
+#[path = "db.job_events.test.rs"]
+mod job_events_tests;

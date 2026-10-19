@@ -300,6 +300,7 @@ async fn run(
         report_wait,
         attempt_timeout,
         stage: None,
+        events: crate::sink::RelayOutcome::Delivered,
     };
     finish(
         &target,
@@ -594,6 +595,7 @@ async fn a_refused_terminal_report_ends_the_finishing_successfully() {
         report_wait: Duration::from_secs(3600),
         attempt_timeout: None,
         stage: None,
+        events: crate::sink::RelayOutcome::Delivered,
     };
 
     let finished = finish(

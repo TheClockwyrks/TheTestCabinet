@@ -38,13 +38,14 @@ events to the backend as they happen, along with the live drawing [preview
 frames](/testing/asset-generation/sprite-binaries/#live-preview) of an
 asset-generation run, and the backend's relay fans them out to every watching
 console. It produces the run record and reports it with the terminal status,
-and the backend persists it using the events the relay already accumulated.
+and the backend persists it with the events it stored as each batch arrived.
 
 The driver reports `starting` before any work and advances the job to `running`
 once setup finishes and the harness session is about to begin. Once the run has
 a record, the driver hands it to the backend in a held report, uploads the run's
-files, and posts its terminal status last, after the relay has drained so that
-every streamed event has reached the backend first. [Finishing a
+files, and posts its terminal status last, after the backend has acknowledged
+every event batch so that the stored stream is complete first (see [Delivery to
+the backend](/components/driver/events/#delivery-to-the-backend)). [Finishing a
 run](#finishing-a-run) gives the order and the retries. The run's own start is
 taken immediately after the `starting` report, so the
 [`startedAt`](/components/backend/api/#topics) the backend stamps from that
@@ -124,7 +125,7 @@ empty rather than failed. The record's terminal state is
 
 The driver then runs every upload it runs for any other run and posts a
 `canceled` status carrying the record. The backend persists it with the events
-its relay accumulated and attaches it to the already-canceled job, changing
+it stored for the job and attaches it to the already-canceled job, changing
 nothing else: no state change, no completion notification, and no retry.
 
 #### Degraded fallbacks
@@ -149,8 +150,9 @@ or posted is logged rather than fatal.
 A canceled run of any other harness is destroyed. The driver drops the run
 future, tears the sandbox down, and exits. No record is built, no artifacts are
 uploaded, and no terminal status is posted, so the job stays `canceled` with the
-record slot empty and the run is absent from the run list. The events the relay
-streamed before the kill are discarded with it.
+record slot empty and the run is absent from the run list. The events the
+backend stored before the kill stay stored against the job, and those it had
+not yet acknowledged are dropped with the relay.
 
 Destroying the run is what frees its scheduling slot promptly, so the runs an
 operator queues after a kill start straight away. The disposition is decided by
@@ -382,6 +384,8 @@ ten minutes, or for the configured wait when that is shorter.
 The driver exits successfully once its terminal report lands or the backend
 refuses it. It exits non-zero when the report deadline passes with the terminal
 report undelivered, and the backend then finishes the run from the held record.
+An event batch that goes unacknowledged leaves the terminal report undelivered
+too, since the status is posted only once every batch is acknowledged.
 
 ### Late terminal reports
 

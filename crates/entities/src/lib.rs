@@ -28,6 +28,7 @@ pub mod gg_dashboard;
 pub mod gg_saved_query;
 pub mod harness_config;
 pub mod job;
+pub mod job_event;
 pub mod ladder;
 pub mod ladder_dispatch;
 pub mod ladder_dispatch_climber;

@@ -613,10 +613,11 @@ fn unreadable_run_out(run: &crate::db::UnreadableRun) -> UnreadableRunOut {
     }
 }
 
-/// `GET /runs/{id}/events` — the published run's recorded normalized event
-/// stream, as a JSON array (an empty array when the run recorded none). Raw
-/// harness output is never published, so it is not served here. `404` for an
-/// unknown run.
+/// `GET /runs/{id}/events` — the run's recorded normalized event stream, as a
+/// JSON array (an empty array when the run recorded none): its job's events as the
+/// backend stored them on receipt, in sequence order, written to the run when its
+/// record was persisted. Raw harness output is never published, so it is not
+/// served here. `404` for an unknown run.
 pub async fn events(
     State(state): State<AppState>,
     Path(id): Path<String>,

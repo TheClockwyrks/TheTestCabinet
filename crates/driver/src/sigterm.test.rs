@@ -140,6 +140,7 @@ fn target(client: &JobClient, report_wait: Duration) -> ShutdownTarget<'_> {
         report_wait,
         attempt_timeout: None,
         sweep_interval: Duration::from_millis(10),
+        events: None,
     }
 }
 
@@ -391,6 +392,7 @@ async fn finishing(
         report_wait,
         attempt_timeout: None,
         stage: Some(stage),
+        events: crate::sink::RelayOutcome::Delivered,
     };
     let finished = finish(
         &target,

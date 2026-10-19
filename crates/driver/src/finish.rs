@@ -16,6 +16,15 @@
 //!    record with its build link, `artifactsStored` and, when the store was why the
 //!    tree was not stored, `storeFault`.
 //!
+//! The terminal report is made only once the backend has acknowledged every event
+//! batch of the run, as the driver's events page sets under "Delivery to the
+//! backend", so the stored stream is complete when the status arrives. The caller
+//! settles the [relay](crate::sink) first and says how it fared
+//! ([`FinishTarget::events`]); when a batch went unacknowledged the held report and
+//! the uploads are still made, the terminal report is withheld
+//! ([`ReportEnd::Withheld`]), and the backend finishes the run from the held record
+//! as it does for a lost driver.
+//!
 //! Every call is made under the driver's [retry policy](crate::retry): the reports
 //! bounded by `TCAB_DRIVER_REPORT_WAIT_SECONDS`, the uploads by
 //! `TCAB_ARTIFACT_UPLOAD_WAIT_SECONDS`. A held report that does not land does not
@@ -30,9 +39,9 @@
 //! report is `canceled`.
 //!
 //! The driver exits successfully once its terminal report lands or the backend
-//! refuses it, and non-zero only when the report deadline passes with it
-//! undelivered ([`Finished::exit_code`]); the backend then finishes the run from the
-//! held record.
+//! refuses it, and non-zero when the report deadline passes with it undelivered or
+//! it was withheld ([`Finished::exit_code`]); the backend then finishes the run from
+//! the held record.
 
 use std::future::Future;
 use std::path::Path;
@@ -46,6 +55,7 @@ use crate::bundle::{BundleTarget, store_bundle};
 use crate::client::{ClientError, JobClient, StoreFields};
 use crate::retry::{FinalFailure, RetryEnd, RetryFailure, RetryPolicy, retry_call};
 use crate::sigterm::StageCell;
+use crate::sink::RelayOutcome;
 
 /// How long one attempt of a report may go unanswered before it is abandoned as a
 /// failed attempt and retried. Without it a backend that accepts the connection
@@ -82,6 +92,10 @@ pub struct FinishTarget<'a> {
     /// records its held report and whether it landed, for the driver's `SIGTERM`
     /// handling. `None` records nothing.
     pub stage: Option<&'a StageCell>,
+    /// How the run's event batches fared, settled before the finishing began:
+    /// [`RelayOutcome::Delivered`] when the backend acknowledged every one, which
+    /// the terminal report waits on. [`RelayOutcome::Undelivered`] withholds it.
+    pub events: RelayOutcome,
 }
 
 /// The outcome the run reached, which its terminal report carries unless a
@@ -130,6 +144,9 @@ pub enum ReportEnd {
     /// Nothing was owed: the job was canceled and there is no record to hand
     /// back with a `canceled` report.
     NotOwed,
+    /// The report was not made: an event batch of the run went unacknowledged, and
+    /// a terminal status is posted only once every batch is.
+    Withheld,
 }
 
 impl ReportEnd {
@@ -145,7 +162,8 @@ impl ReportEnd {
     }
 }
 
-/// The status a terminal report carried.
+/// The status a terminal report carried, or would have carried when it was
+/// withheld.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TerminalState {
     /// `succeeded`.
@@ -166,7 +184,7 @@ pub struct Finished {
     /// Whether the bundle was stored; `None` when it was not attempted (no repos
     /// service, no record, or a cancellation before it).
     pub bundle_stored: Option<bool>,
-    /// The status of the last terminal report made.
+    /// The status of the last terminal report made, or of the one withheld.
     pub terminal: TerminalState,
     /// How that terminal report ended.
     pub report: ReportEnd,
@@ -174,13 +192,14 @@ pub struct Finished {
 
 impl Finished {
     /// The driver's exit code: success once the terminal report landed or was
-    /// refused (or none was owed), failure only when the report deadline passed
-    /// with it undelivered.
+    /// refused (or none was owed), failure when the report deadline passed with it
+    /// undelivered or it was withheld for unacknowledged events.
     pub fn exit_code(&self) -> ExitCode {
-        if self.report == ReportEnd::GaveUp {
-            ExitCode::FAILURE
-        } else {
-            ExitCode::SUCCESS
+        match self.report {
+            ReportEnd::GaveUp | ReportEnd::Withheld => ExitCode::FAILURE,
+            ReportEnd::Landed | ReportEnd::Refused | ReportEnd::Canceled | ReportEnd::NotOwed => {
+                ExitCode::SUCCESS
+            }
         }
     }
 }
@@ -285,7 +304,8 @@ impl StoreWait for FinishWait<'_, '_> {
 /// not be built: such a run has no held report and no uploads, only its `failed`
 /// report. `outcome` is what the run reached. `already_canceled` is set for a gg
 /// run that was canceled before its finishing began. `mirrors` runs between the
-/// uploads and the terminal report.
+/// uploads and the terminal report, which is withheld when `target.events` says a
+/// batch went unacknowledged.
 pub async fn finish<M: Mirrors>(
     target: &FinishTarget<'_>,
     record: Option<RunRecord>,
@@ -350,7 +370,24 @@ pub async fn finish<M: Mirrors>(
     };
     mirrors.mirror(&record).await;
 
-    // 3. The terminal report.
+    // 3. The terminal report, made only once every event batch is acknowledged.
+    if target.events == RelayOutcome::Undelivered {
+        let terminal = if watch.reports_canceled() || outcome == RunOutcome::Canceled {
+            TerminalState::Canceled
+        } else if detail.is_some() {
+            TerminalState::Failed
+        } else {
+            TerminalState::Succeeded
+        };
+        log_withheld(terminal, &record.id);
+        return Finished {
+            held: Some(held),
+            tree,
+            bundle_stored,
+            terminal,
+            report: ReportEnd::Withheld,
+        };
+    }
     let store = tree.store_fields();
     let (terminal, report) = if watch.reports_canceled() || outcome == RunOutcome::Canceled {
         (
@@ -425,6 +462,14 @@ async fn finish_without_record(
     };
     if watch.already_canceled {
         return not_owed;
+    }
+    if target.events == RelayOutcome::Undelivered {
+        log_withheld(TerminalState::Failed, "(none)");
+        return Finished {
+            terminal: TerminalState::Failed,
+            report: ReportEnd::Withheld,
+            ..not_owed
+        };
     }
     let client = watch.client;
     let result = retry_call(policy, "the terminal report", watch.canceled(), || {
@@ -517,6 +562,16 @@ fn tree_skipped(target: &FinishTarget<'_>) -> TreeStore {
     }
 }
 
+/// Log that the terminal report is withheld for unacknowledged events.
+fn log_withheld(terminal: TerminalState, run_id: &str) {
+    tracing::error!(
+        run_id,
+        status = ?terminal,
+        "withholding the terminal report: the backend did not acknowledge every event \
+         batch; the backend finishes the job as it does a lost driver's",
+    );
+}
+
 /// Log how a report ended, and say so.
 fn log_report<E: std::fmt::Display>(
     what: &str,
@@ -552,3 +607,7 @@ fn log_report<E: std::fmt::Display>(
 #[cfg(test)]
 #[path = "finish.test.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "finish.events.test.rs"]
+mod events_tests;
