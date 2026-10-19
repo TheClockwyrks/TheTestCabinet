@@ -38,8 +38,19 @@ async fn main() -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
+    let public_store = match &config.public_store {
+        test_cabinet_artifacts::config::PublicStoreConfig::R2(r2) => {
+            format!("r2 bucket `{}`", r2.bucket)
+        }
+        test_cabinet_artifacts::config::PublicStoreConfig::Blob { container } => {
+            format!("blob container `{container}`")
+        }
+    };
     tracing::info!(
-        root = %config.root.display(),
+        blob.account = %config.blob.account,
+        blob.container = %config.blob.container,
+        blob.endpoint = %config.blob.endpoint,
+        public_store = %public_store,
         backend = %config.backend_url,
         verifies_access = config.access.is_some(),
         "artifact service configuration resolved"

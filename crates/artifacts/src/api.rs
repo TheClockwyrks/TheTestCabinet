@@ -32,14 +32,14 @@
 //! `cloudflared` forwards unchanged. [`crate::auth::identify`] runs in front of all
 //! of them; `/healthz` alone is served without an identity.
 //!
-//! The serve handlers **reuse the [`playable`](crate::playable) resolvers**
-//! ([`find_build_output`], [`serve_build_file`], [`serve_proof_file`],
-//! [`serve_asset_file`]) exactly as the
-//! worker did, only reading from the artifact store's per-run root instead of the
-//! worker's out_dir — so the per-run base-href rewrite and the path-traversal
-//! guard are identical.
+//! The serve handlers resolve the run's stored tree once, through its pointer
+//! (see [`crate::store`]), and read it through the [`playable`](crate::playable)
+//! resolvers ([`find_build_output`], [`serve_build_file`], [`serve_proof_file`],
+//! [`serve_asset_file`], …), which apply the contracts build-serving rule to
+//! object keys: the per-run base-href rewrite and the path-traversal guard are the
+//! ones every host serving a build applies. Every body is streamed from the store.
 
-use std::io::{Seek, Write};
+use std::io::Write;
 use std::sync::Arc;
 
 use axum::body::Body;
@@ -50,37 +50,35 @@ use axum::routing::{get, post};
 use axum::{Json, Router};
 use bytes::{Bytes, BytesMut};
 use futures_util::StreamExt;
-use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
-use tokio::io::AsyncWriteExt;
 use tower_http::compression::CompressionLayer;
 use tower_http::compression::predicate::{DefaultPredicate, NotForContentType, Predicate};
 use tower_http::cors::{AllowHeaders, CorsLayer};
 use tower_http::trace::TraceLayer;
 
 use crate::playable::{
-    find_build_output, serve_asset_file, serve_build_file, serve_proof_file, serve_showcase_file,
-    serve_validation_file,
+    Served, find_build_output, serve_asset_file, serve_build_file, serve_proof_file,
+    serve_showcase_file, serve_validation_file,
 };
 
 use crate::auth::{
     AccessMode, EDGE_PREFIX, require_reader, verify_job_token, verify_publish_job_token,
 };
 use crate::error::ApiError;
-use crate::store::{ArtifactStore, impl_dir};
+use crate::store::{ArchiveShape, ArtifactStore, StoreError, start_archive, write_archive};
 
-/// The maximum size of an uploaded artifact tarball, in bytes. A run's collected
-/// tree (source + a static build + a handful of media clips) is comfortably under
-/// this; 2 GiB is generous headroom for the heavier test cases the benchmark is
-/// moving toward.
+/// The maximum size of an uploaded run tree's `tar` body, in bytes. A run's
+/// collected tree (source + a static build + a handful of media clips) is
+/// comfortably under this; 2 GiB is generous headroom for the heavier test cases the
+/// benchmark is moving toward.
 ///
-/// The cap now bounds **disk**, not memory: the body is spooled to the store's
-/// scratch dir as it arrives rather than buffered, so it is the store filling up
-/// that a hostile upload threatens, not the service's address space. It is enforced
-/// by [`upload`] while writing rather than by a `DefaultBodyLimit` layer, because
-/// that layer only constrains extractors that buffer (`Bytes`, `String`, `Json`) and
-/// is inert against the raw `Body` this handler now takes.
-const MAX_UPLOAD_BYTES: usize = 2 * 1024 * 1024 * 1024;
+/// The cap bounds the **objects** a tree writes, not memory: the body is streamed
+/// into the private container as it arrives (see [`crate::store`]), so the service's
+/// peak allocation does not grow with it. It is enforced while the body is read
+/// rather than by a `DefaultBodyLimit` layer, because that layer only constrains
+/// extractors that buffer (`Bytes`, `String`, `Json`) and is inert against the raw
+/// `Body` the upload handler takes.
+pub const MAX_UPLOAD_BYTES: u64 = 2 * 1024 * 1024 * 1024;
 
 /// How much of a streamed archive is accumulated before a chunk is handed to the
 /// response body. Small enough that the whole pipeline stays far below the pod's
@@ -98,7 +96,8 @@ const STREAM_CHUNK_BUFFER: usize = 8;
 /// [`STREAM_CHUNK_BYTES`] chunks, as it is written.
 ///
 /// This is what lets the two whole-tree downloads — [`tree_tar`] and [`archive`] —
-/// stop building their archive in memory before answering. Both used to return a
+/// write their archive as it is built (see [`write_archive`]) rather than building
+/// it in memory before answering. Both used to return a
 /// `Vec<u8>`, so the service's peak allocation was the size of the largest tree any
 /// caller asked for, and `archive` is any reviewer's to ask for: one clicking Download on
 /// a heavy run was enough to take artifact serving down for every run. Prod hit that
@@ -222,14 +221,14 @@ impl Write for ChannelWriter {
 ///
 /// `what` names the download in the log line the walk emits when it ends; `id` is
 /// the run it is for. The caller must have established that the run exists *before*
-/// calling this (see [`ArtifactStore::ensure_run_tree`]): once the body is returned
+/// calling this (see [`ArtifactStore::run_tree`]): once the body is returned
 /// the status code is already committed, so a failure raised inside `build` can only
 /// be logged and the stream ended — the pre-check is what keeps the two real failure
 /// modes, an unknown run and an unsafe id, on the path that can still answer `404`
 /// or `400`.
 fn streamed_archive<F>(id: String, what: &'static str, build: F) -> Body
 where
-    F: FnOnce(&mut ChannelWriter) -> Result<(), crate::store::StoreError> + Send + 'static,
+    F: FnOnce(&mut ChannelWriter) -> Result<(), StoreError> + Send + 'static,
 {
     let (tx, rx) = tokio::sync::mpsc::channel::<Result<Bytes, std::io::Error>>(STREAM_CHUNK_BUFFER);
     tokio::task::spawn_blocking(move || {
@@ -253,14 +252,16 @@ where
     }))
 }
 
-/// The shared handler state: the backing store, the backend URL for upload auth,
+/// The shared handler state: the run-tree store, the backend URL for upload auth,
 /// the HTTP client the upload-auth call uses, and the credentials the identity
 /// layer checks.
 #[derive(Clone)]
 pub struct AppState {
-    /// The artifact backing store (local-fs today). Boxed behind the trait so an
-    /// R2 impl can replace it without touching the handlers.
-    pub store: Arc<dyn ArtifactStore>,
+    /// The run-tree store over the private container.
+    pub store: Arc<ArtifactStore>,
+    /// The largest upload body accepted, in bytes: [`MAX_UPLOAD_BYTES`] in the
+    /// service.
+    pub upload_limit: u64,
     /// The backend base URL (no trailing slash) an upload's per-job token is
     /// verified against.
     pub backend_url: Arc<String>,
@@ -285,13 +286,13 @@ fn routes() -> Router<AppState> {
         // Upload a finished run's collected tree (driver → service, per-job token),
         // or delete it (backend → service, shared control-plane service token) when
         // the control plane deletes the run.
-        // No `DefaultBodyLimit` layer: `upload` takes the raw `Body` so it can spool
-        // to disk, and that layer only bounds the buffering extractors. The cap is
-        // applied as the bytes are written — see `MAX_UPLOAD_BYTES`.
+        // No `DefaultBodyLimit` layer: `upload` takes the raw `Body` so it can stream
+        // it into the store, and that layer only bounds the buffering extractors. The
+        // cap is applied as the bytes are read — see `MAX_UPLOAD_BYTES`.
         .route("/runs/{id}/artifacts", post(upload).delete(delete))
         // Enumerate every stored tree (backend → service, shared control-plane
-        // service token) so the backend's reclamation sweep can compare the volume's
-        // contents against its own run rows.
+        // service token) so the backend's reclamation sweep can compare the stored
+        // trees against its own run rows.
         .route("/runs", get(list_runs))
         // Download a run's source tree as a tar (publisher → service, per-publish-job
         // token): a server-to-server pull the publisher uses to drive the
@@ -299,8 +300,7 @@ fn routes() -> Router<AppState> {
         .route("/runs/{id}/tree.tar", get(tree_tar));
     let read_routes = Router::new()
         // Serve the run's playable build and media (reviewer → service, through the
-        // edge with the Access assertion). These mirror the worker's handlers
-        // exactly, reading from the store's per-run root.
+        // edge with the Access assertion), read from the run's stored tree.
         //
         // Both the bare and trailing-slash roots serve the build's `index.html`:
         // the build link the driver emits — and the console loads into its iframe —
@@ -391,57 +391,6 @@ const JOB_ID_HEADER: &str = "x-tcab-job-id";
 /// verify must use the publish-job id, not the store key.
 const PUBLISH_JOB_ID_HEADER: &str = "x-tcab-publish-job-id";
 
-/// Write `body` to an unnamed file in `scratch_dir` as it arrives, refusing it once
-/// more than `max_bytes` have been written. Returns the file rewound, plus the byte
-/// count.
-///
-/// The file is created with `tempfile_in`, so it carries **no directory entry**: a
-/// partial upload — one that errored, or one refused for exceeding the cap — is
-/// reclaimed by the kernel when the handle drops, and a store listing never sees an
-/// in-flight upload. That is what lets every failure path here simply return.
-///
-/// The cap is applied per chunk rather than from `Content-Length`, which a chunked
-/// request does not carry and a hostile one may understate.
-async fn spool_to_disk(
-    body: Body,
-    scratch_dir: std::path::PathBuf,
-    max_bytes: usize,
-) -> Result<(std::fs::File, usize), ApiError> {
-    let spooled = tokio::task::spawn_blocking(move || tempfile::tempfile_in(scratch_dir))
-        .await
-        .map_err(|err| ApiError::internal(format!("upload spool task failed: {err}")))?
-        .map_err(|err| ApiError::internal(format!("creating the upload spool file: {err}")))?;
-
-    let mut spooled = tokio::fs::File::from_std(spooled);
-    let mut stream = body.into_data_stream();
-    let mut written: usize = 0;
-    while let Some(chunk) = stream.next().await {
-        let chunk = chunk
-            .map_err(|err| ApiError::bad_request(format!("reading the upload body: {err}")))?;
-        written = written.saturating_add(chunk.len());
-        if written > max_bytes {
-            return Err(ApiError::payload_too_large(format!(
-                "upload exceeds the {max_bytes} byte limit"
-            )));
-        }
-        spooled
-            .write_all(&chunk)
-            .await
-            .map_err(|err| ApiError::internal(format!("spooling the upload: {err}")))?;
-    }
-    spooled
-        .flush()
-        .await
-        .map_err(|err| ApiError::internal(format!("flushing the upload spool: {err}")))?;
-
-    let mut spooled = spooled.into_std().await;
-    // The caller reads from the start; writing left the cursor at the end.
-    spooled
-        .rewind()
-        .map_err(|err| ApiError::internal(format!("rewinding the upload spool: {err}")))?;
-    Ok((spooled, written))
-}
-
 /// `POST /runs/{id}/artifacts` — store a finished run's collected artifact tree.
 ///
 /// `{id}` is the **run/record id**: the store key, and how the console later
@@ -453,9 +402,14 @@ async fn spool_to_disk(
 /// backend (the token authority) before the tree is written — so only the driver
 /// that holds the job's token may upload for it. The token was minted for the
 /// **job id**, which differs from the run id in the path, so the driver sends its
-/// job id in the [`JOB_ID_HEADER`] and the verify uses that. A path that escapes
-/// the run directory is rejected as a `400`. Replaces any prior tree for the same
-/// id (an idempotent re-upload). `201 Created` on success.
+/// job id in the [`JOB_ID_HEADER`] and the verify uses that.
+///
+/// The body is streamed into the private container as it arrives, and the response
+/// lands once the tree is stored. A tree replaces any prior tree of the same id (an
+/// idempotent re-upload) atomically: a read sees the old tree or the new one, never
+/// a mix, and an upload that fails leaves the old tree in place. An entry whose path
+/// escapes the run's tree, an unreadable archive or one with no files is a `400`; a
+/// body over [`MAX_UPLOAD_BYTES`] is a `413`. `201 Created` on success.
 #[tracing::instrument(name = "artifacts.upload", skip(state, body), fields(run.id = %id, bytes = tracing::field::Empty), err(Debug))]
 async fn upload(
     State(state): State<AppState>,
@@ -477,35 +431,33 @@ async fn upload(
         .ok_or_else(|| ApiError::unauthorized(format!("missing `{JOB_ID_HEADER}` header")))?;
     verify_job_token(&state.http, &state.backend_url, job_id, &token).await?;
 
-    // Spool the body to disk as it arrives, rather than extracting it into memory.
+    // Stream the body into the store as it arrives, rather than holding it.
     //
     // This handler is the far end of the driver's upload, and it used to take
     // `Bytes` — the whole tarball resident before a single entry was unpacked, up to
     // the 2 GiB cap. That is the one allocation a long-lived shared service must not
     // make: it is the only pod here whose peak is set by a *caller's* payload rather
     // than by its own work, so its memory ceiling could not be sized from anything it
-    // does. Prod bears that out — this pod's kernel high-water mark reached 3.2 GiB
-    // against a node with ~4.7 GiB schedulable, on a service that requests nothing at
-    // all and so can land beside a run pod.
+    // does. Prod bore that out — this pod's kernel high-water mark reached 3.2 GiB.
     //
     // Note the body is only touched AFTER the token has been verified above. An
     // unauthenticated caller must not be able to make the service write anything,
     // which is also why the cap is checked per chunk rather than after the fact.
-    let (mut spooled, written) =
-        spool_to_disk(body, state.store.scratch_dir(), MAX_UPLOAD_BYTES).await?;
+    // Keyed by the run id from the path, not the job id the token was verified
+    // against.
+    let body: crate::object::ObjectBody = Box::pin(
+        body.into_data_stream()
+            .map(|chunk| chunk.map_err(std::io::Error::other)),
+    );
+    let stored = state
+        .store
+        .store_run(&id, body, state.upload_limit)
+        .await
+        .map_err(map_store_error)?;
+    let written = stored.bytes;
     tracing::Span::current().record("bytes", written);
 
-    // The store I/O is blocking (tar unpack writes many small files); run it off
-    // the async runtime so a large upload does not stall other connections. Keyed by
-    // the run id from the path, not the job id the token was verified against.
-    let store = state.store.clone();
-    let id_for_task = id.clone();
-    tokio::task::spawn_blocking(move || store.store_run(&id_for_task, &mut spooled))
-        .await
-        .map_err(|err| ApiError::internal(format!("artifact unpack task failed: {err}")))?
-        .map_err(map_store_error)?;
-
-    tracing::info!(run.id = %id, bytes = written, "stored run artifacts");
+    tracing::info!(run.id = %id, bytes = written, files = stored.files, "stored run artifacts");
     Ok(StatusCode::CREATED.into_response())
 }
 
@@ -529,14 +481,7 @@ async fn delete(
         state.service_token.as_deref().map(String::as_str),
     )?;
 
-    // `delete_run` is blocking (it removes a directory tree); run it off the async
-    // runtime so a large tree does not stall other connections.
-    let store = state.store.clone();
-    let id_for_task = id.clone();
-    tokio::task::spawn_blocking(move || store.delete_run(&id_for_task))
-        .await
-        .map_err(|err| ApiError::internal(format!("artifact delete task failed: {err}")))?
-        .map_err(map_store_error)?;
+    state.store.delete_run(&id).await.map_err(map_store_error)?;
 
     tracing::info!(run.id = %id, "deleted run artifacts");
     Ok(StatusCode::NO_CONTENT.into_response())
@@ -548,8 +493,8 @@ async fn delete(
 struct StoredTreeOut {
     /// The run id the tree is keyed by.
     id: String,
-    /// When the tree was last written, RFC 3339 in UTC. This is the run's upload
-    /// time, which is what the backend's sweep measures its grace window against.
+    /// When the tree was uploaded (its pointer's last-modified time), RFC 3339 in
+    /// UTC, which is what the backend's sweep measures its grace window against.
     modified_at: String,
 }
 
@@ -559,7 +504,7 @@ struct TreeListingOut {
     runs: Vec<StoredTreeOut>,
 }
 
-/// `GET /runs` — list every run tree the store holds, with each tree's last-write
+/// `GET /runs` — list every run tree the store holds, with each tree's upload
 /// time.
 ///
 /// The backend's artifact reclamation sweep is the caller: it compares these ids
@@ -578,17 +523,13 @@ async fn list_runs(
         state.service_token.as_deref().map(String::as_str),
     )?;
 
-    // Reading the root's directory entries and stat-ing each one is blocking, and the
-    // store can hold thousands of trees; keep it off the async runtime.
-    let store = state.store.clone();
-    let trees = tokio::task::spawn_blocking(move || store.list_runs())
-        .await
-        .map_err(|err| ApiError::internal(format!("artifact listing task failed: {err}")))?
-        .map_err(map_store_error)?;
+    let trees = state.store.list_runs().await.map_err(map_store_error)?;
 
     let mut runs = Vec::with_capacity(trees.len());
     for tree in trees {
-        let modified_at = OffsetDateTime::from(tree.modified)
+        let modified_at = tree
+            .modified
+            .to_offset(time::UtcOffset::UTC)
             .format(&Rfc3339)
             .map_err(|err| {
                 ApiError::internal(format!("formatting a stored tree's modified time: {err}"))
@@ -621,7 +562,7 @@ async fn list_runs(
 /// The body is **streamed**: the tar is written into the response as the tree is
 /// walked, so the response is chunked and carries no `Content-Length`. That means
 /// the two failures above have to be decided before the first byte — see
-/// [`ArtifactStore::ensure_run_tree`] — and that a fault arising mid-walk cannot
+/// [`ArtifactStore::run_tree`] — and that a fault arising mid-walk cannot
 /// change the status code. Such a fault ABORTS the body instead of ending it, so the
 /// publisher sees a transport error rather than a well-formed archive with files
 /// missing from it; [`ChannelWriter`]'s `Drop` is where that is arranged and why it
@@ -652,22 +593,13 @@ async fn tree_tar(
     // moment the body starts the status code is spent, so a `404` for an unknown run
     // has to be decided here. Keyed by the run id from the path, not the publish-job
     // id the token was verified against.
-    let store = state.store.clone();
-    let id_for_check = id.clone();
-    tokio::task::spawn_blocking(move || store.ensure_run_tree(&id_for_check))
-        .await
-        .map_err(|err| ApiError::internal(format!("artifact tar task failed: {err}")))?
-        .map_err(map_store_error)?;
+    let tree = state.store.run_tree(&id).await.map_err(map_store_error)?;
 
-    // Building the tar is blocking (it reads many small files off the store); it runs
-    // off the async runtime so a large source tree does not stall other connections,
-    // and it writes into the response body as it walks rather than assembling the
-    // whole archive first — see `ChannelWriter`.
-    let store = state.store.clone();
-    let id_for_task = id.clone();
-    let body = streamed_archive(id, "run source tree", move |out| {
-        store.write_run_tree(&id_for_task, out)
-    });
+    // The tar is framed on a blocking thread as the tree's objects are read, and
+    // written into the response body as it goes rather than assembled first — see
+    // `write_archive` and `ChannelWriter`.
+    let feed = start_archive(tree, ArchiveShape::Source);
+    let body = streamed_archive(id, "run source tree", move |out| write_archive(feed, out));
     // No `Content-Length`: the size is not known until the walk finishes, so the
     // response is chunked. The publisher reads the body to the end, which is the only
     // thing it needed the length for.
@@ -691,8 +623,8 @@ async fn tree_tar(
 /// by the reviewer's Access assertion. `tree_tar` takes the per-publish-job token
 /// because it is a server-to-server pull whose caller never crosses the edge.
 ///
-/// The whole run root is archived (not `tree_tar`'s publisher-shaped subset) under
-/// an `<id>/` prefix, matching what the extract script produced. `Content-Disposition`
+/// The whole stored tree is archived (not `tree_tar`'s publisher-shaped subset)
+/// under an `<id>/` prefix, matching what the extract script produced. `Content-Disposition`
 /// carries the filename because the console's link is cross-origin, where the
 /// anchor's own `download` attribute is ignored by the browser.
 ///
@@ -711,29 +643,20 @@ async fn archive(
     // Ask whether the run exists — and that its id is a single safe path segment —
     // before answering, because the answer streams: once the body starts, the `404`
     // for an unknown run and the `400` for an unsafe id can no longer be sent.
-    let store = state.store.clone();
-    let id_for_check = id.clone();
-    tokio::task::spawn_blocking(move || store.ensure_run_tree(&id_for_check))
-        .await
-        .map_err(|err| ApiError::internal(format!("artifact archive task failed: {err}")))?
-        .map_err(map_store_error)?;
+    let tree = state.store.run_tree(&id).await.map_err(map_store_error)?;
 
-    // The id is a UUID (`ensure_run_tree` rejected anything that is not a single
+    // The id is a UUID (`run_tree` rejected anything that is not a single
     // safe path segment just above), so it cannot break out of the quoted filename
     // or inject a header.
     let disposition = format!("attachment; filename=\"run-{id}.tar.gz\"");
 
-    // Building the archive is blocking (it reads and compresses the whole tree); it
-    // runs off the async runtime so a large run does not stall other connections, and
-    // it compresses into the response body as it walks rather than holding the
-    // finished archive. Any reviewer may call this route, so the size of what it is
-    // asked for is a reviewer's choice — see `ChannelWriter` for why that had to stop setting the
-    // service's peak allocation.
-    let store = state.store.clone();
-    let id_for_task = id.clone();
-    let body = streamed_archive(id, "run archive", move |out| {
-        store.write_run_archive(&id_for_task, out)
-    });
+    // Compressing is CPU work, so the archive is framed and compressed on a blocking
+    // thread as the tree's objects are read, into the response body as it goes rather
+    // than holding the finished archive. Any reviewer may call this route, so the size
+    // of what it is asked for is a reviewer's choice — see `ChannelWriter` for why
+    // that had to stop setting the service's peak allocation.
+    let feed = start_archive(tree, ArchiveShape::Whole);
+    let body = streamed_archive(id, "run archive", move |out| write_archive(feed, out));
 
     // The gzip *is* the resource here, so the response carries no `Content-Encoding`:
     // declaring one would have the browser inflate the archive on the way to disk and
@@ -757,7 +680,7 @@ async fn build_root(
     OriginalUri(uri): OriginalUri,
     Path(id): Path<String>,
 ) -> Result<Response, ApiError> {
-    serve_build(&state, mount_prefix(&uri), &id, "")
+    serve_build(&state, mount_prefix(&uri), &id, "").await
 }
 
 /// `GET /runs/{id}/build/{*path}` — serve a file within a produced run's playable
@@ -767,7 +690,7 @@ async fn build_path(
     OriginalUri(uri): OriginalUri,
     Path((id, path)): Path<(String, String)>,
 ) -> Result<Response, ApiError> {
-    serve_build(&state, mount_prefix(&uri), &id, &path)
+    serve_build(&state, mount_prefix(&uri), &id, &path).await
 }
 
 /// The prefix the request was routed under: [`EDGE_PREFIX`] for a request that
@@ -783,25 +706,28 @@ fn mount_prefix(uri: &axum::http::Uri) -> &'static str {
 }
 
 /// Resolve and serve one file from a produced run's static build output, which
-/// lives under the store at `<root>/{id}/implementation/{dist|build|out}/`. The
-/// build is mounted under a per-run base path (behind `prefix`, the path the request
-/// was routed under), so its HTML is relocated to resolve assets there (see
-/// [`serve_build_file`]). A `404` covers an unknown run, a run
-/// with no build, and a path that does not resolve to a file inside the build —
-/// identical to the worker's `serve_build`, only reading from the store.
-fn serve_build(
+/// lives in its stored tree under `implementation/{dist|build|out}/`. The build is
+/// mounted under a per-run base path (behind `prefix`, the path the request was
+/// routed under), so its HTML is relocated to resolve assets there (see
+/// [`serve_build_file`]). A `404` covers an unknown run, a run with no build, and a
+/// path that does not resolve to a file inside the build.
+async fn serve_build(
     state: &AppState,
     prefix: &str,
     id: &str,
     rel_path: &str,
 ) -> Result<Response, ApiError> {
-    let impl_dir = impl_dir(state.store.as_ref(), id);
-    let build_dir = find_build_output(&impl_dir)
+    let tree = state.store.run_tree(id).await.map_err(map_store_error)?;
+    let build = find_build_output(&tree)
+        .await
+        .map_err(map_store_error)?
         .ok_or_else(|| ApiError::not_found(format!("run `{id}` has no playable build to serve")))?;
     let base_href = format!("{prefix}/runs/{id}/build/");
-    let file = serve_build_file(&build_dir, rel_path, &base_href)
+    let file = serve_build_file(&tree, build, rel_path, &base_href)
+        .await
+        .map_err(map_store_error)?
         .ok_or_else(|| ApiError::not_found(format!("no build file `{rel_path}` for run `{id}`")))?;
-    Ok(([(header::CONTENT_TYPE, file.content_type)], file.body).into_response())
+    Ok(media_response(file))
 }
 
 /// `GET /runs/{id}/proof/{file}` — a produced run's proof-of-implementation media
@@ -813,14 +739,12 @@ async fn proof_file(
     State(state): State<AppState>,
     Path((id, file)): Path<(String, String)>,
 ) -> Result<Response, ApiError> {
-    let run_dir = state.store.run_dir(&id);
-    let served = serve_proof_file(&run_dir, &file)
+    let tree = state.store.run_tree(&id).await.map_err(map_store_error)?;
+    let served = serve_proof_file(&tree, &file)
+        .await
+        .map_err(map_store_error)?
         .ok_or_else(|| ApiError::not_found(format!("run `{id}` has no proof media `{file}`")))?;
-    Ok(media_response(
-        served.content_type,
-        served.content_encoding,
-        served.body,
-    ))
+    Ok(media_response(served))
 }
 
 /// `GET /runs/{id}/asset/{file}` — an asset-generation run's regenerated image,
@@ -831,14 +755,12 @@ async fn asset_file(
     State(state): State<AppState>,
     Path((id, file)): Path<(String, String)>,
 ) -> Result<Response, ApiError> {
-    let run_dir = state.store.run_dir(&id);
-    let served = serve_asset_file(&run_dir, &file)
+    let tree = state.store.run_tree(&id).await.map_err(map_store_error)?;
+    let served = serve_asset_file(&tree, &file)
+        .await
+        .map_err(map_store_error)?
         .ok_or_else(|| ApiError::not_found(format!("run `{id}` has no asset media `{file}`")))?;
-    Ok(media_response(
-        served.content_type,
-        served.content_encoding,
-        served.body,
-    ))
+    Ok(media_response(served))
 }
 
 /// `GET /runs/{id}/validation/{file}` — a run's synthesized validation media
@@ -850,15 +772,14 @@ async fn validation_file(
     State(state): State<AppState>,
     Path((id, file)): Path<(String, String)>,
 ) -> Result<Response, ApiError> {
-    let run_dir = state.store.run_dir(&id);
-    let served = serve_validation_file(&run_dir, &file).ok_or_else(|| {
-        ApiError::not_found(format!("run `{id}` has no validation media `{file}`"))
-    })?;
-    Ok(media_response(
-        served.content_type,
-        served.content_encoding,
-        served.body,
-    ))
+    let tree = state.store.run_tree(&id).await.map_err(map_store_error)?;
+    let served = serve_validation_file(&tree, &file)
+        .await
+        .map_err(map_store_error)?
+        .ok_or_else(|| {
+            ApiError::not_found(format!("run `{id}` has no validation media `{file}`"))
+        })?;
+    Ok(media_response(served))
 }
 
 /// `GET /runs/{id}/showcase/{file}` — one of a run's showcase files (`{file}` is
@@ -871,14 +792,12 @@ async fn showcase_file(
     State(state): State<AppState>,
     Path((id, file)): Path<(String, String)>,
 ) -> Result<Response, ApiError> {
-    let run_dir = state.store.run_dir(&id);
-    let served = serve_showcase_file(&run_dir, &file)
+    let tree = state.store.run_tree(&id).await.map_err(map_store_error)?;
+    let served = serve_showcase_file(&tree, &file)
+        .await
+        .map_err(map_store_error)?
         .ok_or_else(|| ApiError::not_found(format!("run `{id}` has no showcase file `{file}`")))?;
-    Ok(media_response(
-        served.content_type,
-        served.content_encoding,
-        served.body,
-    ))
+    Ok(media_response(served))
 }
 
 /// Build a media response that declares both what the resource is and how the body
@@ -889,17 +808,24 @@ async fn showcase_file(
 /// inflates it before the player ever sees it. The compression layer leaves a body
 /// that already declares an encoding alone, so a recording is never re-encoded on
 /// its way out.
-fn media_response(
-    content_type: &'static str,
-    content_encoding: Option<&'static str>,
-    body: Vec<u8>,
-) -> Response {
-    let mut response = ([(header::CONTENT_TYPE, content_type)], body).into_response();
-    if let Some(encoding) = content_encoding {
-        response.headers_mut().insert(
+///
+/// The body is streamed from the store, and carries the length the store reported
+/// for it, so a browser knows the size of what it is loading.
+fn media_response(served: Served) -> Response {
+    let mut response = (
+        [(header::CONTENT_TYPE, served.content_type)],
+        Body::from_stream(served.body),
+    )
+        .into_response();
+    let headers = response.headers_mut();
+    if let Some(encoding) = served.content_encoding {
+        headers.insert(
             header::CONTENT_ENCODING,
             header::HeaderValue::from_static(encoding),
         );
+    }
+    if let Some(length) = served.content_length {
+        headers.insert(header::CONTENT_LENGTH, header::HeaderValue::from(length));
     }
     response
 }
@@ -911,7 +837,7 @@ async fn events_file(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<Response, ApiError> {
-    serve_run_stream(&state, &id, "events.jsonl")
+    serve_run_stream(&state, &id, "events.jsonl").await
 }
 
 /// `GET /runs/{id}/raw.jsonl` — a finished run's recorded raw harness output,
@@ -921,48 +847,52 @@ async fn raw_file(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<Response, ApiError> {
-    serve_run_stream(&state, &id, "raw.jsonl")
+    serve_run_stream(&state, &id, "raw.jsonl").await
 }
 
-/// Serve a recorded run stream file (`events.jsonl` or `raw.jsonl`) from the
-/// store's per-run root as immutable NDJSON, matching the worker's `serve_run_stream`.
-/// A finished run's logs never change, so they are safe to cache aggressively. A
-/// missing file maps to a `404`; any other read error is a `500`. The file is
-/// optional in the upload, so its absence is an ordinary `404`, not an error.
-fn serve_run_stream(state: &AppState, id: &str, file_name: &str) -> Result<Response, ApiError> {
-    let path = state.store.run_dir(id).join(file_name);
-    let bytes = match std::fs::read(&path) {
-        Ok(bytes) => bytes,
-        Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
-            return Err(ApiError::not_found(format!(
-                "run `{id}` has no recorded `{file_name}`"
-            )));
-        }
-        Err(err) => {
-            return Err(ApiError::internal(format!(
-                "reading `{file_name}` for run `{id}`: {err}"
-            )));
-        }
-    };
-    Ok((
-        [
-            (header::CONTENT_TYPE, "application/x-ndjson"),
-            (header::CACHE_CONTROL, "public, max-age=31536000, immutable"),
-        ],
-        bytes,
-    )
-        .into_response())
+/// Serve a recorded run stream file (`events.jsonl` or `raw.jsonl`) from the run's
+/// stored tree as immutable NDJSON, streamed. A finished run's logs never change, so
+/// they are safe to cache aggressively. The file is optional in the upload, so its
+/// absence is an ordinary `404`, not an error.
+async fn serve_run_stream(
+    state: &AppState,
+    id: &str,
+    file_name: &str,
+) -> Result<Response, ApiError> {
+    let tree = state.store.run_tree(id).await.map_err(map_store_error)?;
+    let object = tree
+        .get(file_name)
+        .await
+        .map_err(map_store_error)?
+        .ok_or_else(|| ApiError::not_found(format!("run `{id}` has no recorded `{file_name}`")))?;
+    let mut response = media_response(Served {
+        content_type: "application/x-ndjson",
+        content_encoding: None,
+        content_length: Some(object.properties.content_length),
+        body: object.body,
+    });
+    response.headers_mut().insert(
+        header::CACHE_CONTROL,
+        header::HeaderValue::from_static("public, max-age=31536000, immutable"),
+    );
+    Ok(response)
 }
 
-/// Map a [`StoreError`](crate::store::StoreError) onto the HTTP envelope: a
-/// traversal attempt is the client's bad upload (`400`); a read of an unknown run's
-/// tree is a `404`; an I/O fault is the service's (`500`).
-fn map_store_error(err: crate::store::StoreError) -> ApiError {
-    use crate::store::StoreError;
+/// Map a [`StoreError`] onto the HTTP envelope: what the caller sent wrong is a
+/// `400` (a traversal entry or unsafe id, an unusable archive, a body that failed
+/// to arrive) or a `413` (a body over the limit); a read of an unknown run's tree is
+/// a `404`; a store fault is the service's (`500`).
+fn map_store_error(err: StoreError) -> ApiError {
     match err {
-        StoreError::Traversal(_) => ApiError::bad_request(err.to_string()),
+        StoreError::Traversal(_) | StoreError::Archive(_) | StoreError::UploadBody(_) => {
+            ApiError::bad_request(err.to_string())
+        }
+        StoreError::TooLarge(_) => ApiError::payload_too_large(err.to_string()),
         StoreError::NotFound(_) => ApiError::not_found(err.to_string()),
-        StoreError::Io(_) => ApiError::internal(err.to_string()),
+        StoreError::Backend(_)
+        | StoreError::Body(_)
+        | StoreError::TooLargeToRead(_)
+        | StoreError::CorruptPointer(_) => ApiError::internal(err.to_string()),
     }
 }
 
@@ -971,8 +901,8 @@ fn map_store_error(err: crate::store::StoreError) -> ApiError {
 mod tests;
 
 #[cfg(test)]
-#[path = "api.spool.test.rs"]
-mod spool_tests;
+#[path = "api.replace.test.rs"]
+mod replace_tests;
 
 #[cfg(test)]
 #[path = "api.stream.test.rs"]

@@ -1,146 +1,571 @@
-//! Tests for the local-filesystem artifact store: an uploaded tarball round-trips
-//! onto disk under the run root, and a traversal entry is refused.
+//! Tests for the run-tree store over a store held in memory: the generation
+//! layout and the pointer written last, the atomic replace, the refusals that
+//! leave the previous tree in place, the delete and the listing, and the two
+//! archive walks.
 
 use std::io::Cursor;
 
-use tempfile::TempDir;
+use bytes::Bytes;
 
+use super::testing::{NO_LIMIT, chunked, memory_store, read_file, seed, tar_of};
 use super::*;
+use crate::object::body_from_bytes;
 
-/// Build a `tar` archive in memory from a list of `(path, contents)` entries.
-fn tar_of(entries: &[(&str, &[u8])]) -> Vec<u8> {
-    let mut builder = tar::Builder::new(Vec::new());
-    for (path, contents) in entries {
-        let mut header = tar::Header::new_gnu();
-        header.set_size(contents.len() as u64);
-        header.set_mode(0o644);
-        header.set_cksum();
-        builder
-            .append_data(&mut header, path, *contents)
-            .expect("append entry");
-    }
-    builder.into_inner().expect("finish tar")
+/// The keys under run `id`'s generations.
+fn generation_keys(objects: &MemoryStore, id: &str) -> Vec<String> {
+    objects
+        .keys()
+        .into_iter()
+        .filter(|key| key.starts_with(&format!("{id}/g/")))
+        .collect()
 }
 
-#[test]
-fn store_run_unpacks_tree_under_run_root() {
-    let root = TempDir::new().unwrap();
-    let store = LocalFsStore::new(root.path()).unwrap();
+/// The distinct generations run `id` holds objects under.
+fn generations(objects: &MemoryStore, id: &str) -> Vec<String> {
+    let mut found: Vec<String> = generation_keys(objects, id)
+        .into_iter()
+        .filter_map(|key| {
+            key.strip_prefix(&format!("{id}/g/"))
+                .and_then(|rest| rest.split_once('/'))
+                .map(|(generation, _)| generation.to_string())
+        })
+        .collect();
+    found.dedup();
+    found
+}
 
+#[tokio::test]
+async fn store_run_writes_the_files_under_a_generation_and_the_pointer_beside_them() {
+    let (store, objects) = memory_store();
+    seed(
+        &store,
+        "abc",
+        &[
+            ("run-record.json", b"{\"id\":\"abc\"}"),
+            ("implementation/dist/index.html", b"<html></html>"),
+        ],
+    )
+    .await;
+
+    let generation = generations(&objects, "abc");
+    assert_eq!(generation.len(), 1, "one generation: {:?}", objects.keys());
+    let generation = &generation[0];
+    assert_eq!(
+        objects.keys(),
+        vec![
+            "abc/current".to_string(),
+            format!("abc/g/{generation}/implementation/dist/index.html"),
+            format!("abc/g/{generation}/run-record.json"),
+        ]
+    );
+
+    let tree = store.run_tree("abc").await.expect("the tree");
+    assert_eq!(
+        read_file(&tree, "run-record.json").await.as_deref(),
+        Some(&b"{\"id\":\"abc\"}"[..])
+    );
+    assert_eq!(
+        read_file(&tree, "implementation/dist/index.html")
+            .await
+            .as_deref(),
+        Some(&b"<html></html>"[..])
+    );
+}
+
+#[tokio::test]
+async fn a_large_file_arriving_in_many_chunks_is_stored_whole() {
+    // The driver streams its upload, so the body arrives in frames that cut across
+    // tar blocks and files. The pipeline reassembles each file in order.
+    let (store, _objects) = memory_store();
+    let big: Vec<u8> = (0..300_000u32).map(|i| (i % 251) as u8).collect();
     let archive = tar_of(&[
-        ("run-record.json", b"{\"id\":\"abc\"}"),
-        ("implementation/dist/index.html", b"<html></html>"),
+        ("implementation/a.bin", &big),
+        ("implementation/b.txt", b"small"),
     ]);
-    store
-        .store_run("abc", &mut Cursor::new(archive))
-        .expect("store");
+    let stored = store
+        .store_run("big", chunked(archive.clone(), 97), NO_LIMIT)
+        .await
+        .expect("stored");
+    assert_eq!(stored.files, 2);
+    assert_eq!(stored.bytes, archive.len() as u64);
 
-    let run_dir = store.run_dir("abc");
+    let tree = store.run_tree("big").await.unwrap();
+    assert_eq!(read_file(&tree, "implementation/a.bin").await, Some(big));
     assert_eq!(
-        std::fs::read_to_string(run_dir.join("run-record.json")).unwrap(),
-        "{\"id\":\"abc\"}"
-    );
-    assert_eq!(
-        std::fs::read_to_string(run_dir.join("implementation/dist/index.html")).unwrap(),
-        "<html></html>"
-    );
-    assert_eq!(
-        impl_dir(&store, "abc"),
-        run_dir.join("implementation"),
-        "impl_dir resolves to the run's implementation tree"
+        read_file(&tree, "implementation/b.txt").await.as_deref(),
+        Some(&b"small"[..])
     );
 }
 
-#[test]
-fn store_run_replaces_a_prior_tree() {
-    let root = TempDir::new().unwrap();
-    let store = LocalFsStore::new(root.path()).unwrap();
+#[tokio::test]
+async fn store_run_replaces_a_prior_tree_and_deletes_its_generation() {
+    let (store, objects) = memory_store();
+    seed(&store, "r1", &[("old.txt", b"old")]).await;
+    let first = generations(&objects, "r1");
+    seed(&store, "r1", &[("new.txt", b"new")]).await;
 
-    store
-        .store_run("r1", &mut Cursor::new(tar_of(&[("old.txt", b"old")])))
-        .unwrap();
-    store
-        .store_run("r1", &mut Cursor::new(tar_of(&[("new.txt", b"new")])))
-        .unwrap();
-
-    let run_dir = store.run_dir("r1");
-    assert!(!run_dir.join("old.txt").exists(), "the prior tree is gone");
+    let tree = store.run_tree("r1").await.unwrap();
     assert_eq!(
-        std::fs::read_to_string(run_dir.join("new.txt")).unwrap(),
-        "new"
+        read_file(&tree, "old.txt").await,
+        None,
+        "the prior tree is gone"
+    );
+    assert_eq!(
+        read_file(&tree, "new.txt").await.as_deref(),
+        Some(&b"new"[..])
+    );
+    let second = generations(&objects, "r1");
+    assert_eq!(second.len(), 1, "only the current generation is left");
+    assert_ne!(first, second, "the replace wrote a fresh generation");
+}
+
+/// A `tar` whose one entry is named `name` verbatim, which `tar::Builder` refuses
+/// to write for a `..` path: exactly what a hostile uploader could frame.
+fn raw_tar_entry(name: &[u8], payload: &[u8]) -> Vec<u8> {
+    let mut header = tar::Header::new_gnu();
+    let field = &mut header.as_gnu_mut().unwrap().name;
+    field[..name.len()].copy_from_slice(name);
+    header.set_size(payload.len() as u64);
+    header.set_entry_type(tar::EntryType::Regular);
+    header.set_cksum();
+    let mut archive = Vec::new();
+    archive.extend_from_slice(header.as_bytes());
+    archive.extend_from_slice(payload);
+    archive.resize(archive.len().div_ceil(512) * 512, 0);
+    archive.extend_from_slice(&[0u8; 1024]);
+    archive
+}
+
+/// Assert run `id` still serves `old.txt` as `old`, from its one generation.
+async fn assert_old_tree_intact(store: &ArtifactStore, objects: &MemoryStore, id: &str) {
+    let tree = store
+        .run_tree(id)
+        .await
+        .expect("the old tree is still current");
+    assert_eq!(
+        read_file(&tree, "old.txt").await.as_deref(),
+        Some(&b"old"[..]),
+        "the previous tree still serves"
+    );
+    assert_eq!(
+        generations(objects, id).len(),
+        1,
+        "the refused upload left no generation behind: {:?}",
+        objects.keys()
     );
 }
 
-#[test]
-fn delete_run_removes_the_tree_and_is_idempotent() {
-    let root = TempDir::new().unwrap();
-    let store = LocalFsStore::new(root.path()).unwrap();
+#[tokio::test]
+async fn a_traversal_entry_is_refused_and_leaves_the_previous_tree() {
+    let (store, objects) = memory_store();
+    seed(&store, "r1", &[("old.txt", b"old")]).await;
 
+    for name in [&b"../escape.txt\0"[..], b"/etc/passwd\0", b"a/../../b\0"] {
+        let err = store
+            .store_run(
+                "r1",
+                body_from_bytes(raw_tar_entry(name, b"pwned")),
+                NO_LIMIT,
+            )
+            .await
+            .expect_err("a traversal entry must be refused");
+        assert!(matches!(err, StoreError::Traversal(_)), "got {err:?}");
+    }
+    assert!(
+        objects.keys().iter().all(|key| key.starts_with("r1/")),
+        "nothing was written outside the run: {:?}",
+        objects.keys()
+    );
+    assert_old_tree_intact(&store, &objects, "r1").await;
+}
+
+#[tokio::test]
+async fn an_upload_over_the_limit_is_refused_and_leaves_the_previous_tree() {
+    let (store, objects) = memory_store();
+    seed(&store, "r1", &[("old.txt", b"old")]).await;
+
+    let archive = tar_of(&[("new.txt", &[7u8; 64 * 1024])]);
+    let err = store
+        .store_run("r1", chunked(archive, 16), 16 * 1024)
+        .await
+        .expect_err("over the limit");
+    assert!(matches!(err, StoreError::TooLarge(16384)), "got {err:?}");
+    assert_old_tree_intact(&store, &objects, "r1").await;
+}
+
+#[tokio::test]
+async fn an_endless_body_is_cut_off_at_the_limit() {
+    // The limit has to bite while reading, not once the body has been read: an
+    // endless body can only end by the limit firing.
+    use futures_util::StreamExt as _;
+    let (store, _objects) = memory_store();
+    // One header block claiming a gigabyte, then a body that never ends.
+    let mut header = tar::Header::new_gnu();
+    header.set_path("a.bin").unwrap();
+    header.set_size(1 << 30);
+    header.set_mode(0o644);
+    header.set_cksum();
+    let head = Bytes::copy_from_slice(header.as_bytes());
+    let endless = futures_util::stream::iter(std::iter::once(Ok(head))).chain(
+        futures_util::stream::repeat_with(|| Ok(Bytes::from(vec![0u8; 4096]))),
+    );
+    let err = store
+        .store_run("r1", Box::pin(endless), 64 * 1024)
+        .await
+        .expect_err("cut off");
+    assert!(matches!(err, StoreError::TooLarge(_)), "got {err:?}");
+}
+
+#[tokio::test]
+async fn a_body_that_fails_is_refused_as_the_upload_body() {
+    let (store, objects) = memory_store();
+    seed(&store, "r1", &[("old.txt", b"old")]).await;
+    let mut archive = tar_of(&[("new.txt", &[1u8; 4096])]);
+    archive.truncate(1024);
+    let body = futures_util::stream::iter(vec![
+        Ok(Bytes::from(archive)),
+        Err(std::io::Error::new(
+            std::io::ErrorKind::ConnectionReset,
+            "the driver went away",
+        )),
+    ]);
+    let err = store
+        .store_run("r1", Box::pin(body), NO_LIMIT)
+        .await
+        .expect_err("failed body");
+    assert!(matches!(err, StoreError::UploadBody(_)), "got {err:?}");
+    assert_old_tree_intact(&store, &objects, "r1").await;
+}
+
+#[tokio::test]
+async fn unusable_archives_are_refused_and_leave_the_previous_tree() {
+    let (store, objects) = memory_store();
+    seed(&store, "r1", &[("old.txt", b"old")]).await;
+
+    let mut truncated = tar_of(&[("new.txt", &[3u8; 4096])]);
+    truncated.truncate(1024);
+    let duplicate = tar_of(&[("new.txt", b"one"), ("new.txt", b"two")]);
+    let mut garbage = vec![0xffu8; 512];
+    garbage.extend_from_slice(&[0u8; 1024]);
+    for (what, archive) in [
+        ("an empty body", Vec::new()),
+        ("an archive with no files", tar_of(&[])),
+        ("a truncated archive", truncated),
+        ("a path that appears twice", duplicate),
+        ("bytes that are not a tar", garbage),
+    ] {
+        let err = store
+            .store_run("r1", body_from_bytes(archive), NO_LIMIT)
+            .await
+            .expect_err(what);
+        assert!(matches!(err, StoreError::Archive(_)), "{what}: got {err:?}");
+    }
+    assert_old_tree_intact(&store, &objects, "r1").await;
+}
+
+#[tokio::test]
+async fn a_store_failure_part_way_leaves_the_previous_tree() {
+    let (store, objects) = memory_store();
+    seed(&store, "r1", &[("old.txt", b"old")]).await;
+
+    objects.fail_writes_ending_with(Some("b.bin"));
+    let err = store
+        .store_run(
+            "r1",
+            body_from_bytes(tar_of(&[("a.bin", b"a"), ("b.bin", b"b"), ("c.bin", b"c")])),
+            NO_LIMIT,
+        )
+        .await
+        .expect_err("the store failed a write");
+    assert!(matches!(err, StoreError::Backend(_)), "got {err:?}");
+    objects.fail_writes_ending_with(None);
+    assert_old_tree_intact(&store, &objects, "r1").await;
+}
+
+#[tokio::test]
+async fn a_pointer_that_fails_to_write_leaves_the_previous_tree() {
+    // Every file of the new tree is stored, and the swap itself fails: the pointer
+    // is what makes a tree current, so the old one still is.
+    let (store, objects) = memory_store();
+    seed(&store, "r1", &[("old.txt", b"old")]).await;
+
+    objects.fail_writes_ending_with(Some("/current"));
+    let err = store
+        .store_run(
+            "r1",
+            body_from_bytes(tar_of(&[("new.txt", b"new")])),
+            NO_LIMIT,
+        )
+        .await
+        .expect_err("the pointer write failed");
+    assert!(matches!(err, StoreError::Backend(_)), "got {err:?}");
+    objects.fail_writes_ending_with(None);
+    assert_old_tree_intact(&store, &objects, "r1").await;
+}
+
+#[tokio::test]
+async fn directories_and_links_are_not_stored() {
+    // An object store has no directories, and a link names no bytes of the tree.
+    let (store, objects) = memory_store();
+    let mut builder = tar::Builder::new(Vec::new());
+    let mut dir = tar::Header::new_gnu();
+    dir.set_entry_type(tar::EntryType::Directory);
+    dir.set_size(0);
+    dir.set_mode(0o755);
+    builder
+        .append_data(&mut dir, "implementation/", std::io::empty())
+        .unwrap();
+    let mut link = tar::Header::new_gnu();
+    link.set_entry_type(tar::EntryType::Symlink);
+    link.set_size(0);
+    builder
+        .append_link(&mut link, "implementation/link", "/etc/passwd")
+        .unwrap();
+    let mut file = tar::Header::new_gnu();
+    file.set_size(2);
+    file.set_mode(0o644);
+    builder
+        .append_data(&mut file, "implementation/file.txt", &b"hi"[..])
+        .unwrap();
     store
         .store_run(
             "r1",
-            &mut Cursor::new(tar_of(&[("run-record.json", b"{}")])),
+            body_from_bytes(builder.into_inner().unwrap()),
+            NO_LIMIT,
         )
-        .unwrap();
-    // A second run's tree must survive the delete of the first.
-    store
-        .store_run(
-            "r2",
-            &mut Cursor::new(tar_of(&[("run-record.json", b"{}")])),
-        )
+        .await
+        .expect("stored");
+
+    let stored: Vec<String> = generation_keys(&objects, "r1")
+        .into_iter()
+        .map(|key| key.rsplit_once('/').unwrap().1.to_string())
+        .collect();
+    assert_eq!(stored, vec!["file.txt".to_string()]);
+}
+
+#[tokio::test]
+async fn delete_run_removes_every_object_of_the_run_and_is_idempotent() {
+    let (store, objects) = memory_store();
+    seed(&store, "r1", &[("run-record.json", b"{}")]).await;
+    seed(&store, "r2", &[("run-record.json", b"{}")]).await;
+    // A generation an abandoned upload left behind goes with the run too.
+    objects
+        .put("r1/g/abandoned/x.txt", body_from_bytes("x"), "text/plain")
+        .await
         .unwrap();
 
-    store.delete_run("r1").unwrap();
-    assert!(!store.run_dir("r1").exists(), "the run's tree is gone");
-    // Deleting a run with no tree is a no-op, not an error.
-    store.delete_run("r1").unwrap();
+    store.delete_run("r1").await.unwrap();
     assert!(
-        store.run_dir("r2").exists(),
+        objects.keys().iter().all(|key| !key.starts_with("r1/")),
+        "every object of the run is gone: {:?}",
+        objects.keys()
+    );
+    assert!(matches!(
+        store.run_tree("r1").await,
+        Err(StoreError::NotFound(_))
+    ));
+    // Deleting a run with no tree is a no-op, not an error.
+    store.delete_run("r1").await.unwrap();
+    assert!(
+        store.run_tree("r2").await.is_ok(),
         "an unrelated run is untouched"
     );
 }
 
-#[test]
-fn delete_run_refuses_an_unsafe_id() {
-    let root = TempDir::new().unwrap();
-    let store = LocalFsStore::new(root.path()).unwrap();
-    // A canary directory beside the store root must survive a traversal attempt.
-    let sibling = root.path().parent().unwrap().join("delete-run-canary");
-    std::fs::create_dir_all(&sibling).unwrap();
+#[tokio::test]
+async fn an_unsafe_id_is_refused_everywhere() {
+    let (store, objects) = memory_store();
+    seed(&store, "r1", &[("run-record.json", b"{}")]).await;
+    let before = objects.keys();
 
-    for bad in ["..", ".", "", "a/b", "../escape"] {
+    for bad in ["..", ".", "", "a/b", "../escape", "a\\b"] {
         assert!(
-            matches!(store.delete_run(bad), Err(StoreError::Traversal(_))),
-            "id {bad:?} must be refused as traversal"
+            matches!(store.delete_run(bad).await, Err(StoreError::Traversal(_))),
+            "delete of {bad:?} must be refused"
+        );
+        assert!(
+            matches!(store.run_tree(bad).await, Err(StoreError::Traversal(_))),
+            "a read of {bad:?} must be refused, so a route can still answer 400"
+        );
+        assert!(
+            matches!(
+                store
+                    .store_run(bad, body_from_bytes(tar_of(&[("a", b"a")])), NO_LIMIT)
+                    .await,
+                Err(StoreError::Traversal(_))
+            ),
+            "an upload to {bad:?} must be refused"
         );
     }
-    assert!(sibling.exists(), "no traversal escaped the store root");
-    std::fs::remove_dir_all(&sibling).ok();
+    assert_eq!(objects.keys(), before, "nothing was written or deleted");
 }
 
-/// Collect a streaming archive writer into a buffer.
-///
-/// The store writes an archive into a sink as it walks — in the service that sink is
-/// the response body — so a test that wants the whole thing supplies a `Vec<u8>` as
-/// the sink. That is the shape these assertions always had; only where the buffer
-/// lives has moved.
-fn collect(
-    write: impl FnOnce(&mut dyn std::io::Write) -> Result<(), StoreError>,
+#[tokio::test]
+async fn run_tree_is_not_found_for_an_unstored_run() {
+    // The two archive routes stream, so the HTTP layer learns "unknown run" before
+    // it commits a status code, from this.
+    let (store, _objects) = memory_store();
+    assert!(matches!(
+        store.run_tree("gone").await,
+        Err(StoreError::NotFound(_))
+    ));
+}
+
+#[tokio::test]
+async fn a_corrupt_pointer_is_an_error_not_a_tree() {
+    let (store, objects) = memory_store();
+    objects
+        .put("r1/current", body_from_bytes("../other"), "text/plain")
+        .await
+        .unwrap();
+    assert!(matches!(
+        store.run_tree("r1").await,
+        Err(StoreError::CorruptPointer(_))
+    ));
+}
+
+#[tokio::test]
+async fn reads_through_a_tree_cannot_leave_it() {
+    let (store, objects) = memory_store();
+    seed(&store, "r1", &[("implementation/a.txt", b"a")]).await;
+    seed(&store, "r2", &[("secret.txt", b"secret")]).await;
+    // An object beside the generation, in the run's own namespace.
+    objects
+        .put("r1/g/other/secret.txt", body_from_bytes("x"), "text/plain")
+        .await
+        .unwrap();
+
+    let tree = store.run_tree("r1").await.unwrap();
+    for path in [
+        "../other/secret.txt",
+        "implementation/../../other/secret.txt",
+        "../../../r2/current",
+        "",
+        "/",
+    ] {
+        assert!(
+            tree.get(path).await.unwrap().is_none(),
+            "`{path}` must name nothing"
+        );
+    }
+    // Empty and `.` segments are skipped, so a leading slash stays inside.
+    assert_eq!(
+        read_file(&tree, "/implementation/./a.txt").await.as_deref(),
+        Some(&b"a"[..])
+    );
+}
+
+#[tokio::test]
+async fn a_tree_lists_its_files_and_subdirectories() {
+    let (store, _objects) = memory_store();
+    seed(
+        &store,
+        "r1",
+        &[
+            ("run-record.json", b"{}"),
+            ("implementation/dist/index.html", b"<html>"),
+            ("implementation/dist/assets/app.js", b"js"),
+            ("implementation/src/main.ts", b"ts"),
+            ("implementation/top.txt", b"top"),
+        ],
+    )
+    .await;
+    let tree = store.run_tree("r1").await.unwrap();
+
+    let mut dirs = tree.subdirectories("implementation").await.unwrap();
+    dirs.sort();
+    assert_eq!(dirs, vec!["dist".to_string(), "src".to_string()]);
+
+    let listed: Vec<(String, u64)> = tree
+        .list("implementation/dist")
+        .await
+        .unwrap()
+        .into_iter()
+        .map(|object| (object.path, object.size))
+        .collect();
+    assert_eq!(
+        listed,
+        vec![
+            ("implementation/dist/assets/app.js".to_string(), 2),
+            ("implementation/dist/index.html".to_string(), 6),
+        ]
+    );
+    assert_eq!(tree.list("").await.unwrap().len(), 5);
+    assert!(tree.list("../").await.unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn list_runs_reports_each_tree_with_its_pointer_time() {
+    let (store, objects) = memory_store();
+    let before = OffsetDateTime::now_utc();
+    seed(&store, "abc", &[("run-record.json", b"{}")]).await;
+    seed(&store, "def", &[("run-record.json", b"{}")]).await;
+    let after = OffsetDateTime::now_utc();
+    // An upload in flight: its generation is written and its pointer is not. It
+    // must not be reported, or the sweep could take it for an orphan.
+    objects
+        .put(
+            "ghi/g/inflight/run-record.json",
+            body_from_bytes("{}"),
+            "application/json",
+        )
+        .await
+        .unwrap();
+
+    let mut listed = store.list_runs().await.unwrap();
+    listed.sort_by(|a, b| a.id.cmp(&b.id));
+    let ids: Vec<&str> = listed.iter().map(|tree| tree.id.as_str()).collect();
+    assert_eq!(ids, vec!["abc", "def"]);
+    for tree in &listed {
+        let pointer = objects
+            .head(&format!("{}/current", tree.id))
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(Some(tree.modified), pointer.last_modified);
+        assert!(
+            tree.modified >= before && tree.modified <= after,
+            "tree `{}` reports a time outside its upload",
+            tree.id
+        );
+    }
+
+    // A replace moves the reported time on to the new upload.
+    let first = listed[0].modified;
+    seed(&store, "abc", &[("run-record.json", b"{}")]).await;
+    let relisted = store.list_runs().await.unwrap();
+    let abc = relisted.iter().find(|tree| tree.id == "abc").unwrap();
+    assert!(abc.modified >= first);
+}
+
+#[tokio::test]
+async fn list_runs_is_empty_for_an_empty_store() {
+    let (store, _objects) = memory_store();
+    assert!(store.list_runs().await.unwrap().is_empty());
+}
+
+/// Build run `id`'s `shape` archive into a buffer, as the routes do into a body.
+async fn archive_of(
+    store: &ArtifactStore,
+    id: &str,
+    shape: ArchiveShape,
 ) -> Result<Vec<u8>, StoreError> {
-    let mut out = Vec::new();
-    write(&mut out)?;
-    Ok(out)
+    let tree = store.run_tree(id).await?;
+    let feed = start_archive(tree, shape);
+    tokio::task::spawn_blocking(move || {
+        let mut out = Vec::new();
+        write_archive(feed, &mut out).map(|()| out)
+    })
+    .await
+    .expect("the archive task")
 }
 
-/// Untar `archive` into a `(path, contents)` map for asserting on a built tree.
+/// Untar `archive` into a `(path, contents)` map.
 fn untar_to_map(archive: &[u8]) -> std::collections::BTreeMap<String, Vec<u8>> {
     let mut out = std::collections::BTreeMap::new();
     let mut reader = tar::Archive::new(Cursor::new(archive));
     for entry in reader.entries().unwrap() {
         let mut entry = entry.unwrap();
-        if entry.header().entry_type().is_dir() {
-            continue;
-        }
         let path = entry.path().unwrap().display().to_string();
         let mut contents = Vec::new();
         std::io::copy(&mut entry, &mut contents).unwrap();
@@ -149,179 +574,7 @@ fn untar_to_map(archive: &[u8]) -> std::collections::BTreeMap<String, Vec<u8>> {
     out
 }
 
-#[test]
-fn write_run_tree_archives_the_implementation_tree_record_and_events() {
-    let root = TempDir::new().unwrap();
-    let store = LocalFsStore::new(root.path()).unwrap();
-
-    store
-        .store_run(
-            "abc",
-            &mut Cursor::new(tar_of(&[
-                ("run-record.json", b"{\"id\":\"abc\"}"),
-                ("events.jsonl", b"{\"kind\":\"start\"}\n"),
-                ("implementation/src/main.ts", b"console.log(1)"),
-                // Both the generated source and the built output ride along — the
-                // publisher gits the source and deploys the build.
-                ("implementation/dist/index.html", b"<html></html>"),
-            ])),
-        )
-        .unwrap();
-
-    let archive = collect(|out| store.write_run_tree("abc", out)).expect("write tree");
-    let entries = untar_to_map(&archive);
-
-    assert_eq!(
-        entries.get("run-record.json").map(Vec::as_slice),
-        Some(&b"{\"id\":\"abc\"}"[..]),
-        "the record rides along"
-    );
-    assert_eq!(
-        entries.get("events.jsonl").map(Vec::as_slice),
-        Some(&b"{\"kind\":\"start\"}\n"[..]),
-        "the recorded events ride along"
-    );
-    assert_eq!(
-        entries.get("implementation/src/main.ts").map(Vec::as_slice),
-        Some(&b"console.log(1)"[..]),
-        "the generated source is included under its `implementation/` prefix"
-    );
-    // The whole `implementation/` tree is archived as-is — the built output the
-    // publisher deploys to Pages rides along beside the source it gits, and the
-    // archive untars back to the same layout `store_run` unpacked.
-    assert!(
-        entries.contains_key("implementation/dist/index.html"),
-        "the implementation tree round-trips whole"
-    );
-}
-
-#[test]
-fn write_run_tree_omits_absent_optional_files() {
-    let root = TempDir::new().unwrap();
-    let store = LocalFsStore::new(root.path()).unwrap();
-
-    // A run with only a source tree — no record, no events — still tars cleanly.
-    store
-        .store_run(
-            "bare",
-            &mut Cursor::new(tar_of(&[("implementation/src/main.ts", b"x")])),
-        )
-        .unwrap();
-
-    let entries = untar_to_map(&collect(|out| store.write_run_tree("bare", out)).unwrap());
-    assert!(entries.contains_key("implementation/src/main.ts"));
-    assert!(!entries.contains_key("run-record.json"));
-    assert!(!entries.contains_key("events.jsonl"));
-}
-
-#[test]
-fn write_run_tree_is_not_found_for_an_unstored_run() {
-    let root = TempDir::new().unwrap();
-    let store = LocalFsStore::new(root.path()).unwrap();
-    assert!(
-        matches!(
-            collect(|out| store.write_run_tree("nope", out)),
-            Err(StoreError::NotFound(_))
-        ),
-        "an unstored run reads as NotFound, not an I/O fault"
-    );
-}
-
-#[test]
-fn ensure_run_tree_answers_before_a_byte_is_written() {
-    // The two writers stream, so the HTTP layer has to learn "unknown run" and "bad
-    // id" *before* it commits a status code. This is the question it asks, and the
-    // answers have to be the same ones the writers would have raised.
-    let root = TempDir::new().unwrap();
-    let store = LocalFsStore::new(root.path()).unwrap();
-    store
-        .store_run(
-            "here",
-            &mut Cursor::new(tar_of(&[("run-record.json", b"{}")])),
-        )
-        .unwrap();
-
-    assert!(store.ensure_run_tree("here").is_ok());
-    assert!(
-        matches!(store.ensure_run_tree("gone"), Err(StoreError::NotFound(_))),
-        "an unstored run is NotFound, so the route can still answer 404"
-    );
-    for id in ["..", ".", "../other", "a/b", ""] {
-        assert!(
-            matches!(store.ensure_run_tree(id), Err(StoreError::Traversal(_))),
-            "id `{id}` must be refused as a traversal, so the route can still answer 400"
-        );
-    }
-}
-
-#[test]
-fn safe_join_keeps_normal_entries_inside_the_base() {
-    let base = Path::new("/store/run-1");
-    assert_eq!(
-        safe_join(base, Path::new("implementation/dist/index.html")),
-        Some(PathBuf::from("/store/run-1/implementation/dist/index.html"))
-    );
-    // A leading `./` is harmless and stripped.
-    assert_eq!(
-        safe_join(base, Path::new("./run-record.json")),
-        Some(PathBuf::from("/store/run-1/run-record.json"))
-    );
-}
-
-#[test]
-fn safe_join_refuses_traversal_and_absolute_entries() {
-    let base = Path::new("/store/run-1");
-    // A `..` component would climb out of the run directory.
-    assert_eq!(safe_join(base, Path::new("../escape.txt")), None);
-    assert_eq!(
-        safe_join(base, Path::new("implementation/../../escape.txt")),
-        None
-    );
-    // An absolute entry would ignore the base entirely.
-    assert_eq!(safe_join(base, Path::new("/etc/passwd")), None);
-}
-
-#[test]
-fn store_run_refuses_a_traversal_entry() {
-    let root = TempDir::new().unwrap();
-    let store = LocalFsStore::new(root.path()).unwrap();
-
-    // `tar::Builder` refuses to *write* a `..` path, so craft the malicious entry
-    // by hand: a header whose name field carries `../escape.txt` directly, exactly
-    // what a hostile uploader could frame. The store must reject it on unpack.
-    let payload = b"pwned";
-    let mut header = tar::Header::new_gnu();
-    header
-        .as_gnu_mut()
-        .unwrap()
-        .name
-        .get_mut(..14)
-        .unwrap()
-        .copy_from_slice(b"../escape.txt\0");
-    header.set_size(payload.len() as u64);
-    header.set_entry_type(tar::EntryType::Regular);
-    header.set_cksum();
-    let mut archive = Vec::new();
-    archive.extend_from_slice(header.as_bytes());
-    archive.extend_from_slice(payload);
-    archive.resize(archive.len().div_ceil(512) * 512, 0); // pad the data block
-    archive.extend_from_slice(&[0u8; 1024]); // two zero blocks end the archive
-
-    let err = store
-        .store_run("r1", &mut Cursor::new(archive))
-        .expect_err("a `..` entry must be rejected");
-    assert!(matches!(err, StoreError::Traversal(_)), "got {err:?}");
-
-    // Nothing escaped the store root.
-    assert!(
-        !root.path().join("escape.txt").exists(),
-        "the traversal entry was not written outside the run root"
-    );
-}
-
-/// Gunzip then untar `archive` into a `(path, contents)` map. The archive download
-/// is gzip-framed (unlike `read_run_tree`'s plain tar), so asserting on it also
-/// asserts the framing is real gzip.
+/// Gunzip then untar `archive`, which also asserts the framing is real gzip.
 fn ungzip_untar_to_map(archive: &[u8]) -> std::collections::BTreeMap<String, Vec<u8>> {
     let mut decoded = Vec::new();
     let mut decoder = flate2::read::GzDecoder::new(Cursor::new(archive));
@@ -329,32 +582,91 @@ fn ungzip_untar_to_map(archive: &[u8]) -> std::collections::BTreeMap<String, Vec
     untar_to_map(&decoded)
 }
 
-#[test]
-fn write_run_archive_carries_the_whole_run_root_under_an_id_prefix() {
-    let root = TempDir::new().unwrap();
-    let store = LocalFsStore::new(root.path()).unwrap();
+#[tokio::test]
+async fn the_source_archive_carries_the_implementation_tree_record_and_events() {
+    let (store, _objects) = memory_store();
+    seed(
+        &store,
+        "abc",
+        &[
+            ("run-record.json", b"{\"id\":\"abc\"}"),
+            ("events.jsonl", b"{\"kind\":\"start\"}\n"),
+            ("raw.jsonl", b"{\"raw\":true}\n"),
+            ("proof/gameplay.webm", b"webm"),
+            ("implementation/src/main.ts", b"console.log(1)"),
+            // Both the generated source and the built output ride along — the
+            // publisher gits the source and deploys the build.
+            ("implementation/dist/index.html", b"<html></html>"),
+        ],
+    )
+    .await;
 
-    store
-        .store_run(
-            "abc",
-            &mut Cursor::new(tar_of(&[
-                ("run-record.json", b"{\"id\":\"abc\"}"),
-                ("events.jsonl", b"{\"kind\":\"start\"}\n"),
-                // `raw.jsonl` and the media beside `implementation/` are exactly what
-                // `read_run_tree` drops and a downloading reviewer wants most.
-                ("raw.jsonl", b"{\"raw\":true}\n"),
-                ("proof/gameplay.webm", b"webm-bytes"),
-                ("implementation/src/main.ts", b"console.log(1)"),
-                ("implementation/dist/index.html", b"<html></html>"),
-            ])),
-        )
-        .unwrap();
+    let entries = untar_to_map(
+        &archive_of(&store, "abc", ArchiveShape::Source)
+            .await
+            .unwrap(),
+    );
+    assert_eq!(
+        entries.keys().cloned().collect::<Vec<_>>(),
+        vec![
+            "events.jsonl".to_string(),
+            "implementation/dist/index.html".to_string(),
+            "implementation/src/main.ts".to_string(),
+            "run-record.json".to_string(),
+        ],
+        "the publisher's subset, at the layout the driver uploaded"
+    );
+    assert_eq!(
+        entries.get("run-record.json").map(Vec::as_slice),
+        Some(&b"{\"id\":\"abc\"}"[..])
+    );
+    assert_eq!(
+        entries.get("implementation/src/main.ts").map(Vec::as_slice),
+        Some(&b"console.log(1)"[..])
+    );
+}
 
-    let entries =
-        ungzip_untar_to_map(&collect(|out| store.write_run_archive("abc", out)).expect("archive"));
+#[tokio::test]
+async fn the_source_archive_omits_absent_optional_files() {
+    let (store, _objects) = memory_store();
+    seed(&store, "bare", &[("implementation/src/main.ts", b"x")]).await;
+    let entries = untar_to_map(
+        &archive_of(&store, "bare", ArchiveShape::Source)
+            .await
+            .unwrap(),
+    );
+    assert_eq!(
+        entries.keys().cloned().collect::<Vec<_>>(),
+        vec!["implementation/src/main.ts".to_string()]
+    );
+}
 
-    // Every entry is prefixed with the run id, so the archive unpacks into its own
-    // directory rather than over the caller's working directory.
+#[tokio::test]
+async fn the_whole_archive_carries_the_tree_under_an_id_prefix() {
+    let (store, _objects) = memory_store();
+    let big: Vec<u8> = (0..200_000u32).map(|i| (i % 253) as u8).collect();
+    seed(
+        &store,
+        "abc",
+        &[
+            ("run-record.json", b"{\"id\":\"abc\"}"),
+            ("events.jsonl", b"{\"kind\":\"start\"}\n"),
+            // `raw.jsonl` and the media beside `implementation/` are exactly what the
+            // source archive drops and a downloading reviewer wants most.
+            ("raw.jsonl", b"{\"raw\":true}\n"),
+            ("proof/gameplay.webm", &big),
+            ("implementation/src/main.ts", b"console.log(1)"),
+            ("implementation/dist/index.html", b"<html></html>"),
+        ],
+    )
+    .await;
+
+    let entries = ungzip_untar_to_map(
+        &archive_of(&store, "abc", ArchiveShape::Whole)
+            .await
+            .unwrap(),
+    );
+    assert_eq!(entries.len(), 6);
     for path in entries.keys() {
         assert!(
             path.starts_with("abc/"),
@@ -363,53 +675,28 @@ fn write_run_archive_carries_the_whole_run_root_under_an_id_prefix() {
     }
     assert_eq!(
         entries.get("abc/raw.jsonl").map(Vec::as_slice),
-        Some(&b"{\"raw\":true}\n"[..]),
-        "the raw harness log rides along (unlike `read_run_tree`'s publisher subset)"
+        Some(&b"{\"raw\":true}\n"[..])
     );
     assert_eq!(
-        entries.get("abc/proof/gameplay.webm").map(Vec::as_slice),
-        Some(&b"webm-bytes"[..]),
-        "media beside `implementation/` rides along"
-    );
-    assert_eq!(
-        entries.get("abc/run-record.json").map(Vec::as_slice),
-        Some(&b"{\"id\":\"abc\"}"[..])
-    );
-    assert!(entries.contains_key("abc/events.jsonl"));
-    assert!(entries.contains_key("abc/implementation/src/main.ts"));
-    assert!(entries.contains_key("abc/implementation/dist/index.html"));
-}
-
-#[test]
-fn write_run_archive_is_not_found_for_an_unstored_run() {
-    let root = TempDir::new().unwrap();
-    let store = LocalFsStore::new(root.path()).unwrap();
-    assert!(
-        matches!(
-            collect(|out| store.write_run_archive("nope", out)),
-            Err(StoreError::NotFound(_))
-        ),
-        "an unstored run reads as NotFound, not an I/O fault"
+        entries.get("abc/proof/gameplay.webm"),
+        Some(&big),
+        "an object read in many chunks arrives whole"
     );
 }
 
-#[test]
-fn write_run_archive_refuses_an_unsafe_id() {
-    let root = TempDir::new().unwrap();
-    let store = LocalFsStore::new(root.path()).unwrap();
-    // The archive walks a directory tree rather than going through the canonicalizing
-    // core resolvers, so — as with `delete_run` — an id that is not a single safe
-    // path segment must never reach the filesystem. The writers re-check rather than
-    // trusting the caller's `ensure_run_tree`.
-    for id in ["..", ".", "../other", "a/b"] {
-        assert!(
-            matches!(
-                collect(|out| store.write_run_archive(id, out)),
-                Err(StoreError::Traversal(_))
-            ),
-            "id `{id}` must be refused as a traversal"
-        );
-    }
+#[tokio::test]
+async fn a_long_path_survives_the_archive() {
+    // A ustar name holds 100 bytes; the builder carries a longer one in a GNU long
+    // name entry, which the reader turns back into the path.
+    let (store, _objects) = memory_store();
+    let long = format!("implementation/{}/file.txt", "d".repeat(150));
+    seed(&store, "long", &[(long.as_str(), b"deep")]).await;
+    let entries = untar_to_map(
+        &archive_of(&store, "long", ArchiveShape::Source)
+            .await
+            .unwrap(),
+    );
+    assert_eq!(entries.get(&long).map(Vec::as_slice), Some(&b"deep"[..]));
 }
 
 /// A sink that accepts `budget` bytes and then fails, standing in for a client that
@@ -436,106 +723,39 @@ impl std::io::Write for HungUpSink {
     }
 }
 
-#[test]
-fn a_sink_that_fails_aborts_the_walk_rather_than_finishing_it() {
-    // The whole point of writing into a sink is that the walk proceeds at the client's
-    // pace — which means a client that goes away has to stop the walk, not merely have
-    // its bytes thrown away. If a sink failure were swallowed, a reviewer cancelling a
-    // download would leave the service reading the rest of a large tree for nobody.
-    let root = TempDir::new().unwrap();
-    let store = LocalFsStore::new(root.path()).unwrap();
+#[tokio::test]
+async fn a_sink_that_fails_aborts_the_walk_rather_than_finishing_it() {
+    // The walk proceeds at the client's pace, so a client that goes away has to stop
+    // it, not merely have its bytes thrown away: a reviewer cancelling a download
+    // must not leave the service reading the rest of a large tree for nobody.
+    let (store, _objects) = memory_store();
     let big = vec![b'x'; 128 * 1024];
-    store
-        .store_run(
-            "abc",
-            &mut Cursor::new(tar_of(&[
-                ("implementation/a.bin", &big),
-                ("implementation/b.bin", &big),
-                ("implementation/c.bin", &big),
-            ])),
-        )
-        .unwrap();
+    seed(
+        &store,
+        "abc",
+        &[
+            ("implementation/a.bin", &big),
+            ("implementation/b.bin", &big),
+            ("implementation/c.bin", &big),
+        ],
+    )
+    .await;
 
-    let mut sink = HungUpSink {
-        budget: 4096,
-        written: 0,
-    };
-    let err = store
-        .write_run_tree("abc", &mut sink)
-        .expect_err("a failing sink must surface, not be swallowed");
-    assert!(matches!(err, StoreError::Io(_)), "got {err:?}");
+    let tree = store.run_tree("abc").await.unwrap();
+    let feed = start_archive(tree, ArchiveShape::Source);
+    let (result, written) = tokio::task::spawn_blocking(move || {
+        let mut sink = HungUpSink {
+            budget: 4096,
+            written: 0,
+        };
+        (write_archive(feed, &mut sink), sink.written)
+    })
+    .await
+    .unwrap();
+    let err = result.expect_err("a failing sink must surface, not be swallowed");
+    assert!(matches!(err, StoreError::Body(_)), "got {err:?}");
     assert!(
-        sink.written < big.len(),
-        "the walk stopped at the failure rather than reading the whole tree, wrote {}",
-        sink.written
+        written < big.len(),
+        "the walk stopped at the failure rather than reading the whole tree, wrote {written}"
     );
-}
-
-#[test]
-fn list_runs_reports_one_entry_per_stored_tree() {
-    let root = TempDir::new().unwrap();
-    let store = LocalFsStore::new(root.path()).unwrap();
-
-    // The baseline is a file's write time on the same filesystem rather than the
-    // wall clock: a filesystem stamps with the kernel's coarse clock, which can
-    // lag `SystemTime::now()` by a tick, so a tree stored right after a clock
-    // reading can carry a stamp from just before it.
-    let marker = root.path().join("before");
-    std::fs::write(&marker, b"").unwrap();
-    let before = std::fs::metadata(&marker).unwrap().modified().unwrap();
-    std::fs::remove_file(&marker).unwrap();
-    for id in ["abc", "def"] {
-        store
-            .store_run(id, &mut Cursor::new(tar_of(&[("run-record.json", b"{}")])))
-            .unwrap();
-    }
-
-    let mut listed: Vec<String> = store
-        .list_runs()
-        .unwrap()
-        .into_iter()
-        .map(|tree| tree.id)
-        .collect();
-    listed.sort();
-    assert_eq!(listed, vec!["abc".to_string(), "def".to_string()]);
-
-    // The reported time is the tree's own write time, which is what the backend's
-    // sweep measures its grace window against.
-    for tree in store.list_runs().unwrap() {
-        assert!(
-            tree.modified >= before,
-            "tree `{}` reports a modified time from before it was stored",
-            tree.id
-        );
-    }
-}
-
-#[test]
-fn list_runs_ignores_a_file_at_the_store_root() {
-    let root = TempDir::new().unwrap();
-    let store = LocalFsStore::new(root.path()).unwrap();
-    store
-        .store_run(
-            "abc",
-            &mut Cursor::new(tar_of(&[("run-record.json", b"{}")])),
-        )
-        .unwrap();
-    // An upload in flight is spooled into this same root; only a run directory is a
-    // tree, and reporting a spool file would hand the sweep an id it cannot delete.
-    std::fs::write(root.path().join("spooled-upload"), b"tar bytes").unwrap();
-
-    let listed: Vec<String> = store
-        .list_runs()
-        .unwrap()
-        .into_iter()
-        .map(|tree| tree.id)
-        .collect();
-    assert_eq!(listed, vec!["abc".to_string()]);
-}
-
-#[test]
-fn list_runs_is_empty_for_an_empty_store() {
-    let root = TempDir::new().unwrap();
-    let store = LocalFsStore::new(root.path()).unwrap();
-    assert!(store.list_runs().unwrap().is_empty());
 }

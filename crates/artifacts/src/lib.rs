@@ -13,9 +13,10 @@
 //!
 //! The pieces:
 //!
-//! - [`store`] — the [`ArtifactStore`](store::ArtifactStore) trait and its
-//!   [`LocalFsStore`] impl (a directory on a PVC), keyed per
-//!   run id. An R2 impl is a deferrable internal detail (see the trait's docs).
+//! - [`store`] — the [`ArtifactStore`]: run trees as objects
+//!   in the private Blob container, keyed per run id, each upload written under a
+//!   fresh generation and made current by a pointer written last. The service
+//!   holds no state of its own, so any replica answers any request.
 //! - [`api`] — the HTTP surface: the driver's upload (per-job-token), the
 //!   publisher's source-tree pull (per-publish-job token), the backend's tree
 //!   management (service token), and the reviewer's build/media reads, the reads
@@ -59,8 +60,9 @@ use std::sync::Arc;
 
 use crate::access::AccessVerifier;
 use crate::api::AppState;
+use crate::blob::{BlobClient, BlobError};
 use crate::config::Config;
-use crate::store::LocalFsStore;
+use crate::store::{ArtifactStore, BlobStore};
 
 /// A fully wired, runnable artifact service: the Axum router plus its resolved
 /// bind address.
@@ -71,20 +73,23 @@ pub struct ArtifactService {
     pub bind: String,
 }
 
-/// Assemble the artifact service from a configuration: open the local-fs store
-/// (creating its root if missing), build the verify HTTP client and the Access
-/// verifier, and construct the router. Fails only if the store root cannot be created (an unwritable PVC) — the
-/// service refuses to start rather than fail every upload later.
-pub fn build(config: Config) -> Result<ArtifactService, store::StoreError> {
-    let store = LocalFsStore::new(&config.root)?;
+/// Assemble the artifact service from a configuration: the Blob client of the
+/// private run-tree container, the verify HTTP client and the Access verifier, and
+/// the router over them. Fails when the container's credential cannot be set up (a
+/// workload identity the pod was not given), so the service refuses to start
+/// rather than fail every request later.
+pub fn build(config: Config) -> Result<ArtifactService, BlobError> {
     let bind = config.bind.clone();
     let http = reqwest::Client::new();
+    let runs = BlobClient::new(&config.blob, http.clone())?;
+    let store = ArtifactStore::new(Arc::new(BlobStore::new(runs)));
     let access = config
         .access
         .as_ref()
         .map(|access| Arc::new(AccessVerifier::new(access, http.clone())));
     let state = AppState {
         store: Arc::new(store),
+        upload_limit: api::MAX_UPLOAD_BYTES,
         backend_url: Arc::new(config.backend_url),
         http,
         service_token: config.service_token.map(Arc::new),

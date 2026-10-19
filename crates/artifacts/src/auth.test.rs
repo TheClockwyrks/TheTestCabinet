@@ -13,7 +13,6 @@ use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use axum::routing::post;
 use axum::{Json, Router};
-use tempfile::TempDir;
 use tower::ServiceExt;
 
 use super::{AccessMode, Identity, LOCAL_IDENTITY_HEADER, is_exempt, resolve};
@@ -21,7 +20,8 @@ use crate::access::tests::keys::{KEY_A, KEY_B, person_claims, service_claims};
 use crate::access::tests::serve_certs;
 use crate::access::{ASSERTION_HEADER, AccessVerifier};
 use crate::api::{AppState, router};
-use crate::store::LocalFsStore;
+use crate::store::testing::seed;
+use crate::store::{ArtifactStore, MemoryStore};
 
 /// The audience tag a verifying service checks for.
 const AUDIENCE: &str = "test-audience-tag";
@@ -59,33 +59,39 @@ async fn stub_backend() -> String {
 }
 
 /// An artifact service in `access` mode over a store holding [`RUN`]'s build.
-async fn service(access: AccessMode) -> (TempDir, Router) {
-    let dir = TempDir::new().unwrap();
-    let dist = dir.path().join(RUN).join("implementation").join("dist");
-    std::fs::create_dir_all(&dist).unwrap();
-    std::fs::write(
-        dist.join("index.html"),
-        "<html><head><script src=\"/app.js\"></script></head><body>hi</body></html>",
+async fn service(access: AccessMode) -> (MemoryStore, Router) {
+    let objects = MemoryStore::new();
+    let store = ArtifactStore::new(Arc::new(objects.clone()));
+    seed(
+        &store,
+        RUN,
+        &[
+            (
+                "implementation/dist/index.html",
+                b"<html><head><script src=\"/app.js\"></script></head><body>hi</body></html>",
+            ),
+            ("implementation/dist/app.js", b"console.log(1)"),
+        ],
     )
-    .unwrap();
-    std::fs::write(dist.join("app.js"), "console.log(1)").unwrap();
+    .await;
     let state = AppState {
-        store: Arc::new(LocalFsStore::new(dir.path()).unwrap()),
+        store: Arc::new(store),
+        upload_limit: crate::api::MAX_UPLOAD_BYTES,
         backend_url: Arc::new(stub_backend().await),
         http: reqwest::Client::new(),
         service_token: Some(Arc::new(SERVICE_TOKEN.to_string())),
         access,
     };
-    (dir, router(state))
+    (objects, router(state))
 }
 
 /// A service with no Access application: the local overlay's shape.
-async fn local_service() -> (TempDir, Router) {
+async fn local_service() -> (MemoryStore, Router) {
     service(None).await
 }
 
 /// A service verifying assertions for [`AUDIENCE`] against keys served locally.
-async fn verifying_service() -> (TempDir, Router) {
+async fn verifying_service() -> (MemoryStore, Router) {
     let (url, _stub) = serve_certs(&[&KEY_A]).await;
     service(Some(Arc::new(AccessVerifier::with_certs_url(
         url,

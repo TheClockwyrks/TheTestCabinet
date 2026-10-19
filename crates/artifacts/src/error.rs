@@ -56,8 +56,8 @@ impl ApiError {
     }
 
     /// `413 Payload Too Large` — the upload exceeded the service's cap. Raised while
-    /// the body is being spooled to disk, so an oversized upload is refused as it
-    /// arrives rather than after it has been held somewhere.
+    /// the body is being streamed into the store, so an oversized upload is refused
+    /// as it arrives rather than after it has been held somewhere.
     pub fn payload_too_large(message: impl Into<String>) -> Self {
         Self::new(StatusCode::PAYLOAD_TOO_LARGE, "payload_too_large", message)
     }

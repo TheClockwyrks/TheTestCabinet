@@ -5,7 +5,6 @@
 //! | Variable | Required | Purpose | Default |
 //! | --- | --- | --- | --- |
 //! | `TCAB_ARTIFACTS_BIND` | no | Address the Axum server binds. | `0.0.0.0:8790` |
-//! | `TCAB_ARTIFACTS_ROOT` | no | The [`LocalFsStore`](crate::store::LocalFsStore) root dir (a PVC in a deployment). | `./tcab-artifacts` |
 //! | `TCAB_BACKEND_URL` | no | The backend the service forwards a driver's per-job token to for upload auth (the backend is the token authority). | `http://127.0.0.1:8787` |
 //! | `TCAB_BACKEND_SERVICE_TOKEN` | no | The shared control-plane service token the backend's tree-management routes must present: `DELETE /runs/{id}/artifacts` (pruning a deleted run's tree) and `GET /runs` (listing stored trees for the reclamation sweep). Unset ⇒ tree management is disabled (both routes reject every caller). | _none_ |
 //! | `TCAB_ACCESS_TEAM_DOMAIN` | no | The Access team domain whose certificates sign the `Cf-Access-Jwt-Assertion` every edge request carries. Set together with `TCAB_ACCESS_AUDIENCE`. | _none_ |
@@ -50,9 +49,6 @@
 /// Binds all interfaces so the driver (upload) and the edge's tunnel (a console's
 /// reads) reach it over the cluster network.
 const DEFAULT_BIND: &str = "0.0.0.0:8790";
-/// The default on-disk store root when `TCAB_ARTIFACTS_ROOT` is unset. A
-/// deployment overrides this with a PVC mount path.
-const DEFAULT_ROOT: &str = "./tcab-artifacts";
 /// The default backend URL when `TCAB_BACKEND_URL` is unset: the backend's own
 /// loopback default, so local dev works with both services up and no extra
 /// configuration.
@@ -76,10 +72,6 @@ const R2_REQUIRED: [&str; 4] = [
 pub struct Config {
     /// Address the Axum server binds (`TCAB_ARTIFACTS_BIND`).
     pub bind: String,
-    /// The [`LocalFsStore`](crate::store::LocalFsStore) root directory
-    /// (`TCAB_ARTIFACTS_ROOT`) — a PVC mount in a deployment, a plain directory in
-    /// local dev. Each run's artifact tree lives at `<root>/<run-id>/`.
-    pub root: std::path::PathBuf,
     /// The backend base URL (`TCAB_BACKEND_URL`), without a trailing slash. The
     /// service forwards a driver's per-job token here
     /// (`POST /jobs/{id}/verify-token`) to authenticate an upload; the backend is
@@ -87,7 +79,7 @@ pub struct Config {
     pub backend_url: String,
     /// The shared control-plane service token (`TCAB_BACKEND_SERVICE_TOKEN`) the
     /// backend's two tree-management routes must present: the run-tree delete and
-    /// the `GET /runs` listing its reclamation sweep enumerates the volume with. It
+    /// the `GET /runs` listing its reclamation sweep enumerates the stored trees with. It
     /// is the same secret the backend and dispatcher share, so only a trusted
     /// control-plane caller can enumerate or prune trees. `None` disables both routes
     /// entirely — they reject every caller — which is the safe default for a dev or
@@ -156,9 +148,6 @@ impl Config {
         let var = |key: &str| lookup(key).filter(|v| !v.is_empty());
         Ok(Self {
             bind: var("TCAB_ARTIFACTS_BIND").unwrap_or_else(|| DEFAULT_BIND.to_string()),
-            root: std::path::PathBuf::from(
-                var("TCAB_ARTIFACTS_ROOT").unwrap_or_else(|| DEFAULT_ROOT.to_string()),
-            ),
             backend_url: var("TCAB_BACKEND_URL")
                 .unwrap_or_else(|| DEFAULT_BACKEND_URL.to_string())
                 .trim_end_matches('/')

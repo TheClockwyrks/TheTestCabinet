@@ -40,13 +40,12 @@ tracing = { workspace = true }
 opentelemetry = { workspace = true }
 http = { workspace = true }
 bytes = { workspace = true }
-# Spooling an in-flight upload to disk instead of buffering it (`api.rs`):
-# `futures-util` drives the request body's chunk stream, and `tempfile` provides the
-# unnamed scratch file it is written into — unnamed so a partial upload, or one
-# refused for exceeding the cap, is reclaimed by the kernel with nothing left to
-# collect.
+# Streaming an upload into the store and a stored tree out of it (`store`):
+# `futures-util` drives the body chunk streams and the concurrent object writes.
 futures-util = { workspace = true }
-tempfile = { workspace = true }
+# The random half of an upload's generation name (`store`), so two replicas
+# starting an upload of the same run at once cannot collide.
+getrandom = { workspace = true }
 # The HTTP client the service verifies a driver's per-job token with against the
 # backend's internal verify endpoint. rustls (no system OpenSSL), `json` for the
 # body. The R2 (`r2`) and Blob (`blob`) clients send their signed requests with
@@ -61,9 +60,9 @@ hmac = { workspace = true }
 hex = { workspace = true }
 md-5 = { workspace = true }
 base64 = { workspace = true }
-# `tar` (pure Rust, no system deps) unpacks the run-artifact tree the driver
-# streams up as a tarball — the same crate the worker/driver already depend on to
-# frame trees over the pod `exec` channel.
+# `tar` (pure Rust, no system deps) reads the run-artifact tree the driver
+# streams up as a tarball, and frames the whole-tree downloads — the same crate the
+# driver builds the upload with.
 tar = "0.4"
 # Gzip framing for the reviewer-facing run-archive download. A run tree is source
 # and JSON/NDJSON, so compressing it is most of the point of offering the download
