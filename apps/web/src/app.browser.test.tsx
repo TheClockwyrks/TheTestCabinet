@@ -1,5 +1,5 @@
 import { render, screen } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { App } from "./app";
 
@@ -11,9 +11,9 @@ import { App } from "./app";
  * here is something only an engine knows, and the suite runs in each engine
  * `vite.config.ts` names, at each width it names.
  *
- * The console is opened unconfigured, at the gallery's home route, which is
- * what a first visit shows: no backend is set, so nothing is fetched and the
- * page is laid out from the shared gallery's own styles alone. The claim worth
+ * The console is opened at the gallery's home route with no backend answering
+ * at `/api` of its origin (every request is refused at `fetch`), so the page
+ * is laid out from the shared gallery's own styles alone. The claim worth
  * holding is that neither width makes the page wider than itself, which is
  * what turns a phone into a sideways scroll.
  */
@@ -26,12 +26,18 @@ const OPENED = location.href;
 
 beforeEach(() => {
   localStorage.clear();
+  // The test runner's own server is no backend: refuse what the console asks.
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(() => Promise.reject(new TypeError("Failed to fetch"))),
+  );
   // The router reads the address bar, which under the test runner names the
   // runner's own page: the gallery would show its not-found screen.
   history.replaceState(null, "", "/");
 });
 
 afterEach(() => {
+  vi.unstubAllGlobals();
   history.replaceState(null, "", OPENED);
 });
 

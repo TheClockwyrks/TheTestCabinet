@@ -1,8 +1,6 @@
 /// <reference types="vite/client" />
 
 interface ImportMetaEnv {
-  /** Default backend URL the console points at on first load (optional). */
-  readonly VITE_BACKEND_URL?: string;
   /**
    * OTLP/HTTP endpoint browser telemetry exports to (optional; opt-in). Unset
    * disables browser telemetry. From the host this is the local Grafana LGTM
@@ -18,22 +16,3 @@ interface ImportMetaEnv {
 interface ImportMeta {
   readonly env: ImportMetaEnv;
 }
-
-/**
- * Runtime console config injected by the deployment, taking precedence over the
- * build-time `VITE_*` fallbacks (see {@link useBackendConnection}/
- * {@link useExecConnection}). The committed `public/config.js` sets this to an
- * empty object so `vite build` ships a harmless placeholder and local
- * `npm run dev` works unchanged; the `tcab-web` container image overwrites
- * `/config.js` at start, `envsubst`-ing the URLs from its environment.
- */
-interface TcabRuntimeConfig {
-  /** Backend URL the console talks to, unless the user overrides it. */
-  readonly backendUrl?: string;
-}
-
-/** Assigned by `/config.js`, which the page loads before its first module. */
-// Only `var` declares a property of `globalThis`, which is what a classic script
-// assigning `window.__TCAB_CONFIG__` creates; `let` and `const` would not.
-// eslint-disable-next-line no-var -- see above
-declare var __TCAB_CONFIG__: TcabRuntimeConfig | undefined;

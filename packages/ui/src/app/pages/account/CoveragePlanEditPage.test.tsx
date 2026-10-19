@@ -119,7 +119,6 @@ function backendValue(existing: CoveragePlanOut) {
     status: "ready" as const,
     error: null,
     url: null,
-    setUrl: () => {},
   };
 }
 

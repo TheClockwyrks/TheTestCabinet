@@ -178,7 +178,6 @@ function backendValue(
     status: "ready",
     error: null,
     url: null,
-    setUrl: () => {},
   } as unknown as BackendContextValue;
 }
 

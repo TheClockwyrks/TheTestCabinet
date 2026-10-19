@@ -100,7 +100,6 @@ function renderPlans(plans: CoveragePlanSummary[]) {
     status: "ready",
     error: null,
     url: null,
-    setUrl: vi.fn(),
   } as unknown as BackendContextValue;
   return render(
     <MemoryRouter>
@@ -122,7 +121,6 @@ describe("CoveragePlansPage", () => {
       status: "ready",
       error: null,
       url: null,
-      setUrl: () => {},
     } as unknown as BackendContextValue;
     render(
       <MemoryRouter>
@@ -147,7 +145,6 @@ describe("CoveragePlansPage", () => {
       status: "ready",
       error: null,
       url: null,
-      setUrl: () => {},
     } as unknown as BackendContextValue;
     const { container } = render(
       <MemoryRouter>

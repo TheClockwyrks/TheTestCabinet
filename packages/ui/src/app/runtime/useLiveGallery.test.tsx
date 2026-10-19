@@ -128,7 +128,6 @@ function mount(client: BackendClient | null, active: WorkerHandle | null) {
       error: null,
       // No URL, so the hook makes no config fetches over the network.
       url: null,
-      setUrl: () => {},
     } as BackendContextValue;
     const workersValue = {
       workers: active ? [active] : [],

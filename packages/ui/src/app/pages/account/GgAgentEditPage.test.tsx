@@ -76,7 +76,6 @@ function backendValue(): BackendContextValue {
     status: "ready",
     error: null,
     url: null,
-    setUrl: () => {},
   } as unknown as BackendContextValue;
 }
 

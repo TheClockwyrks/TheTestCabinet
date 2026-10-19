@@ -9,7 +9,7 @@ import type { BackendIdentity, BackendMatch, WorkerIdentity } from "./types";
 
 // --- Backend ---
 
-export type BackendStatus = "unconfigured" | "connecting" | "ready" | "error";
+export type BackendStatus = "connecting" | "ready" | "error";
 
 export interface BackendContextValue {
   /** The active backend client, or null when none is configured/reachable. */
@@ -18,10 +18,11 @@ export interface BackendContextValue {
   identity: BackendIdentity | null;
   status: BackendStatus;
   error: string | null;
-  /** The configured backend URL (may be set but not yet reachable). */
+  /**
+   * The backend's base URL (may not yet be reachable). The web console's is
+   * always `BACKEND_PATH` of its own origin; nothing switches it.
+   */
   url: string | null;
-  /** Point the UI at a different backend instance (e.g. staging vs prod). */
-  setUrl: (url: string) => void;
 }
 
 const BackendContext = createContext<BackendContextValue | null>(null);

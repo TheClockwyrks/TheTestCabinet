@@ -87,7 +87,6 @@ function renderConsole(client: BackendClient) {
     error: null,
     // No URL, so the hook makes no config fetches over the network.
     url: null,
-    setUrl: vi.fn(),
   } as BackendContextValue;
   const workersValue = {
     workers: [],

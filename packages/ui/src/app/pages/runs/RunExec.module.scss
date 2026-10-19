@@ -937,22 +937,6 @@
   color: t.$color-text-muted;
 }
 
-// The single-backend connect form: the URL field flexes to fill the row with the
-// Connect button pinned to its end, aligned to the input's bottom edge, wrapping
-// the button beneath the field only when the row is truly cramped.
-.connectForm {
-  display: flex;
-  align-items: flex-end;
-  gap: t.$space-md;
-  flex-wrap: wrap;
-  margin-bottom: t.$space-lg;
-
-  .field {
-    flex: 1 1 16rem;
-    min-width: 0;
-  }
-}
-
 // The topbar gear: a link to the Settings section (consoles only).
 .gear {
   display: inline-flex;

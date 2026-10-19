@@ -1279,7 +1279,6 @@ function backendValue(
     status: "ready",
     error: null,
     url: "http://backend",
-    setUrl: vi.fn(),
   };
 }
 
