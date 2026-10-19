@@ -98,7 +98,7 @@ pub async fn ingest(
     // `tcab ingest --env` — republish a corrected snapshot instead of leaving the
     // gallery frozen on whatever was built while the store was momentarily empty.
     if scan_changed_store(&report) {
-        state.publisher.queue_refresh();
+        state.publisher.queue_refresh().await;
         // ...and the gg document index holds a `score` per run that is a fraction of the
         // case manifest's checklist weights. A re-ingest can change those weights (or an
         // erratum's `exclude_from_score`) without touching a single `run` row, which is
@@ -232,7 +232,7 @@ async fn reconcile_reference_builds(state: &AppState) -> Result<(), ApiError> {
     if changed {
         // The public snapshot folds each variant's reference-build URL onto its case
         // metadata, so a changed set must be re-exported.
-        state.publisher.queue_refresh();
+        state.publisher.queue_refresh().await;
     }
     Ok(())
 }
@@ -320,7 +320,7 @@ async fn reconcile_reference_sheets(state: &AppState) {
         // The public snapshot folds each variant's published frame list onto its case
         // metadata, so a changed set must be re-exported.
         Ok(true) => {
-            state.publisher.queue_refresh();
+            state.publisher.queue_refresh().await;
         }
         Ok(false) => {}
         Err(err) => tracing::warn!("reconciling the reference-sheet table failed ({err})"),
@@ -418,7 +418,9 @@ fn ingest_streaming(state: AppState, request: IngestRequest, refresh: bool) -> R
                     // definition store must re-export the snapshot's case metadata
                     // (see `scan_changed_store`).
                     if scan_changed_store(&report) {
-                        publisher.queue_refresh();
+                        // Blocking (this closure runs on a blocking thread) so the
+                        // dirty mark is written before the `done` line goes out.
+                        tokio::runtime::Handle::current().block_on(publisher.queue_refresh());
                         // ...and, also as the non-streaming path, drop the gg document
                         // index: a manifest's checklist weights are an input to every
                         // gg run's `score` and are invisible to that index's per-run

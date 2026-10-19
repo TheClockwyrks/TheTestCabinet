@@ -6,8 +6,9 @@ zone: BACK
 number: 3
 title: Recover pending backend work on restart and clean ingest staging
 type: generic
-state: open
+state: done
 created: 2026-10-19T00:38:47.245068723Z
+done: 2026-10-19T20:47:19.708035569Z
 ---
 
 Some work the backend owns lives only in its process. A snapshot refresh

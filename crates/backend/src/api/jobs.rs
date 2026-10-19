@@ -115,9 +115,7 @@ pub async fn launch(
     crate::bootstrap::seed_launch_facts(&state.db, &state.prices, &launch_models(&body)).await;
     let record = candidate_record(&state, [&body]).await;
     // A list price filled at this enqueue changes the catalog the public snapshot shows.
-    let on_fill = || {
-        state.publisher.queue_refresh();
-    };
+    let on_fill = || state.publisher.queue_refresh_detached();
     resolve_gg_model_facts(&state.db, &state.prices, &record, &mut body, &on_fill)
         .await
         .map_err(ApiError::bad_request)?;
@@ -214,9 +212,7 @@ pub async fn launch_batch(
     let mut items: Vec<LaunchBatchItem> = Vec::with_capacity(body.runs.len());
     let mut to_insert: Vec<crate::db::NewJob> = Vec::with_capacity(body.runs.len());
     // A list price filled for any run changes the catalog the public snapshot shows.
-    let on_fill = || {
-        state.publisher.queue_refresh();
-    };
+    let on_fill = || state.publisher.queue_refresh_detached();
     // A batch usually fans one case out over many models/harnesses, so resolve each
     // (case, version)'s type once instead of re-reading the same manifest per run.
     let mut types: HashMap<(String, String), TestType> = HashMap::new();

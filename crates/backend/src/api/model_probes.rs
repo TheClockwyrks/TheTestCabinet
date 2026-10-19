@@ -85,6 +85,11 @@ pub async fn trigger(
         )));
     }
 
+    // The trigger hands the probe to its runner under a fresh lease, renewed while
+    // the runner runs, so a probe whose backend is gone is seen to have lost it.
+    let created_at = now()?;
+    let holder = cuid2::create_id();
+    let lease_expires_at = crate::db::probe_lease_expiry(&created_at).map_err(ApiError::from)?;
     let row = model_probe::Model {
         id: cuid2::create_id(),
         model_slug: slug,
@@ -101,8 +106,10 @@ pub async fn trigger(
         verdict: None,
         pass_rate: None,
         spend: 0.0,
-        created_at: now()?,
+        created_at,
         finished_at: None,
+        lease_expires_at: Some(lease_expires_at),
+        lease_holder: Some(holder.clone()),
     };
     state
         .db
@@ -117,6 +124,8 @@ pub async fn trigger(
         http: state.http.clone(),
         endpoint: probe::DEFAULT_COMPLETIONS_ENDPOINT.to_string(),
         api_key,
+        holder,
+        renew_every: probe::PROBE_LEASE_RENEWAL,
     };
     let spawned = row.clone();
     tokio::spawn(async move { runner.run(spawned).await });

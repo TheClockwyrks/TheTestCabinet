@@ -86,6 +86,8 @@ mod m20261019_000059_add_job_held_record;
 mod m20261019_000060_add_run_artifacts_stored;
 mod m20261019_000061_add_job_lease;
 mod m20261019_000062_create_job_event;
+mod m20261019_000063_add_snapshot_dirty_generation;
+mod m20261019_000064_add_model_probe_lease;
 
 pub struct Migrator;
 
@@ -159,6 +161,8 @@ impl MigratorTrait for Migrator {
             Box::new(m20261019_000060_add_run_artifacts_stored::Migration),
             Box::new(m20261019_000061_add_job_lease::Migration),
             Box::new(m20261019_000062_create_job_event::Migration),
+            Box::new(m20261019_000063_add_snapshot_dirty_generation::Migration),
+            Box::new(m20261019_000064_add_model_probe_lease::Migration),
         ]
     }
 }

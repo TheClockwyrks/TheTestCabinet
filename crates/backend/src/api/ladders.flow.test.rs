@@ -2007,20 +2007,23 @@ async fn the_backend_passes_every_running_dispatch_at_startup_and_no_ended_one()
     run_ladder(&state, &running).await.unwrap();
     let stopped = ladder_id(&state, ladder_input(&["carom"], 1, &[SONNET])).await;
     run_ladder(&state, &stopped).await.unwrap();
-    // Both lose their run; one is stopped too. A claim the dead process held is
-    // released at boot.
+    // Both lose their run; one is stopped too. A claim a dead pass held, its lease
+    // lapsed, is released before the startup passes run.
     for job in jobs(&state).await {
         set_state(&state, &job.id, "canceled").await;
     }
     stop_ladder(&state, &stopped, false).await.unwrap();
+    let lapsed = time::OffsetDateTime::now_utc() - time::Duration::minutes(3);
+    let lapsed = lapsed
+        .format(&time::format_description::well_known::Rfc3339)
+        .unwrap();
     assert!(
         state
             .db
-            .claim_ladder_launch(OWNER, &running, &now().unwrap())
+            .claim_ladder_launch(OWNER, &running, &lapsed)
             .await
             .unwrap()
     );
-    assert!(state.db.release_all_launch_claims().await.unwrap() >= 1);
 
     crate::api::spawn_startup_passes(state.clone());
     wait_for_in_flight(&state, "pong", 1).await;

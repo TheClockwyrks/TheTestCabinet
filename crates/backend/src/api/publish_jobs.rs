@@ -197,7 +197,7 @@ pub async fn report_result(
                 .map_err(ApiError::from)?;
             // Coalesced: the dirty flag was set in `complete_publish_job`'s
             // transaction; this only wakes the debounce loop.
-            state.publisher.queue_refresh();
+            state.publisher.queue_refresh().await;
             crate::metrics::record_run_published(true);
         }
         PublishState::Failed => {

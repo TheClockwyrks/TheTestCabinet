@@ -78,6 +78,9 @@ pub struct Backend {
     /// not configured: no in-cluster artifact URL, no service token, or a zero
     /// interval.
     pub artifact_sweeper: Option<tokio::task::JoinHandle<()>>,
+    /// The [probe resumer](crate::probe::spawn_resumer), which resumes every `running`
+    /// model probe whose lease has lapsed; kept alive for the server's lifetime.
+    pub probe_resumer: tokio::task::JoinHandle<()>,
 }
 
 /// Assemble a backend from a configuration: open the definition store, connect
@@ -87,14 +90,22 @@ pub struct Backend {
 /// as `TCAB_CHROMIUM_EXECUTABLE` (the variable it reads), so ingest renders with
 /// that explicit Chromium.
 pub async fn build(config: Config) -> error::Result<Backend> {
-    build_with_prices(config, crate::pricing::OpenRouterPrices::new()).await
+    build_with_prices(
+        config,
+        crate::pricing::OpenRouterPrices::new(),
+        crate::probe::DEFAULT_COMPLETIONS_ENDPOINT,
+    )
+    .await
 }
 
 /// [`build`], reading model prices from `prices` rather than OpenRouter's public
-/// catalog, so a test assembles a backend without reaching the network.
+/// catalog and resuming model probes against `probe_endpoint` rather than
+/// OpenRouter's chat/completions, so a test assembles a backend without reaching
+/// the network.
 async fn build_with_prices(
     config: Config,
     prices: crate::pricing::OpenRouterPrices,
+    probe_endpoint: &str,
 ) -> error::Result<Backend> {
     use test_cabinet_migration::MigratorTrait;
 
@@ -125,6 +136,13 @@ async fn build_with_prices(
     }
 
     let store = DefinitionStore::open(&config.store)?;
+    // An ingest that stopped part way (the process died, or the pod was replaced) left
+    // its half-built version in the staging area. Nothing serves or ingests yet, so
+    // every entry there is such a leftover: empty it before anything can.
+    match store.clear_staging()? {
+        0 => {}
+        removed => tracing::info!(removed, "emptied the ingest staging area"),
+    }
     let db = if config.db_azure_ad {
         Db::connect_azure_ad(&config.database_url).await?
     } else {
@@ -208,19 +226,6 @@ async fn build_with_prices(
         }
     }
 
-    // Reap probes orphaned by the last shutdown. A model probe runs inside this
-    // process, so a restart always killed it; the row is failed rather than left
-    // `running` forever (which would also block re-triggering). Idempotent,
-    // best-effort, never blocks startup.
-    match time::OffsetDateTime::now_utc().format(&time::format_description::well_known::Rfc3339) {
-        Ok(now) => match db.fail_running_model_probes(&now).await {
-            Ok(0) => {}
-            Ok(reaped) => tracing::info!(reaped, "failed model probes orphaned by restart"),
-            Err(err) => tracing::warn!(error = %err, "skipping model-probe reap"),
-        },
-        Err(err) => tracing::warn!(error = %err, "skipping model-probe reap"),
-    }
-
     // The engine slug, lifted out of records stored before the `engine_slug` column
     // existed (pre-engine-era records deserialize to `none`, which is lifted too — it
     // is what the engineless filter matches). Same contract as the two above:
@@ -266,19 +271,6 @@ async fn build_with_prices(
     // the driver `Job`s the cluster actually runs and reports each lost one
     // (`POST /jobs/{id}/lost`). Failing in-flight jobs here instead would fail runs that
     // are still executing.
-    //
-    // A launch-pass claim still held at startup, on a plan or a ladder, was held by a pass
-    // that died with the previous process: the backend is the single coordinator, so
-    // nothing else can hold one. Left in place it would turn the startup passes away as
-    // busy until its lease ran out, with no holder left to serve the request that leaves
-    // behind.
-    let released = db.release_all_launch_claims().await?;
-    if released > 0 {
-        tracing::info!(
-            released,
-            "released launch-pass claims left by the previous process"
-        );
-    }
 
     let r2 = config.r2.clone().map(R2Client::new);
 
@@ -352,7 +344,9 @@ async fn build_with_prices(
     let price_refresher = {
         let publisher = publisher.clone();
         crate::bootstrap::spawn_price_refresher(Arc::clone(&db), prices.clone(), move || {
-            publisher.queue_refresh();
+            // The callback is synchronous (it fires from a drop guard, so a
+            // cancelled refresh still reports its changes).
+            publisher.queue_refresh_detached();
         })
     };
 
@@ -369,6 +363,19 @@ async fn build_with_prices(
         crate::artifacts::SweepTiming {
             interval: config.artifact_sweep_interval,
             grace: config.artifact_sweep_grace,
+        },
+    );
+
+    // A model probe runs inside a backend, so one whose backend restarted or died is left
+    // `running` with a lease nobody renews. Every backend resumes such probes, as it starts
+    // and periodically after, issuing only the calls each has no item for.
+    let probe_resumer = crate::probe::spawn_resumer(
+        Arc::clone(&db),
+        crate::probe::ResumerConfig {
+            http: http.clone(),
+            endpoint: probe_endpoint.to_string(),
+            api_key: config.openrouter_api_key.clone(),
+            interval: crate::probe::PROBE_RESUME_INTERVAL,
         },
     );
 
@@ -407,7 +414,7 @@ async fn build_with_prices(
     // A running ladder dispatch and a filling plan are fed when one of their runs
     // finishes, and a restart loses some of those moments: a feed that was spawned but had
     // not finished dies with the process. Run a launch pass of each once, as soon as the
-    // store can be served.
+    // store can be served, after releasing every launch-pass claim whose lease lapsed.
     api::spawn_startup_passes(state.clone());
     let router = api::router(state);
 
@@ -417,6 +424,7 @@ async fn build_with_prices(
         refresher,
         price_refresher,
         artifact_sweeper,
+        probe_resumer,
     })
 }
 

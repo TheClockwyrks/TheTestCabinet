@@ -422,9 +422,7 @@ pub async fn launch_gg(
     let record = super::stats::recorded_run_facts(&state).await;
     // A bound model's list price filled at this enqueue changes the catalog the public
     // snapshot shows.
-    let on_fill = || {
-        state.publisher.queue_refresh();
-    };
+    let on_fill = || state.publisher.queue_refresh_detached();
     resolve_gg_model_facts(&state.db, &state.prices, &record, &mut launch, &on_fill)
         .await
         .map_err(ApiError::bad_request)?;
