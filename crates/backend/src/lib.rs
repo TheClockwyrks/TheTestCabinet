@@ -273,19 +273,6 @@ async fn build_with_prices(
     // the driver `Job`s the cluster actually runs and reports each lost one
     // (`POST /jobs/{id}/lost`). Failing in-flight jobs here instead would fail runs that
     // are still executing.
-    //
-    // A launch-pass claim still held at startup, on a plan or a ladder, was held by a pass
-    // that died with the previous process: the backend is the single coordinator, so
-    // nothing else can hold one. Left in place it would turn the startup passes away as
-    // busy until its lease ran out, with no holder left to serve the request that leaves
-    // behind.
-    let released = db.release_all_launch_claims().await?;
-    if released > 0 {
-        tracing::info!(
-            released,
-            "released launch-pass claims left by the previous process"
-        );
-    }
 
     let r2 = config.r2.clone().map(R2Client::new);
 
@@ -416,7 +403,7 @@ async fn build_with_prices(
     // A running ladder dispatch and a filling plan are fed when one of their runs
     // finishes, and a restart loses some of those moments: a feed that was spawned but had
     // not finished dies with the process. Run a launch pass of each once, as soon as the
-    // store can be served.
+    // store can be served, after releasing every launch-pass claim whose lease lapsed.
     api::spawn_startup_passes(state.clone());
     let router = api::router(state);
 

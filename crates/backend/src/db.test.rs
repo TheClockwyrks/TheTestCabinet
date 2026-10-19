@@ -7069,12 +7069,78 @@ async fn a_launch_claim_is_exclusive_until_it_is_released_or_expires() {
             .await
             .unwrap()
     );
-    // A restart releases every claim, since no pass survives it.
-    assert!(db.release_all_launch_claims().await.unwrap() >= 1);
+}
+
+#[tokio::test]
+async fn a_start_releases_only_the_launch_claims_whose_lease_lapsed() {
+    let db = Db::connect_in_memory().await.unwrap();
+    for id in ["fresh-plan", "lapsed-plan", "free-plan"] {
+        db.insert_coverage_plan("u1", &schedulable_plan(id))
+            .await
+            .unwrap();
+    }
+    for id in ["fresh-ladder", "lapsed-ladder"] {
+        db.insert_ladder(
+            "u1",
+            &test_ladder(id, id, vec![rung("r1", "pong", "v1.0.0")]),
+        )
+        .await
+        .unwrap();
+    }
+    // The lapsed claims were taken three minutes before the start, past the two-minute
+    // lease; the fresh ones a moment before it, by a pass another replica still runs.
+    // The variable-length subsecond part would misorder a string comparison.
+    let lapsed = "2026-08-15T00:57:00.5Z";
+    let fresh = "2026-08-15T00:59:59.123456Z";
+    let start = "2026-08-15T01:00:00Z";
+    for (id, at) in [("fresh-plan", fresh), ("lapsed-plan", lapsed)] {
+        assert!(db.claim_coverage_plan_launch("u1", id, at).await.unwrap());
+    }
+    for (id, at) in [("fresh-ladder", fresh), ("lapsed-ladder", lapsed)] {
+        assert!(db.claim_ladder_launch("u1", id, at).await.unwrap());
+    }
+    db.request_coverage_plan_launch("lapsed-plan")
+        .await
+        .unwrap();
+
+    assert_eq!(db.release_lapsed_launch_claims(start).await.unwrap(), 2);
+
+    // The released rows are free to a pass at the start; the fresh ones are still held.
+    let a_second_later = "2026-08-15T01:00:01Z";
+    for (id, free) in [
+        ("fresh-plan", false),
+        ("lapsed-plan", true),
+        ("free-plan", true),
+    ] {
+        assert_eq!(
+            db.claim_coverage_plan_launch("u1", id, a_second_later)
+                .await
+                .unwrap(),
+            free,
+            "{id}"
+        );
+    }
+    for (id, free) in [("fresh-ladder", false), ("lapsed-ladder", true)] {
+        assert_eq!(
+            db.claim_ladder_launch("u1", id, a_second_later)
+                .await
+                .unwrap(),
+            free,
+            "{id}"
+        );
+    }
+    // A standing request survives the release, for the startup pass to take.
     assert!(
-        db.claim_coverage_plan_launch("u1", "p1", "2026-08-15T01:00:01Z")
+        db.coverage_plan_launch_requested("lapsed-plan")
             .await
             .unwrap()
+    );
+    // Nothing lapsed is left a moment later.
+    assert_eq!(
+        db.release_lapsed_launch_claims(a_second_later)
+            .await
+            .unwrap(),
+        0
     );
 }
 

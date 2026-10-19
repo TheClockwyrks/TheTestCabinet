@@ -452,8 +452,11 @@ five passes, and a request still standing after the last one, or after a pass
 that failed, is served by a fresh launch pass.
 
 The claim carries a two-minute lease, so a pass that dies before releasing it
-frees the row when the lease expires. The backend is the single coordinator, so
-it releases every claim before it serves.
+frees the row when the lease expires. Once the definition store is servable
+after a start, the backend releases every claim whose lease has lapsed before it
+runs the startup passes. A claim still within its lease belongs to a pass
+another [replica](/components/backend/overview/#replicas) is running and is left
+to it.
 
 A pass recomputes everything from the database, the limit included, so a second
 pass after the first one's launches have landed yields the next slice of work,

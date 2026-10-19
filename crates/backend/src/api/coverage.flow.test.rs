@@ -598,6 +598,47 @@ async fn a_filling_plan_gets_a_pass_at_startup() {
 }
 
 #[tokio::test]
+async fn a_startup_pass_leaves_a_claim_another_replica_holds_to_it() {
+    let (_dir, state) = test_state().await;
+    let id = plan_id(
+        &state,
+        plan_input(&["pong"], 1, InFlightLimit::Bounded { runs: 10 }),
+    )
+    .await;
+    fill(&state, &id).await;
+    let pong = in_flight(&state, "pong").await;
+    set_state(&state, &pong[0].id, "canceled").await;
+    // Another replica's pass holds the claim, within its lease.
+    assert!(
+        state
+            .db
+            .claim_coverage_plan_launch(OWNER, &id, &now().unwrap())
+            .await
+            .unwrap()
+    );
+
+    crate::api::spawn_startup_passes(state.clone());
+    // The startup pass finds the claim held and leaves its request to the holder.
+    let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(20);
+    while !state.db.coverage_plan_launch_requested(&id).await.unwrap() {
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "the startup pass never left a request"
+        );
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    }
+    assert!(in_flight(&state, "pong").await.is_empty());
+    assert!(
+        !state
+            .db
+            .claim_coverage_plan_launch(OWNER, &id, &now().unwrap())
+            .await
+            .unwrap(),
+        "the release at startup took a claim whose lease had not lapsed"
+    );
+}
+
+#[tokio::test]
 async fn a_finished_hand_launch_of_a_plans_cell_feeds_the_filling_plan() {
     let (_dir, state) = test_state().await;
     let id = plan_id(

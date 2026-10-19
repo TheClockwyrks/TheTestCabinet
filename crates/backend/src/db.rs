@@ -3271,27 +3271,61 @@ impl Db {
         Ok(())
     }
 
-    /// Release every coverage plan's and every ladder's launch-pass claim. Run once at
-    /// startup, before anything is served: the backend is a single coordinator, so no
-    /// launch pass can be running anywhere at that moment, and a claim still held was
-    /// held by a process that died with it. Left in place, the claim would turn the
-    /// startup pass away as busy until its lease ran out, with nobody left to serve the
-    /// request it leaves. A pending request is kept, for the startup pass to take.
-    pub async fn release_all_launch_claims(&self) -> Result<u64> {
-        let plans = coverage_plan::Entity::update_many()
-            .col_expr(
-                coverage_plan::Column::LaunchClaimedAt,
-                Expr::value(None::<String>),
-            )
+    /// Release every coverage plan's and every ladder's launch-pass claim whose
+    /// two-minute lease has lapsed at `now`, returning how many were released. Run
+    /// once after a start, once the definition store is servable and before the startup
+    /// passes: a lapsed claim was held by a pass that died, on this replica or another,
+    /// and a claim still within its lease belongs to a pass another replica is running,
+    /// so it is left to that replica. A pending request is kept, for the startup pass to
+    /// take.
+    ///
+    /// Lapse is judged on parsed instants, as a claim's takeover judges it, never by
+    /// comparing the stored strings, and each release is a compare-and-swap on the value
+    /// read: a claim another pass renewed or took in between is not released.
+    pub async fn release_lapsed_launch_claims(&self, now: &str) -> Result<u64> {
+        let mut released = 0;
+        let plans = coverage_plan::Entity::find()
             .filter(coverage_plan::Column::LaunchClaimedAt.is_not_null())
-            .exec(&self.conn())
+            .all(&self.conn())
             .await?;
-        let ladders = ladder::Entity::update_many()
-            .col_expr(ladder::Column::LaunchClaimedAt, Expr::value(None::<String>))
+        for plan in plans {
+            let Some(held) = plan.launch_claimed_at else {
+                continue;
+            };
+            if !launch_claim_is_available(Some(&held), now) {
+                continue;
+            }
+            released += coverage_plan::Entity::update_many()
+                .col_expr(
+                    coverage_plan::Column::LaunchClaimedAt,
+                    Expr::value(None::<String>),
+                )
+                .filter(coverage_plan::Column::Id.eq(plan.id))
+                .filter(coverage_plan::Column::LaunchClaimedAt.eq(held))
+                .exec(&self.conn())
+                .await?
+                .rows_affected;
+        }
+        let ladders = ladder::Entity::find()
             .filter(ladder::Column::LaunchClaimedAt.is_not_null())
-            .exec(&self.conn())
+            .all(&self.conn())
             .await?;
-        Ok(plans.rows_affected + ladders.rows_affected)
+        for row in ladders {
+            let Some(held) = row.launch_claimed_at else {
+                continue;
+            };
+            if !launch_claim_is_available(Some(&held), now) {
+                continue;
+            }
+            released += ladder::Entity::update_many()
+                .col_expr(ladder::Column::LaunchClaimedAt, Expr::value(None::<String>))
+                .filter(ladder::Column::Id.eq(row.id))
+                .filter(ladder::Column::LaunchClaimedAt.eq(held))
+                .exec(&self.conn())
+                .await?
+                .rows_affected;
+        }
+        Ok(released)
     }
 
     /// Every saved gg query the account owns, ordered by display name.
