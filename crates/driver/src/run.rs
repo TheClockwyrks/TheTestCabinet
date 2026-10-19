@@ -29,14 +29,13 @@ use crate::{
     TestCaseVersion, TestType, materialize_version,
 };
 use test_cabinet_backend_client::{BackendClient, HttpBackendClient};
-use tokio::sync::mpsc::UnboundedSender;
 
 use crate::client::JobClient;
 use crate::config::{Config, DriverRuntime};
 use crate::creds::mounted_creds;
 use crate::kubernetes::{KubernetesArtifactCollector, KubernetesContainerRuntime};
 use crate::sigterm::StageCell;
-use crate::sink::{BackendEventSink, BackendPreviewSink, Outbound};
+use crate::sink::{BackendEventSink, BackendPreviewSink, RelaySender};
 
 /// Why a run failed, with the resolved version when the failure happened after the
 /// definition was materialized. Mirrors the worker's `RunFailure`: the version
@@ -124,7 +123,7 @@ pub async fn drive(
     config: &Config,
     run_id: &str,
     request: &RunRequest,
-    outbound: &UnboundedSender<Outbound>,
+    outbound: &RelaySender,
     job_client: &JobClient,
     resolved: &std::sync::Mutex<Option<TestCaseVersion>>,
     cancel: &RunCancellation,
@@ -323,7 +322,7 @@ async fn drive_engine<R, C>(
     runtime: R,
     collector: C,
     creds: Option<Box<dyn CredBytesSource + Send + Sync>>,
-    outbound: &UnboundedSender<Outbound>,
+    outbound: &RelaySender,
     client: &JobClient,
     cancel: &RunCancellation,
     stage: &Arc<StageCell>,

@@ -235,7 +235,13 @@ async fn run_job(
     // The relay drains the channel and streams events/preview to the backend. The
     // sinks (held inside `drive`) push onto `tx`; the relay owns `rx`.
     let (tx, rx) = sink::channel();
-    let relay = tokio::spawn(sink::relay_task(client.clone(), rx));
+    // Each event batch is held until the backend acknowledges it, retried under
+    // the same wait as the held and terminal reports.
+    let relay = tokio::spawn(sink::relay_task(
+        client.clone(),
+        rx,
+        test_cabinet_driver::retry::RetryPolicy::waiting_for(config.report_wait),
+    ));
 
     // Race the run against an operator cancellation. `wait_for_cancellation` resolves
     // only when the backend reports this job `canceled`, and what happens then depends
@@ -352,12 +358,17 @@ async fn run_job(
     };
 
     // Drop the sending half so the relay's channel closes once it drains the
-    // backlog, then await it: this guarantees every streamed event has reached the
-    // backend (where the relay accumulates them) *before* the terminal status —
-    // carrying the record the backend persists from those events — is sent.
+    // backlog, then await it: every event batch is settled — stored by the backend,
+    // or abandoned — *before* the terminal status, carrying the record the backend
+    // persists beside the stored events, is sent.
     drop(tx);
-    if let Err(err) = relay.await {
-        tracing::warn!(error = %err, "the relay task panicked");
+    match relay.await {
+        Ok(sink::RelayOutcome::Delivered) => {}
+        Ok(sink::RelayOutcome::Undelivered) => tracing::warn!(
+            job_id = %config.job_id,
+            "the backend did not acknowledge every event batch; its stored stream is incomplete",
+        ),
+        Err(err) => tracing::warn!(error = %err, "the relay task panicked"),
     }
 
     match outcome {

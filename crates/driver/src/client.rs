@@ -9,8 +9,8 @@
 //! token the dispatcher passed in.
 //!
 //! The terminal record is handed back *with* the status: the backend persists it
-//! using the events the relay already accumulated from the streaming calls below,
-//! so the driver never re-sends them as part of the record.
+//! with the events it stored from the numbered batches [`JobClient::post_events`]
+//! delivered, so the driver never re-sends them as part of the record.
 //!
 //! A finished run is handed over twice: first in the held `storing` report
 //! ([`JobClient::post_status_storing`]), which the backend keeps against the job
@@ -20,8 +20,7 @@
 //! [retry policy](crate::retry); [`ClientError::is_refused`] tells a request the
 //! backend refused, which ends the retrying at once, from every other failure.
 
-use crate::event::HarnessEvent;
-use crate::job_api::{DriverState, JobState, JobStatusOut, StatusUpdate};
+use crate::job_api::{DriverState, EventBatch, JobState, JobStatusOut, StatusUpdate};
 use crate::preview::AssetPreview;
 use crate::run_record::RunRecord;
 use reqwest::Client;
@@ -213,14 +212,16 @@ impl JobClient {
         .await
     }
 
-    /// Stream a batch of harness events (`POST /jobs/{id}/events`). The backend
-    /// appends them to the live stream and the backlog persisted with the run.
-    pub async fn post_events(&self, events: &[HarnessEvent]) -> Result<(), ClientError> {
+    /// Deliver one numbered batch of harness events (`POST /jobs/{id}/events`).
+    /// The backend stores every event of the batch keyed by job and sequence,
+    /// skipping any already stored, and answers `204` once the write has
+    /// committed, so a resent batch is idempotent.
+    pub async fn post_events(&self, batch: &EventBatch) -> Result<(), ClientError> {
         let response = self
             .http
             .post(self.url("events"))
             .bearer_auth(&self.job_token)
-            .json(events)
+            .json(batch)
             .send()
             .await
             .map_err(|source| ClientError::Transport {
