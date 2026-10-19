@@ -38,7 +38,7 @@ use std::path::PathBuf;
 
 use crate::error::{Error, Result};
 use crate::execution::ContainerFile;
-use crate::harness::{AgentHarness, Availability};
+use crate::harness::AgentHarness;
 use crate::run_record::{AuthMode, HarnessSlug};
 
 /// A subscription-authentication descriptor: the credential files a harness's
@@ -121,7 +121,7 @@ impl SubscriptionSpec {
 /// [`CredFile`] being read.
 ///
 /// This is the seam that lets a subscription be authenticated from somewhere
-/// other than the host filesystem. The CLI path reads the credential files the
+/// other than the host filesystem. The host path reads the credential files the
 /// user signed in with on a trusted host ([`HostCreds`]); the driver, which runs
 /// in an ephemeral pod with no such files, reads bytes from an operator-provided
 /// Secret mounted into the pod ([`MapCreds`]).
@@ -144,7 +144,7 @@ pub trait CredBytesSource {
     }
 }
 
-/// A [`CredBytesSource`] backed by the host filesystem — the CLI path.
+/// A [`CredBytesSource`] backed by the host filesystem — the host path.
 ///
 /// It resolves each [`CredFile`]'s [`CredSource`] against the current host
 /// environment and reads it with `std::fs`, mapping `NotFound` to `Ok(None)` so
@@ -267,7 +267,7 @@ fn select(mode: RequestedAuthMode, api_available: bool, subscription_available: 
 /// [`Error::HarnessUnavailable`] naming what to set or sign in to when the
 /// requested mode's credentials are not available.
 ///
-/// This is the CLI path: the subscription credentials are read from the
+/// This is the host path: the subscription credentials are read from the
 /// host filesystem ([`HostCreds`]). The driver, which has no such files, uses
 /// [`resolve_auth_with`] with a [`MapCreds`] built from a mounted Secret.
 pub fn resolve_auth(harness: &dyn AgentHarness) -> Result<AuthPlan> {
@@ -281,7 +281,7 @@ pub fn resolve_auth(harness: &dyn AgentHarness) -> Result<AuthPlan> {
 /// (`TCAB_AUTH_MODE[_<SLUG>]`) is still honored from the environment and `auto`
 /// still prefers a subscription when present — only *where the credential bytes
 /// come from* differs. The driver passes a [`MapCreds`] over its mounted Secret;
-/// the CLI passes [`HostCreds`] (the [`resolve_auth`] default).
+/// the host path passes [`HostCreds`] (the [`resolve_auth`] default).
 //
 // The per-account credential vault (the deferred multi-tenant follow-up) would
 // slot in here as another `CredBytesSource` — one keyed to the enqueuing account
@@ -310,31 +310,6 @@ pub fn resolve_auth_with(
             Ok(AuthPlan::ApiKey { container_env, key })
         }
         Selection::None => Err(unavailable(slug, mode_detail(harness, mode))),
-    }
-}
-
-/// Report a harness's readiness from configuration alone, for a
-/// readiness listing. Cost-free: it only checks whether the credentials
-/// the resolved mode needs are present (environment variables and file
-/// existence), never reading file contents or starting a container.
-pub fn auth_readiness(harness: &dyn AgentHarness) -> Availability {
-    let mode = requested_mode(harness.slug());
-    let api_available = api_key_value(harness).is_some();
-    let subscription_available = harness
-        .subscription_spec()
-        .is_some_and(|spec| subscription_present(&spec, &HostCreds));
-
-    match select(mode, api_available, subscription_available) {
-        Selection::None => Availability {
-            available: false,
-            version: None,
-            detail: Some(mode_detail(harness, mode)),
-        },
-        Selection::ApiKey | Selection::Subscription => Availability {
-            available: true,
-            version: None,
-            detail: None,
-        },
     }
 }
 

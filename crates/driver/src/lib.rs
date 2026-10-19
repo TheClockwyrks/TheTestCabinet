@@ -139,7 +139,7 @@ use tracing::instrument;
 pub use adversarial_validator::AdversarialValidator;
 pub use auth::{
     AuthPlan, CredBytesSource, CredFile, CredSource, HostCreds, MapCreds, RequestedAuthMode,
-    SubscriptionSpec, api_key_override_var, auth_readiness, resolve_auth, resolve_auth_with,
+    SubscriptionSpec, api_key_override_var, resolve_auth, resolve_auth_with,
 };
 pub use backend_client::{
     BackendClient, HttpBackendClient, IngestFeed, IngestMode, IngestProgress, IngestSummary,
