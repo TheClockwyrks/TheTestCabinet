@@ -203,7 +203,7 @@ async fn put_file(
     item: FileItem,
 ) -> Result<u64, StoreError> {
     let key = format!("{prefix}{}", item.path);
-    let content_type = crate::build_rule::content_type_for(&item.path);
+    let content_type = test_cabinet_contracts::layout::content_type_for(&item.path);
     let body: ObjectBody = Box::pin(futures_util::stream::unfold(
         item.chunks,
         |mut rx| async move { rx.recv().await.map(|chunk| (chunk, rx)) },

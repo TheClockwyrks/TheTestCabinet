@@ -24,9 +24,10 @@
 //! affect already-absolute `/…` URLs). Non-HTML assets are served byte-for-byte,
 //! streamed from the store. That rule is `test_cabinet_contracts::layout`'s
 //! `serve_build_file`, because the backend serves a suite's reference builds under
-//! a sub-path by the same rule; its pure pieces are applied here to object keys
-//! (see [`crate::build_rule`]), so every host serving a build applies the same
-//! rewrite and the same traversal guard.
+//! a sub-path by the same rule; its pure pieces (`normalize_build_path`,
+//! `content_type_for`, `rewrite_html_base` and `find_build_output_in`, from the
+//! same module) are applied here to object keys, so every host serving a build
+//! applies the same rewrite and the same traversal guard.
 //!
 //! Every resolver answers `Ok(None)` for something the tree does not hold (the
 //! caller's `404`) and an error only for a store that failed.
@@ -34,12 +35,12 @@
 use std::path::Path;
 
 use test_cabinet_contracts::RunRecord;
+use test_cabinet_contracts::layout::{
+    content_type_for, find_build_output_in, normalize_build_path, rewrite_html_base,
+};
 use test_cabinet_contracts::test_case::{MATERIAL_JSON_DEST, UI_JSON_DEST};
 use test_cabinet_suites::content_labels::{self, ContentLabels};
 
-use crate::build_rule::{
-    content_type_for, find_build_output_in, normalize_build_path, rewrite_html_base,
-};
 use crate::object::{ObjectBody, ObjectStream, body_from_bytes};
 use crate::store::{MAX_WHOLE_READ_BYTES, RunTree, StoreError};
 

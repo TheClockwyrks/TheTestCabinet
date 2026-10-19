@@ -423,7 +423,7 @@ async fn read_whole(object: ObjectStream, name: &str, limit: u64) -> Result<Vec<
 /// or `None` when it would leave the tree. The build-serving traversal rule:
 /// empty and `.` segments are skipped and a `..` segment is refused outright.
 pub fn normalize_tree_path(path: &str) -> Option<String> {
-    crate::build_rule::normalize_build_path(path)
+    test_cabinet_contracts::layout::normalize_build_path(path)
 }
 
 /// Whether `id` is a single safe path segment usable as a key segment:
