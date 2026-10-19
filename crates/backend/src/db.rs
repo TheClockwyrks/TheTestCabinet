@@ -9908,31 +9908,6 @@ impl Db {
             .filter(|probe| lease_lapsed(probe.lease_expires_at.as_deref(), instant))
             .collect())
     }
-
-    /// Fail every probe still marked `running` — the startup reap. A probe runs
-    /// inside the backend process, so a backend restart always killed it; unlike
-    /// the job-queue reap this is correct on every deployment shape.
-    pub async fn fail_running_model_probes(&self, now: &str) -> Result<u64> {
-        let res = model_probe::Entity::update_many()
-            .col_expr(model_probe::Column::Status, Expr::value("failed"))
-            .col_expr(
-                model_probe::Column::Error,
-                Expr::value("the backend restarted while the probe was running"),
-            )
-            .col_expr(model_probe::Column::FinishedAt, Expr::value(now))
-            .col_expr(
-                model_probe::Column::LeaseExpiresAt,
-                Expr::value(Option::<String>::None),
-            )
-            .col_expr(
-                model_probe::Column::LeaseHolder,
-                Expr::value(Option::<String>::None),
-            )
-            .filter(model_probe::Column::Status.eq("running"))
-            .exec(&self.conn())
-            .await?;
-        Ok(res.rows_affected)
-    }
 }
 
 #[cfg(test)]

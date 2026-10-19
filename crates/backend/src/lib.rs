@@ -78,6 +78,9 @@ pub struct Backend {
     /// not configured: no in-cluster artifact URL, no service token, or a zero
     /// interval.
     pub artifact_sweeper: Option<tokio::task::JoinHandle<()>>,
+    /// The [probe resumer](crate::probe::spawn_resumer), which resumes every `running`
+    /// model probe whose lease has lapsed; kept alive for the server's lifetime.
+    pub probe_resumer: tokio::task::JoinHandle<()>,
 }
 
 /// Assemble a backend from a configuration: open the definition store, connect
@@ -87,14 +90,22 @@ pub struct Backend {
 /// as `TCAB_CHROMIUM_EXECUTABLE` (the variable it reads), so ingest renders with
 /// that explicit Chromium.
 pub async fn build(config: Config) -> error::Result<Backend> {
-    build_with_prices(config, crate::pricing::OpenRouterPrices::new()).await
+    build_with_prices(
+        config,
+        crate::pricing::OpenRouterPrices::new(),
+        crate::probe::DEFAULT_COMPLETIONS_ENDPOINT,
+    )
+    .await
 }
 
 /// [`build`], reading model prices from `prices` rather than OpenRouter's public
-/// catalog, so a test assembles a backend without reaching the network.
+/// catalog and resuming model probes against `probe_endpoint` rather than
+/// OpenRouter's chat/completions, so a test assembles a backend without reaching
+/// the network.
 async fn build_with_prices(
     config: Config,
     prices: crate::pricing::OpenRouterPrices,
+    probe_endpoint: &str,
 ) -> error::Result<Backend> {
     use test_cabinet_migration::MigratorTrait;
 
@@ -213,19 +224,6 @@ async fn build_with_prices(
         Err(err) => {
             tracing::warn!(error = %err, "skipping in-flight gg-configuration-id backfill")
         }
-    }
-
-    // Reap probes orphaned by the last shutdown. A model probe runs inside this
-    // process, so a restart always killed it; the row is failed rather than left
-    // `running` forever (which would also block re-triggering). Idempotent,
-    // best-effort, never blocks startup.
-    match time::OffsetDateTime::now_utc().format(&time::format_description::well_known::Rfc3339) {
-        Ok(now) => match db.fail_running_model_probes(&now).await {
-            Ok(0) => {}
-            Ok(reaped) => tracing::info!(reaped, "failed model probes orphaned by restart"),
-            Err(err) => tracing::warn!(error = %err, "skipping model-probe reap"),
-        },
-        Err(err) => tracing::warn!(error = %err, "skipping model-probe reap"),
     }
 
     // The engine slug, lifted out of records stored before the `engine_slug` column
@@ -368,6 +366,19 @@ async fn build_with_prices(
         },
     );
 
+    // A model probe runs inside a backend, so one whose backend restarted or died is left
+    // `running` with a lease nobody renews. Every backend resumes such probes, as it starts
+    // and periodically after, issuing only the calls each has no item for.
+    let probe_resumer = crate::probe::spawn_resumer(
+        Arc::clone(&db),
+        crate::probe::ResumerConfig {
+            http: http.clone(),
+            endpoint: probe_endpoint.to_string(),
+            api_key: config.openrouter_api_key.clone(),
+            interval: crate::probe::PROBE_RESUME_INTERVAL,
+        },
+    );
+
     let bind = config.bind.clone();
     // Every test-case resolution reads the definition store, and on a deployment
     // whose /state is ephemeral it starts EMPTY — the ingest sidecar refills it, but
@@ -413,6 +424,7 @@ async fn build_with_prices(
         refresher,
         price_refresher,
         artifact_sweeper,
+        probe_resumer,
     })
 }
 

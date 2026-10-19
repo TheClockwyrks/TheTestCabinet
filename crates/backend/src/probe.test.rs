@@ -577,18 +577,173 @@ async fn an_unreachable_gateway_fails_the_probe_with_the_fault_recorded() {
     assert!(items.iter().all(|i| i.label.is_none() && i.error.is_some()));
 }
 
+/// A recorded, passing call of probe-1 at `case`'s `sample`, which cost 0.01.
+fn recorded_item(n: usize, case: &PlannedCase, sample: i32) -> model_probe_item::Model {
+    model_probe_item::Model {
+        id: format!("item-{n}"),
+        probe_id: "probe-1".to_string(),
+        language: case.language().to_string(),
+        scenario: case.scenario().to_string(),
+        prompt: case.prompt().to_string(),
+        sample,
+        provider: None,
+        finish_reason: Some("tool_calls".to_string()),
+        native_finish_reason: None,
+        label: Some(LABEL_CORRECT_CALLS.to_string()),
+        pass: true,
+        program_text: Some("x".to_string()),
+        response_text: String::new(),
+        reasoning_text: None,
+        prompt_tokens: None,
+        completion_tokens: None,
+        cost: Some(0.01),
+        duration_ms: 1,
+        error: None,
+        created_at: format!("2026-08-23T00:00:0{n}Z"),
+    }
+}
+
+/// probe-1, of one sample per input prompt, with a lease that lapsed long ago, holding a
+/// recorded item for the first `recorded` of its planned calls. Returns the number planned.
+async fn lapsed_probe(db: &crate::db::Db, recorded: usize) -> usize {
+    let probe = test_cabinet_entities::model_probe::Model {
+        lease_expires_at: Some("2026-08-23T00:02:00Z".to_string()),
+        lease_holder: Some("gone".to_string()),
+        ..probe_row(1)
+    };
+    db.insert_model_probe(probe).await.unwrap();
+    let cases = plan_cases(Some("typescript")).unwrap();
+    for (n, case) in cases.iter().take(recorded).enumerate() {
+        assert!(
+            db.insert_model_probe_item(recorded_item(n, case, 0))
+                .await
+                .unwrap()
+        );
+    }
+    cases.len()
+}
+
 #[tokio::test]
-async fn a_backend_restart_reaps_running_probes() {
+async fn a_resumed_probe_issues_only_the_calls_it_has_no_item_for() {
+    let (endpoint, calls) = slow_gateway(Duration::ZERO).await;
     let db = Arc::new(crate::db::Db::connect_in_memory().await.unwrap());
-    db.insert_model_probe(probe_row(1)).await.unwrap();
-    let reaped = db
-        .fail_running_model_probes("2026-08-23T01:00:00Z")
+    let planned = lapsed_probe(&db, 2).await;
+    let probe = db
+        .take_model_probe_lease("probe-1", HOLDER, &now_rfc3339())
         .await
+        .unwrap()
+        .expect("the lapsed lease is taken");
+
+    runner(&db, endpoint, PROBE_LEASE_RENEWAL)
+        .resume(probe)
+        .await;
+
+    assert_eq!(
+        calls.load(std::sync::atomic::Ordering::SeqCst),
+        planned - 2,
+        "the recorded calls are not issued again"
+    );
+    let items = db.list_model_probe_items("probe-1").await.unwrap();
+    assert_eq!(items.len(), planned);
+    let row = db.get_model_probe("probe-1").await.unwrap().unwrap();
+    assert_eq!(row.status, "complete");
+    // The two recorded calls passed and every new one submitted nothing: the verdict and
+    // spend are over both.
+    assert_eq!(row.pass_rate, Some(2.0 / planned as f64));
+    let spend = 2.0 * 0.01 + (planned - 2) as f64 * 0.001;
+    assert!((row.spend - spend).abs() < 1e-9, "spend {}", row.spend);
+    assert_eq!(row.lease_holder, None);
+}
+
+#[tokio::test]
+async fn a_resumed_probe_holding_every_call_finishes_without_issuing_one() {
+    let (endpoint, calls) = slow_gateway(Duration::ZERO).await;
+    let db = Arc::new(crate::db::Db::connect_in_memory().await.unwrap());
+    let planned = lapsed_probe(&db, usize::MAX).await;
+    let probe = db
+        .take_model_probe_lease("probe-1", HOLDER, &now_rfc3339())
+        .await
+        .unwrap()
         .unwrap();
-    assert_eq!(reaped, 1);
+
+    runner(&db, endpoint, PROBE_LEASE_RENEWAL)
+        .resume(probe)
+        .await;
+
+    assert_eq!(calls.load(std::sync::atomic::Ordering::SeqCst), 0);
+    let row = db.get_model_probe("probe-1").await.unwrap().unwrap();
+    assert_eq!(row.status, "complete");
+    assert_eq!(row.verdict.as_deref(), Some("ready"));
+    assert!((row.spend - planned as f64 * 0.01).abs() < 1e-9);
+}
+
+/// The resumer's configuration over `endpoint`, with `api_key`.
+fn resumer(endpoint: String, api_key: Option<&str>) -> ResumerConfig {
+    ResumerConfig {
+        http: reqwest::Client::new(),
+        endpoint,
+        api_key: api_key.map(str::to_string),
+        interval: PROBE_RESUME_INTERVAL,
+    }
+}
+
+#[tokio::test]
+async fn a_resume_pass_takes_a_lapsed_lease_and_resumes_the_probe() {
+    let (endpoint, calls) = slow_gateway(Duration::ZERO).await;
+    let db = Arc::new(crate::db::Db::connect_in_memory().await.unwrap());
+    let planned = lapsed_probe(&db, 1).await;
+
+    let mut runners = tokio::task::JoinSet::new();
+    resume_lapsed(&db, &resumer(endpoint, Some("test-key")), &mut runners).await;
+    assert_eq!(runners.len(), 1, "one probe is resumed");
+    while runners.join_next().await.is_some() {}
+
+    assert_eq!(calls.load(std::sync::atomic::Ordering::SeqCst), planned - 1);
+    let row = db.get_model_probe("probe-1").await.unwrap().unwrap();
+    assert_eq!(row.status, "complete");
+}
+
+#[tokio::test]
+async fn a_resume_pass_leaves_a_probe_whose_lease_is_held() {
+    let (endpoint, calls) = slow_gateway(Duration::ZERO).await;
+    let db = Arc::new(crate::db::Db::connect_in_memory().await.unwrap());
+    // probe_row's lease runs two minutes past now.
+    db.insert_model_probe(probe_row(1)).await.unwrap();
+
+    let mut runners = tokio::task::JoinSet::new();
+    resume_lapsed(&db, &resumer(endpoint, Some("test-key")), &mut runners).await;
+
+    assert!(runners.is_empty());
+    assert_eq!(calls.load(std::sync::atomic::Ordering::SeqCst), 0);
+    let row = db.get_model_probe("probe-1").await.unwrap().unwrap();
+    assert_eq!(row.status, "running");
+    assert_eq!(row.lease_holder.as_deref(), Some(HOLDER));
+}
+
+#[tokio::test]
+async fn a_resume_pass_without_an_openrouter_key_fails_the_lapsed_probe() {
+    let (endpoint, calls) = slow_gateway(Duration::ZERO).await;
+    let db = Arc::new(crate::db::Db::connect_in_memory().await.unwrap());
+    lapsed_probe(&db, 2).await;
+
+    let mut runners = tokio::task::JoinSet::new();
+    resume_lapsed(&db, &resumer(endpoint, None), &mut runners).await;
+
+    assert!(runners.is_empty());
+    assert_eq!(calls.load(std::sync::atomic::Ordering::SeqCst), 0);
     let row = db.get_model_probe("probe-1").await.unwrap().unwrap();
     assert_eq!(row.status, "failed");
-    assert!(row.error.unwrap().contains("restarted"));
+    assert!(
+        row.error
+            .as_deref()
+            .unwrap()
+            .contains("TCAB_OPENROUTER_API_KEY"),
+        "{:?}",
+        row.error
+    );
+    assert!((row.spend - 0.02).abs() < 1e-9, "the recorded calls' spend");
+    assert!(row.finished_at.is_some());
+    assert_eq!(row.lease_holder, None);
 }
 
 /// A gateway answering every call with a scored reply after `delay`, counting the calls it
