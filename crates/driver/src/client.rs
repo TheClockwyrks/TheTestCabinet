@@ -151,10 +151,17 @@ impl JobClient {
     /// failure detail when it will be reported `failed`. The backend stores the
     /// record (and the detail) against the job, replacing what an earlier `storing`
     /// report left, and finishes the run from it if the driver is lost.
+    ///
+    /// The same report is repeated after each failed attempt of an upload that is
+    /// waiting on the store, with that failure as `store_fault` (`storeFault`): the
+    /// reason the run is still storing. It goes there rather than in `detail`, which
+    /// stays the run's own failure, since the backend replaces the held detail with
+    /// each report's and would otherwise finish a lost run with the upload's error.
     pub async fn post_status_storing(
         &self,
         record: &RunRecord,
         detail: Option<&str>,
+        store_fault: Option<&str>,
     ) -> Result<(), ClientError> {
         self.post_status(
             "status (storing)",
@@ -163,7 +170,7 @@ impl JobClient {
                 record: Some(record.clone()),
                 detail: detail.map(str::to_string),
                 artifacts_stored: None,
-                store_fault: None,
+                store_fault: store_fault.map(str::to_string),
             },
         )
         .await

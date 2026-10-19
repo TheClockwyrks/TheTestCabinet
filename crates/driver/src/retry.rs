@@ -25,9 +25,12 @@
 //!   [`CANCELED_RUN_UPLOAD_WAIT`] instead ([`RetryPolicy::for_canceled_run`]).
 //!
 //! [`retry_call`] is the loop itself, generic over the call so the reports and the
-//! uploads share it.
+//! uploads share it; [`retry_call_reporting`] is the same loop telling the caller of
+//! each failed attempt, which the run-tree upload repeats its `storing` report
+//! through. `stalled` is the one stall detector both uploads use.
 
 use std::future::Future;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
 use tokio::time::Instant;
@@ -91,6 +94,11 @@ impl RetryPolicy {
             delays: DEFAULT_DELAYS.to_vec(),
             stall_limit: DEFAULT_STALL_LIMIT,
         }
+    }
+
+    /// A single attempt: no retry at all.
+    pub fn single_attempt() -> Self {
+        Self::waiting_for(Duration::ZERO)
     }
 
     /// The policy for an upload of a run that was already canceled when its
@@ -185,13 +193,38 @@ pub async fn retry_call<T, E, A, F, C>(
     policy: &RetryPolicy,
     what: &str,
     canceled: C,
-    mut attempt: A,
+    attempt: A,
 ) -> Result<T, RetryFailure<E>>
 where
     E: FinalFailure + std::fmt::Display,
     A: FnMut() -> F,
     F: Future<Output = Result<T, E>>,
     C: Future<Output = ()>,
+{
+    retry_call_reporting(policy, what, canceled, attempt, |_| std::future::ready(())).await
+}
+
+/// [`retry_call`], telling `retrying` of each failed attempt another attempt
+/// follows, before the wait that precedes it.
+///
+/// `retrying` is not told of a final failure, nor of the failure the deadline ends
+/// the call on: it hears of a failure only while the call is still waiting. A
+/// cancellation that lands while it runs ends the call as anywhere else. The
+/// run-tree upload repeats the `storing` report through it.
+pub async fn retry_call_reporting<T, E, A, F, C, R, RF>(
+    policy: &RetryPolicy,
+    what: &str,
+    canceled: C,
+    mut attempt: A,
+    mut retrying: R,
+) -> Result<T, RetryFailure<E>>
+where
+    E: FinalFailure + std::fmt::Display,
+    A: FnMut() -> F,
+    F: Future<Output = Result<T, E>>,
+    C: Future<Output = ()>,
+    R: FnMut(&E) -> RF,
+    RF: Future<Output = ()>,
 {
     tokio::pin!(canceled);
     let mut failures: u32 = 0;
@@ -240,12 +273,46 @@ where
             error = %error,
             "the call failed; retrying",
         );
+        let told = retrying(&error);
         last = Some(error);
+        tokio::select! {
+            () = told => {}
+            () = &mut canceled => {
+                return Err(RetryFailure { end: RetryEnd::Canceled, error: last });
+            }
+        }
+        // The report is not counted against the delay: a report that takes long
+        // must not turn the next attempt into an immediate one.
         tokio::select! {
             () = tokio::time::sleep(delay) => {}
             () = &mut canceled => {
                 return Err(RetryFailure { end: RetryEnd::Canceled, error: last });
             }
+        }
+    }
+}
+
+/// Resolve once `progress` has not moved for `limit`: an upload attempt whose body
+/// the service has taken none of, and that has had no answer, for that long. Never
+/// resolves for a zero `limit`.
+///
+/// It checks ten times per `limit`, so a stall is noticed between one and 1.1
+/// `limit`s after the last progress.
+pub(crate) async fn stalled(progress: &AtomicU64, limit: Duration) {
+    if limit.is_zero() {
+        return std::future::pending().await;
+    }
+    let tick = (limit / 10).max(Duration::from_millis(10));
+    let mut seen = progress.load(Ordering::Relaxed);
+    let mut since = Instant::now();
+    loop {
+        tokio::time::sleep(tick).await;
+        let now = progress.load(Ordering::Relaxed);
+        if now != seen {
+            seen = now;
+            since = Instant::now();
+        } else if since.elapsed() >= limit {
+            return;
         }
     }
 }

@@ -36,7 +36,6 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
 use futures_util::StreamExt;
-use tokio::time::Instant;
 use tokio_util::io::ReaderStream;
 
 use crate::test_case::{TCAB_ENGINE_DIR, TCAB_VENDOR_DIR};
@@ -201,24 +200,7 @@ async fn upload_once(
     };
     tokio::select! {
         result = send => result,
-        () = stalled(&progress, stall_limit) => Err(BundleError::Stalled(stall_limit)),
-    }
-}
-
-/// Resolve once `progress` has not moved for `limit`.
-async fn stalled(progress: &AtomicU64, limit: Duration) {
-    let tick = (limit / 10).max(Duration::from_millis(10));
-    let mut seen = progress.load(Ordering::Relaxed);
-    let mut since = Instant::now();
-    loop {
-        tokio::time::sleep(tick).await;
-        let now = progress.load(Ordering::Relaxed);
-        if now != seen {
-            seen = now;
-            since = Instant::now();
-        } else if since.elapsed() >= limit {
-            return;
-        }
+        () = crate::retry::stalled(&progress, stall_limit) => Err(BundleError::Stalled(stall_limit)),
     }
 }
 

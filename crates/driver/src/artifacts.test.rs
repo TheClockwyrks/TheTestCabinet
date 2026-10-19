@@ -172,7 +172,7 @@ fn find_subslice(haystack: &[u8], needle: &[u8]) -> Option<usize> {
 }
 
 /// A produced run record with the given adversarial result (or none).
-fn record(adversarial: Option<AdversarialResult>) -> RunRecord {
+pub(super) fn record(adversarial: Option<AdversarialResult>) -> RunRecord {
     RunRecord {
         id: "run-1".into(),
         started_at: "2026-06-14T10:00:00Z".into(),

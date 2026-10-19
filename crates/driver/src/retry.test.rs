@@ -362,7 +362,7 @@ async fn deliver_held(
 ) -> Result<(), RetryFailure<ClientError>> {
     let record = record();
     retry_call(policy, "the held report", job_canceled(client), || {
-        client.post_status_storing(&record, Some("the run failed"))
+        client.post_status_storing(&record, Some("the run failed"), None)
     })
     .await
 }
