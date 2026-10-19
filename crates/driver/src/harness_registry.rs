@@ -315,6 +315,7 @@ impl AgentHarness for CliHarness {
             // path, so a third-party session never reports itself canceled — its outcome
             // is never observed on a kill at all, because the driver drops the run.
             canceled: false,
+            platform_end: None,
         })
     }
 }

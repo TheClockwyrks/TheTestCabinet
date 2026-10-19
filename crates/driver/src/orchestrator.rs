@@ -770,6 +770,7 @@ pub(crate) async fn drive_orchestrator(
         // asking it to unwind (see the driver's `cancel` module) — so a session that
         // reaches this point was never canceled.
         canceled: false,
+        platform_end: None,
     })
 }
 

@@ -578,3 +578,38 @@ fn run_image_override_envs_is_exhaustive() {
         "RUN_IMAGE_OVERRIDE_ENVS contains duplicate entries"
     );
 }
+
+/// A platform end's detail is the failure detail style over the error it was
+/// attributed as, and an outcome carries it through serialization; an outcome the
+/// platform did not end says nothing about it on the wire.
+#[test]
+fn a_platform_end_rides_the_outcome_in_the_failure_detail_style() {
+    let error = crate::Error::HarnessSessionLost {
+        slug: "codex".to_string(),
+        unfinished: 1,
+        total: 2,
+        exit_code: 0,
+    };
+    let end = PlatformEnd::from_error(&error);
+    assert_eq!(end.detail, format!("run failed: {error}"));
+
+    let mut outcome = HarnessOutcome {
+        usage: Usage::default(),
+        harness_version: None,
+        reported_cost: None,
+        raw_output: Vec::new(),
+        translated_events: Vec::new(),
+        gg_summary: None,
+        tool_calls: Default::default(),
+        canceled: false,
+        platform_end: None,
+    };
+    let quiet = serde_json::to_value(&outcome).expect("serialize outcome");
+    assert!(quiet.get("platformEnd").is_none(), "{quiet}");
+
+    outcome.platform_end = Some(end.clone());
+    let value = serde_json::to_value(&outcome).expect("serialize outcome");
+    assert_eq!(value["platformEnd"], json!({ "detail": end.detail }));
+    let parsed: HarnessOutcome = serde_json::from_value(value).expect("deserialize outcome");
+    assert_eq!(parsed, outcome);
+}

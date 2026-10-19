@@ -612,6 +612,7 @@ pub(crate) async fn run_gg_session(
                 gg_summary,
                 tool_calls: BTreeMap::new(),
                 canceled: true,
+                platform_end: None,
             });
         }
     };
@@ -700,6 +701,7 @@ pub(crate) async fn run_gg_session(
         tool_calls: BTreeMap::new(),
         // This session ended on its own terms; the cancellation path returns above.
         canceled: false,
+        platform_end: None,
     })
 }
 

@@ -538,6 +538,46 @@ pub struct HarnessOutcome {
     /// driver without an outcome ever being produced.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub canceled: bool,
+    /// Set when the **platform** ended this session rather than the harness: the
+    /// sandbox pod went away or was disrupted, the harness died on a signal, the exec
+    /// stream was lost, or the session's own account of its end is missing (see
+    /// [attributing an end](crate::session_end)).
+    ///
+    /// Like [`canceled`](Self::canceled) it rides the outcome rather than an error,
+    /// because such a run's record still carries the metrics and events the session
+    /// gathered — an error would leave only a bare failure record. The engine reads it
+    /// to skip collection, the post-run stages and validation, since the tree the
+    /// session left is a half-written build rather than the model's result, and to
+    /// record the run as [`RunState::Infrastructure`](crate::run_record::RunState::Infrastructure)
+    /// with the end's detail.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub platform_end: Option<PlatformEnd>,
+}
+
+/// How the platform ended a harness session (see [`HarnessOutcome::platform_end`]).
+///
+/// It holds the rendered detail rather than the [`Error`](crate::Error) it was
+/// attributed as, because an outcome is cloned and serialized and an error is
+/// neither. The run it ends is always
+/// [`RunState::Infrastructure`](crate::run_record::RunState::Infrastructure): every
+/// error a platform end is built from classifies that way.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlatformEnd {
+    /// The run's status detail, in the failure detail style (`run failed: …`), naming
+    /// the condition with every figure it carried: the exit code, the sandbox pod's
+    /// reason, the sessions left unfinished.
+    pub detail: String,
+}
+
+impl PlatformEnd {
+    /// The platform end the attributed `error` describes, its detail rendered in the
+    /// failure detail style.
+    pub fn from_error(error: &crate::Error) -> Self {
+        Self {
+            detail: format!("run failed: {error}"),
+        }
+    }
 }
 
 /// Reports whether a harness's CLI was installed and can be invoked.
