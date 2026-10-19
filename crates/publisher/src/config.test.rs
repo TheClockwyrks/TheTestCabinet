@@ -18,6 +18,7 @@ const ALL_VARS: &[&str] = &[
     "TCAB_PUBLISH_RUN_ID",
     "TCAB_ARTIFACTS_URL",
     "TCAB_WORK_DIR",
+    "TCAB_PUBLISHER_TERMINATION_GRACE_SECONDS",
 ];
 
 fn clear_all() {
@@ -65,6 +66,9 @@ fn resolves_with_required_and_defaults() {
         assert_eq!(config.run_id, "run-9");
         // Work dir defaults when unset.
         assert_eq!(config.work_dir, std::path::PathBuf::from(".tcab-publisher"));
+        // The grace period defaults to the pod's (Kubernetes' default 30 s).
+        assert_eq!(config.termination_grace, Duration::from_secs(30));
+        assert_eq!(config.termination_grace, DEFAULT_TERMINATION_GRACE);
     });
 }
 
@@ -95,6 +99,47 @@ fn each_required_variable_is_enforced() {
             let err = Config::from_env().expect_err("a blank required variable must fail");
             match err {
                 ConfigError::Missing(name) => assert_eq!(name, missing),
+                other => panic!("expected Missing({missing}), got {other:?}"),
+            }
+        });
+    }
+}
+
+#[test]
+fn termination_grace_override_is_honored() {
+    with_env(|| {
+        set_required();
+        set("TCAB_PUBLISHER_TERMINATION_GRACE_SECONDS", " 90 ");
+        let config = Config::from_env().expect("config should resolve");
+        assert_eq!(config.termination_grace, Duration::from_secs(90));
+    });
+}
+
+#[test]
+fn a_blank_termination_grace_takes_the_default() {
+    with_env(|| {
+        set_required();
+        set("TCAB_PUBLISHER_TERMINATION_GRACE_SECONDS", "  ");
+        let config = Config::from_env().expect("config should resolve");
+        assert_eq!(config.termination_grace, DEFAULT_TERMINATION_GRACE);
+    });
+}
+
+#[test]
+fn an_unusable_termination_grace_is_refused() {
+    for value in ["thirty", "-5", "1.5"] {
+        with_env(|| {
+            set_required();
+            set("TCAB_PUBLISHER_TERMINATION_GRACE_SECONDS", value);
+            let err = Config::from_env().expect_err("an unusable grace period must fail");
+            match err {
+                ConfigError::Invalid {
+                    var, value: held, ..
+                } => {
+                    assert_eq!(var, "TCAB_PUBLISHER_TERMINATION_GRACE_SECONDS");
+                    assert_eq!(held, value);
+                }
+                other => panic!("expected Invalid, got {other:?}"),
             }
         });
     }

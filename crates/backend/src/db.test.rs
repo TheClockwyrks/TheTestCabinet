@@ -307,7 +307,7 @@ fn reviewer(id: &str) -> String {
 }
 
 /// A review from account `u1` rating `gameplay` great.
-fn review() -> StoredReview {
+pub(crate) fn review() -> StoredReview {
     review_by("u1", Rating::Great)
 }
 

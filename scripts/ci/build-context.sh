@@ -210,10 +210,34 @@ submodule_paths() {
 }
 mapfile -t SUBMODULES < <(submodule_paths)
 
-# True when the submodule at `$1` is initialized here: its directory holds a
-# checkout, which a `.git` file or directory at its root marks.
+# True when the submodule at `$1` is initialized here: its directory is the root
+# of a checkout git can read. A `.git` directory and a `.git` file naming the
+# gitdir (how `git submodule` lays one out) both qualify; a `.git` file whose
+# gitdir is gone does not, since none of the submodule's files can be listed.
 submodule_checked_out() {
-	[[ -e "$REPO_ROOT/$1/.git" ]]
+	local top
+	top="$(git -C "$REPO_ROOT/$1" rev-parse --show-toplevel 2>/dev/null)" || return 1
+	[[ "$top" == "$(cd "$REPO_ROOT/$1" && pwd -P)" ]]
+}
+
+# The superproject's own tracked files matching the pathspecs given, one per line,
+# never a path at or under a submodule. `git ls-files` lists a registered submodule
+# as its gitlink alone, but a nested checkout git could not recognize as one (a
+# `.git` file whose gitdir is missing, say) is indexed as ordinary files, and the
+# files of another repository are not this one's to judge: each submodule runs
+# this gate from its own checkout. A source the root allowlist re-includes inside
+# a submodule is still checked, against that submodule's checkout, by the
+# functions above.
+superproject_files() {
+	git -C "$REPO_ROOT" ls-files -- "$@" |
+		awk -v subs="${SUBMODULES[*]}" '
+			BEGIN { n = split(subs, sub_paths, " ") }
+			{
+				for (i = 1; i <= n; i++)
+					if ($0 == sub_paths[i] || index($0, sub_paths[i] "/") == 1) next
+				print
+			}
+		'
 }
 
 # The submodule `$1` lies in (the submodule's own path, or a path under it),
@@ -244,7 +268,7 @@ absent_submodule_of() {
 # checked out contributes nothing, which its callers report as unverified.
 tracked_files_under() {
 	local dir="$1" sub
-	git -C "$REPO_ROOT" ls-files -- "$dir"
+	superproject_files "$dir"
 	for sub in "${SUBMODULES[@]}"; do
 		submodule_checked_out "$sub" || continue
 		if [[ "$dir" == "$sub" ]]; then
@@ -446,7 +470,7 @@ for template_dockerfile in "${TEMPLATE_DOCKERFILES[@]}"; do
 	}
 done
 mapfile -t dockerfiles < <(
-	git ls-files '*Dockerfile' '*.Dockerfile' '*.dockerfile' |
+	superproject_files '*Dockerfile' '*.Dockerfile' '*.dockerfile' |
 		grep -vxF -f <(printf '%s\n' "${TEMPLATE_DOCKERFILES[@]}") |
 		sort
 )
@@ -639,7 +663,7 @@ CASES
 self_test_normalize
 
 load_dockerignore "$REPO_ROOT/.dockerignore"
-mapfile -t rust_sources < <(git ls-files 'crates/*.rs' | grep -v '\.test\.rs$')
+mapfile -t rust_sources < <(superproject_files 'crates/*.rs' | grep -v '\.test\.rs$')
 # The crates of every submodule the context admits compile in the same build, the
 # patch table sending their sources there: the engines repository's engine table
 # bakes in its manifests the same way. Read from each checkout's own index, and
@@ -1056,8 +1080,8 @@ while IFS= read -r pin; do
 	echo "       Fix: set the pin to $rust_channel." >&2
 	problems=$((problems + 1))
 done < <(
-	git -C "$REPO_ROOT" ls-files -z -- 'containers/**Dockerfile' 'containers/**.Dockerfile' 'containers/**.dockerfile' |
-		xargs -0 -r -I{} grep -HnE '^[[:space:]]*(FROM[[:space:]].*[/[:space:]]rust:|ARG[[:space:]]+RUST_VERSION=)' "$REPO_ROOT/{}" |
+	superproject_files 'containers/**Dockerfile' 'containers/**.Dockerfile' 'containers/**.dockerfile' |
+		tr '\n' '\0' | xargs -0 -r -I{} grep -HnE '^[[:space:]]*(FROM[[:space:]].*[/[:space:]]rust:|ARG[[:space:]]+RUST_VERSION=)' "$REPO_ROOT/{}" |
 		sed "s#^$REPO_ROOT/##"
 )
 ((rust_pins_checked > 0)) || {

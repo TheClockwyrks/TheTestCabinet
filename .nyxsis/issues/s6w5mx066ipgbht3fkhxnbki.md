@@ -1,13 +1,24 @@
 ---
 format: nyxsis-issue
-version: 2
+version: 3
 id: s6w5mx066ipgbht3fkhxnbki
 zone: DATA
 number: 4
 title: Make every publish step safe to repeat
 type: generic
-state: open
+state: done
 created: 2026-10-19T00:36:18.627190718Z
+done: 2026-10-19T22:17:48.816846121Z
+outcome: |
+  Landed as superrepo PR 4448 into nightly: the publisher's deterministic
+  implementation commit and tree-aware push, the idempotent Pages deploy run
+  before the repository publish, retries with backoff on transient failures,
+  SIGTERM stopping the sequence within the grace period, and the backend counting
+  a repeated success as a re-publish. Left: the staging check (delete the
+  publisher pod between push and report, publish again) was not run because
+  staging runs older images; real GitHub pushes, real transient failures and pod
+  SIGTERM were exercised only against stubs; a probe deployment remains on the
+  test-cabinet-runs-staging Pages project, branch data-4-probe.
 ---
 
 A publish that stops partway can leave a run that publishing again cannot

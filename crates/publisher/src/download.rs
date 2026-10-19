@@ -19,6 +19,8 @@
 
 use std::path::{Path, PathBuf};
 
+use crate::retry::{Backoff, retry};
+
 /// The header the publisher sets to its **publish-job id** on the `tree.tar`
 /// download, so the artifact service verifies the per-publish-job token against the
 /// right publish job (the path id is the run/record store key, a different UUID).
@@ -74,27 +76,23 @@ fn body_suffix(body: &str) -> String {
 /// The archive's entries are relative to the run directory (the layout the driver
 /// uploaded and the core resolvers read), so they unpack under the returned
 /// `{dest}/{run_id}/` as `run-record.json` + `implementation/` + the logs.
+///
+/// The download is a read, so a transient failure (see [`crate::retry`]) is
+/// retried with `backoff`; an archive that does not unpack is not.
 pub async fn download_run_tree(
     artifacts_url: &str,
     run_id: &str,
     publish_job_id: &str,
     job_token: &str,
     dest: &Path,
+    backoff: &Backoff,
 ) -> Result<PathBuf, DownloadError> {
     let url = format!("{}/runs/{}/tree.tar", artifacts_url, run_id);
-    let response = reqwest::Client::new()
-        .get(&url)
-        .bearer_auth(job_token)
-        .header(PUBLISH_JOB_ID_HEADER, publish_job_id)
-        .send()
-        .await
-        .map_err(DownloadError::Transport)?;
-    let status = response.status();
-    if !status.is_success() {
-        let body = response.text().await.unwrap_or_default();
-        return Err(DownloadError::Status { status, body });
-    }
-    let bytes = response.bytes().await.map_err(DownloadError::Body)?;
+    let http = reqwest::Client::new();
+    let bytes = retry(backoff, "the source tree download", || {
+        fetch_tree(&http, &url, publish_job_id, job_token)
+    })
+    .await?;
 
     // The archive root *is* the run directory's contents, so unpack it under a
     // per-run subdirectory to recover `{dest}/{run_id}/run-record.json`,
@@ -105,6 +103,28 @@ pub async fn download_run_tree(
         source,
     })?;
     Ok(run_dir)
+}
+
+/// One `GET` of the `tree.tar` at `url`, returning the archive's bytes.
+async fn fetch_tree(
+    http: &reqwest::Client,
+    url: &str,
+    publish_job_id: &str,
+    job_token: &str,
+) -> Result<bytes::Bytes, DownloadError> {
+    let response = http
+        .get(url)
+        .bearer_auth(job_token)
+        .header(PUBLISH_JOB_ID_HEADER, publish_job_id)
+        .send()
+        .await
+        .map_err(DownloadError::Transport)?;
+    let status = response.status();
+    if !status.is_success() {
+        let body = response.text().await.unwrap_or_default();
+        return Err(DownloadError::Status { status, body });
+    }
+    response.bytes().await.map_err(DownloadError::Body)
 }
 
 /// Untar an in-memory `application/x-tar` archive into `dest`, creating it first.
