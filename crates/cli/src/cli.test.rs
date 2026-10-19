@@ -889,3 +889,27 @@ fn analyze_requires_a_directory() {
         "the directory is required — there is no useful default tree to analyse"
     );
 }
+
+#[test]
+fn ingest_names_a_deployed_environment() {
+    let cli = Cli::try_parse_from(["tcab", "ingest", "--env", "staging", "--changed"])
+        .expect("--env staging parses");
+    match cli.command {
+        Command::Ingest(args) => assert_eq!(args.env, Some(DeployEnv::Staging)),
+        other => panic!("expected ingest, got {other:?}"),
+    }
+    Cli::try_parse_from(["tcab", "ingest", "--env", "dev"])
+        .expect_err("an unknown environment is refused");
+}
+
+#[test]
+fn an_environment_maps_to_its_origin_with_the_backend_under_api() {
+    assert_eq!(
+        DeployEnv::Prod.backend_url(),
+        "https://console.testcabinet.ai/api"
+    );
+    assert_eq!(
+        DeployEnv::Staging.backend_url(),
+        "https://console.staging.testcabinet.ai/api"
+    );
+}

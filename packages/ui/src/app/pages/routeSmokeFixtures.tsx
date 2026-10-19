@@ -689,7 +689,6 @@ function backendContext(): BackendContextValue {
     status: "ready",
     error: null,
     url: "http://backend.test",
-    setUrl: () => {},
   };
 }
 

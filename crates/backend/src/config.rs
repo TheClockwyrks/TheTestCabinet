@@ -146,6 +146,11 @@ pub struct Config {
     /// experimental, so the setting belongs to the local development stack alone:
     /// the local k3d overlay sets it, and no other deployment does.
     pub ingest_previews: bool,
+    /// The ingest sidecar's localhost endpoint that refreshes the checkout
+    /// (`TCAB_BACKEND_INGEST_REFRESH_URL`), which a `POST /ingest` asking for
+    /// `refresh` calls before the scan (see [`crate::ingest_refresh`]). `None`, a
+    /// backend with no sidecar, ignores `refresh` and scans the checkout as it is.
+    pub ingest_refresh_url: Option<String>,
     /// Optional override for the headless browser used to render references at
     /// ingest (`TCAB_REFERENCE_BROWSER`). Forwarded to the bundled driver as
     /// `TCAB_CHROMIUM_EXECUTABLE`; unset, the driver uses the Chromium baked into
@@ -264,6 +269,7 @@ impl Config {
 
         let allow_experimental = truthy("TCAB_BACKEND_ALLOW_EXPERIMENTAL");
         let ingest_previews = truthy("TCAB_BACKEND_INGEST_PREVIEWS");
+        let ingest_refresh_url = nonempty("TCAB_BACKEND_INGEST_REFRESH_URL");
 
         let artifacts_internal_url = base_url("TCAB_ARTIFACTS_URL");
 
@@ -305,6 +311,7 @@ impl Config {
             ),
             allow_experimental,
             ingest_previews,
+            ingest_refresh_url,
         })
     }
 }

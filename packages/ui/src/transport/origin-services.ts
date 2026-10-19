@@ -1,11 +1,12 @@
-// Where the console reaches the services it does not talk to through the backend.
+// Where the console reaches the services it talks to.
 //
 // The console is served at one origin per environment, and every service it
 // uses is a path of that origin: the edge routes `/api/` to the backend,
 // `/artifacts/` to the artifacts service and `/arena/` to the arena service
 // (components/web/overview.md, "Service dependencies"). In development the Vite
-// dev server proxies the same three paths, so the paths are the same everywhere
-// and nothing is fetched to learn them.
+// dev server proxies the same three paths, so the paths are the same everywhere,
+// nothing is fetched to learn them and no deployment configures them: the
+// console names no service URL.
 //
 // Two addresses are not paths of the origin: Grafana and the public snapshot
 // bucket. Each is a sibling hostname of the console's, its leading `console.`
@@ -14,6 +15,9 @@
 // development/observability.md). A host whose name does not begin with
 // `console.` (the dev server on 127.0.0.1, the public gallery) has neither, and
 // the surfaces that link to them are not offered there.
+
+/** The path of the console's origin the backend is served under. */
+export const BACKEND_PATH = "/api";
 
 /** The path of the console's origin the artifacts service is served under. */
 export const ARTIFACTS_PATH = "/artifacts";

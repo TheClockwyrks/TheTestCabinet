@@ -148,7 +148,6 @@ function backendValue(
     status: "ready" as const,
     error: null,
     url: null,
-    setUrl: () => {},
   };
 }
 

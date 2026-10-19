@@ -25,7 +25,8 @@
 //!   self-review (the run-wide aesthetic tier, plus any verdict overrides) is
 //!   submitted first.
 //!
-//! Both require a bearer (`TCAB_TOKEN`) and `TCAB_BACKEND_URL`.
+//! Both require `TCAB_BACKEND_URL` and present the caller's Access credential
+//! (see [`config`]).
 
 use std::path::{Path, PathBuf};
 
@@ -253,15 +254,15 @@ fn report_result(run_id: &str, result: &PublishResult) -> Result<()> {
     }
 }
 
-/// Build an [`HttpBackendClient`] for the configured backend, carrying the
-/// `TCAB_TOKEN` bearer. Errors clearly when the backend URL or token is missing.
+/// Build an [`HttpBackendClient`] for the configured backend, presenting the
+/// caller's Access credential. Errors clearly when the backend URL is missing or
+/// the Access service token is half set.
 fn backend_client() -> Result<HttpBackendClient> {
     let backend = config::backend_url().context(
         "TCAB_BACKEND_URL is not set; set it to the backend's address (for example \
          http://127.0.0.1:8787)",
     )?;
-    let token = config::require_token()?;
-    Ok(HttpBackendClient::new(backend).with_token(Some(token)))
+    Ok(config::Credentials::from_env()?.client(backend))
 }
 
 /// The `<run-id>.md` writeup path in the working directory for a publish.

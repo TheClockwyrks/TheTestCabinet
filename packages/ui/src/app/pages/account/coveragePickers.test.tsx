@@ -818,7 +818,6 @@ describe("CasePicker", () => {
       status: "ready" as const,
       error: null,
       url: null,
-      setUrl: () => {},
     };
   }
 

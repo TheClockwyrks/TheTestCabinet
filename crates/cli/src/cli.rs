@@ -386,9 +386,10 @@ pub struct PromptArgs {
 /// `disable_version_flag` frees `--version`/`-V` so it is not consumed as clap's
 /// auto-generated binary-version flag, matching `tcab run`/`tcab prompt` — though
 /// here the version is positional rather than a `--version` flag.
-/// The deployment environment a reference implementation publishes to, selecting
-/// the Cloudflare Pages project it lands in (see `publish_reference`). It is a
-/// required `--env` flag rather than a defaulted one so a publish can never
+/// A deployed environment, named by `--env`: the origin its edge serves (the
+/// backend under `/api`, the artifacts service under `/artifacts`), and for a
+/// reference implementation the Cloudflare Pages project it lands in (see
+/// `publish_reference`). The flag is never defaulted, so a command can never
 /// silently target prod — the same convention the operator shell scripts use.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
 #[value(rename_all = "snake_case")]
@@ -410,13 +411,28 @@ impl DeployEnv {
             DeployEnv::Staging => "staging",
         }
     }
+
+    /// The environment's origin at the edge, behind Cloudflare Access. Kept equal
+    /// to `TCAB_ORIGIN` in `scripts/lib/env.sh`.
+    pub fn origin(self) -> &'static str {
+        match self {
+            DeployEnv::Prod => "https://console.testcabinet.ai",
+            DeployEnv::Staging => "https://console.staging.testcabinet.ai",
+        }
+    }
+
+    /// The backend's base URL at the edge: the origin's `/api` path.
+    pub fn backend_url(self) -> String {
+        format!("{}/api", self.origin())
+    }
 }
 
 #[derive(Debug, Args)]
 #[command(disable_version_flag = true)]
 pub struct PublishReferenceArgs {
     /// Deployment environment: which Cloudflare Pages project the reference
-    /// implementation deploys to. **Required** — with no default a publish can
+    /// implementation deploys to, or, for an asset-generation case, whose
+    /// artifacts service its frames are written through. **Required** — with no default a publish can
     /// never silently target prod, mirroring the `--env` flag on the operator
     /// shell scripts (for example `scripts/upload-subscription-creds.sh`).
     #[arg(long, value_enum, value_name = "ENV")]
@@ -541,14 +557,16 @@ pub struct IngestArgs {
     #[arg(long)]
     pub changed: bool,
 
-    /// Ingest into a deployed environment's backend instead of `TCAB_BACKEND_URL`.
+    /// Ingest into a deployed environment's backend, through its edge.
     ///
-    /// The backend pod's ingest sidecar refreshes its checkout, with the test suites
-    /// submodule, to the tip of the branch the environment ingests, then scans it.
-    /// Both run through `az aks command invoke`, so only an authenticated `az` is
-    /// needed; the progress feed is printed once the invoke returns.
-    #[arg(long, value_name = "ENV", value_parser = ["staging", "prod"])]
-    pub env: Option<String>,
+    /// The backend's ingest sidecar first refreshes its `test-suites` checkout and
+    /// the `cold-storage` clone to the tip of the branch the environment ingests,
+    /// then the backend scans it, streaming the feed back as it does locally. The
+    /// request goes to the environment's origin under `/api` (or to
+    /// `TCAB_BACKEND_URL` when set, such as a port-forward) and presents the Access
+    /// service token, `TCAB_ACCESS_CLIENT_ID` and `TCAB_ACCESS_CLIENT_SECRET`.
+    #[arg(long, value_enum, value_name = "ENV")]
+    pub env: Option<DeployEnv>,
 }
 
 /// Arguments for `tcab analyze`.

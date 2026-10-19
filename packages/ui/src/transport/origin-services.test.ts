@@ -3,12 +3,14 @@ import { describe, expect, it } from "vitest";
 import {
   ARENA_PATH,
   ARTIFACTS_PATH,
+  BACKEND_PATH,
   grafanaUrlForHost,
   snapshotUrlForHost,
 } from "./origin-services";
 
 describe("origin services", () => {
-  it("serves the artifacts and arena services at paths of the origin", () => {
+  it("serves the backend, artifacts and arena services at paths of the origin", () => {
+    expect(BACKEND_PATH).toBe("/api");
     expect(ARTIFACTS_PATH).toBe("/artifacts");
     expect(ARENA_PATH).toBe("/arena");
   });

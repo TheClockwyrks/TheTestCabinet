@@ -105,8 +105,6 @@ patches:
   # ServiceAccount and the workload-identity label on its pod, and the staging
   # storage account the run trees are written to.
   - path: patch-artifacts-identity.yaml
-  # Set the in-cluster console's runtime backend URL to the staging origin's /api.
-  - path: patch-web-config.yaml
   # Lock down Grafana (identical to prod), since the edge routes the Grafana host to it.
   - path: patch-grafana-auth.yaml
   # Retarget the edge component's tunnel configuration from prod's tunnel and

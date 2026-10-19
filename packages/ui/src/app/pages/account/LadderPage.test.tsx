@@ -812,7 +812,6 @@ describe("LadderPage", () => {
       status: "ready",
       error: null,
       url: null,
-      setUrl: () => {},
     } as unknown as BackendContextValue;
     return render(
       <MemoryRouter initialEntries={["/account/ladders/l1"]}>
