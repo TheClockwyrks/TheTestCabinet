@@ -168,7 +168,9 @@ service takes the identity from the `Cf-Access-Authenticated-User-Email` header.
 Each also sets, in its `patch-artifacts-identity.yaml`, the client id of the managed
 identity the artifacts service reaches its Blob container as, and the pod label that
 has the workload-identity webhook project it; `overlays/local` points the service at
-Azurite with Shared Key instead.
+Azurite with Shared Key instead. The repos service's identity is set the same way in
+`patch-repos-identity.yaml`, and its GitHub organization and token (the
+`tcab-repos-secrets` Secret) in `patch-repos-github.yaml`.
 See
 [Identity](../../apps/docs/src/content/docs/components/auth/overview.md#configuration).
 The dispatcher's

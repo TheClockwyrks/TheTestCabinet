@@ -109,6 +109,13 @@ patches:
   # ServiceAccount and the workload-identity label on its pod, and the staging
   # storage account the run trees are written to.
   - path: patch-artifacts-identity.yaml
+  # The repos service's Blob identity, as the artifacts service's: the managed
+  # identity's client id on its ServiceAccount, the workload-identity label on its
+  # pod, and the staging storage account the bundles are written to.
+  - path: patch-repos-identity.yaml
+  # The repos service's GitHub organization and its token (tcab-repos-secrets, synced
+  # from the Key Vault by the keyvault-csi component).
+  - path: patch-repos-github.yaml
   # Lock down Grafana (identical to prod), since the edge routes the Grafana host to it.
   - path: patch-grafana-auth.yaml
   # Retarget the edge component's tunnel configuration from prod's tunnel and

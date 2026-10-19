@@ -98,7 +98,8 @@ ci_assert_namespaced() {
 # Reads a rendered manifest stream on stdin and prints `<kind>/<name>` for each object
 # annotated `azure.workload.identity/client-id: unprovisioned`: a workload identity an
 # overlay names before it exists in Azure (overlays/prod/patch-artifacts-identity.yaml
-# until tcab-artifacts-prod is provisioned).
+# and patch-repos-identity.yaml until tcab-artifacts-prod and tcab-repos-prod are
+# provisioned).
 ci_unprovisioned_identities() {
 	awk '
 		function unquote(v) { gsub(/^["\047]|["\047]$/, "", v); return v }

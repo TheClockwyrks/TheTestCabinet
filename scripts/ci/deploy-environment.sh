@@ -118,6 +118,7 @@ if ! ci_assert_identities_provisioned <"$manifest"; then
 	echo "deploy-environment.sh: overlays/${ENVIRONMENT} binds a workload to an unprovisioned identity, above; nothing was retired or applied." >&2
 	remediation "Provision it, put its clientId in the overlay's patch and move the run trees, then deploy again:" \
 		"    the storage account, private container run-trees, the identity with Storage Blob Data Contributor on it and its federated credential (deployments/k8s/overlays/${ENVIRONMENT}/patch-artifacts-identity.yaml)" \
+		"    the private container bundles, the repos identity with Storage Blob Data Contributor on it and its federated credential (deployments/k8s/overlays/${ENVIRONMENT}/patch-repos-identity.yaml)" \
 		"    copy the trees on the claim artifacts-tcab-artifacts-0 in ${NAMESPACE} into the container"
 	exit 1
 fi

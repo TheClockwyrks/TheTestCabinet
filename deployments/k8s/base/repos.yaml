@@ -138,7 +138,8 @@ spec:
                   optional: true
             # TCAB_GITHUB_ORG and TCAB_GITHUB_TOKEN are a pair the service refuses
             # to start with half of, so the base names neither (every publish
-            # answers 503) and the staging and prod overlays add both.
+            # answers 503) and the staging and prod overlays add both
+            # (patch-repos-github.yaml).
             - name: TCAB_ENV
               value: "prod"
 ---
