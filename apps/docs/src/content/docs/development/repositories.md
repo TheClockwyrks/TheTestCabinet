@@ -338,8 +338,9 @@ and the kit's `edges.py` hold:
 - the Windows job, for a repository `WINDOWS_TESTS` names;
 - the steps of the gates a repository writes itself, which `EXTRA_GATES` names
   by the job each runs in;
-- the includes of the jobs and stages a repository writes itself, which
-  `PROJECT_PIPELINE` names with the stages the mirror waits on;
+- the includes of the jobs, stages and Rust setup steps a repository writes
+  itself, which `PROJECT_PIPELINE` names with the stages the mirror waits on,
+  and the Rust job's time limit (`RUST_TIMEOUTS`);
 - for a `tool`, the image job that bakes its binaries, and for a `shell`, the
   bundle jobs;
 - the mirror, the feed and the branches.
@@ -430,7 +431,11 @@ the parameters `rustImage`, `registry`, `registryEndpoint` and `arm64Pool`. The
 mirror stage waits on each of the repository's stages as on the publish, and
 the rendered `ci/tests/test_wiring.py` holds the includes to the parameters
 each file declares, each stage to depending on the gates, and both files to
-running no gate.
+running no gate. Such a repository's Rust job also takes the steps of
+`.azure/project/setup-steps.yml` after it fetched its dependencies and before
+its first check, which is where gg provisions the toolchains its build script
+needs, and `RUST_TIMEOUTS` gives a Rust job whose cold build outlasts the
+kit's hour a longer limit.
 
 A repository's `azure-pipelines.yml` runs on every push to `master`, `staging`
 and `nightly` and to a `v*` tag. The gates stage runs the Rust gates in the

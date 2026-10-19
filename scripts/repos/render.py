@@ -168,12 +168,26 @@ GATE_JOBS = ("rust", "checks")
 PROJECT_PIPELINE: dict[str, tuple[str, ...]] = {"gg": ("release",)}
 PROJECT_JOBS = ".azure/project/jobs.yml"
 PROJECT_STAGES = ".azure/project/stages.yml"
+# The steps such a repository's Rust job takes after it fetched its
+# dependencies and before its first gate, which the kit includes there without
+# parameters, as the superrepo's Rust job includes its own
+# `.azure/project/setup-steps.yml`: what compiling the workspace needs beyond
+# the track's image. gg's build script reflects every arm's catalogue with that
+# arm's toolchain and the workspace's `typescript`, so its setup provisions
+# them from a cache before clippy compiles anything.
+PROJECT_SETUP = ".azure/project/setup-steps.yml"
 # The stages the kit's pipeline declares itself, which no project stage may be.
 KIT_STAGES = ("gates", "publish", "mirror")
 # The organisation's arm64 agent pool, where an arm64 build runs natively: the
 # clusters' nodes are arm64 and a hosted agent is x86_64. The superrepo's
 # `.azure/project/jobs.yml` defaults its `arm64Pool` to the same pool.
 ARM64_POOL = "pool-dev-linux-arm64-wus3-4c-eph-01"
+# The minutes a Rust job may run, and the repositories given longer. A cold
+# gg build compiles every arm's guest and restores its toolchains first, which
+# outlasts the hour the kit's Rust job is given, as the superrepo's Rust job,
+# which compiled gg in the workspace, was given two.
+RUST_TIMEOUT = 60
+RUST_TIMEOUTS: dict[str, int] = {"gg": 120}
 
 # The crate a render scaffolds in each repository carrying one: its directory
 # under crates/ and its package name. The monorepo's crates keep their
@@ -618,6 +632,18 @@ def ci_project_stages(name: str, kind: str) -> str:
     return _include(PROJECT_STAGES, project_parameters(name, kind), 2)
 
 
+def ci_project_setup(name: str, kind: str) -> str:
+    """The Rust job's include of the repository's own setup steps, or nothing."""
+    if name not in PROJECT_PIPELINE or not edge_table().KINDS[kind].crate:
+        return ""
+    return f"          - template: {PROJECT_SETUP}"
+
+
+def rust_timeout(name: str) -> int:
+    """The minutes the repository's Rust job may run."""
+    return RUST_TIMEOUTS.get(name, RUST_TIMEOUT)
+
+
 def python_dict(mapping: dict[str, str]) -> str:
     """A mapping of strings as a Python literal laid out as `ruff format` lays it out, one entry a line."""
     if not mapping:
@@ -774,6 +800,9 @@ def variables(name: str, kind: str, description: str) -> Variables:
         "ci_publish": ci_publish(kind),
         "ci_project_jobs": ci_project_jobs(name, kind),
         "ci_project_stages": ci_project_stages(name, kind),
+        "ci_project_setup": ci_project_setup(name, kind),
+        "project_setup": PROJECT_SETUP if ci_project_setup(name, kind) else "",
+        "rust_timeout": rust_timeout(name),
         "project_stages": list(project_stages(name)),
         # The same stages and parameters as Python literals, for ci/tests/test_wiring.py.
         "project_stages_list": json.dumps(list(project_stages(name))),

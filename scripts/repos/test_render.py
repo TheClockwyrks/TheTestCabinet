@@ -144,6 +144,11 @@ def test_the_project_pipeline_table_names_repositories_and_stages() -> None:
     assert render.project_parameters("microservice-arena", "application") == {}
     assert render.ci_project_jobs("microservice-arena", "application") == ""
     assert render.ci_project_stages("microservice-arena", "application") == ""
+    assert render.ci_project_setup("microservice-arena", "application") == ""
+    assert render.ci_project_setup("gg", "application") == f"          - template: {render.PROJECT_SETUP}"
+    assert set(render.RUST_TIMEOUTS) <= set(EDGES.REPOSITORIES)
+    assert render.rust_timeout("gg") == 120
+    assert render.rust_timeout("microservice-arena") == render.RUST_TIMEOUT
 
 
 def test_the_project_pipeline_is_handed_the_rust_image_the_registry_and_the_arm64_pool() -> None:
@@ -311,8 +316,16 @@ def test_a_project_pipeline_includes_its_own_jobs_and_stages(rendered: Callable[
     mirror = pipeline[pipeline.index("  - stage: mirror\n") :]
     assert "      - gates\n      - publish\n      - release\n    condition:" in mirror
     assert "in(dependencies.release.result, 'Succeeded', 'Skipped')," in mirror
+    setup = pipeline.index(f"          - template: {render.PROJECT_SETUP}\n")
+    rust = pipeline.index("      - job: rust\n")
+    assert rust < pipeline.index("scripts/ci/git-sources.sh", rust) < setup
+    assert setup < pipeline.index("variable=checksReady]true", rust) < pipeline.index("gate run", rust)
+    assert setup < pipeline.index("      - job: checks\n")
+    assert pipeline.count(render.PROJECT_SETUP) == 1
+    assert "        timeoutInMinutes: 120\n" in pipeline[rust : pipeline.index("      - job: checks\n")]
     arena = (rendered("microservice-arena") / "azure-pipelines.yml").read_text(encoding="utf-8")
     assert ".azure/project/" not in arena
+    assert "      - job: rust\n        displayName: Rust\n        timeoutInMinutes: 60\n" in arena
     assert "      - gates\n      - publish\n    condition:" in arena
 
 

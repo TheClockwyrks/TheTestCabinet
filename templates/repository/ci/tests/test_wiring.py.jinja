@@ -27,7 +27,9 @@ This repository runs jobs and stages of its own, written in the templates
 under .azure/project/ that the kit leaves to it: its jobs are included in the
 gates stage and its stages after the publish, each handed the parameters it
 declares, none of them runs a gate, and every stage it declares follows the
-gates.
+gates.{% if project_setup %} Its Rust job takes the repository's own setup steps
+once, before its first check.{% endif %}
+
 {% endif %}
 {% if ci_mirror %}
 A commit on master, staging or nightly, and a published tag, is pushed to the
@@ -113,6 +115,9 @@ PROJECT_JOBS = ".azure/project/jobs.yml"
 PROJECT_STAGES_FILE = ".azure/project/stages.yml"
 PROJECT_STAGES: list[str] = {{project_stages_list}}
 PROJECT_PARAMETERS: dict[str, str] = {{project_parameters_dict}}
+# The steps the Rust job takes from this repository before its first check, or
+# nothing.
+PROJECT_SETUP = "{{project_setup}}"
 # The feed a job authenticates npm to before its first install, or nothing for
 # a kind that builds no workspace.
 FEED_SCRIPT_REGISTRY = "{{feed_registry if typescript_workspace else ''}}"
@@ -520,6 +525,28 @@ def test_the_pipeline_hands_its_own_templates_what_it_runs_in() -> None:
         )
 
 
+{% if project_setup %}
+def test_the_rust_job_takes_the_repositorys_own_setup_before_its_first_check() -> None:
+    """The setup is included once, in the Rust job, after its fetch and before any gate, and runs no gate."""
+    rust = _gates_jobs()["rust"]
+    include = f"          - template: {PROJECT_SETUP}\n"
+    assert rust.count(include) == 1, f"the Rust job includes {PROJECT_SETUP} {rust.count(include)} times"
+    at = rust.index(include)
+    assert rust.index("scripts/ci/git-sources.sh") < at, "the setup runs before the dependencies are fetched"
+    assert at < rust.index("variable=checksReady]true"), "the setup runs after the checks began"
+    assert at < min(match.start() for match in GATE_RUN.finditer(rust)), "a gate runs before the setup"
+    for job, steps in _gates_jobs().items():
+        if job != "rust":
+            assert PROJECT_SETUP not in steps, f"the {job} job includes {PROJECT_SETUP}"
+    path = ROOT / PROJECT_SETUP
+    assert path.is_file(), f"the pipeline includes {PROJECT_SETUP}, which the repository does not hold"
+    text = path.read_text(encoding="utf-8")
+    assert re.search(r"^steps:", text, re.MULTILINE), f"{PROJECT_SETUP} is not a steps template"
+    assert _declared_parameters(path) == [], f"{PROJECT_SETUP} declares parameters the pipeline does not hand it"
+    assert _named(text) == set(), f"{PROJECT_SETUP} runs a gate, which the kit gives a step of its own"
+
+
+{% endif %}
 def test_the_repositorys_own_jobs_are_in_the_gates_stage() -> None:
     stages = _stages()
     _include_at(stages["gates"], PROJECT_JOBS, 6)
@@ -553,7 +580,7 @@ def test_the_repositorys_own_stages_follow_the_gates_and_run_no_gate() -> None:
 {% else %}
 def test_the_pipeline_includes_no_template_of_its_own() -> None:
     assert ".azure/project/" not in PIPELINE.read_text(encoding="utf-8"), "the pipeline includes a project template"
-    assert PROJECT_STAGES == [] and PROJECT_PARAMETERS == {}
+    assert PROJECT_STAGES == [] and PROJECT_PARAMETERS == {} and PROJECT_SETUP == ""
 {% endif %}
 
 

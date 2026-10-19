@@ -95,8 +95,9 @@ def add_own_pipeline(root: Path, name: str, kind: str) -> list[str]:
 
     The kit includes the repository's own jobs and stages and leaves the files
     to it, so a bare render includes templates it does not hold. Each stand-in
-    declares the parameters the pipeline hands it, and the stages file the
-    stages the kit's table names, each after the gates.
+    declares the parameters the pipeline hands it, the stages file the stages
+    the kit's table names, each after the gates, and the setup steps, for a
+    repository whose Rust job takes them, one step.
     """
     if name not in render.PROJECT_PIPELINE:
         return []
@@ -115,8 +116,11 @@ def add_own_pipeline(root: Path, name: str, kind: str) -> list[str]:
             "        steps:",
             f"          - script: echo {stage}",
         ]
+    files = [(render.PROJECT_JOBS, jobs), (render.PROJECT_STAGES, stages)]
+    if render.ci_project_setup(name, kind):
+        files.append((render.PROJECT_SETUP, ["steps:", "  - script: echo setup"]))
     written = []
-    for relative, lines in ((render.PROJECT_JOBS, jobs), (render.PROJECT_STAGES, stages)):
+    for relative, lines in files:
         path = root / relative
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text("\n".join(lines) + "\n", encoding="utf-8")
