@@ -19,8 +19,9 @@
 #      from), which the job's after-failure step reads to print the recovery.
 #   3. Sets THE_TEST_CABINET_ROLLOUT_TIMEOUT to 600s for the steps after it, the time
 #      every rollout has always been given here, rather than the template's 300s.
-#   4. Retires the legacy `tcab-backend` Deployment
-#      (scripts/ci/retire-legacy-backend.sh), which holds the backend's disk.
+#   4. Retires the legacy workloads (scripts/ci/retire-legacy-backend.sh): the
+#      `tcab-backend` Deployment, which holds the backend's disk, and the artifacts
+#      service's `tcab-artifacts` StatefulSet, which the Deployment replaces.
 #
 # `--dry-run` pins a temporary copy instead, prints its render and the commands it
 # would run in the cluster, and runs none of them.

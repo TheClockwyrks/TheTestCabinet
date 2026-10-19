@@ -1,0 +1,36 @@
+# The artifacts service's Blob identity in PROD: the user-assigned managed identity
+# holding Storage Blob Data Contributor on the run-tree container, federated to
+# system:serviceaccount:tcab-prod:tcab-artifacts through the testcabinet-prod-westus2-aks
+# OIDC issuer (Run plane, apps/docs/src/content/docs/deployment/kubernetes/run-plane.md
+# "Artifacts service"; the prerequisites in deployment/kubernetes/overview.md).
+#
+#   Storage account tcabprodstore (RG testcabinet-prod-westus2-rg), private container run-trees
+#   Identity        tcab-artifacts-prod
+#
+# The client id below is `unprovisioned` until that identity exists: the webhook then
+# projects an AZURE_CLIENT_ID no tenant knows, the service's start-up listing of the
+# container is refused, and the pod never becomes ready, so a deploy undoes it rather
+# than serving a store it cannot reach. Replace it with the identity's clientId.
+#
+# The `azure.workload.identity/use` pod label is what makes the webhook project the
+# identity's token and variables. The local overlay carries neither, so its pod signs
+# with Shared Key against Azurite.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: tcab-artifacts
+  # the base pins tcab-prod; this overlay's `namespace:` directive retargets it on build
+  namespace: tcab-prod
+  annotations:
+    azure.workload.identity/client-id: "unprovisioned"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tcab-artifacts
+  namespace: tcab-prod
+spec:
+  template:
+    metadata:
+      labels:
+        azure.workload.identity/use: "true"

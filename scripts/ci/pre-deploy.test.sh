@@ -152,7 +152,7 @@ check_contains "shows the dispatcher's publisher image" "value: \"testcabinet.az
 check_contains "shows the dispatcher's run-container tag" "name: TCAB_CONTAINER_TAG" "$out"
 check_contains "shows the read of the backend" "kubectl -n tcab-staging get deployment the-test-cabinet-backend --ignore-not-found" "$out"
 check_contains "shows the read of the legacy backend" "kubectl -n tcab-staging get deployment tcab-backend --ignore-not-found" "$out"
-check_contains "shows the retirement" "kubectl -n tcab-staging delete deployment tcab-backend --ignore-not-found" "$out"
+check_contains "shows the retirement" "kubectl -n tcab-staging delete deployment/tcab-backend statefulset/tcab-artifacts --ignore-not-found" "$out"
 check_equal "reaches no cluster" "" "$(cat "$repo/az.log" 2>/dev/null)"
 check_equal "leaves the overlay as it was" "$(cat "$repo/unpinned.yaml")" \
 	"$(cat "$repo/deployments/k8s/overlays/staging/kustomization.yaml")"
@@ -179,7 +179,7 @@ check_contains "sets the previous commit" "##vso[task.setvariable variable=TCAB_
 check_contains "sets the Deployment it came from" \
 	"##vso[task.setvariable variable=TCAB_PREVIOUS_BACKEND]the-test-cabinet-backend" "$out"
 check_contains "sets the rollout timeout" "##vso[task.setvariable variable=THE_TEST_CABINET_ROLLOUT_TIMEOUT]600s" "$out"
-check_contains "retires tcab-backend in tcab-staging" "kubectl -n tcab-staging delete deployment tcab-backend" \
+check_contains "retires tcab-backend in tcab-staging" "kubectl -n tcab-staging delete deployment/tcab-backend" \
 	"$(cat "$repo/sent/retire-legacy-backend.sh")"
 
 echo "--- the first deployment after the rename ---"

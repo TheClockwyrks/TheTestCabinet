@@ -77,6 +77,25 @@ pub struct ArtifactService {
     pub bind: String,
 }
 
+/// Make the run-tree container ready to serve from, before the service
+/// starts: against an emulator, create the containers it needs
+/// ([`Config::emulator_containers`]), leaving one that exists as it is; then,
+/// in every mode, list one blob of the run-tree container, which proves the
+/// credential is accepted and the container exists. A cluster whose identity was
+/// not provisioned or federated fails here, so its pod never becomes ready
+/// rather than failing every request later. Answers the containers it created.
+pub async fn prepare_run_container(config: &Config) -> Result<Vec<String>, BlobError> {
+    let runs = BlobClient::new(&config.blob, reqwest::Client::new())?;
+    let mut created = Vec::new();
+    for container in config.emulator_containers() {
+        if runs.for_container(container).create_container().await? {
+            created.push(container.to_string());
+        }
+    }
+    runs.list_page("", None, None, Some(1)).await?;
+    Ok(created)
+}
+
 /// Assemble the artifact service from a configuration: the Blob client of the
 /// private run-tree container, the public store, the verify HTTP client and the
 /// Access verifier, and the router over them. Fails when the container's

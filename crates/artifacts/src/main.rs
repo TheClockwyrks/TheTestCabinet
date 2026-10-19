@@ -11,6 +11,11 @@ use std::process::ExitCode;
 
 use test_cabinet_artifacts::config::Config;
 
+/// How many times the start tries to reach the run-tree container.
+const PREPARE_ATTEMPTS: u32 = 30;
+/// The wait between two of those attempts.
+const PREPARE_RETRY_DELAY: std::time::Duration = std::time::Duration::from_secs(2);
+
 #[tokio::main]
 async fn main() -> ExitCode {
     // Load `.env.artifacts` beside the project before anything reads the
@@ -55,6 +60,32 @@ async fn main() -> ExitCode {
         verifies_access = config.access.is_some(),
         "artifact service configuration resolved"
     );
+
+    // Make the run-tree container ready before serving: an emulator's containers
+    // are created, and in every mode one listing proves the credential and the
+    // container. The emulator, or the identity's token exchange, may still be
+    // coming up beside this pod, so a refused attempt is retried for a while
+    // before the start is given up.
+    let mut attempt = 0u32;
+    loop {
+        attempt += 1;
+        match test_cabinet_artifacts::prepare_run_container(&config).await {
+            Ok(created) => {
+                for container in created {
+                    tracing::info!(blob.container = %container, "created emulator container");
+                }
+                break;
+            }
+            Err(err) if attempt < PREPARE_ATTEMPTS => {
+                tracing::warn!(attempt, error = %err, "run-tree container not reachable yet; retrying");
+                tokio::time::sleep(PREPARE_RETRY_DELAY).await;
+            }
+            Err(err) => {
+                eprintln!("the run-tree container is not reachable: {err}");
+                return ExitCode::FAILURE;
+            }
+        }
+    }
 
     let service = match test_cabinet_artifacts::build(config) {
         Ok(service) => service,

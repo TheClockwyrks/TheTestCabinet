@@ -23,7 +23,7 @@ spec:
               value: "http://tcab-lgtm:4318"
 ---
 apiVersion: apps/v1
-kind: StatefulSet
+kind: Deployment
 metadata:
   name: tcab-artifacts
   namespace: tcab-prod

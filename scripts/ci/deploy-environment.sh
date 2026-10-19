@@ -33,8 +33,9 @@
 #     (deployments/azure/aks-command-invoke.role.json): run a command and read its
 #     result, and nothing else on the cluster resource.
 #
-# Before the apply it retires the backend Deployment of its old name
-# (scripts/ci/retire-legacy-backend.sh), which holds the backend's disk. After it,
+# Before the apply it retires the workloads of an earlier shape
+# (scripts/ci/retire-legacy-backend.sh): the backend Deployment of its old name,
+# which holds the backend's disk, and the artifacts service's StatefulSet. After it,
 # scripts/ci/settle-workloads.sh --include-backend waits concurrently on every
 # Deployment and StatefulSet in the namespace; each that does not become ready is
 # described, its logs are printed, and it is undone before the script fails.

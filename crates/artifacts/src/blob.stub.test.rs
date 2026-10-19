@@ -805,3 +805,52 @@ async fn a_container_serves_as_the_public_store() {
             .is_none()
     );
 }
+
+/// The configuration of a service against the stub's emulator account.
+fn emulator_config(origin: &str, key: &str) -> crate::config::Config {
+    let vars: HashMap<&str, String> = [
+        ("TCAB_ARTIFACTS_BLOB_ACCOUNT", ACCOUNT.to_string()),
+        ("TCAB_ARTIFACTS_BLOB_CONTAINER", "run-trees".to_string()),
+        (
+            "TCAB_ARTIFACTS_BLOB_ENDPOINT",
+            format!("{origin}/{ACCOUNT}"),
+        ),
+        ("TCAB_ARTIFACTS_BLOB_KEY", key.to_string()),
+        ("TCAB_ARTIFACTS_PUBLIC_BLOB_CONTAINER", "public".to_string()),
+    ]
+    .into_iter()
+    .collect();
+    crate::config::Config::from_lookup(|name| vars.get(name).cloned()).unwrap()
+}
+
+#[tokio::test]
+async fn an_emulator_start_creates_both_containers_once() {
+    let (origin, stub) = serve(Auth::SharedKey).await;
+    let config = emulator_config(&origin, KEY);
+    assert_eq!(
+        crate::prepare_run_container(&config).await.unwrap(),
+        ["run-trees", "public"]
+    );
+    assert!(
+        crate::prepare_run_container(&config)
+            .await
+            .unwrap()
+            .is_empty()
+    );
+    let containers = stub.lock().unwrap().containers.clone();
+    assert_eq!(
+        containers,
+        HashSet::from(["run-trees".to_string(), "public".to_string()])
+    );
+}
+
+#[tokio::test]
+async fn a_start_with_a_refused_credential_fails() {
+    let (origin, _stub) = serve(Auth::SharedKey).await;
+    let wrong = base64::engine::general_purpose::STANDARD.encode(b"not the key");
+    let config = emulator_config(&origin, &wrong);
+    match crate::prepare_run_container(&config).await {
+        Err(BlobError::Status { status, .. }) => assert_eq!(status, 403),
+        other => panic!("expected a refusal, got {other:?}"),
+    }
+}

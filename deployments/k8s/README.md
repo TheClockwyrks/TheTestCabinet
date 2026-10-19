@@ -23,25 +23,25 @@ cluster-scoped objects live under [`cluster/`](cluster/) (see
 `overlays/` (not a parent) so an overlay can reference it as `../../base` without
 kustomize flagging an overlay→ancestor cycle.
 
-| File (under `base/`)   | What it is                                                                                                                                                                                                                                                                                                  |
-| ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `kustomization.yaml`   | The base: lists every resource below for the overlays to reference.                                                                                                                                                                                                                                         |
-| `rbac.yaml`            | The `tcab-driver` SA/Role (pod create/get/list/delete + pods/exec get+create — the driver execs over a WebSocket, a GET to the exec subresource, so `get` is required, not just `create`, for the sandbox) and the `tcab-dispatcher` SA/Role (jobs create/get/list/watch/delete + pods/log, for the queue). |
-| `secrets.example.yaml` | Secret templates (R2 creds, the shared service token, harness keys, registry pull secret) — **placeholders only**, not a base resource.                                                                                                                                                                     |
-| `backend.yaml`         | Backend StatefulSet (1 replica) + PVC + ClusterIP Service.                                                                                                                                                                                                                                                  |
-| `dispatcher.yaml`      | Dispatcher Deployment (1 replica) running under `tcab-dispatcher`; claims queued jobs and creates driver Jobs. No Service (binds no socket).                                                                                                                                                                |
-| `artifacts.yaml`       | Artifact-service StatefulSet (1 replica) + PVC + ClusterIP Service + its own SA (no API access).                                                                                                                                                                                                            |
-| `arena.yaml`           | Arena-service Deployment (1 replica, **no PVC** — stateless) + ClusterIP Service (`:8791`) + its own SA (no API access); runs adversarial matches/tournaments off the backend, with real CPU requests/limits.                                                                                               |
-| `ingest-cronjob.yaml`  | Periodic `POST /ingest` to refresh the catalog.                                                                                                                                                                                                                                                             |
-| `networkpolicy.yaml`   | Optional default-deny-ingress + explicit allows (needs a NetworkPolicy-enforcing CNI).                                                                                                                                                                                                                      |
+| File (under `base/`)   | What it is                                                                                                                                                                                                                                                                                                               |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `kustomization.yaml`   | The base: lists every resource below for the overlays to reference.                                                                                                                                                                                                                                                      |
+| `rbac.yaml`            | The `tcab-driver` SA/Role (pod create/get/list/delete + pods/exec get+create — the driver execs over a WebSocket, a GET to the exec subresource, so `get` is required, not just `create`, for the sandbox) and the `tcab-dispatcher` SA/Role (jobs create/get/list/watch/delete + pods/log, for the queue).              |
+| `secrets.example.yaml` | Secret templates (R2 creds, the shared service token, harness keys, registry pull secret) — **placeholders only**, not a base resource.                                                                                                                                                                                  |
+| `backend.yaml`         | Backend StatefulSet (1 replica) + PVC + ClusterIP Service.                                                                                                                                                                                                                                                               |
+| `dispatcher.yaml`      | Dispatcher Deployment (1 replica) running under `tcab-dispatcher`; claims queued jobs and creates driver Jobs. No Service (binds no socket).                                                                                                                                                                             |
+| `artifacts.yaml`       | Artifact-service Deployment (2 replicas, **no PVC** — stateless, over the environment's private Blob container and R2 bucket) + ClusterIP Service + PodDisruptionBudget + its own SA (no API access; federated to the environment's managed identity by the staging and prod overlays' `patch-artifacts-identity.yaml`). |
+| `arena.yaml`           | Arena-service Deployment (1 replica, **no PVC** — stateless) + ClusterIP Service (`:8791`) + its own SA (no API access); runs adversarial matches/tournaments off the backend, with real CPU requests/limits.                                                                                                            |
+| `ingest-cronjob.yaml`  | Periodic `POST /ingest` to refresh the catalog.                                                                                                                                                                                                                                                                          |
+| `networkpolicy.yaml`   | Optional default-deny-ingress + explicit allows (needs a NetworkPolicy-enforcing CNI).                                                                                                                                                                                                                                   |
 
 Overlays:
 
-| Overlay            | Purpose                                                                                                                                                                                                                                                       |
-| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `overlays/prod`    | The production deployment on **managed PostgreSQL**, Key Vault and the edge, in `tcab-prod`. Deployed from `master` by the pipeline's prod stage through `scripts/ci/deploy-environment.sh`; namespaced objects only, every Test Cabinet image at `unpinned`. |
-| `overlays/staging` | The staging deployment, identical to `prod` apart from its targets, in `tcab-staging`. Deployed from `staging` by the workspace template's deployment job; namespaced objects only, every Test Cabinet image at `unpinned`.                                   |
-| `overlays/local`   | The k3d development mirror (driven by [`../local/Makefile`](../local/Makefile)), including `cluster/namespace` and `cluster/observability`, in `tcab-local`.                                                                                                  |
+| Overlay            | Purpose                                                                                                                                                                                                                                                                |
+| ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `overlays/prod`    | The production deployment on **managed PostgreSQL**, Key Vault and the edge, in `tcab-prod`. Deployed from `master` by the pipeline's prod stage through `scripts/ci/deploy-environment.sh`; namespaced objects only, every Test Cabinet image at `unpinned`.          |
+| `overlays/staging` | The staging deployment, identical to `prod` apart from its targets, in `tcab-staging`. Deployed from `staging` by the workspace template's deployment job; namespaced objects only, every Test Cabinet image at `unpinned`.                                            |
+| `overlays/local`   | The k3d development mirror (driven by [`../local/Makefile`](../local/Makefile)), including `cluster/namespace` and `cluster/observability`, in `tcab-local`, with an Azurite blob emulator (`azurite.yaml`) as the artifacts service's run-tree and public containers. |
 
 The cluster-scoped objects:
 
@@ -122,7 +122,8 @@ deployment job, inside the private cluster through `az aks command invoke`:
 
 1. `scripts/ci/pre-deploy.sh staging <sha>` pins the overlay, records the commit the
    namespace runs, gives each rollout 600 seconds, and deletes the backend's
-   Deployment of its old name, `tcab-backend`, which holds the backend's disk
+   Deployment of its old name, `tcab-backend`, which holds the backend's disk, and
+   the artifacts service's StatefulSet, which its stateless Deployment replaces
    (`scripts/ci/retire-legacy-backend.sh`).
 2. The template's `scripts/ci/deploy.sh <sha>` applies the overlay and waits on
    `the-test-cabinet-backend`, rolling it back if it does not become ready.
@@ -159,6 +160,10 @@ Keep them otherwise identical so staging rehearses prod. Each sets, in its
 Access application, which the backend, the artifacts service and the arena verify
 the edge's assertion against; `overlays/local` sets neither, so locally each
 service takes the identity from the `Cf-Access-Authenticated-User-Email` header.
+Each also sets, in its `patch-artifacts-identity.yaml`, the client id of the managed
+identity the artifacts service reaches its Blob container as, and the pod label that
+has the workload-identity webhook project it; `overlays/local` points the service at
+Azurite with Shared Key instead.
 See
 [Identity](../../apps/docs/src/content/docs/components/auth/overview.md#configuration).
 The dispatcher's

@@ -238,3 +238,34 @@ fn the_public_container_cannot_be_the_private_one() {
         Err(ConfigError::PublicIsPrivate(name)) if name == "runs"
     ));
 }
+
+/// The variables of an Azurite endpoint signed with Shared Key.
+const AZURITE: [(&str, &str); 3] = [
+    ("TCAB_ARTIFACTS_BLOB_ACCOUNT", "devstoreaccount1"),
+    (
+        "TCAB_ARTIFACTS_BLOB_ENDPOINT",
+        "http://tcab-azurite:10000/devstoreaccount1",
+    ),
+    ("TCAB_ARTIFACTS_BLOB_KEY", "a2V5"),
+];
+
+#[test]
+fn an_emulator_creates_the_run_tree_and_public_containers() {
+    let config = config(&AZURITE).unwrap();
+    assert_eq!(config.emulator_containers(), vec!["runs", "public"]);
+}
+
+#[test]
+fn an_emulator_with_r2_creates_only_the_run_tree_container() {
+    let mut vars: Vec<(&str, &str)> = AZURITE.to_vec();
+    vars.push(("TCAB_ARTIFACTS_BLOB_CONTAINER", "runs"));
+    vars.extend_from_slice(&R2);
+    let config = exactly(&vars).unwrap();
+    assert_eq!(config.emulator_containers(), vec!["runs"]);
+}
+
+#[test]
+fn workload_identity_creates_no_container() {
+    let config = config(&[]).unwrap();
+    assert!(config.emulator_containers().is_empty());
+}

@@ -94,6 +94,10 @@ patches:
   # The Access application the backend, artifacts and arena verify the edge's
   # assertion against.
   - path: patch-access.yaml
+  # The artifacts service's Blob identity: the managed identity's client id on its
+  # ServiceAccount and the workload-identity label on its pod. The base
+  # names prod's storage account.
+  - path: patch-artifacts-identity.yaml
   # Set the in-cluster console's runtime backend URL (TCAB_WEB_BACKEND_URL on the
   # tcab-web pod) to the origin's /api.
   - path: patch-web-config.yaml

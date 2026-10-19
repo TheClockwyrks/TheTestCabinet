@@ -24,7 +24,9 @@
 //! `AZURE_FEDERATED_TOKEN_FILE` (see [`crate::blob::WorkloadIdentity`]). Against
 //! Azurite it signs with Shared Key instead, which is what
 //! `TCAB_ARTIFACTS_BLOB_ENDPOINT` and `TCAB_ARTIFACTS_BLOB_KEY` select; the two are
-//! set together or not at all.
+//! set together or not at all. In Shared Key mode the service creates its
+//! containers at startup ([`Config::emulator_containers`]), so an emulator
+//! needs no provisioning; a cluster's containers exist with the account.
 //!
 //! The public dataset lives in exactly one public store
 //! ([`PublicStoreConfig`]): the R2 bucket the `TCAB_R2_*` variables name, or,
@@ -157,6 +159,22 @@ impl Config {
             blob: blob_config(&var)?,
             public_store: public_store_config(&var, &lookup)?,
         })
+    }
+
+    /// The containers the service creates at startup: on an emulator (Shared
+    /// Key), the run-tree container and the public container when the public
+    /// store is one, so the local stack needs no provisioning step. Under
+    /// workload identity none: a cluster's containers are provisioned with the
+    /// storage account, and the identity holds no right to create them.
+    pub fn emulator_containers(&self) -> Vec<&str> {
+        if !matches!(self.blob.auth, BlobAuth::SharedKey(_)) {
+            return Vec::new();
+        }
+        let mut containers = vec![self.blob.container.as_str()];
+        if let PublicStoreConfig::Blob { container } = &self.public_store {
+            containers.push(container.as_str());
+        }
+        containers
     }
 }
 
