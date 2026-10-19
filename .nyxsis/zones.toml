@@ -18,3 +18,15 @@ name = "gg, the harness"
 
 [zone.CASE]
 name = "Test cases and their seeding"
+
+[zone.DEPLOY]
+name = "The Kubernetes deployments"
+
+[zone.RUN]
+name = "The run plane: driver and dispatcher"
+
+[zone.BACK]
+name = "The backend"
+
+[zone.ARENA]
+name = "The arena"
