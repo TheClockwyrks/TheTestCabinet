@@ -125,6 +125,13 @@ async fn build_with_prices(
     }
 
     let store = DefinitionStore::open(&config.store)?;
+    // An ingest that stopped part way (the process died, or the pod was replaced) left
+    // its half-built version in the staging area. Nothing serves or ingests yet, so
+    // every entry there is such a leftover: empty it before anything can.
+    match store.clear_staging()? {
+        0 => {}
+        removed => tracing::info!(removed, "emptied the ingest staging area"),
+    }
     let db = if config.db_azure_ad {
         Db::connect_azure_ad(&config.database_url).await?
     } else {
