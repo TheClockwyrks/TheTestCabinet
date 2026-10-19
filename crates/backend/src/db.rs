@@ -336,7 +336,8 @@ pub struct StoredRun {
     /// pushed. Not part of the run record itself.
     pub published_at: Option<String>,
     /// The run's recorded normalized event stream, stored verbatim as a JSON
-    /// array string (the `run.events_json` column). `None` for a run that
+    /// array string (the `run.events_json` column): its job's stored events in
+    /// sequence order when the record was persisted. `None` for a run that
     /// recorded none. Re-emitted into the snapshot and served by
     /// `GET /runs/{id}/events`.
     pub events_json: Option<String>,
@@ -7341,13 +7342,46 @@ impl Db {
     /// Job `job_id`'s stored events in sequence order: its recorded stream. Empty for a
     /// job with none stored, or an unknown job.
     pub async fn job_events(&self, job_id: &str) -> Result<Vec<HarnessEvent>> {
-        job_event::Entity::find()
-            .filter(job_event::Column::JobId.eq(job_id))
+        Ok(self
+            .job_events_after(job_id, None)
+            .await?
+            .into_iter()
+            .map(|(_, event)| event)
+            .collect())
+    }
+
+    /// Job `job_id`'s stored events with their sequences, in sequence order, keeping
+    /// only those after `after` when it is given. The live stream replays these as its
+    /// backlog and reads the ones after the last it delivered when its subscriber falls
+    /// behind the fan-out.
+    pub async fn job_events_after(
+        &self,
+        job_id: &str,
+        after: Option<u64>,
+    ) -> Result<Vec<(u64, HarnessEvent)>> {
+        let mut query = job_event::Entity::find().filter(job_event::Column::JobId.eq(job_id));
+        if let Some(after) = after {
+            // A sequence past the signed range was never stored (the store refuses one),
+            // so nothing follows it.
+            let Ok(after) = i64::try_from(after) else {
+                return Ok(Vec::new());
+            };
+            query = query.filter(job_event::Column::Sequence.gt(after));
+        }
+        query
             .order_by_asc(job_event::Column::Sequence)
             .all(&self.conn())
             .await?
             .into_iter()
-            .map(|row| Ok(serde_json::from_str(&row.event_json)?))
+            .map(|row| {
+                let sequence = u64::try_from(row.sequence).map_err(|_| {
+                    BackendError::Internal(format!(
+                        "job `{job_id}` holds the negative event sequence {}",
+                        row.sequence
+                    ))
+                })?;
+                Ok((sequence, serde_json::from_str(&row.event_json)?))
+            })
             .collect()
     }
 
