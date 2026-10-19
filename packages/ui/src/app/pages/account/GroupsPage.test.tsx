@@ -31,7 +31,6 @@ function renderPage(groups: CoverageGroup[]) {
     status: "ready",
     error: null,
     url: null,
-    setUrl: () => {},
   } as unknown as BackendContextValue;
   render(
     <MemoryRouter>

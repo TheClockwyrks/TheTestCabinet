@@ -9,9 +9,12 @@ import {
   IdentityProvider,
   WorkersProvider,
   fetchEdgeIdentity,
-  useBackend,
 } from "@clockwyrks/ui/client";
-import { ARENA_PATH, createHttpArena } from "@clockwyrks/ui/transport";
+import {
+  ARENA_PATH,
+  BACKEND_PATH,
+  createHttpArena,
+} from "@clockwyrks/ui/transport";
 import { useMemo } from "react";
 import { BrowserRouter } from "react-router";
 
@@ -21,10 +24,11 @@ import {
 } from "./state/use-connections";
 
 // The web console: the full shared gallery app (from @clockwyrks/ui) rendered
-// against live data. It talks to a single backend URL — for the catalog and
-// published runs, and (since the per-run-Job refactor) for executing runs via the
-// backend's `/jobs` queue. That run-execution capability is the only difference
-// from the static site.
+// against live data. It names no service URL: every service is a path of the
+// origin it is served from (`/api`, `/artifacts`, `/arena`). The backend at
+// `/api` serves the catalog and published runs and executes runs through its
+// `/jobs` queue. That run-execution capability is the only difference from the
+// static site.
 export function App() {
   const backend = useBackendConnection();
   // The execution target is the same backend; presented through the shared
@@ -51,13 +55,8 @@ export function App() {
 function WebGallery() {
   // The arena reads persisted tournaments from the backend but runs matches and
   // tournaments against the dedicated `tcab-arena` service, served at `/arena` of
-  // the console's own origin. The handle is rebuilt when the backend changes so it
-  // always targets the current connection.
-  const { url: backendUrl } = useBackend();
-  const arena = useMemo(
-    () => (backendUrl ? createHttpArena(backendUrl, ARENA_PATH) : undefined),
-    [backendUrl],
-  );
+  // the console's own origin, as the backend is at `/api` of it.
+  const arena = useMemo(() => createHttpArena(BACKEND_PATH, ARENA_PATH), []);
   const data = useLiveGallery(arena);
   return (
     <GalleryDataProvider value={data}>

@@ -99,7 +99,6 @@ function backendValue(existing: CoverageGroup) {
     status: "ready" as const,
     error: null,
     url: null,
-    setUrl: () => {},
   };
 }
 

@@ -8,14 +8,12 @@
 # Cloudflare Tunnel, behind Cloudflare Access (see deployments/k8s/components/edge);
 # it has no public Service of its own.
 #
-# Runtime config, NOT a build-time bake. CI builds ONE tcab-web:<git-sha> image
-# shared by every overlay (mirroring tcab-publisher), so the backend URL
-# cannot be inlined per-environment via Vite's build-time VITE_* vars. Instead the
-# entrypoint `envsubst`s /config.js from TCAB_WEB_BACKEND_URL
-# at container start; the console reads window.__TCAB_CONFIG__ from that file
-# before it boots (see apps/web/index.html + apps/web/src/state/useConnections.ts).
-# It defaults to empty, so an unset env yields a valid (empty) config that leaves
-# the console unconfigured rather than broken.
+# No runtime configuration. The console carries no service URL: it addresses /api,
+# /artifacts and /arena of its own origin, which the edge routes to the services
+# (see packages/ui/src/transport/origin-services.ts). Nothing is configured at
+# container start: the image is nginx and the static bundle, with no entrypoint
+# script and no environment. What a build bakes in is the bundle's business (see
+# components/web/overview.md, "Configuration").
 #
 # The canonical image is built by the Azure pipeline (scripts/ci/service-image.sh)
 # on every push to master and staging, natively per architecture, and pushed to the
@@ -64,30 +62,10 @@ FROM docker.io/nginxinc/nginx-unprivileged:1-bookworm
 # link correctly (try_files $uri /index.html). Replaces the stock default server.
 COPY deployments/images/web/nginx.conf /etc/nginx/conf.d/default.conf
 
-# The built static bundle. Vite emits apps/web/dist/ (index.html, hashed JS/CSS,
-# the public/ assets including the placeholder config.js the entrypoint overwrites).
+# The built static bundle. Vite emits apps/web/dist/ (index.html, hashed JS/CSS
+# and the public/ assets).
 COPY --from=build /src/apps/web/dist /usr/share/nginx/html
 
-# Runtime config injector. The base image runs every executable script under
-# /docker-entrypoint.d/ before starting nginx; ours envsubst's /config.js from the
-# environment. gettext-base supplies envsubst (not in the slim base by default).
-USER root
-RUN apt-get update \
-  && apt-get install -y --no-install-recommends gettext-base \
-  && rm -rf /var/lib/apt/lists/* \
-  # The container runs as uid 101 (USER 101 below), and 30-render-config.sh writes
-  # the rendered config.js INTO the web root at start — but the COPYed dist is
-  # root-owned, so uid 101 cannot create the file there (it crash-loops with
-  # "Permission denied"). Hand the web root to the runtime user so the render lands.
-  && chown -R 101:0 /usr/share/nginx/html
-# Keep the template OUTSIDE /etc/nginx/templates/: the base image's stock
-# 20-envsubst-on-templates.sh auto-renders everything under that dir into
-# /etc/nginx/conf.d/, which would both misplace config.js (nginx serves the web root,
-# not conf.d) and double-process it. Our 30-render-config.sh is the single renderer.
-COPY deployments/images/web/config.js.template /etc/nginx/config.js.template
-COPY deployments/images/web/30-render-config.sh /docker-entrypoint.d/30-render-config.sh
-RUN chmod +x /docker-entrypoint.d/30-render-config.sh
-
-# Drop back to the base image's non-root user for the actual run.
+# The base image's non-root user, named here so the run's user is explicit.
 USER 101
 EXPOSE 8080

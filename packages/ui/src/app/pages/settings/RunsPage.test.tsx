@@ -37,7 +37,6 @@ function renderPage(stored: CoverageSettings) {
           status: "ready",
           error: null,
           url: null,
-          setUrl: () => {},
         }}
       >
         <RunsPage />

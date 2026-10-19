@@ -79,7 +79,6 @@ function backendValue(client: object): BackendContextValue {
     status: "ready",
     error: null,
     url: null,
-    setUrl: vi.fn(),
   } as unknown as BackendContextValue;
 }
 

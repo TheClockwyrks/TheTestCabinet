@@ -5,8 +5,8 @@
 //! dispatcher claims it and a per-run driver pod executes it), the CLI streams the
 //! job's live event feed, and once the stream closes it reads back the produced
 //! record to print the run's summary. Executing the run requires a reachable
-//! backend (`TCAB_BACKEND_URL`) and a bearer (`TCAB_TOKEN`) the enqueue is
-//! attributed through.
+//! backend (`TCAB_BACKEND_URL`) and the caller's Access credential, which the
+//! enqueue is attributed through (see [`config`]).
 
 use std::path::PathBuf;
 
@@ -23,9 +23,10 @@ use crate::config;
 /// Enqueue a run for the selected test case version, harness, and model on the
 /// backend, stream its live event feed, then report the produced record.
 ///
-/// Requires a backend URL (`TCAB_BACKEND_URL`) and a bearer (`TCAB_TOKEN`): the CLI
-/// no longer runs containers itself, it drives the backend's run queue (the k3d
-/// stack) the same way the web console does.
+/// Requires a backend URL (`TCAB_BACKEND_URL`) and presents the caller's Access
+/// credential (the local identity on the local stack): the CLI no longer runs
+/// containers itself, it drives the backend's run queue the same way the web
+/// console does.
 pub async fn execute(args: RunArgs) -> anyhow::Result<()> {
     let harness: HarnessSlug = args.harness.into();
 
@@ -33,8 +34,9 @@ pub async fn execute(args: RunArgs) -> anyhow::Result<()> {
         "TCAB_BACKEND_URL is not set; set it to the backend's address (for example \
          http://127.0.0.1:8787)",
     )?;
-    // The enqueue is attributed to the caller, so a launch carries a bearer.
-    let token = config::require_token().context("launching a run requires a credential")?;
+    // The enqueue is attributed to the caller, whose identity every request
+    // carries as an Access credential.
+    let credentials = config::Credentials::from_env()?;
 
     // An external `--orchestrator-dir` is a local-execution affordance that no
     // longer applies to a backend-driven run; the orchestrator is selected by its
@@ -99,12 +101,12 @@ pub async fn execute(args: RunArgs) -> anyhow::Result<()> {
         println!("  auth:    {mode}");
     }
 
-    // The watch is read-only (the launch carries the account token itself), so the
-    // client need not hold the token for the stream/status/read calls.
-    let client = HttpBackendClient::new(backend);
+    // Every call, the launch included, presents the client's own credentials, so
+    // the launch is handed no bearer of its own.
+    let client = credentials.client(backend);
 
     let job_id = client
-        .launch_run(&body, &token)
+        .launch_run(&body, "")
         .await
         .context("enqueuing the run on the backend")?;
     println!("\nqueued job {job_id}");

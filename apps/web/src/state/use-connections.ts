@@ -8,21 +8,11 @@ import type {
 } from "@clockwyrks/ui/client";
 import {
   ARTIFACTS_PATH,
+  BACKEND_PATH,
   createBackendExec,
   createHttpBackend,
 } from "@clockwyrks/ui/transport";
-import { useCallback, useEffect, useMemo, useState } from "react";
-
-const BACKEND_KEY = "tcab.web.backendUrl";
-
-function readStored<T>(key: string, fallback: T): T {
-  try {
-    const raw = localStorage.getItem(key);
-    return raw ? (JSON.parse(raw) as T) : fallback;
-  } catch {
-    return fallback;
-  }
-}
+import { useEffect, useMemo, useState } from "react";
 
 /** One answer to a backend's identity probe, and the client it came from. */
 interface Probe {
@@ -32,41 +22,24 @@ interface Probe {
   readonly error: string | null;
 }
 
-// The active backend: the single URL the console talks to. It is the source of
-// truth for the catalog and published data (the `BackendClient`), and — since the
-// per-run-Job refactor — the control plane for executing runs too (see
-// {@link useExecConnection}). Probes `/healthz` to confirm reachability and learn
-// the backend's identity. Switchable for staging vs prod.
+// The active backend: `/api` of the origin the console is served from
+// (`BACKEND_PATH`). The console names no service URL, so there is nothing to
+// configure, store or switch: the edge routes the path to the environment's
+// backend, and the Vite dev server proxies it to the forwarded local one
+// (components/web/overview.md, "Configuration"). It is the source of truth for
+// the catalog and published data (the `BackendClient`) and the control plane
+// for executing runs (see {@link useExecConnection}). Probes `/healthz` to
+// confirm reachability and learn the backend's identity.
 export function useBackendConnection(): BackendContextValue {
-  const [url, setUrlState] = useState<string | null>(
-    () =>
-      // The user's localStorage override always wins (the settings UI lets an
-      // operator point a deployment-served console at a local stack). Below it,
-      // the deployment's runtime config (window.__TCAB_CONFIG__, injected into
-      // /config.js at container start) is preferred over the build-time
-      // VITE_BACKEND_URL — one tcab-web image serves every environment, so the
-      // URL cannot be baked at build. Empty string ⇒ unconfigured (→ null).
-      readStored<string>(
-        BACKEND_KEY,
-        globalThis.__TCAB_CONFIG__?.backendUrl ??
-          import.meta.env.VITE_BACKEND_URL ??
-          "",
-      ) || null,
-  );
-  // What the last probe of a client answered, kept with the client it probed. A
-  // probe that belongs to another client (the URL changed since) reads as
-  // "connecting", so nothing has to be cleared when the URL changes: the state
+  const url = BACKEND_PATH;
+  // What the last probe answered, kept with the client it probed, so the state
   // is derived from which client the answer is for.
   const [probe, setProbe] = useState<Probe | null>(null);
 
-  // One client instance per URL, stable across renders.
-  const client = useMemo<BackendClient | null>(
-    () => (url ? createHttpBackend(url) : null),
-    [url],
-  );
+  // One client instance, stable across renders.
+  const client = useMemo<BackendClient>(() => createHttpBackend(url), [url]);
 
   useEffect(() => {
-    if (!client) return;
     const controller = new AbortController();
     void (async () => {
       try {
@@ -89,19 +62,12 @@ export function useBackendConnection(): BackendContextValue {
     };
   }, [client]);
 
-  const current = client !== null && probe?.client === client ? probe : null;
-  const status: BackendStatus =
-    client === null ? "unconfigured" : (current?.status ?? "connecting");
+  const current = probe?.client === client ? probe : null;
+  const status: BackendStatus = current?.status ?? "connecting";
   const identity = current?.identity ?? null;
   const error = current?.error ?? null;
 
-  const setUrl = useCallback((next: string) => {
-    const trimmed = next.trim();
-    localStorage.setItem(BACKEND_KEY, JSON.stringify(trimmed));
-    setUrlState(trimmed || null);
-  }, []);
-
-  return { client, identity, status, error, url, setUrl };
+  return { client, identity, status, error, url };
 }
 
 // The run-execution connection. There is no longer a separate worker the console

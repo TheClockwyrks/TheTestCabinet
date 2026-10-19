@@ -157,6 +157,38 @@ fn ingesting_previews_is_off_unless_the_variable_is_truthy() {
     assert!(!super::Config::from_env().unwrap().ingest_previews);
 }
 
+/// `TCAB_BACKEND_INGEST_REFRESH_URL` names the sidecar's refresh endpoint; unset
+/// or empty, there is none and a `refresh` request is ignored.
+#[test]
+fn the_ingest_refresh_endpoint_is_named_by_its_variable() {
+    let dir = tempfile::tempdir().unwrap();
+    // SAFETY: this process is this test's alone under nextest, the repo's runner.
+    unsafe {
+        std::env::set_var("TCAB_BACKEND_CHECKOUT", dir.path());
+        std::env::remove_var("TCAB_BACKEND_INGEST_REFRESH_URL");
+    }
+    assert_eq!(super::Config::from_env().unwrap().ingest_refresh_url, None);
+
+    // SAFETY: as above.
+    unsafe { std::env::set_var("TCAB_BACKEND_INGEST_REFRESH_URL", "") };
+    assert_eq!(super::Config::from_env().unwrap().ingest_refresh_url, None);
+
+    // SAFETY: as above.
+    unsafe {
+        std::env::set_var(
+            "TCAB_BACKEND_INGEST_REFRESH_URL",
+            "http://127.0.0.1:8788/cgi-bin/refresh",
+        );
+    }
+    assert_eq!(
+        super::Config::from_env()
+            .unwrap()
+            .ingest_refresh_url
+            .as_deref(),
+        Some("http://127.0.0.1:8788/cgi-bin/refresh")
+    );
+}
+
 /// Each ingest root defaults to its place in the checkout, and each override moves
 /// its own tree alone: the suites default stays under the checkout when the
 /// definitions root is moved, so naming one variable never relocates another tree.

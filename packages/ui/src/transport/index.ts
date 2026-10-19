@@ -21,6 +21,7 @@ export {
 export {
   ARENA_PATH,
   ARTIFACTS_PATH,
+  BACKEND_PATH,
   currentHostname,
   grafanaUrlForHost,
   snapshotUrlForHost,

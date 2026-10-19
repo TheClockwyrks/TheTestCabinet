@@ -12,12 +12,9 @@ path = "src/main.rs"
 [dependencies]
 # The run engine: the `tcab` binary is the driver repository's second binary, a thin
 # shell over the same `RunEngine` the driver executes a run with, plus the CLI's own
-# halves the library holds for it (the remote backend, the asset-reference builder,
-# the Pages build deploy helper) and the static code analyzer `tcab analyze` runs.
+# halves the library holds for it (the asset-reference builder, the Pages build
+# deploy helper) and the static code analyzer `tcab analyze` runs.
 test-cabinet-driver = { path = "../driver" }
-# The R2 client `tcab publish-asset-reference` uploads a reference with. An interim
-# edge onto the artifacts service's crate, until the upload goes through its API.
-test-cabinet-artifacts = { path = "../artifacts" }
 # The backend's HTTP client, from contracts.
 test-cabinet-backend-client = { workspace = true }
 test-cabinet-telemetry = { workspace = true, features = ["otlp"] }
@@ -25,6 +22,9 @@ clap = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
 anyhow = { workspace = true }
+# The HTTP client `tcab publish-asset-reference` writes a reference's frames with,
+# through the edge to the artifacts service's `PUT /public/{key}`.
+reqwest = { workspace = true }
 # Scratch workspace an asset-generation reference is drawn into before its frames
 # are uploaded. The bytes are derived from the committed script, so the directory
 # is discarded once the upload finishes.
