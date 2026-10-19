@@ -175,8 +175,10 @@ PROJECT_SETUP = ".azure/project/setup-steps.yml"
 # The stages the kit's pipeline declares itself, which no project stage may be.
 KIT_STAGES = ("gates", "publish", "mirror")
 # The organisation's arm64 agent pool, where an arm64 build runs natively: the
-# clusters' nodes are arm64 and a hosted agent is x86_64. The superrepo's
-# `.azure/project/jobs.yml` defaults its `arm64Pool` to the same pool.
+# clusters' nodes are arm64 and a hosted agent is x86_64. A project's jobs are
+# handed it as the `arm64Pool` parameter, which the superrepo's
+# `.azure/project/jobs.yml` defaults to the same pool, and an application's
+# image stage builds its arm64 image on it.
 ARM64_POOL = "pool-dev-linux-arm64-wus3-4c-eph-01"
 # The minutes a Rust job may run, and the repositories given longer. A cold
 # gg build compiles every arm's guest and restores its toolchains first, which
@@ -263,7 +265,6 @@ IMAGE_KINDS = frozenset({"application"})
 IMAGE_STAGE = "image"
 IMAGE_BRANCHES = ("master", "staging")
 IMAGE_ARCHITECTURES = ("amd64", "arm64")
-ARM64_POOL = "pool-dev-linux-arm64-wus3-4c-eph-01"
 IMAGE_SCRIPT = "scripts/ci/image.sh"
 MANIFEST_SCRIPT = "scripts/ci/manifest.sh"
 BUILD_CONTEXT_GATE = "build-context"

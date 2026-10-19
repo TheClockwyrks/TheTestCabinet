@@ -358,7 +358,7 @@ stages:
 
   # The application's image, after every gate passed, on master and staging:
   # one job per architecture, then the multi-arch tag. A tag's run builds
-  # none, and the publish and mirror stages wait on the gates alone.
+  # none, and the publish and mirror stages do not wait on the image stage.
 {{ci_image_stage}}
 {% endif %}
 
