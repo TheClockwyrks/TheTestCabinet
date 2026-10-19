@@ -33,9 +33,12 @@ use crate::exec_stream::HARNESS_IDLE_TIMEOUT;
 use crate::execution::{
     ContainerHandle, ContainerRuntime, ExecOutput, OutputSink, OutputStream, RawOutputLine,
 };
-use crate::harness::{AgentHarness, Availability, HarnessInvocation, HarnessOutcome, Usage};
+use crate::harness::{
+    AgentHarness, Availability, HarnessInvocation, HarnessOutcome, PlatformEnd, Usage,
+};
 use crate::metrics::TokenCounts;
 use crate::run_record::HarnessSlug;
+use crate::session_end::{SessionAccount, SessionEnd, platform_end};
 use test_cabinet_contracts::harness::api_key_env;
 
 /// How a harness's per-event token numbers combine across its output stream.
@@ -281,6 +284,49 @@ impl AgentHarness for CliHarness {
             return Err(Error::HarnessHung {
                 slug: self.slug.as_str().to_string(),
                 seconds: HARNESS_IDLE_TIMEOUT.as_secs(),
+            });
+        }
+
+        // Then the sandbox and the exit status, in the order execution.md's
+        // "Attributing an end" sets. A direct session writes no session log, so its
+        // own account is unread and the sandbox and the exit status decide.
+        let sandbox_state = runtime.sandbox_state(container).await;
+        if let Some(error) = platform_end(&SessionEnd {
+            slug: self.slug.as_str(),
+            sandbox: &container.id,
+            sandbox_state: &sandbox_state,
+            account: SessionAccount::Unread,
+            exit_code: output.exit_code,
+        }) {
+            // Not the session's failure, so not an `Err`: the outcome keeps what the
+            // session gathered and the engine records it `infrastructure`.
+            let platform_end = PlatformEnd::from_error(&error);
+            tracing::warn!(
+                harness = self.slug.as_str(),
+                detail = %platform_end.detail,
+                "harness session ended by the platform"
+            );
+            let event = HarnessEvent {
+                timestamp: now_timestamp(),
+                session_id: None,
+                kind: EventKind::Error {
+                    message: platform_end.detail.clone(),
+                    code: None,
+                },
+            };
+            events.emit(&event);
+            let mut translated_events = translated_events;
+            translated_events.push(event);
+            return Ok(HarnessOutcome {
+                usage: parse_usage(&output, self.usage),
+                harness_version: None,
+                reported_cost: parse_reported_cost(&output, self.usage),
+                raw_output,
+                translated_events,
+                gg_summary: None,
+                tool_calls,
+                canceled: false,
+                platform_end: Some(platform_end),
             });
         }
 

@@ -9,11 +9,17 @@
 //! An end the platform caused is `infrastructure`: the run is neither collected nor
 //! validated, and its record keeps the metrics and events gathered so far.
 //!
-//! Each case drives a whole gg run through the engine with every external seam faked: the
-//! container runtime streams a chosen telemetry, exits with a chosen code and reports a
-//! chosen sandbox state. The harness's own ends are driven too, so the attribution is seen
-//! to leave them alone: a breached ceiling (exit `3`) stays `limit_exceeded` and any other
-//! failure with a live pod stays `harness_error`.
+//! A third-party harness is driven through its orchestrator's runner, whose
+//! `tcab-session` wrapper writes a session log inside the container. A session that log
+//! holds without its closing marker was still running when the exec returned, so it is the
+//! platform's end whatever the exit status; a session only the stream leaves open is not,
+//! since the stream can lose its last lines as a session exits.
+//!
+//! Each case drives a whole run through the engine with every external seam faked: the
+//! container runtime streams a chosen output, exits with a chosen code, holds a chosen
+//! session log and reports a chosen sandbox state. The harness's own ends are driven too,
+//! so the attribution is seen to leave them alone: a breached ceiling (gg's exit `3`) stays
+//! `limit_exceeded` and any other failure with a live pod stays `harness_error`.
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -51,13 +57,44 @@ fn session_ended(status: &str) -> String {
     )
 }
 
-/// How a faked gg session ends: the telemetry it streams, the code its exec reports and
-/// the state the runtime reports its sandbox in once the exec has returned.
+/// The usage line the fake third-party harness reports at the end of its session.
+const THIRD_PARTY_USAGE: &str = r#"{"input_tokens":100,"output_tokens":20}"#;
+
+/// The sentinels the `tcab-session` wrapper brackets each session with.
+const SESSION_BEGIN: &str = "__TCAB_SESSION_BEGIN__";
+const SESSION_END: &str = "__TCAB_SESSION_END__";
+
+/// The run user's home the fake runtime reports to the orchestrator.
+const HOME: &str = "/home/runner";
+
+/// How a faked session ends: the harness it runs, the output it streams, the code its
+/// exec reports, the session log a third-party runner left in the container and the
+/// state the runtime reports its sandbox in once the exec has returned.
 #[derive(Clone)]
 struct Ending {
+    slug: HarnessSlug,
     lines: Vec<String>,
     exit_code: i32,
+    /// The session log's contents, or `None` when it cannot be read.
+    session_log: Option<String>,
     sandbox: SandboxState,
+}
+
+/// One third-party session's stdout as the wrapper brackets it: closed with its
+/// sentinel, or cut off before it.
+fn third_party_session(closed: bool) -> Vec<String> {
+    let mut lines = vec![SESSION_BEGIN.to_string(), THIRD_PARTY_USAGE.to_string()];
+    if closed {
+        lines.push(SESSION_END.to_string());
+    }
+    lines
+}
+
+/// The session log the wrapper writes for `lines`.
+fn log_of(lines: &[String]) -> String {
+    let mut log = lines.join("\n");
+    log.push('\n');
+    log
 }
 
 impl Ending {
@@ -65,8 +102,10 @@ impl Ending {
     /// against a sandbox in `sandbox`.
     fn closed(status: &str, exit_code: i32, sandbox: SandboxState) -> Self {
         Self {
+            slug: HarnessSlug::Gg,
             lines: vec![USAGE_LINE.to_string(), session_ended(status)],
             exit_code,
+            session_log: None,
             sandbox,
         }
     }
@@ -74,9 +113,40 @@ impl Ending {
     /// A session that billed one turn and never emitted `session_ended`.
     fn unclosed(exit_code: i32, sandbox: SandboxState) -> Self {
         Self {
+            slug: HarnessSlug::Gg,
             lines: vec![USAGE_LINE.to_string()],
             exit_code,
+            session_log: None,
             sandbox,
+        }
+    }
+
+    /// A third-party session whose stream and session log both hold it as `closed`
+    /// says, exiting `exit_code` against a sandbox in `sandbox`.
+    fn third_party(closed: bool, exit_code: i32, sandbox: SandboxState) -> Self {
+        let lines = third_party_session(closed);
+        Self {
+            slug: HarnessSlug::Claude,
+            session_log: Some(log_of(&lines)),
+            lines,
+            exit_code,
+            sandbox,
+        }
+    }
+
+    /// The same session, with a session log that cannot be read back.
+    fn without_log(self) -> Self {
+        Self {
+            session_log: None,
+            ..self
+        }
+    }
+
+    /// The same session, its log holding `lines` rather than what was streamed.
+    fn with_log(self, lines: &[String]) -> Self {
+        Self {
+            session_log: Some(log_of(lines)),
+            ..self
         }
     }
 }
@@ -98,8 +168,37 @@ impl ContainerRuntime for EndingRuntime {
     async fn exec(
         &self,
         _container: &ContainerHandle,
-        _command: &[String],
+        command: &[String],
     ) -> CoreResult<ExecOutput> {
+        if self.ending.slug != HarnessSlug::Gg {
+            let script = command.last().map(String::as_str).unwrap_or_default();
+            // The orchestrator resolves the run user's home, and reads the session log
+            // back once the runner has exited.
+            if script == "printf %s \"$HOME\"" {
+                return Ok(ExecOutput {
+                    exit_code: 0,
+                    stdout: HOME.to_string(),
+                    stderr: String::new(),
+                    idle_timed_out: false,
+                });
+            }
+            if script.starts_with("cat ") && script.contains("sessions.log") {
+                return Ok(match &self.ending.session_log {
+                    Some(log) => ExecOutput {
+                        exit_code: 0,
+                        stdout: log.clone(),
+                        stderr: String::new(),
+                        idle_timed_out: false,
+                    },
+                    None => ExecOutput {
+                        exit_code: 1,
+                        stdout: String::new(),
+                        stderr: "cat: sessions.log: No such file or directory".to_string(),
+                        idle_timed_out: false,
+                    },
+                });
+            }
+        }
         Ok(ExecOutput {
             exit_code: 0,
             stdout: "gg 0.0.0-fake".to_string(),
@@ -137,7 +236,9 @@ impl ContainerRuntime for EndingRuntime {
 
 /// The harness the registry answers with. A gg run still resolves its slug's
 /// authentication through the registry, so it authenticates by a subscription the test
-/// supplies and probes as available; its session is never invoked.
+/// supplies and probes as available; its session is never invoked. A third-party run
+/// drives it through the orchestrator's `tcab-session` wrapper, reading its usage off the
+/// session's [`THIRD_PARTY_USAGE`] line.
 struct UnusedHarness;
 
 /// The one credential file the fake subscription declares.
@@ -162,16 +263,23 @@ impl AgentHarness for UnusedHarness {
         Some(SubscriptionSpec { files: FAKE_CREDS })
     }
 
-    fn session_argv(&self, _model_id: &str, _prompt: &str) -> Vec<String> {
-        Vec::new()
+    fn session_argv(&self, _model_id: &str, prompt: &str) -> Vec<String> {
+        vec!["fake-cli".to_string(), prompt.to_string()]
     }
 
     fn event_format(&self) -> EventFormat {
         EventFormat::Generic
     }
 
-    fn parse_session_usage(&self, _output: &ExecOutput) -> (Usage, Option<f64>) {
-        (Usage::default(), None)
+    fn parse_session_usage(&self, output: &ExecOutput) -> (Usage, Option<f64>) {
+        let mut usage = Usage::default();
+        for line in output.stdout.lines() {
+            if let Ok(reported) = serde_json::from_str::<serde_json::Value>(line) {
+                usage.tokens.uncached_input = reported["input_tokens"].as_u64();
+                usage.tokens.output = reported["output_tokens"].as_u64();
+            }
+        }
+        (usage, None)
     }
 
     async fn probe(
@@ -193,7 +301,7 @@ impl AgentHarness for UnusedHarness {
         _invocation: &HarnessInvocation,
         _events: &mut dyn EventSink,
     ) -> CoreResult<HarnessOutcome> {
-        unreachable!("a gg run invokes no third-party harness")
+        unreachable!("a run drives a third-party harness through its orchestrator")
     }
 }
 
@@ -280,8 +388,9 @@ struct Driven {
     out_dir: tempfile::TempDir,
 }
 
-/// Drive a whole gg run of carom v2.1.0 whose session ends as `ending` says.
+/// Drive a whole run of carom v2.1.0 whose session ends as `ending` says.
 async fn drive(ending: Ending) -> Driven {
+    let slug = ending.slug;
     let catalog = TestCaseCatalog::new(
         catalog_root(),
         test_cabinet_driver::engine::built_in_catalog(),
@@ -340,13 +449,14 @@ async fn drive(ending: Ending) -> Driven {
         test_case_slug: test_case.slug.clone(),
         test_case_version: Some(test_case.version.clone()),
         variant: variant.slug.clone(),
-        harness: HarnessSlug::Gg,
+        harness: slug,
         model_id: "fake-model".to_string(),
         orchestrator: OrchestratorSelection::default(),
         engine: EngineSelection::default(),
         max_runtime_override: Some(60),
         container_image: None,
-        gg_capability_set: Some(test_cabinet_driver::gg::GgCapabilitySet::default()),
+        gg_capability_set: (slug == HarnessSlug::Gg)
+            .then(test_cabinet_driver::gg::GgCapabilitySet::default),
         gg_model_windows: Default::default(),
         gg_model_providers: Default::default(),
         gg_model_modalities: Default::default(),
@@ -374,10 +484,22 @@ async fn drive(ending: Ending) -> Driven {
     }
 }
 
-/// Assert `driven` is a run the platform ended: recorded `infrastructure` with a detail
-/// containing every one of `names`, neither collected nor validated, its streamed usage
-/// kept, and the detail on its event stream and in its written record.
+/// The detail every gg platform end opens with.
+const GG_ENDED: &str = "run failed: gg harness session ended by the platform (";
+
+/// The detail every third-party platform end but a lost session opens with.
+const CLAUDE_ENDED: &str = "run failed: claude harness session ended by the platform (";
+
+/// Assert `driven` is a gg run the platform ended; see [`assert_ended`].
 fn assert_platform_end(driven: Driven, names: &[&str]) {
+    assert_ended(driven, GG_ENDED, names);
+}
+
+/// Assert `driven` is a run the platform ended: recorded `infrastructure` with a detail
+/// opening with `prefix` and containing every one of `names`, neither collected nor
+/// validated, its usage kept, and the detail on its event stream and in its written
+/// record.
+fn assert_ended(driven: Driven, prefix: &str, names: &[&str]) {
     let Driven {
         result,
         collected,
@@ -392,10 +514,7 @@ fn assert_platform_end(driven: Driven, names: &[&str]) {
         .detail
         .clone()
         .expect("an infrastructure record names its condition");
-    assert!(
-        detail.starts_with("run failed: gg harness session ended by the platform ("),
-        "unexpected detail {detail:?}",
-    );
+    assert!(detail.starts_with(prefix), "unexpected detail {detail:?}");
     for name in names {
         assert!(detail.contains(name), "{detail:?} does not name {name:?}");
     }
@@ -529,4 +648,133 @@ async fn a_closed_session_with_a_live_pod_is_validated() {
             .any(|event| matches!(&event.kind, EventKind::Error { .. })),
         "a clean run raises no error event",
     );
+}
+
+// --- a third-party harness, driven through its orchestrator -----------------
+
+#[tokio::test]
+async fn a_session_the_log_leaves_open_is_an_infrastructure_end_despite_a_clean_exit() {
+    // The connection carrying the runner's exec was lost while the harness was still
+    // running, and the platform reported the runner as finished.
+    let driven = drive(Ending::third_party(false, 0, SandboxState::Running)).await;
+    assert_ended(
+        driven,
+        "run failed: claude harness session lost before the harness exited (",
+        &["1 of 1 logged sessions unclosed", "exit code 0"],
+    );
+}
+
+#[tokio::test]
+async fn a_session_the_log_leaves_open_is_an_infrastructure_end_at_a_failing_exit() {
+    // The log is believed over the exit status, whichever it reads.
+    let driven = drive(Ending::third_party(false, 1, SandboxState::Running)).await;
+    assert_ended(
+        driven,
+        "run failed: claude harness session lost before the harness exited (",
+        &["1 of 1 logged sessions unclosed", "exit code 1"],
+    );
+}
+
+#[tokio::test]
+async fn a_session_only_the_stream_leaves_open_is_the_harnesss_own_end() {
+    // The stream lost its closing sentinel, but the log closed the session: the
+    // harness exited, and the run is collected and validated.
+    let stream = third_party_session(false);
+    let driven = drive(
+        Ending {
+            lines: stream,
+            ..Ending::third_party(true, 0, SandboxState::Running)
+        }
+        .with_log(&third_party_session(true)),
+    )
+    .await;
+    let record = driven.result.expect("a clean run is recorded");
+    assert_ne!(record.status.state, RunState::Infrastructure);
+    assert!(driven.collected && driven.validated);
+    assert_eq!(record.metrics.tokens.uncached_input, Some(100));
+}
+
+#[tokio::test]
+async fn an_unread_log_leaves_an_open_stream_session_a_warning() {
+    // With the log unreadable, the stream is no account of the session's end: the
+    // sandbox and the exit status decide, and here both are the harness's own.
+    let driven = drive(Ending::third_party(false, 0, SandboxState::Running).without_log()).await;
+    let record = driven.result.expect("the run stands");
+    assert_ne!(record.status.state, RunState::Infrastructure);
+    assert!(driven.collected && driven.validated);
+    assert!(
+        driven
+            .events
+            .iter()
+            .any(|event| matches!(&event.kind, EventKind::Warning { message, .. } if message.contains("incomplete"))),
+        "the incomplete usage is a warning on the run's events",
+    );
+}
+
+#[tokio::test]
+async fn a_deleted_third_party_sandbox_is_an_infrastructure_end_at_exit_0_and_1() {
+    for code in [0, 1] {
+        // A deleted pod's session log cannot be read back.
+        let driven = drive(Ending::third_party(true, code, gone()).without_log()).await;
+        assert_ended(
+            driven,
+            CLAUDE_ENDED,
+            &[SANDBOX, "gone: deleted", &format!("exit code {code}")],
+        );
+    }
+}
+
+#[tokio::test]
+async fn a_disrupted_third_party_sandbox_is_an_infrastructure_end_at_exit_0_and_1() {
+    for code in [0, 1] {
+        let driven = drive(Ending::third_party(true, code, disrupted())).await;
+        assert_ended(
+            driven,
+            CLAUDE_ENDED,
+            &[
+                SANDBOX,
+                "disrupted: EvictionByEvictionAPI",
+                &format!("exit code {code}"),
+            ],
+        );
+    }
+}
+
+#[tokio::test]
+async fn a_third_party_runner_killed_by_a_signal_is_an_infrastructure_end() {
+    for (code, signal) in [(137, "signal 9"), (143, "signal 15")] {
+        let driven = drive(Ending::third_party(true, code, SandboxState::Running)).await;
+        assert_ended(
+            driven,
+            CLAUDE_ENDED,
+            &[signal, &format!("exit code {code}")],
+        );
+    }
+}
+
+#[tokio::test]
+async fn a_third_party_exec_with_no_status_is_an_infrastructure_end() {
+    let driven = drive(Ending::third_party(true, -1, SandboxState::Running)).await;
+    assert_ended(driven, CLAUDE_ENDED, &["exec stream lost", "exit code -1"]);
+}
+
+#[tokio::test]
+async fn a_third_party_failure_with_a_live_pod_stays_harness_error() {
+    let driven = drive(Ending::third_party(true, 1, SandboxState::Running)).await;
+    let error = driven
+        .result
+        .expect_err("a harness failure fails the session");
+    assert_eq!(RunState::classify_failure(&error), RunState::HarnessError);
+    assert!(!driven.validated);
+}
+
+#[tokio::test]
+async fn a_closed_third_party_session_with_a_live_pod_is_validated() {
+    let driven = drive(Ending::third_party(true, 0, SandboxState::Running)).await;
+    let record = driven.result.expect("a clean run is recorded");
+    assert_ne!(record.status.state, RunState::Infrastructure);
+    assert!(driven.collected, "a clean run is collected");
+    assert!(driven.validated, "a clean run is validated");
+    assert_eq!(record.metrics.tokens.uncached_input, Some(100));
+    assert_eq!(record.metrics.tokens.output, Some(20));
 }

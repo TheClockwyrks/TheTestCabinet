@@ -34,9 +34,10 @@ use crate::error::{Error, Result};
 use crate::event::EventSink;
 use crate::exec_stream::HARNESS_IDLE_TIMEOUT;
 use crate::execution::{ContainerHandle, ContainerRuntime, ExecOutput, OutputStream};
-use crate::harness::{AgentHarness, HarnessOutcome, Usage};
+use crate::harness::{AgentHarness, HarnessOutcome, PlatformEnd, Usage};
 use crate::metrics::TokenCounts;
 use crate::run_record::HarnessSlug;
+use crate::session_end::{SessionAccount, SessionEnd, platform_end};
 
 /// The manifest file name for an orchestrator directory (built-in or external).
 const MANIFEST_FILE: &str = "orchestrator.toml";
@@ -563,6 +564,13 @@ fn runner_env(
 /// still used to translate events live, and as the fallback if the log cannot be
 /// read.
 ///
+/// The runner's end is attributed in the order [Attributing an
+/// end](https://docs.testcabinet.ai/components/driver/execution/#attributing-an-end)
+/// sets: the idle watchdog (`hung`) and the deadline (`timed_out`) first, then the
+/// sandbox, the session log and the exit status through [`platform_end`]. An end
+/// the platform caused returns `Ok` with [`HarnessOutcome::platform_end`] set and
+/// the usage gathered so far; any other non-zero exit is the harness's own error.
+///
 /// The caller bounds this whole future by the run's maximum runtime, exactly as a
 /// single invocation is bounded.
 #[allow(clippy::too_many_arguments)]
@@ -659,25 +667,127 @@ pub(crate) async fn drive_orchestrator(
         });
     }
 
-    if streamed.output.exit_code != 0 {
-        // A runner that exits non-zero at or past the run's deadline was killed
-        // because the maximum runtime elapsed — the container tears the harness
-        // down when time runs out, so the runner reports a signal/non-zero exit
-        // rather than the in-process runtime cap firing. Attribute it as the
-        // timeout it is (mirroring the cap's own `RunTimedOut`), so the run is
-        // classified and published as `TimedOut` — the model's work up to the cap
-        // is kept — instead of being misreported as a harness error. No harness
-        // -error event is emitted, matching the in-process cap, which surfaces the
-        // timeout through the run's terminal state alone.
-        if now_epoch() >= deadline_epoch {
-            return Err(Error::RunTimedOut {
-                slug: slug.as_str().to_string(),
-                seconds: max_runtime_seconds,
-            });
+    let exit_code = streamed.output.exit_code;
+
+    // A runner that exits non-zero at or past the run's deadline was killed
+    // because the maximum runtime elapsed — the container tears the harness down
+    // when time runs out, so the runner reports a signal/non-zero exit rather than
+    // the in-process runtime cap firing. Attribute it as the timeout it is
+    // (mirroring the cap's own `RunTimedOut`), so the run is classified and
+    // published as `TimedOut` — the model's work up to the cap is kept — instead of
+    // being misreported as a harness error or as the platform's end. The runtime
+    // limits are applied before anything else is read of the session's end. No
+    // harness-error event is emitted, matching the in-process cap, which surfaces
+    // the timeout through the run's terminal state alone.
+    if exit_code != 0 && now_epoch() >= deadline_epoch {
+        return Err(Error::RunTimedOut {
+            slug: slug.as_str().to_string(),
+            seconds: max_runtime_seconds,
+        });
+    }
+
+    // The sandbox is read next, then the session's own account of its end (the
+    // session log), and only then the exit status: the platform can report a
+    // session it ended itself as the harness's own exit.
+    let sandbox_state = runtime.sandbox_state(container).await;
+
+    // Segment the sessions back out and sum each session's usage. For a single
+    // session (one-shot) there is exactly one segment, whose extracted usage
+    // equals what a direct `invoke` produces.
+    //
+    // Prefer the log the wrapper wrote inside the container: it is not subject to
+    // the exec stream losing its tail as the runner exits, which is what silently
+    // costs a run its whole usage. The streamed copy stands in when the log could
+    // not be read at all. The log is read before the exit status is judged, since
+    // it is the session's own account of how it ended.
+    let streamed_segments = segment_sessions(&streamed.raw_output);
+    let streamed_complete = streamed_segments.iter().filter(|s| s.terminated).count();
+    let session_log = read_session_log(runtime, container, &session_log_path).await;
+    let read_from_log = session_log.is_some();
+    let (segments, source) = match session_log {
+        Some(log) => (segment_session_log(&log), "container session log"),
+        None => (streamed_segments, "streamed harness output"),
+    };
+    let truncated = segments.iter().filter(|s| !s.terminated).count();
+
+    let mut tokens = TokenCounts::default();
+    let mut reported_cost: Option<f64> = None;
+    for segment in &segments {
+        let (usage, cost) = harness.parse_session_usage(&segment.as_exec_output());
+        tokens = add_tokens(tokens, usage.tokens);
+        if let Some(cost) = cost {
+            reported_cost = Some(reported_cost.unwrap_or(0.0) + cost);
         }
+    }
+
+    // The wrapper appends a session's closing sentinel to the log after the
+    // harness exits, whatever its status, and the log does not travel over the
+    // exec stream. A session the log holds without that sentinel is therefore one
+    // whose harness was still running when the runner's exec returned: the
+    // connection carrying the exec was lost and the platform reported the runner
+    // as finished. The log is believed over that exit status. A stream read in the
+    // log's place is no such account (the stream can lose its last lines as a
+    // session exits), so it leaves the end to the sandbox and the exit status.
+    let account = if read_from_log {
+        SessionAccount::SessionLog {
+            unfinished: truncated,
+            total: segments.len(),
+        }
+    } else {
+        SessionAccount::Unread
+    };
+    let mut translated_events = streamed.translated_events;
+    if let Some(error) = platform_end(&SessionEnd {
+        slug: slug.as_str(),
+        sandbox: &container.id,
+        sandbox_state: &sandbox_state,
+        account,
+        exit_code,
+    }) {
+        // A platform end is not the session's failure, so it is not an `Err`: the
+        // run keeps the usage, cost and telemetry gathered so far, and the engine
+        // records it `infrastructure` without collecting or validating the tree,
+        // which holds a half-written build rather than the model's result. The
+        // detail goes onto the run's event stream too, where an operator reading
+        // the feed meets it.
+        let platform_end = PlatformEnd::from_error(&error);
+        tracing::warn!(
+            harness = slug.as_str(),
+            orchestrator = orchestrator.slug(),
+            exit_code,
+            truncated_sessions = truncated,
+            total_sessions = segments.len(),
+            usage_source = source,
+            complete_sessions_in_stream = streamed_complete,
+            detail = %platform_end.detail,
+            "harness session ended by the platform"
+        );
+        let event = crate::event::HarnessEvent {
+            timestamp: now_timestamp(),
+            session_id: None,
+            kind: crate::event::EventKind::Error {
+                message: platform_end.detail.clone(),
+                code: None,
+            },
+        };
+        events.emit(&event);
+        translated_events.push(event);
+        return Ok(HarnessOutcome {
+            usage: Usage { tokens },
+            harness_version: None,
+            reported_cost,
+            raw_output: streamed.raw_output,
+            translated_events,
+            gg_summary: None,
+            tool_calls: streamed.tool_calls,
+            canceled: false,
+            platform_end: Some(platform_end),
+        });
+    }
+
+    if exit_code != 0 {
         let detail = format!(
-            "code {} from orchestrator `{}`'s runner",
-            streamed.output.exit_code,
+            "code {exit_code} from orchestrator `{}`'s runner",
             orchestrator.slug(),
         );
         events.emit(&crate::event::HarnessEvent {
@@ -694,39 +804,15 @@ pub(crate) async fn drive_orchestrator(
         });
     }
 
-    // Segment the sessions back out and sum each session's usage. For a single
-    // session (one-shot) there is exactly one segment, whose extracted usage
-    // equals what a direct `invoke` produces.
-    //
-    // Prefer the log the wrapper wrote inside the container: it is not subject to
-    // the exec stream losing its tail as the runner exits, which is what silently
-    // costs a run its whole usage. The streamed copy stands in when the log could
-    // not be read at all.
-    let streamed_segments = segment_sessions(&streamed.raw_output);
-    let streamed_complete = streamed_segments.iter().filter(|s| s.terminated).count();
-    let (segments, source) = match read_session_log(runtime, container, &session_log_path).await {
-        Some(log) => (segment_session_log(&log), "container session log"),
-        None => (streamed_segments, "streamed harness output"),
-    };
-
-    let mut tokens = TokenCounts::default();
-    let mut reported_cost: Option<f64> = None;
-    for segment in &segments {
-        let (usage, cost) = harness.parse_session_usage(&segment.as_exec_output());
-        tokens = add_tokens(tokens, usage.tokens);
-        if let Some(cost) = cost {
-            reported_cost = Some(reported_cost.unwrap_or(0.0) + cost);
-        }
-    }
-
-    // A session with no closing sentinel in the source we read lost the tail of
-    // its output, and with it whatever usage the harness reports at the end of a
-    // session. The run itself is sound — the harness exited cleanly and its work is
-    // on disk — so this is not a failure, but the metrics are incomplete and must
-    // not be mistaken for a run that genuinely used nothing. Say so on the run's own
-    // event stream, where a reviewer looking at the run will see it, and in the
-    // logs, naming which source was read so the gap is diagnosable after the fact.
-    let truncated = segments.iter().filter(|s| !s.terminated).count();
+    // Past this point an unterminated session can only have come from the streamed
+    // copy, read because the log could not be. The exec stream can close as the
+    // runner exits and lose its last lines, the closing sentinel and the harness's
+    // usage report among them, so a missing sentinel there says nothing about
+    // whether the harness finished. The run stands, but its metrics are incomplete
+    // and must not be mistaken for a run that genuinely used nothing. Say so on the
+    // run's own event stream, where a reviewer looking at the run will see it, and
+    // in the logs, naming which source was read so the gap is diagnosable after the
+    // fact.
     if truncated > 0 || segments.is_empty() {
         let message = format!(
             "recorded token usage is incomplete: {truncated} of {} harness sessions read \
@@ -757,7 +843,7 @@ pub(crate) async fn drive_orchestrator(
         harness_version: None,
         reported_cost,
         raw_output: streamed.raw_output,
-        translated_events: streamed.translated_events,
+        translated_events,
         // A third-party harness session emits no gg session summary.
         gg_summary: None,
         // The tool-call tally is accumulated across the whole (possibly
