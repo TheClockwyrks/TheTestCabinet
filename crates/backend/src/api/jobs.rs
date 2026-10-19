@@ -58,7 +58,9 @@ pub use test_cabinet_contracts::job_api::StreamTopicsBody;
 use test_cabinet_entities::job;
 
 use crate::auth::{Person, ServiceAuth, bearer_token, token_matches};
-use crate::db::{CANCELABLE_ACTIVE_STATES, CANCELABLE_WAITING_STATES, JobCancelFilter, JobOrigin};
+use crate::db::{
+    CANCELABLE_ACTIVE_STATES, CANCELABLE_WAITING_STATES, JobCancelFilter, JobOrigin, WithdrawnRetry,
+};
 use crate::error::ApiError;
 use crate::relay::{JobSummary, Notification, RunEvent, StreamItem, StreamMessage};
 
@@ -809,7 +811,7 @@ pub(super) fn build_new_job(
 }
 
 /// `GET /jobs/active` — the runs still in flight (queued, pending, dispatched,
-/// starting, or running), each described by the identity captured at enqueue. The
+/// starting, running, or storing), each described by the identity captured at enqueue. The
 /// console seeds its in-progress list from this so a run it is watching survives a
 /// reload — including runs held back (`pending`) or still spinning up (`starting`).
 pub async fn active(State(state): State<AppState>) -> Result<Json<Vec<ActiveJobOut>>, ApiError> {
@@ -847,7 +849,7 @@ pub async fn status(
 /// records who *launched* it (`job.user_id`), not who stopped it.
 ///
 /// A job still in a non-terminal state (`queued`, `pending`, `dispatched`,
-/// `starting`, or `running`) is atomically moved to the terminal `canceled` state
+/// `starting`, `running`, or `storing`) is atomically moved to the terminal `canceled` state
 /// and its live stream is closed,
 /// so every watching console's monitor reflects the end at once. The
 /// [driver](crate) polls its own job's state while it runs, so it observes the
@@ -959,7 +961,7 @@ pub async fn cancel_waiting(
 }
 
 /// `POST /jobs/cancel-active` — cancel every run that is already executing
-/// (`dispatched`, `starting`, or `running`), whoever launched it. Takes a person's
+/// (`dispatched`, `starting`, `running`, or `storing`), whoever launched it. Takes a person's
 /// assertion, the same gate as the other job mutations.
 ///
 /// This is the Runs page's **"Kill active"** control. Unlike [`cancel_waiting`] it
@@ -1238,14 +1240,29 @@ pub async fn ingest_preview(
 /// by the per-job token.
 ///
 /// `starting` records that the driver pod is up and running the pre-run setup;
-/// `running` records that execution began. `succeeded` carries the produced
+/// `running` records that execution began. `storing` is the driver's held report: it
+/// carries the finished run's record (and the failure detail when the run failed), which
+/// is stored on the job's row before the report is answered, a repeat replacing it, so a
+/// driver lost from then on leaves a run the backend finishes from that record (see
+/// [`report_lost`]). `succeeded` carries the produced
 /// [`RunRecord`] — persisted to the `run` store **regardless of outcome**
 /// (completed, unevaluable, or a model failure that produced a record), using the
 /// events the relay accumulated as its recorded stream, so nothing the ephemeral
 /// driver produced is lost. `failed` records a terminal infrastructure/setup
 /// failure with a specific diagnostic reason; the failure record it produced (if
 /// any) is retained too. A terminal update closes the live stream and fires a
-/// completion notification.
+/// completion notification. A `failed` report with no record on a job that holds a
+/// record is the dispatcher's report of a dead driver, presented with the per-job
+/// token: it is treated as [`report_lost`] treats a lost job.
+///
+/// Every terminal report is idempotent by job. One repeated for a job already in the
+/// state it reports answers `204` and changes nothing about the job (its record is
+/// stored again, which only matters to [automatic publishing](auto_publish_reported_run)). One that reaches a job the
+/// dispatcher reported lost supersedes the lost outcome: the run is recorded from it,
+/// and the automatic retry the lost outcome enqueued is withdrawn (deleted while it
+/// still waits, canceled once claimed). A terminal report also carries
+/// `artifactsStored`, recorded on the run when present and left as it is when absent,
+/// and may carry `storeFault`, which is logged whatever state the job is in.
 ///
 /// `canceled` is the driver acknowledging an operator's kill: the job is already
 /// terminal, so this only persists the partial record the driver built (with the
@@ -1268,17 +1285,22 @@ pub async fn update_status(
 }
 
 /// `POST /jobs/{id}/lost` — the dispatcher reports a job whose driver is gone without
-/// having reported: the job is `dispatched`, `starting` or `running`, and the cluster has
-/// had no live driver `Job` for it for a while (it failed, completed without a terminal
-/// report reaching the backend, or no longer exists). Requires the service token, since
-/// a dispatcher that restarted holds no per-job token for the jobs an earlier process
-/// dispatched.
+/// having reported: the job is `dispatched`, `starting`, `running` or `storing`, and the
+/// cluster has had no live driver `Job` for it for a while (it failed, completed without
+/// a terminal report reaching the backend, or no longer exists). Requires the service
+/// token, since a dispatcher that restarted holds no per-job token for the jobs an
+/// earlier process dispatched.
 ///
 /// The body is a `failed` [`StatusUpdate`] with no record; its detail says what the
-/// dispatcher found. It lands exactly as a driver's own `failed` report would, automatic
-/// retry and coverage feed included. A job in any other state is left alone — a queued
-/// or pending job has no driver to lose, and a terminal one has already reported — and
-/// the answer is `204` either way, so a report racing the driver's own is harmless.
+/// dispatcher found. A job that holds a record (its driver's held `storing` report
+/// landed) is finished from it, with the state that record carries, and no retry is
+/// enqueued. One that holds none lands exactly as a driver's own `failed` report would,
+/// as `infrastructure`, automatic retry and coverage feed included. Either way the job
+/// is marked lost, so a terminal report that reaches the backend afterwards supersedes
+/// the lost outcome (see [`update_status`]). A job in any other state is left alone — a
+/// queued or pending job has no driver to lose, and a terminal one has already
+/// reported — and the answer is `204` either way, so a report racing the driver's own is
+/// harmless.
 #[tracing::instrument(name = "jobs.lost", skip(state, _service, update), fields(job.id = %id), err(Debug))]
 pub async fn report_lost(
     State(state): State<AppState>,
@@ -1305,11 +1327,169 @@ pub async fn report_lost(
         detail = update.detail.as_deref().unwrap_or(""),
         "the dispatcher reported a job whose driver is gone"
     );
+    state
+        .db
+        .mark_job_lost(&id, &now_rfc3339()?)
+        .await
+        .map_err(ApiError::from)?;
+    if let Some(held) = held_record_of(&job) {
+        return Box::pin(finish_from_held(&state, &id, &job, held)).await;
+    }
     apply_status(&state, &id, job, update).await
 }
 
-/// The job states a driver exists for: what [`report_lost`] may fail.
-const DRIVEN_STATES: [&str; 3] = ["dispatched", "starting", "running"];
+/// The job states a driver exists for: what [`report_lost`] may fail, and what a
+/// `storing` report may move to `storing`.
+const DRIVEN_STATES: [&str; 4] = ["dispatched", "starting", "running", "storing"];
+
+/// The record `job` holds from its driver's `storing` report, or `None` when it holds
+/// none. A held record that no longer decodes is logged and treated as none: the job
+/// then takes the path of a job that never held one, which loses the run but not the
+/// job.
+fn held_record_of(job: &job::Model) -> Option<RunRecord> {
+    let json = job.held_record.as_deref()?;
+    match serde_json::from_str(json) {
+        Ok(record) => Some(record),
+        Err(err) => {
+            tracing::error!(
+                job_id = %job.id,
+                error = %err,
+                "the job's held record does not decode; finishing it as if it held none"
+            );
+            None
+        }
+    }
+}
+
+/// Finish `job`, whose driver is gone, from the record it held: the run is recorded
+/// from `record`, the job takes the state a terminal report carrying it would have
+/// given it, and no retry is enqueued.
+///
+/// A record held with a failure detail is one the driver would have reported `failed`,
+/// so the job fails with that detail; any other is one it would have reported
+/// `succeeded`, which lands as [`succeeded_job_outcome`] decides. The completion
+/// notification, automatic publishing and the coverage feed follow as they do for the
+/// driver's own report.
+async fn finish_from_held(
+    state: &AppState,
+    id: &str,
+    job: &job::Model,
+    record: RunRecord,
+) -> Result<StatusCode, ApiError> {
+    let now = now_rfc3339()?;
+    let record_id = persist_record(state, id, &record).await?;
+    let (job_state, detail) = match job.held_detail.as_deref() {
+        Some(detail) => (JobState::Failed, Some(detail)),
+        None => match succeeded_job_outcome(&record) {
+            (JobState::Failed, detail) => (JobState::Failed, Some(detail.unwrap_or("run failed"))),
+            _ => (JobState::Succeeded, None),
+        },
+    };
+    let state_name = if job_state == JobState::Failed {
+        "failed"
+    } else {
+        "succeeded"
+    };
+    state
+        .db
+        .set_job_state(id, state_name, &now, detail, Some(&record_id))
+        .await
+        .map_err(ApiError::from)?;
+    tracing::info!(
+        job_id = %id,
+        record_id = %record_id,
+        job_state = state_name,
+        "finished a job whose driver is gone from the record it held"
+    );
+    let notification = match detail {
+        Some(detail) => Notification::failed(id, job_summary(job), detail, Some(&record_id)),
+        None => Notification::completed(id, job_summary(job), &record_id),
+    };
+    finish_and_notify(
+        state,
+        RunEvent::finished(id, job_summary(job), job_state, Some(&record_id), detail),
+        notification,
+    );
+    auto_publish_reported_run(state, Some(&record_id), false).await;
+    spawn_coverage_feed(state, job);
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// Answer a terminal report repeated for a job already in the state it reports: the
+/// job keeps its state, and no notification, retry or coverage feed follows.
+///
+/// The record it carries is the record already stored, and storing it again is what
+/// lets [automatic publishing](auto_publish_reported_run) publish a run whose case
+/// version the backend did not hold when the first report stored it; for any other
+/// run the store is left as it was.
+async fn store_repeated_record(
+    state: &AppState,
+    id: &str,
+    job: &job::Model,
+    update: &StatusUpdate,
+) -> Result<StatusCode, ApiError> {
+    let record_id = persist_produced(state, id, update.record.as_ref()).await?;
+    record_artifacts_stored(state, record_id.as_deref(), update.artifacts_stored).await?;
+    auto_publish_reported_run(state, record_id.as_deref(), job.retried_by.is_some()).await;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// The job state a terminal report would leave its job in: `failed` for a `failed`
+/// report, and what [`succeeded_job_outcome`] decides for a `succeeded` one. `None`
+/// for a report that is not terminal, or a `succeeded` one with no record (refused
+/// later).
+fn reported_terminal_state(update: &StatusUpdate) -> Option<JobState> {
+    match update.state {
+        DriverState::Failed => Some(JobState::Failed),
+        DriverState::Succeeded => update
+            .record
+            .as_ref()
+            .map(|record| succeeded_job_outcome(record).0),
+        _ => None,
+    }
+}
+
+/// Withdraw the automatic retry the lost outcome of job `id` enqueued, now that a
+/// terminal report superseded it, and end the retry's run on every console showing it.
+/// Returns whether a retry was withdrawn.
+async fn withdraw_lost_retry(state: &AppState, id: &str) -> Result<bool, ApiError> {
+    let detail = "withdrawn: the attempt it retried reported its own result";
+    let withdrawn = state
+        .db
+        .withdraw_retry(id, &now_rfc3339()?, detail)
+        .await
+        .map_err(ApiError::from)?;
+    let retry = match withdrawn {
+        Some(WithdrawnRetry::Deleted(retry) | WithdrawnRetry::Canceled(retry)) => retry,
+        Some(WithdrawnRetry::Finished(retry)) => {
+            tracing::warn!(
+                job_id = %id,
+                retry_job = %retry.id,
+                "a terminal report superseded a lost outcome whose retry already finished; \
+                 the retry stands"
+            );
+            return Ok(false);
+        }
+        None => return Ok(false),
+    };
+    tracing::info!(
+        job_id = %id,
+        retry_job = %retry.id,
+        retry_state = %retry.state,
+        "withdrew the retry of a lost job whose terminal report arrived"
+    );
+    finish_run(
+        state,
+        RunEvent::finished(
+            &retry.id,
+            job_summary(&retry),
+            JobState::Canceled,
+            None,
+            Some(detail),
+        ),
+    );
+    Ok(true)
+}
 
 /// Apply a status update to `job`, once whoever sent it is authorized: the driver itself
 /// ([`update_status`]) or the dispatcher reporting it lost ([`report_lost`]).
@@ -1320,6 +1500,17 @@ async fn apply_status(
     update: StatusUpdate,
 ) -> Result<StatusCode, ApiError> {
     let id = id.to_string();
+
+    // A store fault is evidence about the artifacts service, read whatever state the
+    // job is in, so it is logged before any report is discarded.
+    if let Some(fault) = update.store_fault.as_deref() {
+        tracing::warn!(
+            job_id = %id,
+            driver_state = ?update.state,
+            store_fault = fault,
+            "the driver reported a fault of the artifacts service"
+        );
+    }
 
     // A canceled job is terminal. Ignore any status the in-flight driver posts
     // before it notices the cancellation, so a late `running`/`succeeded`/`failed`
@@ -1341,7 +1532,58 @@ async fn apply_status(
     // The auto-retry decision below keys off it: a retry is considered only the
     // first time a job crosses into a terminal state, so a duplicate or late
     // terminal report from a still-winding-down driver cannot fire a second retry.
-    let already_terminal = JobState::from_db(&job.state).is_terminal();
+    let current = JobState::from_db(&job.state);
+    let already_terminal = current.is_terminal();
+
+    // A terminal report on a job the dispatcher reported lost supersedes the lost
+    // outcome; any other terminal report on a job already in the state it reports is a
+    // repeat whose earlier answer was lost, and changes nothing about the job. A report
+    // with no record on a finished job changes nothing either: it says no more than the
+    // outcome already recorded (a lost one included), and must not overwrite a run.
+    let lost = already_terminal && job.lost_at.is_some();
+    if let Some(target) = reported_terminal_state(&update)
+        && already_terminal
+    {
+        if update.record.is_none() {
+            return Ok(StatusCode::NO_CONTENT);
+        }
+        if !lost && current == target {
+            return Box::pin(store_repeated_record(state, &id, &job, &update)).await;
+        }
+    }
+    let superseding = lost && reported_terminal_state(&update).is_some();
+
+    // A `failed` report with no record on a live job that holds a record is the
+    // dispatcher's report of its dead driver: finish it from the held record, exactly
+    // as a lost job is finished.
+    if matches!(update.state, DriverState::Failed)
+        && update.record.is_none()
+        && !already_terminal
+        && let Some(held) = held_record_of(&job)
+    {
+        tracing::warn!(
+            job_id = %id,
+            detail = update.detail.as_deref().unwrap_or(""),
+            "the dispatcher reported a dead driver whose job holds a record"
+        );
+        state
+            .db
+            .mark_job_lost(&id, &now_rfc3339()?)
+            .await
+            .map_err(ApiError::from)?;
+        return Box::pin(finish_from_held(state, &id, &job, held)).await;
+    }
+
+    // Withdrawn before the report is recorded, so the retry stops as soon as possible
+    // and no launch pass counts it beside the run that replaces it.
+    let withdrew = if superseding {
+        Box::pin(withdraw_lost_retry(state, &id)).await?
+    } else {
+        false
+    };
+    // A superseding report feeds what the job belongs to when it withdrew the retry
+    // that had taken the job's place; the lost outcome fed nothing then.
+    let fed_already = already_terminal && !withdrew;
 
     let now = now_rfc3339()?;
 
@@ -1381,6 +1623,39 @@ async fn apply_status(
             ));
             Ok(StatusCode::NO_CONTENT)
         }
+        DriverState::Storing => {
+            // The held report: the finished run's record, kept on the job's row before
+            // the answer so the run survives its driver. A repeat (one after each failed
+            // upload) replaces it. A job no longer driven — finished, or already lost —
+            // discards it, as a canceled one does above.
+            let record = update.record.as_ref().ok_or_else(|| {
+                ApiError::unprocessable("a storing status must carry the run record")
+            })?;
+            let record_json = serde_json::to_string(record)
+                .map_err(|e| ApiError::internal(format!("serializing the held record: {e}")))?;
+            let Some(held) = state
+                .db
+                .hold_job_record(
+                    &id,
+                    &DRIVEN_STATES,
+                    &record_json,
+                    update.detail.as_deref(),
+                    &now,
+                )
+                .await
+                .map_err(ApiError::from)?
+            else {
+                return Ok(StatusCode::NO_CONTENT);
+            };
+            if current != JobState::Storing {
+                state.relay.notifier().publish_run(RunEvent::state_changed(
+                    &id,
+                    job_summary(&held),
+                    JobState::Storing,
+                ));
+            }
+            Ok(StatusCode::NO_CONTENT)
+        }
         DriverState::Failed => {
             // An infrastructure/setup failure needs a *specific* reason a "run
             // failed" placeholder would hide — "couldn't pull container image",
@@ -1404,11 +1679,15 @@ async fn apply_status(
             )
             .await?;
             let record_id = persist_produced(state, &id, update.record.as_ref()).await?;
+            record_artifacts_stored(state, record_id.as_deref(), update.artifacts_stored).await?;
             state
                 .db
                 .set_job_state(&id, "failed", &now, Some(detail), record_id.as_deref())
                 .await
                 .map_err(ApiError::from)?;
+            if superseding {
+                state.db.clear_job_lost(&id).await.map_err(ApiError::from)?;
+            }
             finish_and_notify(
                 state,
                 RunEvent::finished(
@@ -1421,7 +1700,7 @@ async fn apply_status(
                 Notification::failed(&id, job_summary(&job), detail, record_id.as_deref()),
             );
             auto_publish_reported_run(state, record_id.as_deref(), retried).await;
-            if feeds_coverage(already_terminal, retried) {
+            if feeds_coverage(fed_already, retried) {
                 spawn_coverage_feed(state, &job);
             }
             Ok(StatusCode::NO_CONTENT)
@@ -1445,6 +1724,7 @@ async fn apply_status(
             )
             .await?;
             let record_id = persist_record(state, &id, record).await?;
+            record_artifacts_stored(state, Some(&record_id), update.artifacts_stored).await?;
             // A clean harness exit is `Completed` (evaluable) or `Catastrophic` (the
             // model claimed done but the build won't load) — the record carries
             // which — unless the engine classified the run as the Test Cabinet's own
@@ -1491,8 +1771,11 @@ async fn apply_status(
                     );
                 }
             }
+            if superseding {
+                state.db.clear_job_lost(&id).await.map_err(ApiError::from)?;
+            }
             auto_publish_reported_run(state, Some(&record_id), retried).await;
-            if feeds_coverage(already_terminal, retried) {
+            if feeds_coverage(fed_already, retried) {
                 spawn_coverage_feed(state, &job);
             }
             Ok(StatusCode::NO_CONTENT)
@@ -1516,6 +1799,7 @@ async fn apply_status(
                 ));
             };
             let record_id = persist_record(state, &id, record).await?;
+            record_artifacts_stored(state, Some(&record_id), update.artifacts_stored).await?;
             state
                 .db
                 .attach_canceled_job_record(&id, &record_id, &now)
@@ -1526,15 +1810,34 @@ async fn apply_status(
     }
 }
 
+/// Record on the run `record_id` names whether the artifacts service holds its tree,
+/// as a terminal report's `artifactsStored` says. A report that omits it (a driver
+/// with no artifacts service), or that stored no run, leaves the run as it is.
+async fn record_artifacts_stored(
+    state: &AppState,
+    record_id: Option<&str>,
+    artifacts_stored: Option<bool>,
+) -> Result<(), ApiError> {
+    if let (Some(record_id), Some(stored)) = (record_id, artifacts_stored) {
+        state
+            .db
+            .set_run_artifacts_stored(record_id, stored)
+            .await
+            .map_err(ApiError::from)?;
+    }
+    Ok(())
+}
+
 /// Apply [automatic publishing](super::auto_publish) to the run a terminal status
 /// report just stored: every run reaches the store through such a report, however
 /// it was launched, so this is where a run publishes itself.
 ///
-/// It runs on every terminal report, a repeated one included. A report stores its
-/// record again, which is the only place a run's validator rating is decided, so a
-/// run that was stored unrated and is rated by a later report publishes then. A
-/// run that already has a publish job is passed over, so a repeated report never
-/// enqueues a second.
+/// It runs on every terminal report that stores a record, a repeated one, the one that
+/// supersedes a lost outcome and a finish from a held record included. A report stores
+/// its record again, which is the only place a run's validator rating is decided, so a
+/// run that was stored unrated and is rated by a later report publishes then. A run
+/// that already has a publish job is passed over, so a repeated report never enqueues
+/// a second.
 ///
 /// The attempt a retry replaced is skipped: only the attempt that stands
 /// publishes. Nothing here can fail the report (see
@@ -2325,3 +2628,7 @@ const STREAM_HEARTBEAT: std::time::Duration = std::time::Duration::from_secs(15)
 #[cfg(test)]
 #[path = "jobs.test.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "jobs.storing.test.rs"]
+mod storing_tests;

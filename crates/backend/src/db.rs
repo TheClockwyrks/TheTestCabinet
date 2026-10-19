@@ -58,8 +58,16 @@ use crate::store::{CaseNames, StoredManifest};
 /// list, counts toward coverage, and is cancelable. `queued` and `pending` have no
 /// driver yet (the dispatcher will claim a `queued` one; a `pending` one is held
 /// back because its harness is at its parallelism cap); `dispatched`, `starting`,
-/// and `running` each have a driver Job coming up or executing.
-const IN_FLIGHT_STATES: [&str; 5] = ["queued", "pending", "dispatched", "starting", "running"];
+/// and `running` each have a driver Job coming up or executing, and a `storing` one
+/// has a driver handing its finished run to durable storage.
+const IN_FLIGHT_STATES: [&str; 6] = [
+    "queued",
+    "pending",
+    "dispatched",
+    "starting",
+    "running",
+    "storing",
+];
 
 /// What one id a comparison arm recorded stands for ([`Db::resolve_arm_runs`]).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -108,8 +116,10 @@ fn in_flight_limit_to_column(limit: InFlightLimit) -> i32 {
 
 /// The job states that occupy a **parallelism slot** for their harness: a driver
 /// Job has been (or is being) created for them. Used to enforce a harness's maximum
-/// parallelism — `queued`/`pending` jobs have no driver yet, so they do not count.
-const ACTIVE_SLOT_STATES: [&str; 3] = ["dispatched", "starting", "running"];
+/// parallelism — `queued`/`pending` jobs have no driver yet, so they do not count. A
+/// `storing` job's driver is still alive, uploading the finished run, so it keeps its
+/// slot until its terminal report lands.
+const ACTIVE_SLOT_STATES: [&str; 4] = ["dispatched", "starting", "running", "storing"];
 
 /// The in-flight job states that have **cost nothing yet**: the job is waiting to be
 /// claimed (`queued`) or deliberately held back behind a cap or a same-model game jam
@@ -121,14 +131,14 @@ const ACTIVE_SLOT_STATES: [&str; 3] = ["dispatched", "starting", "running"];
 pub const CANCELABLE_WAITING_STATES: [&str; 2] = ["queued", "pending"];
 
 /// The in-flight job states that are **already spending**: a driver Job exists and is
-/// being created, starting up, or executing, so the tokens for that run are partly or
-/// wholly paid for.
+/// being created, starting up, executing, or storing the finished run, so the tokens
+/// for that run are partly or wholly paid for.
 ///
 /// Cancelling these discards work in progress, which is why the controls that reach
 /// them — `halt all`, the Runs page's "Kill active" — are the rare ones and confirm
 /// first. Same members as `ACTIVE_SLOT_STATES`, different question: that one asks
 /// which jobs hold a parallelism slot, this one asks which are expensive to cancel.
-pub const CANCELABLE_ACTIVE_STATES: [&str; 3] = ["dispatched", "starting", "running"];
+pub const CANCELABLE_ACTIVE_STATES: [&str; 4] = ["dispatched", "starting", "running", "storing"];
 
 /// How long a launch-pass claim on a coverage plan or ladder stays valid before another
 /// caller may take it over.
@@ -654,6 +664,10 @@ impl Db {
             record_readable: Set(true),
             record_format: Set(RUN_RECORD_FORMAT as i32),
             events_json: Set(events_json.map(|s| s.to_string())),
+            // Written only by the terminal report that says it
+            // (`set_run_artifacts_stored`): a first push leaves it `NULL`, and a re-push
+            // leaves what an earlier report recorded.
+            artifacts_stored: NotSet,
             // `NotSet` on both paths: the mutation timestamp is stamped by
             // `touch_run` below, inside this same transaction, so that exactly one
             // place in the store decides its value. The insert therefore lands on
@@ -6511,7 +6525,31 @@ fn new_job_model(new: NewJob, queue_seq: i64) -> job::ActiveModel {
         // `starting`, not by joining the queue.
         started_at: Set(None),
         retried_by: Set(None),
+        held_record: Set(None),
+        held_detail: Set(None),
+        lost_at: Set(None),
     }
+}
+
+/// Clear `parent`'s [`retried_by`](job::Model::retried_by) stamp inside `txn`.
+async fn clear_retried_by(txn: &DatabaseTransaction, parent: &str) -> Result<()> {
+    job::Entity::update_many()
+        .col_expr(job::Column::RetriedBy, Expr::value(Option::<String>::None))
+        .filter(job::Column::Id.eq(parent))
+        .exec(txn)
+        .await?;
+    Ok(())
+}
+
+/// What [`Db::withdraw_retry`] did with the retry a lost outcome enqueued.
+#[derive(Debug, Clone)]
+pub enum WithdrawnRetry {
+    /// The retry was still waiting, and its row was deleted.
+    Deleted(job::Model),
+    /// The retry had been claimed, and was canceled; the canceled row.
+    Canceled(job::Model),
+    /// The retry had already finished, and was left standing.
+    Finished(job::Model),
 }
 
 /// A publish job to enqueue: the minted id and token, and the run it releases. The
@@ -6819,6 +6857,10 @@ impl Db {
         active.state = Set("canceled".to_string());
         active.updated_at = Set(now.to_string());
         active.detail = Set(Some(detail.to_string()));
+        // `canceled` is terminal, so it ends the hold like any other terminal state: a
+        // canceled job is never finished from a held record.
+        active.held_record = Set(None);
+        active.held_detail = Set(None);
         let updated = active.update(&txn).await?;
         txn.commit().await?;
         Ok(Some(updated))
@@ -6860,6 +6902,8 @@ impl Db {
         let mut active = model.into_active_model();
         active.record_id = Set(Some(record_id.to_string()));
         active.updated_at = Set(now.to_string());
+        active.held_record = Set(None);
+        active.held_detail = Set(None);
         let updated = active.update(&txn).await?;
         txn.commit().await?;
         Ok(Some(updated))
@@ -6906,6 +6950,8 @@ impl Db {
             .col_expr(job::Column::State, Expr::value("canceled"))
             .col_expr(job::Column::UpdatedAt, Expr::value(now))
             .col_expr(job::Column::Detail, Expr::value(detail))
+            .col_expr(job::Column::HeldRecord, Expr::value(Option::<String>::None))
+            .col_expr(job::Column::HeldDetail, Expr::value(Option::<String>::None))
             .filter(job::Column::State.is_in(states));
         if let Some(origin) = filter.origin {
             update = update.filter(origin.condition());
@@ -6987,7 +7033,136 @@ impl Db {
         if let Some(record_id) = record_id {
             active.record_id = Set(Some(record_id.to_string()));
         }
+        // A terminal state ends the hold: the run is recorded from here on, so the copy
+        // of its record kept against a lost driver is no longer needed.
+        if matches!(state, "succeeded" | "failed") {
+            active.held_record = Set(None);
+            active.held_detail = Set(None);
+        }
         Ok(Some(active.update(&self.conn()).await?))
+    }
+
+    /// Hold a finished run's record against job `id`: move the job to `storing` and
+    /// store `record_json` and `detail` on its row, replacing whatever an earlier
+    /// `storing` report held. Returns the updated row, or `None` when the job is unknown
+    /// or no longer in one of the `from` states (it was canceled, or already finished).
+    ///
+    /// This is the write behind the driver's held report: the record is in the database
+    /// before the report is answered, so a driver lost from then on leaves a run the
+    /// backend can still finish ([`Self::mark_job_lost`]).
+    pub async fn hold_job_record(
+        &self,
+        id: &str,
+        from: &[&str],
+        record_json: &str,
+        detail: Option<&str>,
+        now: &str,
+    ) -> Result<Option<job::Model>> {
+        let txn = self.conn().begin().await?;
+        let candidate = job::Entity::find_by_id(id.to_string())
+            .filter(job::Column::State.is_in(from.iter().copied()))
+            .one(&txn)
+            .await?;
+        let Some(model) = candidate else {
+            txn.commit().await?;
+            return Ok(None);
+        };
+        let mut active = model.into_active_model();
+        active.state = Set("storing".to_string());
+        active.updated_at = Set(now.to_string());
+        active.held_record = Set(Some(record_json.to_string()));
+        active.held_detail = Set(detail.map(str::to_string));
+        let updated = active.update(&txn).await?;
+        txn.commit().await?;
+        Ok(Some(updated))
+    }
+
+    /// Record that the dispatcher reported job `id` lost, at `now`. A terminal report
+    /// reaching the backend while the mark is set supersedes the lost outcome rather
+    /// than repeating it; [`Self::clear_job_lost`] removes the mark once it has.
+    pub async fn mark_job_lost(&self, id: &str, now: &str) -> Result<()> {
+        job::Entity::update_many()
+            .col_expr(job::Column::LostAt, Expr::value(now))
+            .filter(job::Column::Id.eq(id))
+            .exec(&self.conn())
+            .await?;
+        Ok(())
+    }
+
+    /// Remove job `id`'s lost mark: a terminal report has superseded the lost outcome,
+    /// so a repeat of that report is a repeat and nothing more.
+    pub async fn clear_job_lost(&self, id: &str) -> Result<()> {
+        job::Entity::update_many()
+            .col_expr(job::Column::LostAt, Expr::value(Option::<String>::None))
+            .filter(job::Column::Id.eq(id))
+            .exec(&self.conn())
+            .await?;
+        Ok(())
+    }
+
+    /// Withdraw the automatic retry job `parent` enqueued: delete it while it is still
+    /// waiting (`queued` or `pending`), cancel it with `detail` once it has been claimed,
+    /// and clear `parent`'s [`retried_by`](job::Model::retried_by) either way, in one
+    /// transaction.
+    ///
+    /// A retry that already reached a terminal state is left standing, and so is the
+    /// stamp that points at it: it is a finished run, and withdrawing it now would count
+    /// one launch twice. `None` when `parent` is unknown or enqueued no retry.
+    pub async fn withdraw_retry(
+        &self,
+        parent: &str,
+        now: &str,
+        detail: &str,
+    ) -> Result<Option<WithdrawnRetry>> {
+        let txn = self.conn().begin().await?;
+        let Some(retry_id) = job::Entity::find_by_id(parent.to_string())
+            .one(&txn)
+            .await?
+            .and_then(|job| job.retried_by)
+        else {
+            txn.commit().await?;
+            return Ok(None);
+        };
+        let Some(retry) = job::Entity::find_by_id(retry_id.clone()).one(&txn).await? else {
+            // The retry row is gone (its run was deleted): only the stamp is left.
+            clear_retried_by(&txn, parent).await?;
+            txn.commit().await?;
+            return Ok(None);
+        };
+        let withdrawn = if CANCELABLE_WAITING_STATES.contains(&retry.state.as_str()) {
+            job::Entity::delete_by_id(retry_id).exec(&txn).await?;
+            WithdrawnRetry::Deleted(retry)
+        } else if IN_FLIGHT_STATES.contains(&retry.state.as_str()) {
+            let mut active = retry.into_active_model();
+            active.state = Set("canceled".to_string());
+            active.updated_at = Set(now.to_string());
+            active.detail = Set(Some(detail.to_string()));
+            active.held_record = Set(None);
+            active.held_detail = Set(None);
+            WithdrawnRetry::Canceled(active.update(&txn).await?)
+        } else {
+            txn.commit().await?;
+            return Ok(Some(WithdrawnRetry::Finished(retry)));
+        };
+        clear_retried_by(&txn, parent).await?;
+        txn.commit().await?;
+        Ok(Some(withdrawn))
+    }
+
+    /// Record on run `run_id` whether the artifacts service holds its tree, as the
+    /// driver's terminal report said. A no-op for an unknown run.
+    pub async fn set_run_artifacts_stored(&self, run_id: &str, stored: bool) -> Result<()> {
+        let txn = self.conn().begin().await?;
+        let updated = run::Entity::update_many()
+            .col_expr(run::Column::ArtifactsStored, Expr::value(stored))
+            .filter(run::Column::Id.eq(run_id))
+            .exec(&txn)
+            .await?;
+        if updated.rows_affected > 0 {
+            touch_run(&txn, run_id).await?;
+        }
+        txn.commit().await?;
+        Ok(())
     }
 
     /// Fetch one job by id.

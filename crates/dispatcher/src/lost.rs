@@ -1,19 +1,21 @@
 //! Lost-driver detection: which backend jobs no live driver `Job` is executing.
 //!
 //! The backend believes a driver is executing every job it holds as `dispatched`,
-//! `starting` or `running`. That belief outlives the driver when the driver dies with
-//! no one to report it: the whole machine restarted (a local cluster's node container,
-//! taking every driver pod and the dispatcher down together), or a driver `Job` failed
-//! while no dispatcher held its per-job token, or a driver exited after its final
-//! report failed to reach the backend. Left alone such a job stays in flight for good,
-//! holding its cell, its plan's or dispatch's limit, and its harness's capacity.
+//! `starting`, `running` or `storing`. That belief outlives the driver when the
+//! driver dies with no one to report it: the whole machine restarted (a local
+//! cluster's node container, taking every driver pod and the dispatcher down
+//! together), or a driver `Job` failed while no dispatcher held its per-job token, or
+//! a driver exited after its final report failed to reach the backend. Left alone
+//! such a job stays in flight for good, holding its cell, its plan's or dispatch's
+//! limit, and its harness's capacity.
 //!
 //! The dispatcher therefore compares the two each tick. A driven job with no `Active`
 //! driver `Job` is **missing**; one missing continuously for [`LOST_GRACE`] is
-//! **lost**, and is reported to the backend, which fails it as the driver's own
-//! `failed` report would. The grace covers the moment between a claim and its `Job`
-//! appearing (another dispatcher process mid-rollout, a slow API server) and the
-//! moment between a driver's last report and its `Job` completing.
+//! **lost**, and is reported to the backend, which finishes the run from the record
+//! it holds when the driver handed one over (a `storing` job) and otherwise fails it
+//! as the driver's own `failed` report would. The grace covers the moment between a
+//! claim and its `Job` appearing (another dispatcher process mid-rollout, a slow API
+//! server) and the moment between a driver's last report and its `Job` completing.
 
 use std::collections::{HashMap, HashSet};
 use std::time::{Duration, Instant};

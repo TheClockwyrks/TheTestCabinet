@@ -157,6 +157,27 @@ describe("StopRunsControls", () => {
     await waitFor(() => expect(refreshes()).toBeGreaterThan(1));
   });
 
+  // A run whose driver holds its record while it waits to store the files still has
+  // a driver, so it is an active run to kill, not a waiting one to clear.
+  it("counts a run waiting to store its files as active", async () => {
+    const { cancelActive } = mount([inFlight("run-s", "storing")], 1);
+
+    const kill = await screen.findByRole("button", { name: "Kill active" });
+    expect(kill).toBeEnabled();
+    expect(
+      screen.getByRole("button", { name: "Clear pending" }),
+    ).toBeDisabled();
+
+    fireEvent.click(kill);
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "Kill active" }),
+    );
+    await waitFor(() => {
+      expect(cancelActive).toHaveBeenCalled();
+    });
+  });
+
   // A run cancelled before it ever started has no driver and produces no record,
   // so watching it would poll until the budget expired for nothing.
   it("watches nothing for a sweep of runs that never started", async () => {

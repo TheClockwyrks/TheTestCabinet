@@ -151,6 +151,7 @@ fn run_summary_lifts_the_runs_display_identity() {
         record_readable: true,
         record_format: 1,
         events_json: None,
+        artifacts_stored: None,
         code_analyzer_version: None,
         updated_at: "2026-06-27T00:30:00Z".to_string(),
     };

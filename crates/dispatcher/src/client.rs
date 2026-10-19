@@ -89,6 +89,9 @@ pub enum JobState {
     Starting,
     /// The driver is executing the run.
     Running,
+    /// The run is over and the driver is handing its result to durable storage;
+    /// the backend holds its record. Still driven: the driver can be lost here.
+    Storing,
     /// The run produced a record.
     Succeeded,
     /// The run could not be driven to a record.
@@ -105,7 +108,10 @@ impl JobState {
     /// Whether the backend believes a driver is executing the job: it was claimed and
     /// has not reached a terminal state. Only such a job can lose its driver.
     pub fn is_driven(self) -> bool {
-        matches!(self, Self::Dispatched | Self::Starting | Self::Running)
+        matches!(
+            self,
+            Self::Dispatched | Self::Starting | Self::Running | Self::Storing
+        )
     }
 
     /// Whether the run is over from the backend's perspective. A driver-pod death
@@ -294,8 +300,9 @@ impl BackendClient {
 
     /// Report a job whose driver is gone without having reported
     /// (`POST /jobs/{id}/lost`, service token). `detail` says what the dispatcher found.
-    /// The backend fails the job only while it is still `dispatched`, `starting` or
-    /// `running`, so a report racing the driver's own is harmless.
+    /// The backend finishes the job only while it is still `dispatched`, `starting`,
+    /// `running` or `storing` (from its held record when it holds one), so a report
+    /// racing the driver's own is harmless.
     pub async fn report_lost(
         &self,
         job_id: &str,
@@ -305,6 +312,8 @@ impl BackendClient {
             state: DriverState::Failed,
             record: None,
             detail: Some(detail.into()),
+            artifacts_stored: None,
+            store_fault: None,
         };
         let response = self
             .http
@@ -344,6 +353,8 @@ impl BackendClient {
             state: DriverState::Failed,
             record: None,
             detail: Some(detail.into()),
+            artifacts_stored: None,
+            store_fault: None,
         };
         let response = self
             .http

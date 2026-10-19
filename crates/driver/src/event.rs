@@ -71,6 +71,11 @@ pub trait EventSink: Send {
     /// Handle a single event. Called in the order events are produced, before the
     /// invocation completes.
     fn emit(&mut self, event: &HarnessEvent);
+
+    /// The run reached `stage`. The run engine calls it at each of the seams
+    /// between a run's stages, so a host can name the stage a run was interrupted
+    /// in (see [`crate::sigterm`]). Ignored by default.
+    fn stage(&mut self, _stage: crate::sigterm::Stage) {}
 }
 
 /// An [`EventSink`] that discards every event.

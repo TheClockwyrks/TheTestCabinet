@@ -17,6 +17,7 @@
 //! | `TCAB_DISPATCHER_MAX_PUBLISH_INFLIGHT` | no | The maximum number of non-terminal publish `Job`s the dispatcher keeps in flight (the publish lane's admission cap). Driver `Job`s do not count against it, so a publish never waits behind runs. | `8` |
 //! | `TCAB_DISPATCHER_POLL_INTERVAL_SECONDS` | no | How long to back off after a tick that admitted nothing (both queues empty, or both lanes at their caps) before polling again. | `2` |
 //! | `TCAB_DISPATCHER_JOB_TTL_SECONDS` | no | `ttlSecondsAfterFinished` on each driver `Job`, for automatic cleanup once it terminates. | `300` |
+//! | `TCAB_DISPATCHER_DRIVER_TERMINATION_GRACE_SECONDS` | no | `terminationGracePeriodSeconds` on each driver pod: the time a driver sent `SIGTERM` has to hand its record to the backend and report before it is killed (see the driver's termination handling). A value that is not a whole number of seconds is a configuration error. | `120` |
 //! | `TCAB_DISPATCHER_DRIVER_CPU_REQUEST` / `TCAB_DISPATCHER_DRIVER_MEMORY_REQUEST` | no | CPU/memory **requests** on the driver container. These keep the driver pod out of the `BestEffort` QoS class, and the memory request is the node's reservation for the driver — see [`DEFAULT_DRIVER_CPU_REQUEST`] and [`DEFAULT_DRIVER_MEMORY_REQUEST`]. Set to a blank value to omit them (not advised). | `100m` / `2Gi` |
 //! | `TCAB_DISPATCHER_DRIVER_MEMORY_LIMIT` | no | A memory **limit** on the driver container. **Unset by default, deliberately**: a memory limit is a cgroup ceiling the kernel enforces by `SIGKILL`, and a driver OOM-killed mid-run destroys a run that has already paid for its API calls — see [`DEFAULT_DRIVER_MEMORY_REQUEST`] for why run pods carry a request and no limit. Set it only when a namespace `LimitRange` or quota forces one. | — |
 //! | `TCAB_DISPATCHER_DRIVER_CPU_LIMIT` | no | The CPU **limit** on the driver container, which bounds how wide the post-run toolchain fans out and so how much memory it uses — see [`DEFAULT_DRIVER_CPU_LIMIT`]. Over-limit CPU is throttled, never killed. Set to a blank value to leave the CPU unbounded. | `2` |
@@ -50,6 +51,7 @@
 //! | `TCAB_ARTIFACTS_URL` | The artifact service the driver uploads the produced run tree to before reporting terminal status; unset skips the upload (see the driver's `Config`). |
 //! | `TCAB_REPOS_URL` | The repos service the driver uploads the run's implementation bundle to before reporting terminal status; unset skips the upload (see the driver's `Config`). Forwarded into publish `Job`s as well. |
 //! | `TCAB_ARTIFACT_UPLOAD_WAIT_SECONDS` | How long the driver retries each upload, counted from its first failure (see the driver's `Config`). |
+//! | `TCAB_DRIVER_REPORT_WAIT_SECONDS` | How long the driver retries the held (`storing`) report and the terminal report, counted from each call's first failure (see the driver's `Config`). |
 //! | `OTEL_EXPORTER_OTLP_ENDPOINT` / `OTEL_EXPORTER_OTLP_HEADERS` / `OTEL_EXPORTER_OTLP_PROTOCOL` | Observability: forwarded so each driver `Job` exports its run/driver spans to the same OTLP collector as the services; unset leaves the driver on stdout-only logging. `OTEL_SERVICE_NAME` is **not** forwarded (the driver keeps its own `tcab-driver` name). |
 //! | `TCAB_ENV` | Tags the driver's telemetry with the same `deployment.environment.name` as the rest of the deployment. |
 //!
@@ -180,6 +182,12 @@ pub const DEFAULT_PUBLISHER_CPU_REQUEST: &str = "100m";
 /// publishes.
 pub const DEFAULT_PUBLISHER_MEMORY: &str = "1Gi";
 
+/// The default `terminationGracePeriodSeconds` of a driver pod
+/// (`TCAB_DISPATCHER_DRIVER_TERMINATION_GRACE_SECONDS`): the time a driver sent
+/// `SIGTERM` (a drain, an eviction, a preemption) has to post its held record and
+/// report before the kubelet kills it.
+pub const DEFAULT_DRIVER_TERMINATION_GRACE_SECONDS: u32 = 120;
+
 /// The variables the dispatcher passes through into each driver `Job`'s env
 /// verbatim — sandbox-pod settings (`TCAB_K8S_RUN_*` and siblings), the
 /// run-container image selection, the artifact service URL, and the observability
@@ -221,6 +229,10 @@ pub const PASSTHROUGH_K8S_VARS: &[&str] = &[
     // How long the driver keeps retrying each of those uploads, counted from the
     // upload's first failure. Unset leaves the driver's own default.
     "TCAB_ARTIFACT_UPLOAD_WAIT_SECONDS",
+    // How long the driver keeps retrying the held (`storing`) report and the
+    // terminal report, counted from each call's first failure. The second of the
+    // driver's two finishing deadlines; unset leaves the driver's own default.
+    "TCAB_DRIVER_REPORT_WAIT_SECONDS",
     // Observability: forwarded so each per-run driver Job exports its run/driver
     // spans (service name `tcab-driver`) to the same OTLP collector — the in-cluster
     // Grafana LGTM stack — as the long-lived services, tagged with the same
@@ -413,6 +425,10 @@ pub struct Config {
     pub poll_interval: Duration,
     /// `ttlSecondsAfterFinished` on each driver `Job` (`TCAB_DISPATCHER_JOB_TTL_SECONDS`).
     pub job_ttl_seconds: i32,
+    /// `terminationGracePeriodSeconds` on each driver pod
+    /// (`TCAB_DISPATCHER_DRIVER_TERMINATION_GRACE_SECONDS`, default
+    /// [`DEFAULT_DRIVER_TERMINATION_GRACE_SECONDS`]).
+    pub driver_termination_grace_seconds: u32,
     /// The driver container's resource requests/limits
     /// (`TCAB_DISPATCHER_DRIVER_{CPU,MEMORY}_{REQUEST,LIMIT}`). Requests default to
     /// [`DEFAULT_DRIVER_CPU_REQUEST`] / [`DEFAULT_DRIVER_MEMORY_REQUEST`] so the
@@ -511,6 +527,10 @@ impl Config {
         let max_publish_inflight = parse_or("TCAB_DISPATCHER_MAX_PUBLISH_INFLIGHT", 8usize)?.max(1);
         let poll_seconds = parse_or("TCAB_DISPATCHER_POLL_INTERVAL_SECONDS", 2u64)?;
         let job_ttl_seconds = parse_or("TCAB_DISPATCHER_JOB_TTL_SECONDS", 300i32)?;
+        let driver_termination_grace_seconds = parse_or(
+            "TCAB_DISPATCHER_DRIVER_TERMINATION_GRACE_SECONDS",
+            DEFAULT_DRIVER_TERMINATION_GRACE_SECONDS,
+        )?;
         let driver_resources = DriverResources::from_env();
 
         let driver_secrets = non_empty("TCAB_DISPATCHER_DRIVER_SECRETS")
@@ -572,6 +592,7 @@ impl Config {
             max_publish_inflight,
             poll_interval: Duration::from_secs(poll_seconds),
             job_ttl_seconds,
+            driver_termination_grace_seconds,
             driver_resources,
             driver_secrets,
             driver_subscription_secret,

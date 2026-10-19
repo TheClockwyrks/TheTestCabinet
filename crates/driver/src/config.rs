@@ -16,6 +16,7 @@
 //! | `TCAB_ARTIFACTS_URL` | no | The artifact service the driver uploads the produced run tree to before reporting terminal status. Unset (e.g. a local setup with no artifact service) skips the upload entirely. | — |
 //! | `TCAB_REPOS_URL` | no | The repos service the driver uploads the run's implementation bundle to (`POST /runs/{id}/bundle`) before reporting terminal status. Unset skips the bundle entirely. | — |
 //! | `TCAB_ARTIFACT_UPLOAD_WAIT_SECONDS` | no | How long each upload (the run tree, the bundle) is retried, counted from its first failure. `0` makes a single attempt; a value that is not a whole number of seconds stops the driver before it runs anything. | `21600` (6 hours) |
+//! | `TCAB_DRIVER_REPORT_WAIT_SECONDS` | no | How long the held `storing` report and the terminal report are each retried, counted from the call's first failure. `0` makes a single attempt; a value that is not a whole number of seconds stops the driver before it runs anything. | `21600` (6 hours) |
 //! | `TCAB_DRIVER_SUBSCRIPTION_DIR` | no | A directory the operator-provided subscription Secret is mounted into (one file per credential, keyed by basename). When set, the driver makes subscription auth available by reading these files instead of a host home; unset leaves the run API-key-only, unchanged. | — |
 //!
 //! The driver never *decides* the auth mode — [`resolve_auth_with`] does, from
@@ -101,6 +102,10 @@ pub struct Config {
     /// How long each upload is retried, counted from its first failure
     /// (`TCAB_ARTIFACT_UPLOAD_WAIT_SECONDS`). `Duration::ZERO` makes a single attempt.
     pub upload_wait: Duration,
+    /// How long the held report and the terminal report are each retried, counted
+    /// from the call's first failure (`TCAB_DRIVER_REPORT_WAIT_SECONDS`).
+    /// `Duration::ZERO` makes a single attempt.
+    pub report_wait: Duration,
     /// The directory the operator-provided subscription Secret is mounted into
     /// (`TCAB_DRIVER_SUBSCRIPTION_DIR`), one file per credential keyed by basename.
     /// `None` (no Secret configured) leaves the run API-key-only, unchanged; when
@@ -152,11 +157,10 @@ impl Config {
             non_empty("TCAB_ARTIFACTS_URL").map(|url| url.trim_end_matches('/').to_string());
         let repos_url =
             non_empty("TCAB_REPOS_URL").map(|url| url.trim_end_matches('/').to_string());
-        let upload_wait = parse_wait(
-            "TCAB_ARTIFACT_UPLOAD_WAIT_SECONDS",
-            non_empty("TCAB_ARTIFACT_UPLOAD_WAIT_SECONDS"),
-            crate::bundle::DEFAULT_UPLOAD_WAIT,
-        )?;
+        let FinishingWaits {
+            upload_wait,
+            report_wait,
+        } = FinishingWaits::from_lookup(non_empty)?;
         let subscription_dir = non_empty("TCAB_DRIVER_SUBSCRIPTION_DIR").map(PathBuf::from);
         let mut kubernetes = kubernetes_from_env()?;
         // Stamp the run's job id onto each sandbox pod (via a label) so a
@@ -172,6 +176,7 @@ impl Config {
             artifacts_url,
             repos_url,
             upload_wait,
+            report_wait,
             subscription_dir,
             kubernetes,
         })
@@ -326,6 +331,38 @@ fn kubernetes_from_env() -> Result<KubernetesConfig, ConfigError> {
         // env-only resolver has no job id of its own.
         job_id: None,
     })
+}
+
+/// The two deadlines that bound a run's finishing, each counted from a call's first
+/// failure.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct FinishingWaits {
+    /// Each upload (`TCAB_ARTIFACT_UPLOAD_WAIT_SECONDS`).
+    pub upload_wait: Duration,
+    /// The held report and the terminal report (`TCAB_DRIVER_REPORT_WAIT_SECONDS`).
+    pub report_wait: Duration,
+}
+
+impl FinishingWaits {
+    /// Resolve both waits through `lookup`, which answers a variable's non-blank
+    /// value. An unset variable takes its documented default
+    /// ([`DEFAULT_UPLOAD_WAIT`](crate::retry::DEFAULT_UPLOAD_WAIT),
+    /// [`DEFAULT_REPORT_WAIT`](crate::retry::DEFAULT_REPORT_WAIT)); one that is not
+    /// a whole number of seconds is a configuration error.
+    pub fn from_lookup(lookup: impl Fn(&str) -> Option<String>) -> Result<Self, ConfigError> {
+        Ok(Self {
+            upload_wait: parse_wait(
+                "TCAB_ARTIFACT_UPLOAD_WAIT_SECONDS",
+                lookup("TCAB_ARTIFACT_UPLOAD_WAIT_SECONDS"),
+                crate::retry::DEFAULT_UPLOAD_WAIT,
+            )?,
+            report_wait: parse_wait(
+                "TCAB_DRIVER_REPORT_WAIT_SECONDS",
+                lookup("TCAB_DRIVER_REPORT_WAIT_SECONDS"),
+                crate::retry::DEFAULT_REPORT_WAIT,
+            )?,
+        })
+    }
 }
 
 /// Parse a wait given in whole seconds, `default` when unset. Anything that is not a

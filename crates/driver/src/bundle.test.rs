@@ -306,29 +306,6 @@ fn a_git_file_pointing_elsewhere_is_not_followed() {
 }
 
 #[test]
-fn the_retry_waits_double_to_forty_seconds_then_hold_at_sixty() {
-    let policy = RetryPolicy::default();
-    let delays: Vec<u64> = (1..=7).map(|n| policy.delay_after(n).as_secs()).collect();
-    assert_eq!(delays, vec![5, 10, 20, 40, 60, 60, 60]);
-    assert_eq!(policy.give_up_after, Duration::from_secs(21_600));
-    assert_eq!(policy.stall_limit, Duration::from_secs(300));
-}
-
-#[test]
-fn a_canceled_run_waits_at_most_ten_minutes_or_the_shorter_configured_wait() {
-    assert_eq!(
-        RetryPolicy::default().for_canceled_run().give_up_after,
-        Duration::from_secs(600)
-    );
-    assert_eq!(
-        RetryPolicy::waiting_for(Duration::from_secs(30))
-            .for_canceled_run()
-            .give_up_after,
-        Duration::from_secs(30)
-    );
-}
-
-#[test]
 fn only_a_bad_bundle_or_a_400_413_or_422_is_the_runs_own_failure() {
     let status = |code: u16| BundleError::Status {
         status: reqwest::StatusCode::from_u16(code).expect("status"),
@@ -444,6 +421,7 @@ async fn a_store_condition_is_retried_until_the_bundle_is_stored() {
         work.path(),
         scratch.path(),
         &fast_policy(Duration::from_secs(30)),
+        std::future::pending(),
     )
     .await
     .expect("stored");
@@ -493,6 +471,7 @@ async fn a_runs_own_refusal_ends_the_upload_at_once() {
             work.path(),
             scratch.path(),
             &fast_policy(Duration::from_secs(30)),
+            std::future::pending(),
         )
         .await
         .expect_err("refused");
@@ -513,6 +492,7 @@ async fn a_bundle_that_cannot_be_written_makes_no_request() {
         work.path(),
         scratch.path(),
         &fast_policy(Duration::from_secs(30)),
+        std::future::pending(),
     )
     .await
     .expect_err("not a repository");
@@ -530,6 +510,7 @@ async fn a_zero_wait_makes_a_single_attempt() {
         work.path(),
         scratch.path(),
         &fast_policy(Duration::ZERO),
+        std::future::pending(),
     )
     .await
     .expect_err("not stored");
@@ -548,6 +529,7 @@ async fn the_wait_bounds_the_retries_from_the_first_failure() {
         work.path(),
         scratch.path(),
         &fast_policy(Duration::from_millis(300)),
+        std::future::pending(),
     )
     .await
     .expect_err("never stored");
@@ -577,9 +559,15 @@ async fn an_attempt_with_no_progress_and_no_answer_is_abandoned_as_stalled() {
         delays: vec![Duration::from_millis(10)],
         stall_limit: Duration::from_millis(200),
     };
-    let err = store_bundle(target(&url), work.path(), scratch.path(), &policy)
-        .await
-        .expect_err("stalled");
+    let err = store_bundle(
+        target(&url),
+        work.path(),
+        scratch.path(),
+        &policy,
+        std::future::pending(),
+    )
+    .await
+    .expect_err("stalled");
     assert!(matches!(err, BundleError::Stalled(_)), "{err:?}");
     assert!(!err.is_runs_own());
 }

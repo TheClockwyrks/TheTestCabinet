@@ -29,7 +29,8 @@
 
 // The driver binary's own modules: the backend job client, its configuration, the
 // Kubernetes sandbox runtime, the streaming sinks, the run-tree collection and upload,
-// the implementation bundle, and the cancellation disposition.
+// the implementation bundle, the finishing sequence and its calls' retry policy, and
+// the cancellation disposition.
 pub mod artifacts;
 pub mod bundle;
 pub mod cancel;
@@ -37,8 +38,11 @@ pub mod client;
 pub mod collect;
 pub mod config;
 pub mod creds;
+pub mod finish;
 pub mod kubernetes;
+pub mod retry;
 pub mod run;
+pub mod sigterm;
 pub mod sink;
 
 // The run engine.
@@ -1345,6 +1349,7 @@ where
         // session would make one model's recorded working time a function of how
         // long a registry pull, an `npm install` or a harness download took.
         let session_started = self.clock.now();
+        events.stage(crate::sigterm::Stage::Session);
         let outcome = if let Some(prepared) = prepared_gg {
             let drive = gg_exec::run_gg_session(&self.runtime, &handle, prepared, events, cancel);
             with_runtime_cap(drive, max_runtime, slug).await
@@ -1846,6 +1851,7 @@ where
             _ => None,
         };
 
+        events.stage(crate::sigterm::Stage::Seeding);
         let seeded = self.seed(
             test_case,
             &variant,
@@ -1871,6 +1877,8 @@ where
                     .map(|reference| Path::new("reference").join(reference.file_name())),
             )
             .collect();
+        // The image pull, the sandbox start and its preparation, up to the session.
+        events.stage(crate::sigterm::Stage::SandboxStart);
         let ExecutedSession {
             handle,
             outcome,
@@ -1901,6 +1909,7 @@ where
         // Collect the working tree, then always tear the container down. The
         // teardown is bracketed by system events so the feed shows the run
         // wrapping up rather than going quiet once the harness session ends.
+        events.stage(crate::sigterm::Stage::Collection);
         events.emit(&HarnessEvent::system(
             SystemStage::Teardown,
             SystemStatus::Started,
@@ -1911,6 +1920,7 @@ where
             SystemStage::Teardown,
             SystemStatus::Completed,
         ));
+        events.stage(crate::sigterm::Stage::PostRun);
         let mut artifacts = artifacts?;
 
         // The run's wall clock, frozen here so nothing below can inflate what the

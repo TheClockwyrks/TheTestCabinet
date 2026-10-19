@@ -344,8 +344,8 @@ async fn a_rejected_upload_is_surfaced_as_a_status_error() {
         .await
         .expect_err("a 413 should not be reported as success");
 
-    match err {
-        super::UploadError::Status { status, .. } => {
+    match err.error {
+        Some(super::UploadError::Status { status, .. }) => {
             assert_eq!(status.as_u16(), 413);
         }
         other => panic!("expected a status error, got {other:?}"),
@@ -365,8 +365,8 @@ async fn a_missing_run_tree_fails_before_any_request() {
         .await
         .expect_err("a missing run tree cannot be uploaded");
 
-    match err {
-        super::UploadError::Tar { path, .. } => assert!(path.ends_with("absent-run")),
+    match err.error {
+        Some(super::UploadError::Tar { path, .. }) => assert!(path.ends_with("absent-run")),
         other => panic!("expected a tar error, got {other:?}"),
     }
     server.abort();
