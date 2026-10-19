@@ -78,10 +78,13 @@ readonly SOURCE
 mapfile -t case_sources < <(cd "$SOURCE" && git ls-files -z -- '*Dockerfile' '*.Dockerfile' '*.dockerfile' |
 	xargs -0 grep -hoE '^[[:space:]]*(COPY|ADD)[[:space:]].*' | grep -oE '(^|[[:space:]])test-suites/[^[:space:]]+' |
 	sed 's/^[[:space:]]*//' | sort -u)
-# The submodules the copy carries whole: each one's tracked files and its git
-# entry, never the directory itself, whose build output (a gg checkout's target/
-# runs to gigabytes) the tree does not track. test-suites is copied below for the
-# catalog paths a Dockerfile reads alone.
+# The submodules the copy carries whole: each one's tracked files, never the
+# directory itself, whose build output (a gg checkout's target/ runs to
+# gigabytes) the tree does not track. Nor its `.git`: a submodule's is usually a
+# file naming a gitdir under the superproject's .git/modules/, which the copy
+# does not hold, so each is made a repository of its own in the copy and the
+# copy records it as a gitlink, as the checkout does. test-suites is copied below
+# for the catalog paths a Dockerfile reads alone.
 mapfile -t submodule_dirs < <(cd "$SOURCE" && git ls-files -s | awk '$1 == "160000" && $4 != "test-suites" { print $4 }')
 # One repository holding the tracked tree, indexed once; each case works in a copy of it by hard links.
 base="$tmp/base"
@@ -90,13 +93,21 @@ mkdir -p "$base"
 	git ls-files -z -s -- ':!test-suites' ':!tasks' | awk -v RS='\0' -v ORS='\0' '$1 != "160000" { sub(/^[^\t]*\t/, ""); print }'
 	for sub in "${submodule_dirs[@]}"; do
 		[ -e "$sub/.git" ] || continue
-		printf '%s\0' "$sub/.git"
 		git -C "$sub" ls-files -z | sed -z "s|^|$sub/|"
 	done
 	git -C test-suites ls-files -z -- "${case_sources[@]#test-suites/}" | sed -z 's|^|test-suites/|'
 } | tar --null -T - -cf -) | tar -C "$base" -xf -
+# A directory holding a commit of the files under it, so a superproject records it as a gitlink.
+commit_tree() {
+	git -C "$1" init --quiet
+	git -C "$1" add -A -f
+	git -C "$1" commit --quiet --allow-empty -m fixture
+}
+for sub in "${submodule_dirs[@]}" test-suites; do
+	[ -d "$base/$sub" ] && commit_tree "$base/$sub"
+done
 git -C "$base" init --quiet
-git -C "$base" add -A -f
+git -C "$base" -c advice.addEmbeddedRepo=false add -A -f 2>/dev/null
 
 fresh_repo() {
 	local repo
@@ -112,6 +123,42 @@ repo="$(fresh_repo)"
 out="$(run "$repo")"
 check_equal "the checkout's tree passes" "0" "$?"
 check_contains "and reports what it checked" "Rust pin(s) under containers/ name rust-toolchain.toml's channel" "$out"
+
+# A nested checkout .gitmodules declares, holding a Dockerfile whose COPY could
+# never be satisfied from the superproject's context. Its files are another
+# repository's to judge, so the check must pass over them, whatever shape the
+# checkout's `.git` takes.
+nested_checkout() { # repo path shape
+	local repo="$1" path="$2" shape="$3"
+	mkdir -p "$repo/$path/containers/broken"
+	printf 'FROM scratch\nCOPY no/such/source.sh /tmp/\n' >"$repo/$path/containers/broken/Dockerfile"
+	case "$shape" in
+	dir) commit_tree "$repo/$path" ;;
+	file)
+		mkdir -p "$repo/.git/modules"
+		git init --quiet --separate-git-dir "$repo/.git/modules/$path" "$repo/$path"
+		git -C "$repo/$path" add -A -f
+		git -C "$repo/$path" commit --quiet -m fixture
+		;;
+	broken)
+		# A `.git` file naming a gitdir that is gone: git cannot read the checkout,
+		# and the superproject indexes its files as ordinary ones.
+		printf 'gitdir: ../.git/modules/%s\n' "$path" >"$repo/$path/.git"
+		;;
+	esac
+	own "$repo/.gitmodules"
+	printf '[submodule "%s"]\n\tpath = %s\n\turl = ../%s\n' "$path" "$path" "$path" >>"$repo/.gitmodules"
+	git -C "$repo" -c advice.addEmbeddedRepo=false add -A -f 2>/dev/null
+}
+
+for shape in dir file broken; do
+	echo "--- a nested checkout whose .git is a ${shape/broken/file naming a missing gitdir} ---"
+	repo="$(fresh_repo)"
+	nested_checkout "$repo" "nested-$shape" "$shape"
+	out="$(run "$repo")"
+	check_equal "passes" "0" "$?"
+	check_lacks "never naming the nested checkout's Dockerfile" "nested-$shape/" "$out"
+done
 
 echo "--- an allowlist that drops a source a Dockerfile copies ---"
 repo="$(fresh_repo)"
