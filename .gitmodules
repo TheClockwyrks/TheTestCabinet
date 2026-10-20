@@ -4,59 +4,60 @@
 [submodule "test-suites"]
 	path = test-suites
 	url = ../test-suites
-	branch = master
+	branch = .
 [submodule "contracts"]
 	path = contracts
 	url = ../contracts
-	branch = master
+	branch = .
 [submodule "engines"]
 	path = engines
 	url = ../engines
-	branch = master
+	branch = .
 [submodule "gg"]
 	path = gg
 	url = ../gg
+	branch = .
 [submodule "microservice-repos"]
 	path = microservice-repos
 	url = ../microservice-repos
-	branch = master
+	branch = .
 [submodule "gg.rocks"]
 	path = gg.rocks
 	url = ../gg.rocks
-	branch = master
+	branch = .
 [submodule "tool-model-core"]
 	path = tool-model-core
 	url = ../tool-model-core
-	branch = master
+	branch = .
 [submodule "tool-paint"]
 	path = tool-paint
 	url = ../tool-paint
-	branch = master
+	branch = .
 [submodule "tool-particle"]
 	path = tool-particle
 	url = ../tool-particle
-	branch = master
+	branch = .
 [submodule "tool-sprite"]
 	path = tool-sprite
 	url = ../tool-sprite
-	branch = master
+	branch = .
 [submodule "tool-voxel"]
 	path = tool-voxel
 	url = ../tool-voxel
-	branch = master
+	branch = .
 [submodule "tool-mc"]
 	path = tool-mc
 	url = ../tool-mc
-	branch = master
+	branch = .
 [submodule "tool-sn"]
 	path = tool-sn
 	url = ../tool-sn
-	branch = master
+	branch = .
 [submodule "tool-dc"]
 	path = tool-dc
 	url = ../tool-dc
-	branch = master
+	branch = .
 [submodule "ui-common"]
 	path = ui-common
 	url = ../ui-common
-	branch = master
+	branch = .

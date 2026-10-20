@@ -89,8 +89,13 @@ The devcontainer populates `contracts/`, `engines/`, `gg/`,
 `tool-sprite/`, `tool-voxel/`, `tool-mc/`, `tool-sn/`, `tool-dc/`,
 `test-suites/` and `ui-common/` when it creates a container, `test-suites/`
 because a local backend ingests its suites from that checkout.
-`.gitmodules` sets the tracked branch of every repository to `master`, so
-`git submodule update --remote <name>` moves that checkout to the branch's tip.
+`.gitmodules` gives every repository but `cold-storage` the branch `.`, the
+branch of the superrepo's own name. `git submodule update --remote <name>` on
+the superrepo's `nightly` therefore moves that checkout to the tip of its
+`nightly`, and work landed from a branch of the superrepo lands on each
+submodule's branch of that name. `cold-storage` names no branch, since its
+repository holds `master` alone, and `--remote` moves it to the tip of its
+`master`.
 
 A recursive clone also downloads every submodule at the commit the superrepo
 pins, which for `cold-storage` is about 2 GB of media. `--shallow-submodules`

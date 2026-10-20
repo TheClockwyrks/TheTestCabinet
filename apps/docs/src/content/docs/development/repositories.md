@@ -384,7 +384,8 @@ answers for the gates. `bootstrap.sh` makes the directory a repository on
 npm workspace, writes its `package-lock.json` with
 `npm install --package-lock-only`, writes the gate runner's `ci/uv.lock` with
 `uv lock --project ci`, commits, pushes to the Azure remote of the same name
-and adds the repository as a submodule by the relative URL `../<name>`. The
+and adds the repository as a submodule by the relative URL `../<name>` with
+the branch `.`, the branch of the superrepo's own name. The
 lock files are committed: the render writes none of them, the `typescript`
 gate installs the workspace with `npm ci`, which requires the lock, and the
 first `uv run --project ci` would otherwise leave `ci/uv.lock` untracked, as
