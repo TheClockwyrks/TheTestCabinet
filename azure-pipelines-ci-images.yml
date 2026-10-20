@@ -131,6 +131,9 @@ resources:
     - repository: tool-paint
       type: git
       name: the-test-cabinet/tool-paint
+    - repository: tool-particle
+      type: git
+      name: the-test-cabinet/tool-particle
     - repository: tool-sprite
       type: git
       name: the-test-cabinet/tool-sprite
@@ -169,6 +172,7 @@ jobs:
         - microservice-repos
         - tool-model-core
         - tool-paint
+        - tool-particle
         - tool-sprite
         - test-suites
         - ui-common
@@ -218,6 +222,7 @@ jobs:
         - microservice-repos
         - tool-model-core
         - tool-paint
+        - tool-particle
         - tool-sprite
         - test-suites
         - ui-common
@@ -261,6 +266,7 @@ jobs:
         - microservice-repos
         - tool-model-core
         - tool-paint
+        - tool-particle
         - tool-sprite
         - test-suites
         - ui-common

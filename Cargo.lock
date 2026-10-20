@@ -7066,6 +7066,18 @@ name = "test-cabinet-paint"
 version = "0.0.0"
 
 [[patch.unused]]
+name = "test-cabinet-particle-2d"
+version = "0.0.0"
+
+[[patch.unused]]
+name = "test-cabinet-particle-3d"
+version = "0.0.0"
+
+[[patch.unused]]
+name = "test-cabinet-particle-core"
+version = "0.0.0"
+
+[[patch.unused]]
 name = "api-codegen"
 version = "0.2.2"
 

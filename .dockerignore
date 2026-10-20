@@ -34,8 +34,8 @@
 # submodule's own path, or a path inside it, never a wildcard), and `*` below keeps
 # every submodule this file does not name out of the context, cold-storage's ~2 GB
 # of baseline media included. contracts, engines, gg, microservice-repos,
-# tool-model-core, tool-paint, tool-sprite, test-suites and ui-common are the
-# ones named, below. What a submodule path adds is a precondition: the build
+# tool-model-core, tool-paint, tool-particle, tool-sprite, test-suites and ui-common
+# are the ones named, below. What a submodule path adds is a precondition: the build
 # reads what the checkout it runs in holds, and a checkout leaves every
 # submodule empty until it is initialized. So the image jobs run
 # `scripts/ci/submodules.sh init --build-context`, which
@@ -55,9 +55,9 @@
 # dependencies from its own workspace manifest, so cargo reads that too. cargo
 # loads every patch path, a table nothing builds from included, so every checked-out
 # repository the table names is re-included here (microservice-repos,
-# tool-model-core, tool-paint, tool-sprite, ui-common). This is the complete
-# set cargo needs to resolve and compile any crate; resolving the lock still
-# fetches the patched sources, the public mirrors, over the network.
+# tool-model-core, tool-paint, tool-particle, tool-sprite, ui-common). This is the
+# complete set cargo needs to resolve and compile any crate; resolving the lock
+# still fetches the patched sources, the public mirrors, over the network.
 !/Cargo.toml
 !/Cargo.lock
 !/rust-toolchain.toml
@@ -73,6 +73,8 @@
 !/tool-model-core/crates
 !/tool-paint/Cargo.toml
 !/tool-paint/crates
+!/tool-particle/Cargo.toml
+!/tool-particle/crates
 !/tool-sprite/Cargo.toml
 !/tool-sprite/crates
 !/ui-common/Cargo.toml

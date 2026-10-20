@@ -30,11 +30,12 @@
 # tools/submodule-checkout.sh populates `contracts/` and `engines/`, the contracts
 # and engines repositories whose crates and packages the workspace builds against,
 # `gg/`, whose crate the patch table names and whose pages the documentation site
-# reads, `microservice-repos/`, `tool-model-core/`, `tool-paint/` and
-# `tool-sprite/`, whose crates the patch table names, `test-suites/`, the
+# reads, `microservice-repos/`, `tool-model-core/`, `tool-paint/`,
+# `tool-particle/` and `tool-sprite/`, whose crates the patch table names,
+# `test-suites/`, the
 # suites checkout The Test Cabinet ingests from, and `ui-common/`, the
 # ui-common repository whose packages the web front ends build against. It
-# names those nine alone, because cold-storage beside them is optional and
+# names those ten alone, because cold-storage beside them is optional and
 # about 2 GB. It runs ahead of `npm ci`, which lists contracts', engines' and
 # ui-common's packages in the npm workspace, and after
 # tools/ssh-agent.sh, because the clone goes through the host agent that script

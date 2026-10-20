@@ -46,6 +46,7 @@ ignores:
   - "microservice-repos/**"
   - "tool-model-core/**"
   - "tool-paint/**"
+  - "tool-particle/**"
   - "tool-sprite/**"
   - "apps/docs/src/content/docs/gg/**"
   - "test-suites/**"
