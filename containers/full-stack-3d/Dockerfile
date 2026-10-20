@@ -34,9 +34,10 @@
 # build INPUTS, not a separately-scored output, so — unlike an asset-generation run —
 # nothing here regenerates an action log; the produced files are consumed by the built
 # program and judged as part of it. `draw` and `draw-sheet` are copied out of the
-# `tool-sprite` image and `particle-2d` and `particle-3d` out of the `tool-particle`
-# image, each at the commit the driver pins; the other five are compiled by the shared
-# builder (`containers/tools/Dockerfile`) — see `containers/build.sh`.
+# `tool-sprite` image, `particle-2d` and `particle-3d` out of the `tool-particle` image
+# and `voxel` and `voxel-anim` out of the `tool-voxel` image, each at the commit the
+# driver pins; the other three are compiled by the shared builder
+# (`containers/tools/Dockerfile`) — see `containers/build.sh`.
 #
 # This image inherits everything from base-wasm — the Node build toolchain, the Rust +
 # `wasm32-unknown-unknown` + `wasm-bindgen`/`wasm-pack` toolchain, the unprivileged `node`
@@ -79,13 +80,21 @@ ARG TOOL_SPRITE_IMAGE=test-cabinet-tool-sprite:latest
 # the first `FROM` for the same reason.
 ARG TOOL_PARTICLE_IMAGE=test-cabinet-tool-particle:latest
 
+# `TOOL_VOXEL_IMAGE` is the `tool-voxel` image `voxel` and `voxel-anim` are copied out
+# of, taken as `TOOL_SPRITE_IMAGE` is (`testcabinet.azurecr.io/tool-voxel:<commit>` at
+# the commit the driver pins, or the image `build.sh` has just built from the
+# `tool-voxel/` checkout).
+ARG TOOL_VOXEL_IMAGE=test-cabinet-tool-voxel:latest
+
 # Resolve the tooling builder and the tool images to named stages. `COPY --from=` cannot
 # interpolate a build arg directly ("variable expansion is not supported for --from"),
-# so each has to arrive through a `FROM`; the `COPY --from=tools`, `COPY
-# --from=tool-sprite` and `COPY --from=tool-particle` lines below then name these stages.
+# so each has to arrive through a `FROM`; the `COPY --from=tools`,
+# `COPY --from=tool-sprite`, `COPY --from=tool-particle` and `COPY --from=tool-voxel`
+# lines below then name these stages.
 FROM ${TOOLS_IMAGE} AS tools
 FROM ${TOOL_SPRITE_IMAGE} AS tool-sprite
 FROM ${TOOL_PARTICLE_IMAGE} AS tool-particle
+FROM ${TOOL_VOXEL_IMAGE} AS tool-voxel
 
 # --- The run image: the base-wasm, plus Mesa, the binaries + the audio packs -
 # `FROM` the base-wasm built alongside this image (the global `BASE_IMAGE` arg above).
@@ -129,16 +138,17 @@ ENV XDG_RUNTIME_DIR=/tmp
 # Bake in the nine binaries — the 2D six the full-stack-2d image carries (`draw` and
 # `draw-sheet` from the tool-sprite image, `particle-2d` from the tool-particle image, the
 # rest from the tools image), then the three 3D additions (`voxel` and `voxel-anim` from
-# the tools image, `particle-3d` from the tool-particle image). `/usr/local/bin` is on
-# PATH and root-owned (COPY writes as root regardless of the inherited `USER node`); the
-# unprivileged run user only executes them, never writes them. The base image already sets `USER node`, `WORKDIR
-# /work`, and the keep-alive CMD, so nothing else is needed for the binaries themselves.
+# the tool-voxel image, `particle-3d` from the tool-particle image). `/usr/local/bin` is
+# on PATH and root-owned (COPY writes as root regardless of the inherited `USER node`);
+# the unprivileged run user only executes them, never writes them. The base image already
+# sets `USER node`, `WORKDIR /work`, and the keep-alive CMD, so nothing else is needed for
+# the binaries themselves.
 COPY --from=tool-sprite /usr/local/bin/draw /usr/local/bin/draw
 COPY --from=tool-sprite /usr/local/bin/draw-sheet /usr/local/bin/draw-sheet
 COPY --from=tool-particle /usr/local/bin/particle-2d /usr/local/bin/particle-2d
 COPY --from=tools /out/sfx-synth /usr/local/bin/sfx-synth
 COPY --from=tools /out/sfx-sample /usr/local/bin/sfx-sample
 COPY --from=tools /out/music /usr/local/bin/music
-COPY --from=tools /out/voxel /usr/local/bin/voxel
-COPY --from=tools /out/voxel-anim /usr/local/bin/voxel-anim
+COPY --from=tool-voxel /usr/local/bin/voxel /usr/local/bin/voxel
+COPY --from=tool-voxel /usr/local/bin/voxel-anim /usr/local/bin/voxel-anim
 COPY --from=tool-particle /usr/local/bin/particle-3d /usr/local/bin/particle-3d

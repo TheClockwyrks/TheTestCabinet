@@ -63,11 +63,15 @@ parents_of() {
 	case "$name" in
 		tools | base | blender) echo "-" ;;
 		# Their binaries are copied out of the tool-sprite image (sprite, sprite-sheet),
-		# the tool-paint image (ui, material) or the tool-particle image (particle-2d,
-		# particle-3d), none an image built here: the reference is an input of theirs,
-		# not a parent.
+		# the tool-paint image (ui, material), the tool-particle image (particle-2d,
+		# particle-3d), the tool-voxel image (voxel, voxel-animation) or the tool-mc,
+		# tool-sn and tool-dc images (the meshing and skinned images), none an image
+		# built here: the reference is an input of theirs, not a parent.
 		base-wasm | sprite | sprite-sheet | ui | material) echo "base" ;;
 		particle-2d | particle-3d) echo "base" ;;
+		voxel | voxel-animation) echo "base" ;;
+		mc | mc-animation | mc-skinned | sn | sn-animation | sn-skinned) echo "base" ;;
+		dc | dc-animation | dc-skinned) echo "base" ;;
 		adversarial | performance) echo "base-wasm" ;;
 		full-stack-2d | full-stack-3d) echo "base-wasm,tools" ;;
 		game-jam) echo "full-stack-2d" ;;

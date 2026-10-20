@@ -11,11 +11,13 @@
 # `voxel-anim` is baked in rather than installed at run time because, unlike a
 # harness CLI, it is part of The Test Cabinet itself and its modeling logic must
 # match the orchestrator's: the orchestrator regenerates an asset-gen run's scored
-# voxel data and preview with the *same* library this binary uses. Building both
-# from one commit keeps them in lockstep (a run records the orchestrator commit
-# and the image digest, so a mismatch is auditable). The baked-in tooling is
-# compiled by the shared builder (`containers/tools/Dockerfile`) — see
-# `containers/build.sh`.
+# voxel data and preview with the *same* library this binary uses. This image
+# copies it out of `tool-voxel:<commit>`, the image tool-voxel's pipeline
+# publishes (built from `crates/voxel-anim` there), at the commit the driver pins,
+# which is the superrepo's `tool-voxel` gitlink, so the binary and the
+# orchestrator stay in lockstep (a run records the orchestrator commit and the
+# image digest, so a mismatch is auditable). See `containers/build.sh` and
+# `scripts/ci/tool-images.sh`.
 #
 # This image inherits everything from the base — the toolchain, the unprivileged
 # `node` run user, the `/work` working directory, and the keep-alive CMD — so it
@@ -31,20 +33,19 @@
 # is always `FROM` the matching base.
 ARG BASE_IMAGE=test-cabinet-base:latest
 
-# `TOOLS_IMAGE` is the shared asset-tooling builder that compiles every run
-# image's baked-in binaries — ONE cargo pass over the whole dependency graph,
-# rather than a per-image `cargo build` that recompiles that graph from scratch
-# (`containers/tools/Dockerfile` has the numbers). Declared BEFORE the first
-# `FROM` for the same reason `BASE_IMAGE` is: an `ARG` after a `FROM` is scoped
-# to that stage. `build.sh` passes the tools image it just built, so the baked-in
-# binaries always come from this same invocation's compile.
-ARG TOOLS_IMAGE=test-cabinet-tools:latest
+# `TOOL_VOXEL_IMAGE` is the `tool-voxel` image the binary is copied out of:
+# `testcabinet.azurecr.io/tool-voxel:<commit>` at the commit the driver pins, or,
+# for a local build without PUSH, the image `build.sh` has just built from the
+# `tool-voxel/` checkout (`scripts/ci/tool-images.sh` names the reference).
+# Declared BEFORE the first `FROM` for the same reason `BASE_IMAGE` is: an `ARG`
+# after a `FROM` is scoped to that stage.
+ARG TOOL_VOXEL_IMAGE=test-cabinet-tool-voxel:latest
 
-# Resolve the tooling builder to a named stage. `COPY --from=` cannot interpolate
-# a build arg directly ("variable expansion is not supported for --from"), so it
-# has to arrive through a `FROM`; the `COPY --from=tools` lines below then name
-# this stage.
-FROM ${TOOLS_IMAGE} AS tools
+# Resolve the tool image to a named stage. `COPY --from=` cannot interpolate a
+# build arg directly ("variable expansion is not supported for --from"), so it
+# has to arrive through a `FROM`; the `COPY --from=tool-voxel` line below then
+# names this stage.
+FROM ${TOOL_VOXEL_IMAGE} AS tool-voxel
 
 # --- The run image: the base, plus `voxel-anim` -----------------------------
 # `FROM` the base built alongside this image (the global `BASE_IMAGE` arg above).
@@ -75,10 +76,10 @@ USER node
 ENV VK_LOADER_DRIVERS_SELECT=lvp*
 ENV XDG_RUNTIME_DIR=/tmp
 
-# Bake in the `voxel-anim` binary from the tools image. `/usr/local/bin` is on
-# PATH and root-owned (COPY writes as root regardless of the inherited `USER
-# node`); the unprivileged run user only executes it, never writes it. An
-# animated voxel run invokes it as the model's modeling tool. The base image
-# already sets `USER node`, `WORKDIR /work`, and the keep-alive CMD, so nothing
-# else is needed here.
-COPY --from=tools /out/voxel-anim /usr/local/bin/voxel-anim
+# Bake in the `voxel-anim` binary from the tool-voxel image, which carries it
+# in `/usr/local/bin`. That directory is on PATH and root-owned (COPY writes as
+# root regardless of the inherited `USER node`); the unprivileged run user only
+# executes it, never writes it. An animated voxel run invokes it as the model's
+# modeling tool. The base image already sets `USER node`, `WORKDIR /work`, and
+# the keep-alive CMD, so nothing else is needed here.
+COPY --from=tool-voxel /usr/local/bin/voxel-anim /usr/local/bin/voxel-anim

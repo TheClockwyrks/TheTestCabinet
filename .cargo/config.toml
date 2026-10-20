@@ -116,21 +116,24 @@ test-cabinet-draw = { path = "tool-sprite/crates/draw" }
 [patch."https://github.com/TheClockwyrks/tool-paint"]
 test-cabinet-paint = { path = "tool-paint/crates/paint" }
 
-# tool-voxel is not checked out; the table joins once it is bootstrapped:
-#   [patch."https://github.com/TheClockwyrks/tool-voxel"]
-#   test-cabinet-voxel = { path = "tool-voxel/crates/voxel" }
+[patch."https://github.com/TheClockwyrks/tool-voxel"]
+test-cabinet-voxel = { path = "tool-voxel/crates/voxel" }
+test-cabinet-voxel-anim = { path = "tool-voxel/crates/voxel-anim" }
 
-# tool-mc is not checked out; the table joins once it is bootstrapped:
-#   [patch."https://github.com/TheClockwyrks/tool-mc"]
-#   test-cabinet-mc = { path = "tool-mc/crates/mc" }
+[patch."https://github.com/TheClockwyrks/tool-mc"]
+test-cabinet-mc = { path = "tool-mc/crates/mc" }
+test-cabinet-mc-anim = { path = "tool-mc/crates/mc-anim" }
+test-cabinet-mc-skin = { path = "tool-mc/crates/mc-skin" }
 
-# tool-sn is not checked out; the table joins once it is bootstrapped:
-#   [patch."https://github.com/TheClockwyrks/tool-sn"]
-#   test-cabinet-sn = { path = "tool-sn/crates/sn" }
+[patch."https://github.com/TheClockwyrks/tool-sn"]
+test-cabinet-sn = { path = "tool-sn/crates/sn" }
+test-cabinet-sn-anim = { path = "tool-sn/crates/sn-anim" }
+test-cabinet-sn-skin = { path = "tool-sn/crates/sn-skin" }
 
-# tool-dc is not checked out; the table joins once it is bootstrapped:
-#   [patch."https://github.com/TheClockwyrks/tool-dc"]
-#   test-cabinet-dc = { path = "tool-dc/crates/dc" }
+[patch."https://github.com/TheClockwyrks/tool-dc"]
+test-cabinet-dc = { path = "tool-dc/crates/dc" }
+test-cabinet-dc-anim = { path = "tool-dc/crates/dc-anim" }
+test-cabinet-dc-skin = { path = "tool-dc/crates/dc-skin" }
 
 [patch."https://github.com/TheClockwyrks/tool-particle"]
 test-cabinet-particle-2d = { path = "tool-particle/crates/particle-2d" }

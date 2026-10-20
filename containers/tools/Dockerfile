@@ -3,14 +3,16 @@
 #
 # This is NOT a run image: nothing ever executes in it and it is never published.
 # It exists solely so the asset-generation binaries baked into the run images
-# (`voxel`, `mc`, `sfx-synth`, `music`, …) are compiled ONCE, in one cargo
-# invocation over one shared dependency graph, instead of once per run image.
+# (`sfx-synth`, `music`, …) are compiled ONCE, in one cargo invocation over one
+# shared dependency graph, instead of once per run image.
 #
 # A tool that has left for a `tool-*` repository is not built here: its binaries
 # are copied out of that repository's image at the commit the driver pins
 # (`draw` and `draw-sheet` from `tool-sprite`; `paint`, `ui`, `texture` and `pbr`
-# from `tool-paint`; `particle-2d` and `particle-3d` from `tool-particle`; see
-# `scripts/ci/tool-images.sh`).
+# from `tool-paint`; `particle-2d` and `particle-3d` from `tool-particle`; `voxel` and
+# `voxel-anim` from `tool-voxel`; `mc`, `mc-anim` and `mc-skin` from `tool-mc`; `sn`,
+# `sn-anim` and `sn-skin` from `tool-sn`; `dc`, `dc-anim` and `dc-skin` from `tool-dc`;
+# see `scripts/ci/tool-images.sh`).
 #
 # Why this exists
 # ---------------
@@ -86,17 +88,6 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
 	# `--bins` takes all binaries each named package exposes, which is what the run
 	# images need.
 	&& cargo build --release --bins \
-		-p test-cabinet-voxel \
-		-p test-cabinet-voxel-anim \
-		-p test-cabinet-mc \
-		-p test-cabinet-mc-anim \
-		-p test-cabinet-sn \
-		-p test-cabinet-sn-anim \
-		-p test-cabinet-dc \
-		-p test-cabinet-dc-anim \
-		-p test-cabinet-mc-skin \
-		-p test-cabinet-sn-skin \
-		-p test-cabinet-dc-skin \
 		-p test-cabinet-sfx-synth \
 		-p test-cabinet-sfx-sample \
 		-p test-cabinet-music \
@@ -107,17 +98,6 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
 	# renamed or dropped binary fail the image build here rather than at run time.
 	&& mkdir -p /out \
 	&& cp \
-		target/release/voxel \
-		target/release/voxel-anim \
-		target/release/mc \
-		target/release/mc-anim \
-		target/release/sn \
-		target/release/sn-anim \
-		target/release/dc \
-		target/release/dc-anim \
-		target/release/mc-skin \
-		target/release/sn-skin \
-		target/release/dc-skin \
 		target/release/sfx-synth \
 		target/release/sfx-sample \
 		target/release/music \
