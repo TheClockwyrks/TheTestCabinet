@@ -114,14 +114,16 @@ tc="registry.test/gg/test-cabinet-gg-toolchains:0.7.1"
 ts="registry.test/tool-sprite:pin1"
 # And the tool-paint image tool-paint's pipeline publishes.
 tp="registry.test/tool-paint:pin1"
-fresh_registry() { printf '%s\n' "$tc" "$ts" "$tp" >"$tmp/registry"; }
+# And the tool-particle image tool-particle's pipeline publishes.
+tpp="registry.test/tool-particle:pin1"
+fresh_registry() { printf '%s\n' "$tc" "$ts" "$tp" "$tpp" >"$tmp/registry"; }
 run() {
 	: >"$tmp/log"
 	(cd "$HERE/.." && PATH="$tmp/bin:$PATH" STUB_LOG="$tmp/log" STUB_LOCAL="$tmp/local" STUB_REGISTRY="$tmp/registry" \
 		STUB_PUSH_FAIL_REF="${STUB_PUSH_FAIL_REF:-}" STUB_PUSH_FAILS="$tmp/push-fails" REGISTRY_RETRY_DELAY=0 \
 		DOCKER="$tmp/docker" PUSH=1 RECLAIM=1 REUSE_INPUTS="${REUSE_INPUTS:-$inputs}" \
 		GG_TOOLCHAINS_IMAGE="${GG_TOOLCHAINS_IMAGE-$tc}" TOOL_SPRITE_IMAGE="${TOOL_SPRITE_IMAGE-$ts}" \
-		TOOL_PAINT_IMAGE="${TOOL_PAINT_IMAGE-$tp}" \
+		TOOL_PAINT_IMAGE="${TOOL_PAINT_IMAGE-$tp}" TOOL_PARTICLE_IMAGE="${TOOL_PARTICLE_IMAGE-$tpp}" \
 		IMAGE_REGISTRY="$reg" IMAGE_TAG=sha1-amd64 containers/build.sh "$@" 2>&1)
 }
 builds() { grep -E '^build ' "$tmp/log" | grep -oE -- '-t [^ ]+' | cut -d' ' -f2 | tr '\n' ' '; }
@@ -293,15 +295,53 @@ pinned_tp="testcabinet.azurecr.io/tool-paint:$(cd "$HERE/.." && git rev-parse HE
 out="$(TOOL_PAINT_IMAGE="" REUSE_INPUTS="" REGISTRY_ATTEMPTS=1 run material)" && status=0 || status=$?
 check_contains "it pulls that image" "pulling $pinned_tp" "$out"
 
-echo "under PUSH, full-stack-2d copies from both the tooling builder and tool-sprite"
+echo "under PUSH, particle-2d and particle-3d copy their binary out of the pinned tool-particle image"
+: >"$tmp/local"; fresh_registry
+out="$(REUSE_INPUTS="" run particle-2d particle-3d)" && status=0 || status=$?
+check_equal "the build passes" "0" "$status"
+check_equal "base and the two images are built, and neither tools nor tool-particle" \
+	"${prefix}base:sha1-amd64 ${prefix}particle-2d:sha1-amd64 ${prefix}particle-3d:sha1-amd64 " "$(builds)"
+check_equal "the tool-particle image is pulled, once" "$tpp " "$(pulls)"
+for name in particle-2d particle-3d; do
+	line="$(grep -E "^build .*${prefix}${name}:" "$tmp/log")"
+	check_contains "$name is passed it" "--build-arg TOOL_PARTICLE_IMAGE=$tpp" "$line"
+	check_lacks "and no tooling builder" "TOOLS_IMAGE=" "$line"
+	check_lacks "nor another tool image" "TOOL_PAINT_IMAGE=" "$line"
+done
+check_lacks "and the tool image is pushed nowhere" "tool-particle:sha1" "$(cat "$tmp/registry")"
+
+echo "under PUSH, a tool-particle image the registry lacks fails before the image that copies it"
+: >"$tmp/local"; printf '%s\n' "$tc" "$ts" "$tp" >"$tmp/registry"
+out="$(REUSE_INPUTS="" REGISTRY_ATTEMPTS=1 run particle-3d)" && status=0 || status=$?
+check_equal "with a failure" "1" "$status"
+check_contains "after trying to pull it" "pulling $tpp" "$out"
+check_lacks "and particle-3d is not built" "${prefix}particle-3d:sha1-amd64" "$(builds)"
+
+echo "without TOOL_PARTICLE_IMAGE, PUSH pulls tool-particle at the superrepo's gitlink"
+: >"$tmp/local"; fresh_registry
+pinned_tpp="testcabinet.azurecr.io/tool-particle:$(cd "$HERE/.." && git rev-parse HEAD:tool-particle)"
+out="$(TOOL_PARTICLE_IMAGE="" REUSE_INPUTS="" REGISTRY_ATTEMPTS=1 run particle-2d)" && status=0 || status=$?
+check_contains "it pulls that image" "pulling $pinned_tpp" "$out"
+
+echo "under PUSH, full-stack-2d copies from the tooling builder, tool-sprite and tool-particle"
 : >"$tmp/local"; fresh_registry
 out="$(REUSE_INPUTS="" run full-stack-2d)" && status=0 || status=$?
 check_equal "the build passes" "0" "$status"
 fs2d="$(grep -E "^build .*${prefix}full-stack-2d:" "$tmp/log")"
 check_contains "with the tooling builder" "--build-arg TOOLS_IMAGE=${prefix}tools:sha1-amd64" "$fs2d"
 check_contains "and the tool-sprite image" "--build-arg TOOL_SPRITE_IMAGE=$ts" "$fs2d"
+check_contains "and the tool-particle image" "--build-arg TOOL_PARTICLE_IMAGE=$tpp" "$fs2d"
 check_lacks "but not the tool-paint image, which it copies nothing from" "TOOL_PAINT_IMAGE=" "$fs2d"
-check_lacks "which is not pulled" "$tp" "$(pulls)"
+check_lacks "which is not pulled" "$tp " "$(pulls)"
+check_equal "while tool-sprite and tool-particle are, once each" "2" "$(pulls | wc -w)"
+
+echo "under PUSH, full-stack-3d copies particle-2d and particle-3d from tool-particle too"
+: >"$tmp/local"; fresh_registry
+out="$(REUSE_INPUTS="" run full-stack-3d)" && status=0 || status=$?
+check_equal "the build passes" "0" "$status"
+fs3d="$(grep -E "^build .*${prefix}full-stack-3d:" "$tmp/log")"
+check_contains "with the tooling builder" "--build-arg TOOLS_IMAGE=${prefix}tools:sha1-amd64" "$fs3d"
+check_contains "and the tool-particle image" "--build-arg TOOL_PARTICLE_IMAGE=$tpp" "$fs3d"
 
 echo "under PUSH, a tool-sprite image the registry lacks fails before the image that copies it"
 : >"$tmp/local"; printf '%s\n' "$tc" >"$tmp/registry"
@@ -327,9 +367,10 @@ echo "without PUSH, tool-sprite is built from its checkout, once"
 : >"$tmp/local"; fresh_registry
 out="$(run_local sprite sprite-sheet full-stack-2d)" && status=0 || status=$?
 check_equal "the build passes" "0" "$status"
+# full-stack-2d's tool images are made ready in the sorted order of their build arguments.
 check_equal "tool-sprite is built once, after tools and before the first image copying it" \
-	"${prefix}tools:local ${prefix}base:local ${prefix}base-wasm:local ${prefix}tool-sprite:local ${prefix}full-stack-2d:local " \
-	"$(builds | cut -d' ' -f1-5) "
+	"${prefix}tools:local ${prefix}base:local ${prefix}base-wasm:local ${prefix}tool-particle:local ${prefix}tool-sprite:local ${prefix}full-stack-2d:local " \
+	"$(builds | cut -d' ' -f1-6) "
 check_equal "exactly once" "1" "$(grep -cE -- "-t ${prefix}tool-sprite:local " "$tmp/log")"
 check_contains "from the tool-sprite checkout's own Dockerfile and context" \
 	"tool-sprite/Dockerfile $(cd "$HERE/.." && pwd)/containers/../tool-sprite" "$(grep -E -- "-t ${prefix}tool-sprite:local" "$tmp/log")"
@@ -337,6 +378,8 @@ check_contains "and passed as the build arg" "--build-arg TOOL_SPRITE_IMAGE=${pr
 	"$(grep -E "^build .*${prefix}sprite-sheet:" "$tmp/log")"
 check_equal "nothing is pulled" "" "$(pulls)"
 check_lacks "and tool-paint, which none of them copies from, is not built" "tool-paint" "$(builds)"
+check_equal "tool-particle, which full-stack-2d copies from, is built once" "1" \
+	"$(grep -cE -- "-t ${prefix}tool-particle:local " "$tmp/log")"
 
 echo "without PUSH, tool-paint is built from its checkout, once"
 : >"$tmp/local"; fresh_registry
@@ -352,12 +395,28 @@ for name in ui material; do
 done
 check_equal "nothing is pulled" "" "$(pulls)"
 
+echo "without PUSH, tool-particle is built from its checkout, once"
+: >"$tmp/local"; fresh_registry
+out="$(run_local particle-2d particle-3d)" && status=0 || status=$?
+check_equal "the build passes" "0" "$status"
+check_equal "tool-particle is built once, before the first image copying it, and tools not at all" \
+	"${prefix}base:local ${prefix}tool-particle:local ${prefix}particle-2d:local ${prefix}particle-3d:local " "$(builds)"
+check_contains "from the tool-particle checkout's own Dockerfile and context" \
+	"tool-particle/Dockerfile $(cd "$HERE/.." && pwd)/containers/../tool-particle" \
+	"$(grep -E -- "-t ${prefix}tool-particle:local" "$tmp/log")"
+for name in particle-2d particle-3d; do
+	check_contains "and passed to $name as the build arg" \
+		"--build-arg TOOL_PARTICLE_IMAGE=${prefix}tool-particle:local" "$(grep -E "^build .*${prefix}${name}:" "$tmp/log")"
+done
+check_equal "nothing is pulled" "" "$(pulls)"
+
 echo "without PUSH, a selection that copies from no tool image builds none"
 : >"$tmp/local"
 out="$(run_local base-wasm)" && status=0 || status=$?
 check_equal "the build passes" "0" "$status"
 check_lacks "and tool-sprite is not built" "tool-sprite" "$(builds)"
 check_lacks "nor tool-paint" "tool-paint" "$(builds)"
+check_lacks "nor tool-particle" "tool-particle" "$(builds)"
 
 echo "naming tool-sprite builds just it"
 : >"$tmp/local"
@@ -370,6 +429,12 @@ echo "naming tool-paint builds just it"
 out="$(run_local tool-paint)" && status=0 || status=$?
 check_equal "the build passes" "0" "$status"
 check_equal "and only it" "${prefix}tool-paint:local " "$(builds)"
+
+echo "naming tool-particle builds just it"
+: >"$tmp/local"
+out="$(run_local tool-particle)" && status=0 || status=$?
+check_equal "the build passes" "0" "$status"
+check_equal "and only it" "${prefix}tool-particle:local " "$(builds)"
 
 echo "TOOL_SPRITE_IMAGE wins without PUSH, and is pulled instead of built"
 : >"$tmp/local"; fresh_registry
