@@ -1,6 +1,6 @@
 import type { RunSummary } from "@clockwyrks/run-record/snapshot";
 import { fireEvent, render, screen } from "@testing-library/react";
-import { MemoryRouter } from "react-router";
+import { MemoryRouter, useLocation } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   GalleryDataProvider,
@@ -503,6 +503,155 @@ describe("RunLog model/config cell", () => {
     expect(
       screen.getByRole("button", { name: "Sort by MODEL / CONFIG" }),
     ).toBeInTheDocument();
+  });
+});
+
+describe("RunLog gg agent lines", () => {
+  beforeEach(() => localStorage.clear());
+
+  function agent(
+    profile: string,
+    opts: { primary?: boolean; instances?: number; tokens?: number } = {},
+  ) {
+    const { primary = false, instances = 1, tokens = 1000 } = opts;
+    return {
+      profile,
+      name: profile.charAt(0).toUpperCase() + profile.slice(1),
+      modelId: `model-${profile}`,
+      primary,
+      instances,
+      tokens: {
+        uncachedInput: tokens,
+        cachedInput: null,
+        output: null,
+        reasoning: null,
+      },
+      cost: { comparable: 0.5, actual: 0.5 },
+    };
+  }
+
+  // A gg run carrying per-agent figures, declared out of order so the primary
+  // agent has to be moved to the front.
+  function ggRun(id: string, agents: ReturnType<typeof agent>[] | null) {
+    return {
+      ...summary(id, "alpha", {
+        harness: "gg",
+        model: "model-root",
+        ggPreset: `config-${id}`,
+      }),
+      ggAgents: agents,
+    } as unknown as RunSummary;
+  }
+
+  function LocationProbe() {
+    const { pathname } = useLocation();
+    return <output data-testid="location">{pathname}</output>;
+  }
+
+  function renderRuns(runs: RunSummary[]) {
+    function AgentHarness() {
+      const table = useRunTable({
+        runs,
+        localIds: new Set(),
+        localWriteups: {},
+        externalOrder: true,
+      });
+      return <RunLog rows={table.rows} controls={table.controls} />;
+    }
+    return render(
+      <MemoryRouter initialEntries={["/runs"]}>
+        <GalleryDataProvider value={galleryValue()}>
+          <AgentHarness />
+          <LocationProbe />
+        </GalleryDataProvider>
+      </MemoryRouter>,
+    );
+  }
+
+  const TEAM = [
+    agent("reviewer", { instances: 3, tokens: 2000 }),
+    agent("root", { primary: true }),
+    agent("tester", { instances: 0, tokens: 0 }),
+  ];
+
+  function agentNames(): string[] {
+    return screen
+      .queryAllByText((_, element) =>
+        Boolean(element?.matches('[data-label="Agent"] > span:first-child')),
+      )
+      .map((element) => element.textContent ?? "");
+  }
+
+  it("lists a gg run's agents beneath it only once its toggle is opened", () => {
+    renderRuns([ggRun("r-team", TEAM)]);
+    expect(screen.queryByRole("group")).toBeNull();
+
+    const toggle = screen.getByRole("button", { name: "Show 3 agents" });
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    fireEvent.click(toggle);
+
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByRole("group", { name: "Agents of config-r-team" }));
+    // The primary agent leads; the rest keep the configuration's order.
+    expect(agentNames()).toEqual(["Root", "Reviewer", "Tester"]);
+  });
+
+  it("toggles without opening the run", () => {
+    renderRuns([ggRun("r-team", TEAM)]);
+    fireEvent.click(screen.getByRole("button", { name: "Show 3 agents" }));
+    expect(screen.getByTestId("location")).toHaveTextContent(/^\/runs$/);
+
+    fireEvent.click(screen.getByRole("button", { name: "Hide 3 agents" }));
+    expect(screen.queryByRole("group")).toBeNull();
+    expect(screen.getByTestId("location")).toHaveTextContent(/^\/runs$/);
+  });
+
+  it("toggles from the keyboard", () => {
+    renderRuns([ggRun("r-team", TEAM)]);
+    fireEvent.keyDown(screen.getByRole("button", { name: "Show 3 agents" }), {
+      key: "Enter",
+    });
+    expect(screen.getByRole("group")).toBeInTheDocument();
+  });
+
+  it("gives each agent its model, tokens and cost, and marks one that never ran", () => {
+    renderRuns([ggRun("r-team", TEAM)]);
+    fireEvent.click(screen.getByRole("button", { name: "Show 3 agents" }));
+    const lines = [
+      ...screen.getByRole("group").querySelectorAll(":scope > div"),
+    ];
+    const cells = (line: Element) =>
+      Object.fromEntries(
+        [...line.querySelectorAll("[data-label]")].map((cell) => [
+          cell.getAttribute("data-label"),
+          cell.textContent,
+        ]),
+      );
+
+    expect(cells(lines[0])).toMatchObject({
+      Agent: "Rootprimary",
+      Model: "model-root",
+      Tokens: "1K",
+      Cost: "$0.50",
+    });
+    // How many instances a run spawned varies run to run of one configuration,
+    // so the line never shows it.
+    expect(cells(lines[1]).Agent).toBe("Reviewer");
+    expect(cells(lines[2])).toMatchObject({
+      Agent: "Testernot run",
+      Tokens: "—",
+      Cost: "—",
+    });
+    expect(lines[2]).toHaveAttribute("data-idle");
+  });
+
+  it("offers no toggle on a non-gg run or a gg run with no agent figures", () => {
+    renderRuns([
+      summary("r-claude", "beta"),
+      ggRun("r-legacy", null),
+      ggRun("r-empty", []),
+    ]);
+    expect(screen.queryByRole("button", { name: /agents?$/ })).toBeNull();
   });
 });
 

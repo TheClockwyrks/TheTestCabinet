@@ -1,5 +1,12 @@
 import type { RunSummary } from "@clockwyrks/run-record/snapshot";
-import { Fragment, useMemo, useRef, type MouseEvent } from "react";
+import {
+  Fragment,
+  useCallback,
+  useMemo,
+  useRef,
+  useState,
+  type MouseEvent,
+} from "react";
 import { Link } from "react-router";
 import type { RunSort, SortDir } from "../../client/clients";
 import type { InProgressRun } from "../../client/types";
@@ -14,6 +21,7 @@ import { RunContextMenu, type RunContextMenuHandle } from "./RunContextMenu";
 import { RunSelectAll, useRunSelection, type SelectableRun } from "./RunSelect";
 import { SortableHeaderCell } from "./SortableHeaderCell";
 import {
+  agentLinesId,
   columnsForScope,
   isSortable,
   sortRuns,
@@ -305,8 +313,30 @@ export function RunLog({
     visibleIds.has("duration") && active.some((run) => run.startedAt != null),
   );
 
+  // Which gg runs show their agent lines. Local to this log and keyed by run id,
+  // so a run stays open across a re-sort and a page turn back to it.
+  const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
+  const toggleExpanded = useCallback((runId: string) => {
+    setExpanded((current) => {
+      const next = new Set(current);
+      if (!next.delete(runId)) next.add(runId);
+      return next;
+    });
+  }, []);
+
+  const agentColumn =
+    ["test", "harness", "model"].find((id) => visibleIds.has(id)) ?? null;
+  const agentFrom = visible.findIndex((column) => column.id === agentColumn);
+  const modelAt = visible.findIndex((column) => column.id === "model");
   const ctx: RunRenderContext = {
     visible: visibleIds,
+    agentColumn,
+    agentSpan: modelAt > agentFrom && agentFrom >= 0 ? modelAt - agentFrom : 1,
+    isExpanded: (runId) => expanded.has(runId),
+    toggleExpanded,
+    disclosureColumn:
+      ["model", "harness", "test"].find((id) => visibleIds.has(id)) ?? null,
+
     now,
     testCaseName,
     testCaseType,
@@ -411,16 +441,59 @@ function RunRow({
   // inspected, marked with the same negative styling an active row uses; its
   // rating cell shows the failure tier instead of a badge.
   const failed = describeRunState(row.summary.state).isFailure;
+  const expanded = row.agents != null && ctx.isExpanded(row.summary.id);
   return (
-    <Link
-      to={routes.runDetail(row.summary.id)}
-      className={styles.row}
-      data-failed={failed ? "" : undefined}
-      onContextMenu={onContextMenu}
-    >
-      {columns.map((column) => (
-        <Fragment key={column.id}>{column.render(row, ctx)}</Fragment>
-      ))}
-    </Link>
+    <>
+      <Link
+        to={routes.runDetail(row.summary.id)}
+        className={styles.row}
+        data-failed={failed ? "" : undefined}
+        data-expanded={expanded ? "" : undefined}
+        onContextMenu={onContextMenu}
+      >
+        {columns.map((column) => (
+          <Fragment key={column.id}>{column.render(row, ctx)}</Fragment>
+        ))}
+      </Link>
+      {/* A gg run's agents, one line each beneath its row and on the same column
+          grid, so each agent's model, tokens and cost sit under the run's totals. */}
+      {expanded && (
+        <div
+          id={agentLinesId(row.summary.id)}
+          className={styles.agents}
+          role="group"
+          aria-label={`Agents of ${row.configName ?? row.modelName}`}
+        >
+          {row.agents?.map((agent) => (
+            <div
+              key={agent.profile}
+              className={`${styles.row} ${styles.agentRow}`}
+              data-primary={agent.primary ? "" : undefined}
+              data-idle={agent.instances === 0 ? "" : undefined}
+            >
+              {agentCells(agent, row, columns, ctx)}
+            </div>
+          ))}
+        </div>
+      )}
+    </>
+  );
+}
+
+// An agent line's cells: each column's agent cell, except the columns the agent's
+// name spans past its own, which the span already covers.
+function agentCells(
+  agent: NonNullable<EnrichedRun["agents"]>[number],
+  row: EnrichedRun,
+  columns: readonly RunColumn[],
+  ctx: RunRenderContext,
+) {
+  const from = columns.findIndex((column) => column.id === ctx.agentColumn);
+  return columns.map((column, index) =>
+    index > from && index < from + ctx.agentSpan ? null : (
+      <Fragment key={column.id}>
+        {column.renderAgent?.(agent, row, ctx) ?? <span />}
+      </Fragment>
+    ),
   );
 }
