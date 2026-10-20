@@ -12,6 +12,11 @@
 //! Automatic publishing is best-effort: nothing here returns an error, so the
 //! status report or launch pass that called it is never failed or held up by it.
 //! A run it could not enqueue stays in the Unpublished worklist for a person.
+//!
+//! It enqueues only a run's first publish job. A publish job that fails, its
+//! own or an operator's, is taken up by the
+//! [retry of failed publishes](super::publish_retry), which enqueues the run's
+//! next job on its own schedule.
 
 use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;

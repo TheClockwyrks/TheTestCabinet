@@ -2102,7 +2102,7 @@ async fn worklist_holds_completed_runs_and_failures_path_holds_the_rest() {
 
 // --- Publish queue ----------------------------------------------------------
 
-fn new_publish_job(id: &str, run_id: &str, created_at: &str) -> NewPublishJob {
+pub(crate) fn new_publish_job(id: &str, run_id: &str, created_at: &str) -> NewPublishJob {
     NewPublishJob {
         id: id.to_string(),
         run_id: run_id.to_string(),
@@ -2343,7 +2343,7 @@ async fn active_publish_job_for_run_finds_a_queued_job() {
         .unwrap();
 
     let active = db
-        .active_publish_job_for_run("r1", "2026-06-27T00:00:05Z")
+        .active_publish_job_for_run("r1")
         .await
         .unwrap()
         .expect("a queued publish job is a release already under way");
@@ -2351,12 +2351,7 @@ async fn active_publish_job_for_run_finds_a_queued_job() {
     assert_eq!(active.state, "queued");
 
     // Another run's publishing is unaffected.
-    assert!(
-        db.active_publish_job_for_run("r2", "2026-06-27T00:00:05Z")
-            .await
-            .unwrap()
-            .is_none()
-    );
+    assert!(db.active_publish_job_for_run("r2").await.unwrap().is_none());
 }
 
 #[tokio::test]
@@ -2373,7 +2368,7 @@ async fn active_publish_job_for_run_finds_a_recently_dispatched_job() {
     // A publisher is carrying this one out right now: a second publish must not be
     // enqueued alongside it, or the run gets two Pages deployments.
     let active = db
-        .active_publish_job_for_run("r1", "2026-06-27T00:05:00Z")
+        .active_publish_job_for_run("r1")
         .await
         .unwrap()
         .expect("a freshly dispatched publish job is still under way");
@@ -2382,7 +2377,7 @@ async fn active_publish_job_for_run_finds_a_recently_dispatched_job() {
 }
 
 #[tokio::test]
-async fn active_publish_job_for_run_ignores_a_dispatched_job_gone_stale() {
+async fn active_publish_job_for_run_still_finds_a_dispatched_job_gone_quiet() {
     let db = Db::connect_in_memory().await.unwrap();
     db.enqueue_publish_job(new_publish_job("p1", "r1", "2026-06-27T00:00:00Z"))
         .await
@@ -2392,24 +2387,15 @@ async fn active_publish_job_for_run_ignores_a_dispatched_job_gone_stale() {
         .unwrap()
         .unwrap();
 
-    // Nothing reaps a publish job whose publisher died before reporting, so past the
-    // staleness cutoff it must stop blocking — otherwise the run could never be
-    // published again.
-    assert!(
-        db.active_publish_job_for_run("r1", "2026-06-27T02:00:00Z")
+    // Age alone never releases a dispatched job from the lookup: the sweep records
+    // it failed first, so the run never has two jobs in flight.
+    assert_eq!(
+        db.active_publish_job_for_run("r1")
             .await
             .unwrap()
-            .is_none(),
-        "a dispatched job quiet for hours is abandoned, not active"
-    );
-
-    // Just inside the window it still blocks.
-    assert!(
-        db.active_publish_job_for_run("r1", "2026-06-27T00:59:00Z")
-            .await
-            .unwrap()
-            .is_some(),
-        "a dispatched job within the window is still under way"
+            .expect("a dispatched job is under way until it is failed")
+            .id,
+        "p1"
     );
 }
 
@@ -2429,12 +2415,7 @@ async fn active_publish_job_for_run_ignores_terminal_jobs() {
     .unwrap();
 
     // A failed publish must stay retryable — it cannot block the next attempt.
-    assert!(
-        db.active_publish_job_for_run("r1", "2026-06-27T00:02:00Z")
-            .await
-            .unwrap()
-            .is_none()
-    );
+    assert!(db.active_publish_job_for_run("r1").await.unwrap().is_none());
 
     db.enqueue_publish_job(new_publish_job("p2", "r1", "2026-06-27T00:03:00Z"))
         .await
@@ -2443,10 +2424,7 @@ async fn active_publish_job_for_run_ignores_terminal_jobs() {
         .await
         .unwrap();
     assert!(
-        db.active_publish_job_for_run("r1", "2026-06-27T00:05:00Z")
-            .await
-            .unwrap()
-            .is_none(),
+        db.active_publish_job_for_run("r1").await.unwrap().is_none(),
         "a completed publish is not a release under way"
     );
 }
@@ -2468,7 +2446,7 @@ async fn active_publish_job_for_run_returns_the_oldest_live_job() {
         .unwrap();
 
     let active = db
-        .active_publish_job_for_run("r1", "2026-06-27T00:02:00Z")
+        .active_publish_job_for_run("r1")
         .await
         .unwrap()
         .expect("a live job");

@@ -42,6 +42,7 @@ pub mod pricing;
 pub mod probe;
 pub mod prompt;
 pub mod publish_relay;
+pub mod publish_retry;
 pub mod publisher;
 pub mod readiness;
 pub mod relay;
@@ -81,6 +82,11 @@ pub struct Backend {
     /// The [probe resumer](crate::probe::spawn_resumer), which resumes every `running`
     /// model probe whose lease has lapsed; kept alive for the server's lifetime.
     pub probe_resumer: tokio::task::JoinHandle<()>,
+    /// The [retry of failed publishes](crate::publish_retry), which every 30 seconds
+    /// records the publish jobs whose publishers never reported as failed and
+    /// enqueues another publish job for each failed run that is due one; kept alive
+    /// for the server's lifetime.
+    pub publish_retry: tokio::task::JoinHandle<()>,
 }
 
 /// Assemble a backend from a configuration: open the definition store, connect
@@ -416,6 +422,9 @@ async fn build_with_prices(
     // not finished dies with the process. Run a launch pass of each once, as soon as the
     // store can be served, after releasing every launch-pass claim whose lease lapsed.
     api::spawn_startup_passes(state.clone());
+    // A publish that fails, or whose publisher dies, is retried by the backend on its
+    // own schedule, so a transient release failure never needs a person.
+    let publish_retry = api::spawn_failed_publish_retry(state.clone());
     let router = api::router(state);
 
     Ok(Backend {
@@ -425,6 +434,7 @@ async fn build_with_prices(
         price_refresher,
         artifact_sweeper,
         probe_resumer,
+        publish_retry,
     })
 }
 

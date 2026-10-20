@@ -1,15 +1,26 @@
 ---
 format: nyxsis-issue
-version: 2
+version: 3
 id: e12qffjl5kndlggb6n75ihid
 zone: DATA
 number: 5
 title: Recognize dead publishers and retry failed publishes
 type: generic
-state: open
+state: done
 depends_on:
   - s6w5mx066ipgbht3fkhxnbki
 created: 2026-10-19T00:38:20.886775153Z
+done: 2026-10-19T23:53:43.089112056Z
+outcome: |
+  Landed as superrepo PR 4461 into nightly: publish-job leases with the renew,
+  active and lost routes under the service token, the backend's failed-publish
+  retry pass (5 min doubling to 4 h within 24 h) and hour-long abandonment sweep,
+  the dispatcher renewing publish leases, reporting lost publishers and giving
+  publisher Jobs a 45-minute activeDeadlineSeconds. Left: the staging check
+  (delete a publisher pod, see the job fail within two minutes and retry five
+  minutes later) was not run because staging runs older images and the private AKS
+  cluster is unreachable from here; Kubernetes enforcing the deadline and the
+  Postgres path were covered by unit tests only.
 ---
 
 A publisher Job that dies before reporting leaves its publish job `dispatched`

@@ -8,9 +8,9 @@
 //! - [`list_managed`](Kube::list_managed) — list exactly the `Job`s this dispatcher
 //!   owns (label-selected), to count in-flight work and to reconcile on restart.
 //! - [`failure_detail`](Kube::failure_detail) — derive a **specific** reason a
-//!   terminally-failed driver pod died (image-pull failure, OOMKill, a non-zero
-//!   exit, or an involuntary disruption such as an autoscaler eviction), for the
-//!   death-detection report, so a hung job ends with a real diagnostic rather than
+//!   terminally-failed driver or publisher pod died (image-pull failure, OOMKill, a
+//!   non-zero exit, an involuntary disruption such as an autoscaler eviction, or the
+//!   `Job`'s active deadline), for the death-detection and lost reports, so a hung job ends with a real diagnostic rather than
 //!   a bare "run failed" — or, worse, a confident wrong one.
 //! - [`delete_sandbox_pods`](Kube::delete_sandbox_pods) — reap the *sandbox* pods a
 //!   dead driver left behind, which nothing else can (see below).
@@ -86,7 +86,8 @@ pub trait Cluster {
     /// List the `Job`s the dispatcher owns (see [`Kube::list_managed`]).
     fn list_managed(&self) -> impl Future<Output = anyhow::Result<Vec<ManagedJob>>> + Send;
 
-    /// Why a failed driver `Job`'s pod died (see [`Kube::failure_detail`]).
+    /// Why a failed driver or publisher `Job`'s pod died (see
+    /// [`Kube::failure_detail`]).
     fn failure_detail(&self, job_name: &str) -> impl Future<Output = String> + Send;
 
     /// Delete a job's orphaned sandbox pods, answering how many were removed (see
@@ -195,18 +196,30 @@ impl Kube {
         Ok(list.items.iter().map(managed_job).collect())
     }
 
-    /// Derive a **specific** human-readable reason a driver `Job`'s pod died, for
-    /// the death-detection report. Prefers, in order: an involuntary disruption
+    /// Derive a **specific** human-readable reason a driver or publisher `Job`'s pod
+    /// died, for the death-detection and lost reports. Prefers, in order: the `Job`
+    /// having been stopped at its `activeDeadlineSeconds` (which a publisher `Job`
+    /// carries, and which kills the pod it names); an involuntary disruption
     /// (eviction, preemption, node drain, read from the pod's `DisruptionTarget`
     /// condition); the failed container's terminated reason and exit code (e.g.
     /// `OOMKilled`, `Error (exit 137)`); its waiting reason (e.g. `ImagePullBackOff`
     /// — "couldn't pull container image"); a short tail of its logs; and finally a
     /// generic-but-honest fallback naming the `Job`. When the pod itself is gone,
-    /// the `Job`'s `status.failed` count decides whether one ever ran. Never returns
-    /// a bare "run failed", and never claims more than the cluster actually reported.
+    /// the `Job`'s `status.failed` count decides whether one ever ran. Every detail
+    /// names the `Job`'s role, `publisher` for a publish `Job` and `driver`
+    /// otherwise. Never returns a bare "run failed",
+    /// and never claims more than the cluster actually reported.
     pub async fn failure_detail(&self, job_name: &str) -> String {
+        let role = job_role(job_name);
+        let job = self.jobs().get(job_name).await.ok();
+        if let Some(detail) = job
+            .as_ref()
+            .and_then(|job| deadline_detail(job, job_name, role))
+        {
+            return detail;
+        }
         let Some(pod) = self.newest_job_pod(job_name).await else {
-            return self.vanished_pod_detail(job_name).await;
+            return vanished_pod_detail(job.as_ref(), job_name, role);
         };
         let pod_name = pod.metadata.name.clone().unwrap_or_default();
         // A disruption is checked *before* the container state: an evicted pod's
@@ -214,53 +227,17 @@ impl Kube {
         // describes how it died and not why, and would otherwise mask the fact that
         // the cluster took the node away.
         if let Some(reason) = disruption_reason(&pod) {
-            return format!("driver pod `{pod_name}` was disrupted: {reason}");
+            return format!("{role} pod `{pod_name}` was disrupted: {reason}");
         }
         if let Some(reason) = container_failure_reason(&pod) {
-            return format!("driver pod failed: {reason}");
+            return format!("{role} pod failed: {reason}");
         }
         if !pod_name.is_empty()
             && let Some(tail) = self.pod_log_tail(&pod_name).await
         {
-            return format!("driver pod `{pod_name}` failed; last log lines:\n{tail}");
+            return format!("{role} pod `{pod_name}` failed; last log lines:\n{tail}");
         }
-        format!("driver Job `{job_name}` failed without a diagnostic pod status")
-    }
-
-    /// The detail for a failed `Job` whose pod can no longer be read.
-    ///
-    /// A missing pod is ambiguous, and the two cases it covers are opposites. The
-    /// pod may never have existed — the `Job` failed at admission, so nothing ran.
-    /// Or it existed, ran, and was **deleted out from under the run**: evicted by
-    /// the cluster autoscaler consolidating its node, preempted, or removed with a
-    /// drained node. Kubernetes reports the second case in the `Job`'s own status,
-    /// which outlives the pod: `status.failed` counts pods that reached a terminal
-    /// failure, so a non-zero count is proof one ran.
-    ///
-    /// Reporting the "nothing ran" wording for the deletion case actively misleads —
-    /// it points the reader at admission (image pull, quota, scheduling) when the run
-    /// in fact executed for some time and was then destroyed by the cluster. Say only
-    /// what is known, and name the disruption as the likely cause when a pod did run.
-    async fn vanished_pod_detail(&self, job_name: &str) -> String {
-        if self.job_recorded_pod_failure(job_name).await {
-            return format!(
-                "driver Job `{job_name}` ran a pod that no longer exists, most likely \
-                 deleted mid-run (autoscaler scale-down, preemption, or a node drain)"
-            );
-        }
-        format!("driver Job `{job_name}` failed before its pod started")
-    }
-
-    /// Whether the `Job`'s status records at least one pod that terminally failed —
-    /// evidence a pod ran even though none can be listed now. A `Job` that cannot be
-    /// read answers `false`, keeping the caller on the conservative wording.
-    async fn job_recorded_pod_failure(&self, job_name: &str) -> bool {
-        self.jobs()
-            .get(job_name)
-            .await
-            .ok()
-            .and_then(|job| job.status?.failed)
-            .is_some_and(|failed| failed > 0)
+        format!("{role} Job `{job_name}` failed without a diagnostic pod status")
     }
 
     /// Delete every **sandbox** pod belonging to `job_id`, returning how many were
@@ -433,6 +410,69 @@ fn container_failure_reason(pod: &Pod) -> Option<String> {
         }
     }
     None
+}
+
+/// The role a managed `Job` plays, as a failure detail names it: `publisher` for a
+/// publish `Job` (named with [`PUBLISH_JOB_PREFIX`](crate::job::PUBLISH_JOB_PREFIX)),
+/// `driver` otherwise.
+fn job_role(job_name: &str) -> &'static str {
+    match JobKind::classify(None, job_name) {
+        JobKind::Publish => "publisher",
+        JobKind::Run => "driver",
+    }
+}
+
+/// The detail for a `Job` Kubernetes stopped at its `activeDeadlineSeconds`: its
+/// `Failed` condition carries the `DeadlineExceeded` reason. `None` for a `Job` that
+/// failed for any other reason, or has not failed.
+///
+/// Checked before the pod: reaching the deadline is what killed the pod, so the
+/// pod's own state (a `SIGTERM` exit, or no pod at all) would describe how it died
+/// and not why.
+fn deadline_detail(job: &Job, job_name: &str, role: &str) -> Option<String> {
+    let exceeded = job.status.as_ref()?.conditions.as_ref()?.iter().any(|c| {
+        c.type_ == "Failed" && c.status == "True" && c.reason.as_deref() == Some("DeadlineExceeded")
+    });
+    if !exceeded {
+        return None;
+    }
+    let deadline = job
+        .spec
+        .as_ref()
+        .and_then(|spec| spec.active_deadline_seconds)
+        .map(|seconds| format!(" of {seconds} seconds"))
+        .unwrap_or_default();
+    Some(format!(
+        "{role} Job `{job_name}` ran past its active deadline{deadline} and was stopped by Kubernetes"
+    ))
+}
+
+/// The detail for a failed `Job` whose pod can no longer be read.
+///
+/// A missing pod is ambiguous, and the two cases it covers are opposites. The
+/// pod may never have existed — the `Job` failed at admission, so nothing ran.
+/// Or it existed, ran, and was **deleted out from under the run**: evicted by
+/// the cluster autoscaler consolidating its node, preempted, or removed with a
+/// drained node. Kubernetes reports the second case in the `Job`'s own status,
+/// which outlives the pod: `status.failed` counts pods that reached a terminal
+/// failure, so a non-zero count is proof one ran. A `Job` that could not be read
+/// keeps the conservative wording.
+///
+/// Reporting the "nothing ran" wording for the deletion case actively misleads —
+/// it points the reader at admission (image pull, quota, scheduling) when the run
+/// in fact executed for some time and was then destroyed by the cluster. Say only
+/// what is known, and name the disruption as the likely cause when a pod did run.
+fn vanished_pod_detail(job: Option<&Job>, job_name: &str, role: &str) -> String {
+    let pod_failed = job
+        .and_then(|job| job.status.as_ref()?.failed)
+        .is_some_and(|failed| failed > 0);
+    if pod_failed {
+        return format!(
+            "{role} Job `{job_name}` ran a pod that no longer exists, most likely \
+             deleted mid-run (autoscaler scale-down, preemption, or a node drain)"
+        );
+    }
+    format!("{role} Job `{job_name}` failed before its pod started")
 }
 
 /// A sortable creation key for a pod (its creation timestamp's seconds, or `0`),

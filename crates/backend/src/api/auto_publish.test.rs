@@ -187,8 +187,9 @@ async fn an_already_published_run_is_not_published_again() {
     assert!(publish_jobs(&state).await.is_empty());
 }
 
-/// One automatic attempt per run: a publish that failed is left for a person, so
-/// neither a repeated report nor anything else enqueues it again.
+/// One automatic attempt per run: a publish that failed is left to the retry of
+/// failed publishes, so neither a repeated report nor a ladder pass enqueues it
+/// again.
 #[tokio::test]
 async fn a_failed_publish_is_not_retried_automatically() {
     let (_dir, state) = test_state().await;
