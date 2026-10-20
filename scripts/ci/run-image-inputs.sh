@@ -1,13 +1,12 @@
 #!/usr/bin/env bash
-# Prints, for every run-container image and the asset-tooling builder, a digest of the
-# inputs its build reads, and the images it is built from.
+# Prints, for every run-container image, a digest of the inputs its build reads, and the
+# images it is built from.
 #
 #   scripts/ci/run-image-inputs.sh [<name>...]
 #
 # One line per image, `<name> <digest> <parent>[,<parent>...]` (`-` when it has no
-# parent), for every name containers/image-names.sh lists plus `tools`, or for the names
-# given. The digest is 32 hex characters of a
-# SHA-256 over:
+# parent), for every name containers/image-names.sh lists, or for the names given. The
+# digest is 32 hex characters of a SHA-256 over:
 #
 #   - INPUTS_SCHEMA below, bumped by hand when what a build does changes without any
 #     of the following changing: an unpinned upstream (a base image named by tag, an
@@ -61,22 +60,17 @@ readonly CONTAINERS="containers"
 parents_of() {
 	local name="$1"
 	case "$name" in
-		tools | base | blender) echo "-" ;;
-		# Their binaries are copied out of the tool-sprite image (sprite, sprite-sheet),
-		# the tool-paint image (ui, material), the tool-particle image (particle-2d,
-		# particle-3d), the tool-voxel image (voxel, voxel-animation) or the tool-mc,
-		# tool-sn and tool-dc images (the meshing and skinned images), none an image
-		# built here: the reference is an input of theirs, not a parent.
-		base-wasm | sprite | sprite-sheet | ui | material) echo "base" ;;
-		particle-2d | particle-3d) echo "base" ;;
-		voxel | voxel-animation) echo "base" ;;
-		mc | mc-animation | mc-skinned | sn | sn-animation | sn-skinned) echo "base" ;;
-		dc | dc-animation | dc-skinned) echo "base" ;;
-		adversarial | performance) echo "base-wasm" ;;
-		full-stack-2d | full-stack-3d) echo "base-wasm,tools" ;;
+		base | blender) echo "-" ;;
+		# The full-stack images copy their binaries out of the tool images, none an image
+		# built here: the references are inputs of theirs, not parents.
+		adversarial | performance | full-stack-2d | full-stack-3d) echo "base-wasm" ;;
 		game-jam) echo "full-stack-2d" ;;
 		*-gg) echo "${name%-gg}" ;;
-		*) echo "base,tools" ;;
+		# base-wasm and every asset image. An asset image's binaries are copied out of
+		# its tool image (tool-sprite, tool-paint, tool-particle, tool-voxel, tool-mc,
+		# tool-sn, tool-dc, tool-sfx-synth, tool-sfx-sample or tool-music), which is not
+		# an image built here either.
+		*) echo "base" ;;
 	esac
 }
 
@@ -213,7 +207,6 @@ main() {
 		names=("$@")
 	else
 		mapfile -t names < <("${CONTAINERS}/image-names.sh")
-		names=(tools "${names[@]}")
 	fi
 	local name digest
 	for name in "${names[@]}"; do

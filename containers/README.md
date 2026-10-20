@@ -100,14 +100,15 @@ full set is whatever [`build.sh`](#building) builds; the notable ones:
   tool-particle image;
 - the **sfx-synth** image, which every procedural sound-effect run
   (`asset_kind = "sfx-synth"`) executes in — the base image plus the baked-in
-  `sfx-synth` binary;
+  `sfx-synth` binary, copied out of the tool-sfx-synth image;
 - the **sfx-sample** image, which every sample-library sound-effect run
   (`asset_kind = "sfx-sample"`) executes in — the base image plus the baked-in
-  `sfx-sample` binary. The sample pack it mixes over arrives at container start
-  (see [the audio store](#the-audio-store) below);
+  `sfx-sample` binary, copied out of the tool-sfx-sample image. The sample pack it
+  mixes over arrives at container start (see [the audio store](#the-audio-store)
+  below);
 - the **music** image, which every music run (`asset_kind = "music"`) executes in
-  — the base image plus the baked-in `music` binary. The instrument bank it plays
-  arrives at container start;
+  — the base image plus the baked-in `music` binary, copied out of the tool-music
+  image. The instrument bank it plays arrives at container start;
 - the **adversarial** image, which every
   [adversarial](../apps/docs/src/content/docs/testing/adversarial/overview.md)
   run executes in — **base-wasm** (which supplies the Rust + `wasm32-unknown-unknown`
@@ -171,11 +172,6 @@ containers/
 │                               #   run image itself
 ├── base-wasm/Dockerfile        # the end-to-end run image: base plus the shared Rust →
 │                               #   wasm toolchain
-├── tools/Dockerfile            # the shared asset-tooling BUILDER: every asset binary not
-│                               #   in a `tool-*` repository's image, compiled in ONE
-│                               #   cargo pass, exported as a `scratch`
-│                               #   image. Not a run image and never published — the asset
-│                               #   images below `COPY --from` it (see Building)
 ├── full-stack-2d/Dockerfile    # the 2D full-stack run image: base-wasm plus the six 2D
 │                               #   asset binaries
 ├── full-stack-3d/Dockerfile    # the 3D full-stack run image: full-stack-2d's contents
@@ -230,9 +226,12 @@ containers/
 │                               #   copied out of the tool-particle image
 ├── particle-3d/Dockerfile      # the base image plus the baked-in `particle-3d` binary,
 │                               #   copied out of the tool-particle image
-├── sfx-synth/Dockerfile        # the base image plus the baked-in `sfx-synth` binary
-├── sfx-sample/Dockerfile       # the base image plus the baked-in `sfx-sample` binary
-├── music/Dockerfile            # the base image plus the baked-in `music` binary
+├── sfx-synth/Dockerfile        # the base image plus the baked-in `sfx-synth` binary,
+│                               #   copied out of the tool-sfx-synth image
+├── sfx-sample/Dockerfile       # the base image plus the baked-in `sfx-sample` binary,
+│                               #   copied out of the tool-sfx-sample image
+├── music/Dockerfile            # the base image plus the baked-in `music` binary,
+│                               #   copied out of the tool-music image
 ├── audio-store/Dockerfile      # the AUDIO STORE image: a `scratch` image carrying every
 │                               #   published pack under /opt/tcab-audio, which the driver
 │                               #   image copies in and a run's declared packs are staged
@@ -498,9 +497,10 @@ gets its own image so a run carries only the tool it uses:
 - `sfx-synth/`, `sfx-sample/`, and `music/` are the base image plus exactly the
   **`sfx-synth`** / **`sfx-sample`** / **`music`** binary, the
   [audio](../apps/docs/src/content/docs/testing/asset-generation/audio-binaries.md)
-  tool a run uses to render a `.wav`. An `sfx-sample` or `music` run reads its
-  palette from `/opt/audio`, which is staged when the container starts (see
-  [the audio store](#the-audio-store)).
+  tool a run uses to render a `.wav`, copied out of the `tool-sfx-synth`,
+  `tool-sfx-sample` or `tool-music` image (see [the tool images](#the-tool-images)).
+  An `sfx-sample` or `music` run reads its palette from `/opt/audio`, which is
+  staged when the container starts (see [the audio store](#the-audio-store)).
 
 Each meshing image bakes in its one binary the same way `sprite`/`voxel` do; the
 `-animation` images add the rigging/F-curve authoring that
@@ -521,9 +521,8 @@ orchestrator regenerates a `draw`/`draw-sheet` run's scored image from its actio
 log through the _same_ library those tools use, and core's validator decodes the
 emitted data every other kind produces (the UI images, PBR maps, geometry, particle
 system, or `.wav`) — so each is
-compiled from this repo (by the [tooling builder](#the-shared-asset-tooling-builder)),
-or copied out of the image of the `tool-*` repository it lives in at the commit the
-driver pins (`draw` and `draw-sheet`; see [the tool images](#the-tool-images)), and
+copied out of the image of the `tool-*` repository it lives in at the commit the
+driver pins (see [the tool images](#the-tool-images)), and
 baked in rather than installed at run time. Because of this coupling, **build the
 images from the same commit as the orchestrator**: a run records both the orchestrator
 commit and the image digest, so a version mismatch (which would invalidate the
@@ -765,7 +764,7 @@ DOCKER=podman ./build.sh       # build with Podman instead
 ./build.sh tool-paint          # likewise the tool-paint image, from tool-paint/
 ./build.sh tool-particle       # likewise the tool-particle image, from tool-particle/
 ./build.sh tool-voxel tool-mc  # likewise tool-voxel's and tool-mc's (and tool-sn,
-                               #   tool-dc)
+                               #   tool-dc, tool-sfx-synth, tool-sfx-sample, tool-music)
 ./build.sh --gg-selfcheck <PATH-TO-GG>   # …and gate the `-gg` variants on `gg selfcheck`
 ```
 
@@ -827,43 +826,10 @@ of silently publishing. Locally,
 `TCAB_GG_BINARY`) and runs the same
 command against the `:local` images.
 
-### The shared asset-tooling builder
-
-Every asset-generation image bakes in one or more binaries compiled from `crates/`,
-and all of them get those binaries from a single builder image,
-`tools/Dockerfile` → `test-cabinet-tools:latest`, except the ones copied out of a
-[tool image](#the-tool-images).
-
-That builder runs ONE `cargo build` over the union of every asset tool's dependency
-graph and exports the resulting binaries as a `scratch` image; each asset image then
-resolves it through a `TOOLS_IMAGE` build arg and `COPY --from=tools /out/<bin>`.
-(A `COPY --from` cannot interpolate a build arg directly, so each Dockerfile brings
-the arg in through a `FROM ${TOOLS_IMAGE} AS tools` stage first — the same idiom
-`BASE_IMAGE` already uses.)
-
-This replaced a per-image `cargo build`, which recompiled the shared dependency
-graph from scratch for every image: **1865 crate-compilations across the set where
-only 182 distinct crates exist** — `syn`, `serde` and `proc-macro2` built 23 times
-each, the ~90-crate `wgpu`/`naga` graph that the 13 rendering tools share built 13
-times over, and `ui`/`material` compiling the _identical_ `test-cabinet-paint` crate
-twice (that crate has since moved to `tool-paint`; see the tool images below). The
-builder also carries cargo registry/target cache mounts, so an incremental rebuild
-costs only the crates that actually changed.
-
-`build.sh` **always** rebuilds it when any consuming image is selected, rather than
-reusing a present one the way it reuses the base. The base is a stable OS+toolchain
-layer, but this image holds the compiled tooling — reusing a stale one would bake
-yesterday's `particle-3d` into today's run image. A no-change rebuild is near-instant.
-
-It is deliberately **not** a run image: nothing executes in it, it never appears in
-`image-names.sh`, and it is never pushed. The adversarial and performance images are
-also not built from it — they compile to `wasm32-unknown-unknown` as well as the host
-target and assemble their own standalone buildkits, so they keep their own build
-stages (with the same cache mounts applied directly).
-
 ### The tool images
 
-A tool that lives in a `tool-*` repository is not compiled here. `draw` and
+Every asset-generation binary a run image bakes in lives in a `tool-*` repository and is
+not compiled here. `draw` and
 `draw-sheet` are `tool-sprite`'s (its `crates/draw`, checked out at `tool-sprite/`), whose
 pipeline builds its image on every gated push to `master` and `staging` and publishes
 it, multi-arch, as `testcabinet.azurecr.io/tool-sprite:<commit>` with the binaries at
@@ -871,14 +837,15 @@ it, multi-arch, as `testcabinet.azurecr.io/tool-sprite:<commit>` with the binari
 images (and `game-jam`, through `full-stack-2d`) copy them out of that image: each
 Dockerfile declares a global `TOOL_SPRITE_IMAGE` build arg, resolves it through a
 `FROM ${TOOL_SPRITE_IMAGE} AS tool-sprite` stage, and
-`COPY --from=tool-sprite /usr/local/bin/<bin>`. The `sprite` and `sprite-sheet` images
-therefore no longer need the tooling builder at all.
+`COPY --from=tool-sprite /usr/local/bin/<bin>`. (A `COPY --from` cannot interpolate a
+build arg directly, so each Dockerfile brings the arg in through a `FROM` stage first —
+the same idiom `BASE_IMAGE` already uses.)
 
 `paint`, `ui`, `texture` and `pbr` are `tool-paint`'s (its `crates/paint`, checked out at
 `tool-paint/`), published the same way as `testcabinet.azurecr.io/tool-paint:<commit>`.
 The `ui` image copies `paint` and `ui` out of it and the `material` image `texture` and
 `pbr`, through a global `TOOL_PAINT_IMAGE` build arg and a
-`FROM ${TOOL_PAINT_IMAGE} AS tool-paint` stage; neither needs the tooling builder. The
+`FROM ${TOOL_PAINT_IMAGE} AS tool-paint` stage. The
 tool-paint image carries the binaries alone, so `material` keeps installing the Mesa
 runtime its `pbr` preview renders with.
 
@@ -887,9 +854,9 @@ runtime its `pbr` preview renders with.
 published the same way as `testcabinet.azurecr.io/tool-particle:<commit>`. The
 `particle-2d` and `particle-3d` images copy their one binary each out of it through a
 global `TOOL_PARTICLE_IMAGE` build arg and a `FROM ${TOOL_PARTICLE_IMAGE} AS
-tool-particle` stage, and need no tooling builder; `particle-3d` keeps installing the
+tool-particle` stage; `particle-3d` keeps installing the
 Mesa runtime. `full-stack-2d` copies `particle-2d` out of it and `full-stack-3d` both,
-beside what they copy from the tooling builder and `tool-sprite`.
+beside what they copy from the other tool images.
 
 `voxel` and `voxel-anim` are `tool-voxel`'s (its `crates/voxel` and `crates/voxel-anim`,
 checked out at `tool-voxel/`), and the meshing and skinned binaries are `tool-mc`'s
@@ -898,10 +865,17 @@ checked out at `tool-voxel/`), and the meshing and skinned binaries are `tool-mc
 `testcabinet.azurecr.io/<repository>:<commit>`. The `voxel`, `voxel-animation`, meshing
 and skinned images copy their one binary each out of the repository's image, through a
 global `TOOL_VOXEL_IMAGE`, `TOOL_MC_IMAGE`, `TOOL_SN_IMAGE` or `TOOL_DC_IMAGE` build arg
-and the stage `FROM` it; none of them needs the tooling builder. `full-stack-3d` copies
-`voxel` and `voxel-anim` out of the tool-voxel image the same way and keeps the builder
-for its other binaries. The images carry the binaries alone, so every one of these keeps
-installing the Mesa runtime its previews render with.
+and the stage `FROM` it. `full-stack-3d` copies `voxel` and `voxel-anim` out of the
+tool-voxel image the same way. The images carry the binaries alone, so every one of
+these keeps installing the Mesa runtime its previews render with.
+
+`sfx-synth`, `sfx-sample` and `music` are `tool-sfx-synth`'s, `tool-sfx-sample`'s and
+`tool-music`'s (each its one crate over `audio-core`, the DSP library `tool-audio-core`
+holds), published the same way as `testcabinet.azurecr.io/<repository>:<commit>`. The
+`sfx-synth`, `sfx-sample` and `music` images copy their one binary each out of the
+repository's image through a global `TOOL_SFX_SYNTH_IMAGE`, `TOOL_SFX_SAMPLE_IMAGE` or
+`TOOL_MUSIC_IMAGE` build arg and the stage `FROM` it, and both full-stack images copy
+all three the same way. `tool-audio-core` is a library and publishes no image.
 
 The commit is the one the driver pins: the superrepo's gitlink for the repository
 (`git rev-parse HEAD:tool-sprite`, `git rev-parse HEAD:tool-paint`,
@@ -920,11 +894,13 @@ image with are the same code; for `tool-voxel` it is likewise the commit of the 
   the repository's pipeline has not published fails there, naming the commit.
 - without `PUSH` (the local path), the image it builds first from the repository's
   checkout (`tool-sprite/`, `tool-paint/`, `tool-particle/`, `tool-voxel/`, `tool-mc/`,
-  `tool-sn/`, `tool-dc/`) with that repository's own Dockerfile, tagged
-  `test-cabinet-<repository>:<tag>` and never pushed. Like the tooling builder it is
-  rebuilt on every invocation that needs it, and its cargo cache mounts make a no-change
-  rebuild cheap. `./build.sh tool-sprite` builds just it; `make -C deployments/local
-  run-images` builds every tool image first. A missing checkout fails, naming
+  `tool-sn/`, `tool-dc/`, `tool-sfx-synth/`, `tool-sfx-sample/`, `tool-music/`) with
+  that repository's own Dockerfile, tagged `test-cabinet-<repository>:<tag>` and never
+  pushed. It is rebuilt on every invocation that needs it rather than reused when
+  present — it carries the binaries, so a stale one would bake yesterday's `particle-3d`
+  into today's run image — and its cargo cache mounts make a no-change rebuild cheap.
+  `./build.sh tool-sprite` builds just it; `make -C deployments/local run-images`
+  builds every tool image first. A missing checkout fails, naming
   `git submodule update --init <repository>`.
 - `TOOL_SPRITE_IMAGE=<reference>` (`TOOL_PAINT_IMAGE` for `tool-paint`,
   `TOOL_PARTICLE_IMAGE` for `tool-particle`, `TOOL_VOXEL_IMAGE` for `tool-voxel`, and so
@@ -1160,13 +1136,14 @@ already had. So the CI build is **content-addressed**: `REUSE_INPUTS=<table>` ha
 pushed image is not built.
 
 The table is what [`scripts/ci/run-image-inputs.sh`](../scripts/ci/run-image-inputs.sh)
-prints: one `<name> <digest> <parents>` line for every image `image-names.sh` lists plus
-the `tools` builder. An image's digest covers its Dockerfile, every
+prints: one `<name> <digest> <parents>` line for every image `image-names.sh` lists.
+An image's digest covers its Dockerfile, every
 context path the Dockerfile copies (as `git ls-files -s` records them, so the index and
 not the working tree is what is described; a Dockerfile that copies `.` reads the whole
 context, which is the root `.dockerignore`'s listing; a path under a submodule, such as
 `contracts/`, is recorded as the submodule's pinned commit, the only entry the index holds
-for it), the digests of the images it is built from, and a schema constant. Anything that
+for it), the digests of the images it is built from, the reference of every
+[tool image](#the-tool-images) it copies out of, and a schema constant. Anything that
 changes below an image therefore changes the image's own digest, and a change to the
 schema constant changes every digest at once, which is how a build is forced when an
 unpinned upstream (a base image named by tag, an apt package set, a toolchain fetched by
@@ -1181,11 +1158,9 @@ create` (a manifest write, no blob moves) and nothing is built, pushed or reclai
 built image's inputs tag is dropped with its other tags when the image is reclaimed. An
 image whose digest is new is built as ever, `FROM` parents that are local because this
 run built them or, when this run reused them, pulled from their own inputs tags the first
-time a child needs one. `tools`, which never gets a commit's tag, is pushed under its
-inputs tag alone so a run whose asset images changed pulls the builder instead of
-compiling it. A reused image that is one of the five `gg selfcheck` representatives is
-still pulled and driven through the check with the day's gg: the reuse says the image is
-the one checked last time, not that the gg is.
+time a child needs one. A reused image that is one of the five `gg selfcheck`
+representatives is still pulled and driven through the check with the day's gg: the
+reuse says the image is the one checked last time, not that the gg is.
 
 The table's parent map mirrors `build_one`'s dispatch in `build.sh`; a new image or a
 changed `FROM` is entered in both, and each file says so beside its map. The mode needs

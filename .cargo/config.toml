@@ -140,21 +140,17 @@ test-cabinet-particle-2d = { path = "tool-particle/crates/particle-2d" }
 test-cabinet-particle-3d = { path = "tool-particle/crates/particle-3d" }
 test-cabinet-particle-core = { path = "tool-particle/crates/particle-core" }
 
-# tool-audio-core is not checked out; the table joins once it is bootstrapped:
-#   [patch."https://github.com/TheClockwyrks/tool-audio-core"]
-#   test-cabinet-audio-core = { path = "tool-audio-core/crates/audio-core" }
+[patch."https://github.com/TheClockwyrks/tool-audio-core"]
+test-cabinet-audio-core = { path = "tool-audio-core/crates/audio-core" }
 
-# tool-sfx-synth is not checked out; the table joins once it is bootstrapped:
-#   [patch."https://github.com/TheClockwyrks/tool-sfx-synth"]
-#   test-cabinet-sfx-synth = { path = "tool-sfx-synth/crates/sfx-synth" }
+[patch."https://github.com/TheClockwyrks/tool-sfx-synth"]
+test-cabinet-sfx-synth = { path = "tool-sfx-synth/crates/sfx-synth" }
 
-# tool-sfx-sample is not checked out; the table joins once it is bootstrapped:
-#   [patch."https://github.com/TheClockwyrks/tool-sfx-sample"]
-#   test-cabinet-sfx-sample = { path = "tool-sfx-sample/crates/sfx-sample" }
+[patch."https://github.com/TheClockwyrks/tool-sfx-sample"]
+test-cabinet-sfx-sample = { path = "tool-sfx-sample/crates/sfx-sample" }
 
-# tool-music is not checked out; the table joins once it is bootstrapped:
-#   [patch."https://github.com/TheClockwyrks/tool-music"]
-#   test-cabinet-music = { path = "tool-music/crates/music" }
+[patch."https://github.com/TheClockwyrks/tool-music"]
+test-cabinet-music = { path = "tool-music/crates/music" }
 
 # microservice-backend is not checked out; the table joins once it is bootstrapped:
 #   [patch."https://github.com/TheClockwyrks/microservice-backend"]

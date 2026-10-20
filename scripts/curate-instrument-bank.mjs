@@ -17,7 +17,8 @@
 //
 //   BANK CURATION (`--bank <name>`) fills a whole instrument bank. The `music`
 //   sequencer plays a bank instrument by pitch-shifting one recorded note across a
-//   track's notes (see `crates/audio-core/src/music.rs`), so each entry needs the MIDI
+//   track's notes (see
+//   `tool-audio-core/crates/audio-core/src/music.rs`), so each entry needs the MIDI
 //   note it was recorded at. That note can be ANY pitch as long as it is recorded
 //   accurately, so for each instrument in the bank's spec this mode searches Freesound
 //   (CC0 only), downloads the candidate's hq-ogg preview, DETECTS the fundamental by

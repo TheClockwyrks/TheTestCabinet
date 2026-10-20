@@ -4475,7 +4475,6 @@ dependencies = [
  "png",
  "serde",
  "serde_json",
- "tempfile",
  "toml",
 ]
 
@@ -4708,35 +4707,11 @@ dependencies = [
 ]
 
 [[package]]
-name = "test-cabinet-music"
-version = "0.0.0"
-dependencies = [
- "clap",
- "test-cabinet-audio-core",
-]
-
-[[package]]
 name = "test-cabinet-redact"
 version = "0.2.2"
 dependencies = [
  "serde_json",
  "test-cabinet-contracts",
-]
-
-[[package]]
-name = "test-cabinet-sfx-sample"
-version = "0.0.0"
-dependencies = [
- "clap",
- "test-cabinet-audio-core",
-]
-
-[[package]]
-name = "test-cabinet-sfx-synth"
-version = "0.0.0"
-dependencies = [
- "clap",
- "test-cabinet-audio-core",
 ]
 
 [[package]]
@@ -6393,4 +6368,16 @@ version = "0.0.0"
 
 [[patch.unused]]
 name = "test-cabinet-model-skin"
+version = "0.0.0"
+
+[[patch.unused]]
+name = "test-cabinet-sfx-synth"
+version = "0.0.0"
+
+[[patch.unused]]
+name = "test-cabinet-sfx-sample"
+version = "0.0.0"
+
+[[patch.unused]]
+name = "test-cabinet-music"
 version = "0.0.0"

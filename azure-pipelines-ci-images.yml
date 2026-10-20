@@ -149,6 +149,18 @@ resources:
     - repository: tool-dc
       type: git
       name: the-test-cabinet/tool-dc
+    - repository: tool-audio-core
+      type: git
+      name: the-test-cabinet/tool-audio-core
+    - repository: tool-sfx-synth
+      type: git
+      name: the-test-cabinet/tool-sfx-synth
+    - repository: tool-sfx-sample
+      type: git
+      name: the-test-cabinet/tool-sfx-sample
+    - repository: tool-music
+      type: git
+      name: the-test-cabinet/tool-music
     - repository: test-suites
       type: git
       name: the-test-cabinet/test-suites
@@ -190,6 +202,10 @@ jobs:
         - tool-mc
         - tool-sn
         - tool-dc
+        - tool-audio-core
+        - tool-sfx-synth
+        - tool-sfx-sample
+        - tool-music
         - test-suites
         - ui-common
     steps:
@@ -244,6 +260,10 @@ jobs:
         - tool-mc
         - tool-sn
         - tool-dc
+        - tool-audio-core
+        - tool-sfx-synth
+        - tool-sfx-sample
+        - tool-music
         - test-suites
         - ui-common
     steps:
@@ -292,6 +312,10 @@ jobs:
         - tool-mc
         - tool-sn
         - tool-dc
+        - tool-audio-core
+        - tool-sfx-synth
+        - tool-sfx-sample
+        - tool-music
         - test-suites
         - ui-common
     steps:

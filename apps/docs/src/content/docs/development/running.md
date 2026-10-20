@@ -84,7 +84,8 @@ under gg's `packages/` rebuilds that layer alone.
 When the container is created, `.devcontainer/post-create.sh` installs the git
 hooks, initializes `contracts`, `engines`, `gg`, `microservice-repos`,
 `tool-model-core`, `tool-paint`, `tool-particle`, `tool-sprite`, `tool-voxel`,
-`tool-mc`, `tool-sn`, `tool-dc` and `test-suites`, runs `npm ci`
+`tool-mc`, `tool-sn`, `tool-dc`, `tool-audio-core`, `tool-sfx-synth`,
+`tool-sfx-sample`, `tool-music` and `test-suites`, runs `npm ci`
 (and gg's own in the `gg` checkout) and links the
 checked-out repositories' packages, and nothing runs in the background
 afterwards. In a container built before a gg pin moved, the two installers
