@@ -134,6 +134,18 @@ resources:
     - repository: tool-sprite
       type: git
       name: the-test-cabinet/tool-sprite
+    - repository: tool-voxel
+      type: git
+      name: the-test-cabinet/tool-voxel
+    - repository: tool-mc
+      type: git
+      name: the-test-cabinet/tool-mc
+    - repository: tool-sn
+      type: git
+      name: the-test-cabinet/tool-sn
+    - repository: tool-dc
+      type: git
+      name: the-test-cabinet/tool-dc
     - repository: test-suites
       type: git
       name: the-test-cabinet/test-suites
@@ -170,6 +182,10 @@ jobs:
         - tool-model-core
         - tool-paint
         - tool-sprite
+        - tool-voxel
+        - tool-mc
+        - tool-sn
+        - tool-dc
         - test-suites
         - ui-common
     steps:
@@ -219,6 +235,10 @@ jobs:
         - tool-model-core
         - tool-paint
         - tool-sprite
+        - tool-voxel
+        - tool-mc
+        - tool-sn
+        - tool-dc
         - test-suites
         - ui-common
     steps:
@@ -262,6 +282,10 @@ jobs:
         - tool-model-core
         - tool-paint
         - tool-sprite
+        - tool-voxel
+        - tool-mc
+        - tool-sn
+        - tool-dc
         - test-suites
         - ui-common
     steps:

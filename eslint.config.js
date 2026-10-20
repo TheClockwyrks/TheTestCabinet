@@ -136,9 +136,9 @@ const CONFIG = defineConfig([
     // gate reads what the others leave alone.
     "cold-storage/**",
     // The contracts, engines, gg, gg.rocks, microservice-repos, tool-model-core,
-    // tool-paint, tool-sprite, test-suites and ui-common repositories,
-    // submodules with gates of their own, and the docs tree's gg/ entry, which
-    // points into the gg checkout.
+    // tool-paint, tool-sprite, tool-voxel, tool-mc, tool-sn, tool-dc,
+    // test-suites and ui-common repositories, submodules with gates of their
+    // own, and the docs tree's gg/ entry, which points into the gg checkout.
     "contracts/**",
     "engines/**",
     "gg/**",
@@ -147,6 +147,10 @@ const CONFIG = defineConfig([
     "tool-model-core/**",
     "tool-paint/**",
     "tool-sprite/**",
+    "tool-voxel/**",
+    "tool-mc/**",
+    "tool-sn/**",
+    "tool-dc/**",
     "apps/docs/src/content/docs/gg/**",
     "test-suites/**",
     "ui-common/**",

@@ -66,7 +66,8 @@ directory empty. The superrepo's own gates and the docs site read
 `contracts/`, whose schemas the docs publish, `engines/`, which the
 repositories still held in the superrepo's own tree build against,
 `microservice-repos/`, `tool-model-core/`, `tool-paint/`, `tool-sprite/`,
-`ui-common/` and `gg/`, whose crates the
+`tool-voxel/`, `tool-mc/`, `tool-sn/`, `tool-dc/`, `ui-common/` and `gg/`,
+whose crates the
 [patch table](/development/repositories/#inside-the-superrepo) names, since
 cargo loads every patch path before it builds anything (`gg/` holds the gg
 pages the docs site builds as well, and the npm workspace lists `ui-common/`'s
@@ -76,16 +77,18 @@ it:
 ```sh
 git clone <superrepo-url>
 git submodule update --init contracts engines gg microservice-repos \
-  tool-model-core tool-paint tool-sprite ui-common
+  tool-model-core tool-paint tool-sprite tool-voxel tool-mc tool-sn tool-dc \
+  ui-common
 git submodule update --init microservice-driver   # what the task touches
 git submodule update --init --depth 1 cold-storage
 git submodule update --init test-suites
 ```
 
 The devcontainer populates `contracts/`, `engines/`, `gg/`, `microservice-repos/`,
-`tool-model-core/`, `tool-paint/`, `tool-sprite/`, `test-suites/` and `ui-common/`
-when it creates a container, `test-suites/` because a local backend ingests its
-suites from that checkout.
+`tool-model-core/`, `tool-paint/`, `tool-sprite/`, `tool-voxel/`, `tool-mc/`,
+`tool-sn/`, `tool-dc/`, `test-suites/` and `ui-common/` when it creates a
+container, `test-suites/` because a local backend ingests its suites from that
+checkout.
 `.gitmodules` sets the tracked branch of every repository to `master`, so
 `git submodule update --remote <name>` moves that checkout to the branch's tip.
 

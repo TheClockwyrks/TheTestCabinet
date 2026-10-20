@@ -104,20 +104,21 @@ trigger:
 # it. The forty zeros are the placeholder a render carries; see the header.
 
 # The repositories the jobs read beside this one: the contracts, engines, gg,
-# microservice-repos, tool-model-core, tool-paint and tool-sprite repositories,
-# the `contracts/`, `engines/`, `gg/`, `microservice-repos/`,
-# `tool-model-core/`, `tool-paint/` and `tool-sprite/` submodules every build
-# reads, because the patch table names their crates and cargo loads every patch
-# path (no member uses gg's or tool-paint's crate; the documentation site
-# builds gg's pages from its checkout), the test-suites repository, the
-# `test-suites/` submodule holding the catalog the tests over the committed
-# catalog read and the performance image bakes from, and the ui-common
-# repository, the `ui-common/` submodule whose crate the patch table names (no
-# member uses it) and whose packages the npm workspace lists. No job checks one
-# out. A job that builds names them under `uses:`, which puts them in the scope
-# of the job's access token, and runs `scripts/ci/submodules.sh init` with their
-# paths after its own checkout, which fetches the commits the superproject
-# pins.
+# microservice-repos, tool-model-core, tool-paint, tool-sprite, tool-voxel,
+# tool-mc, tool-sn and tool-dc repositories, the `contracts/`, `engines/`,
+# `gg/`, `microservice-repos/`, `tool-model-core/`, `tool-paint/`,
+# `tool-sprite/`, `tool-voxel/`, `tool-mc/`, `tool-sn/` and `tool-dc/`
+# submodules every build reads, because the patch table names their crates and
+# cargo loads every patch path (no member uses gg's, tool-paint's, tool-voxel's,
+# tool-mc's, tool-sn's or tool-dc's crates; the documentation site builds gg's
+# pages from its checkout), the test-suites repository, the `test-suites/`
+# submodule holding the catalog the tests over the committed catalog read and
+# the performance image bakes from, and the ui-common repository, the
+# `ui-common/` submodule whose crate the patch table names (no member uses it)
+# and whose packages the npm workspace lists. No job checks one out. A job that
+# builds names them under `uses:`, which puts them in the scope of the job's
+# access token, and runs `scripts/ci/submodules.sh init` with their paths after
+# its own checkout, which fetches the commits the superproject pins.
 resources:
   repositories:
     - repository: contracts
@@ -141,6 +142,18 @@ resources:
     - repository: tool-sprite
       type: git
       name: the-test-cabinet/tool-sprite
+    - repository: tool-voxel
+      type: git
+      name: the-test-cabinet/tool-voxel
+    - repository: tool-mc
+      type: git
+      name: the-test-cabinet/tool-mc
+    - repository: tool-sn
+      type: git
+      name: the-test-cabinet/tool-sn
+    - repository: tool-dc
+      type: git
+      name: the-test-cabinet/tool-dc
     - repository: test-suites
       type: git
       name: the-test-cabinet/test-suites
@@ -226,6 +239,10 @@ stages:
             - tool-model-core
             - tool-paint
             - tool-sprite
+            - tool-voxel
+            - tool-mc
+            - tool-sn
+            - tool-dc
             - test-suites
             - ui-common
         variables:
@@ -253,13 +270,14 @@ stages:
             clean: true
 
           # The contracts, engines, gg, microservice-repos, tool-model-core,
-          # tool-paint, tool-sprite, test-suites and ui-common submodules, at
-          # the pinned commits; the job's `uses:` puts their repositories in
-          # the token's scope. The tests over the committed catalog read
-          # test-suites, the documentation site reads gg's pages, and the npm
-          # workspace lists ui-common's packages.
-          - script: scripts/ci/submodules.sh init contracts engines gg microservice-repos tool-model-core tool-paint tool-sprite test-suites ui-common
-            displayName: Initialize the contracts, engines, gg, microservice-repos, tool-model-core, tool-paint, tool-sprite, test-suites and ui-common submodules
+          # tool-paint, tool-sprite, tool-voxel, tool-mc, tool-sn, tool-dc,
+          # test-suites and ui-common submodules, at the pinned commits; the
+          # job's `uses:` puts their repositories in the token's scope. The
+          # tests over the committed catalog read test-suites, the documentation
+          # site reads gg's pages, and the npm workspace lists ui-common's
+          # packages.
+          - script: scripts/ci/submodules.sh init contracts engines gg microservice-repos tool-model-core tool-paint tool-sprite tool-voxel tool-mc tool-sn tool-dc test-suites ui-common
+            displayName: Initialize the contracts, engines, gg, microservice-repos, tool-model-core, tool-paint, tool-sprite, tool-voxel, tool-mc, tool-sn, tool-dc, test-suites and ui-common submodules
             env:
               SYSTEM_ACCESSTOKEN: $(System.AccessToken)
 
@@ -426,6 +444,10 @@ stages:
             - tool-model-core
             - tool-paint
             - tool-sprite
+            - tool-voxel
+            - tool-mc
+            - tool-sn
+            - tool-dc
             - test-suites
             - ui-common
         steps:
@@ -434,13 +456,14 @@ stages:
             clean: true
 
           # The contracts, engines, gg, microservice-repos, tool-model-core,
-          # tool-paint, tool-sprite, test-suites and ui-common submodules, at
-          # the pinned commits; the job's `uses:` puts their repositories in
-          # the token's scope. The tests over the committed catalog read
-          # test-suites, the documentation site reads gg's pages, and the npm
-          # workspace lists ui-common's packages.
-          - script: scripts/ci/submodules.sh init contracts engines gg microservice-repos tool-model-core tool-paint tool-sprite test-suites ui-common
-            displayName: Initialize the contracts, engines, gg, microservice-repos, tool-model-core, tool-paint, tool-sprite, test-suites and ui-common submodules
+          # tool-paint, tool-sprite, tool-voxel, tool-mc, tool-sn, tool-dc,
+          # test-suites and ui-common submodules, at the pinned commits; the
+          # job's `uses:` puts their repositories in the token's scope. The
+          # tests over the committed catalog read test-suites, the documentation
+          # site reads gg's pages, and the npm workspace lists ui-common's
+          # packages.
+          - script: scripts/ci/submodules.sh init contracts engines gg microservice-repos tool-model-core tool-paint tool-sprite tool-voxel tool-mc tool-sn tool-dc test-suites ui-common
+            displayName: Initialize the contracts, engines, gg, microservice-repos, tool-model-core, tool-paint, tool-sprite, tool-voxel, tool-mc, tool-sn, tool-dc, test-suites and ui-common submodules
             env:
               SYSTEM_ACCESSTOKEN: $(System.AccessToken)
 

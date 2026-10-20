@@ -31,14 +31,15 @@ members = [
 	"crates/migration",
 ]
 # The repositories checked out as submodules carrying a crate (contracts, engines,
-# gg, microservice-repos, tool-model-core, tool-paint, tool-sprite, ui-common)
-# are workspaces of their own. The contracts, engines, microservice-repos,
-# tool-model-core and tool-sprite crates are named under
-# `[workspace.dependencies]` by their public source, and the patch table of
-# `.cargo/config.toml` builds them from the checkouts. No member depends on
-# gg's, tool-paint's or ui-common's source; the patch table names their crates
-# all the same, and the lock records them as unused.
-exclude = ["contracts", "engines", "gg", "microservice-repos", "tool-model-core", "tool-paint", "tool-sprite", "ui-common"]
+# gg, microservice-repos, tool-model-core, tool-paint, tool-sprite, tool-voxel,
+# tool-mc, tool-sn, tool-dc, ui-common) are workspaces of their own. The
+# contracts, engines, microservice-repos, tool-model-core and tool-sprite crates
+# are named under `[workspace.dependencies]` by their public source, and the patch
+# table of `.cargo/config.toml` builds them from the checkouts. No member depends
+# on gg's, tool-paint's, tool-voxel's, tool-mc's, tool-sn's, tool-dc's or
+# ui-common's source; the patch table names their crates all the same, and the
+# lock records them as unused.
+exclude = ["contracts", "engines", "gg", "microservice-repos", "tool-model-core", "tool-paint", "tool-sprite", "tool-voxel", "tool-mc", "tool-sn", "tool-dc", "ui-common"]
 
 [workspace.package]
 edition = "2024"
@@ -159,13 +160,13 @@ lattice-core = { git = "https://github.com/TheClockwyrks/engines", tag = "v1.1.1
 # library (not the `cli` feature's binaries): the driver regenerates the scored
 # image from a run's recorded action log through it.
 test-cabinet-draw = { git = "https://github.com/TheClockwyrks/tool-sprite", branch = "master", default-features = false }
-# The crates of the tool-model-core repository, named the same way at its
-# `master` branch (`TAGS` records no tag for it). Only the libraries: the driver
-# reads the rig, color and meshed-part types through them, and a member whose
-# binaries record, preview or render enables their `cli` feature itself.
-test-cabinet-model-core = { git = "https://github.com/TheClockwyrks/tool-model-core", branch = "master", default-features = false }
-test-cabinet-voxel-mesh = { git = "https://github.com/TheClockwyrks/tool-model-core", branch = "master", default-features = false }
-test-cabinet-model-skin = { git = "https://github.com/TheClockwyrks/tool-model-core", branch = "master", default-features = false }
+# The crates of the tool-model-core repository, named the same way at its tag.
+# Only the libraries: the driver reads the rig, color and meshed-part types
+# through them, and a member whose binaries record, preview or render enables
+# their `cli` feature itself.
+test-cabinet-model-core = { git = "https://github.com/TheClockwyrks/tool-model-core", tag = "v0.1.0", default-features = false }
+test-cabinet-voxel-mesh = { git = "https://github.com/TheClockwyrks/tool-model-core", tag = "v0.1.0", default-features = false }
+test-cabinet-model-skin = { git = "https://github.com/TheClockwyrks/tool-model-core", tag = "v0.1.0", default-features = false }
 # Shared runtime dependencies inherited by member crates via { workspace = true }.
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

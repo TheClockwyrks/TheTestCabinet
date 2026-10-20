@@ -7072,3 +7072,47 @@ version = "0.2.2"
 [[patch.unused]]
 name = "contract-codegen"
 version = "0.2.2"
+
+[[patch.unused]]
+name = "test-cabinet-voxel"
+version = "0.0.0"
+
+[[patch.unused]]
+name = "test-cabinet-voxel-anim"
+version = "0.0.0"
+
+[[patch.unused]]
+name = "test-cabinet-mc"
+version = "0.0.0"
+
+[[patch.unused]]
+name = "test-cabinet-mc-anim"
+version = "0.0.0"
+
+[[patch.unused]]
+name = "test-cabinet-mc-skin"
+version = "0.0.0"
+
+[[patch.unused]]
+name = "test-cabinet-sn"
+version = "0.0.0"
+
+[[patch.unused]]
+name = "test-cabinet-sn-anim"
+version = "0.0.0"
+
+[[patch.unused]]
+name = "test-cabinet-sn-skin"
+version = "0.0.0"
+
+[[patch.unused]]
+name = "test-cabinet-dc"
+version = "0.0.0"
+
+[[patch.unused]]
+name = "test-cabinet-dc-anim"
+version = "0.0.0"
+
+[[patch.unused]]
+name = "test-cabinet-dc-skin"
+version = "0.0.0"

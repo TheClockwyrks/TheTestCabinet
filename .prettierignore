@@ -62,9 +62,9 @@ deployments/k8s/
 # eslint.config.js leave out too, so the gates never disagree about a path.
 /cold-storage/**
 # The contracts, engines, gg, gg.rocks, microservice-repos, tool-model-core,
-# tool-paint, tool-sprite, test-suites and ui-common repositories, submodules
-# whose own gates format them, and the docs tree's gg/ entry, which points into
-# the gg checkout.
+# tool-paint, tool-sprite, tool-voxel, tool-mc, tool-sn, tool-dc, test-suites
+# and ui-common repositories, submodules whose own gates format them, and the
+# docs tree's gg/ entry, which points into the gg checkout.
 /contracts/**
 /engines/**
 /gg/**
@@ -73,6 +73,10 @@ deployments/k8s/
 /tool-model-core/**
 /tool-paint/**
 /tool-sprite/**
+/tool-voxel/**
+/tool-mc/**
+/tool-sn/**
+/tool-dc/**
 /apps/docs/src/content/docs/gg/**
 /test-suites/**
 /ui-common/**
