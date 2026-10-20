@@ -1,7 +1,7 @@
 use std::path::Path;
 
 use super::{
-    FsRepoSeeder, JsonNode, init_repo, reserve_unique_dir, run_timestamp,
+    FsRepoSeeder, check_vendored_versions, init_repo, reserve_unique_dir, run_timestamp,
     seed_prior_game_jam_entries,
 };
 use crate::engine::{EngineSelection, ResolvedEngine};
@@ -245,41 +245,70 @@ fn seeder_for(store: &tempfile::TempDir) -> (tempfile::TempDir, FsRepoSeeder) {
     (base, seeder)
 }
 
-/// The workspace `package.json` a case ships. Its keys are deliberately not in
-/// alphabetical order, so a rewrite that re-sorted them would be impossible to
-/// miss in the assertion below.
-const SHIPPED_PACKAGE_JSON: &str = r#"{
-  "name": "carom",
-  "private": true,
-  "scripts": {
-    "build": "vite build"
-  },
-  "dependencies": {
-    "vite": "^5.0.0"
-  },
-  "devDependencies": {
-    "typescript": "^5.0.0"
-  }
-}
-"#;
+/// The test case `vendor_engine` and the version check name in their failures.
+const CASE: &str = "carom@v3.0.0";
 
-/// The same file after the engine is vendored: exactly one line more, inside the
-/// object it belongs to, with everything else where the author left it.
-const SEEDED_PACKAGE_JSON: &str = r#"{
+/// Where an engine workspace declares the engine today, and where a version
+/// written before lockfiles still declares it.
+const VENDORED: &str = "file:./.vendor/packages/@clockwyrks/simple-2d";
+const LEGACY: &str = "file:./.vendor/engine/@clockwyrks/simple-2d";
+
+/// The engine workspace `package.json` a case ships, declaring the engine as
+/// `spec`. Its keys are deliberately not in alphabetical order and it is indented
+/// as its author left it, so any rewrite at all would show in a byte comparison.
+fn shipped_package_json(spec: &str) -> String {
+    format!(
+        r#"{{
   "name": "carom",
   "private": true,
-  "scripts": {
+  "scripts": {{
     "build": "vite build"
-  },
-  "dependencies": {
+  }},
+  "dependencies": {{
     "vite": "^5.0.0",
-    "@clockwyrks/simple-2d": "file:./.vendor/engine/@clockwyrks/simple-2d"
-  },
-  "devDependencies": {
+    "@clockwyrks/simple-2d": "{spec}"
+  }},
+  "devDependencies": {{
     "typescript": "^5.0.0"
-  }
+  }}
+}}
+"#
+    )
 }
-"#;
+
+/// The lockfile npm writes for [`shipped_package_json`] of `spec`, linking the
+/// engine (locked at `engine`) and its sibling `asset-contract` (locked at
+/// `contract`) at the vendored paths the spec names.
+fn shipped_lockfile(spec: &str, engine: &str, contract: &str) -> String {
+    let path = spec.strip_prefix("file:./").expect("an in-repo file: spec");
+    let sibling = path.replace("simple-2d", "asset-contract");
+    serde_json::to_string_pretty(&serde_json::json!({
+        "name": "carom",
+        "lockfileVersion": 3,
+        "requires": true,
+        "packages": {
+            "": {
+                "name": "carom",
+                "dependencies": { "vite": "^5.0.0", "@clockwyrks/simple-2d": spec },
+                "devDependencies": { "typescript": "^5.0.0" }
+            },
+            path: {
+                "name": "@clockwyrks/simple-2d",
+                "version": engine,
+                "dependencies": { "@clockwyrks/asset-contract": "file:../asset-contract" }
+            },
+            sibling: { "name": "@clockwyrks/asset-contract", "version": contract },
+            // What the install places below a vendored package is not a vendored
+            // copy, so its version is never compared with anything.
+            format!("{path}/node_modules/ts-essentials"): { "version": "10.0.0" },
+            "node_modules/@clockwyrks/simple-2d": { "resolved": path, "link": true },
+            "node_modules/vite": { "version": "5.0.0" },
+            "node_modules/typescript": { "version": "5.0.0", "dev": true }
+        }
+    }))
+    .expect("render the lockfile")
+        + "\n"
+}
 
 /// A run repository holding the workspace `package.json` a case ships.
 fn workspace_with_package_json(contents: &str) -> tempfile::TempDir {
@@ -289,24 +318,19 @@ fn workspace_with_package_json(contents: &str) -> tempfile::TempDir {
 }
 
 /// The whole engine delivery in one pass: the package *and its transitive
-/// `@clockwyrks` closure* land under `.vendor/engine/`, the engine's own
-/// documentation lands at `engine/`, the staged version comes back to be recorded
-/// on the run, and the workspace `package.json` gains the `file:` dependency —
-/// with every key the case authored still in the position it authored it in, at
-/// two-space indentation with a trailing newline.
-///
-/// The exact-text assertion is the point: this file is read by the model and
-/// diffed by everything downstream, so "the dependency is there" is not enough —
-/// re-emitting it in a different shape would turn a one-line addition into a
-/// whole-file change.
+/// `@clockwyrks` closure* land at the path the workspace declares, under
+/// `.vendor/packages/`, the engine's own documentation lands at `engine/`, the
+/// staged version comes back to be recorded on the run, and the workspace
+/// `package.json` is byte-for-byte the file the case shipped.
 #[test]
-fn vendor_engine_vendors_the_closure_the_docs_and_the_dependency() {
+fn vendor_engine_vendors_the_closure_and_the_docs_at_the_declared_path() {
     let store = fake_engine_store("1.4.2", true);
     let (_base, seeder) = seeder_for(&store);
-    let repo = workspace_with_package_json(SHIPPED_PACKAGE_JSON);
+    let shipped = shipped_package_json(VENDORED);
+    let repo = workspace_with_package_json(&shipped);
 
     let version = seeder
-        .vendor_engine(repo.path(), &simple_2d())
+        .vendor_engine(repo.path(), &simple_2d(), CASE)
         .expect("vendor the engine");
 
     assert_eq!(
@@ -314,19 +338,19 @@ fn vendor_engine_vendors_the_closure_the_docs_and_the_dependency() {
         Some("1.4.2"),
         "the recorded version is the one the staged package declares"
     );
-    let vendored = repo.path().join(".vendor/engine/@clockwyrks");
+    let vendored = repo.path().join(".vendor/packages/@clockwyrks");
     assert!(
         vendored.join("simple-2d/dist/index.js").is_file(),
-        "the engine package is vendored, build output included"
+        "the engine package is vendored at the declared path, build output included"
     );
     assert!(
         vendored.join("asset-contract/package.json").is_file(),
-        "the transitive @clockwyrks dependency is vendored too, so the staged \
+        "the transitive @clockwyrks dependency is vendored beside it, so the staged \
          package's relative `file:` link still resolves"
     );
     assert!(
-        !repo.path().join(".vendor/packages").exists(),
-        "the engine never lands in the case's own vendor tree"
+        !repo.path().join(".vendor/engine").exists(),
+        "nothing lands at a path the workspace does not declare"
     );
     assert_eq!(
         std::fs::read_to_string(repo.path().join("engine/frame.md")).expect("seeded engine docs"),
@@ -335,69 +359,150 @@ fn vendor_engine_vendors_the_closure_the_docs_and_the_dependency() {
     );
     assert_eq!(
         std::fs::read_to_string(repo.path().join("package.json")).expect("read package.json"),
-        SEEDED_PACKAGE_JSON,
-        "only the dependency is added; every other key keeps its place and shape"
+        shipped,
+        "the shipped `package.json` is never written"
     );
 }
 
-/// A workspace that declares no `dependencies` at all still gets the engine: the
-/// object is created (appended, so nothing the author wrote moves) rather than the
-/// engine being silently dropped.
+/// A version written before lockfiles declares its engine at the legacy
+/// `.vendor/engine/` path, and still resolves; the engine is vendored there, where
+/// its `package.json` points, rather than at today's path.
 #[test]
-fn vendor_engine_creates_a_missing_dependencies_object() {
+fn vendor_engine_vendors_at_the_legacy_engine_path_a_workspace_declares() {
     let store = fake_engine_store("1.0.0", true);
     let (_base, seeder) = seeder_for(&store);
-    let repo = workspace_with_package_json("{\n  \"name\": \"carom\"\n}\n");
+    let shipped = shipped_package_json(LEGACY);
+    let repo = workspace_with_package_json(&shipped);
 
     seeder
-        .vendor_engine(repo.path(), &simple_2d())
+        .vendor_engine(repo.path(), &simple_2d(), CASE)
         .expect("vendor the engine");
 
+    let vendored = repo.path().join(".vendor/engine/@clockwyrks");
+    assert!(vendored.join("simple-2d/dist/index.js").is_file());
+    assert!(vendored.join("asset-contract/package.json").is_file());
+    assert!(!repo.path().join(".vendor/packages").exists());
     assert_eq!(
         std::fs::read_to_string(repo.path().join("package.json")).expect("read package.json"),
-        r#"{
-  "name": "carom",
-  "dependencies": {
-    "@clockwyrks/simple-2d": "file:./.vendor/engine/@clockwyrks/simple-2d"
-  }
-}
-"#,
+        shipped,
     );
+}
+
+/// A dev dependency is as good a declaration as a dependency, and a spec spelled
+/// without the leading `./` names the same path.
+#[test]
+fn vendor_engine_reads_a_dev_dependency_without_a_leading_dot() {
+    let store = fake_engine_store("1.0.0", true);
+    let (_base, seeder) = seeder_for(&store);
+    let repo = workspace_with_package_json(
+        r#"{"devDependencies":{"@clockwyrks/simple-2d":"file:.vendor/packages/@clockwyrks/simple-2d"}}"#,
+    );
+
+    seeder
+        .vendor_engine(repo.path(), &simple_2d(), CASE)
+        .expect("vendor the engine");
+
+    assert!(
+        repo.path()
+            .join(".vendor/packages/@clockwyrks/simple-2d/package.json")
+            .is_file()
+    );
+}
+
+/// Every declaration the seeder cannot vendor at is refused before anything is
+/// copied, naming the case, the engine package, and the spec to write instead: a
+/// workspace that does not depend on the engine, one that names it only as a peer,
+/// a registry range, a path outside `.vendor/`, one that climbs out of it, and one
+/// whose last segments are not the package's name (the closure's relative links
+/// would not resolve).
+#[test]
+fn vendor_engine_refuses_a_declaration_it_cannot_vendor_at() {
+    let cases = [
+        r#"{"dependencies":{"vite":"^5.0.0"}}"#.to_string(),
+        r#"{"peerDependencies":{"@clockwyrks/simple-2d":"file:./.vendor/packages/@clockwyrks/simple-2d"}}"#.to_string(),
+        shipped_package_json("^1.0.0"),
+        shipped_package_json("file:./lib/@clockwyrks/simple-2d"),
+        shipped_package_json("file:./.vendor/../lib/@clockwyrks/simple-2d"),
+        shipped_package_json("file:./.vendor/packages/engine"),
+    ];
+    for shipped in cases {
+        let store = fake_engine_store("1.0.0", true);
+        let (_base, seeder) = seeder_for(&store);
+        let repo = workspace_with_package_json(&shipped);
+
+        let err = seeder
+            .vendor_engine(repo.path(), &simple_2d(), CASE)
+            .expect_err("an unusable declaration is refused");
+
+        let message = err.to_string();
+        assert!(message.contains(CASE), "{message}");
+        assert!(message.contains("@clockwyrks/simple-2d"), "{message}");
+        assert!(message.contains(VENDORED), "{message}");
+        assert!(
+            !repo.path().join(".vendor").exists(),
+            "nothing is vendored for {shipped}"
+        );
+        assert_eq!(
+            std::fs::read_to_string(repo.path().join("package.json")).expect("package.json"),
+            shipped
+        );
+    }
 }
 
 /// Both vendored trees carry `dist/` subtrees, and a case's own `.gitignore`
-/// ignores `dist/` for its build output. `init_repo` force-adds each so the seed
-/// commit captures them: without it the published repository would install a
+/// ignores `dist/` for its build output. `init_repo` force-adds `.vendor/` so the
+/// seed commit captures them: without it the published repository would install a
 /// dependency whose code is not there — the case's packages and the run's engine
-/// alike.
+/// alike, at today's path and the legacy one.
 #[test]
-fn init_repo_commits_both_the_vendored_packages_and_the_vendored_engine() {
-    let store = fake_engine_store("1.0.0", true);
-    let (_base, seeder) = seeder_for(&store);
-    let repo = workspace_with_package_json("{\n  \"name\": \"carom\"\n}\n");
-    std::fs::write(repo.path().join(".gitignore"), "node_modules/\ndist/\n").expect("gitignore");
-    seeder
-        .vendor_packages(repo.path(), &["@clockwyrks/asset-contract".to_string()])
-        .expect("vendor the case's packages");
-    seeder
-        .vendor_engine(repo.path(), &simple_2d())
-        .expect("vendor the engine");
+fn init_repo_commits_the_vendored_packages_and_engine_at_either_path() {
+    for spec in [VENDORED, LEGACY] {
+        let store = fake_engine_store("1.0.0", true);
+        let (_base, seeder) = seeder_for(&store);
+        let repo = workspace_with_package_json(&shipped_package_json(spec));
+        std::fs::write(repo.path().join(".gitignore"), "node_modules/\ndist/\n")
+            .expect("gitignore");
+        seeder
+            .vendor_packages(repo.path(), &["@clockwyrks/asset-contract".to_string()])
+            .expect("vendor the case's packages");
+        seeder
+            .vendor_engine(repo.path(), &simple_2d(), CASE)
+            .expect("vendor the engine");
 
-    init_repo(repo.path()).expect("init repo");
+        init_repo(repo.path()).expect("init repo");
 
-    let tracked = git_stdout(repo.path(), &["ls-files"]);
-    assert!(
-        tracked.contains(".vendor/packages/@clockwyrks/asset-contract/dist/index.js"),
-        "the case's vendored packages are committed despite `dist/`: {tracked}"
-    );
-    assert!(
-        tracked.contains(".vendor/engine/@clockwyrks/simple-2d/dist/index.js"),
-        "the run's vendored engine is committed despite `dist/`: {tracked}"
-    );
-    assert!(
-        tracked.contains("engine/frame.md"),
-        "the seeded engine documentation is committed: {tracked}"
-    );
+        let tracked = git_stdout(repo.path(), &["ls-files"]);
+        assert!(
+            tracked.contains(".vendor/packages/@clockwyrks/asset-contract/dist/index.js"),
+            "the case's vendored packages are committed despite `dist/`: {tracked}"
+        );
+        let engine = spec.strip_prefix("file:./").expect("in-repo spec");
+        assert!(
+            tracked.contains(&format!("{engine}/dist/index.js")),
+            "the run's vendored engine is committed despite `dist/`: {tracked}"
+        );
+        assert!(
+            tracked.contains("engine/frame.md"),
+            "the seeded engine documentation is committed: {tracked}"
+        );
+        assert_eq!(git_stdout(repo.path(), &["status", "--porcelain"]), "");
+    }
+}
+
+/// Every vendored tree the seeder writes lies under the root `init_repo` forces
+/// into the seed commit.
+#[test]
+fn every_vendored_tree_lies_under_the_forced_vendor_root() {
+    for dir in [
+        crate::test_case::TCAB_VENDOR_DIR,
+        crate::test_case::TCAB_ENGINE_DIR,
+    ] {
+        assert!(
+            dir.starts_with(&format!("{}/", super::VENDOR_ROOT)),
+            "{dir} must lie under {}",
+            super::VENDOR_ROOT
+        );
+    }
 }
 
 /// The `none` engine is the whole point of the gate: it vendors nothing, seeds no
@@ -415,7 +520,7 @@ fn vendor_engine_writes_nothing_for_an_engine_with_no_runtime() {
         .expect("`none` is a built-in engine");
 
     let version = seeder
-        .vendor_engine(repo.path(), &none)
+        .vendor_engine(repo.path(), &none, CASE)
         .expect("vendoring nothing succeeds");
 
     assert_eq!(
@@ -440,10 +545,10 @@ fn vendor_engine_errors_when_the_package_is_missing_from_the_store() {
     let store = tempfile::tempdir().expect("empty store");
     let base = tempfile::tempdir().expect("seed base");
     let seeder = FsRepoSeeder::with_package_store(base.path(), store.path());
-    let repo = workspace_with_package_json("{\n  \"name\": \"carom\"\n}\n");
+    let repo = workspace_with_package_json(&shipped_package_json(VENDORED));
 
     let err = seeder
-        .vendor_engine(repo.path(), &simple_2d())
+        .vendor_engine(repo.path(), &simple_2d(), CASE)
         .expect_err("a missing engine package is an error");
 
     let message = err.to_string();
@@ -464,10 +569,10 @@ fn vendor_engine_errors_when_the_staged_package_declares_no_version() {
     )
     .expect("rewrite the engine manifest");
     let (_base, seeder) = seeder_for(&store);
-    let repo = workspace_with_package_json("{\n  \"name\": \"carom\"\n}\n");
+    let repo = workspace_with_package_json(&shipped_package_json(VENDORED));
 
     let err = seeder
-        .vendor_engine(repo.path(), &simple_2d())
+        .vendor_engine(repo.path(), &simple_2d(), CASE)
         .expect_err("a versionless engine package is an error");
 
     let message = err.to_string();
@@ -482,10 +587,10 @@ fn vendor_engine_errors_when_the_staged_package_declares_no_version() {
 fn vendor_engine_errors_when_the_declared_docs_are_missing() {
     let store = fake_engine_store("1.0.0", false);
     let (_base, seeder) = seeder_for(&store);
-    let repo = workspace_with_package_json("{\n  \"name\": \"carom\"\n}\n");
+    let repo = workspace_with_package_json(&shipped_package_json(VENDORED));
 
     let err = seeder
-        .vendor_engine(repo.path(), &simple_2d())
+        .vendor_engine(repo.path(), &simple_2d(), CASE)
         .expect_err("a missing docs directory is an error");
 
     let message = err.to_string();
@@ -493,10 +598,10 @@ fn vendor_engine_errors_when_the_declared_docs_are_missing() {
     assert!(message.contains("docs"), "{message}");
 }
 
-/// A case that supports an engine must ship a workspace `package.json`, because
-/// that is the file the dependency is written into. Reaching seeding without one
-/// means the case and the run disagree, so it fails loudly rather than inventing a
-/// manifest the case's specs never described.
+/// A case that supports an engine ships a workspace `package.json` per engine,
+/// because that is the file that declares where the engine is vendored. Reaching
+/// seeding without one means the case and the run disagree, so it fails loudly,
+/// naming the case, rather than vendoring somewhere nothing points at.
 #[test]
 fn vendor_engine_errors_when_the_workspace_has_no_package_json() {
     let store = fake_engine_store("1.0.0", true);
@@ -504,10 +609,11 @@ fn vendor_engine_errors_when_the_workspace_has_no_package_json() {
     let repo = tempfile::tempdir().expect("repo dir");
 
     let err = seeder
-        .vendor_engine(repo.path(), &simple_2d())
+        .vendor_engine(repo.path(), &simple_2d(), CASE)
         .expect_err("a workspace with no package.json is an error");
 
     let message = err.to_string();
+    assert!(message.contains(CASE), "{message}");
     assert!(message.contains("package.json"), "{message}");
     assert!(
         message.contains(crate::engine::NONE_SLUG),
@@ -515,47 +621,130 @@ fn vendor_engine_errors_when_the_workspace_has_no_package_json() {
     );
 }
 
-/// The order-preserving JSON model is what keeps the rewrite above to one line.
-/// A round trip must return every object's keys in their authored order — not
-/// `serde_json::Value`'s alphabetical one — and re-emit every value shape
-/// (nested objects, arrays, numbers, booleans, null, and the empty forms of both
-/// containers) at two-space indentation.
+/// Vendor the engine declared at `spec` into a workspace shipping the lockfile
+/// that locks it at `engine` and its sibling at `contract`, then run the version
+/// check, out of a store staging the engine at `staged`.
+fn check_after_vendoring(
+    spec: &str,
+    staged: &str,
+    engine: &str,
+    contract: &str,
+) -> (tempfile::TempDir, crate::error::Result<()>) {
+    let store = fake_engine_store(staged, true);
+    let (_base, seeder) = seeder_for(&store);
+    let repo = workspace_with_package_json(&shipped_package_json(spec));
+    std::fs::write(
+        repo.path().join("package-lock.json"),
+        shipped_lockfile(spec, engine, contract),
+    )
+    .expect("write the lockfile");
+    seeder
+        .vendor_engine(repo.path(), &simple_2d(), CASE)
+        .expect("vendor the engine");
+    let result = check_vendored_versions(repo.path(), CASE, store.path());
+    (repo, result)
+}
+
+/// A lockfile that links each vendored copy at the version the copy declares is
+/// the case's lockfile describing the tree, at today's path and the legacy one.
 #[test]
-fn json_node_round_trips_a_document_in_its_authored_order() {
-    let source = r#"{"zeta":1,"alpha":[1,2.5,true,null,"s"],"nested":{"b":{},"a":[]}}"#;
+fn check_vendored_versions_accepts_a_lockfile_that_agrees_with_the_vendored_copies() {
+    for spec in [VENDORED, LEGACY] {
+        let (_repo, result) = check_after_vendoring(spec, "1.1.1", "1.1.1", "0.0.0");
+        result.expect("the lockfile links the versions vendored");
+    }
+}
 
-    let document: JsonNode = serde_json::from_str(source).expect("parse");
-    let rendered = serde_json::to_string_pretty(&document).expect("render");
+/// A store that stages a different engine version than the lockfile links is a
+/// seeding error naming the case, the path, both versions and the store, so an
+/// operator can tell a stale lockfile from a stale store.
+#[test]
+fn check_vendored_versions_rejects_a_version_the_lockfile_does_not_link() {
+    let (_repo, result) = check_after_vendoring(VENDORED, "1.2.0", "1.1.1", "0.0.0");
 
-    assert_eq!(
-        rendered,
-        r#"{
-  "zeta": 1,
-  "alpha": [
-    1,
-    2.5,
-    true,
-    null,
-    "s"
-  ],
-  "nested": {
-    "b": {},
-    "a": []
-  }
-}"#,
+    let message = result.expect_err("a mismatch is refused").to_string();
+    assert!(message.contains(CASE), "{message}");
+    assert!(
+        message.contains(".vendor/packages/@clockwyrks/simple-2d"),
+        "{message}"
+    );
+    assert!(message.contains("1.1.1"), "{message}");
+    assert!(message.contains("1.2.0"), "{message}");
+    assert!(message.contains("package store"), "{message}");
+}
+
+/// The closure is held to the lockfile too, not only the engine: a sibling locked
+/// at another version is refused.
+#[test]
+fn check_vendored_versions_rejects_a_closure_sibling_at_another_version() {
+    let (_repo, result) = check_after_vendoring(VENDORED, "1.1.1", "1.1.1", "0.2.1");
+
+    let message = result
+        .expect_err("a sibling mismatch is refused")
+        .to_string();
+    assert!(
+        message.contains(".vendor/packages/@clockwyrks/asset-contract"),
+        "{message}"
+    );
+    assert!(message.contains("0.2.1"), "{message}");
+}
+
+/// A lockfile that links a vendored path the seeder wrote nothing to — the engine
+/// vendored at the legacy path while the lockfile links today's — is refused: the
+/// install would link an empty directory.
+#[test]
+fn check_vendored_versions_rejects_a_linked_path_with_nothing_vendored() {
+    let store = fake_engine_store("1.1.1", true);
+    let (_base, seeder) = seeder_for(&store);
+    let repo = workspace_with_package_json(&shipped_package_json(LEGACY));
+    std::fs::write(
+        repo.path().join("package-lock.json"),
+        shipped_lockfile(VENDORED, "1.1.1", "0.0.0"),
+    )
+    .expect("write the lockfile");
+    seeder
+        .vendor_engine(repo.path(), &simple_2d(), CASE)
+        .expect("vendor the engine");
+
+    let message = check_vendored_versions(repo.path(), CASE, store.path())
+        .expect_err("an empty linked path is refused")
+        .to_string();
+    assert!(
+        message.contains("no versioned package was vendored there"),
+        "{message}"
     );
 }
 
-/// A duplicate key is malformed JSON that parsers accept. The last value wins —
-/// what every JSON reader resolves to — while the first key keeps its position,
-/// which is what a human reading the file sees.
+/// A workspace without a lockfile is accepted unchecked (overview, "Init"): a
+/// version written before lockfiles still seeds.
 #[test]
-fn json_node_resolves_a_duplicate_key_in_place() {
-    let document: JsonNode = serde_json::from_str(r#"{"a":1,"b":2,"a":3}"#).expect("parse");
+fn check_vendored_versions_accepts_a_workspace_with_no_lockfile() {
+    let store = fake_engine_store("1.0.0", true);
+    let (_base, seeder) = seeder_for(&store);
+    let repo = workspace_with_package_json(&shipped_package_json(LEGACY));
+    seeder
+        .vendor_engine(repo.path(), &simple_2d(), CASE)
+        .expect("vendor the engine");
 
-    let rendered = serde_json::to_string_pretty(&document).expect("render");
+    check_vendored_versions(repo.path(), CASE, store.path()).expect("no lockfile is accepted");
+}
 
-    assert_eq!(rendered, "{\n  \"a\": 3,\n  \"b\": 2\n}");
+/// A lockfile the seeder cannot read is a seeding error naming the case, not a
+/// check silently skipped.
+#[test]
+fn check_vendored_versions_rejects_an_unreadable_lockfile() {
+    let repo = workspace_with_package_json(&shipped_package_json(VENDORED));
+    std::fs::write(
+        repo.path().join("package-lock.json"),
+        r#"{"lockfileVersion":1}"#,
+    )
+    .expect("write the lockfile");
+
+    let message = check_vendored_versions(repo.path(), CASE, repo.path())
+        .expect_err("a version 1 lockfile is refused")
+        .to_string();
+    assert!(message.contains(CASE), "{message}");
+    assert!(message.contains("lockfileVersion"), "{message}");
 }
 
 /// Run a git command in `repo` and return its stdout, failing the test if git does.
