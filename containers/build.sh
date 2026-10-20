@@ -162,6 +162,14 @@
 #                 (default: what `scripts/ci/gg-release.sh toolchains-image` prints, the
 #                 `test-cabinet-gg-toolchains` image of the gg release the driver pins,
 #                 which pulling needs `az acr login --name testcabinet` for)
+#   TOOL_SPRITE_IMAGE  the `tool-sprite` image the sprite, sprite-sheet and full-stack
+#                 images copy `draw` and `draw-sheet` out of. Unset, it is
+#                 `testcabinet.azurecr.io/tool-sprite:<commit>` at the commit the driver
+#                 pins under PUSH (pulling it needs `az acr login --name testcabinet`),
+#                 and without PUSH the image this script builds from the `tool-sprite/`
+#                 checkout first. Every `tool-*` image is taken the same way, by the build
+#                 argument `scripts/ci/tool-images.sh` names for it; see "The tool
+#                 images" below.
 #
 # GATING THE `-gg` VARIANTS ON `gg selfcheck` (`--gg-selfcheck <PATH-TO-GG>`).
 #
@@ -374,9 +382,11 @@ readonly BASE_WASM_IMAGE="${IMAGE_NAME_PREFIX}base-wasm:${IMAGE_TAG}"
 readonly FULL_STACK_2D_IMAGE="${IMAGE_NAME_PREFIX}full-stack-2d:${IMAGE_TAG}"
 # The shared asset-tooling BUILDER image. Not a run image and never pushed: it exists
 # only as a `COPY --from` source, holding every asset-generation binary compiled in a
-# single cargo pass (see containers/tools/Dockerfile). Every asset image is built with
-# this tag passed as its TOOLS_IMAGE build arg, so all of them bake binaries from the
-# same compile. It is deliberately absent from image-names.sh, which is the list of
+# single cargo pass (see containers/tools/Dockerfile). Every asset image that copies out
+# of it (its Dockerfile declares `ARG TOOLS_IMAGE`) is built with this tag passed as that
+# build arg, so all of them bake binaries from the same compile. The binaries of a tool
+# that lives in a `tool-*` repository come from that repository's image instead (see
+# "The tool images" below). It is deliberately absent from image-names.sh, which is the list of
 # PUBLISHED run images.
 readonly TOOLS_IMAGE="${IMAGE_NAME_PREFIX}tools:${IMAGE_TAG}"
 # The gg LANGUAGE-TOOLCHAIN image: the toolchains every `-gg` variant bakes in. It is not
@@ -416,6 +426,57 @@ readonly GG_TOOLCHAINS_IMAGE
 # `./build.sh` skips it, so a clean clone with no credential can build every run image.
 # See containers/audio-store/Dockerfile.
 readonly AUDIO_STORE_IMAGE="${IMAGE_NAME_PREFIX}audio-store:${IMAGE_TAG}"
+
+# ---------------------------------------------------------------------------
+# The tool images
+# ---------------------------------------------------------------------------
+# A tool that lives in a `tool-*` repository (`tool-sprite`: `draw`, `draw-sheet`) is not
+# compiled by the tooling builder. Its repository's pipeline publishes the image
+# `testcabinet.azurecr.io/<repository>:<commit>` on every gated push to master and staging,
+# and a run image copies the binaries out of it at the commit the driver pins, which,
+# while the driver lives in the superrepo, is the superrepo's gitlink for the repository.
+# A run image's Dockerfile says which it copies from by declaring the global build
+# argument (`ARG TOOL_SPRITE_IMAGE`) and naming a stage `FROM` it.
+#
+# `scripts/ci/tool-images.sh list` names every repository, its build argument and the
+# pinned reference, honouring an environment variable named for the argument. That table
+# is read once here. What the argument is given:
+#
+#   - under PUSH, the pinned reference, pulled once before the first image that copies
+#     from it: a published run image carries the published tool, never a local build of
+#     it. scripts/ci/run-images.sh checks every reference is in the registry first.
+#   - without PUSH (the local path, deployments/local/Makefile's), the image built from
+#     the repository's checkout, `${IMAGE_NAME_PREFIX}<repository>:${IMAGE_TAG}`, rebuilt
+#     once per invocation before the first image that copies from it, for the reason the
+#     tooling builder is always rebuilt: it carries the binaries, and a stale one would
+#     bake yesterday's `draw` into today's run image. The repository's own Dockerfile and
+#     build context are used, as its pipeline uses them, and its cargo cache mounts make a
+#     no-change rebuild cheap.
+#   - an environment variable named for the argument wins in both modes, and is pulled
+#     like the pinned reference when it is not in the local store.
+#
+# Naming a repository (`./build.sh tool-sprite`) builds or pulls just its image. Like the
+# tooling builder it is not a RUN image, so it is absent from image-names.sh.
+tool_images_table="$("${SCRIPT_DIR}/../scripts/ci/tool-images.sh" list)"
+declare -a TOOL_REPOSITORIES=()
+declare -A TOOL_IMAGE_REF=()
+declare -A TOOL_IMAGE_REPOSITORY=()
+declare -A TOOL_IMAGE_FROM_CHECKOUT=()
+declare -A TOOL_IMAGE_READY=()
+while read -r tool_repository tool_arg tool_ref; do
+	[[ -n "${tool_repository}" ]] || continue
+	TOOL_REPOSITORIES+=("${tool_repository}")
+	TOOL_IMAGE_REPOSITORY["${tool_arg}"]="${tool_repository}"
+	if [[ -z "${PUSH}" && -z "${!tool_arg:-}" ]]; then
+		TOOL_IMAGE_REF["${tool_arg}"]="${IMAGE_NAME_PREFIX}${tool_repository}:${IMAGE_TAG}"
+		TOOL_IMAGE_FROM_CHECKOUT["${tool_arg}"]=1
+	else
+		TOOL_IMAGE_REF["${tool_arg}"]="${tool_ref}"
+	fi
+done <<<"${tool_images_table}"
+unset tool_images_table tool_repository tool_arg tool_ref
+readonly TOOL_REPOSITORIES
+
 readonly ADVERSARIAL_IMAGE="${IMAGE_NAME_PREFIX}adversarial:${IMAGE_TAG}"
 readonly PERFORMANCE_IMAGE="${IMAGE_NAME_PREFIX}performance:${IMAGE_TAG}"
 
@@ -831,6 +892,67 @@ build_tools() {
 	# commit's tag, but a later run whose asset images changed pulls it from there
 	# instead of compiling it.
 	push_inputs_tag "${TOOLS_IMAGE}" tools
+}
+
+# The build argument a tool repository's image is passed as: `tool-sprite` ->
+# `TOOL_SPRITE_IMAGE`.
+tool_image_arg() {
+	local arg
+	for arg in "${!TOOL_IMAGE_REPOSITORY[@]}"; do
+		[[ "${TOOL_IMAGE_REPOSITORY[$arg]}" == "$1" ]] && { echo "${arg}"; return 0; }
+	done
+	return 1
+}
+
+# Makes one tool image present in the local store, once per invocation: built from the
+# repository's checkout without PUSH, pulled otherwise (see "The tool images"). Argument:
+# the build argument.
+ensure_tool_image() {
+	local arg="$1" repository ref dir
+	[[ -z "${TOOL_IMAGE_READY[$arg]:-}" ]] || return 0
+	repository="${TOOL_IMAGE_REPOSITORY[$arg]}"
+	ref="${TOOL_IMAGE_REF[$arg]}"
+	if [[ -n "${TOOL_IMAGE_FROM_CHECKOUT[$arg]:-}" ]]; then
+		dir="${SCRIPT_DIR}/../${repository}"
+		if [[ ! -f "${dir}/Dockerfile" ]]; then
+			echo "ERROR: ${repository}/Dockerfile is missing: the run images copy ${repository}'s binaries out of its image," >&2
+			echo "       which a local build makes from the checkout. Check it out with:" >&2
+			echo "           git submodule update --init ${repository}" >&2
+			echo "       or name a published image with ${arg}=testcabinet.azurecr.io/${repository}:<commit>." >&2
+			exit 1
+		fi
+		echo "==> building ${ref} from the ${repository} checkout (its binaries are copied into the run images; not pushed)"
+		"$DOCKER" build -t "${ref}" -f "${dir}/Dockerfile" "${dir}"
+	elif ! image_present "${ref}"; then
+		echo "==> pulling ${ref} (the ${repository} image at the commit the driver pins)"
+		registry_retry "$DOCKER" pull --quiet "${ref}"
+	fi
+	TOOL_IMAGE_READY["${arg}"]=1
+}
+
+# The build arguments one image's Dockerfile declares beyond BASE_IMAGE, with their
+# values, into IMAGE_BUILD_ARGS: TOOLS_IMAGE when it copies out of the tooling builder,
+# and each tool image it copies from, made present first. A global array rather than
+# output, so `ensure_tool_image` runs under `set -e` (a command substitution would not
+# carry it). Argument: the image's short name.
+IMAGE_BUILD_ARGS=()
+image_build_args() {
+	local name="$1" dockerfile arg
+	dockerfile="${SCRIPT_DIR}/${name}/Dockerfile"
+	IMAGE_BUILD_ARGS=()
+	if grep -qE '^ARG TOOLS_IMAGE(=|$)' "${dockerfile}"; then
+		IMAGE_BUILD_ARGS+=(--build-arg "TOOLS_IMAGE=${TOOLS_IMAGE}")
+	fi
+	while read -r arg; do
+		[[ -n "${arg}" ]] || continue
+		if [[ -z "${TOOL_IMAGE_REPOSITORY[$arg]:-}" ]]; then
+			echo "ERROR: containers/${name}/Dockerfile declares ARG ${arg}, which names no tool image" >&2
+			echo "       scripts/ci/tool-images.sh lists (${!TOOL_IMAGE_REPOSITORY[*]})." >&2
+			exit 1
+		fi
+		ensure_tool_image "${arg}"
+		IMAGE_BUILD_ARGS+=(--build-arg "${arg}=${TOOL_IMAGE_REF[$arg]}")
+	done < <(grep -oE '^ARG TOOL_[A-Z0-9_]+_IMAGE' "${dockerfile}" | sed 's/^ARG //' | sort -u)
 }
 
 # Pull the gg toolchain image the `-gg` variants copy their tree out of, once, before the
@@ -1262,21 +1384,23 @@ build_base_wasm() {
 	fi
 }
 
-# Build one asset-generation image `FROM` the base built above plus a drawing
-# binary compiled from `crates/`. The argument is the image's short name
-# (`sprite` / `sprite-sheet` / `voxel` / `voxel-animation` / `mc` / `mc-animation`
-# / `sn` / `sn-animation` / `dc` / `dc-animation`), which is both its name suffix
-# and the directory holding its Dockerfile. The build context is the
-# repository root so the compile
-# stage can see `crates/`; building from the local base tag avoids a registry
-# round-trip and keeps the image pinned to the base produced in this invocation.
+# Build one asset-generation image `FROM` the base built above plus its tool binary,
+# copied out of the tooling builder or out of a tool image (`sprite` and `sprite-sheet`
+# copy from tool-sprite's; `image_build_args` reads which from the Dockerfile). The
+# argument is the image's short name (`sprite` / `sprite-sheet` / `voxel` /
+# `voxel-animation` / `mc` / `mc-animation` / `sn` / `sn-animation` / `dc` /
+# `dc-animation`), which is both its name suffix and the directory holding its
+# Dockerfile. The build context is the repository root, as for every image here;
+# building from the local base tag avoids a registry round-trip and keeps the image
+# pinned to the base produced in this invocation.
 build_asset_image() {
 	local name="$1"
 	local image="${IMAGE_NAME_PREFIX}${name}:${IMAGE_TAG}"
+	image_build_args "${name}"
 	echo "==> building ${image} (FROM ${BASE_IMAGE})"
 	"$DOCKER" build \
 		--build-arg "BASE_IMAGE=${BASE_IMAGE}" \
-		--build-arg "TOOLS_IMAGE=${TOOLS_IMAGE}" \
+		${IMAGE_BUILD_ARGS[@]+"${IMAGE_BUILD_ARGS[@]}"} \
 		-t "${image}" \
 		-f "${SCRIPT_DIR}/${name}/Dockerfile" "${SCRIPT_DIR}/.."
 
@@ -1315,10 +1439,11 @@ build_full_stack() {
 	local name="full-stack-${dimension}"
 	local image="${IMAGE_NAME_PREFIX}${name}:${IMAGE_TAG}"
 
+	image_build_args "${name}"
 	echo "==> building ${image} (FROM ${BASE_WASM_IMAGE})"
 	"$DOCKER" build \
 		--build-arg "BASE_IMAGE=${BASE_WASM_IMAGE}" \
-		--build-arg "TOOLS_IMAGE=${TOOLS_IMAGE}" \
+		${IMAGE_BUILD_ARGS[@]+"${IMAGE_BUILD_ARGS[@]}"} \
 		-t "${image}" \
 		-f "${SCRIPT_DIR}/${name}/Dockerfile" "${SCRIPT_DIR}/.."
 
@@ -1464,8 +1589,9 @@ fi
 
 # The images that do NOT bake a binary out of the shared tooling builder: the two
 # base layers, the self-contained blender image, the adversarial and performance
-# images (which compile their own wasm-targeting tooling in their own stages), and
-# game-jam (which inherits everything from full-stack-2d). Everything else in
+# images (which compile their own wasm-targeting tooling in their own stages),
+# game-jam (which inherits everything from full-stack-2d), and sprite and sprite-sheet
+# (whose one binary each is copied out of the tool-sprite image; see "The tool images"). Everything else in
 # ALL_NAMES is an asset image that `COPY --from=tools`. Expressed as the exceptions
 # rather than the members so a newly-added asset kind is covered by default.
 #
@@ -1473,7 +1599,7 @@ fi
 # COPY of the toolchain tree onto an already-built parent and bakes no asset binary of
 # its own. `select_needs_tools` applies that pattern, so a new run image's variant is
 # covered without being named here.
-readonly NON_TOOLS_IMAGES=(base base-wasm blender adversarial performance game-jam)
+readonly NON_TOOLS_IMAGES=(base base-wasm blender adversarial performance game-jam sprite sprite-sheet)
 
 # Whether an image tag is present in the local image store (used to decide whether
 # the FROM base has to be built before a selected non-base image).
@@ -1525,13 +1651,13 @@ for name in "${selected[@]}"; do
 	# `./build.sh audio-store` are the ways to rebuild just one of them. The layer
 	# rules below are what actually build them, which is also why the main build loop
 	# skips both.
-	for known in "${ALL_NAMES[@]}" tools audio-store; do
+	for known in "${ALL_NAMES[@]}" tools audio-store "${TOOL_REPOSITORIES[@]}"; do
 		[[ "$name" == "$known" ]] && { found=1; break; }
 	done
 	if [[ -z "${found}" ]]; then
 		echo "unknown image '${name}'. Known images: ${ALL_NAMES[*]}" >&2
-		echo "       plus the two that are not run images: tools (the shared tooling builder)" >&2
-		echo "       and audio-store (the published audio packs)." >&2
+		echo "       plus the ones that are not run images: tools (the shared tooling builder)," >&2
+		echo "       audio-store (the published audio packs) and the tool images (${TOOL_REPOSITORIES[*]})." >&2
 		exit 1
 	fi
 done
@@ -1539,10 +1665,10 @@ done
 # Put the selection into canonical (image-names.sh) order and drop duplicates. That order
 # is dependency order, so this is what makes a parent build before the image that is
 # `FROM` it whichever way the names were typed: `./build.sh sprite-gg sprite` must not
-# bake the variant on top of yesterday's sprite. `tools` sorts first — it is the builder
-# everything else copies out of.
+# bake the variant on top of yesterday's sprite. `tools` and the tool images sort first:
+# they are what everything else copies out of.
 ordered=()
-for known in tools audio-store "${ALL_NAMES[@]}"; do
+for known in tools "${TOOL_REPOSITORIES[@]}" audio-store "${ALL_NAMES[@]}"; do
 	for name in "${selected[@]}"; do
 		if [[ "$name" == "$known" ]]; then
 			ordered+=("$known")
@@ -1589,10 +1715,12 @@ select_has() { local x; for x in "${selected[@]}"; do [[ "$x" == "$1" ]] && retu
 gg_parents=()
 targets=()
 for name in "${selected[@]}"; do
-	if [[ "$name" == audio-store ]]; then
-		# Data only, `FROM scratch`: it is layered onto nothing, bakes no binary out of
-		# the tooling builder, and no image is built `FROM` it — so it contributes
-		# nothing to any rule below and must not drag a base build in behind it.
+	if [[ "$name" == audio-store ]] || tool_image_arg "$name" >/dev/null; then
+		# The audio store is data only, `FROM scratch`, and a tool image is built from its
+		# own repository: neither is layered onto anything built here nor bakes a binary
+		# out of the tooling builder, and no image is built `FROM` either — so they
+		# contribute nothing to any rule below and must not drag a base build in behind
+		# them.
 		continue
 	elif [[ "$name" == *-gg ]]; then
 		parent="${name%-gg}"
@@ -1677,6 +1805,15 @@ fi
 if select_needs_tools; then
 	produce tools
 fi
+
+# Layer 0a — a tool image that is NAMED. One that is not is made present by the first
+# image that copies from it (`image_build_args`), so a selection that needs none of them
+# neither builds nor pulls one.
+for name in "${TOOL_REPOSITORIES[@]}"; do
+	if select_has "${name}"; then
+		ensure_tool_image "$(tool_image_arg "${name}")"
+	fi
+done
 
 # Layer 0b — the audio store, which depends on nothing and which nothing depends on.
 # Built when it is NAMED, and on a full build only under PUSH: staging it needs node and
@@ -1780,6 +1917,7 @@ unset parent_ref
 # its variant is built.
 for name in "${selected[@]}"; do
 	[[ "$name" == base || "$name" == base-wasm || "$name" == tools || "$name" == audio-store ]] && continue
+	tool_image_arg "$name" >/dev/null && continue
 	produce "$name"
 	reclaim_after_push "$name"
 done

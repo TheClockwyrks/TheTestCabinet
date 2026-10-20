@@ -13,6 +13,12 @@
 # fetched for this architecture by scripts/ci/gg-release.sh, or the file TCAB_GG_BINARY
 # names when it is set.
 #
+# The images that carry a `tool-*` repository's binaries (sprite, sprite-sheet and the
+# full-stack images: `draw` and `draw-sheet` from tool-sprite) copy them out of that
+# repository's image at the commit the driver pins, which its own pipeline publishes.
+# `scripts/ci/tool-images.sh check` runs first, so a pin of a commit that pipeline has not
+# published fails here, naming the commit, before anything is built.
+#
 # The build is native: the pipeline runs this once on an amd64 agent and once on an
 # arm64 agent, and scripts/ci/manifest.sh fuses the arch tags into the multi-arch
 # `<sha>` that TCAB_CONTAINER_TAG pins. The audio store is built by its own job
@@ -29,6 +35,9 @@ fi
 readonly SHA="$1"
 
 arch="$(ci_arch)"
+
+log "checking the tool images the run images copy from are published"
+scripts/ci/tool-images.sh check
 log_file="$(mktemp)"
 inputs_file="$(mktemp)"
 gg_dir="$(mktemp -d)"

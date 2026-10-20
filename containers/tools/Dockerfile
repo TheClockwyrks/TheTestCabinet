@@ -3,8 +3,12 @@
 #
 # This is NOT a run image: nothing ever executes in it and it is never published.
 # It exists solely so the ~20 asset-generation binaries baked into the run images
-# (`draw`, `voxel`, `mc`, `pbr`, `music`, …) are compiled ONCE, in one cargo
-# invocation over one shared dependency graph, instead of once per run image.
+# (`voxel`, `mc`, `pbr`, `music`, …) are compiled ONCE, in one cargo invocation
+# over one shared dependency graph, instead of once per run image.
+#
+# A tool that has left for a `tool-*` repository is not built here: its binaries
+# are copied out of that repository's image at the commit the driver pins
+# (`draw` and `draw-sheet` from `tool-sprite`; see `scripts/ci/tool-images.sh`).
 #
 # Why this exists
 # ---------------
@@ -25,9 +29,9 @@
 #
 # What consumes it
 # ----------------
-# Every asset-generation image (`containers/<kind>/Dockerfile`) declares a global
-# `TOOLS_IMAGE` build arg, resolves it to a named stage, and `COPY --from=tools`s
-# just the binaries it needs. `build.sh` builds this image first and passes the tag
+# Every asset-generation image (`containers/<kind>/Dockerfile`) whose binaries are
+# built here declares a global `TOOLS_IMAGE` build arg, resolves it to a named
+# stage, and `COPY --from=tools`s just the binaries it needs. `build.sh` builds this image first and passes the tag
 # it just produced, exactly as it does for `BASE_IMAGE`. (A `COPY --from` cannot
 # interpolate a build arg directly — BuildKit requires the arg be resolved through a
 # named `FROM` stage first — which is why those Dockerfiles carry a
@@ -78,10 +82,8 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
 	find /build -path /build/target -prune -o -type f -exec touch {} + \
 	# One cargo invocation over the union of every tool's dependency graph.
 	# `--bins` takes all binaries each named package exposes, which is what the run
-	# images need: `test-cabinet-draw` yields `draw` + `draw-sheet`, and
-	# `test-cabinet-paint` yields `paint`, `ui`, `texture` and `pbr`.
+	# images need: `test-cabinet-paint` yields `paint`, `ui`, `texture` and `pbr`.
 	&& cargo build --release --bins \
-		-p test-cabinet-draw \
 		-p test-cabinet-voxel \
 		-p test-cabinet-voxel-anim \
 		-p test-cabinet-mc \
@@ -106,8 +108,6 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
 	# renamed or dropped binary fail the image build here rather than at run time.
 	&& mkdir -p /out \
 	&& cp \
-		target/release/draw \
-		target/release/draw-sheet \
 		target/release/voxel \
 		target/release/voxel-anim \
 		target/release/mc \

@@ -166,8 +166,10 @@ ALL_IMGS := $(BACKEND_IMG) $(DISPATCHER_IMG) $(DRIVER_IMG) $(ARTIFACTS_IMG) $(AR
 
 # The run-container images — the base end-to-end image plus the per-asset-kind
 # images that BAKE IN their modeling tool (`draw`/`draw-sheet`/`voxel`/`voxel-anim`,
-# and the adversarial/performance tooling), all compiled from `crates/` at image
-# build time (see `containers/build.sh` and `containers/*/Dockerfile`). These are
+# and the adversarial/performance tooling), compiled from `crates/` at image build
+# time or, for a tool in a `tool-*` repository (`draw`/`draw-sheet`: `tool-sprite`),
+# copied out of that repository's image, which `containers/build.sh` builds first from
+# the checked-out repository (see `containers/build.sh` and `containers/*/Dockerfile`). These are
 # DISTINCT from the long-lived service images above: a run pod is a per-run Job the
 # dispatcher creates, running one of these images. In a deployment they come from
 # the Test Cabinet ACR (core's `resolve_run_image` defaults to `testcabinet.azurecr.io`);
@@ -288,6 +290,10 @@ RUN_IMAGE_NAMES  := $(E2E_IMAGE_NAMES) $(FULL_STACK_IMAGE_NAMES) $(GAME_JAM_IMAG
 run_image_refs = $(foreach n,$(1),$(RUN_IMAGE_PREFIX)$(n):$(RUN_IMAGE_TAG))
 
 RUN_IMGS         := $(call run_image_refs,$(RUN_IMAGE_NAMES))
+
+# The `tool-*` repositories whose images the run images copy binaries out of, as
+# scripts/ci/tool-images.sh lists them. `run-images` names them to build.sh first.
+TOOL_IMAGE_NAMES := tool-sprite
 
 # Shared dispatcher↔backend service token. A fixed dev default (no production value
 # lives in the repo); override from the environment, e.g. `SERVICE_TOKEN=… make …`.
@@ -652,10 +658,14 @@ pull_gg_toolchains = ref="$$(bash '$(REPO)/scripts/ci/gg-release.sh' toolchains-
 # Rebuild + import EVERY run image (what `local-up` runs). The heavy path — prefer a
 # narrower target below when iterating on one test type or one asset kind. Passes the
 # explicit RUN_IMAGE_NAMES set to build.sh (rather than letting it build all) so it
-# builds exactly what it imports.
+# builds exactly what it imports, after the tool images (TOOL_IMAGE_NAMES): each is
+# built from its `tool-*` repository's checkout, never pulled, and imported nowhere,
+# since a run image carries the binaries it copies out of one. The narrower targets
+# get the same from build.sh, which builds a tool image from its checkout before the
+# first image that copies from it.
 run-images: export DOCKER_CONFIG := $(BUILD_DOCKER_CONFIG)
 run-images:
-	$(call build_import_run_images,$(RUN_IMAGE_NAMES),$(RUN_IMGS))
+	$(call build_import_run_images,$(TOOL_IMAGE_NAMES) $(RUN_IMAGE_NAMES),$(RUN_IMGS))
 
 # Per-test-type rebuilds — the fast paths after changing one type's baked-in tooling.
 # `-e2e` rebuilds the base-wasm image (build.sh (re)builds the plain base it is FROM as

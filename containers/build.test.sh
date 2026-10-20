@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Table test for build.sh's REUSE_INPUTS mode, driving it through a docker stub. Run it
-# directly: containers/build.test.sh
+# Table test for build.sh's REUSE_INPUTS mode and its tool images, driving it through a
+# docker stub. Run it directly: containers/build.test.sh
 #
 # The stub keeps two sets in files: the images "in the local store" and the tags "in
 # the registry". Every subcommand build.sh issues is written to a log, and the checks
@@ -101,8 +101,8 @@ inputs="$tmp/inputs"
 cat >"$inputs" <<TABLE
 tools d1 -
 base d2 -
-sprite d3 base,tools
-sprite-gg d5 sprite
+voxel d3 base,tools
+voxel-gg d5 voxel
 TABLE
 
 reg="registry.test/ns"
@@ -110,13 +110,15 @@ prefix="test-cabinet-"
 # The gg release's toolchain image, which the gg repository publishes: in the registry
 # before any build, and never built here.
 tc="registry.test/gg/test-cabinet-gg-toolchains:0.7.1"
-fresh_registry() { printf '%s\n' "$tc" >"$tmp/registry"; }
+# The tool-sprite image tool-sprite's pipeline publishes, likewise in the registry first.
+ts="registry.test/tool-sprite:pin1"
+fresh_registry() { printf '%s\n' "$tc" "$ts" >"$tmp/registry"; }
 run() {
 	: >"$tmp/log"
 	(cd "$HERE/.." && PATH="$tmp/bin:$PATH" STUB_LOG="$tmp/log" STUB_LOCAL="$tmp/local" STUB_REGISTRY="$tmp/registry" \
 		STUB_PUSH_FAIL_REF="${STUB_PUSH_FAIL_REF:-}" STUB_PUSH_FAILS="$tmp/push-fails" REGISTRY_RETRY_DELAY=0 \
 		DOCKER="$tmp/docker" PUSH=1 RECLAIM=1 REUSE_INPUTS="${REUSE_INPUTS:-$inputs}" \
-		GG_TOOLCHAINS_IMAGE="${GG_TOOLCHAINS_IMAGE-$tc}" \
+		GG_TOOLCHAINS_IMAGE="${GG_TOOLCHAINS_IMAGE-$tc}" TOOL_SPRITE_IMAGE="${TOOL_SPRITE_IMAGE-$ts}" \
 		IMAGE_REGISTRY="$reg" IMAGE_TAG=sha1-amd64 containers/build.sh "$@" 2>&1)
 }
 builds() { grep -E '^build ' "$tmp/log" | grep -oE -- '-t [^ ]+' | cut -d' ' -f2 | tr '\n' ' '; }
@@ -125,24 +127,24 @@ pulls() { grep -E '^pull ' "$tmp/log" | awk '{print $NF}' | tr '\n' ' '; }
 
 echo "an empty registry builds everything and pushes each image under both tags"
 : >"$tmp/local"; fresh_registry
-out="$(run base sprite sprite-gg)"
+out="$(run base voxel voxel-gg)"
 check_equal "the build passes" "0" "$?"
 check_equal "every image is built, the gg toolchains not among them" \
-	"${prefix}tools:sha1-amd64 ${prefix}base:sha1-amd64 ${prefix}sprite:sha1-amd64 ${prefix}sprite-gg:sha1-amd64 " \
+	"${prefix}tools:sha1-amd64 ${prefix}base:sha1-amd64 ${prefix}voxel:sha1-amd64 ${prefix}voxel-gg:sha1-amd64 " \
 	"$(builds)"
 check_equal "the toolchain image is pulled, once" "$tc " "$(pulls)"
 check_contains "and the variant copies it" "--build-arg GG_TOOLCHAINS_IMAGE=$tc" "$(grep -E '^build ' "$tmp/log")"
 check_equal "nothing is retagged" "" "$(retags)"
-for pair in tools:d1 base:d2 sprite:d3 sprite-gg:d5; do
+for pair in tools:d1 base:d2 voxel:d3 voxel-gg:d5; do
 	name="${pair%%:*}"; digest="${pair##*:}"
 	check_contains "$name is pushed under its inputs tag" "${reg}/${prefix}${name}:inputs-${digest}-amd64" "$(cat "$tmp/registry")"
 done
 check_lacks "tools gets no commit tag" "${reg}/${prefix}tools:sha1-amd64" "$(cat "$tmp/registry")"
-check_contains "sprite-gg gets the commit tag" "${reg}/${prefix}sprite-gg:sha1-amd64" "$(cat "$tmp/registry")"
-check_contains "and its reference line" "==> sprite-gg reference: ${reg}/${prefix}sprite-gg@sha256:pushed-sha1-amd64" "$out"
+check_contains "voxel-gg gets the commit tag" "${reg}/${prefix}voxel-gg:sha1-amd64" "$(cat "$tmp/registry")"
+check_contains "and its reference line" "==> voxel-gg reference: ${reg}/${prefix}voxel-gg@sha256:pushed-sha1-amd64" "$out"
 # The reclaim has to take the inputs tag with the others: a tag left on an image keeps
 # every one of its layers, and `docker image rm` of another tag exits 0 regardless.
-for name in sprite sprite-gg; do
+for name in voxel voxel-gg; do
 	check_equal "the reclaimed $name has no tag left in the local store" "" "$(grep -F "${prefix}${name}:" "$tmp/local" | tr '\n' ' ')"
 done
 for name in tools base; do
@@ -154,67 +156,67 @@ check_lacks "and no reclaim is reported as failed" "NOT reclaimed" "$out"
 
 echo "a registry holding every inputs tag builds nothing"
 : >"$tmp/local"
-out="$(run base sprite sprite-gg)"
+out="$(run base voxel voxel-gg)"
 check_equal "the build passes" "0" "$?"
 check_equal "nothing is built" "" "$(builds)"
 check_equal "nothing is pulled" "" "$(pulls)"
 check_equal "every image but tools is retagged for the commit" \
-	"${reg}/${prefix}base:sha1-amd64 ${reg}/${prefix}sprite:sha1-amd64 ${reg}/${prefix}sprite-gg:sha1-amd64 " \
+	"${reg}/${prefix}base:sha1-amd64 ${reg}/${prefix}voxel:sha1-amd64 ${reg}/${prefix}voxel-gg:sha1-amd64 " \
 	"$(retags)"
-check_contains "and says so" "==> reusing ${prefix}sprite-gg:sha1-amd64: its inputs are unchanged" "$out"
-check_contains "with the reference line a build prints" "==> sprite-gg reference: ${reg}/${prefix}sprite-gg@sha256:manifest-sha1-amd64" "$out"
+check_contains "and says so" "==> reusing ${prefix}voxel-gg:sha1-amd64: its inputs are unchanged" "$out"
+check_contains "with the reference line a build prints" "==> voxel-gg reference: ${reg}/${prefix}voxel-gg@sha256:manifest-sha1-amd64" "$out"
 
 echo "a changed child pulls its reused parents and builds"
 : >"$tmp/local"
-sed -i 's/^sprite-gg d5 /sprite-gg d6 /' "$inputs"
-out="$(run base sprite sprite-gg)"
+sed -i 's/^voxel-gg d5 /voxel-gg d6 /' "$inputs"
+out="$(run base voxel voxel-gg)"
 check_equal "the build passes" "0" "$?"
-check_equal "only the child is built" "${prefix}sprite-gg:sha1-amd64 " "$(builds)"
+check_equal "only the child is built" "${prefix}voxel-gg:sha1-amd64 " "$(builds)"
 check_equal "its parent is pulled from its inputs tag, and the toolchain image for the build" \
-	"${reg}/${prefix}sprite:inputs-d3-amd64 $tc " "$(pulls)"
-check_contains "the child is pushed under its new inputs tag" "${reg}/${prefix}sprite-gg:inputs-d6-amd64" "$(cat "$tmp/registry")"
-check_contains "sprite is retagged, not built" "${reg}/${prefix}sprite:sha1-amd64" "$(retags)"
+	"${reg}/${prefix}voxel:inputs-d3-amd64 $tc " "$(pulls)"
+check_contains "the child is pushed under its new inputs tag" "${reg}/${prefix}voxel-gg:inputs-d6-amd64" "$(cat "$tmp/registry")"
+check_contains "voxel is retagged, not built" "${reg}/${prefix}voxel:sha1-amd64" "$(retags)"
 
 echo "a changed parent rebuilds what is below it, from the pulled builder"
 : >"$tmp/local"
-sed -i 's/^base d2 /base d7 /; s/^sprite d3 /sprite d8 /; s/^sprite-gg d6 /sprite-gg d9 /' "$inputs"
-out="$(run base sprite sprite-gg)"
+sed -i 's/^base d2 /base d7 /; s/^voxel d3 /voxel d8 /; s/^voxel-gg d6 /voxel-gg d9 /' "$inputs"
+out="$(run base voxel voxel-gg)"
 check_equal "the build passes" "0" "$?"
-check_equal "base, sprite and the variant are built" \
-	"${prefix}base:sha1-amd64 ${prefix}sprite:sha1-amd64 ${prefix}sprite-gg:sha1-amd64 " "$(builds)"
+check_equal "base, voxel and the variant are built" \
+	"${prefix}base:sha1-amd64 ${prefix}voxel:sha1-amd64 ${prefix}voxel-gg:sha1-amd64 " "$(builds)"
 check_equal "tools is pulled, and the toolchain image for the variant" \
 	"${reg}/${prefix}tools:inputs-d1-amd64 $tc " "$(pulls)"
 
 echo "one variant selected alone reuses its whole parent chain without a pull"
 : >"$tmp/local"
-out="$(run sprite-gg)"
+out="$(run voxel-gg)"
 check_equal "the build passes" "0" "$?"
 check_equal "nothing is built" "" "$(builds)"
 check_equal "nothing is pulled" "" "$(pulls)"
 check_equal "the variant and its parent chain are retagged (base too: the rule that wants it present reaches it)" \
-	"${reg}/${prefix}base:sha1-amd64 ${reg}/${prefix}sprite:sha1-amd64 ${reg}/${prefix}sprite-gg:sha1-amd64 " \
+	"${reg}/${prefix}base:sha1-amd64 ${reg}/${prefix}voxel:sha1-amd64 ${reg}/${prefix}voxel-gg:sha1-amd64 " \
 	"$(retags)"
 
 echo "a table that names a parent it does not list is refused"
-grep -v '^sprite ' "$inputs" >"$tmp/inputs2"
+grep -v '^voxel ' "$inputs" >"$tmp/inputs2"
 # `$?` of a failed substitution is what the check wants, and `set -e` would end the script
 # on it first, so the status is taken on the same line.
-out="$(REUSE_INPUTS="$tmp/inputs2" run sprite-gg)" && status=0 || status=$?
+out="$(REUSE_INPUTS="$tmp/inputs2" run voxel-gg)" && status=0 || status=$?
 check_equal "with exit 1" "1" "$status"
-check_contains "and says which" "sprite-gg is built from sprite, which the table does not list" "$out"
+check_contains "and says which" "voxel-gg is built from voxel, which the table does not list" "$out"
 check_equal "before anything is built" "" "$(builds)"
 
 echo "a push the registry refuses for a moment is retried, and the build passes"
 : >"$tmp/local"; fresh_registry
-variant="${reg}/${prefix}sprite-gg:sha1-amd64"
+variant="${reg}/${prefix}voxel-gg:sha1-amd64"
 pushes_of() { grep -cxF "push $1" "$tmp/log" || true; }
 echo 2 >"$tmp/push-fails"
-out="$(STUB_PUSH_FAIL_REF="$variant" run base sprite sprite-gg)" && status=0 || status=$?
+out="$(STUB_PUSH_FAIL_REF="$variant" run base voxel voxel-gg)" && status=0 || status=$?
 check_equal "the build passes" "0" "$status"
 check_equal "the refused push is tried three times" "3" "$(pushes_of "$variant")"
 check_contains "and each retry is reported" "attempt 2 of 4); retrying" "$out"
 check_contains "the commit tag is in the registry" "$variant" "$(cat "$tmp/registry")"
-check_contains "with its reference line" "==> sprite-gg reference: ${reg}/${prefix}sprite-gg@sha256:pushed-sha1-amd64" "$out"
+check_contains "with its reference line" "==> voxel-gg reference: ${reg}/${prefix}voxel-gg@sha256:pushed-sha1-amd64" "$out"
 
 # The failure this guards against: a push inside `$(push_and_pin ...)` ran without `set -e`,
 # so a refused push was followed by the inputs tag, a reference line, a reclaim and exit 0,
@@ -222,22 +224,22 @@ check_contains "with its reference line" "==> sprite-gg reference: ${reg}/${pref
 echo "a push the registry keeps refusing ends the build there"
 : >"$tmp/local"; fresh_registry
 echo 99 >"$tmp/push-fails"
-out="$(STUB_PUSH_FAIL_REF="$variant" run base sprite sprite-gg)" && status=0 || status=$?
+out="$(STUB_PUSH_FAIL_REF="$variant" run base voxel voxel-gg)" && status=0 || status=$?
 check_equal "with exit 1" "1" "$status"
 check_equal "after every attempt" "4" "$(pushes_of "$variant")"
 check_contains "and says it gave up" "failed 4 time(s), exiting 1; giving up" "$out"
 check_lacks "no commit tag reached the registry" "$variant" "$(cat "$tmp/registry")"
-check_lacks "no inputs tag was pushed for it" "${reg}/${prefix}sprite-gg:inputs-" "$(cat "$tmp/registry")"
-check_lacks "no reference line was printed for it" "==> sprite-gg reference:" "$out"
-check_lacks "and it was not reclaimed" "reclaiming ${prefix}sprite-gg:" "$out"
+check_lacks "no inputs tag was pushed for it" "${reg}/${prefix}voxel-gg:inputs-" "$(cat "$tmp/registry")"
+check_lacks "no reference line was printed for it" "==> voxel-gg reference:" "$out"
+check_lacks "and it was not reclaimed" "reclaiming ${prefix}voxel-gg:" "$out"
 
 echo "without GG_TOOLCHAINS_IMAGE the variant copies the toolchains of the driver's pin"
 : >"$tmp/local"; fresh_registry
 pinned="testcabinet.azurecr.io/test-cabinet-gg-toolchains:$("$HERE/../scripts/ci/gg-release.sh" version)"
-out="$(GG_TOOLCHAINS_IMAGE="" REGISTRY_ATTEMPTS=1 run base sprite sprite-gg)" && status=0 || status=$?
+out="$(GG_TOOLCHAINS_IMAGE="" REGISTRY_ATTEMPTS=1 run base voxel voxel-gg)" && status=0 || status=$?
 check_contains "it pulls that image" "pulling $pinned" "$out"
 check_equal "and, the stub registry lacking it, fails before building the variant" "1" "$status"
-check_lacks "which is not built" "${prefix}sprite-gg:sha1-amd64" "$(builds)"
+check_lacks "which is not built" "${prefix}voxel-gg:sha1-amd64" "$(builds)"
 
 echo "a retry count that is not a positive integer is refused"
 out="$(REGISTRY_ATTEMPTS=0 run base 2>&1)" && status=0 || status=$?
@@ -248,6 +250,78 @@ echo "REUSE_INPUTS without PUSH is refused"
 out="$(cd "$HERE/.." && PATH="$tmp/bin:$PATH" DOCKER="$tmp/docker" STUB_LOG="$tmp/log" STUB_LOCAL="$tmp/local" STUB_REGISTRY="$tmp/registry" REUSE_INPUTS="$inputs" containers/build.sh base 2>&1)" && status=0 || status=$?
 check_equal "with exit 1" "1" "$status"
 check_contains "and says why" "REUSE_INPUTS needs PUSH=1" "$out"
+
+echo "under PUSH, sprite copies draw out of the pinned tool-sprite image, not the tooling builder"
+: >"$tmp/local"; fresh_registry
+out="$(REUSE_INPUTS="" run sprite sprite-sheet)" && status=0 || status=$?
+check_equal "the build passes" "0" "$status"
+check_equal "base and the two images are built, and neither tools nor tool-sprite" \
+	"${prefix}base:sha1-amd64 ${prefix}sprite:sha1-amd64 ${prefix}sprite-sheet:sha1-amd64 " "$(builds)"
+check_equal "the tool-sprite image is pulled, once" "$ts " "$(pulls)"
+check_contains "and passed to the build" "--build-arg TOOL_SPRITE_IMAGE=$ts" "$(grep -E "^build .*${prefix}sprite:" "$tmp/log")"
+check_lacks "which is given no tooling builder" "TOOLS_IMAGE=" "$(grep -E "^build .*${prefix}sprite:" "$tmp/log")"
+check_lacks "and the tool image is pushed nowhere" "tool-sprite:sha1" "$(cat "$tmp/registry")"
+
+echo "under PUSH, full-stack-2d copies from both the tooling builder and tool-sprite"
+: >"$tmp/local"; fresh_registry
+out="$(REUSE_INPUTS="" run full-stack-2d)" && status=0 || status=$?
+check_equal "the build passes" "0" "$status"
+fs2d="$(grep -E "^build .*${prefix}full-stack-2d:" "$tmp/log")"
+check_contains "with the tooling builder" "--build-arg TOOLS_IMAGE=${prefix}tools:sha1-amd64" "$fs2d"
+check_contains "and the tool-sprite image" "--build-arg TOOL_SPRITE_IMAGE=$ts" "$fs2d"
+
+echo "under PUSH, a tool-sprite image the registry lacks fails before the image that copies it"
+: >"$tmp/local"; printf '%s\n' "$tc" >"$tmp/registry"
+out="$(REUSE_INPUTS="" REGISTRY_ATTEMPTS=1 run sprite)" && status=0 || status=$?
+check_equal "with a failure" "1" "$status"
+check_contains "after trying to pull it" "pulling $ts" "$out"
+check_lacks "and sprite is not built" "${prefix}sprite:sha1-amd64" "$(builds)"
+
+echo "without TOOL_SPRITE_IMAGE, PUSH pulls tool-sprite at the superrepo's gitlink"
+: >"$tmp/local"; fresh_registry
+pinned_ts="testcabinet.azurecr.io/tool-sprite:$(cd "$HERE/.." && git rev-parse HEAD:tool-sprite)"
+out="$(TOOL_SPRITE_IMAGE="" REUSE_INPUTS="" REGISTRY_ATTEMPTS=1 run sprite)" && status=0 || status=$?
+check_contains "it pulls that image" "pulling $pinned_ts" "$out"
+
+# The local path, deployments/local/Makefile's: no PUSH, so the tool image is built from
+# the checkout under the local naming, once, before the first image that copies it.
+run_local() {
+	: >"$tmp/log"
+	(cd "$HERE/.." && PATH="$tmp/bin:$PATH" STUB_LOG="$tmp/log" STUB_LOCAL="$tmp/local" STUB_REGISTRY="$tmp/registry" \
+		DOCKER="$tmp/docker" GG_TOOLCHAINS_IMAGE="$tc" IMAGE_TAG=local containers/build.sh "$@" 2>&1)
+}
+echo "without PUSH, tool-sprite is built from its checkout, once"
+: >"$tmp/local"; fresh_registry
+out="$(run_local sprite sprite-sheet full-stack-2d)" && status=0 || status=$?
+check_equal "the build passes" "0" "$status"
+check_equal "tool-sprite is built once, after tools and before the first image copying it" \
+	"${prefix}tools:local ${prefix}base:local ${prefix}base-wasm:local ${prefix}tool-sprite:local ${prefix}full-stack-2d:local " \
+	"$(builds | cut -d' ' -f1-5) "
+check_equal "exactly once" "1" "$(grep -cE -- "-t ${prefix}tool-sprite:local " "$tmp/log")"
+check_contains "from the tool-sprite checkout's own Dockerfile and context" \
+	"tool-sprite/Dockerfile $(cd "$HERE/.." && pwd)/containers/../tool-sprite" "$(grep -E -- "-t ${prefix}tool-sprite:local" "$tmp/log")"
+check_contains "and passed as the build arg" "--build-arg TOOL_SPRITE_IMAGE=${prefix}tool-sprite:local" \
+	"$(grep -E "^build .*${prefix}sprite-sheet:" "$tmp/log")"
+check_equal "nothing is pulled" "" "$(pulls)"
+
+echo "without PUSH, a selection that copies from no tool image builds none"
+: >"$tmp/local"
+out="$(run_local base-wasm)" && status=0 || status=$?
+check_equal "the build passes" "0" "$status"
+check_lacks "and tool-sprite is not built" "tool-sprite" "$(builds)"
+
+echo "naming tool-sprite builds just it"
+: >"$tmp/local"
+out="$(run_local tool-sprite)" && status=0 || status=$?
+check_equal "the build passes" "0" "$status"
+check_equal "and only it" "${prefix}tool-sprite:local " "$(builds)"
+
+echo "TOOL_SPRITE_IMAGE wins without PUSH, and is pulled instead of built"
+: >"$tmp/local"; fresh_registry
+out="$(TOOL_SPRITE_IMAGE="$ts" run_local sprite)" && status=0 || status=$?
+check_equal "the build passes" "0" "$status"
+check_equal "it is pulled" "$ts " "$(pulls)"
+check_lacks "and not built" "tool-sprite:local" "$(builds)"
 
 echo
 echo "build.test.sh: ${pass} passed, ${fail} failed"
