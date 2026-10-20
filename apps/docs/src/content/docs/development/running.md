@@ -27,8 +27,9 @@ namespace they live in and the edge in front of them.
 - [`k3d`](https://k3d.io) and `kubectl`. Both ship in the devcontainer; install
   them yourself on a bare host.
 - The repositories the stack builds checked out under the superrepo: every
-  `microservice-*`, with `contracts` and `engines` they build against, and
-  `test-suites`, which the backend ingests; see
+  `microservice-*`, with `contracts` and `engines` they build against, the
+  `tool-*` repositories the run images copy from, and `test-suites`, which the
+  backend ingests; see
   [Cloning](/development/building/#cloning).
 - A harness API key for the harness you will run, for example
   `ANTHROPIC_API_KEY` for `claude`.
