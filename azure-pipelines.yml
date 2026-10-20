@@ -112,9 +112,9 @@ trigger:
 # `tool-dc/`, `tool-audio-core/`, `tool-sfx-synth/`, `tool-sfx-sample/` and
 # `tool-music/` submodules every build reads, because the patch table names their
 # crates and cargo loads every patch path (no member uses gg's, tool-paint's,
-# tool-particle's, tool-mc's, tool-sn's, tool-dc's, tool-audio-core's,
-# tool-sfx-synth's, tool-sfx-sample's or tool-music's crates, nor tool-voxel's
-# `voxel-anim`; the documentation site builds gg's pages from its checkout), the
+# tool-particle's, tool-mc's, tool-sn's, tool-dc's, tool-sfx-synth's,
+# tool-sfx-sample's or tool-music's crates, nor tool-voxel's `voxel-anim`; the
+# documentation site builds gg's pages from its checkout), the
 # test-suites repository, the `test-suites/` submodule holding the catalog the
 # tests over the committed catalog read and the performance image bakes from, and
 # the ui-common repository, the `ui-common/` submodule whose crate the patch table

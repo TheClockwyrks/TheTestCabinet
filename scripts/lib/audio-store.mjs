@@ -485,7 +485,7 @@ export function wavDurationMs(bytes, where) {
 /**
  * The LOADER-facing manifest for one pack — the `pack.toml` written into the audio
  * store, byte-copied from there into a run container, and read by `load_pack` in
- * `crates/audio-core/src/sample.rs`.
+ * `tool-audio-core/crates/audio-core/src/sample.rs`.
  *
  * It carries the pack's identity (`name`, `version`, `kind`, which `check_identity`
  * verifies against the ref a case pinned), its rendition format, and one `[[sample]]`

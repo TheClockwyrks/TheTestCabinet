@@ -220,9 +220,10 @@ only the presign pair, and only for the `audio-store` image.
 
 ## On-disk layout the loader expects
 
-`crates/audio-core/src/sample.rs` (`load_pack`) reads a pack directory holding a
-`pack.toml` manifest: a `sample_rate` plus one entry per sample, each with `name`, `tags`,
-`duration_ms`, `description`, and a `file` path resolved relative to the pack directory.
+`load_pack`, in `tool-audio-core/crates/audio-core/src/sample.rs`, reads a pack directory
+holding a `pack.toml` manifest: a `sample_rate` plus one entry per sample, each with
+`name`, `tags`, `duration_ms`, `description`, and a `file` path resolved relative to the
+pack directory.
 Audio sits in a shared clip directory beside the packs, so an entry's `file` points out of
 its own pack:
 

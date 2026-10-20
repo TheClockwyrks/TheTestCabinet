@@ -62,7 +62,7 @@ hex = { workspace = true }
 # the in-container audio binaries read it, so both link the one definition and cannot
 # disagree about what a run was staged with. Linked without the `cli` feature (no
 # clap/serde_json/toml of its own) — the engine needs the contract, not the loader.
-test-cabinet-audio-core = { path = "../audio-core", default-features = false }
+test-cabinet-audio-core = { workspace = true }
 # The drawing tool for asset-generation cases, from the tool-sprite repository.
 # Only the library (the workspace entry turns the `cli` feature's clap/serde_json
 # off), to regenerate the scored image from a run's recorded action log through
@@ -175,7 +175,7 @@ test-cabinet-suites = { workspace = true, features = ["test-support"] }
 # in-container binaries use (`StagedPacks::load` and `sample::load_pack`), so what the
 # writer emits and what the reader accepts are held together by a test rather than by
 # two matching sets of constants.
-test-cabinet-audio-core = { path = "../audio-core" }
+test-cabinet-audio-core = { workspace = true, features = ["cli"] }
 # Assemble tiny engine submissions from inline WebAssembly text to exercise the
 # performance validator's scoring paths (correct + wrong-answer) without compiling
 # the reference engine crates, mirroring how `lattice-host`'s submission tests do
