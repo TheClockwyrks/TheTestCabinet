@@ -5228,18 +5228,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "test-cabinet-paint"
-version = "0.0.0"
-dependencies = [
- "clap",
- "png",
- "serde",
- "serde_json",
- "test-cabinet-model-core",
- "test-cabinet-voxel-mesh",
-]
-
-[[package]]
 name = "test-cabinet-particle-2d"
 version = "0.0.0"
 dependencies = [

@@ -10,7 +10,6 @@ members = [
 	"crates/sn-anim",
 	"crates/dc",
 	"crates/dc-anim",
-	"crates/paint",
 	"crates/mc-skin",
 	"crates/sn-skin",
 	"crates/dc-skin",
