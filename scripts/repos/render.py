@@ -167,6 +167,10 @@ EXTRA_GATES: dict[str, dict[str, tuple[str, ...]]] = {
     "test-suites": {
         "checks": ("frozen-paths", "spec-prose", "spec-vocabulary", "audio-packs", "validators-typecheck"),
     },
+    # microservice-backend's clip store module (scripts/lib/audio-store.mjs), the
+    # one test-suites' `audio-packs` gate resolves the sample packs through, keeps
+    # its Node tests beside it, as the superrepo's `scripts-test` runs its own.
+    "microservice-backend": {"checks": ("scripts-test",)},
 }
 # The jobs of the gates stage an extra gate may name.
 GATE_JOBS = ("rust", "checks")
@@ -246,10 +250,11 @@ CRATES: dict[str, tuple[str, str]] = {
 # The release tag each repository's dependents pin, for the repositories that
 # have cut one. A manifest names a dependency at its public source on this tag,
 # and on the `master` branch while the repository has none. `contracts` cut
-# `v0.2.3` and `engines` `v1.1.1`, whose runs published their packages to the
-# feed at those versions. `tool-model-core` cut `v0.1.0`, the shared model
+# `v0.2.3` and `engines` `v1.1.2`, whose crates name contracts at `v0.2.3`, so a
+# dependent naming both resolves one suites crate; their runs published their
+# packages to the feed at those versions. `tool-model-core` cut `v0.1.0`, the shared model
 # libraries the model tools build on, and publishes no package.
-TAGS: dict[str, str] = {"contracts": "v0.2.3", "engines": "v1.1.1", "tool-model-core": "v0.1.0"}
+TAGS: dict[str, str] = {"contracts": "v0.2.3", "engines": "v1.1.2", "tool-model-core": "v0.1.0"}
 
 # The npm registry of the `the-test-cabinet` feed of the project's Azure
 # Artifacts, as the Repositories development page names it. A tag's run

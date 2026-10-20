@@ -78,7 +78,7 @@ def test_a_dependency_is_pinned_at_its_tag_or_on_master() -> None:
     ]
     assert render.workspace_dependencies("microservice-arena").splitlines() == [
         'test-cabinet-contracts = { git = "https://github.com/TheClockwyrks/contracts", tag = "v0.2.3" }',
-        'test-cabinet-engines = { git = "https://github.com/TheClockwyrks/engines", tag = "v1.1.1" }',
+        'test-cabinet-engines = { git = "https://github.com/TheClockwyrks/engines", tag = "v1.1.2" }',
     ]
     assert (
         'test-cabinet-draw = { git = "https://github.com/TheClockwyrks/tool-sprite", branch = "master" }'
@@ -190,6 +190,8 @@ def test_the_windows_and_extra_gate_tables_name_repositories_carrying_a_crate() 
     assert render.EXTRA_GATES["contracts"] == {"rust": ("contract-drift",)}
     # ui-common lints its npm workspace beside the kit's `typescript` gate.
     assert render.extra_gates("ui-common", "library") == {"checks": ("web-lint",)}
+    # The backend's clip store module keeps its Node tests beside it.
+    assert render.extra_gates("microservice-backend", "application") == {"checks": ("scripts-test",)}
     # The content gates the catalog brought with it run beside the kit's prose gates.
     assert render.extra_gates("test-suites", "content") == {
         "checks": ("frozen-paths", "spec-prose", "spec-vocabulary", "audio-packs", "validators-typecheck")
