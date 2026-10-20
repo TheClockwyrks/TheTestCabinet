@@ -1,6 +1,6 @@
 ---
 format: nyxsis-issue
-version: 2
+version: 3
 id: tssf0pps2q535nzes4ewupxm
 zone: BACK
 number: 2
@@ -54,3 +54,27 @@ store and ingest checkout as caches:
 - The arena pits a pushed controller and plays back a tournament match after
   the backend pod is replaced.
 - `make gate` passes in the backend, driver and publisher checkouts.
+
+## Blocked
+
+`components/backend/overview.md`, "Durable state", says the backend writes and
+reads each tournament match replay through "the object route ... listed with
+the artifacts service's routes". `components/artifacts/overview.md`, "Routes"
+and "Auth", lists no such route. Every route there is `/runs/{id}/...` or
+`PUT /public/{key}`, and `PUT /public/{key}` writes the public R2 bucket, not
+the private container. Adding the route to the API is a design decision for
+the docs. The user must decide:
+
+1. The route's path and methods. Two options:
+   `PUT`/`GET /tournaments/{id}/matches/{matchId}/replay`, or a generic
+   `PUT`/`GET /objects/{key}` limited to one prefix.
+2. Its credential. The control-plane service token
+   (`TCAB_BACKEND_SERVICE_TOKEN`) is the likely choice, but "Auth" must say so.
+3. The key layout in the private container. One option is a `tournaments/`
+   prefix. It must stay out of the `GET /runs` listing, or the reclamation
+   sweep ("Artifact reclamation" in `backend/overview.md`) would delete the
+   replays as orphaned run trees.
+
+Not blocked: the controller in the database, the backend's reads from
+artifacts, removing the backend's run copies and the driver and publisher
+mirror uploads, and the controller half of the `/state` migration.
