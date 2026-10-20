@@ -6394,3 +6394,19 @@ version = "0.0.0"
 [[patch.unused]]
 name = "test-cabinet-model-skin"
 version = "0.0.0"
+
+[[patch.unused]]
+name = "test-cabinet-audio-core"
+version = "0.0.0"
+
+[[patch.unused]]
+name = "test-cabinet-sfx-synth"
+version = "0.0.0"
+
+[[patch.unused]]
+name = "test-cabinet-sfx-sample"
+version = "0.0.0"
+
+[[patch.unused]]
+name = "test-cabinet-music"
+version = "0.0.0"

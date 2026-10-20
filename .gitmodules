@@ -56,6 +56,22 @@
 	path = tool-dc
 	url = ../tool-dc
 	branch = master
+[submodule "tool-audio-core"]
+	path = tool-audio-core
+	url = ../tool-audio-core
+	branch = master
+[submodule "tool-sfx-synth"]
+	path = tool-sfx-synth
+	url = ../tool-sfx-synth
+	branch = master
+[submodule "tool-sfx-sample"]
+	path = tool-sfx-sample
+	url = ../tool-sfx-sample
+	branch = master
+[submodule "tool-music"]
+	path = tool-music
+	url = ../tool-music
+	branch = master
 [submodule "ui-common"]
 	path = ui-common
 	url = ../ui-common

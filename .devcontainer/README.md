@@ -153,8 +153,9 @@ rather than one that quietly passes.
 
 `post-create.sh` populates the `contracts/`, `engines/`, `gg/`,
 `microservice-repos/`, `tool-model-core/`, `tool-paint/`, `tool-particle/`,
-`tool-sprite/`, `tool-voxel/`, `tool-mc/`, `tool-sn/`, `tool-dc/` and `ui-common/`
-submodules, which every build compiles against, and the
+`tool-sprite/`, `tool-voxel/`, `tool-mc/`, `tool-sn/`, `tool-dc/`,
+`tool-audio-core/`, `tool-sfx-synth/`, `tool-sfx-sample/`, `tool-music/` and
+`ui-common/` submodules, which every build compiles against, and the
 `test-suites/` submodule, the suites checkout the local backend ingests (not
 `cold-storage/`, which is optional and about 2 GB), through
 `tools/submodule-checkout.sh` (see [Submodule checkout](#submodule-checkout)),
@@ -682,8 +683,9 @@ warning about it.
 
 The `contracts/`, `engines/`, `gg/`, `microservice-repos/`, `tool-model-core/`,
 `tool-paint/`, `tool-particle/`, `tool-sprite/`, `tool-voxel/`, `tool-mc/`,
-`tool-sn/`, `tool-dc/`, `test-suites/` and `ui-common/` submodules live in the
-organization's other repositories, reached over SSH at
+`tool-sn/`, `tool-dc/`, `tool-audio-core/`, `tool-sfx-synth/`,
+`tool-sfx-sample/`, `tool-music/`, `test-suites/` and `ui-common/` submodules
+live in the organization's other repositories, reached over SSH at
 `ssh.dev.azure.com`.
 `post-create.sh` checks them out ahead of `npm ci`, whose workspace lists the
 packages `contracts/`, `engines/` and `ui-common/` hold, and `post-start.sh`
@@ -696,7 +698,8 @@ runs
 ```sh
 git submodule update --init \
   contracts engines gg microservice-repos tool-model-core tool-paint \
-  tool-particle tool-sprite tool-voxel tool-mc tool-sn tool-dc test-suites \
+  tool-particle tool-sprite tool-voxel tool-mc tool-sn tool-dc \
+  tool-audio-core tool-sfx-synth tool-sfx-sample tool-music test-suites \
   ui-common
 ```
 

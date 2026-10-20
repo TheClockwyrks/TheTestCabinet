@@ -26,7 +26,8 @@
 # creation, and it runs here again so a container created with no agent, or no
 # network, gets contracts/, engines/, gg/, microservice-repos/,
 # tool-model-core/, tool-paint/, tool-particle/, tool-sprite/, tool-voxel/,
-# tool-mc/, tool-sn/, tool-dc/, test-suites/ and ui-common/ at its next start.
+# tool-mc/, tool-sn/, tool-dc/, tool-audio-core/, tool-sfx-synth/,
+# tool-sfx-sample/, tool-music/, test-suites/ and ui-common/ at its next start.
 # The script never fails, and the `|| true` holds that here as well. It stops a
 # checkout that outlives its deadline too, so an SSH connection that never
 # answers does not hold the start.
