@@ -170,8 +170,9 @@ containers/
 │                               #   run image itself
 ├── base-wasm/Dockerfile        # the end-to-end run image: base plus the shared Rust →
 │                               #   wasm toolchain
-├── tools/Dockerfile            # the shared asset-tooling BUILDER: every asset binary
-│                               #   compiled in ONE cargo pass, exported as a `scratch`
+├── tools/Dockerfile            # the shared asset-tooling BUILDER: every asset binary not
+│                               #   in a `tool-*` repository's image, compiled in ONE
+│                               #   cargo pass, exported as a `scratch`
 │                               #   image. Not a run image and never published — the asset
 │                               #   images below `COPY --from` it (see Building)
 ├── full-stack-2d/Dockerfile    # the 2D full-stack run image: base-wasm plus the six 2D
@@ -185,8 +186,10 @@ containers/
 │                               #   identity (separately pinnable)
 ├── gg/Dockerfile               # ONE parameterized `<parent>-gg` variant: any run image
 │                               #   plus the toolchain tree gg's repository publishes
-├── sprite/Dockerfile           # the base image plus the baked-in `draw` binary
-├── sprite-sheet/Dockerfile     # the base image plus the baked-in `draw-sheet` binary
+├── sprite/Dockerfile           # the base image plus the baked-in `draw` binary, copied
+│                               #   out of the tool-sprite image (see Building)
+├── sprite-sheet/Dockerfile     # the base image plus the baked-in `draw-sheet` binary,
+│                               #   copied out of the tool-sprite image
 ├── ui/Dockerfile               # the base image plus the baked-in `paint` + `ui` binaries
 ├── material/Dockerfile         # the base image plus the baked-in `texture` + `pbr`
 │                               #   binaries
@@ -434,10 +437,10 @@ gets its own image so a run carries only the tool it uses:
 - `sprite/` is the base image plus exactly the **`draw`** binary, the drawing tool
   a single-sprite
   [asset-generation](../apps/docs/src/content/docs/testing/asset-generation/overview.md)
-  run uses.
+  run uses, copied out of the `tool-sprite` image (see [the tool images](#the-tool-images)).
 - `sprite-sheet/` is the base image plus exactly the **`draw-sheet`** binary, the
   drawing tool a sprite-sheet run uses (`draw` plus a required `--frame` on every
-  operation).
+  operation), copied out of the `tool-sprite` image likewise.
 - `ui/` is the base image plus the **`paint`** and **`ui`** binaries, the
   [UI](../apps/docs/src/content/docs/testing/asset-generation/ui-binaries.md) tools a
   run uses to paint a high-resolution interface asset — `paint` for layered raster
@@ -499,9 +502,11 @@ orchestrator regenerates a `draw`/`draw-sheet` run's scored image from its actio
 log through the _same_ library those tools use, and core's validator decodes the
 emitted data every other kind produces (the UI images, PBR maps, geometry, particle
 system, or `.wav`) — so each is
-compiled from this repo (a multi-stage build in its Dockerfile) and baked in
-rather than installed at run time. Because of this coupling, **build the images
-from the same commit as the orchestrator**: a run records both the orchestrator
+compiled from this repo (by the [tooling builder](#the-shared-asset-tooling-builder)),
+or copied out of the image of the `tool-*` repository it lives in at the commit the
+driver pins (`draw` and `draw-sheet`; see [the tool images](#the-tool-images)), and
+baked in rather than installed at run time. Because of this coupling, **build the
+images from the same commit as the orchestrator**: a run records both the orchestrator
 commit and the image digest, so a version mismatch (which would invalidate the
 `draw`/`draw-sheet` cheat-divergence signal, and could desync any binary from the
 validator that decodes its output) is auditable after the fact. Compiling the binaries is
@@ -736,6 +741,8 @@ Run on a machine with Docker (or Podman) available:
                                #   needed for the FROM
 ./build.sh adversarial performance
 DOCKER=podman ./build.sh       # build with Podman instead
+./build.sh tool-sprite         # build ONLY the tool-sprite image, from the tool-sprite/
+                               #   checkout (see the tool images below)
 ./build.sh --gg-selfcheck <PATH-TO-GG>   # …and gate the `-gg` variants on `gg selfcheck`
 ```
 
@@ -801,7 +808,8 @@ command against the `:local` images.
 
 Every asset-generation image bakes in one or more binaries compiled from `crates/`,
 and all of them get those binaries from a single builder image,
-`tools/Dockerfile` → `test-cabinet-tools:latest`.
+`tools/Dockerfile` → `test-cabinet-tools:latest`, except the ones copied out of a
+[tool image](#the-tool-images).
 
 That builder runs ONE `cargo build` over the union of every asset tool's dependency
 graph and exports the resulting binaries as a `scratch` image; each asset image then
@@ -828,6 +836,45 @@ It is deliberately **not** a run image: nothing executes in it, it never appears
 also not built from it — they compile to `wasm32-unknown-unknown` as well as the host
 target and assemble their own standalone buildkits, so they keep their own build
 stages (with the same cache mounts applied directly).
+
+### The tool images
+
+A tool that lives in a `tool-*` repository is not compiled here. `draw` and
+`draw-sheet` are `tool-sprite`'s (its `crates/draw`, checked out at `tool-sprite/`), whose
+pipeline builds its image on every gated push to `master` and `staging` and publishes
+it, multi-arch, as `testcabinet.azurecr.io/tool-sprite:<commit>` with the binaries at
+`/usr/local/bin`. The `sprite`, `sprite-sheet`, `full-stack-2d` and `full-stack-3d`
+images (and `game-jam`, through `full-stack-2d`) copy them out of that image: each
+Dockerfile declares a global `TOOL_SPRITE_IMAGE` build arg, resolves it through a
+`FROM ${TOOL_SPRITE_IMAGE} AS tool-sprite` stage, and
+`COPY --from=tool-sprite /usr/local/bin/<bin>`. The `sprite` and `sprite-sheet` images
+therefore no longer need the tooling builder at all.
+
+The commit is the one the driver pins: the superrepo's `tool-sprite` gitlink
+(`git rev-parse HEAD:tool-sprite`), the commit the driver's `test-cabinet-draw` dependency
+resolves to as well, so the binary a run draws with and the library the orchestrator
+regenerates its image with are the same code. `scripts/ci/tool-images.sh list` names each
+tool image's reference and build arg, and `build.sh` gives the arg:
+
+- under `PUSH`, the pinned reference, pulled before the first image that copies from it
+  (the registry needs `az acr login -n testcabinet`). A published run image carries the
+  published tool, never a local build of it. `scripts/ci/run-images.sh` runs
+  `scripts/ci/tool-images.sh check` before it builds anything, so a gitlink at a commit
+  `tool-sprite`'s pipeline has not published fails there, naming the commit.
+- without `PUSH` (the local path), the image it builds first from the `tool-sprite/`
+  checkout with that repository's own Dockerfile, tagged
+  `test-cabinet-tool-sprite:<tag>` and never pushed. Like the tooling builder it is
+  rebuilt on every invocation that needs it, and its cargo cache mounts make a no-change
+  rebuild cheap. `./build.sh tool-sprite` builds just it; `make -C deployments/local
+  run-images` builds it first. A missing checkout fails, naming
+  `git submodule update --init tool-sprite`.
+- `TOOL_SPRITE_IMAGE=<reference>` overrides both, for trying another build of the tool.
+
+The reference is an input of the copying images' digests in
+`scripts/ci/run-image-inputs.sh`, so a bump of the gitlink rebuilds exactly the images
+that copy from it. A tool that moves to its own repository later is added to
+`TOOL_REPOSITORIES` in `scripts/ci/tool-images.sh` and taken the same way, by the build
+arg its name derives (`tool-voxel` → `TOOL_VOXEL_IMAGE`).
 
 ### The gg toolchain builder
 

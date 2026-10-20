@@ -32,6 +32,13 @@
 #     (scripts/ci/gg-release.sh toolchains-image, or GG_TOOLCHAINS_IMAGE as
 #     containers/build.sh takes it). The gg repository publishes a version once, so the
 #     tag names the tree, and a bump of the pin rebuilds every variant.
+#   - for every image whose Dockerfile declares a tool image's build argument
+#     (`ARG TOOL_SPRITE_IMAGE`), that image's reference as scripts/ci/tool-images.sh lists
+#     it: `testcabinet.azurecr.io/<repository>:<commit>` at the superrepo's gitlink, or
+#     the environment variable named for the argument, as containers/build.sh takes it.
+#     A `tool-*` repository's pipeline publishes a commit's image once, so the tag names
+#     the binaries, and a bump of the gitlink rebuilds every image that copies from it
+#     (and, through the parent digests, everything built from those).
 #
 # scripts/ci/run-images.sh writes this table and containers/build.sh reads it in its
 # reuse mode: an image whose digest already names a pushed image in the registry is
@@ -55,7 +62,9 @@ parents_of() {
 	local name="$1"
 	case "$name" in
 		tools | base | blender) echo "-" ;;
-		base-wasm) echo "base" ;;
+		# Their one binary each is copied out of the tool-sprite image, which is no
+		# image built here: its reference is an input of theirs, not a parent.
+		base-wasm | sprite | sprite-sheet) echo "base" ;;
 		adversarial | performance) echo "base-wasm" ;;
 		full-stack-2d | full-stack-3d) echo "base-wasm,tools" ;;
 		game-jam) echo "full-stack-2d" ;;
@@ -135,7 +144,7 @@ digest_of() {
 		echo "${DIGESTS[$name]}"
 		return 0
 	fi
-	local dockerfile parents parent source parts=""
+	local dockerfile parents parent source arg parts=""
 	dockerfile="$(dockerfile_of "$name")"
 	if [[ ! -f "$dockerfile" ]]; then
 		echo "run-image-inputs.sh: no Dockerfile for '${name}' at ${dockerfile}" >&2
@@ -156,6 +165,14 @@ digest_of() {
 	if [[ "$name" == *-gg ]]; then
 		parts+="gg-toolchains ${GG_TOOLCHAINS_REF}"$'\n'
 	fi
+	while IFS= read -r arg; do
+		[[ -n "$arg" ]] || continue
+		if [[ -z "${TOOL_IMAGE_REFS[$arg]:-}" ]]; then
+			echo "run-image-inputs.sh: ${dockerfile} declares ARG ${arg}, which scripts/ci/tool-images.sh does not list" >&2
+			return 1
+		fi
+		parts+="tool-image ${arg} ${TOOL_IMAGE_REFS[$arg]}"$'\n'
+	done < <(grep -oE '^ARG TOOL_[A-Z0-9_]+_IMAGE' "$dockerfile" | sed 's/^ARG //' | sort -u)
 	parents="$(parents_of "$name")"
 	if [[ "$parents" != "-" ]]; then
 		for parent in ${parents//,/ }; do
@@ -172,6 +189,15 @@ if [[ -z "$GG_TOOLCHAINS_REF" ]]; then
 	GG_TOOLCHAINS_REF="$(scripts/ci/gg-release.sh toolchains-image)"
 fi
 readonly GG_TOOLCHAINS_REF
+
+# The tool images the run images copy binaries from, by build argument, read once.
+declare -A TOOL_IMAGE_REFS=()
+tool_images_table="$(scripts/ci/tool-images.sh list)"
+while read -r _ tool_arg tool_ref; do
+	[[ -n "${tool_arg:-}" ]] || continue
+	TOOL_IMAGE_REFS["$tool_arg"]="$tool_ref"
+done <<<"$tool_images_table"
+unset tool_images_table tool_arg tool_ref
 
 main() {
 	local -a names=()

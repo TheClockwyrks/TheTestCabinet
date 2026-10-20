@@ -7,8 +7,9 @@
 # the `gg selfcheck ok:` lines the case declares. scripts/ci/gg-release.sh is a
 # stub that records the fetch and writes a `gg`, and `uname` is stubbed to the
 # machine the case declares. The subject is the build it asks for, the gg it
-# drives the self-check with, and that a build which pushed without running the
-# self-check in every environment representative fails.
+# drives the self-check with, that a build which pushed without running the
+# self-check in every environment representative fails, and that a tool image the
+# registry lacks (scripts/ci/tool-images.sh check, stubbed) fails before any build.
 set -uo pipefail
 
 CI_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -79,6 +80,14 @@ cat >"$repo/scripts/ci/run-image-inputs.sh" <<'STUB'
 printf '%s\n' "base 0123 -" "sprite-gg 4567 sprite"
 exit "${STUB_INPUTS_EXIT:-0}"
 STUB
+cat >"$repo/scripts/ci/tool-images.sh" <<'STUB'
+#!/usr/bin/env bash
+echo "tool-images.sh $*" >>"$STUB_TOOLS_LOG"
+if [[ "${STUB_TOOLS_EXIT:-0}" -ne 0 ]]; then
+	echo "tool-images.sh: testcabinet.azurecr.io/tool-sprite:abc is not in the registry." >&2
+	exit "$STUB_TOOLS_EXIT"
+fi
+STUB
 cat >"$repo/scripts/ci/gg-release.sh" <<'STUB'
 #!/usr/bin/env bash
 echo "gg-release.sh $*" >>"$STUB_FETCH_LOG"
@@ -103,10 +112,11 @@ cat >"$repo/bin/uname" <<'STUB'
 echo "${STUB_UNAME_M:-x86_64}"
 STUB
 chmod +x "$repo/containers/image-names.sh" "$repo/containers/build.sh" "$repo/bin/uname" \
-	"$repo/scripts/ci/run-image-inputs.sh" "$repo/scripts/ci/gg-release.sh"
+	"$repo/scripts/ci/run-image-inputs.sh" "$repo/scripts/ci/gg-release.sh" "$repo/scripts/ci/tool-images.sh"
 run() {
-	rm -f "$tmp/build.log" "$tmp/fetch.log"
-	(cd "$tmp" && STUB_LOG="$tmp/build.log" STUB_FETCH_LOG="$tmp/fetch.log" PATH="$repo/bin:$PATH" \
+	rm -f "$tmp/build.log" "$tmp/fetch.log" "$tmp/tools.log"
+	(cd "$tmp" && STUB_LOG="$tmp/build.log" STUB_FETCH_LOG="$tmp/fetch.log" STUB_TOOLS_LOG="$tmp/tools.log" \
+		PATH="$repo/bin:$PATH" \
 		"$repo/scripts/ci/run-images.sh" "$@" 2>&1)
 }
 # The directory the release was fetched into, as the stub recorded it.
@@ -121,6 +131,13 @@ check_equal "builds every listed image with the self-check driven by that gg, pu
 inputs=base 0123 -;sprite-gg 4567 sprite;" \
 	"$(cat "$tmp/build.log")"
 check_absent "and removes the fetched release on the way out" "$dir"
+check_equal "after checking the tool images are published" "tool-images.sh check" "$(cat "$tmp/tools.log")"
+
+out="$(STUB_TOOLS_EXIT=1 STUB_SELFCHECKED="$ALL" run "$SHA")"
+check_equal "a tool image the registry lacks fails the step" "1" "$?"
+check_contains "naming it" "tool-sprite:abc is not in the registry" "$out"
+check_equal "before anything is built" "" "$(cat "$tmp/build.log" 2>/dev/null)"
+check_equal "or fetched" "" "$(cat "$tmp/fetch.log" 2>/dev/null)"
 
 out="$(TCAB_GG_BINARY=/opt/gg STUB_SELFCHECKED="$ALL" run "$SHA")"
 check_equal "TCAB_GG_BINARY names the gg instead" "0" "$?"

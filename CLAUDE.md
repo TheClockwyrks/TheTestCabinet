@@ -51,9 +51,9 @@ Where each responsibility lives, the edges between the repositories and how a
 dependency is named:
 [Repositories](apps/docs/src/content/docs/development/repositories.md#where-each-responsibility-lives).
 Every repository but `contracts`, `engines`, `gg`, `gg.rocks`,
-`microservice-repos`, `test-suites` and `cold-storage` is still a directory of
-this tree today (`crates/`, `apps/`, `packages/`), so until it is extracted its
-code is found there.
+`microservice-repos`, `tool-sprite`, `test-suites` and `cold-storage` is still
+a directory of this tree today (`crates/`, `apps/`, `packages/`), so until it
+is extracted its code is found there.
 
 The shared packages: `@clockwyrks/run-record` (the run record contract; see
 [`components/contracts/run-records.md`](apps/docs/src/content/docs/components/contracts/run-records.md)),

@@ -303,9 +303,10 @@ This path takes its own prerequisites:
   that environment's artifacts service owns, so no bucket credential is needed
   on your machine. The command echoes the origin it is about to write through.
 - The drawing binary, resolved from `TCAB_ASSET_BIN_DIR`, else the cargo target
-  directory's `release/`, else `PATH`. Build it first (for example
-  `cargo build --release -p test-cabinet-draw`); when it cannot be found the
-  command fails naming every location it tried.
+  directory's `release/`, else the `tool-sprite` checkout's `target/release/`,
+  else `PATH`. Build it first (for example `cargo build --release` in
+  `tool-sprite/`, the repository the drawing crate lives in); when it cannot be
+  found the command fails naming every location it tried.
 
 The object keys are constructible, so this path keeps no lockfile: the backend
 learns which references exist by listing the `media/references/` prefix through
