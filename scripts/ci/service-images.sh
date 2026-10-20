@@ -34,8 +34,8 @@ if [[ $# -ne 1 ]]; then
 fi
 readonly SHA="$1"
 
-# The seven services scripts/ci/service-image.sh knows, in the order argued above.
-readonly SERVICES=(backend dispatcher driver artifacts arena publisher web)
+# The six services scripts/ci/service-image.sh knows, in the order argued above.
+readonly SERVICES=(backend driver artifacts arena publisher web)
 
 for service in "${SERVICES[@]}"; do
 	if ! "${CI_LIB_DIR}/service-image.sh" "$service" "$SHA"; then

@@ -4,7 +4,6 @@ members = [
 	"crates/cli",
 	"crates/backend",
 	"crates/driver",
-	"crates/dispatcher",
 	"crates/publisher",
 	"crates/artifacts",
 	"crates/arena",

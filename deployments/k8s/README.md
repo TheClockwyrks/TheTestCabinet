@@ -65,7 +65,7 @@ Overlays compose in reusable kustomize **components**:
 
 The service container images are built from [`../images/`](../images/) — every Rust
 service is a `--target` of the shared `services.Dockerfile` (`backend`,
-`dispatcher`, `driver`, `artifacts`, `arena`, `publisher`), and the console has its
+`driver`, `artifacts`, `arena`, `publisher`), and the console has its
 own `web.Dockerfile`. The repos service is its own repository, `microservice-repos`,
 whose pipeline builds its image from that repository's `Dockerfile` and pushes it as
 `testcabinet.azurecr.io/microservice-repos:<commit>`. The dispatcher is likewise
@@ -76,7 +76,7 @@ others, and the **run-container**
 images the sandbox runs inside ([`containers/`](../../containers/README.md)), on
 every push to `master` and `staging`, and pushes each to
 `testcabinet.azurecr.io/<image>:<sha>` (`tcab-backend`,
-`tcab-dispatcher`, `tcab-driver`, `tcab-artifacts`, `tcab-arena`,
+`tcab-driver`, `tcab-artifacts`, `tcab-arena`,
 `tcab-publisher`, `tcab-web`, and the `test-cabinet-*` run images). The workspace
 template's publish stage retags `tcab-backend:<sha>` as
 `testcabinet.azurecr.io/the-test-cabinet-backend:<sha>`
@@ -194,7 +194,7 @@ The dispatcher's
 `TCAB_K8S_*` sandbox settings are documented in
 [`deployment/kubernetes/run-plane.md`](../../apps/docs/src/content/docs/deployment/kubernetes/run-plane.md)
 and the dispatcher's
-[`config.rs`](../../crates/dispatcher/src/config.rs).
+[`config.rs`](../../microservice-dispatcher/crates/dispatcher/src/config.rs).
 
 ## Secrets
 
@@ -215,5 +215,6 @@ your **environment** (`ANTHROPIC_API_KEY` / `OPENAI_API_KEY` / `OPENROUTER_API_K
 for the driver, a dev `SERVICE_TOKEN` for the other two), so no key is written to a
 tracked file.
 
-The repo-root `.env.backend.example`, `.env.artifacts.example` and `.env.dispatcher.example`
+The repo-root `.env.backend.example` and `.env.artifacts.example`, and
+microservice-dispatcher's `.env.dispatcher.example` at that repository's root,
 remain the authoritative reference for every variable each service reads.

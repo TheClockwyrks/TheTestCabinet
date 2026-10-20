@@ -34,7 +34,7 @@ deployments/
 ├── images/                    # service images, pushed to the ACR (see below)
 │   ├── services.Dockerfile    # EVERY Rust service, one `--target` each, over one
 │   │                          #   shared cargo build stage: backend (+ headless
-│   │                          #   Chromium), dispatcher, driver, artifacts, arena,
+│   │                          #   Chromium), driver, artifacts, arena,
 │   │                          #   publisher
 │   ├── backend.Dockerfile     # the-test-cabinet-backend: a retag of tcab-backend
 │   ├── web.Dockerfile         # tcab-web, the console SPA behind nginx (no crate)
@@ -87,9 +87,12 @@ of each service's configuration.
 The Azure pipeline ([`azure-pipelines.yml`](../azure-pipelines.yml)) builds the
 service images under `images/` on every push to `master` and `staging`, natively
 for `amd64` and `arm64`, and pushes each to the Test Cabinet Azure Container
-Registry as `testcabinet.azurecr.io/tcab-backend:<sha>`, `…/tcab-dispatcher`,
+Registry as `testcabinet.azurecr.io/tcab-backend:<sha>`,
 `…/tcab-driver`, `…/tcab-artifacts`, `…/tcab-arena`,
-`…/tcab-publisher`, and `…/tcab-web`. The workspace template's publish stage then
+`…/tcab-publisher`, and `…/tcab-web`. The dispatcher's image is built by
+microservice-dispatcher's pipeline and pushed as
+`testcabinet.azurecr.io/microservice-dispatcher:<commit>`. The workspace
+template's publish stage then
 builds `images/backend.Dockerfile`, a retag of `tcab-backend:<sha>` with no build
 steps, and pushes it as `testcabinet.azurecr.io/the-test-cabinet-backend:<sha>`,
 the repository the template's deploy runs. To build and push the images by hand
@@ -167,8 +170,9 @@ Where that store comes from depends on who is building:
 Every file here is a **template with placeholder values only** — never commit a
 real secret. The per-environment files under `env/` are deliberately thin; the
 repo-root [`.env.backend.example`](../.env.backend.example),
-[`.env.dispatcher.example`](../.env.dispatcher.example), and
-[`.env.artifacts.example`](../.env.artifacts.example) remain the authoritative
+[`.env.artifacts.example`](../.env.artifacts.example), and microservice-dispatcher's
+[`.env.dispatcher.example`](../microservice-dispatcher/.env.dispatcher.example) at
+that repository's root, remain the authoritative
 reference for every variable each service reads. Supply real values through
 Kubernetes `Secret`s populated from your secret manager (External Secrets, Sealed
 Secrets, `kubectl create secret`, …).

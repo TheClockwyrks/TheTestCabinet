@@ -120,7 +120,7 @@ toolchain image `gg-release.sh toolchains-image` names, which gg's pipeline push
 **One job builds the eight service images of an architecture.** `services_<arch>` waits
 on `checks` and `audiostore_manifest` (the driver bakes the audio
 store), and `service-images.sh` runs `service-image.sh` once per service, in the order
-backend, auth, dispatcher, driver, artifacts, arena, publisher, web, on one
+backend, auth, driver, artifacts, arena, publisher, web, on one
 `docker-container` builder (`tcab-ci`). The `build` stage of
 `deployments/images/services.Dockerfile` is one `cargo build --release` of all seven
 Rust service binaries, so it compiles once and the six other Rust targets take it from
