@@ -892,8 +892,10 @@ The commit is the one the driver pins: the superrepo's gitlink for the repositor
 (`git rev-parse HEAD:tool-sprite`, `git rev-parse HEAD:tool-voxel`, …). For
 `tool-sprite` it is the commit the driver's `test-cabinet-draw` dependency resolves to as
 well, so the binary a run draws with and the library the orchestrator regenerates its
-image with are the same code. `scripts/ci/tool-images.sh list` names each tool image's
-reference and build arg, and `build.sh` gives the arg:
+image with are the same code; for `tool-voxel` it is likewise the commit of the driver's
+`test-cabinet-voxel`, through which it replays a voxel run's operation log.
+`scripts/ci/tool-images.sh list` names each tool image's reference and build arg, and
+`build.sh` gives the arg:
 
 - under `PUSH`, the pinned reference, pulled before the first image that copies from it
   (the registry needs `az acr login -n testcabinet`). A published run image carries the

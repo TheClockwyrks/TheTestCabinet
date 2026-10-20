@@ -109,9 +109,9 @@ trigger:
 # `gg/`, `microservice-repos/`, `tool-model-core/`, `tool-paint/`,
 # `tool-sprite/`, `tool-voxel/`, `tool-mc/`, `tool-sn/` and `tool-dc/`
 # submodules every build reads, because the patch table names their crates and
-# cargo loads every patch path (no member uses gg's, tool-paint's, tool-voxel's,
-# tool-mc's, tool-sn's or tool-dc's crates; the documentation site builds gg's
-# pages from its checkout), the test-suites repository, the `test-suites/`
+# cargo loads every patch path (no member uses gg's, tool-paint's, tool-mc's,
+# tool-sn's or tool-dc's crates, nor tool-voxel's `voxel-anim`; the documentation
+# site builds gg's pages from its checkout), the test-suites repository, the `test-suites/`
 # submodule holding the catalog the tests over the committed catalog read and
 # the performance image bakes from, and the ui-common repository, the
 # `ui-common/` submodule whose crate the patch table names (no member uses it)

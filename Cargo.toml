@@ -2,17 +2,6 @@
 resolver = "3"
 members = [
 	"crates/cli",
-	"crates/voxel",
-	"crates/voxel-anim",
-	"crates/mc",
-	"crates/mc-anim",
-	"crates/sn",
-	"crates/sn-anim",
-	"crates/dc",
-	"crates/dc-anim",
-	"crates/mc-skin",
-	"crates/sn-skin",
-	"crates/dc-skin",
 	"crates/particle-core",
 	"crates/particle-2d",
 	"crates/particle-3d",
@@ -33,12 +22,12 @@ members = [
 # The repositories checked out as submodules carrying a crate (contracts, engines,
 # gg, microservice-repos, tool-model-core, tool-paint, tool-sprite, tool-voxel,
 # tool-mc, tool-sn, tool-dc, ui-common) are workspaces of their own. The
-# contracts, engines, microservice-repos, tool-model-core and tool-sprite crates
-# are named under `[workspace.dependencies]` by their public source, and the patch
-# table of `.cargo/config.toml` builds them from the checkouts. No member depends
-# on gg's, tool-paint's, tool-voxel's, tool-mc's, tool-sn's, tool-dc's or
-# ui-common's source; the patch table names their crates all the same, and the
-# lock records them as unused.
+# contracts, engines, microservice-repos, tool-model-core, tool-sprite and
+# tool-voxel crates are named under `[workspace.dependencies]` by their public
+# source, and the patch table of `.cargo/config.toml` builds them from the
+# checkouts. No member depends on gg's, tool-paint's, tool-mc's, tool-sn's,
+# tool-dc's or ui-common's source, nor on tool-voxel's `voxel-anim`; the patch
+# table names their crates all the same, and the lock records them as unused.
 exclude = ["contracts", "engines", "gg", "microservice-repos", "tool-model-core", "tool-paint", "tool-sprite", "tool-voxel", "tool-mc", "tool-sn", "tool-dc", "ui-common"]
 
 [workspace.package]
@@ -167,6 +156,11 @@ test-cabinet-draw = { git = "https://github.com/TheClockwyrks/tool-sprite", bran
 test-cabinet-model-core = { git = "https://github.com/TheClockwyrks/tool-model-core", tag = "v0.1.0", default-features = false }
 test-cabinet-voxel-mesh = { git = "https://github.com/TheClockwyrks/tool-model-core", tag = "v0.1.0", default-features = false }
 test-cabinet-model-skin = { git = "https://github.com/TheClockwyrks/tool-model-core", tag = "v0.1.0", default-features = false }
+# The voxel crate of the tool-voxel repository, named the same way. `TAGS` records
+# no tag for tool-voxel, so it is named at its `master` branch. Only the library
+# (not the `cli` feature's binaries): the driver regenerates the scored voxel data
+# and preview from a run's recorded operation log through it.
+test-cabinet-voxel = { git = "https://github.com/TheClockwyrks/tool-voxel", branch = "master", default-features = false }
 # Shared runtime dependencies inherited by member crates via { workspace = true }.
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

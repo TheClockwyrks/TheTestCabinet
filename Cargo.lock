@@ -5029,31 +5029,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "test-cabinet-dc"
-version = "0.0.0"
-dependencies = [
- "clap",
- "test-cabinet-model-core",
- "test-cabinet-voxel-mesh",
-]
-
-[[package]]
-name = "test-cabinet-dc-anim"
-version = "0.0.0"
-dependencies = [
- "clap",
- "test-cabinet-dc",
- "test-cabinet-model-core",
-]
-
-[[package]]
-name = "test-cabinet-dc-skin"
-version = "0.0.0"
-dependencies = [
- "test-cabinet-model-skin",
-]
-
-[[package]]
 name = "test-cabinet-dispatcher"
 version = "0.0.0"
 dependencies = [
@@ -5159,31 +5134,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "test-cabinet-mc"
-version = "0.0.0"
-dependencies = [
- "clap",
- "test-cabinet-model-core",
- "test-cabinet-voxel-mesh",
-]
-
-[[package]]
-name = "test-cabinet-mc-anim"
-version = "0.0.0"
-dependencies = [
- "clap",
- "test-cabinet-mc",
- "test-cabinet-model-core",
-]
-
-[[package]]
-name = "test-cabinet-mc-skin"
-version = "0.0.0"
-dependencies = [
- "test-cabinet-model-skin",
-]
-
-[[package]]
 name = "test-cabinet-migration"
 version = "0.0.0"
 dependencies = [
@@ -5205,18 +5155,6 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.18",
  "wgpu",
-]
-
-[[package]]
-name = "test-cabinet-model-skin"
-version = "0.0.0"
-dependencies = [
- "clap",
- "glam",
- "serde",
- "serde_json",
- "test-cabinet-model-core",
- "test-cabinet-voxel-mesh",
 ]
 
 [[package]]
@@ -5280,31 +5218,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "test-cabinet-sn"
-version = "0.0.0"
-dependencies = [
- "clap",
- "test-cabinet-model-core",
- "test-cabinet-voxel-mesh",
-]
-
-[[package]]
-name = "test-cabinet-sn-anim"
-version = "0.0.0"
-dependencies = [
- "clap",
- "test-cabinet-model-core",
- "test-cabinet-sn",
-]
-
-[[package]]
-name = "test-cabinet-sn-skin"
-version = "0.0.0"
-dependencies = [
- "test-cabinet-model-skin",
-]
-
-[[package]]
 name = "test-cabinet-suites"
 version = "0.2.2"
 dependencies = [
@@ -5344,19 +5257,8 @@ dependencies = [
 name = "test-cabinet-voxel"
 version = "0.0.0"
 dependencies = [
- "clap",
  "serde",
- "serde_json",
  "test-cabinet-model-core",
-]
-
-[[package]]
-name = "test-cabinet-voxel-anim"
-version = "0.0.0"
-dependencies = [
- "clap",
- "test-cabinet-model-core",
- "test-cabinet-voxel",
 ]
 
 [[package]]
@@ -5364,7 +5266,6 @@ name = "test-cabinet-voxel-mesh"
 version = "0.0.0"
 dependencies = [
  "serde",
- "serde_json",
  "test-cabinet-model-core",
 ]
 
@@ -7074,10 +6975,6 @@ name = "contract-codegen"
 version = "0.2.2"
 
 [[patch.unused]]
-name = "test-cabinet-voxel"
-version = "0.0.0"
-
-[[patch.unused]]
 name = "test-cabinet-voxel-anim"
 version = "0.0.0"
 
@@ -7115,4 +7012,8 @@ version = "0.0.0"
 
 [[patch.unused]]
 name = "test-cabinet-dc-skin"
+version = "0.0.0"
+
+[[patch.unused]]
+name = "test-cabinet-model-skin"
 version = "0.0.0"
