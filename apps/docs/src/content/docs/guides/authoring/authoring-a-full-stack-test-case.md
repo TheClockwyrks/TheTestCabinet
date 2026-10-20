@@ -155,9 +155,11 @@ Author `test-case.toml` per the
   `system.json` through the runtime's `./canvas` binding; a 3D case that ships a
   produced voxel model adds `@clockwyrks/voxel-runtime`. The case's seeded
   workspace `package.json` must already depend on each declared package as
-  `file:./.vendor/packages/<name>`, and resolution rejects a mismatch. Pair it with
-  `init = "npm install …"` so the lockfile completes at seed time while
-  `[build].install` stays `npm ci`.
+  `file:./.vendor/packages/<name>`, and its committed `package-lock.json` must
+  link it at that path; resolution rejects a mismatch. Pair it with
+  `init = "npm ci && npx playwright install chromium"`, and keep
+  `[build].install` as `npm ci`. Generate the lockfile as
+  [step 8](#8-generate-the-workspace-lockfiles) describes.
 - `[[domain]]` entries must cover the produced assets as first-class quality
   dimensions. Hollowdeep rates a `simulation` domain for the code and a
   `presentation` domain for the produced art, motion, effects, and audio; the
@@ -167,7 +169,29 @@ Author `test-case.toml` per the
   exactly as end-to-end. `[[reference]]`, `[[proof]]`, and `[[check]]` are
   retained for shipped versions; a new case declares none.
 
-### 8. Write the non-seeded docs
+### 8. Generate the workspace lockfiles
+
+Every workspace with a `package.json` ships the `package-lock.json` that pins it.
+The lockfile links each package and engine dependency at its `.vendor/packages/`
+path, and seeding refuses a run whose vendored copy differs from the version the
+lockfile links. Generate it from a staged package store, so the linked versions
+are the ones the host package store holds:
+
+```sh
+# In the-test-cabinet: build and stage the package store.
+npm ci
+node scripts/stage-tcab-packages.mjs /tmp/tcab-packages
+
+# In test-suites: write every workspace lockfile of the version, then check them.
+node scripts/workspace-lockfiles.mjs --store /tmp/tcab-packages <version-folder>
+node scripts/workspace-lockfiles.mjs --store /tmp/tcab-packages --check <version-folder>
+```
+
+Regenerate the lockfiles whenever a workspace's `package.json` changes and
+whenever the store's package or engine versions move. Commit each lockfile beside
+its `package.json`.
+
+### 9. Write the non-seeded docs
 
 `description.md`, `changelog.md`, and `README.md`, unchanged from end-to-end.
 

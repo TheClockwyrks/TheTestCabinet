@@ -93,11 +93,15 @@ store now holds stays resolvable.
 
 An engine is staged into the same host package store as a case's
 [packages](/testing/end-to-end/overview/#packages) and vendored at seed time into
-`.vendor/engine/` inside the run repository, committed with the initial seed. The
-seeded `package.json` has the dependency on that vendored copy written into it,
-so the build imports the engine by its bare name as an ordinary installed
-dependency. A case's own packages differ: the case declares them in its own
-`package.json`, which the harness leaves as written.
+`.vendor/packages/` inside the run repository, committed with the initial seed.
+The engine's workspace already declares the dependency on that vendored copy by
+its `file:` spec, in its `package.json` and in the `package-lock.json` that links
+it, exactly as a case declares its packages. Seeding leaves both files as the
+case wrote them.
+
+The case's `init` command, `npm ci`, installs the vendored copy the lockfile
+links, so the build imports the engine by its bare name as an ordinary installed
+dependency.
 
 ## Documentation delivery
 
@@ -278,8 +282,9 @@ Every entry names a slug the engine catalogue knows and a well-formed version
 range, both checked when the case resolves, before a run is spent. Once a version
 declares any engine, its supported set is exactly what it declares, so a version
 that runs under both a runtime and `none` lists both. A case declaring an engine
-that provides a runtime ships a workspace `package.json`, because the engine
-dependency is written into that file at seed time.
+that provides a runtime ships a workspace per engine whose `package.json` and
+`package-lock.json` declare the engine's package at `.vendor/packages/`, because
+seeding vendors the runtime at the path that declaration names.
 
 Support is declared per version. A case version gains engine support by adding a
 new version, because its specification carries the statements that are specific

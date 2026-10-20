@@ -480,10 +480,14 @@ supported set is exactly what it declares. A case that builds both ways lists
 `none` alongside the engine it also supports, and ships a starter project for
 each.
 
-A case declaring an engine that provides a runtime ships a starter project
-containing a `package.json`, because the engine dependency is written into that
-file at seed time. An engine's version is the version of its npm package in the
-host package store, read at seed time and recorded on the run.
+A case declaring an engine that provides a runtime ships a starter project for
+it whose `package.json` declares the engine's package as a `file:` dependency
+under `.vendor/packages/` and whose `package-lock.json` links it there, because
+seeding vendors the runtime at the path that declaration names. See
+[Engines](/testing/end-to-end/overview/#engines).
+
+An engine's version is the version of its npm package in the host package
+store, read at seed time and recorded on the run.
 
 A run selects an engine by slug, and the version it receives is the one the
 store holds. A run whose engine version falls outside the case's declared range

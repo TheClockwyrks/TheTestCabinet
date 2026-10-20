@@ -2118,6 +2118,9 @@ describe("gg run limits", () => {
     expect(RUN_LIMIT_SPECS.map((spec) => spec.key).sort()).toEqual(
       Object.keys(emptyDraft().limits).sort(),
     );
+    // The model call ceiling a fresh configuration is seeded with is gg's own default of
+    // thirty minutes, the figure the configurations and execution-limits pages state.
+    expect(AUTHORED_MODEL_CALL_TIMEOUT_SECS).toBe(1800);
   });
 
   it("refuses to save a configuration a required ceiling was cleared out of", () => {

@@ -138,9 +138,10 @@ pub struct SeedArgs {
     /// Engine to seed the run against, defaulting to `none` (nothing is
     /// vendored, and the seeded tree is exactly what the case ships). Naming an
     /// engine with a runtime vendors that runtime out of the
-    /// host package store into the seeded repository and writes its dependency
-    /// into the workspace `package.json`, so this is how to inspect what a build
-    /// on that engine is handed.
+    /// host package store into the seeded repository, at the `.vendor/packages/`
+    /// path the engine's workspace already declares in its `package.json` and
+    /// `package-lock.json`, so this is how to inspect what a build on that engine
+    /// is handed.
     #[arg(long, value_name = "SLUG", default_value = NONE_SLUG)]
     pub engine: String,
 

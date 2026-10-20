@@ -1,13 +1,24 @@
 ---
 format: nyxsis-issue
-version: 2
+version: 3
 id: l3frgtvirspascil6awvsrrz
 zone: GGH
 number: 2
 title: Arm the stream idle bound on the first delta instead of at send
 type: generic
-state: open
+state: done
 created: 2026-10-18T23:42:01.87306174Z
+done: 2026-10-20T01:23:45.561299509Z
+outcome: |
+  Landed as superrepo PR 4490 into nightly with gg PR 4469 (gg nightly ad294107b)
+  and contracts PR 4471 (master a9c473ad7): the idle clock is armed by a reply's
+  first progressing delta, the call ceiling alone bounds the head wait, the
+  head-stall fault is gone, and the default model call timeout is thirty minutes
+  in gg, the contracts and the console. Left: contracts PR 4485
+  (issue/ggh-2-wording) rewords the run limits' doc comments and regenerated
+  schema text and waits on the user's vote; gg's own over-long doc-comment lines
+  were left for a later release; no live provider stream was exercised, only gg's
+  deterministic client tests.
 ---
 
 gg starts the `modelStreamIdleSecs` clock when a request is sent and cancels

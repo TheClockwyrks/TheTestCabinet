@@ -29,3 +29,4 @@ resources:
   - arena.yaml
   - ingest-cronjob.yaml
   - networkpolicy.yaml
+  - run-pods-pdb.yaml

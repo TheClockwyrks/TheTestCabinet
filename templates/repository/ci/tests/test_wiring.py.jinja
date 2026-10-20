@@ -646,7 +646,7 @@ def _image_jobs() -> dict[str, str]:
 def test_the_image_is_built_by_a_kind_that_builds_one_alone() -> None:
     """A kind that builds an image has its stage, its scripts, its Dockerfile and its gate; any other has none."""
     pipeline = PIPELINE.read_text(encoding="utf-8")
-    should = "is missing" if BUILDS_IMAGE else "is here, though the kind builds no image"
+    should = "is missing" if BUILDS_IMAGE else "is here, though this repository builds no image"
     assert (IMAGE_STAGE in _stages()) is BUILDS_IMAGE, f"the {IMAGE_STAGE} stage {should}"
     assert (IMAGE_SCRIPT in pipeline) is BUILDS_IMAGE, f"the step running {IMAGE_SCRIPT} {should}"
     assert (MANIFEST_SCRIPT in pipeline) is BUILDS_IMAGE, f"the step running {MANIFEST_SCRIPT} {should}"
@@ -657,14 +657,14 @@ def test_the_image_is_built_by_a_kind_that_builds_one_alone() -> None:
 
 def test_the_build_context_gate_runs_in_the_checks_job() -> None:
     if not BUILDS_IMAGE:
-        pytest.skip("this repository's kind builds no image")
+        pytest.skip("this repository builds no image")
     assert BUILD_CONTEXT_GATE in _gates_by_job()["checks"], f"the checks job does not run {BUILD_CONTEXT_GATE}"
     assert BUILD_CONTEXT_GATE in _hook_ids(), f"{BUILD_CONTEXT_GATE} has no hook, though it finishes in moments"
 
 
 def test_the_image_stage_builds_after_the_gates_on_master_and_staging() -> None:
     if not BUILDS_IMAGE:
-        pytest.skip("this repository's kind builds no image")
+        pytest.skip("this repository builds no image")
     stage = _stages()[IMAGE_STAGE]
     assert "    dependsOn: gates\n" in stage, "the image stage does not wait for the gates"
     branches = ", ".join(f"'refs/heads/{branch}'" for branch in IMAGE_BRANCHES)
@@ -679,7 +679,7 @@ def test_the_image_stage_builds_after_the_gates_on_master_and_staging() -> None:
 def test_each_architecture_builds_natively_and_pushes_its_tag() -> None:
     """One job per architecture, on its own pool, fetches as the Rust job does and pushes `<name>:<commit>-<arch>`."""
     if not BUILDS_IMAGE:
-        pytest.skip("this repository's kind builds no image")
+        pytest.skip("this repository builds no image")
     jobs = _image_jobs()
     assert sorted(jobs) == sorted([*(f"{IMAGE_STAGE}_{arch}" for arch in IMAGE_POOLS), f"{IMAGE_STAGE}_manifest"])
     for arch, pool in IMAGE_POOLS.items():
@@ -699,7 +699,7 @@ def test_each_architecture_builds_natively_and_pushes_its_tag() -> None:
 
 def test_the_manifest_job_fuses_the_architectures_last() -> None:
     if not BUILDS_IMAGE:
-        pytest.skip("this repository's kind builds no image")
+        pytest.skip("this repository builds no image")
     job = _image_jobs()[f"{IMAGE_STAGE}_manifest"]
     needs = "".join(f"          - {IMAGE_STAGE}_{arch}\n" for arch in IMAGE_POOLS)
     assert f"        dependsOn:\n{needs}" in job, "the manifest job does not wait for every architecture"

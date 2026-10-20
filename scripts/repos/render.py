@@ -179,8 +179,8 @@ KIT_STAGES = ("gates", "publish", "mirror")
 # The organisation's arm64 agent pool, where an arm64 build runs natively: the
 # clusters' nodes are arm64 and a hosted agent is x86_64. A project's jobs are
 # handed it as the `arm64Pool` parameter, which the superrepo's
-# `.azure/project/jobs.yml` defaults to the same pool, and an application's
-# image stage builds its arm64 image on it.
+# `.azure/project/jobs.yml` defaults to the same pool, and the image stage of
+# a repository building one builds its arm64 image on it.
 ARM64_POOL = "pool-dev-linux-arm64-wus3-4c-eph-01"
 # The minutes a Rust job may run, and the repositories given longer. A cold
 # gg build compiles every arm's guest and restores its toolchains first, which
@@ -255,15 +255,23 @@ HOST_DISK_COMMAND = (
 )
 CHECKS_SOURCES = "$(Build.SourcesDirectory)"
 
-# The image an application's pipeline builds: on every gated push to `master`
+# The image a repository's pipeline builds: on every gated push to `master`
 # and `staging`, natively once per architecture, each pushed to the registry
 # as `<name>:<commit>-<arch>`, then fused into the multi-arch `<name>:<commit>`
-# a deployment pins (the Repositories and Releasing development pages). The
-# amd64 build runs on a hosted agent and the arm64 one on the project's managed
-# arm64 pool, as the superrepo's own service images do; both push through the
-# Docker Registry service connection holding AcrPush on the registry, the one
-# the CI images are pulled through.
+# a deployment or a run image pins (the Repositories and Releasing development
+# pages). The amd64 build runs on a hosted agent and the arm64 one on the
+# project's managed arm64 pool, as the superrepo's own service images do; both
+# push through the Docker Registry service connection holding AcrPush on the
+# registry, the one the CI images are pulled through.
+#
+# Every application builds one, its service. A tool builds one when a
+# run-container image carries its binaries (`TOOL_IMAGES` in the kit's edge
+# table): the image carrying them, which the driver's run images copy from at
+# the commit the driver pins. A tool of the library half alone builds none.
 IMAGE_KINDS = frozenset({"application"})
+IMAGE_TOOL_KIND = "tool"
+# Where a tool's image carries its binaries, which a run image copies them from.
+TOOL_BINARIES = "/usr/local/bin"
 IMAGE_STAGE = "image"
 IMAGE_BRANCHES = ("master", "staging")
 IMAGE_ARCHITECTURES = ("amd64", "arm64")
@@ -701,9 +709,14 @@ def ci_publish(kind: str) -> str:
     return "\n".join(lines)
 
 
-def builds_image(kind: str) -> bool:
-    """Whether the kind's pipeline builds and pushes the repository's image."""
-    return kind in IMAGE_KINDS
+def builds_image(name: str, kind: str) -> bool:
+    """Whether the repository's pipeline builds and pushes its image.
+
+    Every application does; a tool does when a run image carries its binaries.
+    """
+    if kind in IMAGE_KINDS:
+        return True
+    return kind == IMAGE_TOOL_KIND and name in edge_table().TOOL_IMAGES
 
 
 def rust_channel(kit: Path = KIT) -> str:
@@ -729,15 +742,15 @@ def _registry_login(indent: str) -> list[str]:
 
 
 def ci_image_stage(name: str, kind: str) -> str:
-    """The stage building the application's image, after the gates, on master and staging alone.
+    """The stage building the repository's image, after the gates, on master and staging alone.
 
     One job per architecture builds natively and pushes `<name>:<commit>-<arch>`
     (`scripts/ci/image.sh`), with the job's token able to fetch the repositories
     its manifests reach, as the Rust job does; a last job fuses the two into
-    `<name>:<commit>` (`scripts/ci/manifest.sh`). Nothing for a kind that
-    builds no image.
+    `<name>:<commit>` (`scripts/ci/manifest.sh`). Nothing for a repository
+    that builds no image.
     """
-    if not builds_image(kind):
+    if not builds_image(name, kind):
         return ""
     steps = "          "
     branches = ", ".join(f"'refs/heads/{branch}'" for branch in IMAGE_BRANCHES)
@@ -925,10 +938,14 @@ def variables(name: str, kind: str, description: str) -> Variables:
         # The same stages and parameters as Python literals, for ci/tests/test_wiring.py.
         "project_stages_list": json.dumps(list(project_stages(name))),
         "project_parameters_dict": python_dict(project_parameters(name, kind)),
-        # The image an application builds: the conditional name of its
-        # Dockerfile, its `build-context` gate and its scripts, and its stage.
-        "ci_image": builds_image(kind),
+        # The image an application or a binary-carrying tool builds: the
+        # conditional name of its Dockerfile, its `build-context` gate and its
+        # scripts, and its stage. A tool's image carries its binaries at
+        # `tool_binaries` rather than running a service.
+        "ci_image": builds_image(name, kind),
         "ci_image_stage": ci_image_stage(name, kind),
+        "image_carries_binaries": builds_image(name, kind) and kind == IMAGE_TOOL_KIND,
+        "tool_binaries": TOOL_BINARIES,
         "image_registry": CI_REGISTRY,
         "rust_channel": rust_channel() if shape.crate else "",
         "ci_image_endpoint": CI_IMAGE_ENDPOINT,

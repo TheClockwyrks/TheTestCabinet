@@ -2237,7 +2237,7 @@ export const AUTHORED_REPLAY_MAX_MIB = 256;
 // The ceiling every model request is made under. It has no unarmed setting — a cleared
 // field is conducted under this figure rather than under none — so a fresh configuration
 // states it rather than leaving the operator to discover it.
-export const AUTHORED_MODEL_CALL_TIMEOUT_SECS = 900;
+export const AUTHORED_MODEL_CALL_TIMEOUT_SECS = 1800;
 
 // The schedule a failed model request is retried on: ten retries after the first attempt,
 // the first waiting a second, each later one twice the last, capped at sixty seconds.
@@ -2247,10 +2247,11 @@ export const AUTHORED_MODEL_CALL_TIMEOUT_SECS = 900;
 export const AUTHORED_MAX_MODEL_RETRIES = 10;
 export const AUTHORED_MODEL_RETRY_MAX_DELAY_SECS = 60;
 
-// The stream-idle bound: the seconds a reply may go without a delta from the model before
-// the attempt is cancelled and retried on the schedule above. Like the call ceiling it has
-// no unarmed setting, so a fresh configuration states it, a cleared field is conducted
-// under this figure, and 0 is refused.
+// The stream-idle bound: the seconds a reply that has started streaming may go without a
+// further delta from the model before the attempt is cancelled and retried on the
+// schedule above. Like the call ceiling it has no unarmed setting, so a fresh
+// configuration states it, a cleared field is conducted under this figure, and 0 is
+// refused.
 export const AUTHORED_MODEL_STREAM_IDLE_SECS = 60;
 
 // The cache-miss limit: how many unexpected cache misses a provider may produce in one run
@@ -2298,7 +2299,7 @@ export const RUN_LIMIT_SPECS: ReadonlyArray<RunLimitSpec> = [
     unit: "seconds",
     placeholder: String(AUTHORED_MODEL_CALL_TIMEOUT_SECS),
     defaultValue: String(AUTHORED_MODEL_CALL_TIMEOUT_SECS),
-    hint: "Ceiling on one attempt at a model request, from sending it to the last chunk of its reply. An empty value does not unarm it: a cleared field is conducted under 900 seconds and 0 is refused. An attempt that hits it is an error turn the agent asks again from, rather than a stop. A reply that stops arriving is cut sooner by the stream idle bound below.",
+    hint: "Ceiling on one attempt at a model request, from sending it to the last chunk of its reply. An empty value does not unarm it: a cleared field is conducted under 1800 seconds and 0 is refused. It alone bounds the wait for the reply's first delta, so a model that thinks at length without streaming, or a provider that delivers its reply in one piece, has the whole ceiling to answer. An attempt that hits it is an error turn the agent asks again from, rather than a stop. A reply that goes quiet after it has started is cut sooner by the stream idle bound below.",
   },
   {
     key: "modelStreamIdleSecs",
@@ -2307,7 +2308,7 @@ export const RUN_LIMIT_SPECS: ReadonlyArray<RunLimitSpec> = [
     unit: "seconds",
     placeholder: String(AUTHORED_MODEL_STREAM_IDLE_SECS),
     defaultValue: String(AUTHORED_MODEL_STREAM_IDLE_SECS),
-    hint: "How long a model request may go without a delta from the model (content, reasoning or tool-call arguments) before the attempt is cancelled and retried on the retry schedule below, logged as a stall. Keep-alive comments do not count, so a provider that has stopped answering costs this long rather than the whole call timeout. A cleared field is conducted under 60 seconds and 0 is refused.",
+    hint: "How long a reply that has started streaming may go without a further delta from the model (content, reasoning or tool-call arguments) before the attempt is cancelled and retried on the retry schedule below, logged as a stall. The clock starts at the reply's first delta, so the wait before it is bounded by the call timeout alone. Keep-alive comments do not count, so a provider that has stopped answering mid-reply costs this long rather than the whole call timeout. A cleared field is conducted under 60 seconds and 0 is refused.",
   },
   {
     key: "providerCacheMissLimit",

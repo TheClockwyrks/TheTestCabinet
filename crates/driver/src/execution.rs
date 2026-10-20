@@ -69,12 +69,12 @@ pub struct SeedRequest<'a> {
     /// game is built on — when the caller resolved one.
     ///
     /// Seeding is where an engine becomes real: its package (and that package's
-    /// `@clockwyrks` closure) is vendored into
-    /// [`TCAB_ENGINE_DIR`](crate::test_case::TCAB_ENGINE_DIR), its own
-    /// documentation is copied to [`ENGINE_DOCS_DIR`], and the seeded workspace
-    /// `package.json` gains the matching `file:` dependency — the one file the
-    /// harness ever rewrites, because an engine is a run dimension the (frozen)
-    /// case cannot name for itself.
+    /// `@clockwyrks` closure) is vendored at the path the seeded engine
+    /// workspace's `package.json` and `package-lock.json` already declare it at,
+    /// under [`TCAB_VENDOR_DIR`](crate::test_case::TCAB_VENDOR_DIR), and its own
+    /// documentation is copied to [`ENGINE_DOCS_DIR`]. No seeded file is
+    /// rewritten: a case ships one workspace per engine, and the selection picks
+    /// which is seeded.
     ///
     /// `None` means no engine was selected, which is *exactly* what selecting
     /// [`NONE_SLUG`](crate::engine::NONE_SLUG) means: nothing is vendored and the
