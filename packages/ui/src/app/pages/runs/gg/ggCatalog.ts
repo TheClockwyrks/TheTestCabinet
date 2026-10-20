@@ -2248,9 +2248,10 @@ export const AUTHORED_MAX_MODEL_RETRIES = 10;
 export const AUTHORED_MODEL_RETRY_MAX_DELAY_SECS = 60;
 
 // The stream-idle bound: the seconds a reply that has started streaming may go without a
-// further delta from the model before the attempt is cancelled and retried on the schedule above. Like the call ceiling it has
-// no unarmed setting, so a fresh configuration states it, a cleared field is conducted
-// under this figure, and 0 is refused.
+// further delta from the model before the attempt is cancelled and retried on the
+// schedule above. Like the call ceiling it has no unarmed setting, so a fresh
+// configuration states it, a cleared field is conducted under this figure, and 0 is
+// refused.
 export const AUTHORED_MODEL_STREAM_IDLE_SECS = 60;
 
 // The cache-miss limit: how many unexpected cache misses a provider may produce in one run
