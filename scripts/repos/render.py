@@ -172,6 +172,11 @@ EXTRA_GATES: dict[str, dict[str, tuple[str, ...]]] = {
     # one test-suites' `audio-packs` gate resolves the sample packs through, keeps
     # its Node tests beside it, as the superrepo's `scripts-test` runs its own.
     "microservice-backend": {"checks": ("scripts-test",)},
+    # microservice-driver's Node scripts (the package store's stager, the audio
+    # store's, the sibling lookup) keep their tests beside them, and
+    # containers/build.sh's table test drives the run-image build through a
+    # docker stub.
+    "microservice-driver": {"checks": ("scripts-test", "containers-test")},
 }
 # The jobs of the gates stage an extra gate may name.
 GATE_JOBS = ("rust", "checks")

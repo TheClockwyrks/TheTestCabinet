@@ -199,6 +199,8 @@ def test_the_windows_and_extra_gate_tables_name_repositories_carrying_a_crate() 
     assert render.extra_gates("ui-common", "library") == {"checks": ("web-lint",)}
     # The backend's clip store module keeps its Node tests beside it.
     assert render.extra_gates("microservice-backend", "application") == {"checks": ("scripts-test",)}
+    # The driver's Node scripts and its run-image build keep their tests beside them.
+    assert render.extra_gates("microservice-driver", "application") == {"checks": ("scripts-test", "containers-test")}
     # The content gates the catalog brought with it run beside the kit's prose gates.
     assert render.extra_gates("test-suites", "content") == {
         "checks": ("frozen-paths", "spec-prose", "spec-vocabulary", "audio-packs", "validators-typecheck")
