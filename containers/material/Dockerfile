@@ -7,36 +7,38 @@
 # uniforms, assembling `material.json`, and rendering the lit 3D preview (see the
 # asset-generation docs under
 # `apps/docs/src/content/docs/testing/asset-generation/material-binaries.md`). Both are
-# built from `crates/paint`. Because `pbr` renders a lit 3D preview of the material on a
-# test surface through `wgpu`, this image ships the Mesa software-Vulkan runtime, like
-# the voxel family and unlike the pure-2D `ui` image.
+# built from `crates/paint` in the `tool-paint` repository. Because `pbr` renders a lit
+# 3D preview of the material on a test surface through `wgpu`, this image ships the Mesa
+# software-Vulkan runtime, like the voxel family and unlike the pure-2D `ui` image; the
+# tool-paint image carries the binaries alone, so the runtime is installed here.
 #
 # The binaries are baked in rather than installed at run time because, unlike a harness
 # CLI, they are part of The Test Cabinet itself and core validates the emitted
-# maps/`material.json` with the same library they use. Building from one commit keeps
-# them in lockstep (a run records the orchestrator commit and the image digest, so a
-# mismatch is auditable). The baked-in tooling is compiled by the shared builder
-# (`containers/tools/Dockerfile`) — see `containers/build.sh`.
+# maps/`material.json` with the same library they use. This image copies them out of
+# `tool-paint:<commit>`, the image tool-paint's pipeline publishes, at the commit the
+# driver pins, which is the superrepo's `tool-paint` gitlink, so the binaries and what
+# validates their output stay in lockstep (a run records the orchestrator commit and
+# the image digest, so a mismatch is auditable). See `containers/build.sh` and
+# `scripts/ci/tool-images.sh`.
 
 # `BASE_IMAGE` is the base image to extend. Declared BEFORE the first `FROM` so it is a
 # global build arg the run-image `FROM` below can consume; `build.sh` passes the base
 # image it just built.
 ARG BASE_IMAGE=test-cabinet-base:latest
 
-# `TOOLS_IMAGE` is the shared asset-tooling builder that compiles every run
-# image's baked-in binaries — ONE cargo pass over the whole dependency graph,
-# rather than a per-image `cargo build` that recompiles that graph from scratch
-# (`containers/tools/Dockerfile` has the numbers). Declared BEFORE the first
-# `FROM` for the same reason `BASE_IMAGE` is: an `ARG` after a `FROM` is scoped
-# to that stage. `build.sh` passes the tools image it just built, so the baked-in
-# binaries always come from this same invocation's compile.
-ARG TOOLS_IMAGE=test-cabinet-tools:latest
+# `TOOL_PAINT_IMAGE` is the `tool-paint` image the binaries are copied out of:
+# `testcabinet.azurecr.io/tool-paint:<commit>` at the commit the driver pins, or,
+# for a local build without PUSH, the image `build.sh` has just built from the
+# `tool-paint/` checkout (`scripts/ci/tool-images.sh` names the reference).
+# Declared BEFORE the first `FROM` for the same reason `BASE_IMAGE` is: an `ARG`
+# after a `FROM` is scoped to that stage.
+ARG TOOL_PAINT_IMAGE=test-cabinet-tool-paint:latest
 
-# Resolve the tooling builder to a named stage. `COPY --from=` cannot interpolate
-# a build arg directly ("variable expansion is not supported for --from"), so it
-# has to arrive through a `FROM`; the `COPY --from=tools` lines below then name
-# this stage.
-FROM ${TOOLS_IMAGE} AS tools
+# Resolve the tool image to a named stage. `COPY --from=` cannot interpolate a
+# build arg directly ("variable expansion is not supported for --from"), so it
+# has to arrive through a `FROM`; the `COPY --from=tool-paint` lines below then
+# name this stage.
+FROM ${TOOL_PAINT_IMAGE} AS tool-paint
 
 # --- The run image: the base, plus Mesa + `texture` + `pbr` -----------------
 # `FROM` the base built alongside this image (the global `BASE_IMAGE` arg above).
@@ -63,10 +65,10 @@ USER node
 ENV VK_LOADER_DRIVERS_SELECT=lvp*
 ENV XDG_RUNTIME_DIR=/tmp
 
-# Bake in the two binaries from the tools image. `/usr/local/bin` is on PATH and
-# root-owned (COPY writes as root regardless of the inherited `USER node`); the
-# unprivileged run user only executes them. The base image already sets `USER
-# node`, `WORKDIR /work`, and the keep-alive CMD, so nothing else is needed
-# here.
-COPY --from=tools /out/texture /usr/local/bin/texture
-COPY --from=tools /out/pbr /usr/local/bin/pbr
+# Bake in the two binaries from the tool-paint image, which carries them in
+# `/usr/local/bin`. That directory is on PATH and root-owned (COPY writes as root
+# regardless of the inherited `USER node`); the unprivileged run user only
+# executes them. The base image already sets `USER node`, `WORKDIR /work`, and
+# the keep-alive CMD, so nothing else is needed here.
+COPY --from=tool-paint /usr/local/bin/texture /usr/local/bin/texture
+COPY --from=tool-paint /usr/local/bin/pbr /usr/local/bin/pbr

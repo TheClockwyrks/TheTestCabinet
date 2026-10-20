@@ -39,7 +39,7 @@ serde = { workspace = true }
 # Linked without default features so a `default-features = false` consumer of this
 # crate (core) never pulls in the CLI plumbing (or the wgpu preview renderer the
 # `cli` feature enables); the `cli` feature re-enables it.
-test-cabinet-model-core = { path = "../model-core", default-features = false }
+test-cabinet-model-core = { workspace = true }
 clap = { workspace = true, optional = true }
 serde_json = { workspace = true, optional = true }
 

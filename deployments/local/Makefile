@@ -167,9 +167,10 @@ ALL_IMGS := $(BACKEND_IMG) $(DISPATCHER_IMG) $(DRIVER_IMG) $(ARTIFACTS_IMG) $(AR
 # The run-container images — the base end-to-end image plus the per-asset-kind
 # images that BAKE IN their modeling tool (`draw`/`draw-sheet`/`voxel`/`voxel-anim`,
 # and the adversarial/performance tooling), compiled from `crates/` at image build
-# time or, for a tool in a `tool-*` repository (`draw`/`draw-sheet`: `tool-sprite`),
-# copied out of that repository's image, which `containers/build.sh` builds first from
-# the checked-out repository (see `containers/build.sh` and `containers/*/Dockerfile`). These are
+# time or, for a tool in a `tool-*` repository (`draw`/`draw-sheet`: `tool-sprite`;
+# `paint`/`ui`/`texture`/`pbr`: `tool-paint`), copied out of that repository's image,
+# which `containers/build.sh` builds first from the checked-out repository (see
+# `containers/build.sh` and `containers/*/Dockerfile`). These are
 # DISTINCT from the long-lived service images above: a run pod is a per-run Job the
 # dispatcher creates, running one of these images. In a deployment they come from
 # the Test Cabinet ACR (core's `resolve_run_image` defaults to `testcabinet.azurecr.io`);
@@ -293,7 +294,7 @@ RUN_IMGS         := $(call run_image_refs,$(RUN_IMAGE_NAMES))
 
 # The `tool-*` repositories whose images the run images copy binaries out of, as
 # scripts/ci/tool-images.sh lists them. `run-images` names them to build.sh first.
-TOOL_IMAGE_NAMES := tool-sprite
+TOOL_IMAGE_NAMES := tool-sprite tool-paint
 
 # Shared dispatcher↔backend service token. A fixed dev default (no production value
 # lives in the repo); override from the environment, e.g. `SERVICE_TOKEN=… make …`.

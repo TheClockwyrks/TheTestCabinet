@@ -1,13 +1,23 @@
 ---
 format: nyxsis-issue
-version: 2
+version: 3
 id: z144xga276q9j4rmlzsibbwf
 zone: REPOS
 number: 4
 title: Extract the paint tool into tool-paint
 type: generic
-state: open
+state: done
 created: 2026-10-13T21:11:46.957859965Z
+done: 2026-10-20T11:56:56.369992574Z
+outcome: |
+  tool-paint (pipeline 152, image tool-paint:3346d5df) and, as its prerequisite,
+  tool-model-core (pipeline 151) exist on Azure with their crates' history, kit
+  render, protection and GitHub mirrors; the superrepo pins both as submodules,
+  consumers take the model crates from tool-model-core, the ui and material run
+  images copy paint's binaries from the tool-paint image, and
+  crates/{paint,model-core,voxel-mesh,model-skin} are removed (PR 4696 into
+  nightly; gates 28/28). Not verified: a UI and a material case on the local
+  stack.
 ---
 
 The `paint` crate lives under the superrepo's `crates/`. The documentation

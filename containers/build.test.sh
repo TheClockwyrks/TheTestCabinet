@@ -112,13 +112,16 @@ prefix="test-cabinet-"
 tc="registry.test/gg/test-cabinet-gg-toolchains:0.7.1"
 # The tool-sprite image tool-sprite's pipeline publishes, likewise in the registry first.
 ts="registry.test/tool-sprite:pin1"
-fresh_registry() { printf '%s\n' "$tc" "$ts" >"$tmp/registry"; }
+# And the tool-paint image tool-paint's pipeline publishes.
+tp="registry.test/tool-paint:pin1"
+fresh_registry() { printf '%s\n' "$tc" "$ts" "$tp" >"$tmp/registry"; }
 run() {
 	: >"$tmp/log"
 	(cd "$HERE/.." && PATH="$tmp/bin:$PATH" STUB_LOG="$tmp/log" STUB_LOCAL="$tmp/local" STUB_REGISTRY="$tmp/registry" \
 		STUB_PUSH_FAIL_REF="${STUB_PUSH_FAIL_REF:-}" STUB_PUSH_FAILS="$tmp/push-fails" REGISTRY_RETRY_DELAY=0 \
 		DOCKER="$tmp/docker" PUSH=1 RECLAIM=1 REUSE_INPUTS="${REUSE_INPUTS:-$inputs}" \
 		GG_TOOLCHAINS_IMAGE="${GG_TOOLCHAINS_IMAGE-$tc}" TOOL_SPRITE_IMAGE="${TOOL_SPRITE_IMAGE-$ts}" \
+		TOOL_PAINT_IMAGE="${TOOL_PAINT_IMAGE-$tp}" \
 		IMAGE_REGISTRY="$reg" IMAGE_TAG=sha1-amd64 containers/build.sh "$@" 2>&1)
 }
 builds() { grep -E '^build ' "$tmp/log" | grep -oE -- '-t [^ ]+' | cut -d' ' -f2 | tr '\n' ' '; }
@@ -262,6 +265,34 @@ check_contains "and passed to the build" "--build-arg TOOL_SPRITE_IMAGE=$ts" "$(
 check_lacks "which is given no tooling builder" "TOOLS_IMAGE=" "$(grep -E "^build .*${prefix}sprite:" "$tmp/log")"
 check_lacks "and the tool image is pushed nowhere" "tool-sprite:sha1" "$(cat "$tmp/registry")"
 
+echo "under PUSH, ui and material copy their binaries out of the pinned tool-paint image"
+: >"$tmp/local"; fresh_registry
+out="$(REUSE_INPUTS="" run ui material)" && status=0 || status=$?
+check_equal "the build passes" "0" "$status"
+check_equal "base and the two images are built, and neither tools nor tool-paint" \
+	"${prefix}base:sha1-amd64 ${prefix}ui:sha1-amd64 ${prefix}material:sha1-amd64 " "$(builds)"
+check_equal "the tool-paint image is pulled, once" "$tp " "$(pulls)"
+for name in ui material; do
+	line="$(grep -E "^build .*${prefix}${name}:" "$tmp/log")"
+	check_contains "$name is passed it" "--build-arg TOOL_PAINT_IMAGE=$tp" "$line"
+	check_lacks "and no tooling builder" "TOOLS_IMAGE=" "$line"
+	check_lacks "nor the tool-sprite image" "TOOL_SPRITE_IMAGE=" "$line"
+done
+check_lacks "and the tool image is pushed nowhere" "tool-paint:sha1" "$(cat "$tmp/registry")"
+
+echo "under PUSH, a tool-paint image the registry lacks fails before the image that copies it"
+: >"$tmp/local"; printf '%s\n' "$tc" "$ts" >"$tmp/registry"
+out="$(REUSE_INPUTS="" REGISTRY_ATTEMPTS=1 run ui)" && status=0 || status=$?
+check_equal "with a failure" "1" "$status"
+check_contains "after trying to pull it" "pulling $tp" "$out"
+check_lacks "and ui is not built" "${prefix}ui:sha1-amd64" "$(builds)"
+
+echo "without TOOL_PAINT_IMAGE, PUSH pulls tool-paint at the superrepo's gitlink"
+: >"$tmp/local"; fresh_registry
+pinned_tp="testcabinet.azurecr.io/tool-paint:$(cd "$HERE/.." && git rev-parse HEAD:tool-paint)"
+out="$(TOOL_PAINT_IMAGE="" REUSE_INPUTS="" REGISTRY_ATTEMPTS=1 run material)" && status=0 || status=$?
+check_contains "it pulls that image" "pulling $pinned_tp" "$out"
+
 echo "under PUSH, full-stack-2d copies from both the tooling builder and tool-sprite"
 : >"$tmp/local"; fresh_registry
 out="$(REUSE_INPUTS="" run full-stack-2d)" && status=0 || status=$?
@@ -269,6 +300,8 @@ check_equal "the build passes" "0" "$status"
 fs2d="$(grep -E "^build .*${prefix}full-stack-2d:" "$tmp/log")"
 check_contains "with the tooling builder" "--build-arg TOOLS_IMAGE=${prefix}tools:sha1-amd64" "$fs2d"
 check_contains "and the tool-sprite image" "--build-arg TOOL_SPRITE_IMAGE=$ts" "$fs2d"
+check_lacks "but not the tool-paint image, which it copies nothing from" "TOOL_PAINT_IMAGE=" "$fs2d"
+check_lacks "which is not pulled" "$tp" "$(pulls)"
 
 echo "under PUSH, a tool-sprite image the registry lacks fails before the image that copies it"
 : >"$tmp/local"; printf '%s\n' "$tc" >"$tmp/registry"
@@ -303,18 +336,40 @@ check_contains "from the tool-sprite checkout's own Dockerfile and context" \
 check_contains "and passed as the build arg" "--build-arg TOOL_SPRITE_IMAGE=${prefix}tool-sprite:local" \
 	"$(grep -E "^build .*${prefix}sprite-sheet:" "$tmp/log")"
 check_equal "nothing is pulled" "" "$(pulls)"
+check_lacks "and tool-paint, which none of them copies from, is not built" "tool-paint" "$(builds)"
+
+echo "without PUSH, tool-paint is built from its checkout, once"
+: >"$tmp/local"; fresh_registry
+out="$(run_local ui material)" && status=0 || status=$?
+check_equal "the build passes" "0" "$status"
+check_equal "tool-paint is built once, before the first image copying it, and tools not at all" \
+	"${prefix}base:local ${prefix}tool-paint:local ${prefix}ui:local ${prefix}material:local " "$(builds)"
+check_contains "from the tool-paint checkout's own Dockerfile and context" \
+	"tool-paint/Dockerfile $(cd "$HERE/.." && pwd)/containers/../tool-paint" "$(grep -E -- "-t ${prefix}tool-paint:local" "$tmp/log")"
+for name in ui material; do
+	check_contains "and passed to $name as the build arg" "--build-arg TOOL_PAINT_IMAGE=${prefix}tool-paint:local" \
+		"$(grep -E "^build .*${prefix}${name}:" "$tmp/log")"
+done
+check_equal "nothing is pulled" "" "$(pulls)"
 
 echo "without PUSH, a selection that copies from no tool image builds none"
 : >"$tmp/local"
 out="$(run_local base-wasm)" && status=0 || status=$?
 check_equal "the build passes" "0" "$status"
 check_lacks "and tool-sprite is not built" "tool-sprite" "$(builds)"
+check_lacks "nor tool-paint" "tool-paint" "$(builds)"
 
 echo "naming tool-sprite builds just it"
 : >"$tmp/local"
 out="$(run_local tool-sprite)" && status=0 || status=$?
 check_equal "the build passes" "0" "$status"
 check_equal "and only it" "${prefix}tool-sprite:local " "$(builds)"
+
+echo "naming tool-paint builds just it"
+: >"$tmp/local"
+out="$(run_local tool-paint)" && status=0 || status=$?
+check_equal "the build passes" "0" "$status"
+check_equal "and only it" "${prefix}tool-paint:local " "$(builds)"
 
 echo "TOOL_SPRITE_IMAGE wins without PUSH, and is pulled instead of built"
 : >"$tmp/local"; fresh_registry

@@ -125,6 +125,12 @@ resources:
     - repository: microservice-repos
       type: git
       name: the-test-cabinet/microservice-repos
+    - repository: tool-model-core
+      type: git
+      name: the-test-cabinet/tool-model-core
+    - repository: tool-paint
+      type: git
+      name: the-test-cabinet/tool-paint
     - repository: tool-sprite
       type: git
       name: the-test-cabinet/tool-sprite
@@ -161,6 +167,8 @@ jobs:
         - gg
         - gg.rocks
         - microservice-repos
+        - tool-model-core
+        - tool-paint
         - tool-sprite
         - test-suites
         - ui-common
@@ -208,6 +216,8 @@ jobs:
         - gg
         - gg.rocks
         - microservice-repos
+        - tool-model-core
+        - tool-paint
         - tool-sprite
         - test-suites
         - ui-common
@@ -249,6 +259,8 @@ jobs:
         - gg
         - gg.rocks
         - microservice-repos
+        - tool-model-core
+        - tool-paint
         - tool-sprite
         - test-suites
         - ui-common

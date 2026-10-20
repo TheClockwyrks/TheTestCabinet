@@ -48,7 +48,7 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/tcab-lib.sh"
 # Every `tool-*` repository a run image copies binaries from. A repository added here
 # needs its submodule (scripts/repos/bootstrap.sh), and each run image that copies from
 # it declares the build argument its name derives.
-readonly TOOL_REPOSITORIES=(tool-sprite)
+readonly TOOL_REPOSITORIES=(tool-sprite tool-paint)
 
 # `tool-sprite` -> `TOOL_SPRITE_IMAGE`.
 build_arg_of() {

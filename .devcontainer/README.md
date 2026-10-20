@@ -152,9 +152,10 @@ names what installs it, so a toolchain missing here is a check that says so
 rather than one that quietly passes.
 
 `post-create.sh` populates the `contracts/`, `engines/`, `gg/`,
-`microservice-repos/`, `tool-sprite/` and `ui-common/` submodules, which every
-build compiles against, and the `test-suites/` submodule, the suites checkout the
-local backend ingests (not `cold-storage/`, which is optional and about 2 GB), through
+`microservice-repos/`, `tool-model-core/`, `tool-paint/`, `tool-sprite/` and
+`ui-common/` submodules, which every build compiles against, and the
+`test-suites/` submodule, the suites checkout the local backend ingests (not
+`cold-storage/`, which is optional and about 2 GB), through
 `tools/submodule-checkout.sh` (see [Submodule checkout](#submodule-checkout)),
 installs the git hook through `scripts/setup-hooks.sh`, places cargo's target
 directory (see [Where cargo builds](#where-cargo-builds)) and installs the npm
@@ -678,9 +679,10 @@ warning about it.
 
 ## Submodule checkout
 
-The `contracts/`, `engines/`, `gg/`, `microservice-repos/`, `tool-sprite/`,
-`test-suites/` and `ui-common/` submodules live in the organization's other
-repositories, reached over SSH at `ssh.dev.azure.com`.
+The `contracts/`, `engines/`, `gg/`, `microservice-repos/`, `tool-model-core/`,
+`tool-paint/`, `tool-sprite/`, `test-suites/` and `ui-common/` submodules live
+in the organization's other repositories, reached over SSH at
+`ssh.dev.azure.com`.
 `post-create.sh` checks them out ahead of `npm ci`, whose workspace lists the
 packages `contracts/`, `engines/` and `ui-common/` hold, and `post-start.sh`
 checks them out again at every start, each through
@@ -691,7 +693,8 @@ runs
 
 ```sh
 git submodule update --init \
-  contracts engines gg microservice-repos tool-sprite test-suites ui-common
+  contracts engines gg microservice-repos tool-model-core tool-paint \
+  tool-sprite test-suites ui-common
 ```
 
 through the host's agent when the checkout holds a `.gitmodules`. Passed
