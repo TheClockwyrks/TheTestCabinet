@@ -6381,3 +6381,7 @@ version = "0.0.0"
 [[patch.unused]]
 name = "test-cabinet-music"
 version = "0.0.0"
+
+[[patch.unused]]
+name = "test-cabinet-dispatcher"
+version = "0.0.0"

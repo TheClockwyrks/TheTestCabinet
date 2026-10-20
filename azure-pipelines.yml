@@ -104,10 +104,12 @@ trigger:
 # it. The forty zeros are the placeholder a render carries; see the header.
 
 # The repositories the jobs read beside this one: the contracts, engines, gg,
-# microservice-repos, tool-model-core, tool-paint, tool-particle, tool-sprite,
+# microservice-dispatcher, microservice-repos, tool-model-core, tool-paint,
+# tool-particle, tool-sprite,
 # tool-voxel, tool-mc, tool-sn, tool-dc, tool-audio-core, tool-sfx-synth,
 # tool-sfx-sample and tool-music repositories, the `contracts/`, `engines/`,
-# `gg/`, `microservice-repos/`, `tool-model-core/`, `tool-paint/`,
+# `gg/`, `microservice-dispatcher/`, `microservice-repos/`, `tool-model-core/`,
+# `tool-paint/`,
 # `tool-particle/`, `tool-sprite/`, `tool-voxel/`, `tool-mc/`, `tool-sn/`,
 # `tool-dc/`, `tool-audio-core/`, `tool-sfx-synth/`, `tool-sfx-sample/` and
 # `tool-music/` submodules every build reads, because the patch table names their
@@ -134,6 +136,9 @@ resources:
     - repository: gg
       type: git
       name: the-test-cabinet/gg
+    - repository: microservice-dispatcher
+      type: git
+      name: the-test-cabinet/microservice-dispatcher
     - repository: microservice-repos
       type: git
       name: the-test-cabinet/microservice-repos
@@ -254,6 +259,7 @@ stages:
             - contracts
             - engines
             - gg
+            - microservice-dispatcher
             - microservice-repos
             - tool-model-core
             - tool-paint
@@ -293,7 +299,8 @@ stages:
             fetchDepth: 1
             clean: true
 
-          # The contracts, engines, gg, microservice-repos, tool-model-core,
+          # The contracts, engines, gg, microservice-dispatcher,
+          # microservice-repos, tool-model-core,
           # tool-paint, tool-particle, tool-sprite, tool-voxel, tool-mc, tool-sn,
           # tool-dc, tool-audio-core, tool-sfx-synth, tool-sfx-sample,
           # tool-music, test-suites and ui-common submodules, at the pinned
@@ -301,8 +308,8 @@ stages:
           # scope. The tests over the committed catalog read test-suites, the
           # documentation site reads gg's pages, and the npm workspace lists
           # ui-common's packages.
-          - script: scripts/ci/submodules.sh init contracts engines gg microservice-repos tool-model-core tool-paint tool-particle tool-sprite tool-voxel tool-mc tool-sn tool-dc tool-audio-core tool-sfx-synth tool-sfx-sample tool-music test-suites ui-common
-            displayName: Initialize the contracts, engines, gg, microservice-repos, tool-model-core, tool-paint, tool-particle, tool-sprite, tool-voxel, tool-mc, tool-sn, tool-dc, tool-audio-core, tool-sfx-synth, tool-sfx-sample, tool-music, test-suites and ui-common submodules
+          - script: scripts/ci/submodules.sh init contracts engines gg microservice-dispatcher microservice-repos tool-model-core tool-paint tool-particle tool-sprite tool-voxel tool-mc tool-sn tool-dc tool-audio-core tool-sfx-synth tool-sfx-sample tool-music test-suites ui-common
+            displayName: Initialize the contracts, engines, gg, microservice-dispatcher, microservice-repos, tool-model-core, tool-paint, tool-particle, tool-sprite, tool-voxel, tool-mc, tool-sn, tool-dc, tool-audio-core, tool-sfx-synth, tool-sfx-sample, tool-music, test-suites and ui-common submodules
             env:
               SYSTEM_ACCESSTOKEN: $(System.AccessToken)
 
@@ -465,6 +472,7 @@ stages:
             - contracts
             - engines
             - gg
+            - microservice-dispatcher
             - microservice-repos
             - tool-model-core
             - tool-paint
@@ -485,7 +493,8 @@ stages:
             fetchDepth: 1
             clean: true
 
-          # The contracts, engines, gg, microservice-repos, tool-model-core,
+          # The contracts, engines, gg, microservice-dispatcher,
+          # microservice-repos, tool-model-core,
           # tool-paint, tool-particle, tool-sprite, tool-voxel, tool-mc, tool-sn,
           # tool-dc, tool-audio-core, tool-sfx-synth, tool-sfx-sample,
           # tool-music, test-suites and ui-common submodules, at the pinned
@@ -493,8 +502,8 @@ stages:
           # scope. The tests over the committed catalog read test-suites, the
           # documentation site reads gg's pages, and the npm workspace lists
           # ui-common's packages.
-          - script: scripts/ci/submodules.sh init contracts engines gg microservice-repos tool-model-core tool-paint tool-particle tool-sprite tool-voxel tool-mc tool-sn tool-dc tool-audio-core tool-sfx-synth tool-sfx-sample tool-music test-suites ui-common
-            displayName: Initialize the contracts, engines, gg, microservice-repos, tool-model-core, tool-paint, tool-particle, tool-sprite, tool-voxel, tool-mc, tool-sn, tool-dc, tool-audio-core, tool-sfx-synth, tool-sfx-sample, tool-music, test-suites and ui-common submodules
+          - script: scripts/ci/submodules.sh init contracts engines gg microservice-dispatcher microservice-repos tool-model-core tool-paint tool-particle tool-sprite tool-voxel tool-mc tool-sn tool-dc tool-audio-core tool-sfx-synth tool-sfx-sample tool-music test-suites ui-common
+            displayName: Initialize the contracts, engines, gg, microservice-dispatcher, microservice-repos, tool-model-core, tool-paint, tool-particle, tool-sprite, tool-voxel, tool-mc, tool-sn, tool-dc, tool-audio-core, tool-sfx-synth, tool-sfx-sample, tool-music, test-suites and ui-common submodules
             env:
               SYSTEM_ACCESSTOKEN: $(System.AccessToken)
 

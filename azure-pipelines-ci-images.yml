@@ -122,6 +122,9 @@ resources:
     - repository: gg.rocks
       type: git
       name: the-test-cabinet/gg.rocks
+    - repository: microservice-dispatcher
+      type: git
+      name: the-test-cabinet/microservice-dispatcher
     - repository: microservice-repos
       type: git
       name: the-test-cabinet/microservice-repos
@@ -193,6 +196,7 @@ jobs:
         - engines
         - gg
         - gg.rocks
+        - microservice-dispatcher
         - microservice-repos
         - tool-model-core
         - tool-paint
@@ -251,6 +255,7 @@ jobs:
         - engines
         - gg
         - gg.rocks
+        - microservice-dispatcher
         - microservice-repos
         - tool-model-core
         - tool-paint
@@ -303,6 +308,7 @@ jobs:
         - engines
         - gg
         - gg.rocks
+        - microservice-dispatcher
         - microservice-repos
         - tool-model-core
         - tool-paint

@@ -156,9 +156,8 @@ test-cabinet-music = { path = "tool-music/crates/music" }
 #   [patch."https://github.com/TheClockwyrks/microservice-backend"]
 #   test-cabinet-backend = { path = "microservice-backend/crates/backend" }
 
-# microservice-dispatcher is not checked out; the table joins once it is bootstrapped:
-#   [patch."https://github.com/TheClockwyrks/microservice-dispatcher"]
-#   test-cabinet-dispatcher = { path = "microservice-dispatcher/crates/dispatcher" }
+[patch."https://github.com/TheClockwyrks/microservice-dispatcher"]
+test-cabinet-dispatcher = { path = "microservice-dispatcher/crates/dispatcher" }
 
 # microservice-driver is not checked out; the table joins once it is bootstrapped:
 #   [patch."https://github.com/TheClockwyrks/microservice-driver"]

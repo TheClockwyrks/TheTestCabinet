@@ -65,7 +65,8 @@ A plain clone downloads the superrepo alone and leaves each submodule
 directory empty. The superrepo's own gates and the docs site read
 `contracts/`, whose schemas the docs publish, `engines/`, which the
 repositories still held in the superrepo's own tree build against,
-`microservice-repos/`, `tool-model-core/`, `tool-paint/`, `tool-particle/`,
+`microservice-dispatcher/`, `microservice-repos/`, `tool-model-core/`,
+`tool-paint/`, `tool-particle/`,
 `tool-sprite/`, `tool-voxel/`, `tool-mc/`, `tool-sn/`, `tool-dc/`,
 `tool-audio-core/`, `tool-sfx-synth/`, `tool-sfx-sample/`, `tool-music/`,
 `ui-common/` and `gg/`, whose crates the
@@ -77,7 +78,8 @@ it:
 
 ```sh
 git clone <superrepo-url>
-git submodule update --init contracts engines gg microservice-repos \
+git submodule update --init contracts engines gg \
+  microservice-dispatcher microservice-repos \
   tool-model-core tool-paint tool-particle tool-sprite tool-voxel tool-mc \
   tool-sn tool-dc tool-audio-core tool-sfx-synth tool-sfx-sample tool-music \
   ui-common
@@ -87,7 +89,8 @@ git submodule update --init test-suites
 ```
 
 The devcontainer populates `contracts/`, `engines/`, `gg/`,
-`microservice-repos/`, `tool-model-core/`, `tool-paint/`, `tool-particle/`,
+`microservice-dispatcher/`, `microservice-repos/`, `tool-model-core/`,
+`tool-paint/`, `tool-particle/`,
 `tool-sprite/`, `tool-voxel/`, `tool-mc/`, `tool-sn/`, `tool-dc/`,
 `tool-audio-core/`, `tool-sfx-synth/`, `tool-sfx-sample/`, `tool-music/`,
 `test-suites/` and `ui-common/` when it creates a container, `test-suites/`
