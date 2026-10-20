@@ -11,7 +11,7 @@
 // logs, and the animated GIFs the console shows for a run of the same case.
 //
 // The GIFs are produced with the **same encoder and the same parameters** as the
-// console's own download button (`packages/ui/src/app/pages/runs/[runId]/spriteGif.ts`)
+// console's own download button (`ui-common/packages/ui/src/app/pages/runs/[runId]/spriteGif.ts`)
 // — `gifenc`, the same integer upscale, the same per-frame delay, and the same
 // 1-bit-alpha quantization — so what you see here is what a reviewer sees, not an
 // approximation of it. Keep the two in step if either changes.

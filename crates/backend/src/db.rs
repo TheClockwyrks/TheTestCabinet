@@ -2442,7 +2442,7 @@ fn lifted_code_analyzer_version(record: &RunRecord) -> Option<i32> {
 /// consumer may therefore fall back to `model_id` with a bare `COALESCE` instead of
 /// re-deriving the harness test. (The console applies the same guard when it
 /// resolves the cell — see `useEnrichedRuns` in
-/// `packages/ui/src/app/components/runColumns.tsx`.)
+/// `ui-common/packages/ui/src/app/components/runColumns.tsx`.)
 fn lifted_gg_preset(record: &RunRecord) -> Option<String> {
     if record.subject.harness_slug != HarnessSlug::Gg {
         return None;

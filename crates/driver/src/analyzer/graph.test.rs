@@ -246,7 +246,7 @@ fn a_tree_with_no_declared_entry_point_has_none() {
 ///
 /// Under a transitive-reachability definition a single fixture page naming one module makes
 /// every *other* module unreachable, and a healthy library reports almost all of itself as
-/// dead — measured at 396 of 402 files on this repository's own `packages/ui`. "Nothing
+/// dead — measured at 396 of 402 files on `ui-common`'s `packages/ui`. "Nothing
 /// imports this, and nothing declares it" means the same thing in a bundler project and in a
 /// library, which is what a cross-case metric needs.
 #[test]

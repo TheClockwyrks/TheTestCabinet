@@ -18,7 +18,7 @@
 //! [`openrouter_price_id`] maps a run's model id onto the exact id OpenRouter
 //! lists it under, for the comparable-cost lookup. Both are harness-aware, and
 //! this module is the single source of truth for that logic (mirrored, for
-//! display-time grouping only, by `packages/ui/src/modelId.ts`).
+//! display-time grouping only, by `ui-common/packages/ui/src/modelId.ts`).
 
 use test_cabinet_contracts::run_record::HarnessSlug;
 
@@ -52,7 +52,7 @@ pub fn canonical_model_id(model_id: &str, harness: HarnessSlug) -> String {
 
 /// The default (and, today, only) provider a provider-routed harness reaches its
 /// model through. Mirrors `OPENROUTER_PROVIDER` in the run form
-/// (`packages/ui/src/app/data/providers.ts`).
+/// (`ui-common/packages/ui/src/app/data/providers.ts`).
 const OPENROUTER_PROVIDER: &str = "openrouter";
 
 /// The model id a run is actually **launched** with — the value stored on the

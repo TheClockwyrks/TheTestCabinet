@@ -17,8 +17,11 @@
 // static site — so its scenarios cannot come from a run's artifacts. They are
 // generated from the scored set by the bundle's own `gen-reference.mjs`.
 //
-// `renderer.vendor.test.ts` asserts the vendored copies are byte-identical to the
-// bundle, so a forgotten resync fails CI. Run this to fix such a failure:
+// The copies live in the ui-common checkout, whose package ships them, and are
+// committed there. `apps/web/src/lattice-assets.test.ts` asserts the copies the
+// resolved `@clockwyrks/ui` ships are byte-identical to the bundle, so a
+// forgotten resync fails CI. Run this to fix such a failure (then rebuild the
+// package and commit the copies in ui-common):
 //   node scripts/vendor-lattice-assets.mjs
 //
 // The bundle's own artifacts are regenerated separately — see
@@ -35,7 +38,10 @@ const SRC = join(
   repoRoot,
   "test-suites/test-cases/performance/hard/lattice/v1.0.0/replay/assets",
 );
-const DST = join(repoRoot, "packages/ui/src/app/pages/runs/lattice/assets");
+const DST = join(
+  repoRoot,
+  "ui-common/packages/ui/src/app/pages/runs/lattice/assets",
+);
 
 // The assets the UI vendors verbatim from the bundle: the sprite atlas, and the
 // reference scenarios the Reference tab plays through the runtime's engine. The

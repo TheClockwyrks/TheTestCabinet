@@ -9,7 +9,7 @@
 //! build. Publishing requires one (see [`crate::publisher`]).
 //!
 //! The rating tiers here are mirrored as a TypeScript union in
-//! `packages/ui/src/ratings.ts`; keep the two in lockstep.
+//! `ui-common/packages/ui/src/ratings.ts`; keep the two in lockstep.
 //!
 //! A run carries up to **two rating channels**. The **functional rating** is the
 //! [`Rating`] scale (Flawless → Broken). On a **legacy** case version it is the
@@ -308,7 +308,7 @@ pub fn aggregate_rating<'a>(
 /// one review's run-wide tier — a legacy stored row's per-domain entries collapse
 /// to their worst tier before reaching here. The same rule as
 /// [`aggregate_rating`], on the aesthetic channel. Mirrors
-/// `aggregateAestheticRating` in `packages/run-stats/src/scoring.ts`.
+/// `aggregateAestheticRating` in `ui-common/packages/run-stats/src/scoring.ts`.
 pub fn aggregate_aesthetic(
     reviews: impl IntoIterator<Item = Option<AestheticRating>>,
 ) -> Option<AestheticRating> {
@@ -339,7 +339,7 @@ pub fn aggregate_aesthetic(
 /// over [`verdict_domain_ratings`], which applies the same failure-cap rule to a
 /// verdict slice a caller already holds (a review's [effective
 /// checklist](effective_verdicts), say). Mirrors `validatorDomainRatings` in
-/// `packages/run-stats/src/scoring.ts`.
+/// `ui-common/packages/run-stats/src/scoring.ts`.
 pub fn validator_domain_ratings(
     domains: &[Domain],
     items: &[ReviewItem],
@@ -425,7 +425,7 @@ fn failing_point<'a>(
 /// [per-domain validator ratings](validator_domain_ratings), composed with the
 /// toolchain gate ([`gated_rating`]). Always `Some` for a validator-rated run —
 /// with zero failures it is [`Flawless`](Rating::Flawless) — since the domain set
-/// is never empty. Mirrors `validatorRating` in `packages/run-stats/src/scoring.ts`.
+/// is never empty. Mirrors `validatorRating` in `ui-common/packages/run-stats/src/scoring.ts`.
 pub fn validator_rating(gated: bool, domain_ratings: &[DomainRating]) -> Option<Rating> {
     gated_rating(
         gated,
@@ -441,7 +441,7 @@ pub fn validator_rating(gated: bool, domain_ratings: &[DomainRating]) -> Option<
 /// once reviews exist, [`validator_aggregate_score`] folds their overrides in. A
 /// thin wrapper over [`crate::comparison::covered_score`] on the
 /// [validators' verdicts](crate::comparison::automated_verdicts). Mirrors
-/// `validatorScore` in `packages/run-stats/src/scoring.ts`.
+/// `validatorScore` in `ui-common/packages/run-stats/src/scoring.ts`.
 pub fn validator_score(
     gated: bool,
     items: &[ReviewItem],
@@ -478,7 +478,7 @@ fn verdicts_own_score(
 /// say) decides it, appended after the validators' points. A point the reviewer
 /// left untouched keeps the validators' verdict, so a review with no overrides
 /// is exactly the validators' checklist. Mirrors `effectiveVerdicts` in
-/// `packages/run-stats/src/scoring.ts`.
+/// `ui-common/packages/run-stats/src/scoring.ts`.
 pub fn effective_verdicts(
     auto: &[ReviewVerdict],
     overrides: &[ReviewVerdict],
@@ -507,7 +507,7 @@ pub fn effective_verdicts(
 /// toolchain gate ([`gated_rating`]) on top. A review with no overrides
 /// reproduces [`validator_rating`] over the validators' own domain ratings
 /// exactly. Mirrors `validatorReviewRating` in
-/// `packages/run-stats/src/scoring.ts`.
+/// `ui-common/packages/run-stats/src/scoring.ts`.
 pub fn validator_review_rating(
     gated: bool,
     domains: &[Domain],
@@ -528,7 +528,7 @@ pub fn validator_review_rating(
 /// the toolchain gate. A review with no overrides reproduces the automated-only
 /// score exactly; one that decides a point the validators left undecided grows
 /// the denominator by that point's weight. Mirrors `validatorReviewScore` in
-/// `packages/run-stats/src/scoring.ts`.
+/// `ui-common/packages/run-stats/src/scoring.ts`.
 pub fn validator_review_score(
     gated: bool,
     items: &[ReviewItem],
@@ -550,7 +550,7 @@ pub fn validator_review_score(
 /// overrides reproduces the validators' figures exactly, so today's behavior is
 /// the fixed point. The toolchain gate applies at this aggregation seam
 /// ([`gated_rating`]). Mirrors `validatorAggregateRating` in
-/// `packages/run-stats/src/scoring.ts`.
+/// `ui-common/packages/run-stats/src/scoring.ts`.
 pub fn validator_aggregate_rating<'a>(
     gated: bool,
     domains: &[Domain],
@@ -584,7 +584,7 @@ pub fn validator_aggregate_rating<'a>(
 /// the shared total (via [`aggregate_score`]). A review with no overrides
 /// reproduces the validators' figures exactly, so today's behavior is the fixed
 /// point. The toolchain gate applies at this aggregation seam ([`gated_score`]).
-/// Mirrors `validatorAggregateScore` in `packages/run-stats/src/scoring.ts`.
+/// Mirrors `validatorAggregateScore` in `ui-common/packages/run-stats/src/scoring.ts`.
 pub fn validator_aggregate_score<'a>(
     gated: bool,
     items: &[ReviewItem],
@@ -627,7 +627,7 @@ pub fn score(items: &[ReviewItem], writeup: &Writeup) -> Score {
 /// The core of [`score`], split out for callers that carry the verdicts on their
 /// own (rather than a parsed [`Writeup`]) — the backend scores its stored reviews
 /// this way. Mirrors the TypeScript `scoreChecklist` in
-/// `packages/ui/src/ratings.ts`.
+/// `ui-common/packages/ui/src/ratings.ts`.
 pub fn score_checklist(items: &[ReviewItem], checklist: &[ReviewVerdict]) -> Score {
     let status = |id: &str| checklist.iter().find(|v| v.id == id).map(|v| v.status);
     let passed = |id: &str| status(id) == Some(VerdictStatus::Pass);

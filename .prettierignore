@@ -61,9 +61,9 @@ deployments/k8s/
 # The project's own ignored paths, which .markdownlint-cli2.yaml, cspell.json and
 # eslint.config.js leave out too, so the gates never disagree about a path.
 /cold-storage/**
-# The contracts, engines, gg, gg.rocks, microservice-repos, tool-sprite and
-# test-suites repositories, submodules whose own gates format them, and the docs tree's
-# gg/ entry, which points into the gg checkout.
+# The contracts, engines, gg, gg.rocks, microservice-repos, tool-sprite,
+# test-suites and ui-common repositories, submodules whose own gates format
+# them, and the docs tree's gg/ entry, which points into the gg checkout.
 /contracts/**
 /engines/**
 /gg/**
@@ -72,6 +72,7 @@ deployments/k8s/
 /tool-sprite/**
 /apps/docs/src/content/docs/gg/**
 /test-suites/**
+/ui-common/**
 /tasks/**/done/**
 /.claude/workflows/**
 /.claude/worktrees/**

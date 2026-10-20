@@ -44,15 +44,15 @@ export GIT_AUTHOR_NAME=test GIT_AUTHOR_EMAIL=test@example.com
 export GIT_COMMITTER_NAME=test GIT_COMMITTER_EMAIL=test@example.com
 
 # A throwaway repository holding a copy of the script and a .gitmodules that
-# pins five submodules, at `cold-storage`, `contracts`, `engines`, `gg` and
-# `test-suites`.
+# pins six submodules, at `cold-storage`, `contracts`, `engines`, `gg`,
+# `test-suites` and `ui-common`.
 fresh_repo() {
 	local repo
 	repo="$(mktemp -d "$tmp/repoXXXXXX")"
 	mkdir -p "$repo/scripts/ci"
 	cp "$CI_DIR/changed-paths.sh" "$CI_DIR/tcab-lib.sh" "$repo/scripts/ci/"
 	local name
-	for name in cold-storage contracts engines gg test-suites; do
+	for name in cold-storage contracts engines gg test-suites ui-common; do
 		printf '[submodule "%s"]\n\tpath = %s\n\turl = ../%s\n' "$name" "$name" "$name"
 	done >"$repo/.gitmodules"
 	printf '%s' "$repo"
@@ -109,7 +109,7 @@ table "a run-container definition reaches nothing" "rust=false submodules=false"
 table "the image names list reaches the Rust jobs" "rust=true submodules=false" \
 	containers/image-names.sh
 table "Markdown outside crates reaches nothing" "rust=false submodules=false" \
-	README.md CLAUDE.md packages/ui/README.md apps/docs/src/content/docs/gg/overview.md
+	README.md CLAUDE.md packages/browser-driver/README.md apps/docs/src/content/docs/gg/overview.md
 table "Markdown inside crates reaches the Rust jobs" "rust=true submodules=false" \
 	crates/driver/README.md
 table "a shell test reaches nothing" "rust=false submodules=false" \
@@ -147,6 +147,8 @@ table "the engines pin reaches the Rust jobs and submodule_pins" "rust=true subm
 table "the gg pin reaches the Rust jobs and submodule_pins" "rust=true submodules=true" gg
 table "the test-suites pin reaches the Rust jobs and submodule_pins" \
 	"rust=true submodules=true" test-suites
+table "the ui-common pin reaches the Rust jobs and submodule_pins" \
+	"rust=true submodules=true" ui-common
 table ".gitmodules reaches submodule_pins alone" "rust=false submodules=true" .gitmodules
 table "the pin check reaches submodule_pins alone" "rust=false submodules=true" \
 	scripts/ci/submodule-pins.sh

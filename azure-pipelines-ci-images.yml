@@ -131,6 +131,9 @@ resources:
     - repository: test-suites
       type: git
       name: the-test-cabinet/test-suites
+    - repository: ui-common
+      type: git
+      name: the-test-cabinet/ui-common
 
 jobs:
   # One job per image, with no `dependsOn` between them but one: none reads
@@ -160,6 +163,7 @@ jobs:
         - microservice-repos
         - tool-sprite
         - test-suites
+        - ui-common
     steps:
       # One commit is enough. The tag is the commit Azure names in
       # BUILD_SOURCEVERSION, and nothing here reads the history.
@@ -206,6 +210,7 @@ jobs:
         - microservice-repos
         - tool-sprite
         - test-suites
+        - ui-common
     steps:
       - checkout: self
         fetchDepth: 1
@@ -246,6 +251,7 @@ jobs:
         - microservice-repos
         - tool-sprite
         - test-suites
+        - ui-common
     steps:
       - checkout: self
         fetchDepth: 1

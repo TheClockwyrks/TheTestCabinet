@@ -102,9 +102,8 @@ lattice-ref-transport = { path = "engines/crates/lattice-ref-transport" }
 lattice-sdk = { path = "engines/crates/lattice-sdk" }
 test-cabinet-match-play = { path = "engines/crates/match-play" }
 
-# ui-common is not checked out; the table joins once it is bootstrapped:
-#   [patch."https://github.com/TheClockwyrks/ui-common"]
-#   test-cabinet-ui-common = { path = "ui-common/crates/ui-common" }
+[patch."https://github.com/TheClockwyrks/ui-common"]
+test-cabinet-ui-common = { path = "ui-common/crates/ui-common" }
 
 # tool-model-core is not checked out; the table joins once it is bootstrapped:
 #   [patch."https://github.com/TheClockwyrks/tool-model-core"]

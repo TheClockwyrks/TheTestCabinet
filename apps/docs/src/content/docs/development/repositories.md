@@ -74,8 +74,8 @@ The kind decides a repository's shape.
 | `test-suites` | content | The test cases and game jams, and the lattice factory designer |
 
 Every repository but `contracts`, `engines`, `gg`, `gg.rocks`,
-`microservice-repos`, `tool-sprite`, `test-suites` and `cold-storage` is still
-a directory of the superrepo's own tree today.
+`microservice-repos`, `tool-sprite`, `test-suites`, `ui-common` and
+`cold-storage` is still a directory of the superrepo's own tree today.
 
 ### Where each responsibility lives
 

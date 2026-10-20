@@ -11,8 +11,8 @@ on an error past it. The Linting section of the building page in the
 documentation describes the baseline and the commands that maintain it.
 
 ESLint runs with a larger heap than Node's default. The type-checked rules hold
-each project's whole TypeScript program in memory, and `packages/ui` alone
-peaks at about 3.5 GB, past the limit Node derives on CI's hosted agents.
+each project's whole TypeScript program in memory, which has peaked at about
+3.5 GB, past the limit Node derives on CI's hosted agents.
 """
 
 import os

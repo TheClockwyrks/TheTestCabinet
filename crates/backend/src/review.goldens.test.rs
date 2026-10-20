@@ -2,8 +2,8 @@
 //!
 //! Every file under `contracts/crates/contracts/fixtures/scoring/` holds the cases one function
 //! pair must agree on: a function here (or in [`crate::comparison`] and
-//! [`test_cabinet_contracts::test_case`]) and its mirror in `packages/run-stats/src/scoring.ts`. The
-//! TypeScript half, `packages/run-stats/src/scoring.goldens.test.ts`, reads the same
+//! [`test_cabinet_contracts::test_case`]) and its mirror in `ui-common/packages/run-stats/src/scoring.ts`. The
+//! TypeScript half, `ui-common/packages/run-stats/src/scoring.goldens.test.ts`, reads the same
 //! files off the crate, so a case added on either side is executed by both suites.
 //!
 //! The expectations are this implementation's output. Every struct below is
