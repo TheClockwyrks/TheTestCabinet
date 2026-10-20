@@ -1,13 +1,21 @@
 ---
 format: nyxsis-issue
-version: 2
+version: 3
 id: tvv6yodggizq97zy5lo0jm2s
 zone: DEPLOY
 number: 1
 title: Hold node drains for run pods with a budget and pool settings
 type: generic
-state: open
+state: done
 created: 2026-10-19T00:38:11.966575017Z
+done: 2026-10-20T05:05:09.916556095Z
+outcome: |
+  Landed in superrepo PR 4588 (nightly): tcab-run-pods PodDisruptionBudget in the
+  k8s base, scripts/configure-node-pools.sh to hold node-pool upgrades/drains
+  while a run pod runs, overview docs clarification. All 28 gates pass. Applied to
+  the staging pools and verified ALLOWED DISRUPTIONS 0 during a run. Not
+  exercised: a real node-image upgrade during a run, and the issue's exact drain
+  command without --force (kubectl refuses the bare pod client-side).
 ---
 
 An upgrade drain evicts driver and sandbox pods mid-run. Neither is ever
