@@ -10,6 +10,7 @@
 
 use std::path::{Path, PathBuf};
 
+use test_cabinet_driver::engine::EngineSelection;
 use test_cabinet_driver::{
     FsRepoSeeder, RenderedReference, RepoSeeder, SeedRequest, TestCaseCatalog, TestType,
 };
@@ -567,6 +568,247 @@ fn seeding_vendors_declared_packages_into_the_repo_and_commits_them() {
         tracked.contains(".vendor/packages/@clockwyrks/asset-contract/package.json"),
         "the whole vendored closure is committed"
     );
+}
+
+/// Where an engine workspace declares the engine today, and where a version
+/// written before lockfiles still declares it.
+const ENGINE_VENDORED: &str = "file:./.vendor/packages/@clockwyrks/simple-2d";
+const ENGINE_LEGACY: &str = "file:./.vendor/engine/@clockwyrks/simple-2d";
+
+/// The `simple-2d` workspace `package.json` of the engine demo, declaring the
+/// engine as `spec`, in an order and indentation a rewrite would not keep.
+fn engine_package_json(spec: &str) -> String {
+    format!(
+        "{{\n    \"name\": \"demo\",\n    \"private\": true,\n    \"dependencies\": {{\n        \
+         \"@clockwyrks/simple-2d\": \"{spec}\"\n    }},\n    \"devDependencies\": {{\n        \
+         \"vite\": \"^5.0.0\"\n    }}\n}}\n"
+    )
+}
+
+/// The lockfile npm writes for [`engine_package_json`] of `spec`, linking the
+/// engine at the path the spec names, locked at `engine`, and its sibling
+/// `asset-contract` beside it at 0.2.1.
+fn engine_lockfile(spec: &str, engine: &str) -> String {
+    let path = spec.strip_prefix("file:./").expect("an in-repo file: spec");
+    let sibling = path.replace("simple-2d", "asset-contract");
+    serde_json::to_string_pretty(&serde_json::json!({
+        "name": "demo",
+        "lockfileVersion": 3,
+        "requires": true,
+        "packages": {
+            "": {
+                "name": "demo",
+                "dependencies": { "@clockwyrks/simple-2d": spec },
+                "devDependencies": { "vite": "^5.0.0" }
+            },
+            path: {
+                "name": "@clockwyrks/simple-2d",
+                "version": engine,
+                "dependencies": { "@clockwyrks/asset-contract": "file:../asset-contract" }
+            },
+            sibling: { "name": "@clockwyrks/asset-contract", "version": "0.2.1" },
+            "node_modules/@clockwyrks/simple-2d": { "resolved": path, "link": true },
+            "node_modules/vite": { "version": "5.0.0", "dev": true }
+        }
+    }))
+    .expect("render the lockfile")
+        + "\n"
+}
+
+/// A host package store staging `simple-2d` at `version`, with its docs and
+/// `dist/`, depending on `asset-contract` 0.2.1 by the relative sibling `file:`
+/// the staging script writes.
+fn engine_store(version: &str) -> tempfile::TempDir {
+    let store = tempfile::tempdir().expect("store dir");
+    let engine = store.path().join("@clockwyrks/simple-2d");
+    let contract = store.path().join("@clockwyrks/asset-contract");
+    std::fs::create_dir_all(engine.join("dist")).expect("engine dist");
+    std::fs::create_dir_all(engine.join("docs")).expect("engine docs");
+    std::fs::create_dir_all(contract.join("dist")).expect("contract dist");
+    std::fs::write(
+        engine.join("package.json"),
+        format!(
+            r#"{{"name":"@clockwyrks/simple-2d","version":"{version}","dependencies":{{"@clockwyrks/asset-contract":"file:../asset-contract"}}}}"#
+        ),
+    )
+    .expect("engine manifest");
+    std::fs::write(engine.join("dist/index.js"), "// engine").expect("engine dist file");
+    std::fs::write(engine.join("docs/frame.md"), "# Frame\n").expect("engine docs file");
+    std::fs::write(
+        contract.join("package.json"),
+        r#"{"name":"@clockwyrks/asset-contract","version":"0.2.1"}"#,
+    )
+    .expect("contract manifest");
+    std::fs::write(contract.join("dist/index.js"), "// types").expect("contract dist file");
+    store
+}
+
+/// A demo case supporting `none` and `simple-2d`, its `simple-2d` workspace
+/// shipping [`engine_package_json`] of `spec` and, when `lockfile` is given, that
+/// `package-lock.json` beside it, plus a `.gitignore` ignoring `dist/` and
+/// `node_modules/` as a real case does.
+fn engine_demo(spec: &str, lockfile: Option<&str>) -> (tempfile::TempDir, TestCaseCatalog) {
+    let manifest = format!(
+        "variants = [\"variants/base.toml\"]\nengines = [\"none\", \"simple-2d\"]\n{DEMO_HEAD}\
+         [workspaces]\nnone = \"workspaces/none\"\n\"simple-2d\" = \"workspaces/simple-2d\"\n"
+    );
+    let (dir, catalog) = temp_catalog(&manifest, &[("base.toml", VARIANT_BASE_TITLE)]);
+    let workspaces = dir.path().join("end-to-end/easy/demo/v1.0.0/workspaces");
+    let none = workspaces.join("none");
+    let engine = workspaces.join("simple-2d");
+    std::fs::create_dir_all(&none).expect("none workspace");
+    std::fs::create_dir_all(&engine).expect("engine workspace");
+    std::fs::write(none.join("package.json"), "{\"name\":\"demo\"}\n").expect("none package");
+    std::fs::write(engine.join("package.json"), engine_package_json(spec)).expect("package.json");
+    std::fs::write(engine.join(".gitignore"), "node_modules/\ndist/\n").expect("gitignore");
+    if let Some(lockfile) = lockfile {
+        std::fs::write(engine.join("package-lock.json"), lockfile).expect("lockfile");
+    }
+    (dir, catalog)
+}
+
+/// Seed the engine demo's `base` variant on `simple-2d` out of `store`.
+fn seed_engine_demo(
+    catalog: &TestCaseCatalog,
+    store: &Path,
+) -> (
+    tempfile::TempDir,
+    test_cabinet_driver::Result<test_cabinet_driver::SeededRepo>,
+) {
+    let version = catalog.resolve("demo", "v1.0.0").expect("resolve demo");
+    let base = version.variant("base").expect("base variant");
+    let specs = version.seeded_specs(base);
+    let engine = test_cabinet_driver::engine::built_in_catalog()
+        .resolve(&EngineSelection::new("simple-2d"))
+        .expect("simple-2d is a built-in engine");
+    let seed_base = tempfile::tempdir().expect("seed base");
+    let seeder = FsRepoSeeder::with_package_store(seed_base.path(), store);
+    let seeded = seeder.seed(&SeedRequest {
+        test_case: &version,
+        variant: base,
+        specs: &specs,
+        workspace: version.workspace_for(base, "simple-2d"),
+        references: &[],
+        live_preview: None,
+        prior_game_jam_entries: &[],
+        engine: Some(&engine),
+    });
+    (seed_base, seeded)
+}
+
+/// `git status --porcelain` in `repo`: empty when the seed commit holds the whole
+/// tree.
+fn git_status(repo: &Path) -> String {
+    let output = std::process::Command::new("git")
+        .arg("-C")
+        .arg(repo)
+        .args(["status", "--porcelain"])
+        .output()
+        .expect("run git status");
+    assert!(output.status.success(), "git status failed");
+    String::from_utf8(output.stdout).expect("utf8 status")
+}
+
+/// Seeding an engine case vendors the engine at the path its workspace declares,
+/// today's `.vendor/packages/` and the legacy `.vendor/engine/` alike, and the
+/// seed commit holds the workspace exactly as the case shipped it: the
+/// `package.json` byte for byte, the `package-lock.json` beside it, the vendored
+/// closure despite the `dist/` ignore rule, and nothing left over for `git status`
+/// to report.
+#[test]
+fn seeding_an_engine_case_vendors_at_the_declared_path_and_commits_the_lockfile() {
+    for spec in [ENGINE_VENDORED, ENGINE_LEGACY] {
+        let lockfile = engine_lockfile(spec, "1.1.1");
+        let (_dir, catalog) = engine_demo(spec, Some(&lockfile));
+        let store = engine_store("1.1.1");
+
+        let (_base, seeded) = seed_engine_demo(&catalog, store.path());
+        let seeded = seeded.expect("seed the engine demo");
+
+        assert_eq!(seeded.engine_version.as_deref(), Some("1.1.1"));
+        let vendored = spec.strip_prefix("file:./").expect("in-repo spec");
+        let sibling = vendored.replace("simple-2d", "asset-contract");
+        assert!(seeded.path.join(vendored).join("dist/index.js").is_file());
+        assert!(seeded.path.join(&sibling).join("package.json").is_file());
+        assert_eq!(
+            std::fs::read_to_string(seeded.path.join("package.json")).expect("package.json"),
+            engine_package_json(spec),
+            "the shipped package.json is seeded byte for byte"
+        );
+        assert_eq!(
+            std::fs::read_to_string(seeded.path.join("package-lock.json")).expect("lockfile"),
+            lockfile,
+            "the shipped lockfile is seeded byte for byte"
+        );
+
+        let tracked = git_tracked_files(&seeded.path);
+        for file in [
+            "package.json".to_string(),
+            "package-lock.json".to_string(),
+            format!("{vendored}/dist/index.js"),
+            format!("{sibling}/dist/index.js"),
+            "engine/frame.md".to_string(),
+        ] {
+            assert!(
+                tracked.lines().any(|line| line == file),
+                "{file} is in the seed commit:\n{tracked}"
+            );
+        }
+        assert_eq!(
+            git_status(&seeded.path),
+            "",
+            "the seed commit holds the whole seeded tree"
+        );
+    }
+}
+
+/// A store that stages another engine version than the case's lockfile links
+/// fails the seed: the init's `npm ci` would install a tree the lockfile does not
+/// describe.
+#[test]
+fn seeding_an_engine_case_rejects_a_vendored_version_the_lockfile_does_not_link() {
+    let lockfile = engine_lockfile(ENGINE_VENDORED, "1.1.1");
+    let (_dir, catalog) = engine_demo(ENGINE_VENDORED, Some(&lockfile));
+    let store = engine_store("1.2.0");
+
+    let (_base, seeded) = seed_engine_demo(&catalog, store.path());
+
+    let message = seeded
+        .expect_err("a version mismatch fails the seed")
+        .to_string();
+    assert!(message.contains("demo@v1.0.0"), "{message}");
+    assert!(
+        message.contains(".vendor/packages/@clockwyrks/simple-2d"),
+        "{message}"
+    );
+    assert!(
+        message.contains("1.1.1") && message.contains("1.2.0"),
+        "{message}"
+    );
+}
+
+/// A workspace that ships no lockfile — a version written before lockfiles — still
+/// seeds, its engine vendored where its `package.json` declares it.
+#[test]
+fn seeding_an_engine_case_accepts_a_workspace_with_no_lockfile() {
+    let (_dir, catalog) = engine_demo(ENGINE_LEGACY, None);
+    let store = engine_store("1.1.1");
+
+    let (_base, seeded) = seed_engine_demo(&catalog, store.path());
+    let seeded = seeded.expect("a workspace with no lockfile seeds");
+
+    assert!(
+        seeded
+            .path
+            .join(".vendor/engine/@clockwyrks/simple-2d/package.json")
+            .is_file()
+    );
+    assert!(!seeded.path.join("package-lock.json").exists());
+    assert_eq!(
+        std::fs::read_to_string(seeded.path.join("package.json")).expect("package.json"),
+        engine_package_json(ENGINE_LEGACY)
+    );
+    assert_eq!(git_status(&seeded.path), "");
 }
 
 /// The newline-joined list of files git tracks in `repo` (its `git ls-files`), for

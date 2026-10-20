@@ -38,8 +38,10 @@
 // @clockwyrks/structured-2d, @clockwyrks/simple-3d, @clockwyrks/structured-3d) and the shared validator harness
 // (@clockwyrks/case-harness).
 // They are staged into the same store, but an engine is a run dimension selected
-// per run (chosen when the run is launched) rather than something a case declares, and
-// it is seeded into `.vendor/engine/` rather than `.vendor/packages/`. So an engine
+// per run (chosen when the run is launched) rather than something a case declares in
+// `packages`: the run's selection picks which of the case's per-engine workspaces is
+// seeded, and that workspace declares the engine at `.vendor/packages/` in its own
+// `package.json` and lockfile. So an engine
 // runtime belongs in this list and must NOT be added to SHIPPABLE_PACKAGES —
 // adding it there would let a case request the engine through `packages`, which
 // is exactly what that allowlist exists to refuse. The validator harness is out of

@@ -9,9 +9,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use serde::de::{Error as DeError, MapAccess, SeqAccess, Visitor};
-use serde::ser::{SerializeMap, SerializeSeq};
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use test_cabinet_suites::workspace_lockfile::{self, Lockfile, PackageManifest};
 use time::OffsetDateTime;
 
 use crate::engine::ResolvedEngine;
@@ -79,41 +77,45 @@ impl FsRepoSeeder {
     ///
     /// The case's own workspace `package.json` already declares each one as the
     /// matching in-repo relative `file:` dependency (resolution validates that it
-    /// does), so this only fills in the copies the declaration points at: unlike
-    /// [`Self::vendor_engine`], nothing here rewrites the shipped file.
+    /// does), so this only fills in the copies the declaration points at; nothing
+    /// here rewrites the shipped file.
     fn vendor_packages(&self, repo: &Path, packages: &[String]) -> Result<()> {
         self.vendor_closure(&repo.join(crate::test_case::TCAB_VENDOR_DIR), packages)
     }
 
     /// Vendor the run's selected [engine](crate::engine) into `repo`, returning
-    /// the version that landed.
+    /// the version that landed. `case` names the test case being seeded, for the
+    /// failures.
     ///
-    /// Three things happen here, and only here:
+    /// Two things happen here, and only here:
     ///
-    /// 1. the engine's package and its `@clockwyrks` closure are copied into
-    ///    [`TCAB_ENGINE_DIR`](crate::test_case::TCAB_ENGINE_DIR) — a *separate*
-    ///    tree from the case's own `.vendor/packages`, so the produced repository
-    ///    (and its diff) still says which vendored code is the case's and which is
-    ///    the run's;
+    /// 1. the engine's package and its `@clockwyrks` closure are copied to the
+    ///    path the seeded workspace `package.json` declares the engine at (see
+    ///    [`engine_vendor_root`]): `.vendor/packages/<package>` as the engine's
+    ///    workspace declares it, in its `package.json` and in the lockfile that
+    ///    links it, or the legacy `.vendor/engine/<package>` a version written
+    ///    before lockfiles still declares;
     /// 2. the engine's own documentation is copied to
     ///    [`ENGINE_DOCS_DIR`](crate::execution::ENGINE_DOCS_DIR), because an engine
-    ///    documents itself from its package and a case's specs never restate it;
-    /// 3. the seeded workspace `package.json` gains a relative `file:` dependency
-    ///    on the vendored copy.
+    ///    documents itself from its package and a case's specs never restate it.
     ///
-    /// Step 3 is the **one** place the harness edits a build's `package.json`, and
-    /// it is what an engine being a run dimension forces: the case is frozen and
-    /// does not know which engine this run picked, so it cannot declare the
-    /// dependency itself. The `packages` key is the mirror image — declared by the
-    /// case, already present in the `package.json` it ships, and deliberately never
-    /// rewritten (see [`Self::vendor_packages`]).
+    /// The seeded `package.json` is never written. A case that supports an engine
+    /// ships one workspace per engine, each already declaring that engine exactly
+    /// as a case's `packages` are declared (see [`Self::vendor_packages`]), so the
+    /// run's engine selection only picks which workspace is seeded and what is
+    /// vendored into it.
     ///
     /// An engine with no runtime vendors nothing and reports no version.
     /// [`seed`](RepoSeeder::seed) already gates on
     /// [`ResolvedEngine::provides_runtime`], so that arm is a second statement of
     /// the same rule rather than a live path — but it is what makes calling this
     /// with any resolved engine safe.
-    fn vendor_engine(&self, repo: &Path, engine: &ResolvedEngine) -> Result<Option<String>> {
+    fn vendor_engine(
+        &self,
+        repo: &Path,
+        engine: &ResolvedEngine,
+        case: &str,
+    ) -> Result<Option<String>> {
         let Some(package) = engine.package() else {
             return Ok(None);
         };
@@ -121,8 +123,9 @@ impl FsRepoSeeder {
         // The whole `@clockwyrks` closure, exactly as a case's own packages are
         // vendored: the staged engine package references its siblings by relative
         // `file:` paths, which only resolve if the siblings land beside it.
+        let root = engine_vendor_root(repo, package, case)?;
         let roots = [package.to_string()];
-        self.vendor_closure(&repo.join(crate::test_case::TCAB_ENGINE_DIR), &roots)?;
+        self.vendor_closure(&repo.join(&root), &roots)?;
 
         let staged = self.package_store.join(package);
         // Read the version from the *staged* package rather than the copy just
@@ -152,7 +155,6 @@ impl FsRepoSeeder {
             copy_into(&src, &repo.join(crate::execution::ENGINE_DOCS_DIR))?;
         }
 
-        add_engine_dependency(repo, package)?;
         Ok(Some(version))
     }
 
@@ -241,27 +243,36 @@ impl RepoSeeder for FsRepoSeeder {
 
         // A case that declares `packages` ships a workspace `package.json` that
         // already depends on each one via an in-repo relative `file:` spec
-        // (validated at resolution — see `TestCaseCatalog::resolve`). Vendor the
+        // (validated at resolution — see `TestCaseCatalog::resolve`), and the
+        // `package-lock.json` beside it links each at that path. Vendor the
         // requested libraries out of the host package store into the run repo at
-        // that path, so the tree is self-contained: the model's init `npm install`
-        // resolves the dependency locally and writes a lockfile that resolves the
-        // same wherever the produced tree later lives (validation host, a clone of
-        // the published repo). The `package.json` itself is never modified.
+        // that path, so the tree is self-contained: the init's `npm ci` installs
+        // the vendored copy the committed lockfile links, and the tree installs the
+        // same wherever it later lives (validation host, a clone of the published
+        // repo). Neither file is ever modified.
         if !test_case.packages.is_empty() {
             self.vendor_packages(&repo, &test_case.packages)?;
         }
 
-        // The run's selected engine is vendored next — after the workspace and the
-        // case's own packages, before everything else — because it is the one step
-        // that *edits* a seeded file: the `file:` dependency it injects has to go
-        // into the final `package.json` the case shipped, not a copy something
-        // later overwrites. A run with no engine, or with one that supplies no
-        // runtime, seeds nothing here and records no version, leaving the seeded
-        // tree exactly as the case shipped it.
+        // The run's selected engine is vendored next, at the path the seeded
+        // engine workspace's `package.json` declares it at — the workspace the run's
+        // engine selection picked, which declares the engine in its `package.json`
+        // and lockfile as the case's packages are declared. A run with no engine,
+        // or with one that supplies no runtime, seeds nothing here and records no
+        // version, leaving the seeded tree exactly as the case shipped it.
+        let case = format!("{}@{}", test_case.slug, test_case.version);
         let engine_version = match request.engine {
-            Some(engine) if engine.provides_runtime() => self.vendor_engine(&repo, engine)?,
+            Some(engine) if engine.provides_runtime() => {
+                self.vendor_engine(&repo, engine, &case)?
+            }
             _ => None,
         };
+
+        // Every copy vendored above must be the version the shipped lockfile links
+        // it at, or the init's `npm ci` would install a tree the lockfile does not
+        // describe. Checked here, before the rest of the tree is written and before
+        // any container work, so a stale lockfile or store fails the seed outright.
+        check_vendored_versions(&repo, &case, &self.package_store)?;
 
         // Each spec is seeded to its destination path within the fresh
         // repository. Destinations are validated during resolution to stay inside
@@ -1124,17 +1135,15 @@ fn init_repo(repo: &Path) -> Result<String> {
     // `.gitignore` (which ignores `dist/` for its build output) would otherwise
     // exclude it from `add --all`. Force it in so the produced repository is
     // self-contained and installable — an unforced `dist/` would leave the published
-    // tree with a dependency whose code is missing. Both vendored trees need this for
-    // the same reason and are listed together: the case's own declared packages, and
-    // the run's engine runtime. `--force` on a path that is not present would error,
-    // so each is guarded on the directory existing.
-    for vendored in [
-        crate::test_case::TCAB_VENDOR_DIR,
-        crate::test_case::TCAB_ENGINE_DIR,
-    ] {
-        if repo.join(vendored).is_dir() {
-            git(repo, &["add", "--force", vendored])?;
-        }
+    // tree with a dependency whose code is missing. The whole `.vendor/` root is
+    // forced rather than each vendored tree: the case's own declared packages and the
+    // run's engine both land under it, the engine at whatever path its workspace
+    // declares, and a workspace's hidden entries are never seeded, so everything
+    // under it is vendored code. `--force` on a path that is not present would
+    // error, so it is guarded on the directory existing. The workspace's
+    // `package-lock.json` is an ordinary seeded file `add --all` already commits.
+    if repo.join(VENDOR_ROOT).is_dir() {
+        git(repo, &["add", "--force", VENDOR_ROOT])?;
     }
     git(
         repo,
@@ -1403,221 +1412,145 @@ pub(crate) fn staged_package_version(package_dir: &Path, package: &str) -> Resul
     )?)
 }
 
-/// The dependency spec a seeded workspace depends on the vendored engine by: an
-/// in-repo relative `file:` path into
-/// [`TCAB_ENGINE_DIR`](crate::test_case::TCAB_ENGINE_DIR).
-///
-/// The engine counterpart of `test_case::tcab_package_file_dep`, and relative for
-/// the same reason: the produced tree is cloned, published, and validated
-/// elsewhere, so a dependency that named a host path would resolve only on the
-/// machine that seeded it.
-fn engine_file_dep(package: &str) -> String {
-    format!("file:./{}/{package}", crate::test_case::TCAB_ENGINE_DIR)
-}
+/// The directory every vendored tree lives under: the case's declared packages
+/// ([`TCAB_VENDOR_DIR`](crate::test_case::TCAB_VENDOR_DIR)) and the run's engine,
+/// wherever the engine's workspace declares it. A workspace's hidden entries are
+/// never seeded, so everything under it was written by seeding.
+pub(crate) const VENDOR_ROOT: &str = ".vendor";
 
-/// Declare the vendored engine in the seeded workspace's `package.json`, so the
-/// build imports the runtime by its bare package name and `npm install` resolves
-/// it out of the repository.
+/// The directory, relative to the run root, the run's engine `package` is vendored
+/// into, with its `@clockwyrks` closure beside it: the parent of the path the seeded
+/// workspace `package.json` declares the engine at.
 ///
-/// The rewrite preserves the file's key order and re-emits it with two-space
-/// indentation and a trailing newline — the shape every case ships and the one
-/// `npm` itself writes. That matters more here than anywhere else the harness
-/// touches a file: this `package.json` is authored by a human, read by the model,
-/// and diffed by everything downstream, so a re-serialization that sorted `name`
-/// after `dependencies` would turn a one-line addition into a whole-file change
-/// the model has to reason about.
+/// The case's engine workspace declares the engine by an in-repo `file:` spec, in
+/// its `package.json` and in the lockfile that links it (overview, "Engines"), so
+/// the seeder reads where to put it rather than deciding: vendoring anywhere else
+/// would leave the declared path empty and the lockfile linking nothing. The path
+/// must lie under [`VENDOR_ROOT`], so the copy is committed as vendored code and
+/// never lands on a file the case or the model owns, and must end in the
+/// package's own name, so the staged package's relative `file:` links to its
+/// siblings (`file:../asset-contract`) resolve to the closure vendored beside it.
 ///
-/// A `package.json` that is absent, unreadable, or not a JSON object is an error
-/// rather than something to invent: a case that supports any engine but
-/// [`NONE_SLUG`](crate::engine::NONE_SLUG) must ship a workspace `package.json`
-/// (resolution enforces it), so reaching here without one means the case and the
-/// run disagree — and writing a fresh one would hand the model a workspace that
-/// matches none of its specs.
-fn add_engine_dependency(repo: &Path, package: &str) -> Result<()> {
-    let manifest = repo.join("package.json");
-    let raw = fs::read_to_string(&manifest).map_err(|err| {
-        Error::Seeding(format!(
-            "reading the seeded workspace `package.json` at `{}`: {err} (a case supporting \
-             any engine other than `{}` must ship one)",
-            manifest.display(),
+/// Resolution already holds a runtime engine's workspace to declaring it at
+/// `.vendor/packages/<package>` (or the legacy `.vendor/engine/<package>`), so each
+/// failure here means the seeded tree is not the one the case resolved with.
+fn engine_vendor_root(repo: &Path, package: &str, case: &str) -> Result<String> {
+    let manifest_path = repo.join(workspace_lockfile::PACKAGE_JSON);
+    if !manifest_path.is_file() {
+        return Err(Error::Seeding(format!(
+            "test case `{case}` seeded no workspace `package.json` at `{}`, so nothing \
+             declares where the engine `{package}` is vendored (a case supporting any \
+             engine other than `{}` ships one per engine, declaring the engine by its \
+             `file:` spec)",
+            manifest_path.display(),
             crate::engine::NONE_SLUG,
-        ))
-    })?;
-    let mut document: JsonNode = serde_json::from_str(&raw).map_err(|err| {
-        Error::Seeding(format!(
-            "the seeded workspace `package.json` at `{}` is not valid JSON: {err}",
-            manifest.display()
-        ))
-    })?;
-
-    let JsonNode::Object(entries) = &mut document else {
-        return Err(Error::Seeding(format!(
-            "the seeded workspace `package.json` at `{}` is not a JSON object",
-            manifest.display()
         )));
-    };
-    // Create `dependencies` when the case ships none — a workspace with only
-    // `devDependencies`, say — so the engine still arrives. Appending it keeps the
-    // rest of the file where the author put it.
-    if !entries.iter().any(|(key, _)| key == "dependencies") {
-        entries.push(("dependencies".to_string(), JsonNode::Object(Vec::new())));
     }
-    let dependencies = entries
-        .iter_mut()
-        .find(|(key, _)| key == "dependencies")
-        .map(|(_, value)| value)
-        .expect("`dependencies` was just ensured to exist");
-    let JsonNode::Object(dependencies) = dependencies else {
-        return Err(Error::Seeding(format!(
-            "the seeded workspace `package.json` at `{}` declares a `dependencies` \
-             that is not an object",
-            manifest.display()
-        )));
-    };
-    set_entry(
-        dependencies,
-        package,
-        JsonNode::Leaf(serde_json::Value::String(engine_file_dep(package))),
-    );
-
-    let mut rendered = serde_json::to_string_pretty(&document).map_err(|err| {
+    let manifest = PackageManifest::read(&manifest_path).map_err(|err| {
         Error::Seeding(format!(
-            "re-serializing the seeded workspace `package.json` at `{}`: {err}",
-            manifest.display()
+            "test case `{case}`: the seeded workspace {err} (at `{}`)",
+            manifest_path.display()
         ))
     })?;
-    rendered.push('\n');
-    fs::write(&manifest, rendered)
-        .map_err(|err| seed_ctx(format!("writing `{}`", manifest.display()), err))?;
-    Ok(())
-}
-
-/// Set `key` in an ordered object, replacing the value of an existing key **in
-/// place** rather than moving it to the end.
-///
-/// Position is content in a file a human authored: re-pointing a dependency that
-/// is already declared should read as a changed line, not a moved one.
-fn set_entry(entries: &mut Vec<(String, JsonNode)>, key: &str, value: JsonNode) {
-    match entries.iter_mut().find(|(existing, _)| existing == key) {
-        Some((_, slot)) => *slot = value,
-        None => entries.push((key.to_string(), value)),
-    }
-}
-
-/// A JSON document that remembers the order its object keys were written in.
-///
-/// [`serde_json::Value`] cannot: its map is a `BTreeMap`, so a parse-edit-write
-/// round trip re-emits every object alphabetically. The `preserve_order` feature
-/// that would change this is a *workspace-wide* switch on a shared dependency — it
-/// would silently reorder every other JSON this workspace emits, including
-/// generated contracts — which is far too broad a change to buy one file's key
-/// order. Seeding rewrites exactly one file, the workspace `package.json` the
-/// engine dependency is injected into, so it carries its own model instead.
-///
-/// Values are held as a tree rather than as raw text (`serde_json::value::RawValue`
-/// would preserve the original bytes) so the whole document re-indents
-/// consistently: a file authored with four spaces comes back out with the two the
-/// rest of the tree uses, rather than half-and-half.
-#[derive(Debug, Clone, PartialEq)]
-enum JsonNode {
-    /// An object, in the order its keys appeared.
-    Object(Vec<(String, JsonNode)>),
-    /// An array, in order.
-    Array(Vec<JsonNode>),
-    /// A string, number, boolean, or null — a value with no key order of its own,
-    /// carried verbatim.
-    Leaf(serde_json::Value),
-}
-
-impl<'de> Deserialize<'de> for JsonNode {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> std::result::Result<Self, D::Error> {
-        deserializer.deserialize_any(JsonNodeVisitor)
-    }
-}
-
-/// Builds a [`JsonNode`] from whatever the document actually holds.
-///
-/// Every method is driven by `deserialize_any`, so the shape of the input decides
-/// the arm — which is what lets a `package.json` be read without a schema for it.
-struct JsonNodeVisitor;
-
-impl<'de> Visitor<'de> for JsonNodeVisitor {
-    type Value = JsonNode;
-
-    fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        formatter.write_str("any JSON value")
-    }
-
-    fn visit_map<A: MapAccess<'de>>(
-        self,
-        mut map: A,
-    ) -> std::result::Result<Self::Value, A::Error> {
-        let mut entries: Vec<(String, JsonNode)> = Vec::new();
-        while let Some((key, value)) = map.next_entry::<String, JsonNode>()? {
-            // A duplicate key is malformed JSON that parsers accept: keep the last
-            // value (what every JSON reader resolves to) at the first key's
-            // position (what a reader of the file sees).
-            set_entry(&mut entries, &key, value);
+    let expected = format!("file:./{}/{package}", crate::test_case::TCAB_VENDOR_DIR);
+    let spec = match manifest.dependency(package) {
+        Some((field, spec)) if field != "peerDependencies" => spec,
+        _ => {
+            return Err(Error::Seeding(format!(
+                "test case `{case}`: the seeded workspace `package.json` does not depend on \
+                 the engine `{package}`; its engine workspace must declare it as \
+                 `\"{package}\": \"{expected}\"` in `dependencies` or `devDependencies`"
+            )));
         }
-        Ok(JsonNode::Object(entries))
-    }
-
-    fn visit_seq<A: SeqAccess<'de>>(
-        self,
-        mut seq: A,
-    ) -> std::result::Result<Self::Value, A::Error> {
-        let mut items = Vec::new();
-        while let Some(item) = seq.next_element::<JsonNode>()? {
-            items.push(item);
-        }
-        Ok(JsonNode::Array(items))
-    }
-
-    fn visit_unit<E: DeError>(self) -> std::result::Result<Self::Value, E> {
-        Ok(JsonNode::Leaf(serde_json::Value::Null))
-    }
-
-    fn visit_bool<E: DeError>(self, value: bool) -> std::result::Result<Self::Value, E> {
-        Ok(JsonNode::Leaf(value.into()))
-    }
-
-    fn visit_i64<E: DeError>(self, value: i64) -> std::result::Result<Self::Value, E> {
-        Ok(JsonNode::Leaf(value.into()))
-    }
-
-    fn visit_u64<E: DeError>(self, value: u64) -> std::result::Result<Self::Value, E> {
-        Ok(JsonNode::Leaf(value.into()))
-    }
-
-    fn visit_f64<E: DeError>(self, value: f64) -> std::result::Result<Self::Value, E> {
-        Ok(JsonNode::Leaf(value.into()))
-    }
-
-    fn visit_str<E: DeError>(self, value: &str) -> std::result::Result<Self::Value, E> {
-        Ok(JsonNode::Leaf(value.into()))
+    };
+    let declared = workspace_lockfile::file_directory_spec(spec).ok_or_else(|| {
+        Error::Seeding(format!(
+            "test case `{case}`: the seeded workspace `package.json` declares the engine \
+             `{package}` as `{spec}`, which is not an in-repo `file:` directory; declare \
+             it as `{expected}`"
+        ))
+    })?;
+    let root = declared
+        .strip_suffix(package)
+        .and_then(|root| root.strip_suffix('/'))
+        .filter(|root| {
+            root.split('/').next() == Some(VENDOR_ROOT)
+                && !root.split('/').any(|segment| segment == "..")
+        });
+    match root {
+        Some(root) => Ok(root.to_string()),
+        None => Err(Error::Seeding(format!(
+            "test case `{case}`: the seeded workspace `package.json` declares the engine \
+             `{package}` at `{spec}`, which is not a `{VENDOR_ROOT}/…/{package}` path; \
+             declare it as `{expected}`"
+        ))),
     }
 }
 
-impl Serialize for JsonNode {
-    fn serialize<S: Serializer>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error> {
-        match self {
-            JsonNode::Object(entries) => {
-                let mut map = serializer.serialize_map(Some(entries.len()))?;
-                for (key, value) in entries {
-                    map.serialize_entry(key, value)?;
-                }
-                map.end()
-            }
-            JsonNode::Array(items) => {
-                let mut seq = serializer.serialize_seq(Some(items.len()))?;
-                for item in items {
-                    seq.serialize_element(item)?;
-                }
-                seq.end()
-            }
-            JsonNode::Leaf(value) => value.serialize(serializer),
+/// Hold every vendored copy in the seeded `repo` to the version the workspace's
+/// `package-lock.json` links it at, before the seed commit.
+///
+/// The lockfile is the case's, written against the packages staged when it was
+/// generated, and the vendored copies come from the host package store as it is
+/// now. The vendored copy is the version the lockfile links (overview,
+/// "Packages"), so an entry under [`VENDOR_ROOT`] whose recorded version differs
+/// from the `package.json` of the copy at that path — or that names a path nothing
+/// was vendored to — is a seeding error: the init's `npm ci` would otherwise
+/// install a lockfile that no longer describes the tree, before any container work
+/// shows it. Entries below a vendored package's own `node_modules/` are what the
+/// install places there, not vendored copies, and are not checked.
+///
+/// A workspace without a lockfile is accepted unchecked (overview, "Init"). `store`
+/// is the package store the copies came from, named in the failure.
+fn check_vendored_versions(repo: &Path, case: &str, store: &Path) -> Result<()> {
+    let lockfile_path = repo.join(workspace_lockfile::PACKAGE_LOCK);
+    if !lockfile_path.is_file() {
+        return Ok(());
+    }
+    let lockfile = Lockfile::read(&lockfile_path).map_err(|err| {
+        Error::Seeding(format!(
+            "test case `{case}`: the seeded workspace {err} (at `{}`)",
+            lockfile_path.display()
+        ))
+    })?;
+    let mut problems = Vec::new();
+    for (path, locked) in lockfile.entries() {
+        let path = workspace_lockfile::normalize_relative(path);
+        let mut segments = path.split('/');
+        if segments.next() != Some(VENDOR_ROOT) || segments.any(|segment| segment == "node_modules")
+        {
+            continue;
+        }
+        let vendored = vendored_version(&repo.join(&path));
+        match (locked, vendored) {
+            (Some(locked), Some(vendored)) if locked == vendored => {}
+            (Some(locked), Some(vendored)) => problems.push(format!(
+                "`{path}` is locked at {locked} but the vendored copy is {vendored}"
+            )),
+            (None, _) => problems.push(format!("`{path}` records no version")),
+            (Some(locked), None) => problems.push(format!(
+                "`{path}` is locked at {locked} but no versioned package was vendored there"
+            )),
         }
     }
+    if problems.is_empty() {
+        return Ok(());
+    }
+    Err(Error::Seeding(format!(
+        "test case `{case}`: the workspace `package-lock.json` disagrees with the packages \
+         vendored from the package store at `{}`: {}; regenerate the case's lockfile \
+         against the staged packages, or stage the versions it links",
+        store.display(),
+        problems.join("; ")
+    )))
+}
+
+/// The `version` the `package.json` in `package_dir` declares, or `None` when there
+/// is no such file or it declares none.
+fn vendored_version(package_dir: &Path) -> Option<String> {
+    let raw = fs::read_to_string(package_dir.join(workspace_lockfile::PACKAGE_JSON)).ok()?;
+    let value: serde_json::Value = serde_json::from_str(&raw).ok()?;
+    value.get("version")?.as_str().map(str::to_string)
 }
 
 /// The edge length of a seeded blank voxel preview, matching the mesh renderer's

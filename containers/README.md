@@ -368,18 +368,22 @@ The harness does not modify that `package.json` — it only validates at resolut
 that the shipped file declares each declared package via exactly this `file:` spec.
 At seed time the core copies the declared packages (and their `@clockwyrks`
 closure) out of the store into `.vendor/packages/` inside the run repo and commits
-them, so the seeded workspace is ready to `npm install` and the relative `file:`
-dependency resolves wherever the produced tree later lives — the run container, the
-validation host, or a clone of the published repo — with no absolute path to break.
+them beside the `package-lock.json` the workspace ships, so the seeded workspace is
+ready to `npm ci` and the relative `file:` dependency resolves wherever the produced
+tree later lives — the run container, the validation host, or a clone of the
+published repo — with no absolute path to break. Each vendored copy must be the
+version the lockfile links it at; a store holding another version fails the seed.
 The model imports the library like any other dependency (see
 [Packages](../apps/docs/src/content/docs/testing/end-to-end/overview.md#packages)).
 
 **Engine runtimes share the store.** An [engine](../engines/engines/README.md) is the
 runtime a produced game is built on, and its package is staged into the same store
 by the same script. An engine is selected per run rather than declared by a case,
-so seeding vendors the selected engine into `.vendor/engine/` and writes its `file:`
-dependency into the seeded workspace's `package.json`. The version of the staged
-engine package is read at seed time and recorded on the run.
+so the case ships one workspace per engine, each declaring that engine's package at
+`.vendor/packages/` in its `package.json` and lockfile, and seeding vendors the
+selected engine at the path its workspace declares without rewriting either file.
+The version of the staged engine package is read at seed time and recorded on the
+run.
 
 **The lockstep rule** is the same one the baked binaries carry: the staged
 package format must match what `crates/driver` and the review UI expect, so **build
