@@ -170,6 +170,10 @@
 #                 checkout first. Every `tool-*` image is taken the same way, by the build
 #                 argument `scripts/ci/tool-images.sh` names for it; see "The tool
 #                 images" below.
+#   TOOL_PAINT_IMAGE  the `tool-paint` image the ui and material images copy `paint`,
+#                 `ui`, `texture` and `pbr` out of, taken as TOOL_SPRITE_IMAGE is
+#                 (`testcabinet.azurecr.io/tool-paint:<commit>` under PUSH, the image
+#                 built from the `tool-paint/` checkout without it).
 #
 # GATING THE `-gg` VARIANTS ON `gg selfcheck` (`--gg-selfcheck <PATH-TO-GG>`).
 #
@@ -430,8 +434,9 @@ readonly AUDIO_STORE_IMAGE="${IMAGE_NAME_PREFIX}audio-store:${IMAGE_TAG}"
 # ---------------------------------------------------------------------------
 # The tool images
 # ---------------------------------------------------------------------------
-# A tool that lives in a `tool-*` repository (`tool-sprite`: `draw`, `draw-sheet`) is not
-# compiled by the tooling builder. Its repository's pipeline publishes the image
+# A tool that lives in a `tool-*` repository (`tool-sprite`: `draw`, `draw-sheet`;
+# `tool-paint`: `paint`, `ui`, `texture`, `pbr`) is not compiled by the tooling builder.
+# Its repository's pipeline publishes the image
 # `testcabinet.azurecr.io/<repository>:<commit>` on every gated push to master and staging,
 # and a run image copies the binaries out of it at the commit the driver pins, which,
 # while the driver lives in the superrepo, is the superrepo's gitlink for the repository.
@@ -1386,7 +1391,8 @@ build_base_wasm() {
 
 # Build one asset-generation image `FROM` the base built above plus its tool binary,
 # copied out of the tooling builder or out of a tool image (`sprite` and `sprite-sheet`
-# copy from tool-sprite's; `image_build_args` reads which from the Dockerfile). The
+# copy from tool-sprite's, `ui` and `material` from tool-paint's; `image_build_args` reads
+# which from the Dockerfile). The
 # argument is the image's short name (`sprite` / `sprite-sheet` / `voxel` /
 # `voxel-animation` / `mc` / `mc-animation` / `sn` / `sn-animation` / `dc` /
 # `dc-animation`), which is both its name suffix and the directory holding its
@@ -1590,16 +1596,17 @@ fi
 # The images that do NOT bake a binary out of the shared tooling builder: the two
 # base layers, the self-contained blender image, the adversarial and performance
 # images (which compile their own wasm-targeting tooling in their own stages),
-# game-jam (which inherits everything from full-stack-2d), and sprite and sprite-sheet
-# (whose one binary each is copied out of the tool-sprite image; see "The tool images"). Everything else in
-# ALL_NAMES is an asset image that `COPY --from=tools`. Expressed as the exceptions
+# game-jam (which inherits everything from full-stack-2d), sprite and sprite-sheet
+# (whose one binary each is copied out of the tool-sprite image) and ui and material
+# (whose two binaries each are copied out of the tool-paint image; see "The tool
+# images"). Everything else in ALL_NAMES is an asset image that `COPY --from=tools`. Expressed as the exceptions
 # rather than the members so a newly-added asset kind is covered by default.
 #
 # The `-gg` variants are exceptions too, by pattern rather than by name: each adds one
 # COPY of the toolchain tree onto an already-built parent and bakes no asset binary of
 # its own. `select_needs_tools` applies that pattern, so a new run image's variant is
 # covered without being named here.
-readonly NON_TOOLS_IMAGES=(base base-wasm blender adversarial performance game-jam sprite sprite-sheet)
+readonly NON_TOOLS_IMAGES=(base base-wasm blender adversarial performance game-jam sprite sprite-sheet ui material)
 
 # Whether an image tag is present in the local image store (used to decide whether
 # the FROM base has to be built before a selected non-base image).

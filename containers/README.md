@@ -190,9 +190,10 @@ containers/
 │                               #   out of the tool-sprite image (see Building)
 ├── sprite-sheet/Dockerfile     # the base image plus the baked-in `draw-sheet` binary,
 │                               #   copied out of the tool-sprite image
-├── ui/Dockerfile               # the base image plus the baked-in `paint` + `ui` binaries
+├── ui/Dockerfile               # the base image plus the baked-in `paint` + `ui` binaries,
+│                               #   copied out of the tool-paint image
 ├── material/Dockerfile         # the base image plus the baked-in `texture` + `pbr`
-│                               #   binaries
+│                               #   binaries, copied out of the tool-paint image
 ├── voxel/Dockerfile            # the base image plus the baked-in `voxel` binary
 ├── voxel-animation/Dockerfile  # the base image plus the baked-in `voxel-anim` binary
 ├── mc/Dockerfile               # the base image plus the baked-in `mc` binary (Marching
@@ -446,12 +447,15 @@ gets its own image so a run carries only the tool it uses:
   run uses to paint a high-resolution interface asset — `paint` for layered raster
   work (brushes, blend modes, masks, filters, effects) and `ui` for crisp vector
   shapes, text, and nine-slice. Both ship in the one image because a run interleaves
-  them over a shared workspace.
+  them over a shared workspace. Both are copied out of the `tool-paint` image (see
+  [the tool images](#the-tool-images)).
 - `material/` is the base image plus the **`texture`** and **`pbr`** binaries, the
   [material](../apps/docs/src/content/docs/testing/asset-generation/material-binaries.md)
   tools a run uses to build a tileable PBR material — `texture` for seamless map
   painting and `pbr` for baking normal/AO maps, setting uniforms, assembling
-  `material.json`, and rendering the lit 3D preview.
+  `material.json`, and rendering the lit 3D preview. Both are copied out of the
+  `tool-paint` image, and the image installs the Mesa software-Vulkan runtime `pbr`
+  renders with.
 - `voxel/` is the base image plus exactly the **`voxel`** binary, the sculpting
   tool a static-voxel run uses.
 - `voxel-animation/` is the base image plus exactly the **`voxel-anim`** binary,
@@ -743,6 +747,7 @@ Run on a machine with Docker (or Podman) available:
 DOCKER=podman ./build.sh       # build with Podman instead
 ./build.sh tool-sprite         # build ONLY the tool-sprite image, from the tool-sprite/
                                #   checkout (see the tool images below)
+./build.sh tool-paint          # likewise the tool-paint image, from tool-paint/
 ./build.sh --gg-selfcheck <PATH-TO-GG>   # …and gate the `-gg` variants on `gg selfcheck`
 ```
 
@@ -823,8 +828,9 @@ graph from scratch for every image: **1865 crate-compilations across the set whe
 only 182 distinct crates exist** — `syn`, `serde` and `proc-macro2` built 23 times
 each, the ~90-crate `wgpu`/`naga` graph that the 13 rendering tools share built 13
 times over, and `ui`/`material` compiling the _identical_ `test-cabinet-paint` crate
-twice. The builder also carries cargo registry/target cache mounts, so an
-incremental rebuild costs only the crates that actually changed.
+twice (that crate has since moved to `tool-paint`; see the tool images below). The
+builder also carries cargo registry/target cache mounts, so an incremental rebuild
+costs only the crates that actually changed.
 
 `build.sh` **always** rebuilds it when any consuming image is selected, rather than
 reusing a present one the way it reuses the base. The base is a stable OS+toolchain
@@ -850,25 +856,35 @@ Dockerfile declares a global `TOOL_SPRITE_IMAGE` build arg, resolves it through 
 `COPY --from=tool-sprite /usr/local/bin/<bin>`. The `sprite` and `sprite-sheet` images
 therefore no longer need the tooling builder at all.
 
-The commit is the one the driver pins: the superrepo's `tool-sprite` gitlink
-(`git rev-parse HEAD:tool-sprite`), the commit the driver's `test-cabinet-draw` dependency
-resolves to as well, so the binary a run draws with and the library the orchestrator
-regenerates its image with are the same code. `scripts/ci/tool-images.sh list` names each
+`paint`, `ui`, `texture` and `pbr` are `tool-paint`'s (its `crates/paint`, checked out at
+`tool-paint/`), published the same way as `testcabinet.azurecr.io/tool-paint:<commit>`.
+The `ui` image copies `paint` and `ui` out of it and the `material` image `texture` and
+`pbr`, through a global `TOOL_PAINT_IMAGE` build arg and a
+`FROM ${TOOL_PAINT_IMAGE} AS tool-paint` stage; neither needs the tooling builder. The
+tool-paint image carries the binaries alone, so `material` keeps installing the Mesa
+runtime its `pbr` preview renders with.
+
+The commit is the one the driver pins: the superrepo's gitlink for the repository
+(`git rev-parse HEAD:tool-sprite`, `git rev-parse HEAD:tool-paint`). For `tool-sprite` it
+is the commit the driver's `test-cabinet-draw` dependency resolves to as well, so the
+binary a run draws with and the library the orchestrator regenerates its image with are
+the same code. `scripts/ci/tool-images.sh list` names each
 tool image's reference and build arg, and `build.sh` gives the arg:
 
 - under `PUSH`, the pinned reference, pulled before the first image that copies from it
   (the registry needs `az acr login -n testcabinet`). A published run image carries the
   published tool, never a local build of it. `scripts/ci/run-images.sh` runs
   `scripts/ci/tool-images.sh check` before it builds anything, so a gitlink at a commit
-  `tool-sprite`'s pipeline has not published fails there, naming the commit.
-- without `PUSH` (the local path), the image it builds first from the `tool-sprite/`
-  checkout with that repository's own Dockerfile, tagged
-  `test-cabinet-tool-sprite:<tag>` and never pushed. Like the tooling builder it is
+  the repository's pipeline has not published fails there, naming the commit.
+- without `PUSH` (the local path), the image it builds first from the repository's
+  checkout (`tool-sprite/`, `tool-paint/`) with that repository's own Dockerfile, tagged
+  `test-cabinet-<repository>:<tag>` and never pushed. Like the tooling builder it is
   rebuilt on every invocation that needs it, and its cargo cache mounts make a no-change
   rebuild cheap. `./build.sh tool-sprite` builds just it; `make -C deployments/local
-  run-images` builds it first. A missing checkout fails, naming
-  `git submodule update --init tool-sprite`.
-- `TOOL_SPRITE_IMAGE=<reference>` overrides both, for trying another build of the tool.
+  run-images` builds every tool image first. A missing checkout fails, naming
+  `git submodule update --init <repository>`.
+- `TOOL_SPRITE_IMAGE=<reference>` (`TOOL_PAINT_IMAGE` for `tool-paint`) overrides both,
+  for trying another build of the tool.
 
 The reference is an input of the copying images' digests in
 `scripts/ci/run-image-inputs.sh`, so a bump of the gitlink rebuilds exactly the images
