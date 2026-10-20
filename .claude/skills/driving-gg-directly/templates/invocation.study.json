@@ -13,7 +13,7 @@
       "maxParallel": 8,
       "replayMaxBytes": 268435456,
       "maxTurns": 300,
-      "modelCallTimeoutSecs": 900,
+      "modelCallTimeoutSecs": 1800,
       "maxConsecutiveErrors": 5,
       "maxCost": 25
     },
