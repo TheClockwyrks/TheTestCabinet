@@ -50,11 +50,20 @@
 #
 {% endif %}
 {% if ci_image %}
+{% if image_carries_binaries %}
+# This tool builds the image carrying its binaries once the gates passed, on
+# a push to master or staging alone. The image stage builds the Dockerfile at
+# the root natively on an amd64 and an arm64 agent, and scripts/ci/image.sh
+# pushes each as `<name>:<commit>-<arch>`; its last job fuses the two with
+# scripts/ci/manifest.sh into the multi-arch tag the driver's run images copy
+# the binaries from:
+{% else %}
 # An application builds its image once the gates passed, on a push to
 # master or staging alone. The image stage builds the Dockerfile at the root
 # natively on an amd64 and an arm64 agent, and scripts/ci/image.sh pushes
 # each as `<name>:<commit>-<arch>`; its last job fuses the two with
 # scripts/ci/manifest.sh into the multi-arch tag a deployment pins:
+{% endif %}
 #
 #   {{image_registry}}/{{name}}:<commit>
 #
@@ -356,7 +365,7 @@ stages:
 {% endif %}
 {% if ci_image %}
 
-  # The application's image, after every gate passed, on master and staging:
+  # The repository's image, after every gate passed, on master and staging:
   # one job per architecture, then the multi-arch tag. A tag's run builds
   # none, and the publish and mirror stages do not wait on the image stage.
 {{ci_image_stage}}
