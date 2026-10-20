@@ -27,8 +27,9 @@
 //! - **Credential files** are likewise extracted as `node` under its home, with
 //!   their mode preserved from the tar header.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::Path;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use k8s_openapi::api::core::v1::{
@@ -273,6 +274,10 @@ pub fn in_cluster_namespace() -> Option<String> {
 pub struct KubernetesContainerRuntime {
     client: Client,
     config: KubernetesConfig,
+    /// The node each live run pod was scheduled onto, recorded when it reached
+    /// `Running`, so a pod that has since vanished can still be reported by the
+    /// node it ran on.
+    nodes: Arc<Mutex<HashMap<String, String>>>,
 }
 
 impl std::fmt::Debug for KubernetesContainerRuntime {
@@ -292,12 +297,16 @@ impl KubernetesContainerRuntime {
         let client = Client::try_default().await.map_err(|err| {
             Error::ContainerRuntime(format!("connecting to the Kubernetes API: {err}"))
         })?;
-        Ok(Self { client, config })
+        Ok(Self::with_client(client, config))
     }
 
     /// Build a runtime around an existing client (used by tests).
     pub fn with_client(client: Client, config: KubernetesConfig) -> Self {
-        Self { client, config }
+        Self {
+            client,
+            config,
+            nodes: Arc::default(),
+        }
     }
 
     /// The pods API in the run namespace.
@@ -384,7 +393,7 @@ impl KubernetesContainerRuntime {
     ///
     /// [`pod_schedule_timeout`]: KubernetesConfig::pod_schedule_timeout
     /// [`pod_ready_timeout`]: KubernetesConfig::pod_ready_timeout
-    async fn await_running(&self, name: &str) -> Result<(Option<String>, Duration)> {
+    async fn await_running(&self, name: &str) -> Result<RunningPod> {
         let pods = self.pods();
 
         // Phase 1 — scheduling. Wait for the pod to be bound to a node, bounded
@@ -402,7 +411,7 @@ impl KubernetesContainerRuntime {
             match pod.status.as_ref().and_then(|s| s.phase.as_deref()) {
                 // Scheduled and already running (or past it): no startup wait left.
                 Some("Running") => {
-                    return Ok((resolved_image_digest(&pod), scheduling_started.elapsed()));
+                    return Ok(RunningPod::of(&pod, scheduling_started.elapsed()));
                 }
                 Some(phase @ ("Failed" | "Succeeded")) => {
                     let logs = self.pod_logs(name).await;
@@ -441,7 +450,7 @@ impl KubernetesContainerRuntime {
                 Error::ContainerRuntime(format!("reading run pod `{name}`: {err}"))
             })?;
             match pod.status.as_ref().and_then(|s| s.phase.as_deref()) {
-                Some("Running") => return Ok((resolved_image_digest(&pod), scheduling_wait)),
+                Some("Running") => return Ok(RunningPod::of(&pod, scheduling_wait)),
                 Some(phase @ ("Failed" | "Succeeded")) => {
                     let logs = self.pod_logs(name).await;
                     return Err(Error::ContainerRuntime(format!(
@@ -460,6 +469,25 @@ impl KubernetesContainerRuntime {
                 )));
             }
             sleep(Duration::from_millis(500)).await;
+        }
+    }
+
+    /// Remember the node a run pod was scheduled onto.
+    fn record_node(&self, pod: &str, node: String) {
+        if let Ok(mut nodes) = self.nodes.lock() {
+            nodes.insert(pod.to_string(), node);
+        }
+    }
+
+    /// The node a run pod was recorded as scheduled onto, if any.
+    fn known_node(&self, pod: &str) -> Option<String> {
+        self.nodes.lock().ok()?.get(pod).cloned()
+    }
+
+    /// Drop a run pod's recorded node once the run is done with the pod.
+    fn forget_node(&self, pod: &str) {
+        if let Ok(mut nodes) = self.nodes.lock() {
+            nodes.remove(pod);
         }
     }
 
@@ -861,7 +889,13 @@ impl ContainerRuntime for KubernetesContainerRuntime {
         // queued for cluster capacity first; that wait is reported back so it can
         // be excluded from the run's measured duration.
         let scheduling_wait = match self.await_running(&name).await {
-            Ok((_digest, scheduling_wait)) => scheduling_wait,
+            Ok(running) => {
+                tracing::debug!(pod = %name, node = ?running.node, digest = ?running.digest, "run pod running");
+                if let Some(node) = running.node {
+                    self.record_node(&name, node);
+                }
+                running.scheduling_wait
+            }
             Err(err) => {
                 let _ = self.stop(&ContainerHandle { id: name.clone() }).await;
                 return Err(err);
@@ -969,6 +1003,7 @@ impl ContainerRuntime for KubernetesContainerRuntime {
         // Delete with a zero grace period: the run is over and the pod is
         // disposable, so there is nothing to drain.
         let params = DeleteParams::default().grace_period(0);
+        self.forget_node(&container.id);
         match self.pods().delete(&container.id, &params).await {
             Ok(_) => Ok(()),
             // A pod already gone is success: `stop` is also the failure-cleanup
@@ -978,6 +1013,19 @@ impl ContainerRuntime for KubernetesContainerRuntime {
                 "deleting run pod `{}`: {err}",
                 container.id
             ))),
+        }
+    }
+
+    async fn disruption(&self, container: &ContainerHandle) -> Option<String> {
+        let name = &container.id;
+        match self.pods().get_opt(name).await {
+            Ok(pod) => pod_disruption(name, pod.as_ref(), self.known_node(name).as_deref()),
+            // A failed read is no evidence of a disruption, and must not turn a
+            // session's own outcome into one.
+            Err(err) => {
+                tracing::warn!(pod = %name, error = %err, "reading run pod for disruption");
+                None
+            }
         }
     }
 
@@ -1606,6 +1654,78 @@ fn exit_code_from_status(status: Option<Status>) -> i32 {
         .and_then(|message| message.parse::<i32>().ok())
         // A failure with no parseable ExitCode is reported as a generic non-zero.
         .unwrap_or(1)
+}
+
+/// What [`await_running`](KubernetesContainerRuntime::await_running) learned about a
+/// run pod as it reached `Running`.
+struct RunningPod {
+    /// The image digest the kubelet resolved, when the image carries one.
+    digest: Option<String>,
+    /// The node the pod was scheduled onto.
+    node: Option<String>,
+    /// How long the pod waited for cluster capacity before it was scheduled.
+    scheduling_wait: Duration,
+}
+
+impl RunningPod {
+    fn of(pod: &Pod, scheduling_wait: Duration) -> Self {
+        Self {
+            digest: resolved_image_digest(pod),
+            node: pod_node(pod).map(str::to_string),
+            scheduling_wait,
+        }
+    }
+}
+
+/// The node a pod is bound to, once scheduled.
+fn pod_node(pod: &Pod) -> Option<&str> {
+    pod.spec.as_ref()?.node_name.as_deref()
+}
+
+/// Whether the platform has disrupted a run pod, read from the pod as it stands
+/// (`None` when it no longer exists), and if so a description of it naming the pod,
+/// its node and what took it down.
+///
+/// A pod is disrupted when it carries a `DisruptionTarget` condition (an eviction,
+/// a kubelet termination under node pressure or shutdown, a preemption, a taint
+/// manager deletion), is being deleted, or no longer exists. `known_node` is the
+/// node recorded when the pod started, which names the node of a pod that has
+/// vanished.
+fn pod_disruption(name: &str, pod: Option<&Pod>, known_node: Option<&str>) -> Option<String> {
+    let Some(pod) = pod else {
+        let on = known_node
+            .map(|n| format!(" on node `{n}`"))
+            .unwrap_or_default();
+        return Some(format!("run pod `{name}`{on} no longer exists"));
+    };
+    let on = pod_node(pod)
+        .or(known_node)
+        .map(|n| format!(" on node `{n}`"))
+        .unwrap_or_default();
+    let condition = pod
+        .status
+        .as_ref()
+        .and_then(|status| status.conditions.as_ref())
+        .and_then(|conditions| {
+            conditions
+                .iter()
+                .find(|c| c.type_ == "DisruptionTarget" && c.status == "True")
+        });
+    if let Some(condition) = condition {
+        let reason = condition.reason.as_deref().unwrap_or("Evicted");
+        let message = condition
+            .message
+            .as_deref()
+            .map(|m| format!(": {m}"))
+            .unwrap_or_default();
+        return Some(format!(
+            "run pod `{name}`{on} was disrupted ({reason}{message})"
+        ));
+    }
+    if pod.metadata.deletion_timestamp.is_some() {
+        return Some(format!("run pod `{name}`{on} is being deleted"));
+    }
+    None
 }
 
 /// The registry digest reference (`repo@sha256:…`) the kubelet resolved the run

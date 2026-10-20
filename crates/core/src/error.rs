@@ -211,6 +211,30 @@ pub enum Error {
         total: usize,
     },
 
+    /// The platform took the run container down while the harness session ran: a
+    /// node drained for maintenance, an eviction under node pressure, a preemption,
+    /// or a deletion from outside the run.
+    ///
+    /// The harness inside sees only that it was killed, so the outcome the session
+    /// returned (typically a non-zero exit, sometimes a clean one that never
+    /// happened) describes how it ended and not why. The runtime's own account of
+    /// the container replaces it, and the session's report is kept after it so
+    /// nothing is lost. Like [`HarnessSessionLost`](Self::HarnessSessionLost), the
+    /// run is our infrastructure's failure and says nothing about the model.
+    #[error(
+        "the run container was disrupted while the {slug} harness session ran: {disruption} \
+         (the session reported: {session})"
+    )]
+    ContainerDisrupted {
+        /// The harness slug whose session was cut off.
+        slug: String,
+        /// The runtime's description of the disruption, naming what took the
+        /// container down.
+        disruption: String,
+        /// What the session itself reported when it returned.
+        session: String,
+    },
+
     /// The harness session ran past the run's maximum runtime and was stopped.
     ///
     /// Every run is bounded by a maximum wall-clock duration so a session can

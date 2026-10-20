@@ -246,6 +246,36 @@ nothing and tears the sandbox down, and the run is absent from the run list.
 `timed_out` and `hung` unwind the run instead of asking it to stop, so both are
 recorded without a collected tree or folded metrics.
 
+## Container disruption
+
+The platform under a run can take its container away while the session runs: a
+node drained for maintenance, an eviction under node pressure, a preemption, or
+a deletion from outside the run. The harness inside sees only that it was
+killed, so its exit code says how the session ended and not why. A killed
+harness exits non-zero, and a harness can also report a clean exit that never
+happened.
+
+The testing harness therefore asks the runtime about the container as soon as
+the harness session returns, whatever the session's outcome. A container the
+platform disrupted, or one that no longer exists, means the session was cut
+short by the platform. The run is then recorded as
+[`infrastructure`](/components/core/run-records/#status) and its detail names
+the disruption, which replaces the outcome the session reported. The session's
+own outcome is kept in the detail after it.
+
+The rule applies to every harness and every orchestrator, since it reads the
+container rather than the harness. Each runtime reports what its platform
+records:
+
+- The Kubernetes runtime reads the run pod, as described under
+  [sandbox disruption](/components/driver/overview/#sandbox-disruption).
+- The Docker/Podman runtime reports a container that no longer exists, or one
+  whose engine records it as killed for running out of memory.
+
+An operator's kill is observed by the driver and never reaches this check. A
+disruption that begins after the session returned leaves the session's outcome
+standing, and any later step that loses the container fails on its own.
+
 ## Model authored tests
 
 The goal of a test case is to measure how well a model writes code in a large

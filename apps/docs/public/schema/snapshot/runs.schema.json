@@ -49,6 +49,52 @@
       ],
       "type": "object"
     },
+    "GgAgentOut": {
+      "description": "One agent profile of a gg run, as its [card](SubjectOut::gg_agents) lists it.\n\nPer profile rather than per running instance: how many instances of a profile a run\nstarts is decided at run time and differs between runs of one configuration, so the\nline carries only whether the profile ran at all.",
+      "properties": {
+        "cost": {
+          "$ref": "https://docs.testcabinet.ai/schema/core/run-record.schema.json#/$defs/CostMetrics",
+          "description": "The cost of the profile's requests, summed over its models and priced at each\nmodel's own price. A gg run's comparable cost prices the whole run at its primary\nmodel, so the agents' costs need not sum to it."
+        },
+        "modelIds": {
+          "description": "The models the profile's requests ran on, in first-seen order: normally one, more\nwhen its binding was re-pointed during the run. The model the configuration bound\nfor a profile that never ran.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "name": {
+          "description": "The profile's display name at launch.",
+          "type": "string"
+        },
+        "primary": {
+          "description": "Whether this is the configuration's primary (root) agent.",
+          "type": "boolean"
+        },
+        "profile": {
+          "description": "The profile's [slug](test_cabinet_core::gg::GgAgentConfig::slug), unique within the\nconfiguration.",
+          "type": "string"
+        },
+        "ran": {
+          "description": "Whether the run started the profile at all.",
+          "type": "boolean"
+        },
+        "tokens": {
+          "$ref": "https://docs.testcabinet.ai/schema/core/run-record.schema.json#/$defs/TokenMetrics",
+          "description": "The tokens the profile's requests spent, summed over its models."
+        }
+      },
+      "required": [
+        "profile",
+        "name",
+        "modelIds",
+        "primary",
+        "ran",
+        "tokens",
+        "cost"
+      ],
+      "type": "object"
+    },
     "LinksOut": {
       "description": "A run's outbound links as the snapshot carries them.",
       "properties": {
@@ -242,6 +288,13 @@
         "engineVersion": {
           "description": "The version of the engine runtime vendored into the run repository. `None`\nfor an engine that vendors no runtime (`none` has no package), and for runs\nrecorded before engine selection existed.",
           "type": ["string", "null"]
+        },
+        "ggAgents": {
+          "description": "A gg run's agents as the run log lists them beneath its row: one line per agent\nprofile the configuration declares, in the configuration's order (its primary,\nroot agent first), each with the tokens and cost the run spent on it.\n\nBuilt from the record's [session summary](test_cabinet_core::gg::GgSessionSummary)\nand the capability set it ran whenever the card is built, so every recorded gg run\ncarries it with nothing stored beyond its record. `None` for every\nthird-party-harness run and for a gg run whose session wrote no summary.",
+          "items": {
+            "$ref": "#/$defs/GgAgentOut"
+          },
+          "type": ["array", "null"]
         },
         "ggConfigId": {
           "description": "The **id** of the gg configuration this run was launched from — the\n[`preset_id`](test_cabinet_core::gg::GgCapabilitySet::preset_id) recorded on the\nrun's capability set. Lifted onto the card beside the\n[name](Self::gg_preset) because it is what identifies the run's [coverage\ncell](https://docs.testcabinet.ai/components/backend/coverage/), and so what a\nlisting narrowed to one configuration's runs matches on: a name is display text\nthat is rewritten freely and is unique to nothing. `None` for every\nthird-party-harness run and for a gg run assembled by hand.",

@@ -438,8 +438,125 @@ a.row:hover .selectCell :is(.spinner, .checklist),
 }
 
 .model {
+  display: flex;
+  align-items: center;
+  gap: t.$space-xs;
+  min-width: 0;
+}
+
+// The name truncates with an ellipsis; a disclosure toggle beside it never shrinks.
+.modelName {
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+// --- gg agent lines ----------------------------------------------------------
+//
+// A gg run's row carries a toggle beside its configuration name; opening it lists
+// the run's agents beneath the row, one line each on the same column grid, so an
+// agent's model, tokens and cost sit under the run's own totals.
+
+// The toggle: a bare arrow in the accent color, flipped while open.
+.disclosure {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 1rem;
+  border-radius: t.$radius-sm;
+  color: t.$color-accent;
+  cursor: pointer;
+
+  &:hover {
+    @include h.halo-glow;
+  }
+
+  &:focus-visible {
+    outline: t.$border-hairline solid t.$color-accent;
+    outline-offset: 2px;
+  }
+}
+
+.disclosureArrow {
+  display: inline-block;
+  font-size: 0.85rem;
+  line-height: 1;
+  transition: transform 0.12s ease;
+
+  .disclosure[data-expanded] & {
+    transform: rotate(180deg);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    transition: none;
+  }
+}
+
+// An open run and its agent lines read as one block: a faint wash behind both, and
+// an accent rule down the left edge of the lines.
+a.row[data-expanded] {
+  background: color-mix(in srgb, t.$color-accent 10%, transparent);
+}
+
+.agents {
+  background: color-mix(in srgb, t.$color-accent 5%, transparent);
+  box-shadow: inset 2px 0 0 t.$color-accent;
+}
+
+.agentRow {
+  padding-block: 0.3rem;
+  border-top: t.$border-hairline dashed
+    color-mix(in srgb, t.$color-accent 16%, transparent);
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+}
+
+// A profile the configuration declares but the run never made an instance of.
+.agentRow[data-idle] {
+  opacity: 0.55;
+}
+
+// The agent's name, set in from the run's own title so the lines read as the
+// run's parts.
+.agentLabel {
+  display: flex;
+  align-items: center;
+  gap: t.$space-sm;
+  min-width: 0;
+  padding-left: 0.9rem;
+}
+
+.agentName {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: t.$color-text;
+}
+
+.agentModelInline {
+  color: t.$color-text-muted;
+}
+
+.agentNotRun {
+  flex: none;
+  font-size: 0.7rem;
+  color: t.$color-text-muted;
+}
+
+.primaryTag {
+  flex: none;
+  padding: 0 0.3rem;
+  border: t.$border-hairline solid t.$color-accent;
+  border-radius: t.$radius-sm;
+  font-size: 0.6rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: t.$color-accent;
+}
+
+.agentModel {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: t.$color-text;
 }
 
 // The optional test-case-version cell: a muted, tabular-figure tag that
@@ -615,6 +732,27 @@ a.row:hover .selectCell :is(.spinner, .checklist),
   .num {
     justify-content: flex-start;
     text-align: left;
+  }
+
+  // An agent line is a compact card nested under its run's card: indented past
+  // the accent rule, its empty cells collapsed, and its label lines tighter.
+  .agentRow {
+    gap: 0.15rem;
+    padding: t.$space-sm t.$space-md t.$space-sm calc(#{t.$space-md} + 0.75rem);
+
+    > span:empty {
+      display: none;
+    }
+  }
+
+  // A card has the room to wrap a long name rather than clip it.
+  .agentLabel {
+    flex-wrap: wrap;
+    padding-left: 0;
+  }
+
+  .agentName {
+    white-space: normal;
   }
 
   // Active rows: a stacked card has no caret gutter to hold the spinner, so pin

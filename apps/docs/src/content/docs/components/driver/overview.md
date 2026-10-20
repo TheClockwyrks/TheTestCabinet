@@ -213,6 +213,30 @@ Two mechanisms outside the driver close that gap:
   sized to outlast any real run: it is a leak bound rather than a run timeout,
   and nothing else caps a run's duration.
 
+### Sandbox disruption
+
+When a harness session returns, the driver reads the sandbox pod to answer the
+core's [container disruption](/components/core/execution/#container-disruption)
+check. The pod was disrupted when any of these holds:
+
+- It carries a `DisruptionTarget` condition. Kubernetes sets it when something
+  outside the workload takes the pod down, and its reason says what:
+  `EvictionByEvictionAPI` for a node drain or the cluster autoscaler,
+  `TerminationByKubelet` for node pressure, `PreemptionByScheduler`, or
+  `DeletionByTaintManager`.
+- It is being deleted.
+- It no longer exists.
+
+The detail names the pod, the node it was scheduled on, and the condition's
+reason and message when the pod still carries them. A pod that no longer exists
+is reported by the node the driver recorded when it started the pod. The reason
+reads the same way the [dispatcher](/components/dispatcher/overview/) reports a
+disrupted driver pod, so a run cut short by node maintenance says so on its own
+record.
+
+A pod read that fails for any other reason reports no disruption. The session's
+outcome then stands, since a failed read is no evidence against it.
+
 ## Artifacts
 
 Under the Kubernetes runtime the driver collects the produced tree out of the

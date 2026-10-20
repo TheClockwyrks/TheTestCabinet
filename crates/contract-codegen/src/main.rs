@@ -621,7 +621,7 @@ fn main() -> Result<()> {
             reexports: &[],
             file: "snapshot.ts",
             decls: ts_decls![&cfg;
-                snap::SnapshotIndex, snap::SubjectOut, snap::LinksOut, snap::RunSummary,
+                snap::SnapshotIndex, snap::SubjectOut, snap::GgAgentOut, snap::LinksOut, snap::RunSummary,
                 snap::RunScoreOut, snap::PerformanceSummaryOut, snap::CodeSummaryOut,
                 snap::RunsIndex, snap::RunProofOut,
                 snap::RunAssetOut, snap::RunValidationMediaOut, snap::RunShowcaseOut, snap::PerRun,

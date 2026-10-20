@@ -847,3 +847,99 @@ fn sandbox_pod_managed_by_matches_what_the_dispatcher_reaps_on() {
         Some("tcab-driver"),
     );
 }
+
+// ── pod_disruption ───────────────────────────────────────────────────────────
+
+fn pod_on(node: Option<&str>, conditions: Vec<PodCondition>) -> Pod {
+    Pod {
+        spec: Some(PodSpec {
+            node_name: node.map(str::to_string),
+            ..PodSpec::default()
+        }),
+        status: Some(PodStatus {
+            phase: Some("Running".to_string()),
+            conditions: Some(conditions),
+            ..PodStatus::default()
+        }),
+        ..Pod::default()
+    }
+}
+
+fn condition(
+    type_: &str,
+    status: &str,
+    reason: Option<&str>,
+    message: Option<&str>,
+) -> PodCondition {
+    PodCondition {
+        type_: type_.to_string(),
+        status: status.to_string(),
+        reason: reason.map(str::to_string),
+        message: message.map(str::to_string),
+        ..PodCondition::default()
+    }
+}
+
+#[test]
+fn a_running_pod_is_not_disrupted() {
+    let pod = pod_on(Some("aks-1"), vec![condition("Ready", "True", None, None)]);
+    assert_eq!(pod_disruption("run-x", Some(&pod), Some("aks-1")), None);
+}
+
+#[test]
+fn a_disruption_target_names_the_pod_node_reason_and_message() {
+    let pod = pod_on(
+        Some("aks-userpool3-0"),
+        vec![condition(
+            "DisruptionTarget",
+            "True",
+            Some("EvictionByEvictionAPI"),
+            Some("Eviction API: evicting"),
+        )],
+    );
+    assert_eq!(
+        pod_disruption("run-x", Some(&pod), None).as_deref(),
+        Some(
+            "run pod `run-x` on node `aks-userpool3-0` was disrupted \
+             (EvictionByEvictionAPI: Eviction API: evicting)"
+        )
+    );
+}
+
+#[test]
+fn a_disruption_target_that_is_not_true_is_ignored() {
+    let pod = pod_on(
+        Some("aks-1"),
+        vec![condition(
+            "DisruptionTarget",
+            "False",
+            Some("PreemptionByScheduler"),
+            None,
+        )],
+    );
+    assert_eq!(pod_disruption("run-x", Some(&pod), None), None);
+}
+
+#[test]
+fn a_pod_being_deleted_is_disrupted() {
+    let mut pod = pod_on(Some("aks-1"), Vec::new());
+    pod.metadata.deletion_timestamp = Some(k8s_openapi::apimachinery::pkg::apis::meta::v1::Time(
+        Default::default(),
+    ));
+    assert_eq!(
+        pod_disruption("run-x", Some(&pod), None).as_deref(),
+        Some("run pod `run-x` on node `aks-1` is being deleted")
+    );
+}
+
+#[test]
+fn a_vanished_pod_is_reported_by_its_recorded_node() {
+    assert_eq!(
+        pod_disruption("run-x", None, Some("aks-1")).as_deref(),
+        Some("run pod `run-x` on node `aks-1` no longer exists")
+    );
+    assert_eq!(
+        pod_disruption("run-x", None, None).as_deref(),
+        Some("run pod `run-x` no longer exists")
+    );
+}
