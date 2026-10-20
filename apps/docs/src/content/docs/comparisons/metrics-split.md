@@ -7,8 +7,8 @@ model under two harnesses stays two series. Merging them would average a
 multiple-fold cost gap into one meaningless number.
 
 The graphs live in `@clockwyrks/ui` in `ui-common`, so the console and the
-public gallery group runs identically. The paths below are relative to that
-repository.
+public gallery group runs identically. Every path on this page is relative to
+that repository.
 
 ## Aggregators
 
@@ -29,9 +29,9 @@ and then drawn in the order the reader picked — see [Bar order](#bar-order).
 
 ## Key rules
 
-Model ids stay canonicalized. `canonicalModelId` (`packages/ui/src/modelId.ts`,
-mirrored in Rust by `model_id.rs` in `microservice-backend`) strips an `openrouter/`
-prefix and, for OpenRouter-backed harnesses, a trailing `:tag`. Splitting on
+Model ids stay canonicalized. `canonicalModelId` (`packages/ui/src/modelId.ts` in
+`ui-common`, mirrored in Rust by `model_id.rs` in `microservice-backend`) strips an
+`openrouter/` prefix and, for OpenRouter-backed harnesses, a trailing `:tag`. Splitting on
 harness is orthogonal: `openrouter/anthropic/claude-opus-4.8` and
 `anthropic/claude-opus-4.8` are the same model and canonicalize together.
 
@@ -64,9 +64,10 @@ result never depends on the input order. A bar whose metric is unknown sorts
 last rather than being read as a zero (which under a lowest-first metric would
 rank it best).
 
-The comparator is `orderBars()` in `packages/ui/src/primitives/chartSort.ts`,
-and each chart states its resulting order as an explicit `xDomain` — Plot sorts
-a domain it infers itself, which would otherwise silently override the choice.
+The comparator is `orderBars()` in `ui-common`'s
+`packages/ui/src/primitives/chartSort.ts`, and each chart states its resulting
+order as an explicit `xDomain` — Plot sorts a domain it infers itself, which would
+otherwise silently override the choice.
 
 None of this makes a chart a ranking. The board that _is_ a ranking is the
 [Leaderboard](/components/web/overview/) tab; the order control only decides
