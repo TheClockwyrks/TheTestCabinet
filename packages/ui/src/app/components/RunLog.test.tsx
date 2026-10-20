@@ -511,15 +511,15 @@ describe("RunLog gg agent lines", () => {
 
   function agent(
     profile: string,
-    opts: { primary?: boolean; instances?: number; tokens?: number } = {},
+    opts: { primary?: boolean; ran?: boolean; tokens?: number } = {},
   ) {
-    const { primary = false, instances = 1, tokens = 1000 } = opts;
+    const { primary = false, ran = true, tokens = 1000 } = opts;
     return {
       profile,
       name: profile.charAt(0).toUpperCase() + profile.slice(1),
-      modelId: `model-${profile}`,
+      modelIds: [`model-${profile}`],
       primary,
-      instances,
+      ran,
       tokens: {
         uncachedInput: tokens,
         cachedInput: null,
@@ -530,16 +530,16 @@ describe("RunLog gg agent lines", () => {
     };
   }
 
-  // A gg run carrying per-agent figures, declared out of order so the primary
-  // agent has to be moved to the front.
+  // A gg run whose card lists `agents`.
   function ggRun(id: string, agents: ReturnType<typeof agent>[] | null) {
+    const run = summary(id, "alpha", {
+      harness: "gg",
+      model: "model-root",
+      ggPreset: `config-${id}`,
+    });
     return {
-      ...summary(id, "alpha", {
-        harness: "gg",
-        model: "model-root",
-        ggPreset: `config-${id}`,
-      }),
-      ggAgents: agents,
+      ...run,
+      subject: { ...run.subject, ggAgents: agents },
     } as unknown as RunSummary;
   }
 
@@ -569,9 +569,9 @@ describe("RunLog gg agent lines", () => {
   }
 
   const TEAM = [
-    agent("reviewer", { instances: 3, tokens: 2000 }),
     agent("root", { primary: true }),
-    agent("tester", { instances: 0, tokens: 0 }),
+    agent("reviewer", { tokens: 2000 }),
+    agent("tester", { ran: false, tokens: 0 }),
   ];
 
   function agentNames(): string[] {
@@ -592,7 +592,7 @@ describe("RunLog gg agent lines", () => {
 
     expect(toggle).toHaveAttribute("aria-expanded", "true");
     expect(screen.getByRole("group", { name: "Agents of config-r-team" }));
-    // The primary agent leads; the rest keep the configuration's order.
+    // In the card's order: the configuration's, which leads with its primary.
     expect(agentNames()).toEqual(["Root", "Reviewer", "Tester"]);
   });
 
@@ -634,8 +634,6 @@ describe("RunLog gg agent lines", () => {
       Tokens: "1K",
       Cost: "$0.50",
     });
-    // How many instances a run spawned varies run to run of one configuration,
-    // so the line never shows it.
     expect(cells(lines[1]).Agent).toBe("Reviewer");
     expect(cells(lines[2])).toMatchObject({
       Agent: "Testernot run",
@@ -643,6 +641,18 @@ describe("RunLog gg agent lines", () => {
       Cost: "—",
     });
     expect(lines[2]).toHaveAttribute("data-idle");
+  });
+
+  it("names every model an agent ran on", () => {
+    renderRuns([
+      ggRun("r-repointed", [
+        { ...agent("root", { primary: true }), modelIds: ["opus", "sonnet"] },
+      ]),
+    ]);
+    fireEvent.click(screen.getByRole("button", { name: "Show 1 agent" }));
+    expect(
+      screen.getByRole("group").querySelector('[data-label="Model"]'),
+    ).toHaveTextContent("opus / sonnet");
   });
 
   it("offers no toggle on a non-gg run or a gg run with no agent figures", () => {

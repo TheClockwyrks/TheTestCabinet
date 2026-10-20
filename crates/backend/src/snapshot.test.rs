@@ -361,6 +361,147 @@ fn run_summary_lifts_the_gg_configuration_id_beside_the_name() {
     );
 }
 
+/// An agent profile named `slug`, bound to `model`.
+fn gg_agent(slug: &str, model: &str) -> test_cabinet_core::gg::GgAgentConfig {
+    test_cabinet_core::gg::GgAgentConfig {
+        slug: slug.to_string(),
+        name: format!("{slug} agent"),
+        model_id: model.to_string(),
+        ..test_cabinet_core::gg::GgAgentConfig::root()
+    }
+}
+
+/// A slot cost of `tokens` uncached input tokens costing `cost`, on `profile`'s `model`.
+fn slot_cost(
+    profile: &str,
+    model: &str,
+    tokens: u64,
+    cost: f64,
+) -> test_cabinet_core::gg::GgSlotCost {
+    test_cabinet_core::gg::GgSlotCost {
+        profile_id: profile.to_string(),
+        model_id: model.to_string(),
+        tokens: test_cabinet_core::metrics::TokenCounts {
+            uncached_input: Some(tokens),
+            ..Default::default()
+        },
+        cost: Some(test_cabinet_core::metrics::Cost {
+            comparable: Some(cost),
+            actual: Some(cost),
+        }),
+        work_cost: None,
+    }
+}
+
+#[test]
+fn gg_agent_lines_list_every_declared_agent_in_order_with_its_spend() {
+    use test_cabinet_core::gg::GgCapabilitySet;
+
+    let set = GgCapabilitySet {
+        agents: vec![
+            gg_agent("root", "opus"),
+            gg_agent("reviewer", "gpt"),
+            gg_agent("tester", "haiku"),
+        ],
+        ..GgCapabilitySet::default()
+    };
+    // The costs arrive in first-seen order, which is not the configuration's.
+    let lines = gg_agent_lines(
+        &set,
+        &[
+            slot_cost("reviewer", "gpt", 200, 0.25),
+            slot_cost("root", "opus", 100, 1.5),
+            slot_cost("reviewer", "gpt", 50, 0.25),
+        ],
+    );
+
+    let summary: Vec<_> = lines
+        .iter()
+        .map(|line| {
+            (
+                line.profile.as_str(),
+                line.primary,
+                line.ran,
+                line.tokens.uncached_input,
+                line.cost.comparable,
+            )
+        })
+        .collect();
+    assert_eq!(
+        summary,
+        vec![
+            ("root", true, true, Some(100), Some(1.5)),
+            ("reviewer", false, true, Some(250), Some(0.5)),
+            // Declared but never started: listed, marked, and costing nothing.
+            ("tester", false, false, None, None),
+        ]
+    );
+    assert_eq!(lines[0].name, "root agent");
+    // A profile that never ran is shown on the model it was bound to.
+    assert_eq!(lines[2].model_ids, vec!["haiku".to_string()]);
+}
+
+#[test]
+fn gg_agent_lines_keep_every_model_a_re_pointed_profile_ran_on() {
+    use test_cabinet_core::gg::GgCapabilitySet;
+
+    let set = GgCapabilitySet {
+        agents: vec![gg_agent("root", "opus")],
+        ..GgCapabilitySet::default()
+    };
+    let lines = gg_agent_lines(
+        &set,
+        &[
+            slot_cost("root", "opus", 100, 1.0),
+            slot_cost("root", "sonnet", 40, 0.25),
+        ],
+    );
+    assert_eq!(lines.len(), 1);
+    assert_eq!(lines[0].model_ids, vec!["opus", "sonnet"]);
+    assert_eq!(lines[0].tokens.uncached_input, Some(140));
+    assert_eq!(lines[0].cost.actual, Some(1.25));
+}
+
+#[test]
+fn gg_agent_lines_list_spend_on_a_profile_the_configuration_does_not_declare() {
+    use test_cabinet_core::gg::GgCapabilitySet;
+
+    let set = GgCapabilitySet {
+        agents: vec![gg_agent("root", "opus")],
+        ..GgCapabilitySet::default()
+    };
+    let lines = gg_agent_lines(
+        &set,
+        &[
+            slot_cost("root", "opus", 100, 1.0),
+            slot_cost("stray", "haiku", 10, 0.01),
+        ],
+    );
+    let stray = lines.last().expect("a line for the undeclared profile");
+    assert_eq!(stray.profile, "stray");
+    assert_eq!(stray.name, "stray");
+    assert!(stray.ran && !stray.primary);
+}
+
+#[test]
+fn run_summary_lists_gg_agents_only_for_a_gg_run_with_a_session_summary() {
+    use test_cabinet_core::gg::GgCapabilitySet;
+
+    // A third-party-harness run has no agents to list.
+    let plain = stored_run("r1", "2026-06-17T21:40:00Z");
+    assert_eq!(RunSummary::from_stored(&plain).subject.gg_agents, None);
+
+    // A gg run whose session wrote no summary, such as one stopped before the session
+    // ended, has nothing to build the lines from.
+    let mut unsummarized = stored_run("r2", "2026-06-17T21:41:00Z");
+    unsummarized.record.subject.harness_slug = HarnessSlug::Gg;
+    unsummarized.record.subject.gg_capability_set = Some(GgCapabilitySet::default());
+    assert_eq!(
+        RunSummary::from_stored(&unsummarized).subject.gg_agents,
+        None
+    );
+}
+
 #[test]
 fn run_summary_lifts_performance_fuel_for_the_leaderboard() {
     use test_cabinet_core::validation::PerformanceResult;

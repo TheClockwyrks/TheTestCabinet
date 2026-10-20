@@ -1,6 +1,6 @@
 import { useMemo, type ReactNode } from "react";
 import type { TestType } from "@clockwyrks/run-record";
-import type { RunSummary } from "@clockwyrks/run-record/snapshot";
+import type { GgAgentOut, RunSummary } from "@clockwyrks/run-record/snapshot";
 import {
   AestheticBadge,
   GradeBadge,
@@ -18,7 +18,6 @@ import {
   RATINGS,
   worstRating,
 } from "../data/ratings";
-import { ggAgentsOf, type GgAgentFigures } from "../data/ggAgentFigures";
 import { isGgRun } from "../data/runLinks";
 import { describeRunState } from "../data/runState";
 import { useFindReview } from "../data/writeups";
@@ -103,8 +102,9 @@ export interface EnrichedRun {
 }
 
 /** One agent of a gg run, resolved for its line beneath the run's row. */
-export interface EnrichedAgent extends GgAgentFigures {
-  /** The model's catalog display name, or the canonical model id. */
+export interface EnrichedAgent extends GgAgentOut {
+  /** The display names of the models the agent ran on, joined: the catalog's
+   * name for each, or its canonical model id. */
   modelName: string;
 }
 
@@ -371,9 +371,7 @@ function agentLabel(
         )}
       </span>
       {agent.primary && <span className={styles.primaryTag}>primary</span>}
-      {agent.instances === 0 && (
-        <span className={styles.agentNotRun}>not run</span>
-      )}
+      {!agent.ran && <span className={styles.agentNotRun}>not run</span>}
     </span>
   );
 }
@@ -765,9 +763,9 @@ export const RUN_COLUMNS: readonly RunColumn[] = [
     renderActive: () => activeDash("Tokens", true),
     renderAgent: (agent) => (
       <span className={styles.num} data-label="Tokens">
-        {agent.instances === 0
-          ? "—"
-          : formatTokenTotal({ tokens: agent.tokens } as RunSummary["metrics"])}
+        {agent.ran
+          ? formatTokenTotal({ tokens: agent.tokens } as RunSummary["metrics"])
+          : "—"}
       </span>
     ),
   },
@@ -787,7 +785,10 @@ export const RUN_COLUMNS: readonly RunColumn[] = [
     renderActive: () => activeDash("Cost", true),
     renderAgent: (agent) => (
       <span className={styles.num} data-label="Cost">
-        {agent.instances === 0 ? "—" : formatUsd(agent.cost.comparable)}
+        {/* The agent's own priced figure; gg prices some requests only as billed. */}
+        {agent.ran
+          ? formatUsd(agent.cost.comparable ?? agent.cost.actual)
+          : "—"}
       </span>
     ),
   },
@@ -983,14 +984,22 @@ export function useEnrichedRuns(
           configName: isGgRun(summary.subject.harnessSlug)
             ? (summary.subject.ggPreset ?? null)
             : null,
-          agents: isGgRun(summary.subject.harnessSlug)
-            ? (ggAgentsOf(summary)?.map((agent) => ({
-                ...agent,
-                modelName:
-                  findModel(agent.modelId, summary.subject.harnessSlug)?.name ??
-                  canonicalModelId(agent.modelId),
-              })) ?? null)
-            : null,
+          // A gg run whose session wrote no summary carries no agents and so has
+          // nothing to disclose; neither does one that lists none.
+          agents:
+            isGgRun(summary.subject.harnessSlug) &&
+            summary.subject.ggAgents?.length
+              ? summary.subject.ggAgents.map((agent) => ({
+                  ...agent,
+                  modelName: agent.modelIds
+                    .map(
+                      (modelId) =>
+                        findModel(modelId, summary.subject.harnessSlug)?.name ??
+                        canonicalModelId(modelId),
+                    )
+                    .join(" / "),
+                }))
+              : null,
           rating: summary.validatorRated
             ? summary.rating
             : (worstRating(review?.ratings.map((r) => r.rating) ?? []) ??

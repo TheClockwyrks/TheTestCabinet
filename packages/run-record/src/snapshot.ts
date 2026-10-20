@@ -14,12 +14,14 @@ import type { GgRunDoc } from "./gg-query";
 import type {
   AssetKind,
   AssetSheet,
+  CostMetrics,
   HarnessSlug,
   MediaKind,
   RunMetrics,
   RunRecord,
   RunState,
   TestType,
+  TokenMetrics,
 } from "./index";
 import type {
   AestheticRating,
@@ -135,6 +137,60 @@ export type SubjectOut = {
    * third-party-harness run and for a gg run assembled by hand.
    */
   ggConfigId?: string | null;
+  /**
+   * A gg run's agents as the run log lists them beneath its row: one line per agent
+   * profile the configuration declares, in the configuration's order (its primary,
+   * root agent first), each with the tokens and cost the run spent on it.
+   *
+   * Built from the record's [session summary](test_cabinet_core::gg::GgSessionSummary)
+   * and the capability set it ran whenever the card is built, so every recorded gg run
+   * carries it with nothing stored beyond its record. `None` for every
+   * third-party-harness run and for a gg run whose session wrote no summary.
+   */
+  ggAgents?: Array<GgAgentOut> | null;
+};
+
+/**
+ * One agent profile of a gg run, as its [card](SubjectOut::gg_agents) lists it.
+ *
+ * Per profile rather than per running instance: how many instances of a profile a run
+ * starts is decided at run time and differs between runs of one configuration, so the
+ * line carries only whether the profile ran at all.
+ */
+export type GgAgentOut = {
+  /**
+   * The profile's [slug](test_cabinet_core::gg::GgAgentConfig::slug), unique within the
+   * configuration.
+   */
+  profile: string;
+  /**
+   * The profile's display name at launch.
+   */
+  name: string;
+  /**
+   * The models the profile's requests ran on, in first-seen order: normally one, more
+   * when its binding was re-pointed during the run. The model the configuration bound
+   * for a profile that never ran.
+   */
+  modelIds: Array<string>;
+  /**
+   * Whether this is the configuration's primary (root) agent.
+   */
+  primary: boolean;
+  /**
+   * Whether the run started the profile at all.
+   */
+  ran: boolean;
+  /**
+   * The tokens the profile's requests spent, summed over its models.
+   */
+  tokens: TokenMetrics;
+  /**
+   * The cost of the profile's requests, summed over its models and priced at each
+   * model's own price. A gg run's comparable cost prices the whole run at its primary
+   * model, so the agents' costs need not sum to it.
+   */
+  cost: CostMetrics;
 };
 
 /**
