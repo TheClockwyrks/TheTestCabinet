@@ -119,6 +119,26 @@ Every column has a minimum width. When the shown columns need more than the
 log's width, the log scrolls horizontally instead of narrowing a column below
 its minimum.
 
+### A gg run's agents
+
+A gg run's row names its configuration in the model column, and an arrow beside
+the name lists the configuration's agents beneath the row. Each agent's line
+gives its name, its model, and the tokens and cost the run spent on it, in the
+same columns as the run's totals. The primary agent comes first and is tagged as
+such. An agent the run never started is marked as not run. How many instances
+of an agent a run started varies from run to run of one configuration, so the
+line omits it.
+
+The lines come from the run's summary card. The backend builds them whenever it
+builds the card, from the run record's session summary and the capability set
+it ran, so every recorded gg run carries them with nothing stored beyond its
+record. A run whose session wrote no summary, such as one
+stopped before the session ended, has no lines and no arrow.
+
+An agent's cost is priced at that agent's own model, while a gg run's
+comparable cost prices all of the run's tokens at its primary model's list
+price. The agents' costs therefore need not sum to the run's.
+
 ### Deleting a run
 
 An unpublished run is deletable and a published one is not, which is the rule the

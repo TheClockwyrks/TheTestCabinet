@@ -3755,6 +3755,112 @@ pub struct SubjectOut {
     /// third-party-harness run and for a gg run assembled by hand.
     #[cfg_attr(feature = "contract", ts(optional = nullable))]
     pub gg_config_id: Option<String>,
+    /// A gg run's agents as the run log lists them beneath its row: one line per agent
+    /// profile the configuration declares, in the configuration's order (its primary,
+    /// root agent first), each with the tokens and cost the run spent on it.
+    ///
+    /// Built from the record's [session summary](test_cabinet_core::gg::GgSessionSummary)
+    /// and the capability set it ran whenever the card is built, so every recorded gg run
+    /// carries it with nothing stored beyond its record. `None` for every
+    /// third-party-harness run and for a gg run whose session wrote no summary.
+    #[cfg_attr(feature = "contract", ts(optional = nullable))]
+    pub gg_agents: Option<Vec<GgAgentOut>>,
+}
+
+/// One agent profile of a gg run, as its [card](SubjectOut::gg_agents) lists it.
+///
+/// Per profile rather than per running instance: how many instances of a profile a run
+/// starts is decided at run time and differs between runs of one configuration, so the
+/// line carries only whether the profile ran at all.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct GgAgentOut {
+    /// The profile's [slug](test_cabinet_core::gg::GgAgentConfig::slug), unique within the
+    /// configuration.
+    pub profile: String,
+    /// The profile's display name at launch.
+    pub name: String,
+    /// The models the profile's requests ran on, in first-seen order: normally one, more
+    /// when its binding was re-pointed during the run. The model the configuration bound
+    /// for a profile that never ran.
+    pub model_ids: Vec<String>,
+    /// Whether this is the configuration's primary (root) agent.
+    pub primary: bool,
+    /// Whether the run started the profile at all.
+    pub ran: bool,
+    /// The tokens the profile's requests spent, summed over its models.
+    pub tokens: test_cabinet_core::metrics::TokenCounts,
+    /// The cost of the profile's requests, summed over its models and priced at each
+    /// model's own price. A gg run's comparable cost prices the whole run at its primary
+    /// model, so the agents' costs need not sum to it.
+    pub cost: test_cabinet_core::metrics::Cost,
+}
+
+/// The [agent lines](SubjectOut::gg_agents) of a gg run that ran `set` and recorded
+/// `slot_costs`: one per profile `set` declares, in its order, then one per profile the
+/// costs name that `set` does not, so no spend goes unlisted.
+pub(crate) fn gg_agent_lines(
+    set: &test_cabinet_core::gg::GgCapabilitySet,
+    slot_costs: &[test_cabinet_core::gg::GgSlotCost],
+) -> Vec<GgAgentOut> {
+    use test_cabinet_core::metrics::{Cost, TokenCounts};
+
+    fn add(a: Option<f64>, b: Option<f64>) -> Option<f64> {
+        match (a, b) {
+            (None, None) => None,
+            (a, b) => Some(a.unwrap_or(0.0) + b.unwrap_or(0.0)),
+        }
+    }
+
+    let root = set.agents.first().map(|agent| agent.slug.as_str());
+    let line = |profile: &str, name: &str, declared_model: Option<&str>| {
+        let costs: Vec<_> = slot_costs
+            .iter()
+            .filter(|slot| slot.profile_id == profile)
+            .collect();
+        let mut model_ids: Vec<String> = Vec::new();
+        let mut tokens = TokenCounts::default();
+        let mut cost = Cost::default();
+        for slot in &costs {
+            if !model_ids.contains(&slot.model_id) {
+                model_ids.push(slot.model_id.clone());
+            }
+            tokens = tokens.plus(slot.tokens);
+            if let Some(slot_cost) = slot.cost {
+                cost = Cost {
+                    comparable: add(cost.comparable, slot_cost.comparable),
+                    actual: add(cost.actual, slot_cost.actual),
+                };
+            }
+        }
+        if model_ids.is_empty()
+            && let Some(model) = declared_model
+        {
+            model_ids.push(model.to_string());
+        }
+        GgAgentOut {
+            profile: profile.to_string(),
+            name: name.to_string(),
+            model_ids,
+            primary: Some(profile) == root,
+            ran: !costs.is_empty(),
+            tokens,
+            cost,
+        }
+    };
+
+    let mut lines: Vec<GgAgentOut> = set
+        .agents
+        .iter()
+        .map(|agent| line(&agent.slug, &agent.name, Some(&agent.model_id)))
+        .collect();
+    for slot in slot_costs {
+        if !lines.iter().any(|known| known.profile == slot.profile_id) {
+            lines.push(line(&slot.profile_id, &slot.profile_id, None));
+        }
+    }
+    lines
 }
 
 impl SubjectOut {
@@ -3779,6 +3885,18 @@ impl SubjectOut {
                 .gg_capability_set
                 .as_ref()
                 .and_then(|set| set.preset_id.clone()),
+            // Gated on the harness like the configuration's name, so a set that somehow
+            // rode on another harness's record never lists agents for it.
+            gg_agents: match (
+                record.subject.harness_slug,
+                &record.subject.gg_capability_set,
+                &record.subject.gg_summary,
+            ) {
+                (test_cabinet_core::run_record::HarnessSlug::Gg, Some(set), Some(summary)) => {
+                    Some(gg_agent_lines(set, &summary.slot_costs))
+                }
+                _ => None,
+            },
         }
     }
 }
