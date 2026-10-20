@@ -127,18 +127,18 @@ opt-level = 3
 # path into `contracts/`: inside the superrepo the patch table of
 # `.cargo/config.toml` sends this source to the sibling checkout, which may hold
 # crates and changes the tag does not yet carry.
-test-cabinet-contracts = { git = "https://github.com/TheClockwyrks/contracts", tag = "v0.2.1" }
-test-cabinet-suites = { git = "https://github.com/TheClockwyrks/contracts", tag = "v0.2.1" }
-test-cabinet-telemetry = { git = "https://github.com/TheClockwyrks/contracts", tag = "v0.2.1" }
-test-cabinet-redact = { git = "https://github.com/TheClockwyrks/contracts", tag = "v0.2.1" }
-test-cabinet-backend-client = { git = "https://github.com/TheClockwyrks/contracts", tag = "v0.2.1" }
+test-cabinet-contracts = { git = "https://github.com/TheClockwyrks/contracts", tag = "v0.2.3" }
+test-cabinet-suites = { git = "https://github.com/TheClockwyrks/contracts", tag = "v0.2.3" }
+test-cabinet-telemetry = { git = "https://github.com/TheClockwyrks/contracts", tag = "v0.2.3" }
+test-cabinet-redact = { git = "https://github.com/TheClockwyrks/contracts", tag = "v0.2.3" }
+test-cabinet-backend-client = { git = "https://github.com/TheClockwyrks/contracts", tag = "v0.2.3" }
 # The crates of the engines repository, named the same way at its tag. The engine
 # catalog, the match runner, and the Foray and Lattice rules the validators and the
 # arena record a match or a case's state in.
-test-cabinet-engines = { git = "https://github.com/TheClockwyrks/engines", tag = "v1.1.1" }
-test-cabinet-match-play = { git = "https://github.com/TheClockwyrks/engines", tag = "v1.1.1" }
-foray-core = { git = "https://github.com/TheClockwyrks/engines", tag = "v1.1.1" }
-lattice-core = { git = "https://github.com/TheClockwyrks/engines", tag = "v1.1.1", default-features = false }
+test-cabinet-engines = { git = "https://github.com/TheClockwyrks/engines", tag = "v1.1.2" }
+test-cabinet-match-play = { git = "https://github.com/TheClockwyrks/engines", tag = "v1.1.2" }
+foray-core = { git = "https://github.com/TheClockwyrks/engines", tag = "v1.1.2" }
+lattice-core = { git = "https://github.com/TheClockwyrks/engines", tag = "v1.1.2", default-features = false }
 # The drawing crate of the tool-sprite repository, named the same way. `TAGS`
 # records no tag for tool-sprite, so it is named at its `master` branch. Only the
 # library (not the `cli` feature's binaries): the driver regenerates the scored
@@ -148,9 +148,9 @@ test-cabinet-draw = { git = "https://github.com/TheClockwyrks/tool-sprite", bran
 # Only the libraries: the driver reads the rig, color and meshed-part types
 # through them, and a member whose binaries record, preview or render enables
 # their `cli` feature itself.
-test-cabinet-model-core = { git = "https://github.com/TheClockwyrks/tool-model-core", tag = "v0.1.0", default-features = false }
-test-cabinet-voxel-mesh = { git = "https://github.com/TheClockwyrks/tool-model-core", tag = "v0.1.0", default-features = false }
-test-cabinet-model-skin = { git = "https://github.com/TheClockwyrks/tool-model-core", tag = "v0.1.0", default-features = false }
+test-cabinet-model-core = { git = "https://github.com/TheClockwyrks/tool-model-core", tag = "v0.1.1", default-features = false }
+test-cabinet-voxel-mesh = { git = "https://github.com/TheClockwyrks/tool-model-core", tag = "v0.1.1", default-features = false }
+test-cabinet-model-skin = { git = "https://github.com/TheClockwyrks/tool-model-core", tag = "v0.1.1", default-features = false }
 # The voxel crate of the tool-voxel repository, named the same way. `TAGS` records
 # no tag for tool-voxel, so it is named at its `master` branch. Only the library
 # (not the `cli` feature's binaries): the driver regenerates the scored voxel data
@@ -160,7 +160,7 @@ test-cabinet-voxel = { git = "https://github.com/TheClockwyrks/tool-voxel", bran
 # tag. Only the library (not the `cli` feature's loader): the driver stages a
 # run's sample packs into the tree the in-container audio binaries read, and its
 # tests enable the `cli` feature to read that tree back.
-test-cabinet-audio-core = { git = "https://github.com/TheClockwyrks/tool-audio-core", tag = "v0.1.0", default-features = false }
+test-cabinet-audio-core = { git = "https://github.com/TheClockwyrks/tool-audio-core", tag = "v0.1.1", default-features = false }
 # Shared runtime dependencies inherited by member crates via { workspace = true }.
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

@@ -75,15 +75,15 @@ def test_a_dependency_is_pinned_at_its_tag_or_on_master() -> None:
     """
     assert render.workspace_dependencies("tool-voxel").splitlines() == [
         'test-cabinet-contracts = { git = "https://github.com/TheClockwyrks/contracts", tag = "v0.2.3" }',
-        'test-cabinet-model-core = { git = "https://github.com/TheClockwyrks/tool-model-core", tag = "v0.1.0" }',
+        'test-cabinet-model-core = { git = "https://github.com/TheClockwyrks/tool-model-core", tag = "v0.1.1" }',
     ]
     assert render.workspace_dependencies("tool-sfx-synth").splitlines() == [
         'test-cabinet-contracts = { git = "https://github.com/TheClockwyrks/contracts", tag = "v0.2.3" }',
-        'test-cabinet-audio-core = { git = "https://github.com/TheClockwyrks/tool-audio-core", tag = "v0.1.0" }',
+        'test-cabinet-audio-core = { git = "https://github.com/TheClockwyrks/tool-audio-core", tag = "v0.1.1" }',
     ]
     assert render.workspace_dependencies("microservice-arena").splitlines() == [
         'test-cabinet-contracts = { git = "https://github.com/TheClockwyrks/contracts", tag = "v0.2.3" }',
-        'test-cabinet-engines = { git = "https://github.com/TheClockwyrks/engines", tag = "v1.1.1" }',
+        'test-cabinet-engines = { git = "https://github.com/TheClockwyrks/engines", tag = "v1.1.2" }',
     ]
     assert (
         'test-cabinet-draw = { git = "https://github.com/TheClockwyrks/tool-sprite", branch = "master" }'
