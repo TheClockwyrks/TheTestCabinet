@@ -1,13 +1,22 @@
 ---
 format: nyxsis-issue
-version: 2
+version: 3
 id: poskdbz9r08ecr4qziroj0xr
 zone: REPOS
 number: 6
 title: Extract the particle tool into tool-particle
 type: generic
-state: open
+state: done
 created: 2026-10-13T21:11:56.224227743Z
+done: 2026-10-20T13:36:27.719677231Z
+outcome: |
+  tool-particle exists on Azure with the particle-core, particle-2d and
+  particle-3d crates' history, kit render, protection, pipeline 157 and GitHub
+  mirror; the superrepo pins it as a submodule, the particle run images copy the
+  binaries from its image, and the crates are removed (PR into nightly; superrepo
+  gates 28/28, tool-particle 14/14; the run images produced system.json and
+  effect.gif in a podman smoke test). Not verified: a particle case on the local
+  stack.
 ---
 
 The `particle-core`, `particle-2d` and `particle-3d` crates live under the
