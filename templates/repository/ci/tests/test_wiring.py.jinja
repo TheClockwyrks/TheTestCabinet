@@ -34,8 +34,9 @@ once, before its first check.{% endif %}
 {% if ci_image %}
 On master and staging, once the gates passed, the image stage builds the
 repository's image natively on each architecture, fetching what its manifests
-reach as the Rust job does, and fuses the two into the multi-arch tag a
-deployment pins; the `build-context` gate holds its Dockerfile first.
+reach as the Rust job does{% if typescript_workspace %} and handed npm's credential for the feed{% endif %}, and fuses the two into the
+multi-arch tag a deployment pins; the `build-context` gate holds its
+Dockerfile first.
 {% endif %}
 {% if ci_mirror %}
 A commit on master, staging or nightly, and a published tag, is pushed to the
@@ -692,6 +693,14 @@ def test_each_architecture_builds_natively_and_pushes_its_tag() -> None:
         build = job.find(f'- script: {IMAGE_SCRIPT} {IMAGE_NAME} "$(Build.SourceVersion)"\n')
         assert 0 <= sources < login < build, f"the {arch} job does not rewrite the sources, log in, then build"
         assert "SYSTEM_ACCESSTOKEN: $(System.AccessToken)" in _step_at(job, job.rindex("\n", 0, sources) + 1)
+        if FEED_SCRIPT_REGISTRY:
+            # The build is handed npm's configuration as a secret, so it is written first.
+            feed = job.find(f"- script: {NPM_FEED_SCRIPT} {FEED_SCRIPT_REGISTRY}\n")
+            assert 0 <= feed < build, f"the {arch} job does not authenticate npm to the feed before it builds"
+            step = _step_at(job, job.rindex("\n", 0, feed) + 1)
+            assert "SYSTEM_ACCESSTOKEN: $(System.AccessToken)" in step, f"the {arch} job's feed step has no token"
+        else:
+            assert NPM_FEED_SCRIPT not in job, f"the {arch} job authenticates to a feed its kind never installs from"
         assert f"containerRegistry: {IMAGE_ENDPOINT}\n" in _step_at(job, job.rindex("\n", 0, login) + 1)
     assert (ROOT / IMAGE_SCRIPT).is_file(), f"the pipeline runs {IMAGE_SCRIPT}, which the repository does not hold"
     assert (ROOT / GIT_SOURCES_SCRIPT).is_file()

@@ -109,6 +109,8 @@ def test_a_repository_without_edges_says_so_once() -> None:
 
 def test_a_browser_track_carries_an_npm_workspace() -> None:
     """The browser tests drive the workspace's Playwright, so a browser track's repository has a workspace."""
+    # The driver's suite runs the validators in a browser, as contracts' does.
+    assert render.rust_track("microservice-driver") == "rust-browser"
     for name, track in render.RUST_TRACKS.items():
         if track in render.BROWSER_TRACKS:
             assert EDGES.KINDS[EDGES.REPOSITORIES[name]].typescript, name
@@ -152,6 +154,11 @@ def test_the_project_pipeline_table_names_repositories_and_stages() -> None:
     assert set(render.PROJECT_PIPELINE) <= set(EDGES.REPOSITORIES)
     assert render.PROJECT_PIPELINE["gg"] == ("release",)
     assert render.PROJECT_PIPELINE["gg.rocks"] == ("deploy",)
+    # The driver builds the run-container images in a stage of its own.
+    assert render.PROJECT_PIPELINE["microservice-driver"] == ("runimages",)
+    assert (
+        render.ci_project_setup("microservice-driver", "application") == f"          - template: {render.PROJECT_SETUP}"
+    )
     for name in render.PROJECT_PIPELINE:
         assert render.project_stages(name)
     assert render.project_stages("microservice-arena") == ()
@@ -163,6 +170,7 @@ def test_the_project_pipeline_table_names_repositories_and_stages() -> None:
     assert render.ci_project_setup("gg.rocks", "site") == ""
     assert set(render.RUST_TIMEOUTS) <= set(EDGES.REPOSITORIES)
     assert render.rust_timeout("gg") == 120
+    assert render.rust_timeout("microservice-driver") == 180
     assert render.rust_timeout("microservice-arena") == render.RUST_TIMEOUT
 
 
@@ -284,6 +292,9 @@ def test_the_image_stage_builds_each_architecture_then_fuses_them() -> None:
     for arch, job in (("amd64", amd64), ("arm64", arm64)):
         assert re.findall(r"^            - (\S+)$", job, re.MULTILINE) == ["contracts", "engines"], arch
         assert "- script: scripts/ci/git-sources.sh\n" in job
+        # npm's credential for the feed, which the build is handed as a secret.
+        feed = job.index(f"- script: {render.NPM_FEED_SCRIPT} {render.FEED_REGISTRY}\n")
+        assert job.index("- script: scripts/ci/git-sources.sh\n") < feed < job.index("- script: scripts/ci/image.sh")
         assert f"containerRegistry: {render.CI_IMAGE_ENDPOINT}\n" in job
         assert job.endswith(
             '- script: scripts/ci/image.sh microservice-arena "$(Build.SourceVersion)"\n'

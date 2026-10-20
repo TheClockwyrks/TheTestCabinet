@@ -119,6 +119,7 @@ CI_SHARED_RUST_TRACK = "rust"
 # rather than skipping.
 RUST_TRACKS: dict[str, str] = {
     "contracts": "rust-browser",
+    "microservice-driver": "rust-browser",
     "the-spec-cabinet": "rust-browser",
 }
 BROWSER_TRACKS = frozenset({"rust-browser"})
@@ -165,8 +166,15 @@ GATE_JOBS = ("rust", "checks")
 # what the repository releases from it is out. gg's `release` stage publishes
 # its binaries, its reference and its toolchains image on a tag, and gg.rocks's
 # `deploy` stage uploads the site to its Pages project from `master` and
-# `staging`.
-PROJECT_PIPELINE: dict[str, tuple[str, ...]] = {"gg": ("release",), "gg.rocks": ("deploy",)}
+# `staging`. microservice-driver's jobs build `tcab` on every run and publish
+# it on a tag, and stage the audio store its image copies; its `runimages`
+# stage builds the run-container images from `master` and `staging`, copying
+# the tools' binaries from their images.
+PROJECT_PIPELINE: dict[str, tuple[str, ...]] = {
+    "gg": ("release",),
+    "gg.rocks": ("deploy",),
+    "microservice-driver": ("runimages",),
+}
 PROJECT_JOBS = ".azure/project/jobs.yml"
 PROJECT_STAGES = ".azure/project/stages.yml"
 # The steps such a repository's Rust job takes after it fetched its
@@ -188,9 +196,11 @@ ARM64_POOL = "pool-dev-linux-arm64-wus3-4c-eph-01"
 # The minutes a Rust job may run, and the repositories given longer. A cold
 # gg build compiles every arm's guest and restores its toolchains first, which
 # outlasts the hour the kit's Rust job is given, as the superrepo's Rust job,
-# which compiled gg in the workspace, was given two.
+# which compiled gg in the workspace, was given two. The driver's suite, the
+# superrepo's longest, ran in the superrepo's Rust job, which was given two and
+# a half, and drives a browser besides.
 RUST_TIMEOUT = 60
-RUST_TIMEOUTS: dict[str, int] = {"gg": 120}
+RUST_TIMEOUTS: dict[str, int] = {"gg": 120, "microservice-driver": 180}
 
 # The crate a render scaffolds in each repository carrying one: its directory
 # under crates/ and its package name. The monorepo's crates keep their
@@ -756,9 +766,11 @@ def ci_image_stage(name: str, kind: str) -> str:
 
     One job per architecture builds natively and pushes `<name>:<commit>-<arch>`
     (`scripts/ci/image.sh`), with the job's token able to fetch the repositories
-    its manifests reach, as the Rust job does; a last job fuses the two into
-    `<name>:<commit>` (`scripts/ci/manifest.sh`). Nothing for a repository
-    that builds no image.
+    its manifests reach, as the Rust job does, and, for a kind carrying an npm
+    workspace, written as npm's credential for the feed, which the build is
+    handed as a secret, so a Dockerfile installing a package of the project
+    from the feed reaches it; a last job fuses the two into `<name>:<commit>`
+    (`scripts/ci/manifest.sh`). Nothing for a repository that builds no image.
     """
     if not builds_image(name, kind):
         return ""
@@ -802,6 +814,7 @@ def ci_image_stage(name: str, kind: str) -> str:
             f"{steps}  displayName: Fetch the project's dependencies from Azure",
             f"{steps}  env:",
             f"{steps}    SYSTEM_ACCESSTOKEN: $(System.AccessToken)",
+            *([npm_feed_step()] if typescript_workspace(kind) else []),
             *_registry_login(steps),
             f'{steps}- script: {IMAGE_SCRIPT} {name} "$(Build.SourceVersion)"',
             f"{steps}  displayName: Build and push the image ({arch})",

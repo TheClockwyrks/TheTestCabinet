@@ -259,6 +259,8 @@ DATA_EDGES: tuple[DataEdge, ...] = (
     DataEdge("microservice-backend", "test-suites", "ingest"),
     DataEdge("microservice-driver", "gg", "the pinned released binary"),
     *(DataEdge("microservice-driver", tool, "the tool images") for tool in TOOL_IMAGES),
+    DataEdge("microservice-driver", "test-suites", "the training scenarios the performance image bakes"),
+    DataEdge("microservice-driver", "microservice-backend", "the sample packs the audio store is staged from"),
     DataEdge("test-suites", "microservice-backend", "the sample packs"),
     DataEdge("console.testcabinet.ai", "test-suites", "the vendored sprite atlas and reference scenarios"),
     DataEdge("the-spec-cabinet", "test-suites", "the suite being authored"),

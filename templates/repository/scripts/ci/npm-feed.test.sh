@@ -72,6 +72,12 @@ for tool in awk dirname mkdir mktemp mv rm; do
 done
 chmod +x "$stubs"/*
 export STUB_LOG="$tmp/stub.log"
+# The same tools without npm, as an agent that runs no Node has them.
+bare="$tmp/bare"
+mkdir -p "$bare"
+for tool in awk dirname mkdir mktemp mv rm; do
+	cp "$stubs/$tool" "$bare/$tool"
+done
 
 run() { # env-assignment... -- argument...
 	local assignments=()
@@ -82,7 +88,7 @@ run() { # env-assignment... -- argument...
 	shift
 	(
 		cd "$tmp" || exit 1
-		env -i PATH="$stubs" HOME="$tmp/home" STUB_LOG="$STUB_LOG" \
+		env -i PATH="${RUN_PATH:-$stubs}" HOME="$tmp/home" STUB_LOG="$STUB_LOG" \
 			"${assignments[@]}" "$BASH" "$SCRIPT" "$@" 2>&1
 	)
 }
@@ -126,6 +132,19 @@ elsewhere="$tmp/other/place/npmrc"
 out="$(run STUB_USERCONFIG="$elsewhere" SYSTEM_ACCESSTOKEN="$TOKEN" -- "$REGISTRY")"
 check_equal "exits 0" 0 "$?"
 check_equal "writes where npm reads" "${KEY}${TOKEN}" "$(cat "$elsewhere" 2>/dev/null)"
+
+echo "--- without npm, the file npm would read is the one written ---"
+
+rm -f "$config"
+: >"$STUB_LOG"
+out="$(RUN_PATH="$bare" run SYSTEM_ACCESSTOKEN="$TOKEN" -- "$REGISTRY")"
+check_equal "exits 0" 0 "$?"
+check_equal "writes ~/.npmrc" "${KEY}${TOKEN}" "$(cat "$config" 2>/dev/null)"
+check_lacks "asks no npm" "npm config" "$(cat "$STUB_LOG")"
+named="$tmp/named/npmrc"
+out="$(RUN_PATH="$bare" run NPM_CONFIG_USERCONFIG="$named" SYSTEM_ACCESSTOKEN="$TOKEN" -- "$REGISTRY")"
+check_equal "exits 0 for a file named" 0 "$?"
+check_equal "writes the file NPM_CONFIG_USERCONFIG names" "${KEY}${TOKEN}" "$(cat "$named" 2>/dev/null)"
 
 echo "--- the failures ---"
 

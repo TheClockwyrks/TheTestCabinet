@@ -58,6 +58,7 @@ mkdir -p "$repo/scripts/ci" "$tmp/bin" "$tmp/home" "$tmp/elsewhere"
 cp "$source_script" "$repo/scripts/ci/image.sh"
 printf 'FROM scratch\n' >"$repo/Dockerfile"
 printf '[url "https://dev.azure.com/x"]\n' >"$tmp/home/.gitconfig"
+printf '//feed.invalid/:_authToken=x\n' >"$tmp/home/.npmrc"
 cat >"$tmp/bin/docker" <<'STUB'
 #!/usr/bin/env bash
 echo "docker $* (in $PWD)" >>"$STUB_LOG"
@@ -72,7 +73,9 @@ STUB
 chmod +x "$tmp/bin/docker" "$tmp/bin/uname"
 run() {
 	: >"$tmp/docker.log"
+	# NPM_CONFIG_USERCONFIG is the case's alone, never the caller's environment's.
 	(cd "$tmp/elsewhere" && HOME="$tmp/home" STUB_LOG="$tmp/docker.log" PATH="$tmp/bin:$PATH" \
+		NPM_CONFIG_USERCONFIG="${CASE_NPM_USERCONFIG:-}" \
 		"$repo/scripts/ci/image.sh" "$@" 2>&1)
 }
 
@@ -90,6 +93,7 @@ check_contains "stamped with the commit" "--build-arg TCAB_BUILD_COMMIT=$SHA" "$
 check_contains "cached in the registry per architecture" "--cache-to type=registry,ref=$R/microservice-one:buildcache-amd64,mode=max" "$build"
 check_contains "and read back from there" "--cache-from type=registry,ref=$R/microservice-one:buildcache-amd64" "$build"
 check_contains "handed the git configuration as a secret" "--secret id=gitconfig,src=$tmp/home/.gitconfig" "$build"
+check_contains "and the npm configuration as another" "--secret id=npmrc,src=$tmp/home/.npmrc" "$build"
 check_contains "and pushed" "--push" "$build"
 
 echo "--- an arm64 build ---"
@@ -101,8 +105,21 @@ check_contains "for linux/arm64" "--platform linux/arm64" "$build"
 echo "--- no git configuration ---"
 out="$(IMAGE_GIT_CONFIG="$tmp/none" run microservice-one "$SHA")"
 check_equal "still builds" "0" "$?"
-check_lacks "handing no secret" "--secret" "$(cat "$tmp/docker.log")"
+check_lacks "handing no git secret" "id=gitconfig" "$(cat "$tmp/docker.log")"
 check_contains "and says so" "fetches from the public sources" "$out"
+
+echo "--- no npm configuration ---"
+out="$(IMAGE_NPM_CONFIG="$tmp/none" run microservice-one "$SHA")"
+check_equal "still builds" "0" "$?"
+build="$(grep 'buildx build' "$tmp/docker.log")"
+check_lacks "handing no npm secret" "id=npmrc" "$build"
+check_contains "but still the git one" "--secret id=gitconfig" "$build"
+check_contains "and says so" "holds no credential for the feed" "$out"
+
+echo "--- the npm configuration npm names ---"
+printf '//feed.invalid/:_authToken=y\n' >"$tmp/elsewhere.npmrc"
+CASE_NPM_USERCONFIG="$tmp/elsewhere.npmrc" run microservice-one "$SHA" >/dev/null
+check_contains "is the one handed" "--secret id=npmrc,src=$tmp/elsewhere.npmrc" "$(cat "$tmp/docker.log")"
 
 echo "--- another registry ---"
 IMAGE_REGISTRY=example.invalid run microservice-one "$SHA" >/dev/null

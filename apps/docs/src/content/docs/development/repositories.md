@@ -203,6 +203,10 @@ edges, and the superrepo's `dependency-graph` gate reports them.
 microservice-backend -> test-suites              ingest
 microservice-driver -> gg                        the pinned released binary
 microservice-driver -> tool-*                    the tool images
+microservice-driver -> test-suites              the training scenarios the
+                                                 performance image bakes
+microservice-driver -> microservice-backend      the sample packs the audio store
+                                                 is staged from
 test-suites -> microservice-backend              the sample packs
 console.testcabinet.ai -> test-suites            the vendored sprite atlas and
                                                  reference scenarios
