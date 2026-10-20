@@ -80,11 +80,11 @@ test-cabinet-voxel = { path = "../voxel", default-features = false }
 # (mc/sn/dc + `-anim`). Only the pure library (not the `cli` feature's
 # serde_json/renderer), to deserialize and well-formedness-check the `Mesh`
 # (`PartMesh`) each meshing binary emits to a per-part `.glb`; it never re-meshes.
-test-cabinet-voxel-mesh = { path = "../voxel-mesh", default-features = false }
+test-cabinet-voxel-mesh = { workspace = true }
 # The generic voxel-family model core: the rig/animation model and the opaque-RGB
 # color type the engine reads the produced `rig.json` and `[voxel] background` through.
 # Linked without the `cli` feature (no clap/serde_json), the same as the voxel dep.
-test-cabinet-model-core = { path = "../model-core", default-features = false }
+test-cabinet-model-core = { workspace = true }
 # The match runner over the Foray and Lattice wasm hosts. The `AdversarialValidator`
 # plays a submission against the committed baselines through `play_match`, and the
 # `PerformanceValidator` runs a submission engine over each held-out case through

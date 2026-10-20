@@ -62,9 +62,10 @@ parents_of() {
 	local name="$1"
 	case "$name" in
 		tools | base | blender) echo "-" ;;
-		# Their one binary each is copied out of the tool-sprite image, which is no
-		# image built here: its reference is an input of theirs, not a parent.
-		base-wasm | sprite | sprite-sheet) echo "base" ;;
+		# Their binaries are copied out of the tool-sprite image (sprite, sprite-sheet)
+		# or the tool-paint image (ui, material), neither an image built here: the
+		# reference is an input of theirs, not a parent.
+		base-wasm | sprite | sprite-sheet | ui | material) echo "base" ;;
 		adversarial | performance) echo "base-wasm" ;;
 		full-stack-2d | full-stack-3d) echo "base-wasm,tools" ;;
 		game-jam) echo "full-stack-2d" ;;

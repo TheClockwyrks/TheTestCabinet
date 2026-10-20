@@ -34,10 +34,10 @@ cli = ["dep:clap", "test-cabinet-voxel-mesh/cli", "test-cabinet-model-core/cli"]
 # The signed-distance meshing domain (field, ops, meshers, grid presets, `.glb` emission).
 # Linked without default features so a `default-features = false` consumer of this
 # crate never pulls in the wgpu preview renderer; the `cli` feature re-enables it.
-test-cabinet-voxel-mesh = { path = "../voxel-mesh", default-features = false }
+test-cabinet-voxel-mesh = { workspace = true }
 # The generic voxel-family core: the record/preview plumbing, config shapes, the rig
 # model, and the shared mesh renderer this crate's CLI builds on.
-test-cabinet-model-core = { path = "../model-core", default-features = false }
+test-cabinet-model-core = { workspace = true }
 clap = { workspace = true, optional = true }
 
 [lints]

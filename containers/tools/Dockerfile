@@ -2,13 +2,14 @@
 # The shared asset-tooling BUILDER image for The Test Cabinet's run containers.
 #
 # This is NOT a run image: nothing ever executes in it and it is never published.
-# It exists solely so the ~20 asset-generation binaries baked into the run images
-# (`voxel`, `mc`, `pbr`, `music`, …) are compiled ONCE, in one cargo invocation
-# over one shared dependency graph, instead of once per run image.
+# It exists solely so the asset-generation binaries baked into the run images
+# (`voxel`, `mc`, `particle-3d`, `music`, …) are compiled ONCE, in one cargo
+# invocation over one shared dependency graph, instead of once per run image.
 #
 # A tool that has left for a `tool-*` repository is not built here: its binaries
 # are copied out of that repository's image at the commit the driver pins
-# (`draw` and `draw-sheet` from `tool-sprite`; see `scripts/ci/tool-images.sh`).
+# (`draw` and `draw-sheet` from `tool-sprite`; `paint`, `ui`, `texture` and `pbr`
+# from `tool-paint`; see `scripts/ci/tool-images.sh`).
 #
 # Why this exists
 # ---------------
@@ -82,7 +83,7 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
 	find /build -path /build/target -prune -o -type f -exec touch {} + \
 	# One cargo invocation over the union of every tool's dependency graph.
 	# `--bins` takes all binaries each named package exposes, which is what the run
-	# images need: `test-cabinet-paint` yields `paint`, `ui`, `texture` and `pbr`.
+	# images need.
 	&& cargo build --release --bins \
 		-p test-cabinet-voxel \
 		-p test-cabinet-voxel-anim \
@@ -95,7 +96,6 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
 		-p test-cabinet-mc-skin \
 		-p test-cabinet-sn-skin \
 		-p test-cabinet-dc-skin \
-		-p test-cabinet-paint \
 		-p test-cabinet-particle-2d \
 		-p test-cabinet-particle-3d \
 		-p test-cabinet-sfx-synth \
@@ -119,10 +119,6 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
 		target/release/mc-skin \
 		target/release/sn-skin \
 		target/release/dc-skin \
-		target/release/paint \
-		target/release/ui \
-		target/release/texture \
-		target/release/pbr \
 		target/release/particle-2d \
 		target/release/particle-3d \
 		target/release/sfx-synth \

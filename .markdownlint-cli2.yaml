@@ -44,6 +44,8 @@ ignores:
   - "gg/**"
   - "gg.rocks/**"
   - "microservice-repos/**"
+  - "tool-model-core/**"
+  - "tool-paint/**"
   - "tool-sprite/**"
   - "apps/docs/src/content/docs/gg/**"
   - "test-suites/**"

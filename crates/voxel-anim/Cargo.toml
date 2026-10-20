@@ -23,7 +23,7 @@ path = "src/main.rs"
 test-cabinet-voxel = { path = "../voxel" }
 # The generic model + record/preview plumbing, with the `cli` feature for the rig
 # I/O and the `clap` value enums the rig subcommands parse.
-test-cabinet-model-core = { path = "../model-core" }
+test-cabinet-model-core = { workspace = true, features = ["cli"] }
 clap = { workspace = true }
 
 [lints]

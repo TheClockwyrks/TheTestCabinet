@@ -14,8 +14,9 @@
 # names when it is set.
 #
 # The images that carry a `tool-*` repository's binaries (sprite, sprite-sheet and the
-# full-stack images: `draw` and `draw-sheet` from tool-sprite) copy them out of that
-# repository's image at the commit the driver pins, which its own pipeline publishes.
+# full-stack images: `draw` and `draw-sheet` from tool-sprite; ui and material: `paint`,
+# `ui`, `texture` and `pbr` from tool-paint) copy them out of that repository's image at
+# the commit the driver pins, which its own pipeline publishes.
 # `scripts/ci/tool-images.sh check` runs first, so a pin of a commit that pipeline has not
 # published fails here, naming the commit, before anything is built.
 #

@@ -16,9 +16,9 @@ name = "mc-skin"
 path = "src/main.rs"
 
 [dependencies]
-# The shared skinning library, with its default `cli` feature (the whole command
+# The shared skinning library, with its `cli` feature (the whole command
 # surface and the renderer stack).
-test-cabinet-model-skin = { path = "../model-skin" }
+test-cabinet-model-skin = { workspace = true, features = ["cli"] }
 
 [lints]
 workspace = true

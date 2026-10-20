@@ -4,8 +4,9 @@
 #
 # A copy of the script runs in a throwaway git repository holding a small
 # containers/ tree: a base, a tools builder that copies the whole context, an asset
-# image built out of it, one that copies from the tool-sprite image, and gg variants,
-# with the driver's gg pin and the tool-sprite gitlink beside them. The subject is what moves
+# image built out of it, one that copies from the tool-sprite image, one that copies
+# from the tool-paint image, and gg variants, with the driver's gg pin and the
+# tool-sprite and tool-paint gitlinks beside them. The subject is what moves
 # each image's digest and what does not.
 set -uo pipefail
 
@@ -50,14 +51,14 @@ tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 
 repo="$tmp/repo"
-mkdir -p "$repo/scripts/ci" "$repo/containers"/{base,base-wasm,tools,sprite,voxel,gg,blender} \
+mkdir -p "$repo/scripts/ci" "$repo/containers"/{base,base-wasm,tools,sprite,ui,voxel,gg,blender} \
 	"$repo/crates/a" "$repo/crates/driver" "$repo/docs" "$repo/scripts/ci"
 cp "$CI_DIR/run-image-inputs.sh" "$CI_DIR/gg-release.sh" "$CI_DIR/tool-images.sh" "$CI_DIR/tcab-lib.sh" \
 	"$repo/scripts/ci/"
 echo '0.7.1' >"$repo/crates/driver/gg-release-version"
 cat >"$repo/containers/image-names.sh" <<'NAMES'
 #!/usr/bin/env bash
-printf '%s\n' base base-wasm base-wasm-gg sprite sprite-gg voxel blender blender-gg
+printf '%s\n' base base-wasm base-wasm-gg sprite sprite-gg ui voxel blender blender-gg
 NAMES
 chmod +x "$repo/containers/image-names.sh"
 # The `${...}` below are the Dockerfiles' own build-arg references, not shell expansions.
@@ -67,6 +68,7 @@ echo 'FROM node:24' >"$repo/containers/base/Dockerfile"
 printf 'ARG BASE_IMAGE\nFROM ${BASE_IMAGE}\nRUN true\n' >"$repo/containers/base-wasm/Dockerfile"
 printf 'FROM rust:1 AS build\nWORKDIR /src\nCOPY . .\nRUN cargo build\nFROM scratch\nCOPY --from=build /out /out\n' >"$repo/containers/tools/Dockerfile"
 printf 'ARG TOOL_SPRITE_IMAGE\nARG BASE_IMAGE\nFROM ${TOOL_SPRITE_IMAGE} AS tool-sprite\nFROM ${BASE_IMAGE}\nCOPY --from=tool-sprite /usr/local/bin/draw /usr/local/bin/draw\n' >"$repo/containers/sprite/Dockerfile"
+printf 'ARG TOOL_PAINT_IMAGE\nARG BASE_IMAGE\nFROM ${TOOL_PAINT_IMAGE} AS tool-paint\nFROM ${BASE_IMAGE}\nCOPY --from=tool-paint /usr/local/bin/ui /usr/local/bin/ui\n' >"$repo/containers/ui/Dockerfile"
 printf 'ARG TOOLS_IMAGE\nARG BASE_IMAGE\nFROM ${TOOLS_IMAGE} AS tools\nFROM ${BASE_IMAGE}\nCOPY --from=tools /out/voxel /usr/local/bin/voxel\n' >"$repo/containers/voxel/Dockerfile"
 printf 'ARG BASE_IMAGE\nARG GG_TOOLCHAINS_IMAGE\nFROM ${GG_TOOLCHAINS_IMAGE} AS ggtools\nFROM ${BASE_IMAGE}\nCOPY --link --from=ggtools /opt /opt\n' >"$repo/containers/gg/Dockerfile"
 printf 'FROM ubuntu:26.04\n# COPY not-a-source /x\nCOPY scripts/ci/install-java.sh \\\n  /tmp/install-java.sh\nCOPY containers/blender/export.py /opt/export.py\n' >"$repo/containers/blender/Dockerfile"
@@ -84,8 +86,12 @@ readonly PIN_B=2222222222222222222222222222222222222222
 # tool-sprite's gitlink, the commit whose image the sprite image copies from.
 readonly SPRITE_PIN_A=3333333333333333333333333333333333333333
 readonly SPRITE_PIN_B=4444444444444444444444444444444444444444
+# tool-paint's gitlink, the commit whose image the ui image copies from.
+readonly PAINT_PIN_A=5555555555555555555555555555555555555555
+readonly PAINT_PIN_B=6666666666666666666666666666666666666666
 (cd "$repo" && git init -q && git add -A && git update-index --add --cacheinfo "160000,${PIN_A},sub" \
 	&& git update-index --add --cacheinfo "160000,${SPRITE_PIN_A},tool-sprite" \
+	&& git update-index --add --cacheinfo "160000,${PAINT_PIN_A},tool-paint" \
 	&& git -c user.name=t -c user.email=t@t commit -q -m init)
 
 run() { (cd "$repo" && scripts/ci/run-image-inputs.sh "$@" 2>&1); }
@@ -97,19 +103,21 @@ revert() { (cd "$repo" && git checkout -q -- . && git reset -q --hard HEAD); }
 
 out="$(run)"
 check_equal "lists tools and every run image" \
-	"tools base base-wasm base-wasm-gg sprite sprite-gg voxel blender blender-gg" \
+	"tools base base-wasm base-wasm-gg sprite sprite-gg ui voxel blender blender-gg" \
 	"$(awk '{print $1}' <<<"$out" | tr '\n' ' ' | sed 's/ $//')"
-check_equal "a digest is 32 hex characters" "9" "$(grep -cE '^[a-z0-9-]+ [0-9a-f]{32} ' <<<"$out")"
+check_equal "a digest is 32 hex characters" "10" "$(grep -cE '^[a-z0-9-]+ [0-9a-f]{32} ' <<<"$out")"
 check_equal "parents: base has none" "base $(digest base) -" "$(run base)"
 check_equal "parents: an asset image is from base and tools" "base,tools" "$(run voxel | awk '{print $3}')"
 check_equal "parents: the sprite image is from base alone, tool-sprite being no image built here" "base" \
 	"$(run sprite | awk '{print $3}')"
+check_equal "parents: the ui image is from base alone, tool-paint being no image built here" "base" \
+	"$(run ui | awk '{print $3}')"
 check_equal "parents: a gg variant is from its image alone" "sprite" "$(run sprite-gg | awk '{print $3}')"
 check_equal "the table is deterministic" "$out" "$(run)"
 
 base0="$(digest base)"; wasm0="$(digest base-wasm)"; tools0="$(digest tools)"; sprite0="$(digest sprite)"
 spritegg0="$(digest sprite-gg)"; blender0="$(digest blender)"; wasmgg0="$(digest base-wasm-gg)"
-voxel0="$(digest voxel)"
+voxel0="$(digest voxel)"; ui0="$(digest ui)"
 blendergg0="$(digest blender-gg)"
 
 change containers/base/Dockerfile 'RUN echo changed'
@@ -172,6 +180,7 @@ check_differs "a bump of the tool-sprite gitlink moves the image that copies fro
 check_differs "and its gg variant" "$spritegg0" "$(digest sprite-gg)"
 check_equal "but not an image built out of the tooling builder" "$voxel0" "$(digest voxel)"
 check_equal "nor the builder" "$tools0" "$(digest tools)"
+check_equal "nor one that copies from another tool image" "$ui0" "$(digest ui)"
 (cd "$repo" && git reset -q --hard HEAD~1)
 check_equal "and back" "$sprite0" "$(digest sprite)"
 check_equal "TOOL_SPRITE_IMAGE naming the pinned image is the same input" "$sprite0" \
@@ -180,6 +189,17 @@ check_equal "TOOL_SPRITE_IMAGE naming the pinned image is the same input" "$spri
 check_differs "another image is another input" "$sprite0" \
 	"$(cd "$repo" && TOOL_SPRITE_IMAGE=registry.test/tool-sprite:other \
 		scripts/ci/run-image-inputs.sh sprite | awk '{print $2}')"
+
+(cd "$repo" && git update-index --cacheinfo "160000,${PAINT_PIN_B},tool-paint" \
+	&& git -c user.name=t -c user.email=t@t commit -q -m 'bump tool-paint')
+check_differs "a bump of the tool-paint gitlink moves the image that copies from tool-paint" "$ui0" "$(digest ui)"
+check_equal "but not the one that copies from tool-sprite" "$sprite0" "$(digest sprite)"
+check_equal "nor an image built out of the tooling builder" "$voxel0" "$(digest voxel)"
+(cd "$repo" && git reset -q --hard HEAD~1)
+check_equal "and back" "$ui0" "$(digest ui)"
+check_differs "TOOL_PAINT_IMAGE naming another image is another input" "$ui0" \
+	"$(cd "$repo" && TOOL_PAINT_IMAGE=registry.test/tool-paint:other \
+		scripts/ci/run-image-inputs.sh ui | awk '{print $2}')"
 
 (cd "$repo" && sed -i 's/^schema=.*//; s/^readonly INPUTS_SCHEMA=.*/readonly INPUTS_SCHEMA="v2"/' scripts/ci/run-image-inputs.sh)
 check_differs "a schema bump moves every image" "$base0" "$(digest base)"
