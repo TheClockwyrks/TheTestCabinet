@@ -36,9 +36,12 @@ fn resolve_binary_dir_names_every_location_it_tried() {
 
     let message = err.to_string();
     // The message is the first thing an author hits on a fresh checkout, so it
-    // must name the override, the cargo target dir, and PATH — not just fail.
+    // must name the override, the cargo target dir, the tool-sprite checkout's
+    // target dir, and PATH — not just fail.
     assert!(message.contains("/nonexistent-tcab-bin-dir"), "{message}");
     assert!(message.contains("release"), "{message}");
+    assert!(message.contains(TOOL_SPRITE_RELEASE), "{message}");
     assert!(message.contains("$PATH"), "{message}");
     assert!(message.contains("cargo build --release"), "{message}");
+    assert!(message.contains("tool-sprite checkout"), "{message}");
 }

@@ -2,10 +2,11 @@
 //!
 //! [`Operation`] is the wire form recorded in `actions.json`: an internally
 //! tagged enum (`{ "op": "fill_box", … }`) mirroring the `Operation` convention in
-//! `crates/draw`. Every operation is **total** — out-of-bounds writes are clipped,
-//! never panics — so regenerating a volume from an arbitrary (even hostile) log
-//! can always run to completion. All coordinate math is integer-only, so the
-//! in-container preview and core's post-run regeneration produce identical voxels.
+//! tool-sprite's `crates/draw`. Every operation is **total** — out-of-bounds
+//! writes are clipped, never panics — so regenerating a volume from an arbitrary
+//! (even hostile) log can always run to completion. All coordinate math is
+//! integer-only, so the in-container preview and core's post-run regeneration
+//! produce identical voxels.
 
 use serde::{Deserialize, Serialize};
 

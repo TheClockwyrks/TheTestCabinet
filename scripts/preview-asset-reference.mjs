@@ -291,6 +291,11 @@ function resolveBinaryDir(binary) {
   );
   if (has(release)) return release;
   tried.push(release);
+  // `cargo build --release` in the tool-sprite checkout, where the drawing
+  // binaries are built since the crate left this workspace.
+  const toolSprite = path.join(REPO_ROOT, "tool-sprite", "target", "release");
+  if (has(toolSprite)) return toolSprite;
+  tried.push(toolSprite);
 
   for (const dir of (process.env.PATH ?? "").split(path.delimiter)) {
     if (has(dir)) return dir;
@@ -299,7 +304,7 @@ function resolveBinaryDir(binary) {
 
   fail(
     `could not find the \`${binary}\` binary (looked in: ${tried.join(", ")}).\n` +
-      `  Build it with \`cargo build --release -p test-cabinet-draw\`, or point TCAB_ASSET_BIN_DIR at its directory.`,
+      `  Build it with \`cargo build --release\` in the tool-sprite checkout, or point TCAB_ASSET_BIN_DIR at its directory.`,
   );
 }
 

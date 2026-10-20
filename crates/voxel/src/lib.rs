@@ -9,7 +9,8 @@
 //! calls it to replay the recorded log — validating it and counting occupied voxels.
 //! Because both go through the same code, a volume produced by any other means
 //! cannot match the regeneration — which is what makes the constrained sculpting
-//! channel enforceable. This mirrors `crates/draw`, the 2D pixel analog.
+//! channel enforceable. This mirrors tool-sprite's `crates/draw`, the 2D pixel
+//! analog.
 
 #[cfg(feature = "cli")]
 pub mod cli;

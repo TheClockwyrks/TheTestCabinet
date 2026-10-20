@@ -234,10 +234,15 @@ fn collect_frames(
 /// Locate the directory holding the case's drawing binary.
 ///
 /// Prefers an explicit `TCAB_ASSET_BIN_DIR`, then the cargo target directory's
-/// `release/` (where `cargo build --release` puts it, and where the asset tools
-/// are normally driven from), then whatever is already on `PATH`. Errors naming
+/// `release/`, then the `target/release/` of the tool-sprite checkout (where
+/// `cargo build --release` run in it puts the binaries), then whatever is already
+/// on `PATH`. Errors naming
 /// every location tried, since a missing binary is the likeliest first failure
 /// when authoring a reference on a fresh checkout.
+/// Where `cargo build --release` in the tool-sprite checkout (a submodule at the
+/// superrepo's root) puts the drawing binaries, relative to the working directory.
+const TOOL_SPRITE_RELEASE: &str = "tool-sprite/target/release";
+
 fn resolve_binary_dir(binary: &str) -> Result<PathBuf> {
     let mut tried: Vec<String> = Vec::new();
 
@@ -258,6 +263,12 @@ fn resolve_binary_dir(binary: &str) -> Result<PathBuf> {
     }
     tried.push(release.display().to_string());
 
+    let tool_sprite = PathBuf::from(TOOL_SPRITE_RELEASE);
+    if tool_sprite.join(binary).is_file() {
+        return Ok(tool_sprite);
+    }
+    tried.push(tool_sprite.display().to_string());
+
     if let Ok(path) = which::which(binary)
         && let Some(dir) = path.parent()
     {
@@ -267,7 +278,8 @@ fn resolve_binary_dir(binary: &str) -> Result<PathBuf> {
 
     Err(Error::Publish(format!(
         "could not find the `{binary}` binary (looked in: {}). Build it with \
-         `cargo build --release -p test-cabinet-draw`, or point {BIN_DIR_ENV} at its directory.",
+         `cargo build --release` in the tool-sprite checkout, or point {BIN_DIR_ENV} at its \
+         directory.",
         tried.join(", ")
     )))
 }

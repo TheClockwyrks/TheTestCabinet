@@ -98,10 +98,10 @@ Two differences matter:
   the command after editing a script overwrites the objects in place, and
   `tcab ingest --env` still follows.
 - The drawing binary comes from your machine. It is resolved from
-  `TCAB_ASSET_BIN_DIR`, then the cargo target directory's `release/`, then
-  `PATH`. Build it first, for example
-  `cargo build --release -p test-cabinet-draw`; the command names every location
-  it tried when it finds nothing.
+  `TCAB_ASSET_BIN_DIR`, then the cargo target directory's `release/`, then the
+  `tool-sprite` checkout's `target/release/`, then `PATH`. Build it first, for
+  example `cargo build --release` in `tool-sprite/`; the command names every
+  location it tried when it finds nothing.
 
 To see a reference before publishing it, render it locally:
 

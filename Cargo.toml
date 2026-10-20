@@ -2,7 +2,6 @@
 resolver = "3"
 members = [
 	"crates/cli",
-	"crates/draw",
 	"crates/model-core",
 	"crates/voxel",
 	"crates/voxel-anim",
@@ -39,9 +38,8 @@ members = [
 # gg, microservice-repos, tool-sprite) are workspaces of their own. The contracts,
 # engines and microservice-repos crates are named under `[workspace.dependencies]`
 # by their public source, and the patch table of `.cargo/config.toml` builds them
-# from the checkouts. No member depends on gg or on tool-sprite's source; the
-# patch table names their crates all the same, and the lock records them as
-# unused.
+# from the checkouts. No member depends on gg's source; the patch table names
+# its crates all the same, and the lock records them as unused.
 exclude = ["contracts", "engines", "gg", "microservice-repos", "tool-sprite"]
 
 [workspace.package]
@@ -158,6 +156,11 @@ test-cabinet-engines = { git = "https://github.com/TheClockwyrks/engines", tag =
 test-cabinet-match-play = { git = "https://github.com/TheClockwyrks/engines", tag = "v1.1.1" }
 foray-core = { git = "https://github.com/TheClockwyrks/engines", tag = "v1.1.1" }
 lattice-core = { git = "https://github.com/TheClockwyrks/engines", tag = "v1.1.1", default-features = false }
+# The drawing crate of the tool-sprite repository, named the same way. `TAGS`
+# records no tag for tool-sprite, so it is named at its `master` branch. Only the
+# library (not the `cli` feature's binaries): the driver regenerates the scored
+# image from a run's recorded action log through it.
+test-cabinet-draw = { git = "https://github.com/TheClockwyrks/tool-sprite", branch = "master", default-features = false }
 # Shared runtime dependencies inherited by member crates via { workspace = true }.
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
