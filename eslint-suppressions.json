@@ -2533,9 +2533,6 @@
     "@typescript-eslint/restrict-template-expressions": {
       "count": 7
     },
-    "import-x/order": {
-      "count": 2
-    },
     "unicorn/filename-case": {
       "count": 1
     },

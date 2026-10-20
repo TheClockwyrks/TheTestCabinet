@@ -376,7 +376,8 @@ const SCHEMA_BASE_URL: &str = "https://docs.testcabinet.ai/schema/";
 /// slice gained `stalls` and `cacheMisses`, and the gg session summary gained
 /// `loopAbortUnpriced`: every one of them is optional and absent on the records
 /// stored before it, so stored records go on reading and the generation does not
-/// move. The same holds for the cost figures' descriptions rewritten when the
+/// move. gg's telemetry stream gained the `heartbeat` event (and its `GgWaitKind`):
+/// a new variant no stored record carries, so every stored record still reads. The same holds for the cost figures' descriptions rewritten when the
 /// comparable cost moved to the curated list price, which change no shape a stored
 /// record is read against.
 ///
@@ -399,7 +400,7 @@ const RECORD_SHAPES: &[(u32, &str)] = &[
     ),
     (
         3,
-        "3dbaeea9e26f39ebff18ae21a9acdcf3d1acacb0c32f9adc699e944fb674f7f3",
+        "bbe1f923fe4573ea89370946910360f43f9ffca44a4c8e8f2beac1a8509ae045",
     ),
 ];
 

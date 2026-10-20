@@ -73,7 +73,7 @@ def test_a_dependency_is_pinned_at_its_tag_or_on_master() -> None:
     `tool-sprite` has none, so its dependents follow its `master`.
     """
     assert render.workspace_dependencies("microservice-arena").splitlines() == [
-        'test-cabinet-contracts = { git = "https://github.com/TheClockwyrks/contracts", tag = "v0.2.1" }',
+        'test-cabinet-contracts = { git = "https://github.com/TheClockwyrks/contracts", tag = "v0.2.2" }',
         'test-cabinet-engines = { git = "https://github.com/TheClockwyrks/engines", tag = "v1.1.1" }',
     ]
     assert (

@@ -162,3 +162,44 @@ describe("the gg code-execution line", () => {
     ).toBe("program ran");
   });
 });
+
+// A heartbeat line for the wait `extra` overrides — a two-minute tool call by default.
+function heartbeat(
+  extra: Partial<Extract<GgTelemetryKind, { type: "heartbeat" }>> = {},
+): string {
+  return eventDetail(
+    ggEvent({
+      type: "heartbeat",
+      waitingOn: "tool_call",
+      waitedMs: 120_000,
+      ...extra,
+    }),
+  );
+}
+
+// A heartbeat is all a reader sees of an agent that waits a long time on one thing — a
+// model request, a tool call, a program, a subagent — so the line says what it waits on
+// and for how long, rather than a raw wire object.
+describe("the gg heartbeat line", () => {
+  it("names the wait, the thing waited on and how long it has lasted", () => {
+    expect(heartbeat({ detail: "shell" })).toBe(
+      "waiting on a tool call (shell) for 2m 0s",
+    );
+  });
+
+  it("names every kind of wait gg can report", () => {
+    expect(heartbeat({ waitingOn: "model_request", waitedMs: 60_000 })).toBe(
+      "waiting on a model request for 1m 0s",
+    );
+    expect(heartbeat({ waitingOn: "program", waitedMs: 45_400 })).toBe(
+      "waiting on a program for 45s",
+    );
+    expect(
+      heartbeat({
+        waitingOn: "subagent",
+        waitedMs: 3_600_000,
+        detail: "a1, a2",
+      }),
+    ).toBe("waiting on a subagent (a1, a2) for 60m 0s");
+  });
+});

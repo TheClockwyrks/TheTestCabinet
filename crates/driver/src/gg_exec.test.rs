@@ -432,6 +432,74 @@ fn unparseable_stdout_line_surfaces_as_a_warning() {
     assert_eq!(result.raw_output.len(), 1);
 }
 
+/// A gg `heartbeat` is the stream's sign of life while an agent waits on a model request,
+/// a tool call, a program or a subagent
+/// (<https://docs.testcabinet.ai/gg/telemetry/overview/>): it is ingested as exactly one
+/// native carry, never as an unparseable line and never as a human-facing event of its own.
+#[test]
+fn a_heartbeat_is_carried_natively_and_maps_to_nothing() {
+    let line = serde_json::json!({
+        "type": "heartbeat",
+        "timestamp": "2026-01-01T00:00:00Z",
+        "agentId": "root",
+        "waitingOn": "tool_call",
+        "waitedMs": 120_000,
+        "detail": "shell",
+    })
+    .to_string();
+    let (emitted, result) = ingest(&line);
+
+    assert_eq!(emitted.len(), 1);
+    assert_eq!(result.translated_events.len(), 1);
+    let EventKind::Gg { event } = &result.translated_events[0].kind else {
+        panic!(
+            "a heartbeat is a native carry, got {:?}",
+            result.translated_events[0].kind
+        );
+    };
+    assert_eq!(event.agent_id.as_deref(), Some("root"));
+    assert!(matches!(
+        &event.kind,
+        GgTelemetryKind::Heartbeat {
+            waiting_on: crate::gg::GgWaitKind::ToolCall,
+            waited_ms: 120_000,
+            detail: Some(detail),
+        } if detail == "shell"
+    ));
+    assert!(result.error_logs.is_empty());
+    assert!(result.stderr_lines.is_empty());
+    assert_eq!(result.raw_output.len(), 1);
+}
+
+/// Every wait a heartbeat can name, with and without its detail, ingests the same way.
+#[test]
+fn every_heartbeat_wait_kind_is_ingested_without_a_warning() {
+    let stream = ["model_request", "tool_call", "program", "subagent"]
+        .iter()
+        .map(|wait| {
+            serde_json::json!({
+                "type": "heartbeat",
+                "timestamp": "2026-01-01T00:00:00Z",
+                "waitingOn": wait,
+                "waitedMs": 60_000,
+            })
+            .to_string()
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    let (_emitted, result) = ingest(&stream);
+
+    let events = &result.translated_events;
+    assert_eq!(events.len(), 4);
+    assert_eq!(
+        count_kind(events, |k| matches!(
+            k,
+            EventKind::Gg { event } if matches!(event.kind, GgTelemetryKind::Heartbeat { .. })
+        )),
+        4
+    );
+}
+
 // ---- install-path resolution --------------------------------------------------
 
 /// Build an env lookup over a fixed map for [`resolve_install_with`].
