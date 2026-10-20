@@ -1,13 +1,25 @@
 ---
 format: nyxsis-issue
-version: 2
+version: 3
 id: qtgyrnfjnxp8zv8q8jhvug8g
 zone: CASE
 number: 1
 title: Ship and seed the workspace lockfile so a run starts from a committed one
 type: generic
-state: open
+state: done
 created: 2026-10-18T23:42:30.801810532Z
+done: 2026-10-20T03:46:55.690825333Z
+outcome: |
+  Landed as superrepo PR 4562 into nightly with contracts PR 4511, test-suites PRs
+  4528 and 4530 and engines PR 4529: lockfile resolution checks in the suites
+  crate, seeding that vendors the engine at its declared .vendor/packages path and
+  holds vendored copies to the lockfile, a workspace-lockfiles tool in
+  test-suites, and shipped lockfiles for all 42 workspaces of the unfrozen
+  versions. Left for the user: carom (pong) v3.0.0 has prod runs but no .frozen
+  marker and was edited in place; the lockfiles pin engines 1.1.1 and
+  asset-contract 0.2.1, so an engines release means regenerating them. Not
+  exercised: a run on a local or staging deployment reaching validation from the
+  committed lockfile.
 ---
 
 A code-producing case ships a `package.json` and no lockfile, its init runs `npm
