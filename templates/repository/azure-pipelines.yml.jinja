@@ -19,6 +19,14 @@
 # read it, and scripts/ci/git-sources.sh rewrites each public source to the
 # Azure repository and sends that token with it.
 #
+{% if ci_rust_workdir %}
+# This repository's tests read another repository's files across a data edge
+# of the kit's edge table, which no manifest names, so the Rust job checks
+# each out beside this one, every checkout at its name under the sources
+# directory, and runs each step in this repository's. A variable of the job
+# names each data checkout to the suite.
+#
+{% endif %}
 # The Rust job caches the cargo home and the build output, and on a miss each
 # cache task archives its directory on the agent's disk after the job's steps,
 # in the reverse order of the restores. So the job's last step, run whatever
@@ -133,14 +141,12 @@ stages:
         displayName: Rust
         timeoutInMinutes: {{rust_timeout}}
         container: {{ci_rust_track}}
-{% if ci_uses %}
-{{ci_uses}}
+{% if ci_rust_uses %}
+{{ci_rust_uses}}
 {% endif %}
 {{ci_rust_variables}}
         steps:
-          - checkout: self
-            fetchDepth: 1
-            clean: true
+{{ci_rust_checkout}}
           - script: |
               {{host_disk_command}}
               df -h /
@@ -149,19 +155,22 @@ stages:
           - task: Cache@2
             displayName: Restore the cargo home
             inputs:
-              key: 'cargo-home | v2 | "$(Agent.OS)" | rust-toolchain.toml | **/Cargo.toml, !**/target/**'
+              key: 'cargo-home | v2 | "$(Agent.OS)" | {{rust_dir_prefix}}rust-toolchain.toml | {{rust_dir_prefix}}**/Cargo.toml, !{{rust_dir_prefix}}**/target/**'
               restoreKeys: |
-                cargo-home | v2 | "$(Agent.OS)" | rust-toolchain.toml
+                cargo-home | v2 | "$(Agent.OS)" | {{rust_dir_prefix}}rust-toolchain.toml
               path: $(ciCache)/cargo-home
           - task: Cache@2
             displayName: Restore the build output
             inputs:
-              key: 'cargo-target | v2 | "$(Agent.OS)" | rust-toolchain.toml | **/Cargo.toml, !**/target/**'
+              key: 'cargo-target | v2 | "$(Agent.OS)" | {{rust_dir_prefix}}rust-toolchain.toml | {{rust_dir_prefix}}**/Cargo.toml, !{{rust_dir_prefix}}**/target/**'
               restoreKeys: |
-                cargo-target | v2 | "$(Agent.OS)" | rust-toolchain.toml
-              path: target
+                cargo-target | v2 | "$(Agent.OS)" | {{rust_dir_prefix}}rust-toolchain.toml
+              path: {{rust_dir_prefix}}target
           - script: scripts/ci/git-sources.sh
             displayName: Fetch the project's dependencies from Azure
+{% if ci_rust_workdir %}
+            workingDirectory: {{ci_rust_workdir}}
+{% endif %}
             env:
               SYSTEM_ACCESSTOKEN: $(System.AccessToken)
 {% if ci_rust_npm %}
@@ -173,23 +182,41 @@ stages:
 {% endif %}
           - script: echo "##vso[task.setvariable variable=checksReady]true"
             displayName: Ready to run the checks
+{% if ci_rust_workdir %}
+            workingDirectory: {{ci_rust_workdir}}
+{% endif %}
           - script: uv run --quiet --project ci gate run dependency-edges
             displayName: dependency edges
+{% if ci_rust_workdir %}
+            workingDirectory: {{ci_rust_workdir}}
+{% endif %}
             condition: eq(variables['checksReady'], 'true')
 {% if ci_playwright_gate %}
 {{ci_playwright_gate}}
 {% endif %}
           - script: uv run --quiet --project ci gate run rust-fmt
             displayName: cargo fmt (--check)
+{% if ci_rust_workdir %}
+            workingDirectory: {{ci_rust_workdir}}
+{% endif %}
             condition: eq(variables['checksReady'], 'true')
           - script: uv run --quiet --project ci gate run rust-clippy
             displayName: cargo clippy (warnings denied)
+{% if ci_rust_workdir %}
+            workingDirectory: {{ci_rust_workdir}}
+{% endif %}
             condition: eq(variables['checksReady'], 'true')
           - script: uv run --quiet --project ci gate run rust-doc
             displayName: cargo doc (warnings denied)
+{% if ci_rust_workdir %}
+            workingDirectory: {{ci_rust_workdir}}
+{% endif %}
             condition: eq(variables['checksReady'], 'true')
           - script: uv run --quiet --project ci gate run rust-test
             displayName: cargo nextest
+{% if ci_rust_workdir %}
+            workingDirectory: {{ci_rust_workdir}}
+{% endif %}
             condition: eq(variables['checksReady'], 'true')
             env:
               CI_GATE_ARTIFACTS: target/gate-artifacts/rust-test
@@ -198,7 +225,7 @@ stages:
             condition: succeededOrFailed()
             inputs:
               testResultsFormat: JUnit
-              testResultsFiles: $(Build.SourcesDirectory)/target/gate-artifacts/rust-test/junit.xml
+              testResultsFiles: {{ci_rust_root}}/target/gate-artifacts/rust-test/junit.xml
               testRunTitle: Rust tests
               failTaskOnMissingResultsFile: false
 {% if ci_rust_extra_gates %}
@@ -206,6 +233,9 @@ stages:
 {% endif %}
           - script: scripts/ci/prune-target.sh target
             displayName: Prune the build output to what the next build reads
+{% if ci_rust_workdir %}
+            workingDirectory: {{ci_rust_workdir}}
+{% endif %}
             condition: succeededOrFailed()
 {% if ci_windows %}
       - job: windows

@@ -59,7 +59,9 @@ members are its authoring tools under `tools/*` (`NPM_WORKSPACES`).
 `render.py` holds what the kit derives beside it: the crate each repository
 carrying one is scaffolded with (`CRATES`, directories and names kept from the
 monorepo), the Rust track (`RUST_TRACKS`: the repositories whose suite drives a
-browser run in the `rust-browser` image), the image pins (`ciImageTag` from
+browser run in the `rust-browser` image), the repositories each Rust job checks
+out beside its own across a data edge, with the variable naming each checkout
+to the suite (`RUST_CHECKOUTS`), the image pins (`ciImageTag` from
 `ci/images/tags.yml`), the feed (`FEED_REGISTRY`), the long-lived branches
 (`BRANCHES`), the release tags each dependent pins (`TAGS`), the kinds whose
 pipeline builds and pushes an image (`IMAGE_KINDS`, every application; a tool

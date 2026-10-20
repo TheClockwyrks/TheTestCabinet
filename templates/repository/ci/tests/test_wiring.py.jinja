@@ -37,6 +37,12 @@ repository's image natively on each architecture, fetching what its manifests
 reach as the Rust job does, and fuses the two into the multi-arch tag a
 deployment pins; the `build-context` gate holds its Dockerfile first.
 {% endif %}
+{% if rust_dir %}
+The Rust job checks this repository out beside each repository its suite
+reads across a data edge, every checkout at its name under the sources
+directory, names each data checkout to the suite by a variable, and runs
+every step in this repository's checkout.
+{% endif %}
 {% if ci_mirror %}
 A commit on master, staging or nightly, and a published tag, is pushed to the
 GitHub mirror by the last stage, held to running after the gates and the
@@ -97,6 +103,15 @@ PLAYWRIGHT_GATE = "playwright-image"
 WINDOWS = {{ "True" if ci_windows else "False" }}
 WINDOWS_IMAGE = "{{windows_image}}"
 NEXTEST_SCRIPT = "{{nextest_script}}"
+# The repositories the Rust job checks out beside this one, each read across a
+# data edge, to the variable naming its checkout to the suite; and the
+# directory under the sources directory this repository's checkout is in, empty
+# when it is checked out alone, at the sources directory itself.
+DATA_CHECKOUTS: dict[str, str] = {{rust_checkouts_dict}}
+RUST_DIR = "{{rust_dir}}"
+SOURCES = "$(Build.SourcesDirectory)"
+RUST_ROOT = f"{SOURCES}/{RUST_DIR}" if RUST_DIR else SOURCES
+CHECKOUT = re.compile(r"^          - checkout: (?P<name>\S+) *\n(?P<keys>(?:            .*\n)*)", re.MULTILINE)
 {% else %}
 TRACKS = ("checks",)
 IMAGE_OF_TRACK = {"checks": "web"}
@@ -389,12 +404,89 @@ def test_the_rust_track_uses_every_repository_it_declares() -> None:
     """A declared resource scopes the token only once a job says it uses it.
 
     The Rust track fetches what its manifests may reach, the closure of this
-    repository's Rust edges, and uses every repository the pipeline declares.
+    repository's Rust edges, checks out each repository its suite reads across
+    a data edge, and uses every repository the pipeline declares.
     """
     used = _uses(_gates_jobs()["rust"])
     declared = sorted(_repository_resources())
+    expected = sorted({*FETCHED, *DATA_CHECKOUTS})
     assert sorted(used) == declared, f"the Rust track uses {sorted(used)} and the pipeline declares {declared}"
-    assert declared == sorted(FETCHED), f"the pipeline declares {declared}, not the closure {sorted(FETCHED)}"
+    assert declared == expected, f"the pipeline declares {declared}, not the closure and the checkouts {expected}"
+
+
+def _checkouts(job: str) -> dict[str, str]:
+    """Each repository a job checks out, to the path it names, or `""` for none."""
+    found = {}
+    for match in CHECKOUT.finditer(job):
+        path = re.search(r"^            path: (\S+) *$", match.group("keys"), re.MULTILINE)
+        found[match.group("name")] = path.group(1) if path else ""
+    return found
+
+
+def _all_jobs() -> dict[str, str]:
+    """Every job of every stage, by stage and job."""
+    return {f"{stage}/{job}": steps for stage, text in _stages().items() for job, steps in _sections(JOB, text).items()}
+
+
+def test_the_rust_job_checks_out_each_data_repository_beside_this_one() -> None:
+    """Each repository the suite reads across a data edge is checked out beside this one and named by its variable.
+
+    A second checkout puts every repository at its name under the sources
+    directory, so `<this repository>/../<data repository>` reaches it as in the
+    superrepo; a lone checkout keeps the sources directory as this
+    repository's own.
+    """
+    rust = _gates_jobs()["rust"]
+    checkouts = _checkouts(rust)
+    if not DATA_CHECKOUTS:
+        assert checkouts == {"self": ""}, f"the Rust job checks out {checkouts}, not this repository alone"
+        return
+    expected = {"self": f"s/{RUST_DIR}", **{repo: f"s/{repo}" for repo in DATA_CHECKOUTS}}
+    assert checkouts == expected, f"the Rust job checks out {checkouts}, not {expected}"
+    assert list(checkouts) == list(expected), "the Rust job does not check this repository out first"
+    head = rust[: rust.index("steps:")]
+    for repo, variable in DATA_CHECKOUTS.items():
+        assert re.search(rf"^          {variable}: {re.escape(SOURCES)}/{repo} *$", head, re.MULTILINE), (
+            f"the Rust job does not name the {repo} checkout to the suite as {variable}"
+        )
+
+
+def test_no_other_job_checks_out_a_data_repository() -> None:
+    for job, steps in _all_jobs().items():
+        if job == "gates/rust":
+            continue
+        checkouts = _checkouts(steps)
+        assert set(checkouts) <= {"self"}, f"the {job} job checks out {sorted(checkouts)}"
+        assert "path:" not in "".join(match.group("keys") for match in CHECKOUT.finditer(steps)), (
+            f"the {job} job checks this repository out away from the sources directory"
+        )
+
+
+def test_every_rust_step_runs_in_this_repositorys_checkout() -> None:
+    """Every script of the Rust job runs where this repository is checked out, and every path reaches into it."""
+    rust = _gates_jobs()["rust"]
+    starts = [match.start() for match in STEP.finditer(rust)]
+    scripts = [_step_at(rust, at) for at in starts if rust.startswith("          - script:", at)]
+    assert scripts, "the Rust job runs no script"
+    workdir = f"            workingDirectory: {RUST_ROOT}\n"
+    for step in scripts:
+        if "            target: host\n" in step:
+            assert "workingDirectory:" not in step, f"a step on the host names a directory:\n{step}"
+            continue
+        if RUST_DIR:
+            assert workdir in step, f"a step of the Rust job runs outside {RUST_ROOT}:\n{step}"
+        else:
+            assert "workingDirectory:" not in step, f"a step of the Rust job names a directory:\n{step}"
+    prefix = f"{RUST_DIR}/" if RUST_DIR else ""
+    cache = BUILD_OUTPUT_CACHE.search(rust)
+    assert cache and cache.group("path") == f"{prefix}target", "the build output cached is not this repository's"
+    for key in re.findall(r"^              key: '(.*)' *$", rust, re.MULTILINE):
+        files = [part.strip() for part in key.split("|")[3:]]
+        assert files and all(
+            pattern.lstrip("!").startswith(prefix) for part in files for pattern in part.split(", ")
+        ), f"a cache key reads files outside this repository's checkout: {key}"
+    for results in re.findall(r"^              testResultsFiles: (\S+) *$", rust, re.MULTILINE):
+        assert results.startswith(f"{RUST_ROOT}/target/"), f"the Rust job publishes {results}, outside its checkout"
 
 
 def test_the_rust_track_fetches_the_projects_dependencies_from_azure() -> None:
@@ -418,9 +510,14 @@ def test_the_rust_job_prunes_its_build_output_last() -> None:
     last = rust[steps[-1].start() :].rstrip("\n")
     cache = BUILD_OUTPUT_CACHE.search(rust)
     assert cache, "the Rust job restores no build output"
+    # The cache names the build output from the sources directory, and the
+    # prune from this repository's checkout, where the step runs.
+    pruned = cache.group("path").removeprefix(f"{RUST_DIR}/") if RUST_DIR else cache.group("path")
+    workdir = f"            workingDirectory: {RUST_ROOT}\n" if RUST_DIR else ""
     assert last == (
-        f"          - script: {PRUNE_SCRIPT} {cache.group('path')}\n"
+        f"          - script: {PRUNE_SCRIPT} {pruned}\n"
         "            displayName: Prune the build output to what the next build reads\n"
+        f"{workdir}"
         f"            condition: {PRUNE_CONDITION}"
     ), f"the Rust job's last step is not the prune of its build output:\n{last}"
     assert not _named(last), f"the prune runs a gate: {sorted(_named(last))}"
