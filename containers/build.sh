@@ -186,6 +186,10 @@
 #                 images the meshing and skinned images copy their one binary each out of
 #                 (`mc`, `mc-anim` and `mc-skin` into mc, mc-animation and mc-skinned, and
 #                 likewise for sn and dc), taken as TOOL_SPRITE_IMAGE is.
+#   TOOL_SFX_SYNTH_IMAGE, TOOL_SFX_SAMPLE_IMAGE, TOOL_MUSIC_IMAGE  the `tool-sfx-synth`,
+#                 `tool-sfx-sample` and `tool-music` images the sfx-synth, sfx-sample,
+#                 music and full-stack images copy `sfx-synth`, `sfx-sample` and `music`
+#                 out of, taken as TOOL_SPRITE_IMAGE is.
 #
 # GATING THE `-gg` VARIANTS ON `gg selfcheck` (`--gg-selfcheck <PATH-TO-GG>`).
 #
@@ -396,22 +400,13 @@ readonly BASE_WASM_IMAGE="${IMAGE_NAME_PREFIX}base-wasm:${IMAGE_TAG}"
 # `FROM` it (it inherits the six asset binaries and the Rust/wasm toolchain), so the
 # jam image stays in lockstep with full-stack-2d within a build.
 readonly FULL_STACK_2D_IMAGE="${IMAGE_NAME_PREFIX}full-stack-2d:${IMAGE_TAG}"
-# The shared asset-tooling BUILDER image. Not a run image and never pushed: it exists
-# only as a `COPY --from` source, holding every asset-generation binary compiled in a
-# single cargo pass (see containers/tools/Dockerfile). Every asset image that copies out
-# of it (its Dockerfile declares `ARG TOOLS_IMAGE`) is built with this tag passed as that
-# build arg, so all of them bake binaries from the same compile. The binaries of a tool
-# that lives in a `tool-*` repository come from that repository's image instead (see
-# "The tool images" below). It is deliberately absent from image-names.sh, which is the list of
-# PUBLISHED run images.
-readonly TOOLS_IMAGE="${IMAGE_NAME_PREFIX}tools:${IMAGE_TAG}"
 # The gg LANGUAGE-TOOLCHAIN image: the toolchains every `-gg` variant bakes in. It is not
 # built here. The `gg` repository's pipeline builds it from its
 # containers/gg-toolchains/Dockerfile and publishes it on each release tag, multi-arch, as
 # `test-cabinet-gg-toolchains:<version>` beside the gg binaries, so the tree a variant
 # carries is the one the gg release it is driven by was built and tested with. The version
 # is the driver's pin (crates/driver/gg-release-version), read through
-# scripts/ci/gg-release.sh like every other consumer of it. Like the asset tooling it is
+# scripts/ci/gg-release.sh like every other consumer of it. Like the tool images it is
 # not a RUN image — a run never executes in it; it is only ever a `COPY --from` source.
 #
 # ONE COPY OF THE TREE IN THE REGISTRY. `containers/gg/Dockerfile` copies its `/opt` with
@@ -426,10 +421,10 @@ if [[ -z "${GG_TOOLCHAINS_IMAGE}" ]]; then
 	GG_TOOLCHAINS_IMAGE="$("${SCRIPT_DIR}/../scripts/ci/gg-release.sh" toolchains-image)"
 fi
 readonly GG_TOOLCHAINS_IMAGE
-# The AUDIO STORE image: every published audio pack, as data. Like the asset tooling it
+# The AUDIO STORE image: every published audio pack, as data. Like the tool images it
 # is not a RUN image — nothing executes in it and nothing resolves it for a run; it is a
 # `FROM scratch` tree that the DRIVER image copies in at `/opt/tcab-audio` and that
-# `scripts/fetch-audio-store.sh` pulls onto a local checkout. Unlike the tooling it IS
+# `scripts/fetch-audio-store.sh` pulls onto a local checkout. Unlike the tool images it IS
 # pushed, and it is deliberately absent from image-names.sh for the same mechanical reason:
 # `build_one` dispatches on that list by name, so an entry there would route it through
 # `build_asset_image`. The pipeline fuses this one in its own scripts/ci/manifest.sh call.
@@ -446,11 +441,12 @@ readonly AUDIO_STORE_IMAGE="${IMAGE_NAME_PREFIX}audio-store:${IMAGE_TAG}"
 # ---------------------------------------------------------------------------
 # The tool images
 # ---------------------------------------------------------------------------
-# A tool that lives in a `tool-*` repository (`tool-sprite`: `draw`, `draw-sheet`;
-# `tool-paint`: `paint`, `ui`, `texture`, `pbr`; `tool-particle`: `particle-2d`,
-# `particle-3d`; `tool-voxel`: `voxel`, `voxel-anim`; `tool-mc`: `mc`, `mc-anim`,
-# `mc-skin`; `tool-sn` and `tool-dc` likewise) is not compiled by the tooling builder.
-# Its repository's pipeline publishes the image
+# Every asset-generation tool a run image bakes in lives in a `tool-*` repository
+# (`tool-sprite`: `draw`, `draw-sheet`; `tool-paint`: `paint`, `ui`, `texture`, `pbr`;
+# `tool-particle`: `particle-2d`, `particle-3d`; `tool-voxel`: `voxel`, `voxel-anim`;
+# `tool-mc`: `mc`, `mc-anim`, `mc-skin`; `tool-sn` and `tool-dc` likewise;
+# `tool-sfx-synth`: `sfx-synth`; `tool-sfx-sample`: `sfx-sample`; `tool-music`: `music`),
+# and nothing here compiles it. Its repository's pipeline publishes the image
 # `testcabinet.azurecr.io/<repository>:<commit>` on every gated push to master and staging,
 # and a run image copies the binaries out of it at the commit the driver pins, which,
 # while the driver lives in the superrepo, is the superrepo's gitlink for the repository.
@@ -466,16 +462,16 @@ readonly AUDIO_STORE_IMAGE="${IMAGE_NAME_PREFIX}audio-store:${IMAGE_TAG}"
 #     it. scripts/ci/run-images.sh checks every reference is in the registry first.
 #   - without PUSH (the local path, deployments/local/Makefile's), the image built from
 #     the repository's checkout, `${IMAGE_NAME_PREFIX}<repository>:${IMAGE_TAG}`, rebuilt
-#     once per invocation before the first image that copies from it, for the reason the
-#     tooling builder is always rebuilt: it carries the binaries, and a stale one would
-#     bake yesterday's `draw` into today's run image. The repository's own Dockerfile and
+#     once per invocation before the first image that copies from it rather than reused
+#     when present: it carries the binaries, and a stale one would bake yesterday's
+#     `draw` into today's run image. The repository's own Dockerfile and
 #     build context are used, as its pipeline uses them, and its cargo cache mounts make a
 #     no-change rebuild cheap.
 #   - an environment variable named for the argument wins in both modes, and is pulled
 #     like the pinned reference when it is not in the local store.
 #
-# Naming a repository (`./build.sh tool-sprite`) builds or pulls just its image. Like the
-# tooling builder it is not a RUN image, so it is absent from image-names.sh.
+# Naming a repository (`./build.sh tool-sprite`) builds or pulls just its image. A tool
+# image is not a RUN image, so it is absent from image-names.sh.
 tool_images_table="$("${SCRIPT_DIR}/../scripts/ci/tool-images.sh" list)"
 declare -a TOOL_REPOSITORIES=()
 declare -A TOOL_IMAGE_REF=()
@@ -522,9 +518,6 @@ fi
 # one. A reused image in GG_SELFCHECK_IMAGES is still pulled and driven through `gg
 # selfcheck` with this run's gg: the check gates the image against the gg of the day,
 # and the reuse only says the image is the one checked last time, not that the gg is.
-#
-# `tools`, which is never given a commit's tag, is pushed under its inputs tag alone, so
-# a later run whose asset images changed pulls the builder instead of compiling it.
 #
 # The parent map is the table's, which mirrors this script's dispatch; the two must
 # agree, and scripts/ci/run-image-inputs.sh says so at its own parent map.
@@ -633,16 +626,14 @@ reuse_image() {
 	local_image="${IMAGE_NAME_PREFIX}${name}:${IMAGE_TAG}"
 	echo "==> reusing ${local_image}: its inputs are unchanged and ${ref} is in the registry"
 	REUSED["${name}"]=1
-	if [[ "${name}" != tools ]]; then
-		repo="${IMAGE_REGISTRY%/}/${IMAGE_NAME_PREFIX}${name}"
-		registry_retry "$DOCKER" buildx imagetools create --tag "${repo}:${IMAGE_TAG}" "${ref}" >&2
-		digest="$("$DOCKER" buildx imagetools inspect "${repo}:${IMAGE_TAG}" --format '{{.Manifest.Digest}}')"
-		if [[ -z "${digest}" ]]; then
-			echo "could not resolve the digest of ${repo}:${IMAGE_TAG} after retagging ${ref}" >&2
-			exit 1
-		fi
-		echo "==> ${name} reference: ${repo}@${digest}"
+	repo="${IMAGE_REGISTRY%/}/${IMAGE_NAME_PREFIX}${name}"
+	registry_retry "$DOCKER" buildx imagetools create --tag "${repo}:${IMAGE_TAG}" "${ref}" >&2
+	digest="$("$DOCKER" buildx imagetools inspect "${repo}:${IMAGE_TAG}" --format '{{.Manifest.Digest}}')"
+	if [[ -z "${digest}" ]]; then
+		echo "could not resolve the digest of ${repo}:${IMAGE_TAG} after retagging ${ref}" >&2
+		exit 1
 	fi
+	echo "==> ${name} reference: ${repo}@${digest}"
 	if [[ -n "${GG_SELFCHECK_BIN}" ]] && gg_selfcheck_covers "${name}"; then
 		echo "==> pulling ${ref} to drive gg selfcheck in it: a reused representative is checked like a built one" >&2
 		registry_retry "$DOCKER" pull --quiet "${ref}" >&2
@@ -683,10 +674,7 @@ produce() {
 		return 0
 	fi
 	ensure_parents_local "${name}"
-	case "${name}" in
-		tools) build_tools ;;
-		*) build_one "${name}" ;;
-	esac
+	build_one "${name}"
 }
 
 # Push a locally-built image to the registry under a tag, then resolve and print
@@ -727,7 +715,7 @@ push_and_pin() {
 # Reclaiming disk as the build goes
 # ---------------------------------------------------------------------------
 # A full PUSH build builds the fifty-five names `containers/image-names.sh` lists, plus the
-# asset-tooling builder and the audio store. Twenty-seven of the fifty-five are `-gg` variants
+# audio store. Twenty-seven of the fifty-five are `-gg` variants
 # carrying a 2.2 GB `/opt/gg`. `containers/gg/Dockerfile` copies that tree with `--link` so
 # that every variant's layer carries ONE digest and the registry stores it once — but the
 # LOCAL store does not share it: a layer sits under its parent's chain there, and every
@@ -746,8 +734,6 @@ push_and_pin() {
 # WHAT IS SAFE TO REMOVE, AND WHEN. Every image here is built FROM a LOCAL tag, so removing
 # one too early breaks a later build. Within one invocation the parent map is:
 #
-#   tools            -> every asset image NON_TOOLS_IMAGES does not name, and both
-#                       full-stack images
 #   base             -> base-wasm and every asset image
 #   base-wasm        -> full-stack-2d/3d, adversarial, performance
 #   full-stack-2d    -> game-jam, and full-stack-2d-gg
@@ -760,16 +746,16 @@ push_and_pin() {
 # its variant is pushed. RECLAIM_KEEP holds back the names that outlive their own position in
 # that list.
 #
-# Two of the four are reachable by the reclaim and would break a later build. `base-wasm` is
+# Two of the three are reachable by the reclaim and would break a later build. `base-wasm` is
 # the parent of full-stack-2d, full-stack-3d, adversarial and performance, all of which come
 # after `base-wasm-gg`; `full-stack-2d` is the parent of `game-jam`, which comes after
-# `full-stack-2d-gg`. The other two are named because they are what the whole set is built
-# FROM: `base` and `tools` have no variant and so never reach the reclaim. (The gg toolchain
-# image, a `COPY --from` source for every variant, is pulled rather than built and is no
-# name of this loop, so the reclaim never reaches it.) A new run image that
+# `full-stack-2d-gg`. The third is named because it is what the whole set is built FROM:
+# `base` has no variant and so never reaches the reclaim. (The gg toolchain image and the
+# tool images, `COPY --from` sources, are pulled or built from their own repositories and
+# are no names of this loop, so the reclaim never reaches them.) A new run image that
 # becomes the parent of anything but its own variant belongs here too — the third line
 # `containers/image-names.sh`'s header asks for when one is added.
-readonly RECLAIM_KEEP=(tools base base-wasm full-stack-2d)
+readonly RECLAIM_KEEP=(base base-wasm full-stack-2d)
 
 reclaim_keeps() {
 	local name="$1" keep
@@ -854,7 +840,7 @@ reclaim_image() {
 # (proven on both pools: every leg of the last image jobs' run pulled `docker/dockerfile:1` and
 # its Rust base from Docker Hub at job start), so nothing pre-existing is lost. What is lost
 # is within-build: `containers/adversarial` and `containers/performance` build after several
-# variants have gone past, so each re-downloads the cargo registry `containers/tools` already
+# variants have gone past, so the second re-downloads the cargo registry the first
 # fetched. That is a few minutes on a job with a six-hour timeout, against a build that
 # otherwise does not finish. A threshold or a size-capped prune would avoid it and would also
 # be a tunable that can be set wrong, which is the wrong trade for a job CI cannot exercise
@@ -888,30 +874,6 @@ reclaim_after_push() {
 	reclaim_keeps "${parent}" || reclaim_image "${parent}"
 	reclaim_builder_cache
 	reclaim_report_disk
-}
-
-# Build the shared asset-tooling builder: every asset-generation binary the run
-# images bake in, compiled in ONE cargo pass over the shared dependency graph, and
-# exported as a `scratch` image the asset builds `COPY --from`.
-#
-# This is NOT a run image. It is never pushed and never appears in image-names.sh —
-# a run never executes in it; it is only ever a source for `COPY --from`.
-#
-# It is ALWAYS rebuilt when any consuming image is selected, rather than reused when
-# present the way the base is. The base is a stable OS+toolchain layer, but this
-# image holds the compiled tooling, so reusing a stale one would silently bake
-# yesterday's `particle-3d` into today's run image — exactly the gap `run-images`
-# exists to close. A no-change rebuild is cheap: the Dockerfile's cargo cache mounts
-# mean cargo re-links at most the crates that actually changed.
-build_tools() {
-	echo "==> building ${TOOLS_IMAGE} (shared asset tooling; not pushed under the commit's tag)"
-	"$DOCKER" build \
-		-t "${TOOLS_IMAGE}" \
-		-f "${SCRIPT_DIR}/tools/Dockerfile" "${SCRIPT_DIR}/.."
-	# Under REUSE_INPUTS only, and under its inputs tag only: the builder never gets a
-	# commit's tag, but a later run whose asset images changed pulls it from there
-	# instead of compiling it.
-	push_inputs_tag "${TOOLS_IMAGE}" tools
 }
 
 # The build argument a tool repository's image is passed as: `tool-sprite` ->
@@ -951,8 +913,7 @@ ensure_tool_image() {
 }
 
 # The build arguments one image's Dockerfile declares beyond BASE_IMAGE, with their
-# values, into IMAGE_BUILD_ARGS: TOOLS_IMAGE when it copies out of the tooling builder,
-# and each tool image it copies from, made present first. A global array rather than
+# values, into IMAGE_BUILD_ARGS: each tool image it copies from, made present first. A global array rather than
 # output, so `ensure_tool_image` runs under `set -e` (a command substitution would not
 # carry it). Argument: the image's short name.
 IMAGE_BUILD_ARGS=()
@@ -960,9 +921,6 @@ image_build_args() {
 	local name="$1" dockerfile arg
 	dockerfile="${SCRIPT_DIR}/${name}/Dockerfile"
 	IMAGE_BUILD_ARGS=()
-	if grep -qE '^ARG TOOLS_IMAGE(=|$)' "${dockerfile}"; then
-		IMAGE_BUILD_ARGS+=(--build-arg "TOOLS_IMAGE=${TOOLS_IMAGE}")
-	fi
 	while read -r arg; do
 		[[ -n "${arg}" ]] || continue
 		if [[ -z "${TOOL_IMAGE_REPOSITORY[$arg]:-}" ]]; then
@@ -1405,11 +1363,12 @@ build_base_wasm() {
 }
 
 # Build one asset-generation image `FROM` the base built above plus its tool binary,
-# copied out of the tooling builder or out of a tool image (`sprite` and `sprite-sheet`
-# copy from tool-sprite's, `ui` and `material` from tool-paint's, `particle-2d` and
-# `particle-3d` from tool-particle's, `voxel` and `voxel-animation` from tool-voxel's,
-# and the meshing and skinned images from tool-mc's, tool-sn's or tool-dc's;
-# `image_build_args` reads which from the Dockerfile). The
+# copied out of a tool image (`sprite` and `sprite-sheet` copy from tool-sprite's, `ui`
+# and `material` from tool-paint's, `particle-2d` and `particle-3d` from tool-particle's,
+# `voxel` and `voxel-animation` from tool-voxel's, the meshing and skinned images from
+# tool-mc's, tool-sn's or tool-dc's, and `sfx-synth`, `sfx-sample` and `music` from
+# tool-sfx-synth's, tool-sfx-sample's and tool-music's; `image_build_args` reads which
+# from the Dockerfile). The
 # argument is the image's short name (`sprite` / `sprite-sheet` / `voxel` /
 # `voxel-animation` / `mc` / `mc-animation` / `sn` / `sn-animation` / `dc` /
 # `dc-animation`), which is both its name suffix and the directory holding its
@@ -1446,8 +1405,8 @@ build_asset_image() {
 # 2D one by CONTENT, but it is built `FROM` base-wasm rather than `FROM` the 2D tag:
 # layering it there would make every 2D run pay for a rebuild of the 3D one, and would put
 # the two images in a dependency order that says nothing true about them. Being siblings,
-# they differ only in which binaries their Dockerfile copies out of the tooling builder —
-# same base, same build args — so what varies between them is the argument below and
+# they differ only in which binaries their Dockerfile copies out of the tool images —
+# same base — so what varies between them is the argument below and
 # nothing else.
 #
 # Both are `FROM` base-wasm rather than the base, so a full-stack build may author its
@@ -1568,7 +1527,7 @@ build_one() {
 		adversarial)  build_adversarial ;;
 		performance)  build_performance ;;
 		# The two full-stack images are `FROM` base-wasm rather than the base and bake
-		# their asset binaries out of the shared tooling builder, so they share a builder
+		# their asset binaries out of the tool images, so they share a builder
 		# of their own (see build_full_stack — the argument is the dimension a case
 		# selects with `asset_dimension`). Neither may fall through to `*)`, which would
 		# build it `FROM` the plain base: an image that builds, resolves, and has no Rust
@@ -1610,26 +1569,6 @@ if [[ -n "${GG_SELFCHECK_BIN}" ]]; then
 	assert_gg_environments
 fi
 
-# The images that do NOT bake a binary out of the shared tooling builder: the two
-# base layers, the self-contained blender image, the adversarial and performance
-# images (which compile their own wasm-targeting tooling in their own stages),
-# game-jam (which inherits everything from full-stack-2d), sprite and sprite-sheet
-# (whose one binary each is copied out of the tool-sprite image), ui and material
-# (whose two binaries each are copied out of the tool-paint image), particle-2d and
-# particle-3d (whose one binary each is copied out of the tool-particle image), and the
-# voxel, meshing and skinned images (whose one binary each is copied out of the
-# tool-voxel, tool-mc, tool-sn or tool-dc image; see "The tool images"). Everything else
-# in ALL_NAMES is an asset image that `COPY --from=tools`. Expressed as the exceptions
-# rather than the members so a newly-added asset kind is covered by default.
-#
-# The `-gg` variants are exceptions too, by pattern rather than by name: each adds one
-# COPY of the toolchain tree onto an already-built parent and bakes no asset binary of
-# its own. `select_needs_tools` applies that pattern, so a new run image's variant is
-# covered without being named here.
-readonly NON_TOOLS_IMAGES=(base base-wasm blender adversarial performance game-jam sprite sprite-sheet ui material
-	particle-2d particle-3d voxel voxel-animation mc mc-animation mc-skinned sn sn-animation sn-skinned
-	dc dc-animation dc-skinned)
-
 # Whether an image tag is present in the local image store (used to decide whether
 # the FROM base has to be built before a selected non-base image).
 image_present() { "$DOCKER" image inspect "$1" >/dev/null 2>&1; }
@@ -1646,8 +1585,8 @@ image_present() { "$DOCKER" image inspect "$1" >/dev/null 2>&1; }
 # themselves were rebuilt daily.
 #
 # The two base layers COPY nothing, so their Dockerfile is the whole of their input
-# and its mtime is an exact signal. A leaf that also bakes binaries out of the tools
-# builder has more inputs than this sees, so the check is a lower bound there: it
+# and its mtime is an exact signal. A leaf that also bakes binaries out of a tool
+# image has more inputs than this sees, so the check is a lower bound there: it
 # never holds back a rebuild that is due, it can only miss one. A fresh checkout
 # stamps every file with the checkout time and so rebuilds once, which is the safe
 # direction to be wrong in.
@@ -1674,19 +1613,19 @@ fi
 # (e.g. `voxel-anim` for `voxel-animation`) fails fast instead of building nothing.
 for name in "${selected[@]}"; do
 	found=""
-	# `tools` and `audio-store` are accepted although they are not in ALL_NAMES:
-	# neither is a published RUN image (that list is the set a run resolves), and both
-	# are built by a rule of their own, so `./build.sh tools` and
-	# `./build.sh audio-store` are the ways to rebuild just one of them. The layer
+	# `audio-store` and the tool images are accepted although they are not in
+	# ALL_NAMES: none is a published RUN image (that list is the set a run resolves),
+	# and each is built by a rule of its own, so `./build.sh audio-store` and
+	# `./build.sh tool-sprite` are the ways to rebuild just one of them. The layer
 	# rules below are what actually build them, which is also why the main build loop
-	# skips both.
-	for known in "${ALL_NAMES[@]}" tools audio-store "${TOOL_REPOSITORIES[@]}"; do
+	# skips them.
+	for known in "${ALL_NAMES[@]}" audio-store "${TOOL_REPOSITORIES[@]}"; do
 		[[ "$name" == "$known" ]] && { found=1; break; }
 	done
 	if [[ -z "${found}" ]]; then
 		echo "unknown image '${name}'. Known images: ${ALL_NAMES[*]}" >&2
-		echo "       plus the ones that are not run images: tools (the shared tooling builder)," >&2
-		echo "       audio-store (the published audio packs) and the tool images (${TOOL_REPOSITORIES[*]})." >&2
+		echo "       plus the ones that are not run images: audio-store (the published audio packs)" >&2
+		echo "       and the tool images (${TOOL_REPOSITORIES[*]})." >&2
 		exit 1
 	fi
 done
@@ -1694,10 +1633,10 @@ done
 # Put the selection into canonical (image-names.sh) order and drop duplicates. That order
 # is dependency order, so this is what makes a parent build before the image that is
 # `FROM` it whichever way the names were typed: `./build.sh sprite-gg sprite` must not
-# bake the variant on top of yesterday's sprite. `tools` and the tool images sort first:
-# they are what everything else copies out of.
+# bake the variant on top of yesterday's sprite. The tool images sort first: they are
+# what everything else copies out of.
 ordered=()
-for known in tools "${TOOL_REPOSITORIES[@]}" audio-store "${ALL_NAMES[@]}"; do
+for known in "${TOOL_REPOSITORIES[@]}" audio-store "${ALL_NAMES[@]}"; do
 	for name in "${selected[@]}"; do
 		if [[ "$name" == "$known" ]]; then
 			ordered+=("$known")
@@ -1746,8 +1685,8 @@ targets=()
 for name in "${selected[@]}"; do
 	if [[ "$name" == audio-store ]] || tool_image_arg "$name" >/dev/null; then
 		# The audio store is data only, `FROM scratch`, and a tool image is built from its
-		# own repository: neither is layered onto anything built here nor bakes a binary
-		# out of the tooling builder, and no image is built `FROM` either — so they
+		# own repository: neither is layered onto anything built here, and no image is
+		# built `FROM` either — so they
 		# contribute nothing to any rule below and must not drag a base build in behind
 		# them.
 		continue
@@ -1799,26 +1738,9 @@ select_needs_full_stack_2d() {
 	return 1
 }
 
-# Whether anything to be built bakes a binary out of the shared tooling builder — i.e.
-# anything but the exceptions in NON_TOOLS_IMAGES. `game-jam` is an exception only
-# because it inherits its binaries from full-stack-2d; when a game-jam selection has to
-# build that parent, the layer-3 rule below asks for the tooling itself. A `-gg` variant
-# never reaches here at all: `targets` holds its parent, not the variant.
-select_needs_tools() {
-	local x y is_exception
-	for x in "${targets[@]}"; do
-		is_exception=""
-		for y in "${NON_TOOLS_IMAGES[@]}"; do
-			[[ "$x" == "$y" ]] && { is_exception=1; break; }
-		done
-		[[ -z "${is_exception}" ]] && return 0
-	done
-	return 1
-}
-
 # THE BASELINE DISK READING, before anything is built. `reclaim_after_push` reports after
 # every variant, but the first of those lands after `base-wasm-gg`, the third of fifty-five
-# names — so a failure in `tools`, or in pulling the 2.2 GB toolchain image, would produce
+# names — so a failure in `base`, or in pulling the 2.2 GB toolchain image, would produce
 # no figure at all. This is the one that says what the
 # agent started with. Under RECLAIM only, so a local build's output is unchanged.
 if [[ -n "${PUSH}" && -n "${RECLAIM}" ]]; then
@@ -1826,16 +1748,7 @@ if [[ -n "${PUSH}" && -n "${RECLAIM}" ]]; then
 	reclaim_report_disk
 fi
 
-# Layer 0 — the shared asset tooling, built before anything that copies out of it.
-# ALWAYS rebuilt (never "reused if present"): it carries the compiled binaries, so a
-# stale one would bake outdated tooling into an otherwise-fresh run image. Its cargo
-# cache mounts make a no-change rebuild near-instant. It is independent of the base,
-# so it is built first.
-if select_needs_tools; then
-	produce tools
-fi
-
-# Layer 0a — a tool image that is NAMED. One that is not is made present by the first
+# Layer 0 — a tool image that is NAMED. One that is not is made present by the first
 # image that copies from it (`image_build_args`), so a selection that needs none of them
 # neither builds nor pulls one.
 for name in "${TOOL_REPOSITORIES[@]}"; do
@@ -1844,7 +1757,7 @@ for name in "${TOOL_REPOSITORIES[@]}"; do
 	fi
 done
 
-# Layer 0b — the audio store, which depends on nothing and which nothing depends on.
+# Layer 0a — the audio store, which depends on nothing and which nothing depends on.
 # Built when it is NAMED, and on a full build only under PUSH: staging it needs node and
 # the audio object store's presign credentials, which a contributor does not have and now
 # does not need, so a plain local `./build.sh` skips it with a note and still builds every
@@ -1910,10 +1823,6 @@ if ! select_has full-stack-2d \
 		|| [[ -n "${base_wasm_rebuilt}" ]] \
 		|| parent_is_stale "${FULL_STACK_2D_IMAGE}" "${SCRIPT_DIR}/full-stack-2d/Dockerfile"; }; then
 	echo "==> full-stack-2d image ${FULL_STACK_2D_IMAGE} is absent or out of date; building it first (game-jam is FROM it)"
-	# full-stack-2d bakes six binaries out of the tooling builder. A game-jam-only
-	# selection did not trigger the layer-0 rule (game-jam inherits its binaries and
-	# needs no tooling of its own), so build the tooling here before its parent.
-	produce tools
 	produce full-stack-2d
 fi
 
@@ -1938,14 +1847,14 @@ for name in "${gg_parents[@]}"; do
 done
 unset parent_ref
 
-# Build each selected image. The base layers and the tooling builder are already
-# handled above. The canonical order in image-names.sh places full-stack-2d before
+# Build each selected image. The base layers, the audio store and the tool images are
+# already handled above. The canonical order in image-names.sh places full-stack-2d before
 # game-jam, so a full build builds the parent before the jam image.
 # The reclaim sits HERE and not inside `build_one`, deliberately: layer 4 above calls
 # `build_one` to build a `-gg` variant's absent parent, and that parent has to survive until
 # its variant is built.
 for name in "${selected[@]}"; do
-	[[ "$name" == base || "$name" == base-wasm || "$name" == tools || "$name" == audio-store ]] && continue
+	[[ "$name" == base || "$name" == base-wasm || "$name" == audio-store ]] && continue
 	tool_image_arg "$name" >/dev/null && continue
 	produce "$name"
 	reclaim_after_push "$name"

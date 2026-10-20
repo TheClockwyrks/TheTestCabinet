@@ -166,12 +166,13 @@ ALL_IMGS := $(BACKEND_IMG) $(DISPATCHER_IMG) $(DRIVER_IMG) $(ARTIFACTS_IMG) $(AR
 
 # The run-container images — the base end-to-end image plus the per-asset-kind
 # images that BAKE IN their modeling tool (`draw`/`draw-sheet`/`voxel`/`voxel-anim`,
-# and the adversarial/performance tooling), compiled from `crates/` at image build
-# time or, for a tool in a `tool-*` repository (`draw`/`draw-sheet`: `tool-sprite`;
-# `paint`/`ui`/`texture`/`pbr`: `tool-paint`; `particle-2d`/`particle-3d`:
-# `tool-particle`; `voxel`/`voxel-anim`: `tool-voxel`; `mc`/`mc-anim`/`mc-skin`:
-# `tool-mc`, and likewise `tool-sn` and `tool-dc`), copied out of that repository's
-# image,
+# and the adversarial/performance tooling). The adversarial/performance tooling is
+# compiled from `crates/` at image build time; every other tool lives in a `tool-*`
+# repository (`draw`/`draw-sheet`: `tool-sprite`; `paint`/`ui`/`texture`/`pbr`:
+# `tool-paint`; `particle-2d`/`particle-3d`: `tool-particle`; `voxel`/`voxel-anim`:
+# `tool-voxel`; `mc`/`mc-anim`/`mc-skin`: `tool-mc`, and likewise `tool-sn` and
+# `tool-dc`; `sfx-synth`: `tool-sfx-synth`; `sfx-sample`: `tool-sfx-sample`; `music`:
+# `tool-music`) and is copied out of that repository's image,
 # which `containers/build.sh` builds first from the checked-out repository (see
 # `containers/build.sh` and `containers/*/Dockerfile`). These are
 # DISTINCT from the long-lived service images above: a run pod is a per-run Job the
@@ -297,7 +298,8 @@ RUN_IMGS         := $(call run_image_refs,$(RUN_IMAGE_NAMES))
 
 # The `tool-*` repositories whose images the run images copy binaries out of, as
 # scripts/ci/tool-images.sh lists them. `run-images` names them to build.sh first.
-TOOL_IMAGE_NAMES := tool-sprite tool-paint tool-particle tool-voxel tool-mc tool-sn tool-dc
+TOOL_IMAGE_NAMES := tool-sprite tool-paint tool-particle tool-voxel tool-mc tool-sn tool-dc tool-sfx-synth \
+	tool-sfx-sample tool-music
 
 # Shared dispatcher↔backend service token. A fixed dev default (no production value
 # lives in the repo); override from the environment, e.g. `SERVICE_TOKEN=… make …`.
@@ -607,12 +609,11 @@ images: audio-store
 # resolve the run image fresh each run, so no service restart is needed to pick the
 # new image up).
 #
-# Every asset image's binaries now come out of ONE shared tooling builder
-# (`containers/tools/Dockerfile`), which carries cargo cache mounts — so the whole
-# asset set costs a single incremental compile plus a per-image layer export, rather
-# than the from-scratch recompile per image it used to be. `build.sh` always rebuilds
-# that builder when an asset image is selected, so a tooling change can never be
-# missed. The per-type targets below are still worth reaching for (each image still
+# Every asset image's binaries come out of a `tool-*` repository's image, which
+# `build.sh` builds from that repository's checkout (its Dockerfile carries cargo cache
+# mounts) once per invocation, before the first image that copies from it — so a
+# tooling change can never be missed, and the asset set costs one incremental compile
+# per tool repository plus a per-image layer export. The per-type targets below are still worth reaching for (each image still
 # has to be exported and re-imported into the cluster), just no longer to dodge a
 # multi-minute recompile:
 #   - `run-images`               everything (what local-up runs; the heavy path)
@@ -751,7 +752,8 @@ run-images-gg:
 # in the cluster — `run-images-gg` is what the cluster needs. Expect minutes: the check
 # compiles one program per arm eleven times over (~35 s per image once the toolchain image
 # and every parent is local; the first run pays for those instead — and two of the five
-# parents bake tooling binaries, so that first run also builds the `tools` Rust builder).
+# parents bake tooling binaries, so that first run also builds the tool images they copy
+# from).
 #
 # The release is fetched under the repository's own gitignored `target/` rather than into a
 # temporary directory — the binary is ~780 MB — and fetched again only when what is there

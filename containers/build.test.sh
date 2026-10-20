@@ -99,9 +99,8 @@ chmod +x "$tmp/bin/uname"
 # The inputs table: one digest per image, so a registry tag names one image's inputs.
 inputs="$tmp/inputs"
 cat >"$inputs" <<TABLE
-tools d1 -
 base d2 -
-music d3 base,tools
+music d3 base
 music-gg d5 music
 TABLE
 
@@ -121,7 +120,11 @@ tv="registry.test/tool-voxel:pin1"
 tm="registry.test/tool-mc:pin1"
 tn="registry.test/tool-sn:pin1"
 td="registry.test/tool-dc:pin1"
-fresh_registry() { printf '%s\n' "$tc" "$ts" "$tp" "$tpp" "$tv" "$tm" "$tn" "$td" >"$tmp/registry"; }
+# And the three audio tool repositories' images.
+tsy="registry.test/tool-sfx-synth:pin1"
+tsa="registry.test/tool-sfx-sample:pin1"
+tmu="registry.test/tool-music:pin1"
+fresh_registry() { printf '%s\n' "$tc" "$ts" "$tp" "$tpp" "$tv" "$tm" "$tn" "$td" "$tsy" "$tsa" "$tmu" >"$tmp/registry"; }
 run() {
 	: >"$tmp/log"
 	(cd "$HERE/.." && PATH="$tmp/bin:$PATH" STUB_LOG="$tmp/log" STUB_LOCAL="$tmp/local" STUB_REGISTRY="$tmp/registry" \
@@ -131,6 +134,8 @@ run() {
 		TOOL_PAINT_IMAGE="${TOOL_PAINT_IMAGE-$tp}" TOOL_PARTICLE_IMAGE="${TOOL_PARTICLE_IMAGE-$tpp}" \
 		TOOL_VOXEL_IMAGE="${TOOL_VOXEL_IMAGE-$tv}" TOOL_MC_IMAGE="${TOOL_MC_IMAGE-$tm}" \
 		TOOL_SN_IMAGE="${TOOL_SN_IMAGE-$tn}" TOOL_DC_IMAGE="${TOOL_DC_IMAGE-$td}" \
+		TOOL_SFX_SYNTH_IMAGE="${TOOL_SFX_SYNTH_IMAGE-$tsy}" TOOL_SFX_SAMPLE_IMAGE="${TOOL_SFX_SAMPLE_IMAGE-$tsa}" \
+		TOOL_MUSIC_IMAGE="${TOOL_MUSIC_IMAGE-$tmu}" \
 		IMAGE_REGISTRY="$reg" IMAGE_TAG=sha1-amd64 containers/build.sh "$@" 2>&1)
 }
 builds() { grep -E '^build ' "$tmp/log" | grep -oE -- '-t [^ ]+' | cut -d' ' -f2 | tr '\n' ' '; }
@@ -141,17 +146,16 @@ echo "an empty registry builds everything and pushes each image under both tags"
 : >"$tmp/local"; fresh_registry
 out="$(run base music music-gg)"
 check_equal "the build passes" "0" "$?"
-check_equal "every image is built, the gg toolchains not among them" \
-	"${prefix}tools:sha1-amd64 ${prefix}base:sha1-amd64 ${prefix}music:sha1-amd64 ${prefix}music-gg:sha1-amd64 " \
+check_equal "every image is built, the gg toolchains and the tool-music image not among them" \
+	"${prefix}base:sha1-amd64 ${prefix}music:sha1-amd64 ${prefix}music-gg:sha1-amd64 " \
 	"$(builds)"
-check_equal "the toolchain image is pulled, once" "$tc " "$(pulls)"
+check_equal "the tool-music and toolchain images are pulled, once each" "$tmu $tc " "$(pulls)"
 check_contains "and the variant copies it" "--build-arg GG_TOOLCHAINS_IMAGE=$tc" "$(grep -E '^build ' "$tmp/log")"
 check_equal "nothing is retagged" "" "$(retags)"
-for pair in tools:d1 base:d2 music:d3 music-gg:d5; do
+for pair in base:d2 music:d3 music-gg:d5; do
 	name="${pair%%:*}"; digest="${pair##*:}"
 	check_contains "$name is pushed under its inputs tag" "${reg}/${prefix}${name}:inputs-${digest}-amd64" "$(cat "$tmp/registry")"
 done
-check_lacks "tools gets no commit tag" "${reg}/${prefix}tools:sha1-amd64" "$(cat "$tmp/registry")"
 check_contains "music-gg gets the commit tag" "${reg}/${prefix}music-gg:sha1-amd64" "$(cat "$tmp/registry")"
 check_contains "and its reference line" "==> music-gg reference: ${reg}/${prefix}music-gg@sha256:pushed-sha1-amd64" "$out"
 # The reclaim has to take the inputs tag with the others: a tag left on an image keeps
@@ -159,10 +163,9 @@ check_contains "and its reference line" "==> music-gg reference: ${reg}/${prefix
 for name in music music-gg; do
 	check_equal "the reclaimed $name has no tag left in the local store" "" "$(grep -F "${prefix}${name}:" "$tmp/local" | tr '\n' ' ')"
 done
-for name in tools base; do
-	check_contains "$name, which the reclaim keeps, is still local" "${prefix}${name}:sha1-amd64" "$(cat "$tmp/local")"
-done
+check_contains "base, which the reclaim keeps, is still local" "${prefix}base:sha1-amd64" "$(cat "$tmp/local")"
 check_contains "so is the toolchain image, which it never reaches" "$tc" "$(cat "$tmp/local")"
+check_contains "and the tool-music image" "$tmu" "$(cat "$tmp/local")"
 check_lacks "which is pushed nowhere" "test-cabinet-gg-toolchains:sha1" "$(cat "$tmp/registry")"
 check_lacks "and no reclaim is reported as failed" "NOT reclaimed" "$out"
 
@@ -172,7 +175,7 @@ out="$(run base music music-gg)"
 check_equal "the build passes" "0" "$?"
 check_equal "nothing is built" "" "$(builds)"
 check_equal "nothing is pulled" "" "$(pulls)"
-check_equal "every image but tools is retagged for the commit" \
+check_equal "every image is retagged for the commit" \
 	"${reg}/${prefix}base:sha1-amd64 ${reg}/${prefix}music:sha1-amd64 ${reg}/${prefix}music-gg:sha1-amd64 " \
 	"$(retags)"
 check_contains "and says so" "==> reusing ${prefix}music-gg:sha1-amd64: its inputs are unchanged" "$out"
@@ -189,15 +192,15 @@ check_equal "its parent is pulled from its inputs tag, and the toolchain image f
 check_contains "the child is pushed under its new inputs tag" "${reg}/${prefix}music-gg:inputs-d6-amd64" "$(cat "$tmp/registry")"
 check_contains "music is retagged, not built" "${reg}/${prefix}music:sha1-amd64" "$(retags)"
 
-echo "a changed parent rebuilds what is below it, from the pulled builder"
+echo "a changed parent rebuilds what is below it, from the pulled tool image"
 : >"$tmp/local"
 sed -i 's/^base d2 /base d7 /; s/^music d3 /music d8 /; s/^music-gg d6 /music-gg d9 /' "$inputs"
 out="$(run base music music-gg)"
 check_equal "the build passes" "0" "$?"
 check_equal "base, music and the variant are built" \
 	"${prefix}base:sha1-amd64 ${prefix}music:sha1-amd64 ${prefix}music-gg:sha1-amd64 " "$(builds)"
-check_equal "tools is pulled, and the toolchain image for the variant" \
-	"${reg}/${prefix}tools:inputs-d1-amd64 $tc " "$(pulls)"
+check_equal "tool-music is pulled, and the toolchain image for the variant" \
+	"$tmu $tc " "$(pulls)"
 
 echo "one variant selected alone reuses its whole parent chain without a pull"
 : >"$tmp/local"
@@ -263,28 +266,26 @@ out="$(cd "$HERE/.." && PATH="$tmp/bin:$PATH" DOCKER="$tmp/docker" STUB_LOG="$tm
 check_equal "with exit 1" "1" "$status"
 check_contains "and says why" "REUSE_INPUTS needs PUSH=1" "$out"
 
-echo "under PUSH, sprite copies draw out of the pinned tool-sprite image, not the tooling builder"
+echo "under PUSH, sprite copies draw out of the pinned tool-sprite image"
 : >"$tmp/local"; fresh_registry
 out="$(REUSE_INPUTS="" run sprite sprite-sheet)" && status=0 || status=$?
 check_equal "the build passes" "0" "$status"
-check_equal "base and the two images are built, and neither tools nor tool-sprite" \
+check_equal "base and the two images are built, and not tool-sprite" \
 	"${prefix}base:sha1-amd64 ${prefix}sprite:sha1-amd64 ${prefix}sprite-sheet:sha1-amd64 " "$(builds)"
 check_equal "the tool-sprite image is pulled, once" "$ts " "$(pulls)"
 check_contains "and passed to the build" "--build-arg TOOL_SPRITE_IMAGE=$ts" "$(grep -E "^build .*${prefix}sprite:" "$tmp/log")"
-check_lacks "which is given no tooling builder" "TOOLS_IMAGE=" "$(grep -E "^build .*${prefix}sprite:" "$tmp/log")"
 check_lacks "and the tool image is pushed nowhere" "tool-sprite:sha1" "$(cat "$tmp/registry")"
 
 echo "under PUSH, ui and material copy their binaries out of the pinned tool-paint image"
 : >"$tmp/local"; fresh_registry
 out="$(REUSE_INPUTS="" run ui material)" && status=0 || status=$?
 check_equal "the build passes" "0" "$status"
-check_equal "base and the two images are built, and neither tools nor tool-paint" \
+check_equal "base and the two images are built, and not tool-paint" \
 	"${prefix}base:sha1-amd64 ${prefix}ui:sha1-amd64 ${prefix}material:sha1-amd64 " "$(builds)"
 check_equal "the tool-paint image is pulled, once" "$tp " "$(pulls)"
 for name in ui material; do
 	line="$(grep -E "^build .*${prefix}${name}:" "$tmp/log")"
 	check_contains "$name is passed it" "--build-arg TOOL_PAINT_IMAGE=$tp" "$line"
-	check_lacks "and no tooling builder" "TOOLS_IMAGE=" "$line"
 	check_lacks "nor the tool-sprite image" "TOOL_SPRITE_IMAGE=" "$line"
 done
 check_lacks "and the tool image is pushed nowhere" "tool-paint:sha1" "$(cat "$tmp/registry")"
@@ -306,19 +307,18 @@ echo "under PUSH, particle-2d and particle-3d copy their binary out of the pinne
 : >"$tmp/local"; fresh_registry
 out="$(REUSE_INPUTS="" run particle-2d particle-3d)" && status=0 || status=$?
 check_equal "the build passes" "0" "$status"
-check_equal "base and the two images are built, and neither tools nor tool-particle" \
+check_equal "base and the two images are built, and not tool-particle" \
 	"${prefix}base:sha1-amd64 ${prefix}particle-2d:sha1-amd64 ${prefix}particle-3d:sha1-amd64 " "$(builds)"
 check_equal "the tool-particle image is pulled, once" "$tpp " "$(pulls)"
 for name in particle-2d particle-3d; do
 	line="$(grep -E "^build .*${prefix}${name}:" "$tmp/log")"
 	check_contains "$name is passed it" "--build-arg TOOL_PARTICLE_IMAGE=$tpp" "$line"
-	check_lacks "and no tooling builder" "TOOLS_IMAGE=" "$line"
 	check_lacks "nor another tool image" "TOOL_PAINT_IMAGE=" "$line"
 done
 check_lacks "and the tool image is pushed nowhere" "tool-particle:sha1" "$(cat "$tmp/registry")"
 
 echo "under PUSH, a tool-particle image the registry lacks fails before the image that copies it"
-: >"$tmp/local"; printf '%s\n' "$tc" "$ts" "$tp" "$tv" "$tm" "$tn" "$td" >"$tmp/registry"
+: >"$tmp/local"; printf '%s\n' "$tc" "$ts" "$tp" "$tv" "$tm" "$tn" "$td" "$tsy" "$tsa" "$tmu" >"$tmp/registry"
 out="$(REUSE_INPUTS="" REGISTRY_ATTEMPTS=1 run particle-3d)" && status=0 || status=$?
 check_equal "with a failure" "1" "$status"
 check_contains "after trying to pull it" "pulling $tpp" "$out"
@@ -334,13 +334,12 @@ echo "under PUSH, voxel and voxel-animation copy their binaries out of the pinne
 : >"$tmp/local"; fresh_registry
 out="$(REUSE_INPUTS="" run voxel voxel-animation)" && status=0 || status=$?
 check_equal "the build passes" "0" "$status"
-check_equal "base and the two images are built, and neither tools nor tool-voxel" \
+check_equal "base and the two images are built, and not tool-voxel" \
 	"${prefix}base:sha1-amd64 ${prefix}voxel:sha1-amd64 ${prefix}voxel-animation:sha1-amd64 " "$(builds)"
 check_equal "the tool-voxel image is pulled, once" "$tv " "$(pulls)"
 for name in voxel voxel-animation; do
 	line="$(grep -E "^build .*${prefix}${name}:" "$tmp/log")"
 	check_contains "$name is passed it" "--build-arg TOOL_VOXEL_IMAGE=$tv" "$line"
-	check_lacks "and no tooling builder" "TOOLS_IMAGE=" "$line"
 	check_lacks "nor another tool image" "TOOL_MC_IMAGE=" "$line"
 done
 check_lacks "and the tool image is pushed nowhere" "tool-voxel:sha1" "$(cat "$tmp/registry")"
@@ -349,7 +348,7 @@ echo "under PUSH, the meshing and skinned images copy their binary out of tool-m
 : >"$tmp/local"; fresh_registry
 out="$(REUSE_INPUTS="" run mc-skinned sn-animation dc)" && status=0 || status=$?
 check_equal "the build passes" "0" "$status"
-check_equal "base and the three images are built, in image-names.sh's order, and not tools" \
+check_equal "base and the three images are built, in image-names.sh's order" \
 	"${prefix}base:sha1-amd64 ${prefix}sn-animation:sha1-amd64 ${prefix}dc:sha1-amd64 ${prefix}mc-skinned:sha1-amd64 " \
 	"$(builds)"
 check_equal "each tool image is pulled, once" "$tn $td $tm " "$(pulls)"
@@ -357,12 +356,11 @@ for pair in mc-skinned:TOOL_MC_IMAGE:$tm sn-animation:TOOL_SN_IMAGE:$tn dc:TOOL_
 	name="${pair%%:*}"; rest="${pair#*:}"; arg="${rest%%:*}"; ref="${rest#*:}"
 	line="$(grep -E "^build .*${prefix}${name}:" "$tmp/log")"
 	check_contains "$name is passed its repository's image" "--build-arg ${arg}=${ref}" "$line"
-	check_lacks "and no tooling builder" "TOOLS_IMAGE=" "$line"
 	check_lacks "nor tool-voxel's" "TOOL_VOXEL_IMAGE=" "$line"
 done
 
 echo "under PUSH, a tool-voxel image the registry lacks fails before the image that copies it"
-: >"$tmp/local"; printf '%s\n' "$tc" "$ts" "$tp" "$tpp" "$tm" "$tn" "$td" >"$tmp/registry"
+: >"$tmp/local"; printf '%s\n' "$tc" "$ts" "$tp" "$tpp" "$tm" "$tn" "$td" "$tsy" "$tsa" "$tmu" >"$tmp/registry"
 out="$(REUSE_INPUTS="" REGISTRY_ATTEMPTS=1 run voxel)" && status=0 || status=$?
 check_equal "with a failure" "1" "$status"
 check_contains "after trying to pull it" "pulling $tv" "$out"
@@ -380,30 +378,69 @@ pinned_td="testcabinet.azurecr.io/tool-dc:$(cd "$HERE/.." && git rev-parse HEAD:
 out="$(TOOL_DC_IMAGE="" REUSE_INPUTS="" REGISTRY_ATTEMPTS=1 run dc-skinned)" && status=0 || status=$?
 check_contains "it pulls that image" "pulling $pinned_td" "$out"
 
-echo "under PUSH, full-stack-3d copies from the tooling builder, tool-sprite, tool-particle and tool-voxel"
+echo "under PUSH, sfx-synth, sfx-sample and music copy their binary out of their own tool image"
+: >"$tmp/local"; fresh_registry
+out="$(REUSE_INPUTS="" run sfx-synth sfx-sample music)" && status=0 || status=$?
+check_equal "the build passes" "0" "$status"
+check_equal "base and the three images are built, in image-names.sh's order, and no tool image" \
+	"${prefix}base:sha1-amd64 ${prefix}sfx-synth:sha1-amd64 ${prefix}sfx-sample:sha1-amd64 ${prefix}music:sha1-amd64 " \
+	"$(builds)"
+check_equal "each tool image is pulled, once" "$tsy $tsa $tmu " "$(pulls)"
+for pair in sfx-synth:TOOL_SFX_SYNTH_IMAGE:$tsy sfx-sample:TOOL_SFX_SAMPLE_IMAGE:$tsa music:TOOL_MUSIC_IMAGE:$tmu; do
+	name="${pair%%:*}"; rest="${pair#*:}"; arg="${rest%%:*}"; ref="${rest#*:}"
+	line="$(grep -E "^build .*${prefix}${name}:" "$tmp/log")"
+	check_contains "$name is passed its repository's image" "--build-arg ${arg}=${ref}" "$line"
+	check_equal "and no other tool image" "1" "$(grep -oE -- '--build-arg TOOL_[A-Z0-9_]+_IMAGE=' <<<"$line" | wc -l)"
+done
+for name in tool-sfx-synth tool-sfx-sample tool-music; do
+	check_lacks "and the $name image is pushed nowhere" "${name}:sha1" "$(cat "$tmp/registry")"
+done
+
+echo "under PUSH, a tool-sfx-sample image the registry lacks fails before the image that copies it"
+: >"$tmp/local"; printf '%s\n' "$tc" "$ts" "$tp" "$tpp" "$tv" "$tm" "$tn" "$td" "$tsy" "$tmu" >"$tmp/registry"
+out="$(REUSE_INPUTS="" REGISTRY_ATTEMPTS=1 run sfx-sample)" && status=0 || status=$?
+check_equal "with a failure" "1" "$status"
+check_contains "after trying to pull it" "pulling $tsa" "$out"
+check_lacks "and sfx-sample is not built" "${prefix}sfx-sample:sha1-amd64" "$(builds)"
+
+echo "without TOOL_MUSIC_IMAGE, PUSH pulls tool-music at the superrepo's gitlink"
+: >"$tmp/local"; fresh_registry
+pinned_tmu="testcabinet.azurecr.io/tool-music:$(cd "$HERE/.." && git rev-parse HEAD:tool-music)"
+out="$(TOOL_MUSIC_IMAGE="" REUSE_INPUTS="" REGISTRY_ATTEMPTS=1 run music)" && status=0 || status=$?
+check_contains "it pulls that image" "pulling $pinned_tmu" "$out"
+
+echo "under PUSH, full-stack-3d copies from tool-sprite, tool-particle, tool-voxel and the audio tool images"
 : >"$tmp/local"; fresh_registry
 out="$(REUSE_INPUTS="" run full-stack-3d)" && status=0 || status=$?
 check_equal "the build passes" "0" "$status"
 fs3d="$(grep -E "^build .*${prefix}full-stack-3d:" "$tmp/log")"
-check_contains "with the tooling builder" "--build-arg TOOLS_IMAGE=${prefix}tools:sha1-amd64" "$fs3d"
-check_contains "the tool-sprite image" "--build-arg TOOL_SPRITE_IMAGE=$ts" "$fs3d"
+check_contains "with the tool-sprite image" "--build-arg TOOL_SPRITE_IMAGE=$ts" "$fs3d"
 check_contains "the tool-particle image" "--build-arg TOOL_PARTICLE_IMAGE=$tpp" "$fs3d"
-check_contains "and the tool-voxel image" "--build-arg TOOL_VOXEL_IMAGE=$tv" "$fs3d"
+check_contains "the tool-voxel image" "--build-arg TOOL_VOXEL_IMAGE=$tv" "$fs3d"
+check_contains "the tool-sfx-synth image" "--build-arg TOOL_SFX_SYNTH_IMAGE=$tsy" "$fs3d"
+check_contains "the tool-sfx-sample image" "--build-arg TOOL_SFX_SAMPLE_IMAGE=$tsa" "$fs3d"
+check_contains "and the tool-music image" "--build-arg TOOL_MUSIC_IMAGE=$tmu" "$fs3d"
+check_lacks "and no tooling builder, which is retired" "TOOLS_IMAGE=" "$fs3d"
+check_lacks "nor any tools build" "${prefix}tools:" "$(builds)"
 check_lacks "but not the tool-mc image, which it copies nothing from" "TOOL_MC_IMAGE=" "$fs3d"
 
-echo "under PUSH, full-stack-2d copies from the tooling builder, tool-sprite and tool-particle"
+echo "under PUSH, full-stack-2d copies from tool-sprite, tool-particle and the audio tool images"
 : >"$tmp/local"; fresh_registry
 out="$(REUSE_INPUTS="" run full-stack-2d)" && status=0 || status=$?
 check_equal "the build passes" "0" "$status"
 fs2d="$(grep -E "^build .*${prefix}full-stack-2d:" "$tmp/log")"
-check_contains "with the tooling builder" "--build-arg TOOLS_IMAGE=${prefix}tools:sha1-amd64" "$fs2d"
-check_contains "and the tool-sprite image" "--build-arg TOOL_SPRITE_IMAGE=$ts" "$fs2d"
+check_contains "with the tool-sprite image" "--build-arg TOOL_SPRITE_IMAGE=$ts" "$fs2d"
 check_contains "and the tool-particle image" "--build-arg TOOL_PARTICLE_IMAGE=$tpp" "$fs2d"
+check_contains "and the tool-sfx-synth image" "--build-arg TOOL_SFX_SYNTH_IMAGE=$tsy" "$fs2d"
+check_contains "and the tool-sfx-sample image" "--build-arg TOOL_SFX_SAMPLE_IMAGE=$tsa" "$fs2d"
+check_contains "and the tool-music image" "--build-arg TOOL_MUSIC_IMAGE=$tmu" "$fs2d"
+check_lacks "and no tooling builder, which is retired" "TOOLS_IMAGE=" "$fs2d"
 check_lacks "but not the tool-paint image, which it copies nothing from" "TOOL_PAINT_IMAGE=" "$fs2d"
 check_lacks "which is not pulled" "$tp " "$(pulls)"
 check_lacks "nor the tool-voxel image, which only full-stack-3d copies from" "TOOL_VOXEL_IMAGE=" "$fs2d"
 check_lacks "which is not pulled either" "$tv" "$(pulls)"
-check_equal "while tool-sprite and tool-particle are, once each" "2" "$(pulls | wc -w)"
+check_equal "while tool-sprite, tool-particle and the three audio tool images are, once each" "5" \
+	"$(pulls | wc -w)"
 
 echo "under PUSH, a tool-sprite image the registry lacks fails before the image that copies it"
 : >"$tmp/local"; printf '%s\n' "$tc" >"$tmp/registry"
@@ -430,9 +467,9 @@ echo "without PUSH, tool-sprite is built from its checkout, once"
 out="$(run_local sprite sprite-sheet full-stack-2d)" && status=0 || status=$?
 check_equal "the build passes" "0" "$status"
 # full-stack-2d's tool images are made ready in the sorted order of their build arguments.
-check_equal "tool-sprite is built once, after tools and before the first image copying it" \
-	"${prefix}tools:local ${prefix}base:local ${prefix}base-wasm:local ${prefix}tool-particle:local ${prefix}tool-sprite:local ${prefix}full-stack-2d:local " \
-	"$(builds | cut -d' ' -f1-6) "
+check_equal "tool-sprite is built once, before the first image copying it" \
+	"${prefix}base:local ${prefix}base-wasm:local ${prefix}tool-music:local ${prefix}tool-particle:local ${prefix}tool-sfx-sample:local ${prefix}tool-sfx-synth:local ${prefix}tool-sprite:local ${prefix}full-stack-2d:local " \
+	"$(builds | cut -d' ' -f1-8) "
 check_equal "exactly once" "1" "$(grep -cE -- "-t ${prefix}tool-sprite:local " "$tmp/log")"
 check_contains "from the tool-sprite checkout's own Dockerfile and context" \
 	"tool-sprite/Dockerfile $(cd "$HERE/.." && pwd)/containers/../tool-sprite" "$(grep -E -- "-t ${prefix}tool-sprite:local" "$tmp/log")"
@@ -447,7 +484,7 @@ echo "without PUSH, tool-paint is built from its checkout, once"
 : >"$tmp/local"; fresh_registry
 out="$(run_local ui material)" && status=0 || status=$?
 check_equal "the build passes" "0" "$status"
-check_equal "tool-paint is built once, before the first image copying it, and tools not at all" \
+check_equal "tool-paint is built once, before the first image copying it" \
 	"${prefix}base:local ${prefix}tool-paint:local ${prefix}ui:local ${prefix}material:local " "$(builds)"
 check_contains "from the tool-paint checkout's own Dockerfile and context" \
 	"tool-paint/Dockerfile $(cd "$HERE/.." && pwd)/containers/../tool-paint" "$(grep -E -- "-t ${prefix}tool-paint:local" "$tmp/log")"
@@ -461,7 +498,7 @@ echo "without PUSH, tool-particle is built from its checkout, once"
 : >"$tmp/local"; fresh_registry
 out="$(run_local particle-2d particle-3d)" && status=0 || status=$?
 check_equal "the build passes" "0" "$status"
-check_equal "tool-particle is built once, before the first image copying it, and tools not at all" \
+check_equal "tool-particle is built once, before the first image copying it" \
 	"${prefix}base:local ${prefix}tool-particle:local ${prefix}particle-2d:local ${prefix}particle-3d:local " "$(builds)"
 check_contains "from the tool-particle checkout's own Dockerfile and context" \
 	"tool-particle/Dockerfile $(cd "$HERE/.." && pwd)/containers/../tool-particle" \
@@ -476,7 +513,7 @@ echo "without PUSH, tool-voxel is built from its checkout, once"
 : >"$tmp/local"; fresh_registry
 out="$(run_local voxel voxel-animation)" && status=0 || status=$?
 check_equal "the build passes" "0" "$status"
-check_equal "tool-voxel is built once, before the first image copying it, and tools not at all" \
+check_equal "tool-voxel is built once, before the first image copying it" \
 	"${prefix}base:local ${prefix}tool-voxel:local ${prefix}voxel:local ${prefix}voxel-animation:local " "$(builds)"
 check_contains "from the tool-voxel checkout's own Dockerfile and context" \
 	"tool-voxel/Dockerfile $(cd "$HERE/.." && pwd)/containers/../tool-voxel" "$(grep -E -- "-t ${prefix}tool-voxel:local" "$tmp/log")"
@@ -495,6 +532,30 @@ check_equal "tool-mc is built once, before the first image copying it" \
 check_contains "from the tool-mc checkout" \
 	"tool-mc/Dockerfile $(cd "$HERE/.." && pwd)/containers/../tool-mc" "$(grep -E -- "-t ${prefix}tool-mc:local" "$tmp/log")"
 
+echo "without PUSH, tool-sfx-synth, tool-sfx-sample and tool-music are built from their checkouts, once each"
+: >"$tmp/local"; fresh_registry
+out="$(run_local sfx-synth sfx-sample music full-stack-2d)" && status=0 || status=$?
+check_equal "the build passes" "0" "$status"
+for name in tool-sfx-synth tool-sfx-sample tool-music; do
+	check_equal "$name is built once, though two images copy from it" "1" \
+		"$(grep -cE -- "-t ${prefix}${name}:local " "$tmp/log")"
+	check_contains "from the $name checkout's own Dockerfile and context" \
+		"${name}/Dockerfile $(cd "$HERE/.." && pwd)/containers/../${name}" "$(grep -E -- "-t ${prefix}${name}:local" "$tmp/log")"
+done
+check_contains "and passed to music as the build arg" "--build-arg TOOL_MUSIC_IMAGE=${prefix}tool-music:local" \
+	"$(grep -E "^build .*${prefix}music:" "$tmp/log")"
+check_contains "and to full-stack-2d" "--build-arg TOOL_SFX_SYNTH_IMAGE=${prefix}tool-sfx-synth:local" \
+	"$(grep -E "^build .*${prefix}full-stack-2d:" "$tmp/log")"
+check_lacks "and no tools image is built" "${prefix}tools:" "$(builds)"
+check_equal "nothing is pulled" "" "$(pulls)"
+
+echo "naming the retired tools builder is refused"
+: >"$tmp/local"
+out="$(run_local tools)" && status=0 || status=$?
+check_equal "with exit 1" "1" "$status"
+check_contains "as an unknown image" "unknown image 'tools'" "$out"
+check_equal "and nothing is built" "" "$(builds)"
+
 echo "without PUSH, a selection that copies from no tool image builds none"
 : >"$tmp/local"
 out="$(run_local base-wasm)" && status=0 || status=$?
@@ -503,6 +564,7 @@ check_lacks "and tool-sprite is not built" "tool-sprite" "$(builds)"
 check_lacks "nor tool-paint" "tool-paint" "$(builds)"
 check_lacks "nor tool-particle" "tool-particle" "$(builds)"
 check_lacks "nor tool-voxel" "tool-voxel" "$(builds)"
+check_lacks "nor tool-music" "tool-music" "$(builds)"
 
 echo "naming tool-sprite builds just it"
 : >"$tmp/local"
@@ -516,7 +578,7 @@ out="$(run_local tool-paint)" && status=0 || status=$?
 check_equal "the build passes" "0" "$status"
 check_equal "and only it" "${prefix}tool-paint:local " "$(builds)"
 
-for name in tool-particle tool-voxel tool-mc tool-sn tool-dc; do
+for name in tool-particle tool-voxel tool-mc tool-sn tool-dc tool-sfx-synth tool-sfx-sample tool-music; do
 	echo "naming ${name} builds just it"
 	: >"$tmp/local"
 	out="$(run_local "${name}")" && status=0 || status=$?

@@ -171,7 +171,7 @@ check_contains "naming the source and the allowlist" "copies './gg/packages/gg-s
 
 echo "--- a Dockerfile that copies a path that does not exist ---"
 repo="$(fresh_repo)"
-dockerfile="containers/tools/Dockerfile"
+dockerfile="containers/adversarial/Dockerfile"
 own "$repo/$dockerfile"
 printf '\nCOPY scripts/ci/no-such-helper.sh /tmp/\n' >>"$repo/$dockerfile"
 out="$(run "$repo")"

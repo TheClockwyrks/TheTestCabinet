@@ -2,8 +2,9 @@
 # Table test for tool-images.sh. Run it directly: scripts/ci/tool-images.test.sh
 #
 # A copy of the script runs in a throwaway git repository whose HEAD pins tool-sprite,
-# tool-paint, tool-particle, tool-voxel, tool-mc, tool-sn and tool-dc as gitlinks, with a
-# docker stub whose registry is a file of references. The subject is
+# tool-paint, tool-particle, tool-voxel, tool-mc, tool-sn, tool-dc, tool-sfx-synth,
+# tool-sfx-sample and tool-music as gitlinks, with a docker stub whose registry is a file
+# of references. The subject is
 # the reference each tool image is named by, the override, and that `check` fails naming
 # the pinned commit when the registry lacks it.
 set -uo pipefail
@@ -62,6 +63,16 @@ readonly SN_PIN=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 readonly SN_REF="testcabinet.azurecr.io/tool-sn:${SN_PIN}"
 readonly DC_PIN=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
 readonly DC_REF="testcabinet.azurecr.io/tool-dc:${DC_PIN}"
+readonly SYNTH_PIN=cccccccccccccccccccccccccccccccccccccccc
+readonly SYNTH_REF="testcabinet.azurecr.io/tool-sfx-synth:${SYNTH_PIN}"
+readonly SAMPLE_PIN=dddddddddddddddddddddddddddddddddddddddd
+readonly SAMPLE_REF="testcabinet.azurecr.io/tool-sfx-sample:${SAMPLE_PIN}"
+readonly MUSIC_PIN=eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee
+readonly MUSIC_REF="testcabinet.azurecr.io/tool-music:${MUSIC_PIN}"
+# The rows of the three audio tool repositories, which follow the model ones in every list.
+readonly AUDIO_ROWS="tool-sfx-synth TOOL_SFX_SYNTH_IMAGE ${SYNTH_REF}
+tool-sfx-sample TOOL_SFX_SAMPLE_IMAGE ${SAMPLE_REF}
+tool-music TOOL_MUSIC_IMAGE ${MUSIC_REF}"
 # The rows of the four model tool repositories, which follow tool-particle's in every list.
 readonly MODEL_ROWS="tool-voxel TOOL_VOXEL_IMAGE ${VOXEL_REF}
 tool-mc TOOL_MC_IMAGE ${MC_REF}
@@ -86,6 +97,9 @@ chmod +x "$tmp/docker"
 	&& git update-index --add --cacheinfo "160000,${MC_PIN},tool-mc" \
 	&& git update-index --add --cacheinfo "160000,${SN_PIN},tool-sn" \
 	&& git update-index --add --cacheinfo "160000,${DC_PIN},tool-dc" \
+	&& git update-index --add --cacheinfo "160000,${SYNTH_PIN},tool-sfx-synth" \
+	&& git update-index --add --cacheinfo "160000,${SAMPLE_PIN},tool-sfx-sample" \
+	&& git update-index --add --cacheinfo "160000,${MUSIC_PIN},tool-music" \
 	&& git -c user.name=t -c user.email=t@t commit -q -m init)
 
 run() {
@@ -98,22 +112,26 @@ check_equal "list names every tool repository at its gitlink, by its build argum
 	"tool-sprite TOOL_SPRITE_IMAGE ${REF}
 tool-paint TOOL_PAINT_IMAGE ${PAINT_REF}
 tool-particle TOOL_PARTICLE_IMAGE ${PARTICLE_REF}
-${MODEL_ROWS}" "$(run list)"
+${MODEL_ROWS}
+${AUDIO_ROWS}" "$(run list)"
 check_equal "an environment variable named for the argument overrides it" \
 	"tool-sprite TOOL_SPRITE_IMAGE registry.test/tool-sprite:dev
 tool-paint TOOL_PAINT_IMAGE ${PAINT_REF}
 tool-particle TOOL_PARTICLE_IMAGE ${PARTICLE_REF}
-${MODEL_ROWS}" "$(TOOL_SPRITE_IMAGE=registry.test/tool-sprite:dev run list)"
+${MODEL_ROWS}
+${AUDIO_ROWS}" "$(TOOL_SPRITE_IMAGE=registry.test/tool-sprite:dev run list)"
 check_equal "and only that repository's" \
 	"tool-sprite TOOL_SPRITE_IMAGE ${REF}
 tool-paint TOOL_PAINT_IMAGE registry.test/tool-paint:dev
 tool-particle TOOL_PARTICLE_IMAGE ${PARTICLE_REF}
-${MODEL_ROWS}" "$(TOOL_PAINT_IMAGE=registry.test/tool-paint:dev run list)"
+${MODEL_ROWS}
+${AUDIO_ROWS}" "$(TOOL_PAINT_IMAGE=registry.test/tool-paint:dev run list)"
 check_equal "tool-particle's by TOOL_PARTICLE_IMAGE" \
 	"tool-sprite TOOL_SPRITE_IMAGE ${REF}
 tool-paint TOOL_PAINT_IMAGE ${PAINT_REF}
 tool-particle TOOL_PARTICLE_IMAGE registry.test/tool-particle:dev
-${MODEL_ROWS}" "$(TOOL_PARTICLE_IMAGE=registry.test/tool-particle:dev run list)"
+${MODEL_ROWS}
+${AUDIO_ROWS}" "$(TOOL_PARTICLE_IMAGE=registry.test/tool-particle:dev run list)"
 check_equal "a model tool repository's argument overrides only its own" \
 	"tool-sprite TOOL_SPRITE_IMAGE ${REF}
 tool-paint TOOL_PAINT_IMAGE ${PAINT_REF}
@@ -121,9 +139,19 @@ tool-particle TOOL_PARTICLE_IMAGE ${PARTICLE_REF}
 tool-voxel TOOL_VOXEL_IMAGE ${VOXEL_REF}
 tool-mc TOOL_MC_IMAGE registry.test/tool-mc:dev
 tool-sn TOOL_SN_IMAGE ${SN_REF}
-tool-dc TOOL_DC_IMAGE ${DC_REF}" "$(TOOL_MC_IMAGE=registry.test/tool-mc:dev run list)"
+tool-dc TOOL_DC_IMAGE ${DC_REF}
+${AUDIO_ROWS}" "$(TOOL_MC_IMAGE=registry.test/tool-mc:dev run list)"
+check_equal "an audio tool repository's argument overrides only its own" \
+	"tool-sprite TOOL_SPRITE_IMAGE ${REF}
+tool-paint TOOL_PAINT_IMAGE ${PAINT_REF}
+tool-particle TOOL_PARTICLE_IMAGE ${PARTICLE_REF}
+${MODEL_ROWS}
+tool-sfx-synth TOOL_SFX_SYNTH_IMAGE ${SYNTH_REF}
+tool-sfx-sample TOOL_SFX_SAMPLE_IMAGE registry.test/tool-sfx-sample:dev
+tool-music TOOL_MUSIC_IMAGE ${MUSIC_REF}" "$(TOOL_SFX_SAMPLE_IMAGE=registry.test/tool-sfx-sample:dev run list)"
 
-printf '%s\n' "$REF" "$PAINT_REF" "$PARTICLE_REF" "$VOXEL_REF" "$MC_REF" "$SN_REF" "$DC_REF" >"$tmp/registry"
+printf '%s\n' "$REF" "$PAINT_REF" "$PARTICLE_REF" "$VOXEL_REF" "$MC_REF" "$SN_REF" "$DC_REF" \
+	"$SYNTH_REF" "$SAMPLE_REF" "$MUSIC_REF" >"$tmp/registry"
 out="$(run check)"
 check_equal "check passes when the pinned images are in the registry" "0" "$?"
 check_contains "and names them" "tool-sprite: ${REF}" "$out"
@@ -131,13 +159,17 @@ check_contains "each of them" "tool-paint: ${PAINT_REF}" "$out"
 check_contains "tool-particle's too" "tool-particle: ${PARTICLE_REF}" "$out"
 check_contains "tool-voxel's too" "tool-voxel: ${VOXEL_REF}" "$out"
 check_contains "and tool-dc's" "tool-dc: ${DC_REF}" "$out"
+check_contains "and the audio tools'" "tool-music: ${MUSIC_REF}" "$out"
 check_equal "asking the registry about them alone" "buildx imagetools inspect ${REF}
 buildx imagetools inspect ${PAINT_REF}
 buildx imagetools inspect ${PARTICLE_REF}
 buildx imagetools inspect ${VOXEL_REF}
 buildx imagetools inspect ${MC_REF}
 buildx imagetools inspect ${SN_REF}
-buildx imagetools inspect ${DC_REF}" "$(cat "$tmp/log")"
+buildx imagetools inspect ${DC_REF}
+buildx imagetools inspect ${SYNTH_REF}
+buildx imagetools inspect ${SAMPLE_REF}
+buildx imagetools inspect ${MUSIC_REF}" "$(cat "$tmp/log")"
 
 : >"$tmp/registry"
 out="$(run check)"
@@ -147,28 +179,41 @@ check_contains "and the commit the superrepo pins" "pins tool-sprite at ${PIN}" 
 check_contains "for each of them" "pins tool-paint at ${PAINT_PIN}" "$out"
 check_contains "tool-particle too" "pins tool-particle at ${PARTICLE_PIN}" "$out"
 check_contains "the model tool repositories included" "pins tool-sn at ${SN_PIN}" "$out"
+check_contains "and the audio ones" "pins tool-sfx-synth at ${SYNTH_PIN}" "$out"
 
-printf '%s\n' "$REF" "$PARTICLE_REF" "$VOXEL_REF" "$MC_REF" "$SN_REF" "$DC_REF" >"$tmp/registry"
+printf '%s\n' "$REF" "$PARTICLE_REF" "$VOXEL_REF" "$MC_REF" "$SN_REF" "$DC_REF" \
+	"$SYNTH_REF" "$SAMPLE_REF" "$MUSIC_REF" >"$tmp/registry"
 out="$(run check)"
 check_equal "check fails when the registry lacks one" "1" "$?"
 check_contains "naming that one" "${PAINT_REF} is not in the registry" "$out"
 check_lacks "and not the others" "${REF} is not in the registry" "$out"
 check_lacks "tool-voxel's among them" "${VOXEL_REF} is not in the registry" "$out"
 
-printf '%s\n' "$REF" "$PAINT_REF" "$VOXEL_REF" "$MC_REF" "$SN_REF" "$DC_REF" >"$tmp/registry"
+printf '%s\n' "$REF" "$PAINT_REF" "$VOXEL_REF" "$MC_REF" "$SN_REF" "$DC_REF" \
+	"$SYNTH_REF" "$SAMPLE_REF" "$MUSIC_REF" >"$tmp/registry"
 out="$(run check)"
 check_equal "check fails when the registry lacks the tool-particle image" "1" "$?"
 check_contains "naming it and its pin" "pins tool-particle at ${PARTICLE_PIN}" "$out"
 check_lacks "and no other" "${PAINT_REF} is not in the registry" "$out"
 
-printf '%s\n' "$REF" "$PAINT_REF" "$PARTICLE_REF" "$VOXEL_REF" "$MC_REF" "$SN_REF" >"$tmp/registry"
+printf '%s\n' "$REF" "$PAINT_REF" "$PARTICLE_REF" "$VOXEL_REF" "$MC_REF" "$SN_REF" "$SYNTH_REF" "$SAMPLE_REF" \
+	"$MUSIC_REF" >"$tmp/registry"
 out="$(run check)"
 check_equal "check fails when the registry lacks a model tool image" "1" "$?"
 check_contains "naming it" "${DC_REF} is not in the registry" "$out"
 check_contains "and the commit the superrepo pins it at" "pins tool-dc at ${DC_PIN}" "$out"
 check_lacks "and not the others" "${MC_REF} is not in the registry" "$out"
 
-printf '%s\n' "$PAINT_REF" "$PARTICLE_REF" "$VOXEL_REF" "$MC_REF" "$SN_REF" "$DC_REF" >"$tmp/registry"
+printf '%s\n' "$REF" "$PAINT_REF" "$PARTICLE_REF" "$VOXEL_REF" "$MC_REF" "$SN_REF" "$DC_REF" "$SYNTH_REF" \
+	"$SAMPLE_REF" >"$tmp/registry"
+out="$(run check)"
+check_equal "check fails when the registry lacks an audio tool image" "1" "$?"
+check_contains "naming it" "${MUSIC_REF} is not in the registry" "$out"
+check_contains "and the commit the superrepo pins it at" "pins tool-music at ${MUSIC_PIN}" "$out"
+check_lacks "and not the others" "${SYNTH_REF} is not in the registry" "$out"
+
+printf '%s\n' "$PAINT_REF" "$PARTICLE_REF" "$VOXEL_REF" "$MC_REF" "$SN_REF" "$DC_REF" \
+	"$SYNTH_REF" "$SAMPLE_REF" "$MUSIC_REF" >"$tmp/registry"
 out="$(TOOL_SPRITE_IMAGE=registry.test/tool-sprite:dev run check)"
 check_equal "an override the registry lacks fails too" "1" "$?"
 check_contains "naming the variable" "TOOL_SPRITE_IMAGE names it" "$out"

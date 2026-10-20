@@ -77,8 +77,8 @@ FROM ${BASE_IMAGE}
 # must agree. A change that reintroduces a created parent directory, or copies anything the
 # builder image did not stamp itself, shows up there as twenty-seven different digests.
 #
-# WHY THIS FILE HAS NO `# syntax=` DIRECTIVE. `containers/base`, `containers/tools` and gg's
-# `containers/gg-toolchains` all name the pinned external Dockerfile frontend and this one
+# WHY THIS FILE HAS NO `# syntax=` DIRECTIVE. `containers/base` and gg's
+# `containers/gg-toolchains` both name the pinned external Dockerfile frontend and this one
 # does not, so a variant is built with the daemon's vendored frontend, which accepts `--link`
 # and shares the layer as measured above. The directive would cost what it cannot buy: this
 # file is built TWENTY-SEVEN TIMES per run-image job, and `containers/build.sh` prunes the

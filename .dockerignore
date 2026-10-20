@@ -1,8 +1,6 @@
 # Keep the build context lean AND stable. Both the run-container builds
-# (containers/*/Dockerfile — the shared tooling builder in containers/tools/, which
-# compiles every asset binary from crates/, plus the adversarial and performance
-# images, which compile the Foray/Lattice tooling from the engines submodule in their
-# own stages) and the
+# (containers/*/Dockerfile — the adversarial and performance images, which compile the
+# Foray/Lattice tooling from the engines submodule in their own stages) and the
 # service-image builds (deployments/images/services.Dockerfile, which compiles the
 # backend/auth/dispatcher/driver/artifacts/arena/publisher crates) use the
 # repository root as their context. Almost every one of those builds is just a `cargo
@@ -10,7 +8,7 @@
 # everything, then re-include only the paths cargo actually reads.
 #
 # (The per-asset-kind images — sprite, voxel, mc, … — no longer read the context at
-# all: they only `COPY --from` the tooling builder or a `tool-*` repository's image.
+# all: they only `COPY --from` a `tool-*` repository's image.
 # They are still built with the
 # repo root as their context for consistency, and it costs them nothing because they
 # read none of it.)
@@ -22,7 +20,7 @@
 # engines are ~15 MB without their test data) — real build inputs, every one of them
 # compiled by some image.
 # The figure is worth keeping honest because it is the unit of the `COPY . .` snapshot
-# each of the seven whole-context builds materialises on a cache miss, which is why the
+# each whole-context build materialises on a cache miss, which is why the
 # re-exclusions at the foot of this file keep ignored output out of it.
 #
 # Flipping to an allowlist (rather than enumerating things to exclude) means a
@@ -283,7 +281,7 @@
 # would prefer one, Buildah (Podman, podman-compose, the devcontainer on a rootless
 # Podman host) has been seen to read THIS file instead and die on the first COPY, so
 # one allowlist serves every runtime. scripts/ci/build-context.sh checks the
-# Dockerfile's COPYs against it. What it costs the seven `COPY . .` builds: their
+# Dockerfile's COPYs against it. What it costs the `COPY . .` builds: their
 # cache keys gain these ~30 small files, which move far less often than crates/.
 !/.devcontainer/ai
 !/.devcontainer/languages

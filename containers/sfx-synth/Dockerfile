@@ -9,39 +9,40 @@
 # sprite image and unlike the voxel family — this image needs no Mesa/Vulkan runtime.
 #
 # The binary is baked in rather than installed at run time because, unlike a harness
-# CLI, it is part of The Test Cabinet itself and core validates the emitted `.wav` with
-# the same library it uses. Building from one commit keeps them in lockstep (a run
-# records the orchestrator commit and the image digest, so a mismatch is auditable).
-# The baked-in tooling is compiled by the shared builder
-# (`containers/tools/Dockerfile`) — see `containers/build.sh`.
+# CLI, it is part of The Test Cabinet itself and core validates the emitted `.wav`
+# with the same library it uses. This image copies it out of
+# `tool-sfx-synth:<commit>`, the image tool-sfx-synth's pipeline publishes, at the
+# commit the driver pins, which is the superrepo's `tool-sfx-synth` gitlink, so the
+# binary and what validates its output stay in lockstep (a run records the
+# orchestrator commit and the image digest, so a mismatch is auditable). See
+# `containers/build.sh` and `scripts/ci/tool-images.sh`.
 
 # `BASE_IMAGE` is the base image to extend. Declared BEFORE the first `FROM` so it is a
 # global build arg the run-image `FROM` below can consume; `build.sh` passes the base
 # image it just built.
 ARG BASE_IMAGE=test-cabinet-base:latest
 
-# `TOOLS_IMAGE` is the shared asset-tooling builder that compiles every run
-# image's baked-in binaries — ONE cargo pass over the whole dependency graph,
-# rather than a per-image `cargo build` that recompiles that graph from scratch
-# (`containers/tools/Dockerfile` has the numbers). Declared BEFORE the first
-# `FROM` for the same reason `BASE_IMAGE` is: an `ARG` after a `FROM` is scoped
-# to that stage. `build.sh` passes the tools image it just built, so the baked-in
-# binaries always come from this same invocation's compile.
-ARG TOOLS_IMAGE=test-cabinet-tools:latest
+# `TOOL_SFX_SYNTH_IMAGE` is the `tool-sfx-synth` image the binary is copied out of:
+# `testcabinet.azurecr.io/tool-sfx-synth:<commit>` at the commit the driver pins, or,
+# for a local build without PUSH, the image `build.sh` has just built from the
+# `tool-sfx-synth/` checkout (`scripts/ci/tool-images.sh` names the reference).
+# Declared BEFORE the first `FROM` for the same reason `BASE_IMAGE` is: an `ARG`
+# after a `FROM` is scoped to that stage.
+ARG TOOL_SFX_SYNTH_IMAGE=test-cabinet-tool-sfx-synth:latest
 
-# Resolve the tooling builder to a named stage. `COPY --from=` cannot interpolate
-# a build arg directly ("variable expansion is not supported for --from"), so it
-# has to arrive through a `FROM`; the `COPY --from=tools` lines below then name
-# this stage.
-FROM ${TOOLS_IMAGE} AS tools
+# Resolve the tool image to a named stage. `COPY --from=` cannot interpolate a
+# build arg directly ("variable expansion is not supported for --from"), so it
+# has to arrive through a `FROM`; the `COPY --from=tool-sfx-synth` line below then
+# names this stage.
+FROM ${TOOL_SFX_SYNTH_IMAGE} AS tool-sfx-synth
 
 # --- The run image: the base, plus `sfx-synth` ------------------------------
 # `FROM` the base built alongside this image (the global `BASE_IMAGE` arg above).
 FROM ${BASE_IMAGE}
 
-# Bake in the `sfx-synth` binary from the tools image. `/usr/local/bin` is on
-# PATH and root-owned (COPY writes as root regardless of the inherited `USER
-# node`); the unprivileged run user only executes it. The base image already
-# sets `USER node`, `WORKDIR /work`, and the keep-alive CMD, so nothing else is
-# needed here.
-COPY --from=tools /out/sfx-synth /usr/local/bin/sfx-synth
+# Bake in the `sfx-synth` binary from the tool-sfx-synth image, which carries it in
+# `/usr/local/bin`. That directory is on PATH and root-owned (COPY writes as root
+# regardless of the inherited `USER node`); the unprivileged run user only executes
+# it. The base image already sets `USER node`, `WORKDIR /work`, and the keep-alive
+# CMD, so nothing else is needed here.
+COPY --from=tool-sfx-synth /usr/local/bin/sfx-synth /usr/local/bin/sfx-synth

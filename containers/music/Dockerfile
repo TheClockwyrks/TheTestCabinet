@@ -12,39 +12,41 @@
 # so — like the sprite image and unlike the voxel family — this image needs no
 # Mesa/Vulkan runtime.
 #
-# The binary is baked in rather than installed at run time because, unlike a harness CLI,
-# it is part of The Test Cabinet itself and core validates the emitted `.wav`/`.mid` with
-# the same library it uses. Building from one commit keeps them in lockstep (a run
-# records the orchestrator commit and the image digest, so a mismatch is auditable). The
-# baked-in tooling is compiled by the shared builder (`containers/tools/Dockerfile`) —
-# see `containers/build.sh`.
+# The binary is baked in rather than installed at run time because, unlike a harness
+# CLI, it is part of The Test Cabinet itself and core validates the emitted
+# `.wav`/`.mid` with the same library it uses. This image copies it out of
+# `tool-music:<commit>`, the image tool-music's pipeline publishes, at the commit
+# the driver pins, which is the superrepo's `tool-music` gitlink, so the binary and
+# what validates its output stay in lockstep (a run records the orchestrator commit
+# and the image digest, so a mismatch is auditable). See `containers/build.sh` and
+# `scripts/ci/tool-images.sh`.
 
 # `BASE_IMAGE` is the base image to extend. Declared BEFORE the first `FROM` so it is a
 # global build arg the run-image `FROM` below can consume; `build.sh` passes the base
 # image it just built.
 ARG BASE_IMAGE=test-cabinet-base:latest
 
-# `TOOLS_IMAGE` is the shared asset-tooling builder that compiles every run
-# image's baked-in binaries — ONE cargo pass over the whole dependency graph,
-# rather than a per-image `cargo build` that recompiles that graph from scratch
-# (`containers/tools/Dockerfile` has the numbers). Declared BEFORE the first
-# `FROM` for the same reason `BASE_IMAGE` is: an `ARG` after a `FROM` is scoped
-# to that stage. `build.sh` passes the tools image it just built, so the baked-in
-# binaries always come from this same invocation's compile.
-ARG TOOLS_IMAGE=test-cabinet-tools:latest
+# `TOOL_MUSIC_IMAGE` is the `tool-music` image the binary is copied out of:
+# `testcabinet.azurecr.io/tool-music:<commit>` at the commit the driver pins, or,
+# for a local build without PUSH, the image `build.sh` has just built from the
+# `tool-music/` checkout (`scripts/ci/tool-images.sh` names the reference).
+# Declared BEFORE the first `FROM` for the same reason `BASE_IMAGE` is: an `ARG`
+# after a `FROM` is scoped to that stage.
+ARG TOOL_MUSIC_IMAGE=test-cabinet-tool-music:latest
 
-# Resolve the tooling builder to a named stage. `COPY --from=` cannot interpolate
-# a build arg directly ("variable expansion is not supported for --from"), so it
-# has to arrive through a `FROM`; the `COPY --from=tools` lines below then name
-# this stage.
-FROM ${TOOLS_IMAGE} AS tools
+# Resolve the tool image to a named stage. `COPY --from=` cannot interpolate a
+# build arg directly ("variable expansion is not supported for --from"), so it
+# has to arrive through a `FROM`; the `COPY --from=tool-music` line below then
+# names this stage.
+FROM ${TOOL_MUSIC_IMAGE} AS tool-music
 
 # --- The run image: the base, plus the `music` binary -----------------------
 # `FROM` the base built alongside this image (the global `BASE_IMAGE` arg above).
 FROM ${BASE_IMAGE}
 
-# Bake in the `music` binary from the tools image. `/usr/local/bin` is on PATH
-# and root-owned (COPY writes as root regardless of the inherited `USER node`);
-# the unprivileged run user only executes it. The base image already sets `USER
-# node`, `WORKDIR /work`, and the keep-alive CMD.
-COPY --from=tools /out/music /usr/local/bin/music
+# Bake in the `music` binary from the tool-music image, which carries it in
+# `/usr/local/bin`. That directory is on PATH and root-owned (COPY writes as root
+# regardless of the inherited `USER node`); the unprivileged run user only executes
+# it. The base image already sets `USER node`, `WORKDIR /work`, and the keep-alive
+# CMD.
+COPY --from=tool-music /usr/local/bin/music /usr/local/bin/music
