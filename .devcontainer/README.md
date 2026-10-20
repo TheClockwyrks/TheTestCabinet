@@ -152,7 +152,8 @@ names what installs it, so a toolchain missing here is a check that says so
 rather than one that quietly passes.
 
 `post-create.sh` populates the `contracts/`, `engines/`, `gg/`,
-`microservice-repos/`, `tool-model-core/`, `tool-paint/`, `tool-particle/`,
+`microservice-dispatcher/`, `microservice-repos/`, `tool-model-core/`,
+`tool-paint/`, `tool-particle/`,
 `tool-sprite/`, `tool-voxel/`, `tool-mc/`, `tool-sn/`, `tool-dc/`,
 `tool-audio-core/`, `tool-sfx-synth/`, `tool-sfx-sample/`, `tool-music/` and
 `ui-common/` submodules, which every build compiles against, and the
@@ -681,7 +682,8 @@ warning about it.
 
 ## Submodule checkout
 
-The `contracts/`, `engines/`, `gg/`, `microservice-repos/`, `tool-model-core/`,
+The `contracts/`, `engines/`, `gg/`, `microservice-dispatcher/`,
+`microservice-repos/`, `tool-model-core/`,
 `tool-paint/`, `tool-particle/`, `tool-sprite/`, `tool-voxel/`, `tool-mc/`,
 `tool-sn/`, `tool-dc/`, `tool-audio-core/`, `tool-sfx-synth/`,
 `tool-sfx-sample/`, `tool-music/`, `test-suites/` and `ui-common/` submodules
@@ -697,7 +699,8 @@ runs
 
 ```sh
 git submodule update --init \
-  contracts engines gg microservice-repos tool-model-core tool-paint \
+  contracts engines gg microservice-dispatcher microservice-repos \
+  tool-model-core tool-paint \
   tool-particle tool-sprite tool-voxel tool-mc tool-sn tool-dc \
   tool-audio-core tool-sfx-synth tool-sfx-sample tool-music test-suites \
   ui-common

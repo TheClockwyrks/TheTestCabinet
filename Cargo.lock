@@ -4584,25 +4584,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "test-cabinet-dispatcher"
-version = "0.0.0"
-dependencies = [
- "anyhow",
- "axum",
- "k8s-openapi",
- "kube",
- "reqwest 0.12.28",
- "serde",
- "serde_json",
- "test-cabinet-contracts",
- "test-cabinet-telemetry",
- "thiserror",
- "time",
- "tokio",
- "tracing",
-]
-
-[[package]]
 name = "test-cabinet-draw"
 version = "0.0.0"
 dependencies = [
@@ -6380,4 +6361,8 @@ version = "0.0.0"
 
 [[patch.unused]]
 name = "test-cabinet-music"
+version = "0.0.0"
+
+[[patch.unused]]
+name = "test-cabinet-dispatcher"
 version = "0.0.0"

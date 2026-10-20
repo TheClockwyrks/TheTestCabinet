@@ -43,6 +43,7 @@ ignores:
   - "engines/**"
   - "gg/**"
   - "gg.rocks/**"
+  - "microservice-dispatcher/**"
   - "microservice-repos/**"
   - "tool-model-core/**"
   - "tool-paint/**"

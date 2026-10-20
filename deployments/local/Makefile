@@ -159,6 +159,11 @@ REPOS_IMG      := $(REGISTRY_PREFIX)/tcab-repos:local
 REPOS_DIR    := $(REPO)/microservice-repos
 REPOS_COMMIT ?= $(shell sh -c 'h=$$(git -C "$(REPOS_DIR)" rev-parse HEAD 2>/dev/null) || exit 0; [ -n "$$(git -C "$(REPOS_DIR)" status --porcelain 2>/dev/null)" ] && h="$$h-dirty"; printf %s "$$h"')
 
+# The dispatcher is likewise its own repository, microservice-dispatcher, built from
+# that checkout's own Dockerfile with the checkout as the build context.
+DISPATCHER_DIR    := $(REPO)/microservice-dispatcher
+DISPATCHER_COMMIT ?= $(shell sh -c 'h=$$(git -C "$(DISPATCHER_DIR)" rev-parse HEAD 2>/dev/null) || exit 0; [ -n "$$(git -C "$(DISPATCHER_DIR)" status --porcelain 2>/dev/null)" ] && h="$$h-dirty"; printf %s "$$h"')
+
 # The web console is intentionally absent: it runs from source locally
 # (`npm run -w apps/web dev`), not as an in-cluster pod, so there is no tcab-web
 # image to build or import here (see the header comment and the local overlay).
@@ -551,8 +556,9 @@ audio-store:
 # from, then load them into the cluster's nodes (no registry needed for local
 # development).
 #
-# The repos image is built from the microservice-repos checkout's own Dockerfile,
-# with that checkout as its context (REPOS_DIR above). Every other service image
+# The repos and dispatcher images are built from the microservice-repos and
+# microservice-dispatcher checkouts' own Dockerfiles, each with its checkout as its
+# context (REPOS_DIR and DISPATCHER_DIR above). Every other service image
 # comes out of ONE file, deployments/images/services.Dockerfile, each selected with
 # `--target`. That file shares a single cargo build stage across every service, so
 # those builds compile the workspace ONCE between them: the first `docker build`
@@ -586,7 +592,8 @@ images: export DOCKER_CONFIG := $(BUILD_DOCKER_CONFIG)
 images: audio-store
 	@mkdir -p '$(BUILD_DOCKER_CONFIG)' && printf '{}\n' > '$(BUILD_DOCKER_CONFIG)/config.json'
 	$(CONTAINER_TOOL) build --build-arg TCAB_BUILD_COMMIT='$(TCAB_COMMIT)' --target backend    -t '$(BACKEND_IMG)'    -f '$(SERVICES_DOCKERFILE)' '$(REPO)'
-	$(CONTAINER_TOOL) build --build-arg TCAB_BUILD_COMMIT='$(TCAB_COMMIT)' --target dispatcher -t '$(DISPATCHER_IMG)' -f '$(SERVICES_DOCKERFILE)' '$(REPO)'
+	@[ -f '$(DISPATCHER_DIR)/Dockerfile' ] || { echo "ERROR: $(DISPATCHER_DIR) is not checked out; run: git submodule update --init microservice-dispatcher" >&2; exit 1; }
+	$(CONTAINER_TOOL) build --build-arg TCAB_BUILD_COMMIT='$(DISPATCHER_COMMIT)' -t '$(DISPATCHER_IMG)' -f '$(DISPATCHER_DIR)/Dockerfile' '$(DISPATCHER_DIR)'
 	$(CONTAINER_TOOL) build --build-arg TCAB_BUILD_COMMIT='$(TCAB_COMMIT)' --build-arg AUDIO_STORE_IMAGE='$(AUDIO_STORE_IMG)' \
 	                        --target driver    -t '$(DRIVER_IMG)'     -f '$(SERVICES_DOCKERFILE)' '$(REPO)'
 	$(CONTAINER_TOOL) build --build-arg TCAB_BUILD_COMMIT='$(TCAB_COMMIT)' --target artifacts  -t '$(ARTIFACTS_IMG)'  -f '$(SERVICES_DOCKERFILE)' '$(REPO)'

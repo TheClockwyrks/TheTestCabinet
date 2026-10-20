@@ -63,17 +63,17 @@ calls() { sed 's/ \[cwd=.*//' "$tmp/calls.log"; }
 
 expected_order() {
 	local service
-	for service in backend dispatcher driver artifacts arena publisher web; do
+	for service in backend driver artifacts arena publisher web; do
 		echo "service-image.sh $service $SHA"
 	done
 }
 
 out="$(run "$SHA")"
 check_equal "every service builds" "0" "$?"
-check_equal "the seven services, Rust ones first and web last, each with the sha" \
+check_equal "the six services, Rust ones first and web last, each with the sha" \
 	"$(expected_order)" "$(calls)"
 check_contains "and the summary names the tag" "every service image is pushed as <image>:$SHA-amd64" "$out"
-check_equal "each call runs from the repository root" "7" "$(grep -c "\[cwd=$repo\]" "$tmp/calls.log")"
+check_equal "each call runs from the repository root" "6" "$(grep -c "\[cwd=$repo\]" "$tmp/calls.log")"
 
 out="$(STUB_UNAME_M=aarch64 run "$SHA")"
 check_equal "an arm64 build succeeds" "0" "$?"
@@ -83,7 +83,7 @@ out="$(STUB_FAIL_ON=driver run "$SHA")"
 check_equal "a failing service fails the build" "1" "$?"
 check_contains "naming it" "the driver image did not build; the ones before it are pushed." "$out"
 check_equal "after the services before it and none after" \
-	"$(expected_order | head -3)" "$(calls)"
+	"$(expected_order | head -2)" "$(calls)"
 
 out="$(run)"
 check_equal "no sha is a usage error" "1" "$?"

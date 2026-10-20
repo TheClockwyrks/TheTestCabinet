@@ -111,6 +111,53 @@ check_failed "fails" "$status"
 check_contains "names the image and what it is pinned to" \
 	"the prod deploy names testcabinet.azurecr.io/microservice-repos:0123456789abcdef0123456789abcdef01234567, not testcabinet.azurecr.io/<repository>:<the commit its submodule pointer names>" "$out"
 
+echo "--- the dispatcher's image built here rather than in its repository ---"
+
+tree="$(fresh_tree)"
+sed -i 's#^    newName: testcabinet.azurecr.io/microservice-dispatcher$#    newName: testcabinet.azurecr.io/tcab-dispatcher#' \
+	"$tree/overlays/staging/kustomization.yaml"
+out="$(check "$tree")"
+status=$?
+check_failed "fails" "$status"
+check_contains "names the image it names instead" \
+	"the staging deploy names testcabinet.azurecr.io/tcab-dispatcher:456789abcdef0123456789abcdef0123456789ab" "$out"
+check_contains "names the image at the pointer it requires" \
+	"the staging deploy does not name testcabinet.azurecr.io/microservice-dispatcher:456789abcdef0123456789abcdef0123456789ab" \
+	"$out"
+
+echo "--- a manifest that sets a memory limit on a run pod ---"
+
+tree="$(fresh_tree)"
+sed -i 's#^            - name: TCAB_K8S_RUN_MEMORY_REQUEST$#            - name: TCAB_K8S_RUN_MEMORY_LIMIT\n              value: "8Gi"\n&#' \
+	"$tree/base/dispatcher.yaml"
+out="$(check "$tree")"
+status=$?
+check_failed "fails" "$status"
+check_contains "names the manifest and the variable" \
+	"base/dispatcher.yaml:" "$(grep 'TCAB_K8S_RUN_MEMORY_LIMIT' <<<"$out")"
+check_contains "names the overlay that renders it" "overlays/prod/ renders a memory limit on a run pod" "$out"
+check_contains "cites the rule" "Driver pod reservation" "$out"
+
+echo "--- an overlay patch that sets the driver's memory limit ---"
+
+tree="$(fresh_tree)"
+sed -i 's#^            - name: TCAB_K8S_NAMESPACE$#            - name: TCAB_DISPATCHER_DRIVER_MEMORY_LIMIT\n              value: "4Gi"\n&#' \
+	"$tree/overlays/local/patch-dispatcher.yaml"
+out="$(check "$tree")"
+status=$?
+check_failed "fails" "$status"
+check_contains "names the patch" "overlays/local/patch-dispatcher.yaml:" "$out"
+check_contains "names the overlay that renders it" "overlays/local/ renders a memory limit on a run pod" "$out"
+
+echo "--- a memory limit named only in a comment ---"
+
+tree="$(fresh_tree)"
+sed -i 's#^            - name: TCAB_K8S_RUN_MEMORY_REQUEST$#            \# - name: TCAB_K8S_RUN_MEMORY_LIMIT\n&#' \
+	"$tree/base/dispatcher.yaml"
+out="$(check "$tree")"
+status=$?
+check_equal "passes" 0 "$status"
+
 echo "--- a cluster-scoped object in a deploy set ---"
 
 tree="$(fresh_tree)"

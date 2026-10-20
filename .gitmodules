@@ -16,6 +16,10 @@
 [submodule "gg"]
 	path = gg
 	url = ../gg
+[submodule "microservice-dispatcher"]
+	path = microservice-dispatcher
+	url = ../microservice-dispatcher
+	branch = master
 [submodule "microservice-repos"]
 	path = microservice-repos
 	url = ../microservice-repos

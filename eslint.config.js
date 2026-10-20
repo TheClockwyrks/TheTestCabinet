@@ -135,7 +135,8 @@ const CONFIG = defineConfig([
     // (.markdownlint-cli2.yaml, cspell.json, .prettierignore) leave out too, so no
     // gate reads what the others leave alone.
     "cold-storage/**",
-    // The contracts, engines, gg, gg.rocks, microservice-repos, tool-model-core,
+    // The contracts, engines, gg, gg.rocks, microservice-dispatcher,
+    // microservice-repos, tool-model-core,
     // tool-paint, tool-particle, tool-sprite, tool-voxel, tool-mc, tool-sn,
     // tool-dc, tool-audio-core, tool-sfx-synth, tool-sfx-sample, tool-music,
     // test-suites and ui-common repositories, submodules with gates of their
@@ -144,6 +145,7 @@ const CONFIG = defineConfig([
     "engines/**",
     "gg/**",
     "gg.rocks/**",
+    "microservice-dispatcher/**",
     "microservice-repos/**",
     "tool-model-core/**",
     "tool-paint/**",
