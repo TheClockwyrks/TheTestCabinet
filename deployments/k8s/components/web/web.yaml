@@ -26,7 +26,7 @@ spec:
     app.kubernetes.io/name: tcab-web
   ports:
     - name: http
-      port: 80
+      port: 8080
       targetPort: 8080
   # ClusterIP only — the internal ingress is the boundary; never a LoadBalancer here.
   type: ClusterIP
