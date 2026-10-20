@@ -4523,7 +4523,7 @@ dependencies = [
 
 [[package]]
 name = "test-cabinet-backend-client"
-version = "0.2.2"
+version = "0.2.3"
 dependencies = [
  "async-trait",
  "http",
@@ -4558,7 +4558,7 @@ dependencies = [
 
 [[package]]
 name = "test-cabinet-contracts"
-version = "0.2.2"
+version = "0.2.3"
 dependencies = [
  "hex",
  "percent-encoding",
@@ -4717,7 +4717,7 @@ dependencies = [
 
 [[package]]
 name = "test-cabinet-redact"
-version = "0.2.2"
+version = "0.2.3"
 dependencies = [
  "serde_json",
  "test-cabinet-contracts",
@@ -4741,7 +4741,7 @@ dependencies = [
 
 [[package]]
 name = "test-cabinet-suites"
-version = "0.2.2"
+version = "0.2.3"
 dependencies = [
  "cuid2",
  "handlebars",
@@ -4760,7 +4760,7 @@ dependencies = [
 
 [[package]]
 name = "test-cabinet-telemetry"
-version = "0.2.2"
+version = "0.2.3"
 dependencies = [
  "anyhow",
  "http",
@@ -6345,11 +6345,11 @@ version = "0.0.0"
 
 [[patch.unused]]
 name = "api-codegen"
-version = "0.2.2"
+version = "0.2.3"
 
 [[patch.unused]]
 name = "contract-codegen"
-version = "0.2.2"
+version = "0.2.3"
 
 [[patch.unused]]
 name = "test-cabinet-voxel-anim"

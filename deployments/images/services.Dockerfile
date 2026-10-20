@@ -257,8 +257,8 @@ ENTRYPOINT ["tcab-dispatcher"]
 # ── backend ──────────────────────────────────────────────────────────────────
 # The stock `tcab-backend` binary ships no browser, but the backend renders
 # reference screenshots at ingest by shelling out to the bundled Playwright driver
-# (`packages/browser-driver/driver.mjs`). This stage therefore layers the binary on a
-# Node runtime that also carries that driver, its Playwright dependency, and a
+# (contracts' `packages/browser-driver/driver.mjs`). This stage therefore layers the
+# binary on a Node runtime that also carries that driver, its Playwright dependency, and a
 # Playwright-managed Chromium (plus the shared libraries and fonts it needs) — the
 # same toolchain the driver uses in development — and points TCAB_BROWSER_DRIVER /
 # PLAYWRIGHT_BROWSERS_PATH at them so ingest renders out of the box. Set
@@ -277,7 +277,7 @@ ENV PLAYWRIGHT_BROWSERS_PATH=/opt/ms-playwright
 # self-contained. driver.mjs imports these by relative path, so a missing sibling
 # is a runtime ERR_MODULE_NOT_FOUND at render time — keep this list in sync with
 # driver.mjs's `import` statements.
-COPY packages/browser-driver/package.json packages/browser-driver/driver.mjs packages/browser-driver/ttc.mjs packages/browser-driver/validation.mjs /opt/browser-driver/
+COPY contracts/packages/browser-driver/package.json contracts/packages/browser-driver/driver.mjs contracts/packages/browser-driver/ttc.mjs contracts/packages/browser-driver/validation.mjs /opt/browser-driver/
 
 # ca-certificates covers the backend's outbound HTTPS (R2, deploy hook); the font set
 # is what test cases render with (the slim base ships none — see
@@ -356,7 +356,7 @@ ENV PLAYWRIGHT_BROWSERS_PATH=/opt/ms-playwright
 # self-contained. driver.mjs imports these by relative path, so a missing sibling
 # is a runtime ERR_MODULE_NOT_FOUND at render time — keep this list in sync with
 # driver.mjs's `import` statements.
-COPY packages/browser-driver/package.json packages/browser-driver/driver.mjs packages/browser-driver/ttc.mjs packages/browser-driver/validation.mjs /opt/browser-driver/
+COPY contracts/packages/browser-driver/package.json contracts/packages/browser-driver/driver.mjs contracts/packages/browser-driver/ttc.mjs contracts/packages/browser-driver/validation.mjs /opt/browser-driver/
 
 # Install git and the font set, then the driver's Playwright dependency and a
 # Playwright-managed Chromium with the OS libraries it links against

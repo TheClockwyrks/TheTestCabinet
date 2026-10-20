@@ -80,8 +80,8 @@ is_pipeline() { # path
 
 # Whether rust_build, binary_linux and binary_windows read the path. They
 # compile the whole workspace and run the core and CLI suites, which read
-# `harnesses/`, `orchestrators/` and `packages/` at compile time or in a test,
-# so those stay in. What is left out is what no Rust job opens: the sites, the
+# `harnesses/` and `orchestrators/` at compile time or in a test, so those stay
+# in. What is left out is what no Rust job opens: the sites, the
 # board, the manifests, the run-container definitions, the gates' sources,
 # prose, every shell test, and the scripts only the image, deploy and release
 # jobs run. Of the submodule pins, contracts' and engines' reach them, since the
