@@ -30,3 +30,9 @@ name = "The backend"
 
 [zone.ARENA]
 name = "The arena"
+
+[zone.ENGINE]
+name = "The engines and their runtimes"
+
+[zone.CICD]
+name = "Continuous integration and the development environment"

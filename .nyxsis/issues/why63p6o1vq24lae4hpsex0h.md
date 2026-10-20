@@ -28,20 +28,3 @@ what builds together" section states. The crate is removed from the superrepo.
 
 `make gate` passes in the new repository and in the superrepo, and a sprite
 test case runs on the local stack with the binary the run image copies.
-
-## Blocked
-
-`az repos create -p the-test-cabinet --name tool-sprite` fails with
-TF401027: the service principal `az` runs as (nyxsis-workspaces) lacks the
-project-level Git 'CreateRepository' permission (verified 2026-10-20). No
-`tool-sprite` repository exists in the project. Without it the push, the
-branch protection (`protect.py`), the pipeline, the mirror's secure-file
-authorization and the first `master` run cannot happen.
-
-The user must decide one of:
-
-- Create the empty Azure DevOps repository `tool-sprite` in project
-  `the-test-cabinet` by hand, or
-- Grant nyxsis-workspaces the Git 'Create repository' permission at project
-  scope (this also unblocks the other extraction issues that need new
-  repositories).
