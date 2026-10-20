@@ -68,7 +68,10 @@ service is a `--target` of the shared `services.Dockerfile` (`backend`,
 `dispatcher`, `driver`, `artifacts`, `arena`, `publisher`), and the console has its
 own `web.Dockerfile`. The repos service is its own repository, `microservice-repos`,
 whose pipeline builds its image from that repository's `Dockerfile` and pushes it as
-`testcabinet.azurecr.io/microservice-repos:<commit>`. The Azure pipeline builds the
+`testcabinet.azurecr.io/microservice-repos:<commit>`. The dispatcher is likewise
+`microservice-dispatcher`, pushed as
+`testcabinet.azurecr.io/microservice-dispatcher:<commit>`, the image the `staging`
+and `prod` overlays run it from. The Azure pipeline builds the
 others, and the **run-container**
 images the sandbox runs inside ([`containers/`](../../containers/README.md)), on
 every push to `master` and `staging`, and pushes each to
@@ -81,9 +84,10 @@ template's publish stage retags `tcab-backend:<sha>` as
 `staging` and `prod` overlays run the backend from. Those overlays name every Test
 Cabinet image at the tag `unpinned`, which nothing pushes, so applied as they stand
 they fail to pull; [`scripts/ci/pin-images.sh`](../../scripts/ci/pin-images.sh) pins
-the seven images this repository builds, and the dispatcher's run images and
-run-container tag, to the commit being deployed, and the repos service's image to
-the commit that commit's `microservice-repos` submodule pointer names.
+the six images this repository builds, and the dispatcher's run images and
+run-container tag, to the commit being deployed, and the dispatcher's and the repos
+service's images to the commits that commit's `microservice-dispatcher` and
+`microservice-repos` submodule pointers name.
 
 ## Cluster prerequisites
 

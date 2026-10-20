@@ -14,7 +14,9 @@
 # It copies deployments/k8s to a temporary directory and pins the copy's
 # overlays/<env> with scripts/ci/pin-images.sh: every Test Cabinet image at
 # `testcabinet.azurecr.io/<image>:<commit>` (the backend's repository is
-# `the-test-cabinet-backend`), and the dispatcher's driver and publisher images and
+# `the-test-cabinet-backend`; `microservice-dispatcher` and `microservice-repos` are at
+# the commits their submodule pointers name), and the dispatcher's driver and
+# publisher images and
 # run-container registry and tag at the same registry and commit. The checkout is
 # left as it was. `--render` prints that render and touches no cluster;
 # scripts/ci/k8s-deploy-sets.sh gates on the same bytes. TCAB_K8S_ROOT names another

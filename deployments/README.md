@@ -100,8 +100,11 @@ instead, see the build instructions in each Dockerfile's header.
 The `staging` and `prod` overlays name every Test Cabinet image at the tag
 `unpinned`, which nothing pushes, so an overlay applied as it stands fails to pull.
 [`scripts/ci/pin-images.sh`](../scripts/ci/pin-images.sh) pins an overlay to one
-commit: all seven images, and the dispatcher's driver and publisher images and
-run-container registry and tag. Every deployment goes through it.
+commit: the six images this repository builds, and the dispatcher's driver and
+publisher images and run-container registry and tag, at that commit, and the
+dispatcher's and the repos service's own images at the commits its
+`microservice-dispatcher` and `microservice-repos` submodule pointers name. Every
+deployment goes through it.
 
 A push to `staging` deploys staging in the workspace template's deployment job
 (`tcab-staging` on `testcabinet-staging-westus2-aks`):
