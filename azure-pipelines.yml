@@ -104,17 +104,17 @@ trigger:
 # it. The forty zeros are the placeholder a render carries; see the header.
 
 # The repositories the jobs read beside this one: the contracts, engines, gg,
-# microservice-repos, tool-model-core and tool-sprite repositories, the
-# `contracts/`, `engines/`, `gg/`, `microservice-repos/`, `tool-model-core/` and
-# `tool-sprite/` submodules every build reads, because the patch table names
-# their crates and cargo loads every patch path (no member uses gg's crate; the
-# documentation site builds gg's pages from its checkout), and the test-suites
-# repository, the `test-suites/` submodule holding the catalog the tests over
-# the committed catalog read and the performance image bakes from. No job checks
-# one out. A job that builds names them under `uses:`, which puts them in the
-# scope of the job's access token, and runs `scripts/ci/submodules.sh init` with
-# their paths after its own checkout, which fetches the commits the superproject
-# pins.
+# microservice-repos, tool-model-core, tool-paint and tool-sprite repositories,
+# the `contracts/`, `engines/`, `gg/`, `microservice-repos/`,
+# `tool-model-core/`, `tool-paint/` and `tool-sprite/` submodules every build
+# reads, because the patch table names their crates and cargo loads every patch
+# path (no member uses gg's or tool-paint's crate; the documentation site builds
+# gg's pages from its checkout), and the test-suites repository, the
+# `test-suites/` submodule holding the catalog the tests over the committed
+# catalog read and the performance image bakes from. No job checks one out. A
+# job that builds names them under `uses:`, which puts them in the scope of the
+# job's access token, and runs `scripts/ci/submodules.sh init` with their paths
+# after its own checkout, which fetches the commits the superproject pins.
 resources:
   repositories:
     - repository: contracts
@@ -132,6 +132,9 @@ resources:
     - repository: tool-model-core
       type: git
       name: the-test-cabinet/tool-model-core
+    - repository: tool-paint
+      type: git
+      name: the-test-cabinet/tool-paint
     - repository: tool-sprite
       type: git
       name: the-test-cabinet/tool-sprite
@@ -215,6 +218,7 @@ stages:
             - gg
             - microservice-repos
             - tool-model-core
+            - tool-paint
             - tool-sprite
             - test-suites
         variables:
@@ -242,12 +246,12 @@ stages:
             clean: true
 
           # The contracts, engines, gg, microservice-repos, tool-model-core,
-          # tool-sprite and test-suites submodules, at the pinned commits; the
-          # job's `uses:` puts their repositories in the token's scope. The tests
-          # over the committed catalog read test-suites, and the documentation
-          # site reads gg's pages.
-          - script: scripts/ci/submodules.sh init contracts engines gg microservice-repos tool-model-core tool-sprite test-suites
-            displayName: Initialize the contracts, engines, gg, microservice-repos, tool-model-core, tool-sprite and test-suites submodules
+          # tool-paint, tool-sprite and test-suites submodules, at the pinned
+          # commits; the job's `uses:` puts their repositories in the token's
+          # scope. The tests over the committed catalog read test-suites, and the
+          # documentation site reads gg's pages.
+          - script: scripts/ci/submodules.sh init contracts engines gg microservice-repos tool-model-core tool-paint tool-sprite test-suites
+            displayName: Initialize the contracts, engines, gg, microservice-repos, tool-model-core, tool-paint, tool-sprite and test-suites submodules
             env:
               SYSTEM_ACCESSTOKEN: $(System.AccessToken)
 
@@ -412,6 +416,7 @@ stages:
             - gg
             - microservice-repos
             - tool-model-core
+            - tool-paint
             - tool-sprite
             - test-suites
         steps:
@@ -420,12 +425,12 @@ stages:
             clean: true
 
           # The contracts, engines, gg, microservice-repos, tool-model-core,
-          # tool-sprite and test-suites submodules, at the pinned commits; the
-          # job's `uses:` puts their repositories in the token's scope. The tests
-          # over the committed catalog read test-suites, and the documentation
-          # site reads gg's pages.
-          - script: scripts/ci/submodules.sh init contracts engines gg microservice-repos tool-model-core tool-sprite test-suites
-            displayName: Initialize the contracts, engines, gg, microservice-repos, tool-model-core, tool-sprite and test-suites submodules
+          # tool-paint, tool-sprite and test-suites submodules, at the pinned
+          # commits; the job's `uses:` puts their repositories in the token's
+          # scope. The tests over the committed catalog read test-suites, and the
+          # documentation site reads gg's pages.
+          - script: scripts/ci/submodules.sh init contracts engines gg microservice-repos tool-model-core tool-paint tool-sprite test-suites
+            displayName: Initialize the contracts, engines, gg, microservice-repos, tool-model-core, tool-paint, tool-sprite and test-suites submodules
             env:
               SYSTEM_ACCESSTOKEN: $(System.AccessToken)
 

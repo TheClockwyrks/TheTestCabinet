@@ -152,8 +152,8 @@ names what installs it, so a toolchain missing here is a check that says so
 rather than one that quietly passes.
 
 `post-create.sh` populates the `contracts/`, `engines/`, `gg/`,
-`microservice-repos/`, `tool-model-core/` and `tool-sprite/` submodules, which
-every build compiles against, and the `test-suites/` submodule, the suites
+`microservice-repos/`, `tool-model-core/`, `tool-paint/` and `tool-sprite/`
+submodules, which every build compiles against, and the `test-suites/` submodule, the suites
 checkout the local backend ingests (not `cold-storage/`, which is optional and
 about 2 GB), through `tools/submodule-checkout.sh` (see [Submodule checkout](#submodule-checkout)),
 installs the git hook through `scripts/setup-hooks.sh`, places cargo's target
@@ -679,8 +679,8 @@ warning about it.
 ## Submodule checkout
 
 The `contracts/`, `engines/`, `gg/`, `microservice-repos/`, `tool-model-core/`,
-`tool-sprite/` and `test-suites/` submodules live in the organization's other repositories,
-reached over SSH at `ssh.dev.azure.com`.
+`tool-paint/`, `tool-sprite/` and `test-suites/` submodules live in the
+organization's other repositories, reached over SSH at `ssh.dev.azure.com`.
 `post-create.sh` checks them out ahead of `npm ci`, whose workspace lists the
 packages `contracts/` and `engines/` hold, and `post-start.sh` checks them out
 again at every start, each through `tools/submodule-checkout.sh` after the SSH
@@ -688,7 +688,7 @@ agent is published. The script pins
 Azure DevOps' published RSA host key in `~/.ssh/known_hosts`, so the first clone
 does not stop at the interactive host-key prompt nothing is there to answer, and
 runs `git submodule update --init contracts engines gg microservice-repos
-tool-model-core tool-sprite test-suites` through the host's agent when the
+tool-model-core tool-paint tool-sprite test-suites` through the host's agent when the
 checkout holds a `.gitmodules`. Passed
 submodule paths, it checks out those instead; `cold-storage/` is left to a
 `git submodule update --init cold-storage` by hand. It never fails the step it
