@@ -6,8 +6,15 @@ zone: REPOS
 number: 3
 title: Extract the sprite tool into tool-sprite
 type: generic
-state: open
+state: done
 created: 2026-10-13T21:11:43.718637605Z
+done: 2026-10-20T08:37:03.161614132Z
+outcome: |
+  tool-sprite exists on Azure with crates/draw's history, kit render, protection,
+  pipeline 149 (run 17295 green, image tool-sprite:d784be5) and GitHub mirror; the
+  superrepo pins it as a submodule, the driver takes test-cabinet-draw from it,
+  the run images copy draw and draw-sheet from its image, and crates/draw is
+  removed (PR 4661 into nightly). Not verified: a sprite case on the local stack.
 ---
 
 The `draw` crate lives under the superrepo's `crates/`. The documentation
