@@ -68,11 +68,15 @@ def test_an_image_is_pinned_at_the_commit_the_superrepo_pins() -> None:
 
 
 def test_a_dependency_is_pinned_at_its_tag_or_on_master() -> None:
-    """`contracts` and `engines` have cut tags, which their dependents pin.
+    """`contracts`, `engines`, `tool-model-core` and `tool-audio-core` have cut tags.
 
-    `tool-sprite` has none, so its dependents follow its `master`.
-    `tool-audio-core` has cut one, which the audio tools pin.
+    Their dependents pin them. `tool-sprite` has none, so its dependents follow
+    its `master`.
     """
+    assert render.workspace_dependencies("tool-voxel").splitlines() == [
+        'test-cabinet-contracts = { git = "https://github.com/TheClockwyrks/contracts", tag = "v0.2.2" }',
+        'test-cabinet-model-core = { git = "https://github.com/TheClockwyrks/tool-model-core", tag = "v0.1.0" }',
+    ]
     assert render.workspace_dependencies("tool-sfx-synth").splitlines() == [
         'test-cabinet-contracts = { git = "https://github.com/TheClockwyrks/contracts", tag = "v0.2.2" }',
         'test-cabinet-audio-core = { git = "https://github.com/TheClockwyrks/tool-audio-core", tag = "v0.1.0" }',

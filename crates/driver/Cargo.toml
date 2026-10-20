@@ -69,13 +69,14 @@ test-cabinet-audio-core = { path = "../audio-core", default-features = false }
 # the exact same logic the in-container binary used.
 test-cabinet-draw = { workspace = true }
 # The voxel-sculpting tool for the two 3D asset-generation kinds (voxel-model /
-# voxel-animation). As with `test-cabinet-draw`, only the library, so the engine
+# voxel-animation), from the tool-voxel repository. As with `test-cabinet-draw`, only
+# the library (the workspace entry turns the `cli` feature off), so the engine
 # regenerates the scored voxel data and isometric preview from a run's recorded
 # operation log through the exact same logic the in-container `voxel` / `voxel-anim`
 # binaries used. The cube domain (`VoxelSet`, `Operation`, `render`, the rasterizer)
 # lives here; the generic model types (rig, color) live in `test-cabinet-model-core`,
 # which the voxel crate re-exports and the engine also links directly.
-test-cabinet-voxel = { path = "../voxel", default-features = false }
+test-cabinet-voxel = { workspace = true }
 # The signed-distance meshing domain for the six surface-meshed kinds
 # (mc/sn/dc + `-anim`). Only the pure library (not the `cli` feature's
 # serde_json/renderer), to deserialize and well-formedness-check the `Mesh`

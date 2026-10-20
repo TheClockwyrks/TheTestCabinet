@@ -230,9 +230,15 @@ CRATES: dict[str, tuple[str, str]] = {
 # have cut one. A manifest names a dependency at its public source on this tag,
 # and on the `master` branch while the repository has none. `contracts` cut
 # `v0.2.2` and `engines` `v1.1.1`, whose runs published their packages to the
-# feed at those versions. `tool-audio-core` cut `v0.1.0`, the shared audio
-# library the audio tools build on, and publishes no package.
-TAGS: dict[str, str] = {"contracts": "v0.2.2", "engines": "v1.1.1", "tool-audio-core": "v0.1.0"}
+# feed at those versions. `tool-model-core` cut `v0.1.0`, the shared model
+# libraries the model tools build on, and `tool-audio-core` cut `v0.1.0`, the
+# shared audio library the audio tools build on; neither publishes a package.
+TAGS: dict[str, str] = {
+    "contracts": "v0.2.2",
+    "engines": "v1.1.1",
+    "tool-model-core": "v0.1.0",
+    "tool-audio-core": "v0.1.0",
+}
 
 # The npm registry of the `the-test-cabinet` feed of the project's Azure
 # Artifacts, as the Repositories development page names it. A tag's run

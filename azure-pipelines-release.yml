@@ -45,11 +45,11 @@ resources:
       source: the-test-cabinet
       trigger: none
   # The contracts, engines, gg, microservice-repos, tool-model-core, tool-paint,
-  # tool-particle, tool-sprite and ui-common repositories, the submodules every
-  # build reads through the patch table, and test-suites, the catalog the binary
-  # jobs' driver tests read, as in azure-pipelines.yml: a job that builds names
-  # them under `uses:` and runs `scripts/ci/submodules.sh init` with their
-  # paths.
+  # tool-particle, tool-sprite, tool-voxel, tool-mc, tool-sn, tool-dc and
+  # ui-common repositories, the submodules every build reads through the patch
+  # table, and test-suites, the catalog the binary jobs' driver tests read, as in
+  # azure-pipelines.yml: a job that builds names them under `uses:` and runs
+  # `scripts/ci/submodules.sh init` with their paths.
   repositories:
     - repository: contracts
       type: git
@@ -75,6 +75,18 @@ resources:
     - repository: tool-sprite
       type: git
       name: the-test-cabinet/tool-sprite
+    - repository: tool-voxel
+      type: git
+      name: the-test-cabinet/tool-voxel
+    - repository: tool-mc
+      type: git
+      name: the-test-cabinet/tool-mc
+    - repository: tool-sn
+      type: git
+      name: the-test-cabinet/tool-sn
+    - repository: tool-dc
+      type: git
+      name: the-test-cabinet/tool-dc
     - repository: test-suites
       type: git
       name: the-test-cabinet/test-suites

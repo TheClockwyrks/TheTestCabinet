@@ -40,6 +40,22 @@
 	path = tool-sprite
 	url = ../tool-sprite
 	branch = master
+[submodule "tool-voxel"]
+	path = tool-voxel
+	url = ../tool-voxel
+	branch = master
+[submodule "tool-mc"]
+	path = tool-mc
+	url = ../tool-mc
+	branch = master
+[submodule "tool-sn"]
+	path = tool-sn
+	url = ../tool-sn
+	branch = master
+[submodule "tool-dc"]
+	path = tool-dc
+	url = ../tool-dc
+	branch = master
 [submodule "ui-common"]
 	path = ui-common
 	url = ../ui-common

@@ -169,7 +169,9 @@ ALL_IMGS := $(BACKEND_IMG) $(DISPATCHER_IMG) $(DRIVER_IMG) $(ARTIFACTS_IMG) $(AR
 # and the adversarial/performance tooling), compiled from `crates/` at image build
 # time or, for a tool in a `tool-*` repository (`draw`/`draw-sheet`: `tool-sprite`;
 # `paint`/`ui`/`texture`/`pbr`: `tool-paint`; `particle-2d`/`particle-3d`:
-# `tool-particle`), copied out of that repository's image,
+# `tool-particle`; `voxel`/`voxel-anim`: `tool-voxel`; `mc`/`mc-anim`/`mc-skin`:
+# `tool-mc`, and likewise `tool-sn` and `tool-dc`), copied out of that repository's
+# image,
 # which `containers/build.sh` builds first from the checked-out repository (see
 # `containers/build.sh` and `containers/*/Dockerfile`). These are
 # DISTINCT from the long-lived service images above: a run pod is a per-run Job the
@@ -295,7 +297,7 @@ RUN_IMGS         := $(call run_image_refs,$(RUN_IMAGE_NAMES))
 
 # The `tool-*` repositories whose images the run images copy binaries out of, as
 # scripts/ci/tool-images.sh lists them. `run-images` names them to build.sh first.
-TOOL_IMAGE_NAMES := tool-sprite tool-paint tool-particle
+TOOL_IMAGE_NAMES := tool-sprite tool-paint tool-particle tool-voxel tool-mc tool-sn tool-dc
 
 # Shared dispatcher↔backend service token. A fixed dev default (no production value
 # lives in the repo); override from the environment, e.g. `SERVICE_TOKEN=… make …`.
