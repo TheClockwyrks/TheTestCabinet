@@ -1,13 +1,23 @@
 ---
 format: nyxsis-issue
-version: 2
+version: 3
 id: m12w5wiiu79bndk4ro5ig45l
 zone: REPOS
 number: 5
 title: Extract the model tools into tool-model-core, tool-voxel, tool-mc, tool-sn and tool-dc
 type: generic
-state: open
+state: done
 created: 2026-10-13T21:11:52.874606844Z
+done: 2026-10-20T14:26:36.485999824Z
+outcome: |
+  tool-model-core is tagged v0.1.0 and recorded in TAGS; tool-voxel, tool-mc,
+  tool-sn and tool-dc exist on Azure with their crates' history, kit render,
+  protection, pipelines 153-156 and GitHub mirrors, naming tool-model-core at the
+  tag; the superrepo pins all four as submodules, the driver takes
+  test-cabinet-voxel from tool-voxel, the model run images copy their binaries
+  from the tool images, and the eleven crates are removed (PR into nightly;
+  superrepo gates 28/28, each repository 14/14). Not verified: voxel, mesh and
+  skinned cases on the local stack.
 ---
 
 The `model-core`, `voxel-mesh`, `model-skin`, `voxel`, `voxel-anim`, `mc`,
