@@ -1244,6 +1244,9 @@ fn human_facing(gg: &GgTelemetryEvent) -> Option<HarnessEvent> {
         } if !summary.trim().is_empty() => EventKind::Agent {
             message: summary.clone(),
         },
+        // A heartbeat is the stream's sign of life while an agent waits; it is activity for
+        // the run's idle watchdog, not for a reader, so it carries only natively.
+        GgTelemetryKind::Heartbeat { .. } => return None,
         _ => return None,
     };
     Some(stamped(gg.session_id.clone(), kind))

@@ -5,13 +5,16 @@
 // `styles/theme.scss` and are applied by event type in the feed's stylesheet,
 // so a given event type shows up as the same hue in every feed.
 
-import type { HarnessEvent } from "../client/types";
 import type {
   GgLimitBreach,
   GgLimitKind,
   GgTelemetryEvent,
   GgTurnErrorKind,
+  GgWaitKind,
 } from "@clockwyrks/run-record/gg";
+
+import { formatRunTime } from "./format";
+import type { HarnessEvent } from "../client/types";
 
 // How each execution ceiling reads in a breach line. Typed as a total record over
 // `GgLimitKind` so a ceiling added to the contract is a compile error here rather
@@ -157,6 +160,29 @@ function ggCodeExecutionDetail(
 // silently degrades to raw JSON — so every kind worth reading has to be added
 // deliberately. Anything left to the default is a kind whose payload is its own
 // best rendering.
+// What a waiting agent waits on, as the heartbeat line names it. A total record
+// over `GgWaitKind`, so a wait added to the contract is a compile error here
+// rather than a heartbeat that renders as a raw wire value.
+const WAIT_LABELS: Record<GgWaitKind, string> = {
+  model_request: "a model request",
+  tool_call: "a tool call",
+  program: "a program",
+  subagent: "a subagent",
+};
+
+// A heartbeat as one line: what the agent waits on, the specific thing when gg
+// named it (the tool, the subagents or the issue), and for how long so far —
+// "waiting on a tool call (shell) for 2m 0s". It is the feed's sign that a quiet
+// agent is still working rather than stuck.
+function ggHeartbeatDetail(
+  event: Extract<GgTelemetryEvent, { type: "heartbeat" }>,
+): string {
+  const on = event.detail
+    ? `${WAIT_LABELS[event.waitingOn]} (${event.detail})`
+    : WAIT_LABELS[event.waitingOn];
+  return `waiting on ${on} for ${formatRunTime(event.waitedMs / 1000)}`;
+}
+
 function ggEventDetail(event: GgTelemetryEvent): string {
   switch (event.type) {
     case "session_started":
@@ -186,6 +212,9 @@ function ggEventDetail(event: GgTelemetryEvent): string {
       return limitBreachDetail(event.breach);
     case "log":
       return event.message;
+    case "heartbeat": {
+      return ggHeartbeatDetail(event);
+    }
     case "session_ended":
       return `session ${event.status}`;
     default:
