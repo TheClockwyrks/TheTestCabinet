@@ -125,7 +125,7 @@ def test_the_windows_and_extra_gate_tables_name_repositories_carrying_a_crate() 
     # gg, an application, takes the kit's `build-context` gate, which holds its
     # Dockerfiles (the `gg-toolchains` image's among them) to its build context.
     assert render.extra_gates("gg", "application") == {}
-    assert render.builds_image("application")
+    assert render.builds_image("gg", "application")
 
 
 def test_an_extra_gate_in_a_job_the_pipeline_lacks_is_refused(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -237,6 +237,29 @@ def test_a_kind_that_builds_an_image_carries_a_crate() -> None:
     assert render.ci_image_stage("contracts", "library") == ""
 
 
+def test_a_tool_builds_an_image_when_a_run_image_carries_its_binaries() -> None:
+    """A tool of `TOOL_IMAGES` builds the image its binaries are copied from; one of the library half builds none."""
+    assert EDGES.KINDS[render.IMAGE_TOOL_KIND].crate
+    tools = [repo for repo, kind in EDGES.REPOSITORIES.items() if kind == "tool"]
+    assert {"tool-model-core", "tool-audio-core"} <= set(tools)
+    for tool in tools:
+        assert render.builds_image(tool, "tool") is (tool in EDGES.TOOL_IMAGES), tool
+    assert not render.builds_image("tool-model-core", "tool")
+    assert not render.builds_image("tool-audio-core", "tool")
+    assert render.ci_image_stage("tool-model-core", "tool") == ""
+    # A library, a site, a shell or content builds none, whatever its name.
+    for kind in ("library", "site", "shell", "content"):
+        assert not render.builds_image("tool-sprite", kind), kind
+    stage = render.ci_image_stage("tool-sprite", "tool")
+    assert re.findall(r"^      - job: (\S+)$", stage, re.MULTILINE) == ["image_amd64", "image_arm64", "image_manifest"]
+    for arch in render.IMAGE_ARCHITECTURES:
+        job = _job(stage + "\n", f"image_{arch}")
+        # The tool's workspace names contracts, which the build fetches from Azure.
+        assert re.findall(r"^            - (\S+)$", job, re.MULTILINE) == ["contracts"], arch
+        assert '- script: scripts/ci/image.sh tool-sprite "$(Build.SourceVersion)"\n' in job
+    assert '- script: scripts/ci/manifest.sh "$(Build.SourceVersion)" tool-sprite\n' in stage
+
+
 def test_the_image_stage_builds_each_architecture_then_fuses_them() -> None:
     stage = render.ci_image_stage("microservice-arena", "application")
     assert stage.startswith("  - stage: image\n    displayName: Image\n    dependsOn: gates\n")
@@ -287,6 +310,71 @@ def test_an_application_is_rendered_its_image(rendered: Callable[[str], Path]) -
     assert yaml.safe_load(pipeline)["stages"][1]["stage"] == "image"
 
 
+def test_a_tool_is_rendered_the_image_of_its_binaries(rendered: Callable[[str], Path]) -> None:
+    """Every binary of the crate, built without a lock, in a final stage that runs nothing, at a fixed path."""
+    root = rendered("tool-sprite")
+    _, crate = render.crate_of("tool-sprite")
+    dockerfile = (root / "Dockerfile").read_text(encoding="utf-8")
+    assert f"FROM docker.io/library/rust:{render.rust_channel()}-bookworm AS build\n" in dockerfile
+    assert f"cargo build --release --bins -p {crate}" in dockerfile
+    assert "--locked" not in dockerfile
+    assert "--mount=type=secret,id=gitconfig,target=/root/.gitconfig,required=false" in dockerfile
+    assert "FROM docker.io/library/debian:bookworm-slim\n" in dockerfile
+    assert f"COPY --from=build /out/bin/ {render.TOOL_BINARIES}/\n" in dockerfile
+    assert "ENTRYPOINT" not in dockerfile
+    assert "{{" not in dockerfile and "{%" not in dockerfile
+    env = {key: value for key, value in os.environ.items() if key not in render.GIT_LOCATING}
+    done = subprocess.run(
+        ["scripts/ci/build-context.sh"], cwd=root, env=env, capture_output=True, text=True, check=False
+    )
+    assert done.returncode == 0, done.stdout + done.stderr
+    pipeline = (root / "azure-pipelines.yml").read_text(encoding="utf-8")
+    assert "gate run build-context\n" in _job(pipeline, "checks")
+    assert yaml.safe_load(pipeline)["stages"][1]["stage"] == "image"
+    assert "/Cargo.lock" in (root / ".gitignore").read_text(encoding="utf-8")
+    readme = (root / "README.md").read_text(encoding="utf-8")
+    assert f"under `{render.TOOL_BINARIES}/`" in readme
+
+
+def test_a_tool_of_the_library_half_is_rendered_no_image(rendered: Callable[[str], Path]) -> None:
+    root = rendered("tool-model-core")
+    for path in ("Dockerfile", ".dockerignore", "ci/gates/build-context.py", "scripts/ci/image.sh"):
+        assert not (root / path).exists(), path
+    assert "  - stage: image\n" not in (root / "azure-pipelines.yml").read_text(encoding="utf-8")
+
+
+def test_the_image_carrying_binaries_runs_the_binaries_cargo_reports(tmp_path: Path) -> None:
+    """The build's extraction of the executables from cargo's JSON keeps every binary and nothing else."""
+    template = (render.KIT / "{% if ci_image %}Dockerfile{% endif %}.jinja").read_text(encoding="utf-8")
+    extraction = re.search(r"grep -o ('[^']+') /tmp/build.json \| sed ('[^']+')", template)
+    assert extraction, "the tool branch no longer extracts the executables from cargo's messages"
+    messages = tmp_path / "build.json"
+    messages.write_text(
+        "\n".join(
+            [
+                '{"reason":"compiler-artifact","target":{"kind":["lib"]},"executable":null}',
+                '{"reason":"compiler-artifact","target":{"kind":["custom-build"]},"executable":null}',
+                '{"reason":"compiler-artifact","target":{"kind":["bin"]},"executable":"/src/target/release/draw"}',
+                (
+                    '{"reason":"compiler-artifact","target":{"kind":["bin"]},'
+                    '"executable":"/src/target/release/draw-sheet","fresh":true}'
+                ),
+                '{"reason":"build-finished","success":true}',
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    done = subprocess.run(
+        f"grep -o {extraction.group(1)} {messages} | sed {extraction.group(2)}",
+        shell=True,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert done.stdout.splitlines() == ["/src/target/release/draw", "/src/target/release/draw-sheet"]
+
+
 @pytest.mark.parametrize(
     ("name", "kind", "description", "said"),
     [
@@ -314,7 +402,7 @@ def test_each_kind_is_rendered_its_shape(kind: str, rendered: Callable[[str], Pa
     assert ("ci/gates/typescript.py" in files) is shape.typescript
     assert (".npmrc" in files) is shape.typescript
     assert ("scripts/resolve-lock.sh" in files) is shape.commits_lock
-    image = render.builds_image(kind)
+    image = render.builds_image(name, kind)
     for path in ("Dockerfile", ".dockerignore", "ci/gates/build-context.py", "scripts/ci/build-context.sh"):
         assert (path in files) is image, path
     for path in ("scripts/ci/image.sh", "scripts/ci/manifest.sh"):

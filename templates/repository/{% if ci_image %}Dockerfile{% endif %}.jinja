@@ -1,8 +1,17 @@
 # syntax=docker/dockerfile:1
+{% if image_carries_binaries %}
+# The image carrying the binaries of {{name}}. Its pipeline builds it on
+# every gated push to master and staging, natively once per architecture
+# (scripts/ci/image.sh), and fuses the two into the multi-arch
+# `{{image_registry}}/{{name}}:<commit>` (scripts/ci/manifest.sh).
+# The driver's run-container images copy the binaries from {{tool_binaries}}/
+# of it, at the commit the driver pins; the image runs nothing itself.
+{% else %}
 # The image of {{name}}. Its pipeline builds it on every gated push to master
 # and staging, natively once per architecture (scripts/ci/image.sh), and fuses
 # the two into the multi-arch `{{image_registry}}/{{name}}:<commit>` a
 # deployment pins (scripts/ci/manifest.sh).
+{% endif %}
 #
 # The build context is the repository root, held to what .dockerignore admits,
 # and the `build-context` gate holds every COPY below to that allowlist and the
@@ -26,6 +35,34 @@ ARG TCAB_BUILD_COMMIT
 # source change compiles only what changed. BuildKit replays the mtimes a file
 # had in the context when the COPY is served from cache, so the sources are
 # touched first and cargo never takes an artifact of another build as fresh.
+{% if image_carries_binaries %}
+#
+# A tool commits no lock file, so the build resolves its dependencies as
+# cargo finds them, as the tool's pipeline does. Every binary target of the
+# crate is built (`--bins`), and the binaries carried are the executables
+# cargo reports building, so a binary the crate adds is carried without an
+# edit here, and one it drops is not left behind by the cached target/. A
+# crate building no binary has nothing for a run image to copy, and the build
+# fails saying so.
+RUN --mount=type=secret,id=gitconfig,target=/root/.gitconfig,required=false \
+    --mount=type=cache,target=/usr/local/cargo/registry \
+    --mount=type=cache,target=/usr/local/cargo/git \
+    --mount=type=cache,target=/src/target \
+    find /src -path /src/target -prune -o -type f -exec touch {} + \
+    && TCAB_BUILD_COMMIT="${TCAB_BUILD_COMMIT}" cargo build --release --bins -p {{crate}} \
+        --message-format=json-render-diagnostics >/tmp/build.json \
+    && mkdir -p /out/bin \
+    && grep -o '"executable":"[^"]*"' /tmp/build.json | sed 's/^"executable":"//; s/"$//' >/tmp/binaries \
+    && if [ ! -s /tmp/binaries ]; then echo "{{crate}} builds no binary, so the image would carry none" >&2; exit 1; fi \
+    && xargs -r cp -t /out/bin/ </tmp/binaries \
+    && ls -l /out/bin/
+
+FROM docker.io/library/debian:bookworm-slim
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends ca-certificates \
+  && rm -rf /var/lib/apt/lists/*
+COPY --from=build /out/bin/ {{tool_binaries}}/
+{% else %}
 RUN --mount=type=secret,id=gitconfig,target=/root/.gitconfig,required=false \
     --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/usr/local/cargo/git \
@@ -41,3 +78,4 @@ RUN apt-get update \
   && rm -rf /var/lib/apt/lists/*
 COPY --from=build /out/{{crate}} /usr/local/bin/{{crate}}
 ENTRYPOINT ["{{crate}}"]
+{% endif %}
