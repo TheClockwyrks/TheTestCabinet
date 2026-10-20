@@ -24,6 +24,10 @@
 	path = gg.rocks
 	url = ../gg.rocks
 	branch = master
+[submodule "tool-model-core"]
+	path = tool-model-core
+	url = ../tool-model-core
+	branch = master
 [submodule "tool-sprite"]
 	path = tool-sprite
 	url = ../tool-sprite

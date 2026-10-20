@@ -152,10 +152,10 @@ names what installs it, so a toolchain missing here is a check that says so
 rather than one that quietly passes.
 
 `post-create.sh` populates the `contracts/`, `engines/`, `gg/`,
-`microservice-repos/` and `tool-sprite/` submodules, which every build compiles
-against, and the `test-suites/` submodule, the suites checkout the local backend ingests (not
-`cold-storage/`, which is optional and about 2 GB), through
-`tools/submodule-checkout.sh` (see [Submodule checkout](#submodule-checkout)),
+`microservice-repos/`, `tool-model-core/` and `tool-sprite/` submodules, which
+every build compiles against, and the `test-suites/` submodule, the suites
+checkout the local backend ingests (not `cold-storage/`, which is optional and
+about 2 GB), through `tools/submodule-checkout.sh` (see [Submodule checkout](#submodule-checkout)),
 installs the git hook through `scripts/setup-hooks.sh`, places cargo's target
 directory (see [Where cargo builds](#where-cargo-builds)) and installs the npm
 workspace's locked dependencies, and gg's own in `gg/`, when the container is
@@ -678,8 +678,8 @@ warning about it.
 
 ## Submodule checkout
 
-The `contracts/`, `engines/`, `gg/`, `microservice-repos/`, `tool-sprite/` and
-`test-suites/` submodules live in the organization's other repositories,
+The `contracts/`, `engines/`, `gg/`, `microservice-repos/`, `tool-model-core/`,
+`tool-sprite/` and `test-suites/` submodules live in the organization's other repositories,
 reached over SSH at `ssh.dev.azure.com`.
 `post-create.sh` checks them out ahead of `npm ci`, whose workspace lists the
 packages `contracts/` and `engines/` hold, and `post-start.sh` checks them out
@@ -687,9 +687,9 @@ again at every start, each through `tools/submodule-checkout.sh` after the SSH
 agent is published. The script pins
 Azure DevOps' published RSA host key in `~/.ssh/known_hosts`, so the first clone
 does not stop at the interactive host-key prompt nothing is there to answer, and
-runs
-`git submodule update --init contracts engines gg microservice-repos tool-sprite test-suites`
-through the host's agent when the checkout holds a `.gitmodules`. Passed
+runs `git submodule update --init contracts engines gg microservice-repos
+tool-model-core tool-sprite test-suites` through the host's agent when the
+checkout holds a `.gitmodules`. Passed
 submodule paths, it checks out those instead; `cold-storage/` is left to a
 `git submodule update --init cold-storage` by hand. It never fails the step it
 runs from: a host with no agent, or no network, keeps a working container and

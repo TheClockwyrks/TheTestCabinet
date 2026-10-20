@@ -7067,6 +7067,18 @@ name = "test-cabinet-repos"
 version = "0.0.0"
 
 [[patch.unused]]
+name = "test-cabinet-model-core"
+version = "0.0.0"
+
+[[patch.unused]]
+name = "test-cabinet-model-skin"
+version = "0.0.0"
+
+[[patch.unused]]
+name = "test-cabinet-voxel-mesh"
+version = "0.0.0"
+
+[[patch.unused]]
 name = "test-cabinet-gg"
 version = "0.7.1"
 
