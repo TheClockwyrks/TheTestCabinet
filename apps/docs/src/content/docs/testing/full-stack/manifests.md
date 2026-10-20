@@ -62,9 +62,11 @@ the static site into `dist/`, `build/`, or `out/`. Resolution rejects a
 
 The `packages` key names the repo's shippable `@clockwyrks/*` runtime
 libraries the build imports as ordinary dependencies. It is valid on an
-end-to-end, full-stack, or game-jam case. The same shipped-`package.json`
-`file:` contract and `npm install`-at-`init` rules apply as for an
-[end-to-end case](/testing/end-to-end/manifests/).
+end-to-end, full-stack, or game-jam case. The same rules apply as for an
+[end-to-end case](/testing/end-to-end/overview/#packages): the shipped
+`package.json` declares each package as a `file:` dependency under
+`.vendor/packages/`, the shipped `package-lock.json` links it there, and the
+case's `init` command is `npm ci`.
 
 Its most common use here is
 [`@clockwyrks/particle-runtime`](/testing/asset-generation/particle-binaries/),

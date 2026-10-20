@@ -61,14 +61,29 @@ for everything shared, with these differences.
    produced assets; mirror that split.
 6. When the game plays a produced particle `system.json`, declare
    `packages = ["@clockwyrks/particle-runtime"]`, and add
-   `"@clockwyrks/voxel-runtime"` when it draws a produced voxel model. Set the
-   case's `init` command to `npm install` so the injected `file:` dependencies
-   resolve.
-7. Keep the asset-quality wording out of `prompt.hbs`. The harness prepends the
+   `"@clockwyrks/voxel-runtime"` when it draws a produced voxel model. The
+   workspace `package.json` declares each as
+   `file:./.vendor/packages/<name>`, and the case's `init` command is
+   `npm ci && npx playwright install chromium`.
+7. Ship a `package-lock.json` beside every workspace `package.json`. It links
+   each package and engine dependency at its `.vendor/packages/` path, so
+   generate it from a staged package store, and regenerate it whenever the
+   `package.json` or the store's versions change:
+
+   ```sh
+   # In the-test-cabinet.
+   npm ci
+   node scripts/stage-tcab-packages.mjs /tmp/tcab-packages
+   # In test-suites.
+   node scripts/workspace-lockfiles.mjs --store /tmp/tcab-packages <version-folder>
+   node scripts/workspace-lockfiles.mjs --store /tmp/tcab-packages --check <version-folder>
+   ```
+
+8. Keep the asset-quality wording out of `prompt.hbs`. The harness prepends the
    standing
    [full-stack quality directive](/testing/full-stack/overview/#the-standing-quality-directive)
    at render time.
-8. Keep the build self-contained. It bundles the committed asset files that the
+9. Keep the build self-contained. It bundles the committed asset files that the
    run produced, because the generation binaries are on `PATH` only while the run
    is live. A build that shells out to `draw` or its siblings fails wherever
    those binaries are absent.
