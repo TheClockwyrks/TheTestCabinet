@@ -346,6 +346,10 @@ and the kit's `edges.py` hold:
   a browser, in the `android` image for a `shell`, and in the `rust` image
   otherwise (`RUST_TRACKS` in `render.py`);
 - the Windows job, for a repository `WINDOWS_TESTS` names;
+- the checkout, beside the repository's own, of each repository its Rust
+  suite reads across a data edge, and the variable naming it to the suite
+  (`RUST_CHECKOUTS`: `microservice-backend` checks `test-suites` out as
+  `TCAB_DEFINITIONS_ROOT`);
 - the steps of the gates a repository writes itself, which `EXTRA_GATES` names
   by the job each runs in;
 - for an `application`, the `Dockerfile` scaffold and its `.dockerignore`
