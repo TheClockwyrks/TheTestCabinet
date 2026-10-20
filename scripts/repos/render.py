@@ -144,6 +144,9 @@ NEXTEST_SCRIPT = "scripts/ci/install-nextest.sh"
 EXTRA_GATES: dict[str, dict[str, tuple[str, ...]]] = {
     "contracts": {"rust": ("contract-drift",)},
     "engines": {"checks": ("seeded-contract",)},
+    # ui-common lints the hand-written TypeScript of its npm workspace with
+    # ESLint, as the superrepo's `web-lint` does, under the same ratchet.
+    "ui-common": {"checks": ("web-lint",)},
     "test-suites": {
         "checks": ("frozen-paths", "spec-prose", "spec-vocabulary", "audio-packs", "validators-typecheck"),
     },

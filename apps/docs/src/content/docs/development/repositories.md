@@ -419,8 +419,9 @@ The kit renders the gate runner into every repository, with these gates:
 | `python-lint`, `ci-tests`, `shell-tests`, `no-nul-bytes` | The gate runner and the scripts |
 
 A repository may add gates of its own, such as `contracts`' `contract-drift`,
-`engines`' `seeded-contract` or `test-suites`' `frozen-paths`, `spec-prose`,
-`spec-vocabulary`, `audio-packs` and `validators-typecheck`. The gate is a file
+`engines`' `seeded-contract`, `ui-common`'s `web-lint` or `test-suites`'
+`frozen-paths`, `spec-prose`, `spec-vocabulary`, `audio-packs` and
+`validators-typecheck`. The gate is a file
 the repository writes under `ci/gates/`, and the kit leaves it to the
 repository; `EXTRA_GATES` in `render.py` names it and the job it runs in, and
 the render gives it one step there. Every gate a repository adds is hookless,

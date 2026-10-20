@@ -166,9 +166,9 @@ runner, rendered by the kit, and its own gates run from its checkout with the
 same command: a Rust workspace's `rust-*` gates, an npm workspace's
 `typescript` gate, `build-context` in a kind that builds an image, and the
 gates a repository adds (`contract-drift` in `contracts`, `seeded-contract` in
-`engines`, `frozen-paths`, `spec-prose`, `spec-vocabulary`, `audio-packs` and
-`validators-typecheck` in `test-suites`). gg's suite runs in the `gg`
-repository.
+`engines`, `web-lint` in `ui-common`, `frozen-paths`, `spec-prose`,
+`spec-vocabulary`, `audio-packs` and `validators-typecheck` in `test-suites`).
+gg's suite runs in the `gg` repository.
 
 ```sh
 cd microservice-driver && make gate
