@@ -265,9 +265,10 @@ them, and `ci/gates/web-browser-test.py` reads the two and fails with both
 values when they disagree, rather than leaving the mismatch to surface inside
 the browser provider.
 
-The `playwright` in `engines/packages/case-harness` and `packages/browser-driver`
-follows the same tag, for the same reason: those launch the Chromium the image
-holds, and a different client version asks for a build that is not there.
+The `playwright` in `engines/packages/case-harness` and
+`contracts/packages/browser-driver` follows the same tag, for the same reason:
+those launch the Chromium the image holds, and a different client version asks
+for a build that is not there.
 
 ## The language toolchains
 

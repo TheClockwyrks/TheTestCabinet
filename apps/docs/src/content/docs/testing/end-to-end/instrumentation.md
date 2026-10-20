@@ -303,7 +303,7 @@ for the shape of the world it invented rather than for the contract it was asked
 to expose.
 
 So a helper that cannot pose its scenario throws an error carrying the
-`ttcPreconditionUnmet` marker (see `PRECONDITION_UNMET` in
+`ttcPreconditionUnmet` marker (see `PRECONDITION_UNMET` in contracts'
 `packages/browser-driver/validation.mjs`, and `unmetPrecondition()` in a case's
 `validation/_helpers.mjs`). The driver records such a script as inconclusive: it
 did not run, no failed verdict is synthesized for it, and the point is left for

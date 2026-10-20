@@ -109,7 +109,7 @@ table "a run-container definition reaches nothing" "rust=false submodules=false"
 table "the image names list reaches the Rust jobs" "rust=true submodules=false" \
 	containers/image-names.sh
 table "Markdown outside crates reaches nothing" "rust=false submodules=false" \
-	README.md CLAUDE.md packages/browser-driver/README.md apps/docs/src/content/docs/gg/overview.md
+	README.md CLAUDE.md orchestrators/README.md apps/docs/src/content/docs/gg/overview.md
 table "Markdown inside crates reaches the Rust jobs" "rust=true submodules=false" \
 	crates/driver/README.md
 table "a shell test reaches nothing" "rust=false submodules=false" \
@@ -122,8 +122,8 @@ table "a crate reaches the Rust jobs" "rust=true submodules=false" \
 	crates/backend/src/api.rs
 table "the lockfile reaches the Rust jobs" "rust=true submodules=false" Cargo.lock
 table "a workspace manifest reaches the Rust jobs" "rust=true submodules=false" Cargo.toml
-table "a harness, an orchestrator and a package reach the Rust jobs" "rust=true submodules=false" \
-	harnesses/pi/harness.toml orchestrators/one-shot/runner.sh packages/browser-driver/driver.mjs
+table "a harness and an orchestrator reach the Rust jobs" "rust=true submodules=false" \
+	harnesses/pi/harness.toml orchestrators/one-shot/runner.sh
 table "a script a Rust job runs reaches the Rust jobs" "rust=true submodules=false" \
 	scripts/ci/provision-node.sh
 table "the gg release helper, which only the image jobs run, reaches nothing" \

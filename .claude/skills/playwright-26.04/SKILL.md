@@ -41,10 +41,11 @@ To persist the override for interactive shells, add the same `case` block to
 ## Install Chromium
 
 After the override is set, install Playwright's managed Chromium browser from
-the package that owns the Playwright dependency (`packages/browser-driver`):
+the package that owns the Playwright dependency
+(`contracts/packages/browser-driver`):
 
 ```sh
-cd packages/browser-driver
+cd contracts/packages/browser-driver
 npx playwright install chromium
 ```
 
@@ -76,7 +77,7 @@ listed by Playwright before retrying.
 Verify Chromium can launch before relying on screenshots:
 
 ```sh
-cd packages/browser-driver
+cd contracts/packages/browser-driver
 node - <<'EOF'
 const { chromium } = require("playwright");
 
