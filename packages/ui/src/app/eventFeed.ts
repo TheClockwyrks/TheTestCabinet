@@ -150,16 +150,6 @@ function ggCodeExecutionDetail(
   return parts.join(" · ");
 }
 
-// The detail line for a gg-native telemetry event (`HarnessEvent` of `type: "gg"`).
-// gg is headless, so its typed stream is the only live window into a run; the feed
-// still shows the alongside-mapped human-facing events (agent/command/…), but this
-// renders the salient field of the first-party event so nothing is lost. Kinds
-// mirror `GgTelemetryKind`.
-//
-// The `default` arm below means a new kind is **not** a compile error here — it
-// silently degrades to raw JSON — so every kind worth reading has to be added
-// deliberately. Anything left to the default is a kind whose payload is its own
-// best rendering.
 // What a waiting agent waits on, as the heartbeat line names it. A total record
 // over `GgWaitKind`, so a wait added to the contract is a compile error here
 // rather than a heartbeat that renders as a raw wire value.
@@ -183,6 +173,16 @@ function ggHeartbeatDetail(
   return `waiting on ${on} for ${formatRunTime(event.waitedMs / 1000)}`;
 }
 
+// The detail line for a gg-native telemetry event (`HarnessEvent` of `type: "gg"`).
+// gg is headless, so its typed stream is the only live window into a run; the feed
+// still shows the alongside-mapped human-facing events (agent/command/…), but this
+// renders the salient field of the first-party event so nothing is lost. Kinds
+// mirror `GgTelemetryKind`.
+//
+// The `default` arm below means a new kind is **not** a compile error here — it
+// silently degrades to raw JSON — so every kind worth reading has to be added
+// deliberately. Anything left to the default is a kind whose payload is its own
+// best rendering.
 function ggEventDetail(event: GgTelemetryEvent): string {
   switch (event.type) {
     case "session_started":
