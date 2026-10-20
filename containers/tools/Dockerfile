@@ -3,13 +3,14 @@
 #
 # This is NOT a run image: nothing ever executes in it and it is never published.
 # It exists solely so the asset-generation binaries baked into the run images
-# (`voxel`, `mc`, `particle-3d`, `music`, …) are compiled ONCE, in one cargo
+# (`voxel`, `mc`, `sfx-synth`, `music`, …) are compiled ONCE, in one cargo
 # invocation over one shared dependency graph, instead of once per run image.
 #
 # A tool that has left for a `tool-*` repository is not built here: its binaries
 # are copied out of that repository's image at the commit the driver pins
 # (`draw` and `draw-sheet` from `tool-sprite`; `paint`, `ui`, `texture` and `pbr`
-# from `tool-paint`; see `scripts/ci/tool-images.sh`).
+# from `tool-paint`; `particle-2d` and `particle-3d` from `tool-particle`; see
+# `scripts/ci/tool-images.sh`).
 #
 # Why this exists
 # ---------------
@@ -96,8 +97,6 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
 		-p test-cabinet-mc-skin \
 		-p test-cabinet-sn-skin \
 		-p test-cabinet-dc-skin \
-		-p test-cabinet-particle-2d \
-		-p test-cabinet-particle-3d \
 		-p test-cabinet-sfx-synth \
 		-p test-cabinet-sfx-sample \
 		-p test-cabinet-music \
@@ -119,8 +118,6 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
 		target/release/mc-skin \
 		target/release/sn-skin \
 		target/release/dc-skin \
-		target/release/particle-2d \
-		target/release/particle-3d \
 		target/release/sfx-synth \
 		target/release/sfx-sample \
 		target/release/music \

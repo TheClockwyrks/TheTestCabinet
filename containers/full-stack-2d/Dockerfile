@@ -23,9 +23,9 @@
 # full-stack run's assets are build INPUTS, not a separately-scored output, so — unlike
 # an asset-generation run — nothing here regenerates an action log; the produced files
 # are consumed by the built program and judged as part of it. `draw` and `draw-sheet`
-# are copied out of the `tool-sprite` image at the commit the driver pins; the other
-# four are compiled by the shared builder (`containers/tools/Dockerfile`) — see
-# `containers/build.sh`.
+# are copied out of the `tool-sprite` image and `particle-2d` out of the `tool-particle`
+# image, each at the commit the driver pins; the other three are compiled by the shared
+# builder (`containers/tools/Dockerfile`) — see `containers/build.sh`.
 #
 # This image inherits everything from base-wasm — the Node build toolchain, the Rust +
 # `wasm32-unknown-unknown` + `wasm-bindgen`/`wasm-pack` toolchain, the unprivileged
@@ -63,19 +63,27 @@ ARG TOOLS_IMAGE=test-cabinet-tools:latest
 # BEFORE the first `FROM` for the same reason as the two above.
 ARG TOOL_SPRITE_IMAGE=test-cabinet-tool-sprite:latest
 
-# Resolve the tooling builder and the tool image to named stages. `COPY --from=` cannot
+# `TOOL_PARTICLE_IMAGE` is the `tool-particle` image `particle-2d` is copied out of,
+# taken as `TOOL_SPRITE_IMAGE` is: `testcabinet.azurecr.io/tool-particle:<commit>` at
+# the commit the driver pins, or the image `build.sh` has just built from the
+# `tool-particle/` checkout. Declared BEFORE the first `FROM` for the same reason.
+ARG TOOL_PARTICLE_IMAGE=test-cabinet-tool-particle:latest
+
+# Resolve the tooling builder and the tool images to named stages. `COPY --from=` cannot
 # interpolate a build arg directly ("variable expansion is not supported for --from"),
-# so each has to arrive through a `FROM`; the `COPY --from=tools` and
-# `COPY --from=tool-sprite` lines below then name these stages.
+# so each has to arrive through a `FROM`; the `COPY --from=tools`, `COPY
+# --from=tool-sprite` and `COPY --from=tool-particle` lines below then name these stages.
 FROM ${TOOLS_IMAGE} AS tools
 FROM ${TOOL_SPRITE_IMAGE} AS tool-sprite
+FROM ${TOOL_PARTICLE_IMAGE} AS tool-particle
 
 # --- The run image: the base-wasm, plus the six 2D asset binaries -----------
 # `FROM` the base-wasm built alongside this image (the global `BASE_IMAGE` arg above).
 FROM ${BASE_IMAGE}
 
-# Bake in the six binaries: `draw` and `draw-sheet` from the tool-sprite image, which
-# carries them at `/usr/local/bin`, and the other four from the tools image.
+# Bake in the six binaries: `draw` and `draw-sheet` from the tool-sprite image and
+# `particle-2d` from the tool-particle image, which carry them at `/usr/local/bin`, and
+# the other three from the tools image.
 # `/usr/local/bin` is on PATH and
 # root-owned (COPY writes as root regardless of the inherited `USER node`); the
 # unprivileged run user only executes them, never writes them. The base image
@@ -83,7 +91,7 @@ FROM ${BASE_IMAGE}
 # else is needed for the binaries themselves.
 COPY --from=tool-sprite /usr/local/bin/draw /usr/local/bin/draw
 COPY --from=tool-sprite /usr/local/bin/draw-sheet /usr/local/bin/draw-sheet
-COPY --from=tools /out/particle-2d /usr/local/bin/particle-2d
+COPY --from=tool-particle /usr/local/bin/particle-2d /usr/local/bin/particle-2d
 COPY --from=tools /out/sfx-synth /usr/local/bin/sfx-synth
 COPY --from=tools /out/sfx-sample /usr/local/bin/sfx-sample
 COPY --from=tools /out/music /usr/local/bin/music
