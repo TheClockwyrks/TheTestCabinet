@@ -125,6 +125,9 @@ resources:
     - repository: microservice-repos
       type: git
       name: the-test-cabinet/microservice-repos
+    - repository: tool-sprite
+      type: git
+      name: the-test-cabinet/tool-sprite
     - repository: test-suites
       type: git
       name: the-test-cabinet/test-suites
@@ -155,6 +158,7 @@ jobs:
         - gg
         - gg.rocks
         - microservice-repos
+        - tool-sprite
         - test-suites
     steps:
       # One commit is enough. The tag is the commit Azure names in
@@ -200,6 +204,7 @@ jobs:
         - gg
         - gg.rocks
         - microservice-repos
+        - tool-sprite
         - test-suites
     steps:
       - checkout: self
@@ -239,6 +244,7 @@ jobs:
         - gg
         - gg.rocks
         - microservice-repos
+        - tool-sprite
         - test-suites
     steps:
       - checkout: self

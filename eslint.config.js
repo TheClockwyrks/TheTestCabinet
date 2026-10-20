@@ -136,14 +136,15 @@ const CONFIG = defineConfig([
     // (.markdownlint-cli2.yaml, cspell.json, .prettierignore) leave out too, so no
     // gate reads what the others leave alone.
     "cold-storage/**",
-    // The contracts, engines, gg, gg.rocks, microservice-repos and
-    // test-suites repositories, submodules with gates of their own, and the
+    // The contracts, engines, gg, gg.rocks, microservice-repos, tool-sprite
+    // and test-suites repositories, submodules with gates of their own, and the
     // docs tree's gg/ entry, which points into the gg checkout.
     "contracts/**",
     "engines/**",
     "gg/**",
     "gg.rocks/**",
     "microservice-repos/**",
+    "tool-sprite/**",
     "apps/docs/src/content/docs/gg/**",
     "test-suites/**",
     "tasks/**/done/**",
