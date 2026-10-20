@@ -1,13 +1,24 @@
 ---
 format: nyxsis-issue
-version: 2
+version: 3
 id: c74zn6w2tknmqdkgaezjb1ez
 zone: GGH
 number: 3
 title: Emit a heartbeat while an agent waits so the idle watchdog never kills gg
 type: generic
-state: open
+state: done
 created: 2026-10-18T23:42:15.18603096Z
+done: 2026-10-20T05:48:44.586043913Z
+outcome: |
+  Landed in superrepo PR 4598 (nightly). contracts: heartbeat telemetry event
+  (PR 4477) and the v0.2.2 release (PR 4522, tag v0.2.2 published to the feed),
+  gitlink a982c96. gg: process-group kill on timeout (PR 4486), heartbeat emission
+  while waiting with the wedged-command session test, pinned to contracts v0.2.2
+  (PR 4594), gitlink a13c8fb1. engines: contracts pins at 0.2.2 (PR 4595), gitlink
+  f255e63. Driver and console ingest and show the heartbeat event. All 28
+  superrepo gates, gg's gates and full suite, engines' gates pass. Not exercised:
+  the issue's live verify on a local deployment (no stack or cluster reachable);
+  covered by gg's wedged-command session test.
 ---
 
 gg emits nothing on its stream while a tool call, a model request or a
