@@ -111,6 +111,18 @@ pipeline's first deploy and again whenever anything under `cluster/` changes:
    (`az role definition create --role-definition @deployments/azure/aks-command-invoke.role.json`)
    and grant the deploy identity both roles: the custom role on the cluster,
    RBAC Admin on `<cluster resource id>/namespaces/tcab-<env>`.
+5. Apply the node pools' upgrade settings (`drainTimeoutInMinutes` 1440,
+   `undrainableNodeBehavior` Schedule, `maxSurge` 10%, `maxUnavailable` 0),
+   which hold a drain until the run pods on a node have finished; see
+   [Node drains](../../apps/docs/src/content/docs/deployment/kubernetes/run-plane.md#node-drains):
+
+   ```sh
+   scripts/configure-node-pools.sh --env staging
+   # or: scripts/configure-node-pools.sh --env prod
+   ```
+
+   It configures every node pool that can seat a run pod and is safe to
+   re-run; run it again after adding a node pool.
 
 The full procedure is in
 [`deployment/kubernetes/overview.md`](../../apps/docs/src/content/docs/deployment/kubernetes/overview.md#cluster-prerequisites).

@@ -194,7 +194,10 @@ and the observability stack's `ClusterRole` and `ClusterRoleBinding`
    The script sets `drainTimeoutInMinutes`, `undrainableNodeBehavior`,
    `maxSurge` and `maxUnavailable` on every user node pool with
    `az aks nodepool update`, and is safe to re-run. A node pool added later is
-   configured by running it again.
+   configured by running it again. It configures a System node pool as well
+   when that pool carries no `NoSchedule` or `NoExecute` taint, since run pods
+   tolerate no taint and can land on it; a System pool tainted
+   `CriticalAddonsOnly` is left alone.
 
 Re-apply step 2 whenever anything under `deployments/k8s/cluster/` changes. The
 pipeline refuses to deploy an overlay that renders a cluster-scoped object, so a
