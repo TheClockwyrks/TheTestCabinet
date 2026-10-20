@@ -124,7 +124,7 @@ function readJson(path) {
 // tool decodes that geometry into the flat `{ positions, normals, colors, indices }`
 // arrays below — it does NOT re-mesh — so one exporter serves them all identically.
 // The decoder mirrors `parseGlb` in `engines/packages/voxel-runtime/src` and the Rust
-// `glb_to_part_mesh` in `crates/model-core/src/gltf.rs`.
+// `glb_to_part_mesh` in tool-model-core's `crates/model-core/src/gltf.rs`.
 
 const GLB_MAGIC = 0x46546c67; // 'glTF'
 const CHUNK_JSON = 0x4e4f534a; // 'JSON'

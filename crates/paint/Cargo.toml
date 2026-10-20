@@ -63,8 +63,8 @@ serde_json = { workspace = true, optional = true }
 # test surface: `voxel-mesh` supplies the preview surface geometry and `model-core`
 # the shared wgpu+Mesa renderer and record/preview plumbing. Linked without default
 # features so a `default-features = false` consumer never pulls in the renderer stack.
-test-cabinet-voxel-mesh = { path = "../voxel-mesh", default-features = false }
-test-cabinet-model-core = { path = "../model-core", default-features = false }
+test-cabinet-voxel-mesh = { workspace = true }
+test-cabinet-model-core = { workspace = true }
 
 [lints]
 workspace = true

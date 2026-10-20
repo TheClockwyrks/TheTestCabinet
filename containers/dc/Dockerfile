@@ -5,7 +5,7 @@
 # run-container image plus exactly one addition: the baked-in `dc` binary, the
 # static surface-extraction meshing tool a Dual Contouring run uses (a
 # high-fidelity, sharp-feature-preserving QEF mesher — the `DualContouringMesher`
-# from `crates/voxel-mesh`; see the asset-generation docs under
+# from tool-model-core's `voxel-mesh`; see the asset-generation docs under
 # `apps/docs/src/content/docs/testing/asset-generation/`). Animated Dual
 # Contouring runs use the separate dc-animation image, which bakes in `dc-anim`
 # instead — see `containers/dc-animation/Dockerfile`.

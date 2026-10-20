@@ -5,7 +5,7 @@
 # run-container image plus exactly one addition: the baked-in `sn` binary, the
 # static surface-extraction meshing tool a Surface Nets run uses (a smooth,
 # mid-fidelity, watertight mesher — the `SurfaceNetsMesher` from
-# `crates/voxel-mesh`; see the asset-generation docs under
+# tool-model-core's `voxel-mesh`; see the asset-generation docs under
 # `apps/docs/src/content/docs/testing/asset-generation/`). Animated Surface Nets
 # runs use the separate sn-animation image, which bakes in `sn-anim` instead —
 # see `containers/sn-animation/Dockerfile`.
