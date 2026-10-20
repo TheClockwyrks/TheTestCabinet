@@ -10,7 +10,8 @@
 # everything, then re-include only the paths cargo actually reads.
 #
 # (The per-asset-kind images — sprite, voxel, mc, … — no longer read the context at
-# all: they only `COPY --from` the tooling builder. They are still built with the
+# all: they only `COPY --from` the tooling builder or a `tool-*` repository's image.
+# They are still built with the
 # repo root as their context for consistency, and it costs them nothing because they
 # read none of it.)
 #

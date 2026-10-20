@@ -174,6 +174,13 @@
 #                 `ui`, `texture` and `pbr` out of, taken as TOOL_SPRITE_IMAGE is
 #                 (`testcabinet.azurecr.io/tool-paint:<commit>` under PUSH, the image
 #                 built from the `tool-paint/` checkout without it).
+#   TOOL_VOXEL_IMAGE  the `tool-voxel` image the voxel, voxel-animation and full-stack-3d
+#                 images copy `voxel` and `voxel-anim` out of, taken as TOOL_SPRITE_IMAGE
+#                 is.
+#   TOOL_MC_IMAGE, TOOL_SN_IMAGE, TOOL_DC_IMAGE  the `tool-mc`, `tool-sn` and `tool-dc`
+#                 images the meshing and skinned images copy their one binary each out of
+#                 (`mc`, `mc-anim` and `mc-skin` into mc, mc-animation and mc-skinned, and
+#                 likewise for sn and dc), taken as TOOL_SPRITE_IMAGE is.
 #
 # GATING THE `-gg` VARIANTS ON `gg selfcheck` (`--gg-selfcheck <PATH-TO-GG>`).
 #
@@ -435,7 +442,9 @@ readonly AUDIO_STORE_IMAGE="${IMAGE_NAME_PREFIX}audio-store:${IMAGE_TAG}"
 # The tool images
 # ---------------------------------------------------------------------------
 # A tool that lives in a `tool-*` repository (`tool-sprite`: `draw`, `draw-sheet`;
-# `tool-paint`: `paint`, `ui`, `texture`, `pbr`) is not compiled by the tooling builder.
+# `tool-paint`: `paint`, `ui`, `texture`, `pbr`; `tool-voxel`: `voxel`, `voxel-anim`;
+# `tool-mc`: `mc`, `mc-anim`, `mc-skin`; `tool-sn` and `tool-dc` likewise) is not
+# compiled by the tooling builder.
 # Its repository's pipeline publishes the image
 # `testcabinet.azurecr.io/<repository>:<commit>` on every gated push to master and staging,
 # and a run image copies the binaries out of it at the commit the driver pins, which,
@@ -732,7 +741,8 @@ push_and_pin() {
 # WHAT IS SAFE TO REMOVE, AND WHEN. Every image here is built FROM a LOCAL tag, so removing
 # one too early breaks a later build. Within one invocation the parent map is:
 #
-#   tools            -> every asset image and both full-stack images
+#   tools            -> every asset image NON_TOOLS_IMAGES does not name, and both
+#                       full-stack images
 #   base             -> base-wasm and every asset image
 #   base-wasm        -> full-stack-2d/3d, adversarial, performance
 #   full-stack-2d    -> game-jam, and full-stack-2d-gg
@@ -885,7 +895,7 @@ reclaim_after_push() {
 # It is ALWAYS rebuilt when any consuming image is selected, rather than reused when
 # present the way the base is. The base is a stable OS+toolchain layer, but this
 # image holds the compiled tooling, so reusing a stale one would silently bake
-# yesterday's `voxel-anim` into today's run image — exactly the gap `run-images`
+# yesterday's `particle-3d` into today's run image — exactly the gap `run-images`
 # exists to close. A no-change rebuild is cheap: the Dockerfile's cargo cache mounts
 # mean cargo re-links at most the crates that actually changed.
 build_tools() {
@@ -1391,8 +1401,9 @@ build_base_wasm() {
 
 # Build one asset-generation image `FROM` the base built above plus its tool binary,
 # copied out of the tooling builder or out of a tool image (`sprite` and `sprite-sheet`
-# copy from tool-sprite's, `ui` and `material` from tool-paint's; `image_build_args` reads
-# which from the Dockerfile). The
+# copy from tool-sprite's, `ui` and `material` from tool-paint's, `voxel` and
+# `voxel-animation` from tool-voxel's, and the meshing and skinned images from tool-mc's,
+# tool-sn's or tool-dc's; `image_build_args` reads which from the Dockerfile). The
 # argument is the image's short name (`sprite` / `sprite-sheet` / `voxel` /
 # `voxel-animation` / `mc` / `mc-animation` / `sn` / `sn-animation` / `dc` /
 # `dc-animation`), which is both its name suffix and the directory holding its
@@ -1598,15 +1609,18 @@ fi
 # images (which compile their own wasm-targeting tooling in their own stages),
 # game-jam (which inherits everything from full-stack-2d), sprite and sprite-sheet
 # (whose one binary each is copied out of the tool-sprite image) and ui and material
-# (whose two binaries each are copied out of the tool-paint image; see "The tool
-# images"). Everything else in ALL_NAMES is an asset image that `COPY --from=tools`. Expressed as the exceptions
+# (whose two binaries each are copied out of the tool-paint image), and the voxel,
+# meshing and skinned images (whose one binary each is copied out of the tool-voxel,
+# tool-mc, tool-sn or tool-dc image; see "The tool images"). Everything else in
+# ALL_NAMES is an asset image that `COPY --from=tools`. Expressed as the exceptions
 # rather than the members so a newly-added asset kind is covered by default.
 #
 # The `-gg` variants are exceptions too, by pattern rather than by name: each adds one
 # COPY of the toolchain tree onto an already-built parent and bakes no asset binary of
 # its own. `select_needs_tools` applies that pattern, so a new run image's variant is
 # covered without being named here.
-readonly NON_TOOLS_IMAGES=(base base-wasm blender adversarial performance game-jam sprite sprite-sheet ui material)
+readonly NON_TOOLS_IMAGES=(base base-wasm blender adversarial performance game-jam sprite sprite-sheet ui material
+	voxel voxel-animation mc mc-animation mc-skinned sn sn-animation sn-skinned dc dc-animation dc-skinned)
 
 # Whether an image tag is present in the local image store (used to decide whether
 # the FROM base has to be built before a selected non-base image).

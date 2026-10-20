@@ -178,7 +178,8 @@ containers/
 ├── full-stack-2d/Dockerfile    # the 2D full-stack run image: base-wasm plus the six 2D
 │                               #   asset binaries
 ├── full-stack-3d/Dockerfile    # the 3D full-stack run image: full-stack-2d's contents
-│                               #   plus `voxel`, `voxel-anim`, `particle-3d` and the Mesa
+│                               #   plus `voxel`, `voxel-anim` (copied out of the
+│                               #   tool-voxel image), `particle-3d` and the Mesa
 │                               #   software-Vulkan runtime those three render their
 │                               #   previews through. A SIBLING of full-stack-2d, not
 │                               #   FROM it
@@ -194,21 +195,28 @@ containers/
 │                               #   copied out of the tool-paint image
 ├── material/Dockerfile         # the base image plus the baked-in `texture` + `pbr`
 │                               #   binaries, copied out of the tool-paint image
-├── voxel/Dockerfile            # the base image plus the baked-in `voxel` binary
-├── voxel-animation/Dockerfile  # the base image plus the baked-in `voxel-anim` binary
+├── voxel/Dockerfile            # the base image plus the baked-in `voxel` binary,
+│                               #   copied out of the tool-voxel image
+├── voxel-animation/Dockerfile  # the base image plus the baked-in `voxel-anim` binary,
+│                               #   copied out of the tool-voxel image
 ├── mc/Dockerfile               # the base image plus the baked-in `mc` binary (Marching
-│                               #   Cubes)
-├── mc-animation/Dockerfile     # the base image plus the baked-in `mc-anim` binary
+│                               #   Cubes), copied out of the tool-mc image
+├── mc-animation/Dockerfile     # the base image plus the baked-in `mc-anim` binary,
+│                               #   copied out of the tool-mc image
 ├── sn/Dockerfile               # the base image plus the baked-in `sn` binary (Surface
-│                               #   Nets)
-├── sn-animation/Dockerfile     # the base image plus the baked-in `sn-anim` binary
+│                               #   Nets), copied out of the tool-sn image
+├── sn-animation/Dockerfile     # the base image plus the baked-in `sn-anim` binary,
+│                               #   copied out of the tool-sn image
 ├── dc/Dockerfile               # the base image plus the baked-in `dc` binary (Dual
-│                               #   Contouring)
-├── dc-animation/Dockerfile     # the base image plus the baked-in `dc-anim` binary
+│                               #   Contouring), copied out of the tool-dc image
+├── dc-animation/Dockerfile     # the base image plus the baked-in `dc-anim` binary,
+│                               #   copied out of the tool-dc image
 ├── mc-skinned/Dockerfile       # the base image plus the baked-in `mc-skin` binary
-│                               #   (skinned character)
-├── sn-skinned/Dockerfile       # the base image plus the baked-in `sn-skin` binary
-├── dc-skinned/Dockerfile       # the base image plus the baked-in `dc-skin` binary
+│                               #   (skinned character), copied out of the tool-mc image
+├── sn-skinned/Dockerfile       # the base image plus the baked-in `sn-skin` binary,
+│                               #   copied out of the tool-sn image
+├── dc-skinned/Dockerfile       # the base image plus the baked-in `dc-skin` binary,
+│                               #   copied out of the tool-dc image
 ├── blender/                    # self-contained ubuntu:26.04 + headless Blender +
 │                               #   `tcab-blend` (NOT FROM base)
 │   ├── Dockerfile              #   (a `blender-character` run authors via a build.py
@@ -457,24 +465,26 @@ gets its own image so a run carries only the tool it uses:
   `tool-paint` image, and the image installs the Mesa software-Vulkan runtime `pbr`
   renders with.
 - `voxel/` is the base image plus exactly the **`voxel`** binary, the sculpting
-  tool a static-voxel run uses.
+  tool a static-voxel run uses, copied out of the `tool-voxel` image.
 - `voxel-animation/` is the base image plus exactly the **`voxel-anim`** binary,
-  the sculpting-and-rigging tool a rigged-voxel run uses.
+  the sculpting-and-rigging tool a rigged-voxel run uses, copied out of the
+  `tool-voxel` image likewise.
 - `mc/` and `mc-animation/` are the base image plus exactly the **`mc`** /
   **`mc-anim`** binary, the Marching Cubes meshing tool (static / rigged) a
-  low-poly meshing run uses.
+  low-poly meshing run uses, copied out of the `tool-mc` image.
 - `sn/` and `sn-animation/` are the base image plus exactly the **`sn`** /
   **`sn-anim`** binary, the Surface Nets meshing tool (static / rigged) a
-  smooth mid-fidelity meshing run uses.
+  smooth mid-fidelity meshing run uses, copied out of the `tool-sn` image.
 - `dc/` and `dc-animation/` are the base image plus exactly the **`dc`** /
   **`dc-anim`** binary, the Dual Contouring meshing tool (static / rigged) a
-  high-fidelity, sharp-feature meshing run uses.
+  high-fidelity, sharp-feature meshing run uses, copied out of the `tool-dc` image.
 - `mc-skinned/`, `sn-skinned/`, and `dc-skinned/` are the base image plus exactly the
   **`mc-skin`** / **`sn-skin`** / **`dc-skin`** binary, the
   [skinned-character](../apps/docs/src/content/docs/testing/asset-generation/skinned-binaries.md)
   tool a run uses to sculpt one continuous body field, bind it to a model-invented
   skeleton, and animate it as a deforming skin — one image per algorithm (low-poly /
-  smooth / sharp), each inherently rigged.
+  smooth / sharp), each inherently rigged, copied out of the `tool-mc`, `tool-sn` or
+  `tool-dc` image.
 - `particle-2d/` and `particle-3d/` are the base image plus exactly the **`particle-2d`**
   / **`particle-3d`** binary, the
   [particle-effect](../apps/docs/src/content/docs/testing/asset-generation/particle-binaries.md)
@@ -748,6 +758,8 @@ DOCKER=podman ./build.sh       # build with Podman instead
 ./build.sh tool-sprite         # build ONLY the tool-sprite image, from the tool-sprite/
                                #   checkout (see the tool images below)
 ./build.sh tool-paint          # likewise the tool-paint image, from tool-paint/
+./build.sh tool-voxel tool-mc  # likewise tool-voxel's and tool-mc's (and tool-sn,
+                               #   tool-dc)
 ./build.sh --gg-selfcheck <PATH-TO-GG>   # …and gate the `-gg` variants on `gg selfcheck`
 ```
 
@@ -835,7 +847,7 @@ costs only the crates that actually changed.
 `build.sh` **always** rebuilds it when any consuming image is selected, rather than
 reusing a present one the way it reuses the base. The base is a stable OS+toolchain
 layer, but this image holds the compiled tooling — reusing a stale one would bake
-yesterday's `voxel-anim` into today's run image. A no-change rebuild is near-instant.
+yesterday's `particle-3d` into today's run image. A no-change rebuild is near-instant.
 
 It is deliberately **not** a run image: nothing executes in it, it never appears in
 `image-names.sh`, and it is never pushed. The adversarial and performance images are
@@ -864,12 +876,24 @@ The `ui` image copies `paint` and `ui` out of it and the `material` image `textu
 tool-paint image carries the binaries alone, so `material` keeps installing the Mesa
 runtime its `pbr` preview renders with.
 
+`voxel` and `voxel-anim` are `tool-voxel`'s (its `crates/voxel` and `crates/voxel-anim`,
+checked out at `tool-voxel/`), and the meshing and skinned binaries are `tool-mc`'s
+(`mc`, `mc-anim`, `mc-skin`), `tool-sn`'s (`sn`, `sn-anim`, `sn-skin`) and `tool-dc`'s
+(`dc`, `dc-anim`, `dc-skin`), each published the same way as
+`testcabinet.azurecr.io/<repository>:<commit>`. The `voxel`, `voxel-animation`, meshing
+and skinned images copy their one binary each out of the repository's image, through a
+global `TOOL_VOXEL_IMAGE`, `TOOL_MC_IMAGE`, `TOOL_SN_IMAGE` or `TOOL_DC_IMAGE` build arg
+and the stage `FROM` it; none of them needs the tooling builder. `full-stack-3d` copies
+`voxel` and `voxel-anim` out of the tool-voxel image the same way and keeps the builder
+for its other binaries. The images carry the binaries alone, so every one of these keeps
+installing the Mesa runtime its previews render with.
+
 The commit is the one the driver pins: the superrepo's gitlink for the repository
-(`git rev-parse HEAD:tool-sprite`, `git rev-parse HEAD:tool-paint`). For `tool-sprite` it
-is the commit the driver's `test-cabinet-draw` dependency resolves to as well, so the
-binary a run draws with and the library the orchestrator regenerates its image with are
-the same code. `scripts/ci/tool-images.sh list` names each
-tool image's reference and build arg, and `build.sh` gives the arg:
+(`git rev-parse HEAD:tool-sprite`, `git rev-parse HEAD:tool-voxel`, …). For
+`tool-sprite` it is the commit the driver's `test-cabinet-draw` dependency resolves to as
+well, so the binary a run draws with and the library the orchestrator regenerates its
+image with are the same code. `scripts/ci/tool-images.sh list` names each tool image's
+reference and build arg, and `build.sh` gives the arg:
 
 - under `PUSH`, the pinned reference, pulled before the first image that copies from it
   (the registry needs `az acr login -n testcabinet`). A published run image carries the
@@ -877,20 +901,22 @@ tool image's reference and build arg, and `build.sh` gives the arg:
   `scripts/ci/tool-images.sh check` before it builds anything, so a gitlink at a commit
   the repository's pipeline has not published fails there, naming the commit.
 - without `PUSH` (the local path), the image it builds first from the repository's
-  checkout (`tool-sprite/`, `tool-paint/`) with that repository's own Dockerfile, tagged
+  checkout (`tool-sprite/`, `tool-paint/`, `tool-voxel/`, `tool-mc/`, `tool-sn/`,
+  `tool-dc/`) with that repository's own Dockerfile, tagged
   `test-cabinet-<repository>:<tag>` and never pushed. Like the tooling builder it is
   rebuilt on every invocation that needs it, and its cargo cache mounts make a no-change
   rebuild cheap. `./build.sh tool-sprite` builds just it; `make -C deployments/local
   run-images` builds every tool image first. A missing checkout fails, naming
   `git submodule update --init <repository>`.
-- `TOOL_SPRITE_IMAGE=<reference>` (`TOOL_PAINT_IMAGE` for `tool-paint`) overrides both,
+- `TOOL_SPRITE_IMAGE=<reference>` (`TOOL_PAINT_IMAGE` for `tool-paint`,
+  `TOOL_VOXEL_IMAGE` for `tool-voxel`, and so on) overrides both,
   for trying another build of the tool.
 
 The reference is an input of the copying images' digests in
 `scripts/ci/run-image-inputs.sh`, so a bump of the gitlink rebuilds exactly the images
 that copy from it. A tool that moves to its own repository later is added to
 `TOOL_REPOSITORIES` in `scripts/ci/tool-images.sh` and taken the same way, by the build
-arg its name derives (`tool-voxel` → `TOOL_VOXEL_IMAGE`).
+arg its name derives (`tool-<name>` → `TOOL_<NAME>_IMAGE`).
 
 ### The gg toolchain builder
 
