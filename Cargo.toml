@@ -2,9 +2,6 @@
 resolver = "3"
 members = [
 	"crates/cli",
-	"crates/particle-core",
-	"crates/particle-2d",
-	"crates/particle-3d",
 	"crates/audio-core",
 	"crates/sfx-synth",
 	"crates/sfx-sample",
@@ -20,15 +17,15 @@ members = [
 	"crates/migration",
 ]
 # The repositories checked out as submodules carrying a crate (contracts, engines,
-# gg, microservice-repos, tool-model-core, tool-paint, tool-sprite, tool-voxel,
-# tool-mc, tool-sn, tool-dc, ui-common) are workspaces of their own. The
+# gg, microservice-repos, tool-model-core, tool-paint, tool-particle, tool-sprite,
+# tool-voxel, tool-mc, tool-sn, tool-dc, ui-common) are workspaces of their own. The
 # contracts, engines, microservice-repos, tool-model-core, tool-sprite and
 # tool-voxel crates are named under `[workspace.dependencies]` by their public
 # source, and the patch table of `.cargo/config.toml` builds them from the
-# checkouts. No member depends on gg's, tool-paint's, tool-mc's, tool-sn's,
-# tool-dc's or ui-common's source, nor on tool-voxel's `voxel-anim`; the patch
-# table names their crates all the same, and the lock records them as unused.
-exclude = ["contracts", "engines", "gg", "microservice-repos", "tool-model-core", "tool-paint", "tool-sprite", "tool-voxel", "tool-mc", "tool-sn", "tool-dc", "ui-common"]
+# checkouts. No member depends on gg's, tool-paint's, tool-particle's, tool-mc's,
+# tool-sn's, tool-dc's or ui-common's source, nor on tool-voxel's `voxel-anim`; the
+# patch table names their crates all the same, and the lock records them as unused.
+exclude = ["contracts", "engines", "gg", "microservice-repos", "tool-model-core", "tool-paint", "tool-particle", "tool-sprite", "tool-voxel", "tool-mc", "tool-sn", "tool-dc", "ui-common"]
 
 [workspace.package]
 edition = "2024"
@@ -212,20 +209,13 @@ tempfile = "3"
 # service all need the same codec. Promoted here from `crates/artifacts`, which
 # pinned it privately for the run-archive download. Default features keep the
 # pure-Rust `miniz_oxide` backend — no zlib, so no system dependency, matching the
-# `png`/`gif` stance on keeping the workspace buildable on minimal hosts.
+# `png` stance on keeping the workspace buildable on minimal hosts.
 flate2 = "1"
 # PNG decoding for the validator's reference-comparison similarity score, and PNG
 # encoding for the drawing/voxel binaries and the shared mesh preview renderer. The
 # `png` crate is a small, pure-Rust decoder/encoder with no system dependencies,
 # keeping the workspace buildable on minimal hosts.
 png = "0.17"
-# GIF encoding for the particle binaries' animated preview (the packed effect.gif
-# the reviewer plays). The in-repo animation GIF export is TypeScript-only
-# (`ui-common/packages/ui`'s `gifenc`), so the Rust `particle-core` render path packs its
-# simulated preview frames with this pure-Rust encoder (LZW via `weezl`, palette
-# quantization via `color_quant`) — no system dependency, matching the `png` stance.
-# Only the particle binaries pull it in, behind `particle-core`'s `cli` feature.
-gif = "0.14"
 # Base64 for inlining a live asset-generation preview frame into the JSON event the
 # driver streams to the run monitor: the run host
 # receives the rendered PNG bytes from the drawing binary and base64-encodes them

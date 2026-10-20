@@ -32,6 +32,10 @@
 	path = tool-paint
 	url = ../tool-paint
 	branch = master
+[submodule "tool-particle"]
+	path = tool-particle
+	url = ../tool-particle
+	branch = master
 [submodule "tool-sprite"]
 	path = tool-sprite
 	url = ../tool-sprite

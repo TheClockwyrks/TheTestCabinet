@@ -96,7 +96,8 @@ full set is whatever [`build.sh`](#building) builds; the notable ones:
   [`blender/Dockerfile`](blender/Dockerfile) for the full rationale;
 - the **particle-2d** and **particle-3d** images, which every particle-effect run
   (`asset_kind = "particle-2d"` / `"particle-3d"`) executes in — the base image
-  plus the baked-in `particle-2d` / `particle-3d` binary;
+  plus the baked-in `particle-2d` / `particle-3d` binary, copied out of the
+  tool-particle image;
 - the **sfx-synth** image, which every procedural sound-effect run
   (`asset_kind = "sfx-synth"`) executes in — the base image plus the baked-in
   `sfx-synth` binary;
@@ -225,8 +226,10 @@ containers/
 │   │                           #   `blender --background --python build.py`
 │   └── tcab_blend_export.py    #   the bundled glTF export + preview helper build.py
 │                               #   calls
-├── particle-2d/Dockerfile      # the base image plus the baked-in `particle-2d` binary
-├── particle-3d/Dockerfile      # the base image plus the baked-in `particle-3d` binary
+├── particle-2d/Dockerfile      # the base image plus the baked-in `particle-2d` binary,
+│                               #   copied out of the tool-particle image
+├── particle-3d/Dockerfile      # the base image plus the baked-in `particle-3d` binary,
+│                               #   copied out of the tool-particle image
 ├── sfx-synth/Dockerfile        # the base image plus the baked-in `sfx-synth` binary
 ├── sfx-sample/Dockerfile       # the base image plus the baked-in `sfx-sample` binary
 ├── music/Dockerfile            # the base image plus the baked-in `music` binary
@@ -489,7 +492,9 @@ gets its own image so a run carries only the tool it uses:
   / **`particle-3d`** binary, the
   [particle-effect](../apps/docs/src/content/docs/testing/asset-generation/particle-binaries.md)
   tool a run uses to author an emitter system the review UI and a game play by simulating
-  it live.
+  it live. Each is copied out of the `tool-particle` image (see
+  [the tool images](#the-tool-images)), and `particle-3d/` installs the Mesa
+  software-Vulkan runtime its preview renders with.
 - `sfx-synth/`, `sfx-sample/`, and `music/` are the base image plus exactly the
   **`sfx-synth`** / **`sfx-sample`** / **`music`** binary, the
   [audio](../apps/docs/src/content/docs/testing/asset-generation/audio-binaries.md)
@@ -758,6 +763,7 @@ DOCKER=podman ./build.sh       # build with Podman instead
 ./build.sh tool-sprite         # build ONLY the tool-sprite image, from the tool-sprite/
                                #   checkout (see the tool images below)
 ./build.sh tool-paint          # likewise the tool-paint image, from tool-paint/
+./build.sh tool-particle       # likewise the tool-particle image, from tool-particle/
 ./build.sh tool-voxel tool-mc  # likewise tool-voxel's and tool-mc's (and tool-sn,
                                #   tool-dc)
 ./build.sh --gg-selfcheck <PATH-TO-GG>   # …and gate the `-gg` variants on `gg selfcheck`
@@ -876,6 +882,15 @@ The `ui` image copies `paint` and `ui` out of it and the `material` image `textu
 tool-paint image carries the binaries alone, so `material` keeps installing the Mesa
 runtime its `pbr` preview renders with.
 
+`particle-2d` and `particle-3d` are `tool-particle`'s (its `crates/particle-2d` and
+`crates/particle-3d` over `crates/particle-core`, checked out at `tool-particle/`),
+published the same way as `testcabinet.azurecr.io/tool-particle:<commit>`. The
+`particle-2d` and `particle-3d` images copy their one binary each out of it through a
+global `TOOL_PARTICLE_IMAGE` build arg and a `FROM ${TOOL_PARTICLE_IMAGE} AS
+tool-particle` stage, and need no tooling builder; `particle-3d` keeps installing the
+Mesa runtime. `full-stack-2d` copies `particle-2d` out of it and `full-stack-3d` both,
+beside what they copy from the tooling builder and `tool-sprite`.
+
 `voxel` and `voxel-anim` are `tool-voxel`'s (its `crates/voxel` and `crates/voxel-anim`,
 checked out at `tool-voxel/`), and the meshing and skinned binaries are `tool-mc`'s
 (`mc`, `mc-anim`, `mc-skin`), `tool-sn`'s (`sn`, `sn-anim`, `sn-skin`) and `tool-dc`'s
@@ -889,7 +904,8 @@ for its other binaries. The images carry the binaries alone, so every one of the
 installing the Mesa runtime its previews render with.
 
 The commit is the one the driver pins: the superrepo's gitlink for the repository
-(`git rev-parse HEAD:tool-sprite`, `git rev-parse HEAD:tool-voxel`, …). For
+(`git rev-parse HEAD:tool-sprite`, `git rev-parse HEAD:tool-paint`,
+`git rev-parse HEAD:tool-particle`, `git rev-parse HEAD:tool-voxel`, …). For
 `tool-sprite` it is the commit the driver's `test-cabinet-draw` dependency resolves to as
 well, so the binary a run draws with and the library the orchestrator regenerates its
 image with are the same code; for `tool-voxel` it is likewise the commit of the driver's
@@ -903,16 +919,16 @@ image with are the same code; for `tool-voxel` it is likewise the commit of the 
   `scripts/ci/tool-images.sh check` before it builds anything, so a gitlink at a commit
   the repository's pipeline has not published fails there, naming the commit.
 - without `PUSH` (the local path), the image it builds first from the repository's
-  checkout (`tool-sprite/`, `tool-paint/`, `tool-voxel/`, `tool-mc/`, `tool-sn/`,
-  `tool-dc/`) with that repository's own Dockerfile, tagged
+  checkout (`tool-sprite/`, `tool-paint/`, `tool-particle/`, `tool-voxel/`, `tool-mc/`,
+  `tool-sn/`, `tool-dc/`) with that repository's own Dockerfile, tagged
   `test-cabinet-<repository>:<tag>` and never pushed. Like the tooling builder it is
   rebuilt on every invocation that needs it, and its cargo cache mounts make a no-change
   rebuild cheap. `./build.sh tool-sprite` builds just it; `make -C deployments/local
   run-images` builds every tool image first. A missing checkout fails, naming
   `git submodule update --init <repository>`.
 - `TOOL_SPRITE_IMAGE=<reference>` (`TOOL_PAINT_IMAGE` for `tool-paint`,
-  `TOOL_VOXEL_IMAGE` for `tool-voxel`, and so on) overrides both,
-  for trying another build of the tool.
+  `TOOL_PARTICLE_IMAGE` for `tool-particle`, `TOOL_VOXEL_IMAGE` for `tool-voxel`, and so
+  on) overrides both, for trying another build of the tool.
 
 The reference is an input of the copying images' digests in
 `scripts/ci/run-image-inputs.sh`, so a bump of the gitlink rebuilds exactly the images

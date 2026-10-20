@@ -135,9 +135,10 @@ test-cabinet-dc = { path = "tool-dc/crates/dc" }
 test-cabinet-dc-anim = { path = "tool-dc/crates/dc-anim" }
 test-cabinet-dc-skin = { path = "tool-dc/crates/dc-skin" }
 
-# tool-particle is not checked out; the table joins once it is bootstrapped:
-#   [patch."https://github.com/TheClockwyrks/tool-particle"]
-#   test-cabinet-particle-core = { path = "tool-particle/crates/particle-core" }
+[patch."https://github.com/TheClockwyrks/tool-particle"]
+test-cabinet-particle-2d = { path = "tool-particle/crates/particle-2d" }
+test-cabinet-particle-3d = { path = "tool-particle/crates/particle-3d" }
+test-cabinet-particle-core = { path = "tool-particle/crates/particle-core" }
 
 # tool-audio-core is not checked out; the table joins once it is bootstrapped:
 #   [patch."https://github.com/TheClockwyrks/tool-audio-core"]

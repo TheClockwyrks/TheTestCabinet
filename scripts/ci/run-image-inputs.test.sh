@@ -5,10 +5,12 @@
 # A copy of the script runs in a throwaway git repository holding a small
 # containers/ tree: a base, a tools builder that copies the whole context, an asset
 # image built out of it, one that copies from the tool-sprite image, one that copies
-# from the tool-paint image, one each from the tool-voxel and tool-mc images, a
-# full-stack-3d that copies from the builder and from tool-voxel, and gg variants,
-# with the driver's gg pin and the gitlinks of every tool repository tool-images.sh
-# lists beside them. The subject is what moves each image's digest and what does not.
+# from the tool-paint image, one built out of the builder alone, one that copies from the
+# tool-particle image, one each from the tool-voxel and tool-mc images, a full-stack-2d
+# that copies from the builder and from tool-particle, a full-stack-3d that copies from
+# the builder, tool-particle and tool-voxel, and gg variants, with the driver's gg pin
+# and the gitlinks of every tool repository tool-images.sh lists beside them. The
+# subject is what moves each image's digest and what does not.
 set -uo pipefail
 
 CI_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -52,14 +54,16 @@ tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 
 repo="$tmp/repo"
-mkdir -p "$repo/scripts/ci" "$repo/containers"/{base,base-wasm,tools,sprite,ui,voxel,mc,particle-3d,full-stack-3d,gg,blender} \
+mkdir -p "$repo/scripts/ci" \
+	"$repo/containers"/{base,base-wasm,tools,sprite,ui,music,voxel,mc,particle-3d,full-stack-2d,full-stack-3d,gg,blender} \
 	"$repo/crates/a" "$repo/crates/driver" "$repo/docs" "$repo/scripts/ci"
 cp "$CI_DIR/run-image-inputs.sh" "$CI_DIR/gg-release.sh" "$CI_DIR/tool-images.sh" "$CI_DIR/tcab-lib.sh" \
 	"$repo/scripts/ci/"
 echo '0.7.1' >"$repo/crates/driver/gg-release-version"
 cat >"$repo/containers/image-names.sh" <<'NAMES'
 #!/usr/bin/env bash
-printf '%s\n' base base-wasm base-wasm-gg sprite sprite-gg ui voxel mc particle-3d full-stack-3d blender blender-gg
+printf '%s\n' base base-wasm base-wasm-gg sprite sprite-gg ui music voxel mc particle-3d full-stack-2d full-stack-3d \
+	blender blender-gg
 NAMES
 chmod +x "$repo/containers/image-names.sh"
 # The `${...}` below are the Dockerfiles' own build-arg references, not shell expansions.
@@ -70,10 +74,12 @@ printf 'ARG BASE_IMAGE\nFROM ${BASE_IMAGE}\nRUN true\n' >"$repo/containers/base-
 printf 'FROM rust:1 AS build\nWORKDIR /src\nCOPY . .\nRUN cargo build\nFROM scratch\nCOPY --from=build /out /out\n' >"$repo/containers/tools/Dockerfile"
 printf 'ARG TOOL_SPRITE_IMAGE\nARG BASE_IMAGE\nFROM ${TOOL_SPRITE_IMAGE} AS tool-sprite\nFROM ${BASE_IMAGE}\nCOPY --from=tool-sprite /usr/local/bin/draw /usr/local/bin/draw\n' >"$repo/containers/sprite/Dockerfile"
 printf 'ARG TOOL_PAINT_IMAGE\nARG BASE_IMAGE\nFROM ${TOOL_PAINT_IMAGE} AS tool-paint\nFROM ${BASE_IMAGE}\nCOPY --from=tool-paint /usr/local/bin/ui /usr/local/bin/ui\n' >"$repo/containers/ui/Dockerfile"
-printf 'ARG TOOLS_IMAGE\nARG BASE_IMAGE\nFROM ${TOOLS_IMAGE} AS tools\nFROM ${BASE_IMAGE}\nCOPY --from=tools /out/particle-3d /usr/local/bin/particle-3d\n' >"$repo/containers/particle-3d/Dockerfile"
+printf 'ARG TOOLS_IMAGE\nARG BASE_IMAGE\nFROM ${TOOLS_IMAGE} AS tools\nFROM ${BASE_IMAGE}\nCOPY --from=tools /out/music /usr/local/bin/music\n' >"$repo/containers/music/Dockerfile"
+printf 'ARG TOOL_PARTICLE_IMAGE\nARG BASE_IMAGE\nFROM ${TOOL_PARTICLE_IMAGE} AS tool-particle\nFROM ${BASE_IMAGE}\nCOPY --from=tool-particle /usr/local/bin/particle-3d /usr/local/bin/particle-3d\n' >"$repo/containers/particle-3d/Dockerfile"
 printf 'ARG TOOL_VOXEL_IMAGE\nARG BASE_IMAGE\nFROM ${TOOL_VOXEL_IMAGE} AS tool-voxel\nFROM ${BASE_IMAGE}\nCOPY --from=tool-voxel /usr/local/bin/voxel /usr/local/bin/voxel\n' >"$repo/containers/voxel/Dockerfile"
 printf 'ARG TOOL_MC_IMAGE\nARG BASE_IMAGE\nFROM ${TOOL_MC_IMAGE} AS tool-mc\nFROM ${BASE_IMAGE}\nCOPY --from=tool-mc /usr/local/bin/mc /usr/local/bin/mc\n' >"$repo/containers/mc/Dockerfile"
-printf 'ARG BASE_IMAGE\nARG TOOLS_IMAGE\nARG TOOL_VOXEL_IMAGE\nFROM ${TOOLS_IMAGE} AS tools\nFROM ${TOOL_VOXEL_IMAGE} AS tool-voxel\nFROM ${BASE_IMAGE}\nCOPY --from=tools /out/particle-3d /usr/local/bin/particle-3d\nCOPY --from=tool-voxel /usr/local/bin/voxel /usr/local/bin/voxel\n' >"$repo/containers/full-stack-3d/Dockerfile"
+printf 'ARG BASE_IMAGE\nARG TOOLS_IMAGE\nARG TOOL_PARTICLE_IMAGE\nFROM ${TOOLS_IMAGE} AS tools\nFROM ${TOOL_PARTICLE_IMAGE} AS tool-particle\nFROM ${BASE_IMAGE}\nCOPY --from=tool-particle /usr/local/bin/particle-2d /usr/local/bin/particle-2d\nCOPY --from=tools /out/music /usr/local/bin/music\n' >"$repo/containers/full-stack-2d/Dockerfile"
+printf 'ARG BASE_IMAGE\nARG TOOLS_IMAGE\nARG TOOL_PARTICLE_IMAGE\nARG TOOL_VOXEL_IMAGE\nFROM ${TOOLS_IMAGE} AS tools\nFROM ${TOOL_PARTICLE_IMAGE} AS tool-particle\nFROM ${TOOL_VOXEL_IMAGE} AS tool-voxel\nFROM ${BASE_IMAGE}\nCOPY --from=tools /out/music /usr/local/bin/music\nCOPY --from=tool-particle /usr/local/bin/particle-3d /usr/local/bin/particle-3d\nCOPY --from=tool-voxel /usr/local/bin/voxel /usr/local/bin/voxel\n' >"$repo/containers/full-stack-3d/Dockerfile"
 printf 'ARG BASE_IMAGE\nARG GG_TOOLCHAINS_IMAGE\nFROM ${GG_TOOLCHAINS_IMAGE} AS ggtools\nFROM ${BASE_IMAGE}\nCOPY --link --from=ggtools /opt /opt\n' >"$repo/containers/gg/Dockerfile"
 printf 'FROM ubuntu:26.04\n# COPY not-a-source /x\nCOPY scripts/ci/install-java.sh \\\n  /tmp/install-java.sh\nCOPY containers/blender/export.py /opt/export.py\n' >"$repo/containers/blender/Dockerfile"
 }
@@ -93,17 +99,22 @@ readonly SPRITE_PIN_B=4444444444444444444444444444444444444444
 # tool-paint's gitlink, the commit whose image the ui image copies from.
 readonly PAINT_PIN_A=5555555555555555555555555555555555555555
 readonly PAINT_PIN_B=6666666666666666666666666666666666666666
-# tool-voxel's and tool-mc's gitlinks, the commits whose images voxel, full-stack-3d and
-# mc copy from; tool-sn's and tool-dc's, which no image here copies from.
-readonly VOXEL_PIN_A=7777777777777777777777777777777777777777
-readonly VOXEL_PIN_B=8888888888888888888888888888888888888888
-readonly MC_PIN_A=9999999999999999999999999999999999999999
-readonly MC_PIN_B=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
-readonly SN_PIN=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
-readonly DC_PIN=cccccccccccccccccccccccccccccccccccccccc
+# tool-particle's gitlink, the commit whose image the particle-3d, full-stack-2d and
+# full-stack-3d images copy from; tool-voxel's and tool-mc's, the commits whose images
+# voxel, full-stack-3d and mc copy from; tool-sn's and tool-dc's, which no image here
+# copies from.
+readonly PARTICLE_PIN_A=7777777777777777777777777777777777777777
+readonly PARTICLE_PIN_B=8888888888888888888888888888888888888888
+readonly VOXEL_PIN_A=9999999999999999999999999999999999999999
+readonly VOXEL_PIN_B=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+readonly MC_PIN_A=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+readonly MC_PIN_B=cccccccccccccccccccccccccccccccccccccccc
+readonly SN_PIN=dddddddddddddddddddddddddddddddddddddddd
+readonly DC_PIN=eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee
 (cd "$repo" && git init -q && git add -A && git update-index --add --cacheinfo "160000,${PIN_A},sub" \
 	&& git update-index --add --cacheinfo "160000,${SPRITE_PIN_A},tool-sprite" \
 	&& git update-index --add --cacheinfo "160000,${PAINT_PIN_A},tool-paint" \
+	&& git update-index --add --cacheinfo "160000,${PARTICLE_PIN_A},tool-particle" \
 	&& git update-index --add --cacheinfo "160000,${VOXEL_PIN_A},tool-voxel" \
 	&& git update-index --add --cacheinfo "160000,${MC_PIN_A},tool-mc" \
 	&& git update-index --add --cacheinfo "160000,${SN_PIN},tool-sn" \
@@ -119,11 +130,11 @@ revert() { (cd "$repo" && git checkout -q -- . && git reset -q --hard HEAD); }
 
 out="$(run)"
 check_equal "lists tools and every run image" \
-	"tools base base-wasm base-wasm-gg sprite sprite-gg ui voxel mc particle-3d full-stack-3d blender blender-gg" \
+	"tools base base-wasm base-wasm-gg sprite sprite-gg ui music voxel mc particle-3d full-stack-2d full-stack-3d blender blender-gg" \
 	"$(awk '{print $1}' <<<"$out" | tr '\n' ' ' | sed 's/ $//')"
-check_equal "a digest is 32 hex characters" "13" "$(grep -cE '^[a-z0-9-]+ [0-9a-f]{32} ' <<<"$out")"
+check_equal "a digest is 32 hex characters" "15" "$(grep -cE '^[a-z0-9-]+ [0-9a-f]{32} ' <<<"$out")"
 check_equal "parents: base has none" "base $(digest base) -" "$(run base)"
-check_equal "parents: an asset image is from base and tools" "base,tools" "$(run particle-3d | awk '{print $3}')"
+check_equal "parents: an asset image is from base and tools" "base,tools" "$(run music | awk '{print $3}')"
 check_equal "parents: the sprite image is from base alone, tool-sprite being no image built here" "base" \
 	"$(run sprite | awk '{print $3}')"
 check_equal "parents: the ui image is from base alone, tool-paint being no image built here" "base" \
@@ -132,15 +143,19 @@ check_equal "parents: the voxel image is from base alone, tool-voxel being no im
 	"$(run voxel | awk '{print $3}')"
 check_equal "parents: the mc image is from base alone, tool-mc being no image built here" "base" \
 	"$(run mc | awk '{print $3}')"
-check_equal "parents: full-stack-3d is from base-wasm and tools" "base-wasm,tools" \
-	"$(run full-stack-3d | awk '{print $3}')"
+check_equal "parents: the particle-3d image is from base alone, tool-particle being no image built here" \
+	"base" "$(run particle-3d | awk '{print $3}')"
+check_equal "parents: a full-stack image is from base-wasm and tools, not tool-particle" "base-wasm,tools" \
+	"$(run full-stack-2d | awk '{print $3}')"
+check_equal "parents: full-stack-3d is from base-wasm and tools, not tool-particle or tool-voxel" \
+	"base-wasm,tools" "$(run full-stack-3d | awk '{print $3}')"
 check_equal "parents: a gg variant is from its image alone" "sprite" "$(run sprite-gg | awk '{print $3}')"
 check_equal "the table is deterministic" "$out" "$(run)"
 
 base0="$(digest base)"; wasm0="$(digest base-wasm)"; tools0="$(digest tools)"; sprite0="$(digest sprite)"
 spritegg0="$(digest sprite-gg)"; blender0="$(digest blender)"; wasmgg0="$(digest base-wasm-gg)"
-voxel0="$(digest voxel)"; ui0="$(digest ui)"; particle0="$(digest particle-3d)"; mc0="$(digest mc)"
-fs3d0="$(digest full-stack-3d)"
+voxel0="$(digest voxel)"; ui0="$(digest ui)"; music0="$(digest music)"; mc0="$(digest mc)"
+particle0="$(digest particle-3d)"; fullstack0="$(digest full-stack-2d)"; fs3d0="$(digest full-stack-3d)"
 blendergg0="$(digest blender-gg)"
 
 change containers/base/Dockerfile 'RUN echo changed'
@@ -154,22 +169,24 @@ revert
 
 change crates/a/main.rs '// a change under crates'
 check_differs "an allowlisted context file moves the image that copies the context" "$tools0" "$(digest tools)"
-check_differs "and the images built out of it" "$particle0" "$(digest particle-3d)"
-check_differs "full-stack-3d among them" "$fs3d0" "$(digest full-stack-3d)"
+check_differs "and the images built out of it" "$music0" "$(digest music)"
+check_differs "full-stack-2d among them" "$fullstack0" "$(digest full-stack-2d)"
+check_differs "full-stack-3d too" "$fs3d0" "$(digest full-stack-3d)"
 check_equal "but not one built out of none of it" "$sprite0" "$(digest sprite)"
 check_equal "nor one that copies from a tool image alone" "$voxel0" "$(digest voxel)"
+check_equal "particle-3d among them" "$particle0" "$(digest particle-3d)"
 check_equal "but not base" "$base0" "$(digest base)"
 revert
 
 (cd "$repo" && git update-index --cacheinfo "160000,${PIN_B},sub")
 check_differs "a submodule pin the allowlist reaches into moves the image that copies the context" "$tools0" "$(digest tools)"
-check_differs "and the images built out of it" "$particle0" "$(digest particle-3d)"
+check_differs "and the images built out of it" "$music0" "$(digest music)"
 check_equal "but not base" "$base0" "$(digest base)"
 revert
 
 change docs/page.md 'more prose'
 check_equal "a file the allowlist excludes moves nothing: tools" "$tools0" "$(digest tools)"
-check_equal "particle-3d" "$particle0" "$(digest particle-3d)"
+check_equal "music" "$music0" "$(digest music)"
 revert
 
 change .dockerignore '!/docs'
@@ -203,7 +220,7 @@ check_equal "nor any other image" "$sprite0" "$(digest sprite)"
 	&& git -c user.name=t -c user.email=t@t commit -q -m 'bump tool-sprite')
 check_differs "a bump of the tool-sprite gitlink moves the image that copies from tool-sprite" "$sprite0" "$(digest sprite)"
 check_differs "and its gg variant" "$spritegg0" "$(digest sprite-gg)"
-check_equal "but not an image built out of the tooling builder" "$particle0" "$(digest particle-3d)"
+check_equal "but not an image built out of the tooling builder" "$music0" "$(digest music)"
 check_equal "nor the builder" "$tools0" "$(digest tools)"
 check_equal "nor one that copies from another tool image" "$ui0" "$(digest ui)"
 (cd "$repo" && git reset -q --hard HEAD~1)
@@ -219,19 +236,40 @@ check_differs "another image is another input" "$sprite0" \
 	&& git -c user.name=t -c user.email=t@t commit -q -m 'bump tool-paint')
 check_differs "a bump of the tool-paint gitlink moves the image that copies from tool-paint" "$ui0" "$(digest ui)"
 check_equal "but not the one that copies from tool-sprite" "$sprite0" "$(digest sprite)"
-check_equal "nor an image built out of the tooling builder" "$particle0" "$(digest particle-3d)"
+check_equal "nor an image built out of the tooling builder" "$music0" "$(digest music)"
 (cd "$repo" && git reset -q --hard HEAD~1)
 check_equal "and back" "$ui0" "$(digest ui)"
 check_differs "TOOL_PAINT_IMAGE naming another image is another input" "$ui0" \
 	"$(cd "$repo" && TOOL_PAINT_IMAGE=registry.test/tool-paint:other \
 		scripts/ci/run-image-inputs.sh ui | awk '{print $2}')"
 
+(cd "$repo" && git update-index --cacheinfo "160000,${PARTICLE_PIN_B},tool-particle" \
+	&& git -c user.name=t -c user.email=t@t commit -q -m 'bump tool-particle')
+check_differs "a bump of the tool-particle gitlink moves the image that copies from tool-particle" \
+	"$particle0" "$(digest particle-3d)"
+check_differs "and the full-stack image that copies from it beside the builder" "$fullstack0" \
+	"$(digest full-stack-2d)"
+check_differs "and full-stack-3d, which copies particle-3d from it" "$fs3d0" "$(digest full-stack-3d)"
+check_equal "but not the one that copies from tool-paint" "$ui0" "$(digest ui)"
+check_equal "nor the one that copies from tool-voxel" "$voxel0" "$(digest voxel)"
+check_equal "nor an image built out of the tooling builder alone" "$music0" "$(digest music)"
+check_equal "nor the builder" "$tools0" "$(digest tools)"
+(cd "$repo" && git reset -q --hard HEAD~1)
+check_equal "and back" "$particle0" "$(digest particle-3d)"
+check_equal "TOOL_PARTICLE_IMAGE naming the pinned image is the same input" "$fullstack0" \
+	"$(cd "$repo" && TOOL_PARTICLE_IMAGE="testcabinet.azurecr.io/tool-particle:${PARTICLE_PIN_A}" \
+		scripts/ci/run-image-inputs.sh full-stack-2d | awk '{print $2}')"
+check_differs "TOOL_PARTICLE_IMAGE naming another image is another input" "$particle0" \
+	"$(cd "$repo" && TOOL_PARTICLE_IMAGE=registry.test/tool-particle:other \
+		scripts/ci/run-image-inputs.sh particle-3d | awk '{print $2}')"
+
 (cd "$repo" && git update-index --cacheinfo "160000,${VOXEL_PIN_B},tool-voxel" \
 	&& git -c user.name=t -c user.email=t@t commit -q -m 'bump tool-voxel')
 check_differs "a bump of the tool-voxel gitlink moves the voxel image" "$voxel0" "$(digest voxel)"
 check_differs "and full-stack-3d, which copies voxel from it too" "$fs3d0" "$(digest full-stack-3d)"
 check_equal "but not the mc image" "$mc0" "$(digest mc)"
-check_equal "nor an image built out of the tooling builder alone" "$particle0" "$(digest particle-3d)"
+check_equal "nor full-stack-2d" "$fullstack0" "$(digest full-stack-2d)"
+check_equal "nor an image built out of the tooling builder alone" "$music0" "$(digest music)"
 check_equal "nor the builder" "$tools0" "$(digest tools)"
 (cd "$repo" && git reset -q --hard HEAD~1)
 check_equal "and back" "$voxel0" "$(digest voxel)"
@@ -256,10 +294,10 @@ out="$(run nothing)"
 check_equal "an unknown name fails" "1" "$?"
 check_contains "naming it" "no Dockerfile for 'nothing'" "$out"
 
-change containers/particle-3d/Dockerfile 'ARG TOOL_PARTICLE_IMAGE'
-out="$(run particle-3d)"
+change containers/music/Dockerfile 'ARG TOOL_UNLISTED_IMAGE'
+out="$(run music)"
 check_equal "a tool image argument tool-images.sh does not list fails" "1" "$?"
-check_contains "naming it" "declares ARG TOOL_PARTICLE_IMAGE, which scripts/ci/tool-images.sh does not list" "$out"
+check_contains "naming it" "declares ARG TOOL_UNLISTED_IMAGE, which scripts/ci/tool-images.sh does not list" "$out"
 revert
 
 echo
