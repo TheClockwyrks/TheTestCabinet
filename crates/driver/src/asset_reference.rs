@@ -231,18 +231,18 @@ fn collect_frames(
     Ok(frames)
 }
 
-/// Locate the directory holding the case's drawing binary.
-///
-/// Prefers an explicit `TCAB_ASSET_BIN_DIR`, then the cargo target directory's
-/// `release/`, then the `target/release/` of the tool-sprite checkout (where
-/// `cargo build --release` run in it puts the binaries), then whatever is already
-/// on `PATH`. Errors naming
-/// every location tried, since a missing binary is the likeliest first failure
-/// when authoring a reference on a fresh checkout.
 /// Where `cargo build --release` in the tool-sprite checkout (a submodule at the
 /// superrepo's root) puts the drawing binaries, relative to the working directory.
 const TOOL_SPRITE_RELEASE: &str = "tool-sprite/target/release";
 
+/// Locate the directory holding the case's drawing binary.
+///
+/// Prefers an explicit `TCAB_ASSET_BIN_DIR`, then the cargo target directory's
+/// `release/`, then the `target/release/` of the tool-sprite checkout (where
+/// `cargo build --release` run in it puts the binaries), then whatever is
+/// already on `PATH`. Errors naming every location tried, since a missing
+/// binary is the likeliest first failure when authoring a reference on a fresh
+/// checkout.
 fn resolve_binary_dir(binary: &str) -> Result<PathBuf> {
     let mut tried: Vec<String> = Vec::new();
 
