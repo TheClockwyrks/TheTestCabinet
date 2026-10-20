@@ -865,3 +865,15 @@ def test_the_command_line_renders_and_reports(tmp_path: Path, mini_superrepo: Pa
     assert "rendered test-suites (content)" in capsys.readouterr().out
     assert json.loads((into / "package.json").read_text(encoding="utf-8"))["name"] == "test-suites-repository"
     assert render.main(["nowhere", "--description", "x", "--source", str(mini_superrepo)]) == 1
+
+
+def test_a_python_literal_marks_the_entry_ruff_cannot_wrap() -> None:
+    """An entry past the rendered ruff's line length is let pass by name, and only that one."""
+    pyproject = tomllib.loads((render.SUPERREPO / "templates/repository/ci/pyproject.toml").read_text())
+    assert pyproject["tool"]["ruff"]["line-length"] == render.PYTHON_LINE_LENGTH
+    long_value = "x" * render.PYTHON_LINE_LENGTH
+    text = render.python_dict({"short": "y", "long": long_value})
+    lines = text.splitlines()
+    assert lines[1] == '    "short": "y",'
+    assert lines[2] == f'    "long": "{long_value}",  # noqa: E501'
+    assert render.python_dict({}) == "{}"

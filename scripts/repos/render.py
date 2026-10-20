@@ -805,11 +805,27 @@ def rust_timeout(name: str) -> int:
     return RUST_TIMEOUTS.get(name, RUST_TIMEOUT)
 
 
+# The longest line the rendered ci project's ruff allows (`line-length` in
+# templates/repository/ci/pyproject.toml).
+PYTHON_LINE_LENGTH = 120
+
+
 def python_dict(mapping: dict[str, str]) -> str:
-    """A mapping of strings as a Python literal laid out as `ruff format` lays it out, one entry a line."""
+    """A mapping of strings as a Python literal laid out as `ruff format` lays it out, one entry a line.
+
+    `ruff format` never splits a string, so an entry whose value runs past the
+    line length, such as a CI image pinned at a commit under a long name, is
+    marked as the one long line ruff is to let pass.
+    """
     if not mapping:
         return "{}"
-    return "{\n" + "".join(f"    {json.dumps(key)}: {json.dumps(value)},\n" for key, value in mapping.items()) + "}"
+    lines = []
+    for key, value in mapping.items():
+        line = f"    {json.dumps(key)}: {json.dumps(value)},"
+        if len(line) > PYTHON_LINE_LENGTH:
+            line += "  # noqa: E501"
+        lines.append(line + "\n")
+    return "{\n" + "".join(lines) + "}"
 
 
 def ci_publish(kind: str) -> str:
