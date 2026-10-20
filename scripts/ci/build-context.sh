@@ -370,7 +370,7 @@ packages/gg-sandbox-java/java-version.sh included
 packages/gg-sandbox-java/src/Main.java ignored
 packages/gg-sandbox-swift/.build/debug/swift-version.sh ignored
 packages/gg-sandbox-java ignored
-packages/ui/src/index.ts ignored
+ui-common/packages/ui/src/index.ts ignored
 apps/web/src/main.tsx included
 apps/docs/astro.config.mjs ignored
 crates/gg/target/debug/gg ignored

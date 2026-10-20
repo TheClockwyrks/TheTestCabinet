@@ -7010,6 +7010,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b8848ee67ecc8aedbaf3e4122217aff892639231befc6a1b58d29fff4c2cabaa"
 
 [[patch.unused]]
+name = "test-cabinet-gg"
+version = "0.7.1"
+
+[[patch.unused]]
+name = "test-cabinet-repos"
+version = "0.0.0"
+
+[[patch.unused]]
+name = "test-cabinet-ui-common"
+version = "0.0.0"
+
+[[patch.unused]]
 name = "foray-cli"
 version = "0.0.0"
 
@@ -7050,8 +7062,8 @@ name = "lattice-sdk"
 version = "0.0.0"
 
 [[patch.unused]]
-name = "test-cabinet-gg"
-version = "0.7.1"
+name = "test-cabinet-paint"
+version = "0.0.0"
 
 [[patch.unused]]
 name = "api-codegen"
@@ -7060,11 +7072,3 @@ version = "0.2.2"
 [[patch.unused]]
 name = "contract-codegen"
 version = "0.2.2"
-
-[[patch.unused]]
-name = "test-cabinet-repos"
-version = "0.0.0"
-
-[[patch.unused]]
-name = "test-cabinet-paint"
-version = "0.0.0"

@@ -104,7 +104,7 @@ pub fn automated_only_score(items: &[ReviewItem], debug_scripts: &[DebugScriptRe
 /// [effective checklist](crate::review::effective_verdicts) — the validators'
 /// verdicts overlaid with the reviewer's overrides — scores through the identical
 /// rule (see [`crate::review::validator_review_score`]). Mirrors `coveredScore`
-/// in `packages/run-stats/src/scoring.ts`.
+/// in `ui-common/packages/run-stats/src/scoring.ts`.
 pub fn covered_score(items: &[ReviewItem], verdicts: &[ReviewVerdict]) -> Score {
     let covered: BTreeSet<String> = verdicts.iter().map(|v| v.id.clone()).collect();
     let restricted = restrict_items_to_covered(items, &covered);

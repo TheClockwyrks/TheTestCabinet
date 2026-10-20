@@ -48,7 +48,6 @@ import tseslint from "typescript-eslint";
  */
 const PROJECTS = [
   { sources: "apps/web/src", tsconfig: "apps/web/tsconfig.json" },
-  { sources: "packages/ui/src", tsconfig: "packages/ui/tsconfig.json" },
   { sources: "apps/site/src", tsconfig: "apps/site/tsconfig.json" },
 ];
 
@@ -137,8 +136,9 @@ const CONFIG = defineConfig([
     // gate reads what the others leave alone.
     "cold-storage/**",
     // The contracts, engines, gg, gg.rocks, microservice-repos, tool-model-core,
-    // tool-paint, tool-sprite and test-suites repositories, submodules with gates
-    // of their own, and the docs tree's gg/ entry, which points into the gg checkout.
+    // tool-paint, tool-sprite, test-suites and ui-common repositories,
+    // submodules with gates of their own, and the docs tree's gg/ entry, which
+    // points into the gg checkout.
     "contracts/**",
     "engines/**",
     "gg/**",
@@ -149,6 +149,7 @@ const CONFIG = defineConfig([
     "tool-sprite/**",
     "apps/docs/src/content/docs/gg/**",
     "test-suites/**",
+    "ui-common/**",
     "tasks/**/done/**",
     ".claude/workflows/**",
     ".claude/worktrees/**",

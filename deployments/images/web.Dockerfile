@@ -10,7 +10,7 @@
 #
 # No runtime configuration. The console carries no service URL: it addresses /api,
 # /artifacts and /arena of its own origin, which the edge routes to the services
-# (see packages/ui/src/transport/origin-services.ts). Nothing is configured at
+# (see ui-common/packages/ui/src/transport/origin-services.ts). Nothing is configured at
 # container start: the image is nginx and the static bundle, with no entrypoint
 # script and no environment. What a build bakes in is the bundle's business (see
 # components/web/overview.md, "Configuration").
@@ -24,22 +24,23 @@
 
 # ── Build stage ──────────────────────────────────────────────────────────────
 # Build the SPA from the repo root so the npm workspace resolves: Vite bundles the
-# console's workspace deps (@clockwyrks/ui, @clockwyrks/run-record,
-# @clockwyrks/backend-api) from their TypeScript sources, so the whole workspace
-# must `npm ci` against the root lockfile. The .dockerignore re-includes exactly the
-# slice this needs (the root manifests, every member's package.json, and the
-# packages' sources).
+# console's workspace deps (@clockwyrks/ui from the ui-common submodule,
+# @clockwyrks/run-record and @clockwyrks/backend-api from the contracts submodule)
+# from their built dist/, so the whole workspace must `npm ci` against the root
+# lockfile and build them first. The .dockerignore re-includes exactly the slice
+# this needs (the root manifests, every member's package.json, and the packages'
+# sources).
 FROM docker.io/library/node:24-bookworm-slim AS build
 WORKDIR /src
 COPY . .
 # Deterministic, lockfile-pinned install of the whole workspace, then build the
-# web console. run-record, backend-api, run-stats, voxel-runtime, particle-runtime and
-# lattice-runtime are built first: the console's `tsc -b` needs the two contract
-# packages' compiled types, and the @clockwyrks/ui library it bundles from source
-# imports run-stats' `.`/`./rollup` subpaths, voxel-runtime's and particle-runtime's
-# `./three` subpaths and lattice-runtime's root (the Lattice renderer and engine),
-# whose code and typings only resolve once each package's dist/ exists, so they are
-# built explicitly. The npm
+# web console. run-record, backend-api, run-stats, voxel-runtime, particle-runtime,
+# lattice-runtime and ui are built first, in that order: the console's `tsc -b`
+# needs the two contract packages' compiled types, and the @clockwyrks/ui library
+# it bundles is consumed as its dist/, whose build imports run-stats' `.`/`./rollup`
+# subpaths, voxel-runtime's and particle-runtime's `./three` subpaths and
+# lattice-runtime's root (the Lattice renderer and engine), whose code and typings
+# only resolve once each package's dist/ exists, so they are built explicitly. The npm
 # cache is a BuildKit cache mount so re-installs reuse the downloaded tarballs
 # across builds instead of refetching every dependency.
 RUN --mount=type=cache,target=/root/.npm \
@@ -50,6 +51,7 @@ RUN --mount=type=cache,target=/root/.npm \
     && npm run build -w @clockwyrks/voxel-runtime \
     && npm run build -w @clockwyrks/particle-runtime \
     && npm run build -w @clockwyrks/lattice-runtime \
+    && npm run build -w @clockwyrks/ui \
     && npm run build -w @clockwyrks/web
 
 # ── Runtime stage ────────────────────────────────────────────────────────────

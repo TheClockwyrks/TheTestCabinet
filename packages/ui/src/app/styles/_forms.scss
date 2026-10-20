@@ -1,4 +1,0 @@
-// The app's alias of the shared control treatment, so an app stylesheet that
-// styles a native control it cannot replace with a form primitive includes the
-// same mixins the primitives are built from.
-@forward "../../styles/controls";

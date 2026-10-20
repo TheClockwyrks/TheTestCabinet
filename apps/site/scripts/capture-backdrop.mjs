@@ -25,7 +25,7 @@ const CAPTURE_ROOT = path.join(HERE, "capture");
 // automatically.
 const OUTPUT_DIR = path.resolve(
   HERE,
-  "../../../packages/ui/src/app/components/backdrop",
+  "../../../ui-common/packages/ui/src/app/components/backdrop",
 );
 
 // The decorative sun is a user toggle (`sunEnabled`, on by default), so we bake

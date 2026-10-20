@@ -36,3 +36,7 @@
 	path = tool-sprite
 	url = ../tool-sprite
 	branch = master
+[submodule "ui-common"]
+	path = ui-common
+	url = ../ui-common
+	branch = master
