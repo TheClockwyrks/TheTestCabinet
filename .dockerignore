@@ -34,7 +34,7 @@
 # submodule's own path, or a path inside it, never a wildcard), and `*` below keeps
 # every submodule this file does not name out of the context, cold-storage's ~2 GB
 # of baseline media included. contracts, engines, gg, microservice-repos,
-# tool-sprite and test-suites are the ones named, below. What a submodule
+# tool-sprite, test-suites and ui-common are the ones named, below. What a submodule
 # path adds is a precondition: the build reads what the checkout it runs in holds,
 # and a checkout leaves every submodule empty until it is initialized. So the
 # image jobs run `scripts/ci/submodules.sh init --build-context`, which
@@ -53,7 +53,7 @@
 # .cargo/ sends each source to its submodule, whose crates inherit their version and
 # dependencies from its own workspace manifest, so cargo reads that too. cargo
 # loads every patch path, a table nothing builds from included, so every checked-out
-# repository the table names is re-included here (microservice-repos, tool-sprite). This is
+# repository the table names is re-included here (microservice-repos, tool-sprite, ui-common). This is
 # the complete set cargo needs to resolve and compile any crate; resolving the lock
 # still fetches the patched sources, the public mirrors, over the network.
 !/Cargo.toml
@@ -69,6 +69,8 @@
 !/microservice-repos/crates
 !/tool-sprite/Cargo.toml
 !/tool-sprite/crates
+!/ui-common/Cargo.toml
+!/ui-common/crates
 # crates/driver and the engines repository's crates/engines bake these three trees
 # into the binary verbatim via include_str! (the driver the built-in orchestrator
 # runner scripts and the harness manifests, engines the built-in engine manifests,
@@ -141,16 +143,17 @@
 #     against the lockfile, so a missing member's manifest aborts the install), and
 #   - the SOURCE of the packages the console actually bundles: apps/web itself
 #     plus its workspace deps @clockwyrks/ui, @clockwyrks/run-record and
-#     @clockwyrks/backend-api, which Vite resolves to their TypeScript sources
-#     (packages/ui exports ./src/*), and
-#     @clockwyrks/run-stats, @clockwyrks/voxel-runtime,
-#     @clockwyrks/particle-runtime and @clockwyrks/lattice-runtime, whose
-#     compiled subpaths the ui library imports (run-stats' scoring rules and
-#     rollup; the voxel and particle runtimes' `./three`; the lattice runtime's
-#     renderer and its `lattice-core.wasm`).
-#     The runtimes are the engines repository's, under engines/packages/.
-#     The Dockerfile builds their dist/ before the console — the sources ride
-#     along here, dist/ is re-excluded below and rebuilt in-image.
+#     @clockwyrks/backend-api, and @clockwyrks/run-stats,
+#     @clockwyrks/voxel-runtime, @clockwyrks/particle-runtime and
+#     @clockwyrks/lattice-runtime, whose compiled subpaths the ui library
+#     imports (run-stats' scoring rules and rollup; the voxel and particle
+#     runtimes' `./three`; the lattice runtime's renderer and its
+#     `lattice-core.wasm`).
+#     The ui library and run-stats are the ui-common repository's, under
+#     ui-common/packages/, and the runtimes the engines repository's, under
+#     engines/packages/. Every one of them is consumed as its built dist/: the
+#     Dockerfile builds each before the console — the sources ride along here,
+#     dist/ is re-excluded below and rebuilt in-image.
 # node_modules/ and dist/ are re-excluded below (those re-exclusions come last and
 # win), so a local install/build never rides along.
 !/package.json
@@ -163,8 +166,10 @@
 !/contracts/tsconfig.base.json
 !/contracts/packages/run-record
 !/contracts/packages/backend-api
-!/packages/run-stats
-!/packages/ui
+# The ui-common packages extend the ui-common repository's own base tsconfig.
+!/ui-common/tsconfig.base.json
+!/ui-common/packages/run-stats
+!/ui-common/packages/ui
 # The engines packages extend the engines repository's own base tsconfig.
 !/engines/tsconfig.base.json
 !/engines/packages/voxel-runtime
@@ -271,9 +276,9 @@
 # and the copies weigh tens of megabytes.
 /crates/*/testdata/
 /engines/crates/*/testdata/
-# TypeScript's incremental build state. `packages/ui/tsconfig.tsbuildinfo` is gitignored
-# output that lands inside `!/packages/ui` — re-included for the web console image, which
-# reads that package's sources — and it is REWRITTEN by every local `tsc -b`. So a
+# TypeScript's incremental build state. `ui-common/packages/run-stats/tsconfig.tsbuildinfo`
+# is gitignored output that lands inside `!/ui-common/packages/run-stats` — re-included for
+# the web console image, which builds that package — and it is REWRITTEN by every local `tsc -b`. So a
 # type-check on the host changes the context, which changes the `COPY . .` cache key, which
 # recompiles the whole Rust workspace in an image that does not contain a line of
 # TypeScript. As a glob rather than the one path, because the next package to gain a

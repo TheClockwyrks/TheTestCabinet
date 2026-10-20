@@ -215,7 +215,7 @@ repos:
         description: Typecheck the web app against its own tsconfig.
         entry: uv run --quiet --project ci gate run web-typecheck
         language: system
-        files: '^apps/web/.*\.(ts|tsx|json)$|^tsconfig\.base\.json$|^package(-lock)?\.json$|^ci/gates/web-typecheck\.py$'
+        files: '^apps/web/.*\.(ts|tsx|json)$|^tsconfig\.base\.json$|^package(-lock)?\.json$|^ui-common$|^ci/gates/web-typecheck\.py$'
         pass_filenames: false
 
       - id: web-test
@@ -223,7 +223,7 @@ repos:
         description: Run the web app's tests under jsdom.
         entry: uv run --quiet --project ci gate run web-test
         language: system
-        files: '^apps/web/.*\.(ts|tsx|json)$|^tsconfig\.base\.json$|^package(-lock)?\.json$|^ci/gates/web-test\.py$'
+        files: '^apps/web/.*\.(ts|tsx|json)$|^tsconfig\.base\.json$|^package(-lock)?\.json$|^ui-common$|^ci/gates/web-test\.py$'
         pass_filenames: false
 
       # The browser suite, which drives the engines apps/web/vite.config.ts
@@ -239,7 +239,7 @@ repos:
         description: Run the web app's browser tests in the engines its test configuration names.
         entry: uv run --quiet --project ci gate run web-browser-test
         language: system
-        files: '^apps/web/.*\.(ts|tsx|css|html|json)$|^package(-lock)?\.json$|^ci/gates/web-browser-test\.py$|^\.devcontainer/docker-compose\.yml$'
+        files: '^apps/web/.*\.(ts|tsx|css|html|json)$|^package(-lock)?\.json$|^ui-common$|^ci/gates/web-browser-test\.py$|^\.devcontainer/docker-compose\.yml$'
         pass_filenames: false
 
       - id: web-build
@@ -249,7 +249,7 @@ repos:
         language: system
         # The entry HTML and everything under public/ are inputs to the bundle
         # and to nothing above, which is why they are here alone.
-        files: '^apps/web/.*\.(ts|tsx|css|html|json|m?js)$|^tsconfig\.base\.json$|^package(-lock)?\.json$|^ci/gates/web-build\.py$'
+        files: '^apps/web/.*\.(ts|tsx|css|html|json|m?js)$|^tsconfig\.base\.json$|^package(-lock)?\.json$|^ui-common$|^ci/gates/web-build\.py$'
         pass_filenames: false
 
       - id: k8s-manifests
@@ -364,7 +364,7 @@ repos:
         name: "Dockerfile build contexts"
         entry: uv run --quiet --project ci gate run build-context
         language: system
-        files: '(^|/)[^/]*[Dd]ockerfile[^/]*$|(^|/)\.dockerignore$|^rust-toolchain\.toml$|^gg$|^scripts/stage-tcab-packages\.mjs$|^scripts/ci/build-context\.sh$|^ci/gates/build-context\.py$'
+        files: '(^|/)[^/]*[Dd]ockerfile[^/]*$|(^|/)\.dockerignore$|^rust-toolchain\.toml$|^gg$|^ui-common$|^scripts/stage-tcab-packages\.mjs$|^scripts/ci/build-context\.sh$|^ci/gates/build-context\.py$'
         pass_filenames: false
 
       - id: k8s-deploy-sets

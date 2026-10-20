@@ -24,6 +24,10 @@
     },
     "test-suites": {
       "@clockwyrks/lattice-designer": "tools/lattice-designer"
+    },
+    "ui-common": {
+      "@clockwyrks/run-stats": "packages/run-stats",
+      "@clockwyrks/ui": "packages/ui"
     }
   }
 }

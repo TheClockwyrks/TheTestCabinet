@@ -33,6 +33,7 @@
     "/tool-sprite/**",
     "/apps/docs/src/content/docs/gg/**",
     "/test-suites/**",
+    "/ui-common/**",
     "/tasks/**/done/**",
     "/.claude/workflows/**",
     "/.claude/worktrees/**",

@@ -34,7 +34,7 @@ const VIRTUAL_ID = "virtual:tcab-snapshot";
 const RESOLVED_VIRTUAL_ID = "\0" + VIRTUAL_ID;
 
 // The engineless run's slug. It mirrors `DEFAULT_ENGINE_SLUG` in
-// `packages/ui/src/app/data/engines.ts`, restated rather than imported because this
+// `ui-common/packages/ui/src/app/data/engines.ts`, restated rather than imported because this
 // plugin runs in the Vite config, outside the app bundle it would have to pull in
 // to reach it. A snapshot always carries the engineless rendering (it is a
 // variant's own `prompt`/`seededInputs`), so it is always one of the engines a
@@ -618,7 +618,7 @@ interface AssembledSubReviewItem {
 // variant that reuses a common category's id extends that category (folding in its
 // items and weight) rather than forming a duplicate group. A fresh-id variant item
 // is appended, preserving "common first, then the variant's own". A local mirror of
-// `mergeReviewItems` in packages/ui/src/ratings.ts (and `merge_review_items` in the
+// `mergeReviewItems` in ui-common/packages/ui/src/ratings.ts (and `merge_review_items` in the
 // Rust core) — duplicated rather than imported so this build-time plugin need not
 // pull the React UI package.
 function mergeSnapshotReviewItems(
@@ -843,7 +843,7 @@ const EMPTY: AssembledSnapshot = {
 };
 
 // Rating tiers, ordered best to worst — the worst across reviewers/domains is the
-// run's aggregate. Mirrors the `Rating` enum in `packages/ui/src/ratings.ts`.
+// run's aggregate. Mirrors the `Rating` enum in `ui-common/packages/ui/src/ratings.ts`.
 const RATING_ORDER = ["flawless", "great", "passable", "scuffed", "broken"];
 
 // Aesthetic tiers, ordered best to worst — the second channel, one run-wide
@@ -1528,7 +1528,7 @@ async function loadSnapshot(
   // This MIRRORS the Rust helpers that write them (`reference_prefix` /
   // `reference_image_key` / `reference_actions_key` in
   // `contracts/crates/contracts/src/asset_reference.rs`) and the console's
-  // `referenceMediaKey` in `packages/ui/src/transport/httpBackend.ts`; all three
+  // `referenceMediaKey` in `ui-common/packages/ui/src/transport/httpBackend.ts`; all three
   // must change together. The console's helper is not imported here because this
   // build-time plugin must not pull in the React UI package.
   for (const file of caseFiles) {

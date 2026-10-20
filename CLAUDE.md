@@ -51,9 +51,9 @@ Where each responsibility lives, the edges between the repositories and how a
 dependency is named:
 [Repositories](apps/docs/src/content/docs/development/repositories.md#where-each-responsibility-lives).
 Every repository but `contracts`, `engines`, `gg`, `gg.rocks`,
-`microservice-repos`, `tool-sprite`, `test-suites` and `cold-storage` is still
-a directory of this tree today (`crates/`, `apps/`, `packages/`), so until it
-is extracted its code is found there.
+`microservice-repos`, `tool-sprite`, `test-suites`, `ui-common` and
+`cold-storage` is still a directory of this tree today (`crates/`, `apps/`,
+`packages/`), so until it is extracted its code is found there.
 
 The shared packages: `@clockwyrks/run-record` (the run record contract; see
 [`components/contracts/run-records.md`](apps/docs/src/content/docs/components/contracts/run-records.md)),
@@ -166,9 +166,9 @@ runner, rendered by the kit, and its own gates run from its checkout with the
 same command: a Rust workspace's `rust-*` gates, an npm workspace's
 `typescript` gate, `build-context` in a kind that builds an image, and the
 gates a repository adds (`contract-drift` in `contracts`, `seeded-contract` in
-`engines`, `frozen-paths`, `spec-prose`, `spec-vocabulary`, `audio-packs` and
-`validators-typecheck` in `test-suites`). gg's suite runs in the `gg`
-repository.
+`engines`, `web-lint` in `ui-common`, `frozen-paths`, `spec-prose`,
+`spec-vocabulary`, `audio-packs` and `validators-typecheck` in `test-suites`).
+gg's suite runs in the `gg` repository.
 
 ```sh
 cd microservice-driver && make gate

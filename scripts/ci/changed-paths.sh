@@ -89,11 +89,12 @@ is_pipeline() { # path
 # initializes both with scripts/ci/submodules.sh, gg's does, since cargo loads the
 # crate the patch table names for it and the lock records its version, and
 # test-suites' does, since the core and backend suites read the committed
-# catalog from that checkout.
+# catalog from that checkout. ui-common's does as gg's does: cargo loads the
+# crate the patch table names for it, and the lock records its version.
 reaches_rust() { # path
 	is_pipeline "$1" && return 0
 	case "$1" in
-		contracts | engines | gg | test-suites | scripts/ci/submodules.sh) return 0 ;;
+		contracts | engines | gg | test-suites | ui-common | scripts/ci/submodules.sh) return 0 ;;
 		apps/docs/* | apps/web/* | apps/site/*) return 1 ;;
 		tasks/* | .github/* | .devcontainer/* | .claude/* | .vscode/*) return 1 ;;
 		deployments/*) return 1 ;;

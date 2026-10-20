@@ -1,8 +1,0 @@
-@use "../styles/surfaces" as s;
-
-// The standard surface panel: the shared translucent background (so a backdrop
-// reads through at the same opacity as every other panel) inside a
-// neon-outlined, softly glowing card.
-.panel {
-  @include s.panel;
-}

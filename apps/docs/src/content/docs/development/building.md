@@ -825,7 +825,8 @@ console holding nothing, and the read-only static gallery.
 This suite covers whether a page loads at all; the per-page suites cover whether
 it behaves correctly. Adding a route to `routePatterns` adds it to the walk.
 
-The page error boundary in `packages/ui/src/app/components/PageErrorBoundary.tsx`
+The page error boundary in `ui-common`'s
+`packages/ui/src/app/components/PageErrorBoundary.tsx`
 is the runtime counterpart. It wraps the routed body, so a page that throws is
 contained to itself: the chrome and section nav stay, the panel names the
 failure, and navigating to another page clears it.
