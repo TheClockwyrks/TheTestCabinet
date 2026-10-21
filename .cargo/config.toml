@@ -10,11 +10,12 @@
 #
 # The portably-buildable binaries:
 #   - `tcab-backend`    — the definition/run store + API + run queue (`build-portable-backend`)
-#   - `tcab-artifacts`  — the produced-run-tree server (`build-portable-artifacts`)
 #
 # The CLI (`tcab`) and the per-run executor (`tcab-driver`) are microservice-driver's,
 # whose own configuration carries their `build-portable` and `build-portable-driver`
-# aliases. gg's static build is the gg repository's own (its `build-portable-gg` alias
+# aliases, and the artifacts service (`tcab-artifacts`) is microservice-artifacts',
+# whose configuration carries `build-portable-artifacts`. gg's static build is the
+# gg repository's own (its `build-portable-gg` alias
 # and `scripts/build-gg-static.sh`), and the driver runs the release it pins.
 # All share the same prerequisites (`ring`, a little C behind rustls). The backend also
 # pulls in SeaORM's SQLite driver with bundled `libsqlite3-sys`, which compiles
@@ -28,11 +29,9 @@
 #
 # Build with:
 #   cargo build-portable-backend     # -> target/x86_64-unknown-linux-musl/release/tcab-backend
-#   cargo build-portable-artifacts   # -> .../release/tcab-artifacts
 
 [alias]
 build-portable-backend = "build -p test-cabinet-backend --release --target x86_64-unknown-linux-musl"
-build-portable-artifacts = "build -p test-cabinet-artifacts --release --target x86_64-unknown-linux-musl"
 
 # rustdoc documents private items too, so the `rust-doc` gate resolves the
 # intra-doc links in private doc comments as well as public ones; without it a

@@ -164,6 +164,11 @@ REPOS_COMMIT ?= $(shell sh -c 'h=$$(git -C "$(REPOS_DIR)" rev-parse HEAD 2>/dev/
 DISPATCHER_DIR    := $(REPO)/microservice-dispatcher
 DISPATCHER_COMMIT ?= $(shell sh -c 'h=$$(git -C "$(DISPATCHER_DIR)" rev-parse HEAD 2>/dev/null) || exit 0; [ -n "$$(git -C "$(DISPATCHER_DIR)" status --porcelain 2>/dev/null)" ] && h="$$h-dirty"; printf %s "$$h"')
 
+# The artifacts service is likewise its own repository, microservice-artifacts, built
+# from that checkout's own Dockerfile with the checkout as the build context.
+ARTIFACTS_DIR    := $(REPO)/microservice-artifacts
+ARTIFACTS_COMMIT ?= $(shell sh -c 'h=$$(git -C "$(ARTIFACTS_DIR)" rev-parse HEAD 2>/dev/null) || exit 0; [ -n "$$(git -C "$(ARTIFACTS_DIR)" status --porcelain 2>/dev/null)" ] && h="$$h-dirty"; printf %s "$$h"')
+
 # The driver is its own repository too, microservice-driver, and with it everything a
 # run executes in: the driver image is built from that checkout's own Dockerfile with
 # the checkout as the build context, and the run images and the audio store by its
@@ -574,9 +579,10 @@ audio-store:
 # from, then load them into the cluster's nodes (no registry needed for local
 # development).
 #
-# The repos, dispatcher and driver images are built from the microservice-repos,
-# microservice-dispatcher and microservice-driver checkouts' own Dockerfiles, each with
-# its checkout as its context (REPOS_DIR, DISPATCHER_DIR and DRIVER_DIR above). Every
+# The repos, dispatcher, artifacts and driver images are built from the
+# microservice-repos, microservice-dispatcher, microservice-artifacts and
+# microservice-driver checkouts' own Dockerfiles, each with its checkout as its
+# context (REPOS_DIR, DISPATCHER_DIR, ARTIFACTS_DIR and DRIVER_DIR above). Every
 # other service image
 # comes out of ONE file, deployments/images/services.Dockerfile, each selected with
 # `--target`. That file shares a single cargo build stage across every service, so
@@ -618,7 +624,8 @@ images: audio-store
 	$(CONTAINER_TOOL) build --build-arg TCAB_BUILD_COMMIT='$(DRIVER_COMMIT)' --build-arg AUDIO_STORE_IMAGE='$(AUDIO_STORE_IMG)' \
 	                        $(if $(wildcard $(DRIVER_NPM_CONFIG)),$(DRIVER_NPM_SECRET)) \
 	                        -t '$(DRIVER_IMG)' -f '$(DRIVER_DIR)/Dockerfile' '$(DRIVER_DIR)'
-	$(CONTAINER_TOOL) build --build-arg TCAB_BUILD_COMMIT='$(TCAB_COMMIT)' --target artifacts  -t '$(ARTIFACTS_IMG)'  -f '$(SERVICES_DOCKERFILE)' '$(REPO)'
+	@[ -f '$(ARTIFACTS_DIR)/Dockerfile' ] || { echo "ERROR: $(ARTIFACTS_DIR) is not checked out; run: git submodule update --init microservice-artifacts" >&2; exit 1; }
+	$(CONTAINER_TOOL) build --build-arg TCAB_BUILD_COMMIT='$(ARTIFACTS_COMMIT)' -t '$(ARTIFACTS_IMG)' -f '$(ARTIFACTS_DIR)/Dockerfile' '$(ARTIFACTS_DIR)'
 	$(CONTAINER_TOOL) build --build-arg TCAB_BUILD_COMMIT='$(TCAB_COMMIT)' --target arena      -t '$(ARENA_IMG)'      -f '$(SERVICES_DOCKERFILE)' '$(REPO)'
 	@[ -f '$(REPOS_DIR)/Dockerfile' ] || { echo "ERROR: $(REPOS_DIR) is not checked out; run: git submodule update --init microservice-repos" >&2; exit 1; }
 	$(CONTAINER_TOOL) build --build-arg TCAB_BUILD_COMMIT='$(REPOS_COMMIT)' -t '$(REPOS_IMG)' -f '$(REPOS_DIR)/Dockerfile' '$(REPOS_DIR)'

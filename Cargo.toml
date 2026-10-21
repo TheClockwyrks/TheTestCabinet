@@ -3,7 +3,6 @@ resolver = "3"
 members = [
 	"crates/backend",
 	"crates/publisher",
-	"crates/artifacts",
 	"crates/arena",
 	"crates/db-auth",
 	"crates/entities",
@@ -157,7 +156,8 @@ tempfile = "3"
 # written compressed at the tree root, mirrored into the backend store as opaque
 # bytes, and served back content-negotiated on the request's `Accept-Encoding` —
 # so the writer (the run host), the store's reader (the backend) and the archive
-# service all need the same codec. Promoted here from `crates/artifacts`, which
+# service all need the same codec. Promoted here from the artifacts crate (now in
+# microservice-artifacts), which
 # pinned it privately for the run-archive download. Default features keep the
 # pure-Rust `miniz_oxide` backend — no zlib, so no system dependency, matching the
 # `png` stance on keeping the workspace buildable on minimal hosts.
@@ -237,9 +237,6 @@ hex = "0.4"
 md-5 = "0.10"
 percent-encoding = "2"
 
-# The operating system's entropy.
-getrandom = "0.3"
-
 # Streaming HTTP bodies. The backend relays a run's live harness events to the
 # console as the run proceeds; `futures-util` adapts an mpsc receiver into the
 # `Stream` axum's `Body::from_stream` consumes, and `bytes` frames each NDJSON
@@ -247,11 +244,6 @@ getrandom = "0.3"
 # so naming them here adds no new fetch.
 futures-util = "0.3"
 bytes = "1"
-# `tokio-util`'s `io` feature carries `ReaderStream`, which turns the driver's
-# finished tarball file into the `Stream` `reqwest::Body::wrap_stream` consumes —
-# the read side of the same "never buffer a whole run tree" rule. Already in the
-# graph transitively (via reqwest/hyper), so naming it here adds no new fetch.
-tokio-util = { version = "0.7", features = ["io"] }
 
 # OpenTelemetry. These crates move in lockstep across the `opentelemetry`
 # ecosystem and are pinned together here so the whole workspace shares one

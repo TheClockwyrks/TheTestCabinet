@@ -1,6 +1,6 @@
 # Keep the build context lean AND stable. The service-image builds
 # (deployments/images/services.Dockerfile, which compiles the
-# backend/artifacts/arena/publisher crates) use the repository root as their context.
+# backend/arena/publisher crates) use the repository root as their context.
 # Almost every one of those builds is just a `cargo build` over the Rust workspace —
 # nothing else — so this is an ALLOWLIST: ignore everything, then re-include only the
 # paths cargo actually reads. (The driver's image and the run-container images are

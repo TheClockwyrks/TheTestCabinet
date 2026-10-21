@@ -65,7 +65,7 @@ Overlays compose in reusable kustomize **components**:
 
 The service container images are built from [`../images/`](../images/) — every Rust
 service is a `--target` of the shared `services.Dockerfile` (`backend`,
-`driver`, `artifacts`, `arena`, `publisher`), and the console has its
+`arena`, `publisher`), and the console has its
 own `web.Dockerfile`. The repos service is its own repository, `microservice-repos`,
 whose pipeline builds its image from that repository's `Dockerfile` and pushes it as
 `testcabinet.azurecr.io/microservice-repos:<commit>`. The dispatcher is likewise
@@ -80,7 +80,7 @@ beside it, the **run-container** images the sandbox runs inside (its
 `testcabinet.azurecr.io/microservice-artifacts:<commit>`, the image the `staging`
 and `prod` overlays run it from. The Azure pipeline builds the
 others on every push to `master` and `staging`, and pushes each to
-`testcabinet.azurecr.io/<image>:<sha>` (`tcab-backend`, `tcab-artifacts`,
+`testcabinet.azurecr.io/<image>:<sha>` (`tcab-backend`,
 `tcab-arena`, `tcab-publisher` and `tcab-web`). The workspace
 template's publish stage retags `tcab-backend:<sha>` as
 `testcabinet.azurecr.io/the-test-cabinet-backend:<sha>`
@@ -221,6 +221,6 @@ your **environment** (`ANTHROPIC_API_KEY` / `OPENAI_API_KEY` / `OPENROUTER_API_K
 for the driver, a dev `SERVICE_TOKEN` for the other two), so no key is written to a
 tracked file.
 
-The repo-root `.env.backend.example` and `.env.artifacts.example`, and
-microservice-dispatcher's `.env.dispatcher.example` at that repository's root,
+The repo-root `.env.backend.example`, microservice-artifacts' `.env.artifacts.example`
+and microservice-dispatcher's `.env.dispatcher.example`, each at its repository's root,
 remain the authoritative reference for every variable each service reads.
