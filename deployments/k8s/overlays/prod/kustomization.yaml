@@ -59,8 +59,9 @@ components:
 # the commit being deployed (and adds the dispatcher's run-image environment) before
 # anything applies it. The backend's repository is `the-test-cabinet-backend`, the name
 # the workspace template's publish and deploy stages use; the repos service's is
-# `microservice-repos` and the dispatcher's `microservice-dispatcher`, the
-# repositories they are built in; the other five keep their `tcab-*` names.
+# `microservice-repos`, the dispatcher's `microservice-dispatcher` and the driver's
+# `microservice-driver`, the repositories they are built in, each pinned to the
+# commit its submodule pointer names; the other four keep their `tcab-*` names.
 images:
   - name: REPLACE_REGISTRY/tcab-backend
     newName: testcabinet.azurecr.io/the-test-cabinet-backend
@@ -69,7 +70,7 @@ images:
     newName: testcabinet.azurecr.io/microservice-dispatcher
     newTag: unpinned
   - name: REPLACE_REGISTRY/tcab-driver
-    newName: testcabinet.azurecr.io/tcab-driver
+    newName: testcabinet.azurecr.io/microservice-driver
     newTag: unpinned
   - name: REPLACE_REGISTRY/tcab-artifacts
     newName: testcabinet.azurecr.io/tcab-artifacts

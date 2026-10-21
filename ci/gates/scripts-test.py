@@ -1,8 +1,7 @@
 """script library tests (node --test).
 
 The repository's Node scripts keep their logic in `scripts/lib/`, and each
-module there has a `*.test.mjs` beside it; a script at `scripts/` with a test of
-its own (stage-tcab-packages.mjs) has one beside it too. The root `test:scripts`
+module there has a `*.test.mjs` beside it. The root `test:scripts`
 script runs them all with Node's own test runner, which needs no install beyond
 Node.
 

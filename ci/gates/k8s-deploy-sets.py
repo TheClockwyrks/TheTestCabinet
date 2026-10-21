@@ -33,6 +33,7 @@ if run(["scripts/ci/k8s-deploy-sets.sh"], unset=GIT_LOCATION_VARIABLES).returnco
         "",
         "A deploy set is not what the deploy identity may apply, above. Reproduce a set with:",
         "    TCAB_PIN_GITLINKS='microservice-dispatcher=456789abcdef0123456789abcdef0123456789ab",
+        "    microservice-driver=cdef0123456789abcdef0123456789abcdef0123",
         "    microservice-repos=89abcdef0123456789abcdef0123456789abcdef' \\",
         "    scripts/ci/deploy-environment.sh --render staging 0123456789abcdef0123456789abcdef01234567",
     )

@@ -71,8 +71,10 @@ spec:
                 secretKeyRef:
                   name: tcab-dispatcher-secrets
                   key: TCAB_BACKEND_SERVICE_TOKEN
-            # The driver image each created Job's pod runs. Pin the same :<git-sha>
-            # the dispatcher image is pinned to so they version together.
+            # The driver image each created Job's pod runs. The staging and prod
+            # deploys pin it to testcabinet.azurecr.io/microservice-driver at the
+            # commit the superrepo's microservice-driver pointer names
+            # (scripts/ci/pin-images.sh), the commit TCAB_CONTAINER_TAG names too.
             - name: TCAB_DRIVER_IMAGE
               value: "REPLACE_REGISTRY/tcab-driver:latest"
             # The namespace the dispatcher creates driver Jobs in (defaults to its own
@@ -206,11 +208,12 @@ spec:
             # (test-cabinet-base/-base-wasm/-sprite/-sprite-sheet/-adversarial/-performance).
             # Forwarded into every driver Job, where core's resolve_run_image reads
             # them; unset there falls back to the compiled defaults
-            # (testcabinet.azurecr.io / latest). The Azure pipeline pushes each run
-            # image as testcabinet.azurecr.io/<image>:<git-sha> and never :latest, so
-            # every deployment pins TCAB_CONTAINER_TAG to the commit its service
-            # images come from: scripts/ci/pin-images.sh sets it for the staging and
-            # prod overlays.
+            # (testcabinet.azurecr.io / latest). microservice-driver's pipeline
+            # pushes each run image beside the driver's, as
+            # testcabinet.azurecr.io/<image>:<its commit> and never :latest, so every
+            # deployment pins TCAB_CONTAINER_TAG to the commit its driver image comes
+            # from: scripts/ci/pin-images.sh sets it for the staging and prod
+            # overlays.
             - name: TCAB_CONTAINER_TAG
               value: "latest"
             # The artifact service each driver uploads its produced run tree to before

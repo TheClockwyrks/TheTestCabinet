@@ -119,6 +119,7 @@ CI_SHARED_RUST_TRACK = "rust"
 # rather than skipping.
 RUST_TRACKS: dict[str, str] = {
     "contracts": "rust-browser",
+    "microservice-driver": "rust-browser",
     "the-spec-cabinet": "rust-browser",
 }
 BROWSER_TRACKS = frozenset({"rust-browser"})
@@ -136,6 +137,23 @@ WINDOWS_TESTS = frozenset({"contracts", "microservice-driver"})
 WINDOWS_IMAGE = "windows-2022"
 NEXTEST_SCRIPT = "scripts/ci/install-nextest.sh"
 
+# The repositories whose Rust suite reads another repository's files across a
+# data edge, which no manifest can name and so no fetch reaches: the Rust job
+# checks each repository named out beside its own, and hands the suite the
+# variable named, set to that checkout. The backend's tests hold every
+# committed case version to a rule, reading the catalog from
+# `TCAB_DEFINITIONS_ROOT`, which is the `test-suites` checkout (the Building
+# development page, "Tests that read case versions"). Each repository named has
+# to be the target of a data edge of the one reading it in the kit's edge
+# table. A job with a second checkout has every repository under the sources
+# directory by name, so this repository lands in `s/<name>` and each data
+# repository in `s/<target>` beside it, where `<repo>/../<target>` reaches it
+# as it does in the superrepo, and every step of the Rust job runs in this
+# repository's checkout.
+RUST_CHECKOUTS: dict[str, dict[str, str]] = {
+    "microservice-backend": {"test-suites": "TCAB_DEFINITIONS_ROOT"},
+}
+
 # The gates a repository runs that the kit does not render: each is a file the
 # repository writes under its own `ci/gates/`, and the pipeline gives it one
 # step in the job named, after the kit's gates there. An update never touches
@@ -150,6 +168,15 @@ EXTRA_GATES: dict[str, dict[str, tuple[str, ...]]] = {
     "test-suites": {
         "checks": ("frozen-paths", "spec-prose", "spec-vocabulary", "audio-packs", "validators-typecheck"),
     },
+    # microservice-backend's clip store module (scripts/lib/audio-store.mjs), the
+    # one test-suites' `audio-packs` gate resolves the sample packs through, keeps
+    # its Node tests beside it, as the superrepo's `scripts-test` runs its own.
+    "microservice-backend": {"checks": ("scripts-test",)},
+    # microservice-driver's Node scripts (the package store's stager, the audio
+    # store's, the sibling lookup) keep their tests beside them, and
+    # containers/build.sh's table test drives the run-image build through a
+    # docker stub.
+    "microservice-driver": {"checks": ("scripts-test", "containers-test")},
 }
 # The jobs of the gates stage an extra gate may name.
 GATE_JOBS = ("rust", "checks")
@@ -165,8 +192,15 @@ GATE_JOBS = ("rust", "checks")
 # what the repository releases from it is out. gg's `release` stage publishes
 # its binaries, its reference and its toolchains image on a tag, and gg.rocks's
 # `deploy` stage uploads the site to its Pages project from `master` and
-# `staging`.
-PROJECT_PIPELINE: dict[str, tuple[str, ...]] = {"gg": ("release",), "gg.rocks": ("deploy",)}
+# `staging`. microservice-driver's jobs build `tcab` on every run and publish
+# it on a tag, and stage the audio store its image copies; its `runimages`
+# stage builds the run-container images from `master` and `staging`, copying
+# the tools' binaries from their images.
+PROJECT_PIPELINE: dict[str, tuple[str, ...]] = {
+    "gg": ("release",),
+    "gg.rocks": ("deploy",),
+    "microservice-driver": ("runimages",),
+}
 PROJECT_JOBS = ".azure/project/jobs.yml"
 PROJECT_STAGES = ".azure/project/stages.yml"
 # The steps such a repository's Rust job takes after it fetched its
@@ -188,9 +222,11 @@ ARM64_POOL = "pool-dev-linux-arm64-wus3-4c-eph-01"
 # The minutes a Rust job may run, and the repositories given longer. A cold
 # gg build compiles every arm's guest and restores its toolchains first, which
 # outlasts the hour the kit's Rust job is given, as the superrepo's Rust job,
-# which compiled gg in the workspace, was given two.
+# which compiled gg in the workspace, was given two. The driver's suite, the
+# superrepo's longest, ran in the superrepo's Rust job, which was given two and
+# a half, and drives a browser besides.
 RUST_TIMEOUT = 60
-RUST_TIMEOUTS: dict[str, int] = {"gg": 120}
+RUST_TIMEOUTS: dict[str, int] = {"gg": 120, "microservice-driver": 180}
 
 # The crate a render scaffolds in each repository carrying one: its directory
 # under crates/ and its package name. The monorepo's crates keep their
@@ -229,15 +265,17 @@ CRATES: dict[str, tuple[str, str]] = {
 # The release tag each repository's dependents pin, for the repositories that
 # have cut one. A manifest names a dependency at its public source on this tag,
 # and on the `master` branch while the repository has none. `contracts` cut
-# `v0.2.2` and `engines` `v1.1.1`, whose runs published their packages to the
-# feed at those versions. `tool-model-core` cut `v0.1.0`, the shared model
-# libraries the model tools build on, and `tool-audio-core` cut `v0.1.0`, the
+# `v0.2.3` and `engines` `v1.1.2`, whose runs published their packages to the
+# feed at those versions. `tool-model-core` cut `v0.1.1`, the shared model
+# libraries the model tools build on, and `tool-audio-core` cut `v0.1.1`, the
 # shared audio library the audio tools build on; neither publishes a package.
+# Every one of the four names contracts at `v0.2.3`, so the driver, whose build
+# reaches all of them, compiles one copy of the contracts crates.
 TAGS: dict[str, str] = {
-    "contracts": "v0.2.2",
-    "engines": "v1.1.1",
-    "tool-model-core": "v0.1.0",
-    "tool-audio-core": "v0.1.0",
+    "contracts": "v0.2.3",
+    "engines": "v1.1.2",
+    "tool-model-core": "v0.1.1",
+    "tool-audio-core": "v0.1.1",
 }
 
 # The npm registry of the `the-test-cabinet` feed of the project's Azure
@@ -352,6 +390,82 @@ def fetched_repositories(name: str) -> list[str]:
     return list(edge_table().closure(name))
 
 
+def rust_checkouts(name: str) -> dict[str, str]:
+    """The repositories the Rust job checks out beside this one, each to the variable naming its checkout.
+
+    Each has to be the target of a data edge of this repository: a build
+    edge is fetched by cargo, and a checkout no edge draws would read a
+    repository the Repositories page says this one never reads.
+    """
+    checkouts = RUST_CHECKOUTS.get(name, {})
+    if not checkouts:
+        return {}
+    edges = edge_table()
+    kind = edges.REPOSITORIES.get(name)
+    if kind is None or not edges.KINDS[kind].crate:
+        raise RenderError(f"{name}'s Rust job checks out {list(checkouts)}, and a {kind} repository has no Rust job")
+    read = {one.target for one in edges.DATA_EDGES if one.source == name}
+    for repo, variable in checkouts.items():
+        if repo not in read:
+            raise RenderError(f"{name}'s Rust job checks out {repo}, which is no data edge {name} -> {repo}")
+        if repo == name:
+            raise RenderError(f"{name}'s Rust job checks itself out as a data repository")
+        if not re.fullmatch(r"[A-Z][A-Z0-9_]*", variable):
+            raise RenderError(f"{variable!r} is not shaped like an environment variable")
+    if name in WINDOWS_TESTS:
+        raise RenderError(f"{name} runs its suite on Windows too, whose job checks out no data repository")
+    if name in PROJECT_PIPELINE:
+        raise RenderError(
+            f"{name} takes setup steps of its own, which run outside its checkout beside {list(checkouts)}"
+        )
+    return dict(checkouts)
+
+
+def rust_repositories(name: str) -> list[str]:
+    """The repositories a pipeline of `name` declares: what it may fetch, then what its Rust job checks out."""
+    fetched = fetched_repositories(name)
+    return fetched + [repo for repo in rust_checkouts(name) if repo not in fetched]
+
+
+def rust_dir(name: str) -> str:
+    """Where under the sources directory the Rust job checks this repository out, or `""` for the directory itself.
+
+    A job checking out one repository has it at the sources directory; one
+    checking out more has each at its name under it.
+    """
+    return name if rust_checkouts(name) else ""
+
+
+def rust_root(name: str) -> str:
+    """Where the Rust job's checkout of this repository is, as the pipeline names it."""
+    return f"{CHECKS_SOURCES}/{rust_dir(name)}" if rust_dir(name) else CHECKS_SOURCES
+
+
+def rust_workdir(name: str) -> list[str]:
+    """The line a step of the Rust job runs in this repository's checkout by, or none for a lone checkout."""
+    return [f"            workingDirectory: {rust_root(name)}"] if rust_dir(name) else []
+
+
+def ci_rust_checkout(name: str) -> str:
+    """The Rust job's checkouts: this repository, then each data repository it reads beside it."""
+    step = "          "
+    checkouts = rust_checkouts(name)
+    if not checkouts:
+        return "\n".join([f"{step}- checkout: self", f"{step}  fetchDepth: 1", f"{step}  clean: true"])
+    lines = [
+        f"{step}# This repository beside each repository its suite reads across a data",
+        f"{step}# edge, every one at its name under the sources directory.",
+    ]
+    for repo, path in (("self", name), *((repo, repo) for repo in checkouts)):
+        lines += [
+            f"{step}- checkout: {repo}",
+            f"{step}  path: s/{path}",
+            f"{step}  fetchDepth: 1",
+            f"{step}  clean: true",
+        ]
+    return "\n".join(lines)
+
+
 def uses_block(aliases: list[str]) -> str:
     """A job's `uses.repositories` list of the resources named, or nothing when there is none."""
     if not aliases:
@@ -399,16 +513,22 @@ def ci_resources(name: str, kind: str) -> str:
 
     A project that protects repository access in YAML pipelines gives a run's
     token only the repositories the pipeline declares, so every one a fetch
-    may reach is declared here.
+    may reach is declared here, and every one the Rust job checks out.
     """
     lines = ["resources:"]
-    repos = fetched_repositories(name)
+    repos = rust_repositories(name)
     if repos:
-        lines += [
-            "  # Every repository the run may fetch, so the job's access token may",
-            "  # read each one.",
-            "  repositories:",
-        ]
+        if rust_checkouts(name):
+            lines += [
+                "  # Every repository the run may fetch, and each the Rust job checks out",
+                "  # beside this one, so the job's access token may read each one.",
+            ]
+        else:
+            lines += [
+                "  # Every repository the run may fetch, so the job's access token may",
+                "  # read each one.",
+            ]
+        lines.append("  repositories:")
         for repo in repos:
             lines += [
                 f"    - repository: {repo}",
@@ -450,15 +570,16 @@ def ci_rust_npm(name: str, kind: str) -> str:
         return ""
     return "\n".join(
         [
-            npm_feed_step(),
+            npm_feed_step(rust_workdir(name)),
             "          - script: npm ci",
             "            displayName: Install the npm workspace the browser tests drive",
+            *rust_workdir(name),
         ]
     )
 
 
 def ci_rust_variables(name: str) -> str:
-    """The Rust job's `variables`: the cargo home under the cache, and the browser requirement on its track."""
+    """The Rust job's `variables`: the cargo home under the cache, the browser on its track, and each data checkout."""
     lines = [
         "        variables:",
         "          CARGO_HOME: $(ciCache)/cargo-home",
@@ -466,6 +587,8 @@ def ci_rust_variables(name: str) -> str:
     ]
     if browser_track(name):
         lines.append("          TCAB_REQUIRE_BROWSER: 1")
+    for repo, variable in rust_checkouts(name).items():
+        lines.append(f"          {variable}: {CHECKS_SOURCES}/{repo}")
     return "\n".join(lines)
 
 
@@ -521,13 +644,16 @@ def npm_workspaces(kind: str) -> list[str]:
     return list(NPM_WORKSPACES.get(kind, DEFAULT_NPM_WORKSPACES))
 
 
-def npm_feed_step() -> str:
-    """The step writing the job's access token as npm's credential for the feed."""
-    return (
-        f"          - script: {NPM_FEED_SCRIPT} {FEED_REGISTRY}\n"
-        "            displayName: Authenticate npm to the package feed\n"
-        "            env:\n"
-        "              SYSTEM_ACCESSTOKEN: $(System.AccessToken)"
+def npm_feed_step(workdir: list[str] | None = None) -> str:
+    """The step writing the job's access token as npm's credential for the feed, run where `workdir` says."""
+    return "\n".join(
+        [
+            f"          - script: {NPM_FEED_SCRIPT} {FEED_REGISTRY}",
+            "            displayName: Authenticate npm to the package feed",
+            *(workdir or []),
+            "            env:",
+            "              SYSTEM_ACCESSTOKEN: $(System.AccessToken)",
+        ]
     )
 
 
@@ -579,10 +705,12 @@ def extra_gates(name: str, kind: str) -> dict[str, tuple[str, ...]]:
 def ci_extra_gates(name: str, kind: str, job: str) -> str:
     """The steps of the repository's own gates in one job, or nothing."""
     lines: list[str] = []
+    workdir = rust_workdir(name) if job == "rust" else []
     for gate_id in extra_gates(name, kind).get(job, ()):
         lines += [
             f"          - script: uv run --quiet --project ci gate run {gate_id}",
             f"            displayName: {gate_id} (this repository's own gate)",
+            *workdir,
             "            condition: eq(variables['checksReady'], 'true')",
         ]
     return "\n".join(lines)
@@ -596,6 +724,7 @@ def ci_playwright_gate(name: str, kind: str) -> str:
         [
             f"          - script: uv run --quiet --project ci gate run {PLAYWRIGHT_GATE}",
             "            displayName: Playwright against the image's browser",
+            *rust_workdir(name),
             "            condition: eq(variables['checksReady'], 'true')",
         ]
     )
@@ -681,11 +810,27 @@ def rust_timeout(name: str) -> int:
     return RUST_TIMEOUTS.get(name, RUST_TIMEOUT)
 
 
+# The longest line the rendered ci project's ruff allows (`line-length` in
+# templates/repository/ci/pyproject.toml).
+PYTHON_LINE_LENGTH = 120
+
+
 def python_dict(mapping: dict[str, str]) -> str:
-    """A mapping of strings as a Python literal laid out as `ruff format` lays it out, one entry a line."""
+    """A mapping of strings as a Python literal laid out as `ruff format` lays it out, one entry a line.
+
+    `ruff format` never splits a string, so an entry whose value runs past the
+    line length, such as a CI image pinned at a commit under a long name, is
+    marked as the one long line ruff is to let pass.
+    """
     if not mapping:
         return "{}"
-    return "{\n" + "".join(f"    {json.dumps(key)}: {json.dumps(value)},\n" for key, value in mapping.items()) + "}"
+    lines = []
+    for key, value in mapping.items():
+        line = f"    {json.dumps(key)}: {json.dumps(value)},"
+        if len(line) > PYTHON_LINE_LENGTH:
+            line += "  # noqa: E501"
+        lines.append(line + "\n")
+    return "{\n" + "".join(lines) + "}"
 
 
 def ci_publish(kind: str) -> str:
@@ -756,9 +901,11 @@ def ci_image_stage(name: str, kind: str) -> str:
 
     One job per architecture builds natively and pushes `<name>:<commit>-<arch>`
     (`scripts/ci/image.sh`), with the job's token able to fetch the repositories
-    its manifests reach, as the Rust job does; a last job fuses the two into
-    `<name>:<commit>` (`scripts/ci/manifest.sh`). Nothing for a repository
-    that builds no image.
+    its manifests reach, as the Rust job does, and, for a kind carrying an npm
+    workspace, written as npm's credential for the feed, which the build is
+    handed as a secret, so a Dockerfile installing a package of the project
+    from the feed reaches it; a last job fuses the two into `<name>:<commit>`
+    (`scripts/ci/manifest.sh`). Nothing for a repository that builds no image.
     """
     if not builds_image(name, kind):
         return ""
@@ -802,6 +949,7 @@ def ci_image_stage(name: str, kind: str) -> str:
             f"{steps}  displayName: Fetch the project's dependencies from Azure",
             f"{steps}  env:",
             f"{steps}    SYSTEM_ACCESSTOKEN: $(System.AccessToken)",
+            *([npm_feed_step()] if typescript_workspace(kind) else []),
             *_registry_login(steps),
             f'{steps}- script: {IMAGE_SCRIPT} {name} "$(Build.SourceVersion)"',
             f"{steps}  displayName: Build and push the image ({arch})",
@@ -926,6 +1074,16 @@ def variables(name: str, kind: str, description: str) -> Variables:
         "ci_resources": ci_resources(name, kind),
         "ci_rust_track": rust_track(name) if shape.crate else "",
         "ci_rust_variables": ci_rust_variables(name),
+        # The Rust job's checkouts, and where in them its steps run: this
+        # repository alone at the sources directory, or beside each data
+        # repository its suite reads, at its name under it.
+        "ci_rust_checkout": ci_rust_checkout(name) if shape.crate else "",
+        "ci_rust_uses": uses_block(rust_repositories(name)) if shape.crate else "",
+        "ci_rust_root": rust_root(name),
+        "ci_rust_workdir": rust_root(name) if shape.crate and rust_dir(name) else "",
+        # The prefix of a path relative to the sources directory that reaches
+        # into this repository's checkout.
+        "rust_dir_prefix": f"{rust_dir(name)}/" if rust_dir(name) else "",
         "ci_rust_npm": ci_rust_npm(name, kind),
         "ci_playwright_gate": ci_playwright_gate(name, kind),
         # The conditional name of the `playwright-image` gate and its test.
@@ -980,6 +1138,10 @@ def variables(name: str, kind: str, description: str) -> Variables:
         "mirror_script": MIRROR_SCRIPT,
         # The same repositories as a Python list, for ci/tests/test_wiring.py.
         "fetched_list": json.dumps(fetched_repositories(name)),
+        # The data checkouts and the directory of this repository's own, for
+        # ci/tests/test_wiring.py.
+        "rust_checkouts_dict": python_dict(rust_checkouts(name)),
+        "rust_dir": rust_dir(name),
     }
 
 

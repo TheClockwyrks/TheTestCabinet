@@ -136,9 +136,9 @@ from `/opt/audio`, which staging writes once the container has started.
 - Each declared `name@version` ref is resolved against the host audio store,
   located by `TCAB_AUDIO_STORE` and defaulting to `/opt/tcab-audio`. The driver
   image carries the store; a local checkout fetches it with
-  `scripts/fetch-audio-store.sh`. A ref the store does not hold, or one whose
-  stored pack disagrees with the pinned name, version, or kind, fails the run
-  before the container starts.
+  microservice-driver's `scripts/fetch-audio-store.sh`. A ref the store does
+  not hold, or one whose stored pack disagrees with the pinned name, version,
+  or kind, fails the run before the container starts.
 - The store's `objects.lock.json` records every published object with its sha256
   and byte length. Every clip a declared pack names is checked against it before
   the clip is carried in, so a run is rendered only against audio that was

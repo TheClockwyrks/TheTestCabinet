@@ -19,6 +19,9 @@
 [submodule "microservice-dispatcher"]
 	path = microservice-dispatcher
 	url = ../microservice-dispatcher
+[submodule "microservice-driver"]
+	path = microservice-driver
+	url = ../microservice-driver
 	branch = master
 [submodule "microservice-repos"]
 	path = microservice-repos

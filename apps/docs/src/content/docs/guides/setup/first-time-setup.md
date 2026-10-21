@@ -134,6 +134,7 @@ fetch it once:
 
 ```sh
 az acr login --name testcabinet
+# In microservice-driver.
 TCAB_CONTAINER_TAG=<master commit> scripts/fetch-audio-store.sh
 ```
 
@@ -160,8 +161,10 @@ the pinned revision through the pinning workspace:
 npm exec -w @clockwyrks/browser-driver -- playwright install chromium
 ```
 
-The host driver script (`packages/browser-driver/driver.mjs`) is located relative
-to the working directory. `TCAB_BROWSER_DRIVER` overrides that path.
+The host driver script (`packages/browser-driver/driver.mjs` of the `contracts`
+repository, `contracts/packages/browser-driver/driver.mjs` in a superrepo
+checkout) is located relative to the working directory. `TCAB_BROWSER_DRIVER`
+overrides that path.
 
 ## 5. Credentials
 

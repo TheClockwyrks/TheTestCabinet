@@ -9,13 +9,13 @@
 # NixOS — as well as on mainstream distributions.
 #
 # The portably-buildable binaries:
-#   - `tcab`            — the CLI (`build-portable`)
 #   - `tcab-backend`    — the definition/run store + API + run queue (`build-portable-backend`)
-#   - `tcab-driver`     — the per-run executor (`build-portable-driver`)
 #   - `tcab-artifacts`  — the produced-run-tree server (`build-portable-artifacts`)
 #
-# gg's static build is the gg repository's own (its `build-portable-gg` alias and
-# `scripts/build-gg-static.sh`), and the driver runs the release it pins.
+# The CLI (`tcab`) and the per-run executor (`tcab-driver`) are microservice-driver's,
+# whose own configuration carries their `build-portable` and `build-portable-driver`
+# aliases. gg's static build is the gg repository's own (its `build-portable-gg` alias
+# and `scripts/build-gg-static.sh`), and the driver runs the release it pins.
 # All share the same prerequisites (`ring`, a little C behind rustls). The backend also
 # pulls in SeaORM's SQLite driver with bundled `libsqlite3-sys`, which compiles
 # SQLite from vendored C source via the same musl toolchain — so it links
@@ -27,21 +27,11 @@
 #   needed because the `ring` TLS backend (and bundled SQLite) compile a little C.
 #
 # Build with:
-#   cargo build-portable             # -> target/x86_64-unknown-linux-musl/release/tcab
-#   cargo build-portable-backend     # -> .../release/tcab-backend
-#   cargo build-portable-driver      # -> .../release/tcab-driver
+#   cargo build-portable-backend     # -> target/x86_64-unknown-linux-musl/release/tcab-backend
 #   cargo build-portable-artifacts   # -> .../release/tcab-artifacts
-#
-# NOTE: under its `cli` runtime `tcab-driver` drives a run by shelling out to a
-# container runtime, so the host it runs on then still needs Podman or Docker on
-# PATH (the static binary removes only the glibc/loader dependency, not the runtime
-# it orchestrates). Under the `kubernetes` runtime it talks to the API instead and
-# needs neither.
 
 [alias]
-build-portable = "build -p test-cabinet-cli --release --target x86_64-unknown-linux-musl"
 build-portable-backend = "build -p test-cabinet-backend --release --target x86_64-unknown-linux-musl"
-build-portable-driver = "build -p test-cabinet-driver --release --target x86_64-unknown-linux-musl"
 build-portable-artifacts = "build -p test-cabinet-artifacts --release --target x86_64-unknown-linux-musl"
 
 # rustdoc documents private items too, so the `rust-doc` gate resolves the
@@ -156,9 +146,8 @@ test-cabinet-music = { path = "tool-music/crates/music" }
 [patch."https://github.com/TheClockwyrks/microservice-dispatcher"]
 test-cabinet-dispatcher = { path = "microservice-dispatcher/crates/dispatcher" }
 
-# microservice-driver is not checked out; the table joins once it is bootstrapped:
-#   [patch."https://github.com/TheClockwyrks/microservice-driver"]
-#   test-cabinet-driver = { path = "microservice-driver/crates/driver" }
+[patch."https://github.com/TheClockwyrks/microservice-driver"]
+test-cabinet-driver = { path = "microservice-driver/crates/driver" }
 
 # microservice-artifacts is not checked out; the table joins once it is bootstrapped:
 #   [patch."https://github.com/TheClockwyrks/microservice-artifacts"]

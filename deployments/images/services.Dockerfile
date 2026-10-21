@@ -1,13 +1,13 @@
 # syntax=docker/dockerfile:1
 # Every Rust SERVICE image for the Kubernetes deployment (and the local stack), in
-# one file: backend, driver, artifacts, arena and publisher. The dispatcher's
-# image is built in its own repository, microservice-dispatcher.
+# one file: backend, artifacts, arena and publisher. The dispatcher's image is
+# built in its own repository, microservice-dispatcher, and the driver's in
+# microservice-driver, beside the run-container images.
 #
 # Select one with `--target`:
 #   docker build --target backend -t <registry>/tcab-backend:<tag> \
 #     -f deployments/images/services.Dockerfile .
-# The target names are `backend`, `driver`, `artifacts`, `arena` and
-# `publisher`. The web console is NOT here — it is the one non-Rust
+# The target names are `backend`, `artifacts`, `arena` and `publisher`. The web console is NOT here — it is the one non-Rust
 # service image and keeps its own web.Dockerfile (`npm ci` + `vite build`, no crate
 # compiled).
 #
@@ -21,13 +21,13 @@
 # ~19 workspace crates each service pulls in were rebuilt six or seven times over
 # per invocation, every time, even with no source change at all.
 #
-# One shared build stage compiles all five binaries in a single cargo pass, so the
+# One shared build stage compiles all four binaries in a single cargo pass, so the
 # mtime refresh happens ONCE and each workspace crate is compiled once. `--target`
 # then picks a runtime stage, and BuildKit builds only the stages that target
-# actually depends on — asking for `arena` never runs the gg or npm stages. Two
-# targets depend on the gg stage, which fetches the gg release the driver pins rather
-# than building one: `driver` bakes the gg binary, and `backend` bakes the reference
-# documents of the same release (see the stage's own header below).
+# actually depends on — asking for `arena` never runs the gg stage. One target
+# depends on the gg stage, which fetches the gg release the driver pins rather than
+# building one: `backend` bakes the reference documents of that release (see the
+# stage's own header below).
 #
 # The canonical images are built by the Azure pipeline (scripts/ci/service-image.sh)
 # on every push to master and staging, natively per architecture, and pushed to the
@@ -38,15 +38,6 @@
 # across image builds. Declared before the first FROM so the publisher stage's own
 # `ARG WRANGLER_VERSION` inherits this default.
 ARG WRANGLER_VERSION=4.40.3
-
-# The audio store the driver stage copies in. Declared here, before the first FROM,
-# because that is the only scope a `FROM` can resolve an ARG from. A driver build must
-# pass it: the pipeline passes testcabinet.azurecr.io/test-cabinet-audio-store:<sha>,
-# and deployments/local/Makefile passes the store it builds from the checkout. The
-# default is `scratch` rather than blank because BuildKit refuses a blank `FROM` in any
-# stage, which would break every other target; a driver built without the arg fails at
-# its `COPY --from=audio-store` with `lstat /opt/tcab-audio: no such file or directory`.
-ARG AUDIO_STORE_IMAGE=scratch
 
 # ── Shared build stage ───────────────────────────────────────────────────────
 # Compiles every service binary in ONE cargo invocation. The cargo registry/git, the
@@ -77,7 +68,7 @@ FROM docker.io/library/rust:1-bookworm AS build
 WORKDIR /src
 COPY . .
 # TCAB_BUILD_COMMIT stamps the build's provenance commit into the binaries
-# (crates/driver/build.rs); this `.git`-less context can't resolve it from git, so
+# (the binaries' build scripts); this `.git`-less context can't resolve it from git, so
 # CI passes the commit (github.sha) in as a build arg. Unset, it stamps null.
 ARG TCAB_BUILD_COMMIT
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
@@ -99,7 +90,6 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
     find /src -path /src/target -prune -o -type f -exec touch {} + \
     && TCAB_BUILD_COMMIT="${TCAB_BUILD_COMMIT}" cargo build --release \
         -p test-cabinet-backend \
-        -p test-cabinet-driver \
         -p test-cabinet-artifacts \
         -p test-cabinet-arena \
         -p tcab-publisher \
@@ -109,27 +99,25 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
     && mkdir -p /out \
     && cp \
         target/release/tcab-backend \
-        target/release/tcab-driver \
         target/release/tcab-artifacts \
         target/release/tcab-arena \
         target/release/tcab-publisher \
         /out/
 
-# ── gg release stage (driver AND backend) ───────────────────────────────────
-# The first-party `gg` harness and its reference documents, as the `gg` repository's
-# pipeline released them: this stage does not build gg, it fetches the release the driver
-# pins. gg is built, tested and released in its own repository (see "Releasing gg" in
+# ── gg release stage (backend) ───────────────────────────────────────────────
+# The first-party `gg` harness's reference documents, as the `gg` repository's pipeline
+# released them: this stage does not build gg, it fetches the release the driver pins.
+# gg is built, tested and released in its own repository (see "Releasing gg" in
 # apps/docs/src/content/docs/development/releasing.md), whose `v*` tag uploads a
 # static-musl binary per architecture and `gg-reference.tar.gz` to the anonymously
 # readable `gg-releases` blob container. The version is the one line of
-# crates/driver/gg-release-version, the same file the driver compiles in as
-# `DEFAULT_RELEASE_VERSION`, and scripts/ci/gg-release.sh is what reads it and fetches,
-# here exactly as in every other build that needs gg.
+# microservice-driver's crates/driver/gg-release-version, the same file the driver
+# compiles in as `DEFAULT_RELEASE_VERSION` and its image fetches the binary by, and
+# scripts/ci/gg-release.sh is what reads it and fetches, here exactly as in every other
+# build that needs gg.
 #
-# Two targets take from it: `driver` bakes the binary, and `backend` bakes the documents,
-# so a deployed console's reference and the harness its runs execute describe one
-# release. The binary is static, so the one a driver image carries runs in every run
-# container image, Debian or Ubuntu alike.
+# `backend` bakes the documents, so a deployed console's reference and the harness its
+# runs execute describe one release.
 #
 # THE ARCHITECTURE is this stage's own: the helper takes the binary for `uname -m`, which
 # under `--platform linux/amd64` is x86_64 whether the builder is native or emulated, so an
@@ -151,7 +139,7 @@ RUN apt-get update \
   && rm -rf /var/lib/apt/lists/*
 RUN --mount=type=bind,source=scripts/ci/gg-release.sh,target=/src/scripts/ci/gg-release.sh \
     --mount=type=bind,source=scripts/ci/tcab-lib.sh,target=/src/scripts/ci/tcab-lib.sh \
-    --mount=type=bind,source=crates/driver/gg-release-version,target=/src/crates/driver/gg-release-version \
+    --mount=type=bind,source=microservice-driver/crates/driver/gg-release-version,target=/src/microservice-driver/crates/driver/gg-release-version \
     TCAB_GG_RELEASE_VERSION="${TCAB_GG_RELEASE_VERSION}" \
     TCAB_GG_RELEASE_URL="${TCAB_GG_RELEASE_URL}" \
     bash /src/scripts/ci/gg-release.sh fetch /gg-release \
@@ -159,45 +147,6 @@ RUN --mount=type=bind,source=scripts/ci/gg-release.sh,target=/src/scripts/ci/gg-
   && chmod -R a+rX /gg-release/gg-reference \
   && /gg-release/gg --version \
   && ls -l /gg-release/gg-reference
-
-# ── Package store stage (driver only) ────────────────────────────────────────
-# The driver seeds each run's repository, and a `packages`-declaring case has its
-# requested `@clockwyrks/*` runtime libraries vendored into the run repo at seed
-# time (crates/driver seeding → `.vendor/packages/`). Those libraries are read from a
-# host package store, so the driver image bakes one exactly as the base run image
-# does: `npm ci` over the npm workspace (the repo-root `.dockerignore` re-includes
-# the packages slice, the engines and contracts submodules' packages among it), then
-# `scripts/stage-tcab-packages.mjs` builds the shippable libraries and stages them
-# under /opt/tcab-packages.
-FROM docker.io/library/node:24-bookworm-slim AS tcab-packages
-WORKDIR /repo
-COPY . .
-RUN --mount=type=cache,target=/root/.npm \
-    npm ci \
-    && node scripts/stage-tcab-packages.mjs /opt/tcab-packages
-
-# ── Audio store stage (driver only) ──────────────────────────────────────────
-# The driver stages each run's declared audio packs into its run container out of a
-# host audio store (crates/driver `audio_stage` → `/opt/audio`), so the driver image
-# carries one. The store is assembled by scripts/stage-audio-store.mjs, which reads
-# the private audio object store with the read-scoped R2 presign credentials, so it
-# is published ONCE as its own data-only image (containers/audio-store/Dockerfile)
-# and copied in from there. `COPY --from=` reads no build context, so this build
-# needs no audio credential, no Node step and no npm install, and a clean clone can
-# build every service image.
-#
-# `AUDIO_STORE_IMAGE` is declared globally above, because an ARG a `FROM` resolves
-# has to be. A tag that cannot be resolved fails the build here rather than shipping a
-# driver whose every full-stack, game-jam, sfx-sample and music run fails at
-# container start.
-#
-# WHICH STORE depends on who builds. The pipeline passes the store it pushed at the same
-# commit, so a deployed driver bakes the store of its own commit. A build on a
-# developer's machine should not depend on a registry, and an audio change should be
-# testable before it is published, so `deployments/local/Makefile` builds the store from
-# the checkout (its `audio-store` target) and passes THAT ref in here. Any other build of
-# this target should do the same.
-FROM ${AUDIO_STORE_IMAGE} AS audio-store
 
 # ── Shared slim runtime ──────────────────────────────────────────────────────
 # The base for the two services that render nothing: arena and artifacts.
@@ -243,8 +192,8 @@ ENTRYPOINT ["tcab-artifacts"]
 # ── backend ──────────────────────────────────────────────────────────────────
 # The stock `tcab-backend` binary ships no browser, but the backend renders
 # reference screenshots at ingest by shelling out to the bundled Playwright driver
-# (`packages/browser-driver/driver.mjs`). This stage therefore layers the binary on a
-# Node runtime that also carries that driver, its Playwright dependency, and a
+# (contracts' `packages/browser-driver/driver.mjs`). This stage therefore layers the
+# binary on a Node runtime that also carries that driver, its Playwright dependency, and a
 # Playwright-managed Chromium (plus the shared libraries and fonts it needs) — the
 # same toolchain the driver uses in development — and points TCAB_BROWSER_DRIVER /
 # PLAYWRIGHT_BROWSERS_PATH at them so ingest renders out of the box. Set
@@ -263,10 +212,10 @@ ENV PLAYWRIGHT_BROWSERS_PATH=/opt/ms-playwright
 # self-contained. driver.mjs imports these by relative path, so a missing sibling
 # is a runtime ERR_MODULE_NOT_FOUND at render time — keep this list in sync with
 # driver.mjs's `import` statements.
-COPY packages/browser-driver/package.json packages/browser-driver/driver.mjs packages/browser-driver/ttc.mjs packages/browser-driver/validation.mjs /opt/browser-driver/
+COPY contracts/packages/browser-driver/package.json contracts/packages/browser-driver/driver.mjs contracts/packages/browser-driver/ttc.mjs contracts/packages/browser-driver/validation.mjs /opt/browser-driver/
 
 # ca-certificates covers the backend's outbound HTTPS (R2, deploy hook); the font set
-# is what test cases render with (the slim base ships none — see
+# is what test cases render with (the slim base ships none — see microservice-driver's
 # containers/README.md). ffmpeg transcodes each run's proof clip from the `.webm`
 # Playwright records to an H.264 `.mp4` when the public snapshot is built
 # (crates/backend snapshot.rs `transcode_webm_to_mp4`), so the gallery plays on every
@@ -308,104 +257,6 @@ ENV TCAB_BACKEND_BIND=0.0.0.0:8787 \
 EXPOSE 8787
 ENTRYPOINT ["tcab-backend"]
 
-# ── driver ───────────────────────────────────────────────────────────────────
-# The dispatcher creates one driver Job per run; each driver pod runs THIS image,
-# resolves the run from the backend, and — under TCAB_DRIVER_RUNTIME=kubernetes —
-# spawns a single untrusted *sandbox* pod through the Kubernetes API, exec's the
-# harness session into it, streams the run's live events/preview back to the
-# backend, uploads the produced tree to the artifact service, and exits. It needs
-# NO Docker/Podman daemon and runs unprivileged.
-#
-# The driver does NOT publish runs (publishing is a separate, explicit backend
-# operation), so it ships none of the publish CLIs (gh/wrangler). It DOES drive a run
-# end to end *in this process*, and that path shells out to three tools:
-#   - `git`, to seed each run's fresh repository (crates/driver seeding `git init`/
-#     `add`/`commit`); a missing git fails every run at "failed to seed run
-#     repository".
-#   - a shell + `node`/`npm`, to run an end-to-end case's manifest build steps
-#     (`npm ci`, `npm run build`) against the produced source the sandbox returned.
-#   - `node` + the bundled Playwright driver and a Playwright-managed Chromium, to
-#     load-check the build and screenshot it for the per-view checks — the SAME
-#     toolchain the backend bakes to render references at ingest. A missing browser
-#     degrades a run to a build-only signal rather than failing it, but without Node
-#     the build steps can't run at all.
-FROM docker.io/library/node:24-bookworm-slim AS driver
-
-# Where the Playwright-managed Chromium is installed, in both the build RUN below
-# and at runtime — the driver discovers the cached browser through this path, so it
-# must be stable and identical across both.
-ENV PLAYWRIGHT_BROWSERS_PATH=/opt/ms-playwright
-
-# Just the driver, the sibling ES modules it imports (the `ttc` reporter kit and
-# the `validation` runtime), and its manifest (never the host's node_modules): its
-# Playwright dependency and Chromium are installed fresh below so the image is
-# self-contained. driver.mjs imports these by relative path, so a missing sibling
-# is a runtime ERR_MODULE_NOT_FOUND at render time — keep this list in sync with
-# driver.mjs's `import` statements.
-COPY packages/browser-driver/package.json packages/browser-driver/driver.mjs packages/browser-driver/ttc.mjs packages/browser-driver/validation.mjs /opt/browser-driver/
-
-# Install git and the font set, then the driver's Playwright dependency and a
-# Playwright-managed Chromium with the OS libraries it links against
-# (`playwright install --with-deps`). ca-certificates covers the driver's outbound
-# HTTPS (the Kubernetes API, the backend and artifact service over TLS,
-# telemetry export); git seeds each run's repository; the font set is what test cases
-# render with (the slim base ships none — see containers/README.md). The npm install
-# skips Playwright's own browser download so only the single Chromium we ask for
-# lands, in PLAYWRIGHT_BROWSERS_PATH.
-RUN apt-get update \
-  && apt-get install -y --no-install-recommends \
-       ca-certificates \
-       git \
-       fonts-dejavu-core fonts-liberation fonts-noto-core \
-  && cd /opt/browser-driver \
-  && PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 npm install --omit=dev --no-audit --no-fund \
-  && npx --yes playwright install --with-deps chromium \
-  && rm -rf /var/lib/apt/lists/* /root/.npm
-
-COPY --from=build /out/tcab-driver /usr/local/bin/tcab-driver
-
-# Bake the static-musl gg harness in. core, running in this driver pod, reads it from here
-# and copies it into each sandbox run pod, so a Kubernetes gg run installs LOCALLY with no
-# release download or network egress. World-readable (a+rX via the 0755) so the
-# unprivileged `node` user reads it.
-#
-# It is the release the driver pins, fetched by the gg-release stage above: the binary the
-# `-gg` run images were self-checked against, and the release the backend's documents
-# come from.
-COPY --from=gg-release /gg-release/gg /usr/local/lib/tcab/gg
-RUN chmod 0755 /usr/local/lib/tcab/gg
-
-# The host package store the seeder vendors a `packages`-declaring case's runtime
-# libraries out of (crates/driver `TCAB_PACKAGES_DIR`). World-readable so the
-# unprivileged `node` user below can read it during seeding.
-COPY --from=tcab-packages /opt/tcab-packages /opt/tcab-packages
-RUN chmod -R a+rX /opt/tcab-packages
-
-# The host audio store a run's declared audio packs are staged out of (crates/driver
-# `TCAB_AUDIO_STORE`). World-readable for the same reason as the package store: the
-# driver reads it as the unprivileged `node` user below while starting a run.
-COPY --from=audio-store /opt/tcab-audio /opt/tcab-audio
-RUN chmod -R a+rX /opt/tcab-audio
-
-# Run as an unprivileged user: the Kubernetes runtime needs only API access (its
-# ServiceAccount token), never host privileges. The Node base already ships a
-# non-root `node` user (uid 1000) — reuse it rather than minting another at the
-# same uid (which would collide). The Playwright browsers installed above are
-# world-readable, so this user can launch them, and its home is writable for the
-# build/seed scratch and Node's caches.
-USER node
-WORKDIR /home/node
-
-# Default to the Kubernetes runtime; the dispatcher sets the TCAB_K8S_* specifics
-# and the per-job env (id, token, run request) when it creates each driver Job.
-# TCAB_BROWSER_DRIVER points the load-check at the baked driver regardless of the
-# process's working directory.
-ENV TCAB_DRIVER_RUNTIME=kubernetes \
-    TCAB_BROWSER_DRIVER=/opt/browser-driver/driver.mjs \
-    TCAB_GG_BINARY=/usr/local/lib/tcab/gg
-
-ENTRYPOINT ["tcab-driver"]
-
 # ── publisher ────────────────────────────────────────────────────────────────
 # The dispatcher creates one publisher Job per *publish* (a parallel queue to the
 # run path); each publisher pod runs THIS image, resolves its publish job from the
@@ -414,7 +265,7 @@ ENTRYPOINT ["tcab-driver"]
 # publisher's own BackendPublisher, `crates/publisher/src/release.rs`)
 # while streaming progress to the backend, reports the terminal result, and exits.
 #
-# Unlike the driver stage (which renders builds to screenshot them and therefore
+# Unlike the driver image (which renders builds to screenshot them and therefore
 # carries Playwright + a Playwright-managed Chromium), the publisher renders
 # NOTHING — it only releases. So it DROPS the entire browser layer and instead
 # carries the three tools the release path shells out to:

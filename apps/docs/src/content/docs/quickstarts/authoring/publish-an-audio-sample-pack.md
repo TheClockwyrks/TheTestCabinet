@@ -61,11 +61,11 @@ one object and leaves the rest of the pack untouched.
 
 ## Publish the audio store
 
-`scripts/stage-audio-store.mjs` downloads each object through a presigned GET,
-verifies it against `objects.lock.json`, and lays out a shared clip tree under
-`dist/audio-store/tree` with a copy of that lock beside it. A missing lock entry,
-a failed presign, or a digest mismatch fails staging, and staging never contacts
-Freesound.
+microservice-driver's `scripts/stage-audio-store.mjs` downloads each object through
+a presigned GET, verifies it against `objects.lock.json`, and lays out a shared
+clip tree under `dist/audio-store/tree` with a copy of that lock beside it. A
+missing lock entry, a failed presign, or a digest mismatch fails staging, and
+staging never contacts Freesound.
 
 `containers/build.sh audio-store` in `microservice-driver/` runs the stager and
 builds the data-only image over its output. The Azure pipeline builds and
@@ -76,14 +76,16 @@ pushes the same image to `testcabinet.azurecr.io` on every push to `master` and
 microservice-driver/containers/build.sh audio-store
 ```
 
-The driver image copies that store in, and `scripts/fetch-audio-store.sh` pulls it
-onto a local checkout. A run container is then given the packs its test case
-declares in `[audio] packs`; no run image is rebuilt for a new pack version.
+The driver image copies that store in, and microservice-driver's
+`scripts/fetch-audio-store.sh` pulls it onto a local checkout. A run container is
+then given the packs its test case declares in `[audio] packs`; no run image is
+rebuilt for a new pack version.
 
 The pipeline pushes that image once the pack reaches `staging` or `master`, so
 it is not something to wait for before trying the pack.
 `make -C deployments/local audio-store` builds the store the local driver image
-carries from this checkout, and `scripts/fetch-audio-store.sh --stage` does the
+carries from this checkout, and microservice-driver's
+`scripts/fetch-audio-store.sh --stage` does the
 same for a host-side `tcab validate` — both straight out of the object store, with no
 registry involved.
 
@@ -91,6 +93,8 @@ registry involved.
 
 ```sh
 cat containers/sample-packs/objects.lock.json
+
+# In microservice-driver.
 node scripts/stage-audio-store.mjs gm-lite@0.1.0
 ```
 
