@@ -1201,6 +1201,11 @@ of its runs the image pipeline purges the registry of every CI image tag that
 `.gitmodules` of the checkout or of any of those branches names by a relative
 URL, read through the job's access token; see
 [Repositories](/development/repositories/#a-repositorys-gates-and-pipeline).
+It keeps every tag pushed within the last day too, pinned or not: a run on
+another branch pushes its Rust image a job before its rust-browser job builds
+on it, and the image of step 1 above waits unpinned until step 2 lands. An
+image whose pin lands later than that is rebuilt by queuing the image pipeline
+on the pinned commit.
 
 A job pulls its CI image from the registry before its first step runs, so a
 registry answer that times out would fail the job before it has checked

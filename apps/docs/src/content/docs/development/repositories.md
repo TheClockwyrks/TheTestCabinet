@@ -492,7 +492,9 @@ by a relative URL, every image the `azure-pipelines.yml` of that repository's
 is what keeps a repository added on `nightly` safe from a run on `master`,
 where it is not yet a submodule. A repository it cannot read stops the purge,
 and the job's access token reads every repository of the project, so a new
-submodule is reached as soon as a `.gitmodules` names it.
+submodule is reached as soon as a `.gitmodules` names it. It also keeps every
+tag pushed within the last day, so the image of a run still in flight on
+another branch, and an image whose pin has not landed yet, survive it.
 Two rules follow:
 
 - **The merge-up rule.** A repository's image pin moves

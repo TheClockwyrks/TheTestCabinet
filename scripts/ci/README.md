@@ -158,9 +158,12 @@ repository every tag that `master`, `staging`, `nightly` and the checkout do not
 pin as `ciImageTag` in `ci/images/tags.yml`, nor the `azure-pipelines.yml` of
 those branches of a submodule repository (each `.gitmodules` entry with a
 relative URL, which the image jobs name under `uses:`) names as
-`ubuntu-the-test-cabinet-<track>-cicd:<commit>`, and from it and its `-cache`
-repository the untagged manifests older than an hour; a branch or a submodule
-repository it cannot read stops it.
+`ubuntu-the-test-cabinet-<track>-cicd:<commit>`, nor was pushed within the last
+day (so the image of a run still in flight on another branch, and an image whose
+pin has not landed yet, survive; each tag spared for its age is logged), and
+from it and its `-cache` repository the untagged manifests older than an hour
+that no kept or spared index names; a branch or a submodule repository it
+cannot read stops it.
 
 ### The Rust jobs and their caches
 
