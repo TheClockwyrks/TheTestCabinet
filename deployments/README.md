@@ -35,7 +35,7 @@ deployments/
 ├── images/                    # service images, pushed to the ACR (see below)
 │   ├── services.Dockerfile    # EVERY Rust service, one `--target` each, over one
 │   │                          #   shared cargo build stage: backend (+ headless
-│   │                          #   Chromium), driver, artifacts, arena,
+│   │                          #   Chromium), arena,
 │   │                          #   publisher
 │   ├── backend.Dockerfile     # the-test-cabinet-backend: a retag of tcab-backend
 │   ├── web.Dockerfile         # tcab-web, the console SPA behind nginx (no crate)
@@ -89,10 +89,12 @@ The Azure pipeline ([`azure-pipelines.yml`](../azure-pipelines.yml)) builds the
 service images under `images/` on every push to `master` and `staging`, natively
 for `amd64` and `arm64`, and pushes each to the Test Cabinet Azure Container
 Registry as `testcabinet.azurecr.io/tcab-backend:<sha>`,
-`…/tcab-artifacts`, `…/tcab-arena`, `…/tcab-publisher`, and `…/tcab-web`. The
+`…/tcab-arena`, `…/tcab-publisher`, and `…/tcab-web`. The
 dispatcher's image is built by microservice-dispatcher's pipeline and pushed as
 `testcabinet.azurecr.io/microservice-dispatcher:<commit>`, and the driver's by
-microservice-driver's, as `testcabinet.azurecr.io/microservice-driver:<commit>`. The workspace
+microservice-driver's, as `testcabinet.azurecr.io/microservice-driver:<commit>`. The
+artifacts service's image is built by microservice-artifacts' pipeline and pushed as
+`testcabinet.azurecr.io/microservice-artifacts:<commit>`. The workspace
 template's publish stage then
 builds `images/backend.Dockerfile`, a retag of `tcab-backend:<sha>` with no build
 steps, and pushes it as `testcabinet.azurecr.io/the-test-cabinet-backend:<sha>`,
@@ -104,9 +106,10 @@ instead, see the build instructions in each Dockerfile's header.
 The `staging` and `prod` overlays name every Test Cabinet image at the tag
 `unpinned`, which nothing pushes, so an overlay applied as it stands fails to pull.
 [`scripts/ci/pin-images.sh`](../scripts/ci/pin-images.sh) pins an overlay to one
-commit: the five images this repository builds, and the dispatcher's publisher
-image and run-container registry, at that commit, the dispatcher's and the repos
-service's own images at the commits its `microservice-dispatcher` and
+commit: the four images the overlays name from this repository's build, and the
+dispatcher's publisher image and run-container registry, at that commit, the
+artifacts service's, the dispatcher's and the repos service's own images at the
+commits its `microservice-artifacts`, `microservice-dispatcher` and
 `microservice-repos` submodule pointers name, and the dispatcher's driver image and
 run-container tag at the commit its `microservice-driver` pointer names, which the
 driver and the run images were pushed at together. Every deployment goes through it.
@@ -177,8 +180,9 @@ Where that store comes from depends on who is building:
 Every file here is a **template with placeholder values only** — never commit a
 real secret. The per-environment files under `env/` are deliberately thin; the
 repo-root [`.env.backend.example`](../.env.backend.example),
-[`.env.artifacts.example`](../.env.artifacts.example), and microservice-dispatcher's
-[`.env.dispatcher.example`](../microservice-dispatcher/.env.dispatcher.example) at
+microservice-artifacts' [`.env.artifacts.example`](../microservice-artifacts/.env.artifacts.example),
+and microservice-dispatcher's
+[`.env.dispatcher.example`](../microservice-dispatcher/.env.dispatcher.example), each at
 that repository's root, remain the authoritative
 reference for every variable each service reads. Supply real values through
 Kubernetes `Secret`s populated from your secret manager (External Secrets, Sealed

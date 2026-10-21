@@ -8,7 +8,7 @@
 # stands fails to pull. This rewrites deployments/k8s/overlays/<overlay>/kustomization.yaml
 # so that it names the commit being deployed instead:
 #
-#   - each of the five entries of its `images:` block for an image this repository
+#   - each of the four entries of its `images:` block for an image this repository
 #     builds gets `newTag: "<commit>"`, and the entry of each image a repository of
 #     its own builds gets the commit the superrepo's submodule pointer for that
 #     repository names at <commit>, which its pipeline pushed as <name>:<commit>
@@ -45,10 +45,10 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/tcab-lib.sh"
 
 readonly USAGE="usage: scripts/ci/pin-images.sh <staging|prod> <commit>"
 
-# The five images a Test Cabinet deployment runs or starts that this repository
+# The four images a Test Cabinet deployment runs or starts that this repository
 # builds, as the base names them after its REPLACE_REGISTRY/ placeholder, all at the
 # commit being deployed.
-readonly TCAB_IMAGES=(tcab-backend tcab-artifacts
+readonly TCAB_IMAGES=(tcab-backend
 	tcab-arena tcab-publisher tcab-web)
 
 # The images a repository of their own builds, each as `<image>=<submodule path>`:
@@ -56,7 +56,8 @@ readonly TCAB_IMAGES=(tcab-backend tcab-artifacts
 # names at the commit being deployed. The registry repository is named after the
 # repository (`testcabinet.azurecr.io/microservice-driver:<commit>`), which is how
 # the dispatcher's TCAB_DRIVER_IMAGE names the driver's.
-readonly SUBMODULE_IMAGES=(tcab-dispatcher=microservice-dispatcher
+readonly SUBMODULE_IMAGES=(tcab-artifacts=microservice-artifacts
+	tcab-dispatcher=microservice-dispatcher
 	tcab-driver=microservice-driver
 	tcab-repos=microservice-repos)
 

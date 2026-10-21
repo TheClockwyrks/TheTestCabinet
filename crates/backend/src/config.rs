@@ -57,7 +57,7 @@ const DEFAULT_ARTIFACT_SWEEP_GRACE_HOURS: u64 = 24;
 /// committed, so it cannot travel through the backend's git checkout). Re-exported
 /// here so `Config`'s field type reads naturally alongside the rest of the
 /// backend's configuration.
-pub use test_cabinet_artifacts::r2::R2Config;
+pub use crate::r2::R2Config;
 
 /// The fully resolved backend configuration.
 #[derive(Debug, Clone)]

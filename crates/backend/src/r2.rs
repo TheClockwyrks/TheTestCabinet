@@ -1,22 +1,16 @@
 //! R2 access over the S3-compatible API with AWS SigV4 signing.
 //!
-//! The artifacts service is the object-store writer, so the client is its own.
-//! In the service it is the R2 [public store](crate::public): the public
-//! dataset's documents and media are written through it, read back as streams,
-//! and probed for existence. Two callers outside the service still write R2
-//! directly through it, an interim edge that ends once the backend's dataset
-//! writes and the CLI's reference uploads go through the service's API:
-//!
-//! - The **backend** writes the public snapshot bucket on every refresh, and
-//!   lists it to skip re-uploading content-stable media.
-//! - **`tcab publish-reference`** writes an asset-generation case's reference
-//!   sheet into that same bucket under `media/references/…`. An asset reference
-//!   is regenerated from its committed script rather than committed as bytes, so
-//!   there is nothing in the backend's git checkout for it to publish — the
-//!   publishing side must upload directly.
+//! An interim copy of the artifacts service's R2 client
+//! (`crates/artifacts/src/r2.rs` and `object.rs` of the microservice-artifacts
+//! repository), kept here so the backend depends on no other application. The backend writes the public snapshot bucket through it on
+//! every refresh, and lists it to skip re-uploading content-stable media. The
+//! documentation has the backend hold no bucket credential and write the public
+//! dataset through the [artifacts service](https://docs.testcabinet.ai/components/artifacts/overview/)'s
+//! API instead; this module goes when that move lands, and is not to grow in the
+//! meantime.
 //!
 //! The verbs are `PutObject` (or a multipart upload for an object larger than
-//! one [piece](crate::object::PIECE_SIZE)), `GetObject`, `HeadObject`,
+//! one [piece](object::PIECE_SIZE)), `GetObject`, `HeadObject`,
 //! `ListObjectsV2` and `DeleteObjects`, so rather than pull the full AWS SDK this
 //! module signs requests directly with SigV4 over `hmac`/`sha2` and sends them
 //! with the already-vendored `reqwest`. Every request carries the SHA-256 of its
@@ -31,7 +25,10 @@ use time::OffsetDateTime;
 use time::format_description::FormatItem;
 use time::macros::format_description;
 
-use crate::object::{
+#[path = "r2.object.rs"]
+pub mod object;
+
+use self::object::{
     ByteRange, ObjectBody, ObjectProperties, ObjectStream, PIECE_SIZE, Pieces, first_pieces,
     properties_from_headers, response_body,
 };
@@ -345,7 +342,7 @@ impl R2Client {
     ///
     /// The backend's snapshot refresh is the only caller: after the atomic
     /// `index.json` cut-over it prunes the snapshot generations nothing points at
-    /// any more (see `crate::snapshot::stale_generation_keys` in the backend). Left
+    /// any more (see [`crate::snapshot::stale_generation_keys`]). Left
     /// unpruned the bucket grows without bound — every refresh writes a fresh
     /// generation and no earlier one is ever reachable again.
     ///
@@ -476,7 +473,7 @@ impl R2Client {
         upload_id: &str,
         first: Bytes,
         second: Bytes,
-        mut rest: crate::object::Chunker,
+        mut rest: object::Chunker,
     ) -> Result<u64> {
         let mut etags = Vec::new();
         let mut length = 0u64;

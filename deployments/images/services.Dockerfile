@@ -1,13 +1,14 @@
 # syntax=docker/dockerfile:1
 # Every Rust SERVICE image for the Kubernetes deployment (and the local stack), in
-# one file: backend, artifacts, arena and publisher. The dispatcher's image is
-# built in its own repository, microservice-dispatcher, and the driver's in
+# one file: backend, arena and publisher. The dispatcher's image is
+# built in its own repository, microservice-dispatcher, the artifacts service's in
+# microservice-artifacts, and the driver's in
 # microservice-driver, beside the run-container images.
 #
 # Select one with `--target`:
 #   docker build --target backend -t <registry>/tcab-backend:<tag> \
 #     -f deployments/images/services.Dockerfile .
-# The target names are `backend`, `artifacts`, `arena` and `publisher`. The web console is NOT here — it is the one non-Rust
+# The target names are `backend`, `arena` and `publisher`. The web console is NOT here — it is the one non-Rust
 # service image and keeps its own web.Dockerfile (`npm ci` + `vite build`, no crate
 # compiled).
 #
@@ -21,7 +22,7 @@
 # ~19 workspace crates each service pulls in were rebuilt six or seven times over
 # per invocation, every time, even with no source change at all.
 #
-# One shared build stage compiles all four binaries in a single cargo pass, so the
+# One shared build stage compiles all three binaries in a single cargo pass, so the
 # mtime refresh happens ONCE and each workspace crate is compiled once. `--target`
 # then picks a runtime stage, and BuildKit builds only the stages that target
 # actually depends on — asking for `arena` never runs the gg stage. One target
@@ -90,7 +91,6 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
     find /src -path /src/target -prune -o -type f -exec touch {} + \
     && TCAB_BUILD_COMMIT="${TCAB_BUILD_COMMIT}" cargo build --release \
         -p test-cabinet-backend \
-        -p test-cabinet-artifacts \
         -p test-cabinet-arena \
         -p tcab-publisher \
     # target/ is a cache mount, not a layer, so the binaries are copied to a stable
@@ -99,7 +99,6 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
     && mkdir -p /out \
     && cp \
         target/release/tcab-backend \
-        target/release/tcab-artifacts \
         target/release/tcab-arena \
         target/release/tcab-publisher \
         /out/
@@ -149,9 +148,9 @@ RUN --mount=type=bind,source=scripts/ci/gg-release.sh,target=/src/scripts/ci/gg-
   && ls -l /gg-release/gg-reference
 
 # ── Shared slim runtime ──────────────────────────────────────────────────────
-# The base for the two services that render nothing: arena and artifacts.
-# ca-certificates covers their outbound HTTPS (the
-# backend over TLS, the object stores, the Access certificates, telemetry export).
+# The base for the service that renders nothing: arena.
+# ca-certificates covers its outbound HTTPS (the
+# backend over TLS, the Access certificates, telemetry export).
 # No Chromium and no fonts.
 FROM docker.io/library/debian:bookworm-slim AS runtime-slim
 RUN apt-get update \
@@ -170,24 +169,6 @@ COPY --from=build /out/tcab-arena /usr/local/bin/tcab-arena
 ENV TCAB_ARENA_BIND=0.0.0.0:8791
 EXPOSE 8791
 ENTRYPOINT ["tcab-arena"]
-
-# ── artifacts ────────────────────────────────────────────────────────────────
-# The artifact service receives each run's produced tree from the driver, holds it
-# in the private Blob container and serves it to the console, and writes the public
-# dataset to R2. It is stateless: it mounts no volume, and its stores and
-# credentials come from the environment (deployments/k8s/base/artifacts.yaml).
-# ffmpeg transcodes a published run's webm clips to H.264 mp4 for iOS playback when
-# the backend publishes its media (crates/artifacts publish.rs, `Ffmpeg`); a failed
-# transcode publishes the webm as recorded.
-FROM runtime-slim AS artifacts
-RUN apt-get update \
-  && apt-get install -y --no-install-recommends \
-       ffmpeg \
-  && rm -rf /var/lib/apt/lists/*
-COPY --from=build /out/tcab-artifacts /usr/local/bin/tcab-artifacts
-ENV TCAB_ARTIFACTS_BIND=0.0.0.0:8790
-EXPOSE 8790
-ENTRYPOINT ["tcab-artifacts"]
 
 # ── backend ──────────────────────────────────────────────────────────────────
 # The stock `tcab-backend` binary ships no browser, but the backend renders

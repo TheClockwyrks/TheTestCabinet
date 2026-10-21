@@ -9,8 +9,8 @@ use axum::extract::State;
 use axum::http::{HeaderMap, Method as HttpMethod, StatusCode, Uri};
 use axum::response::Response;
 
+use super::object::{body_from_bytes, collect_body};
 use super::*;
-use crate::object::{body_from_bytes, collect_body};
 
 const SECRET: &str = "stub-secret";
 
@@ -481,36 +481,4 @@ async fn a_wrong_secret_is_refused() {
     config.secret_access_key = "wrong".to_string();
     let wrong = R2Client::new(config);
     assert!(wrong.head_object("anything").await.is_err());
-}
-
-#[tokio::test]
-async fn the_bucket_serves_as_the_public_store() {
-    use crate::public::PublicStore;
-
-    let (client, _stub) = serve().await;
-    let written = PublicStore::put(
-        &client,
-        "runs/r.json",
-        body_from_bytes(&b"{}"[..]),
-        "application/json",
-        None,
-    )
-    .await
-    .unwrap();
-    assert_eq!(written, 2);
-    assert!(
-        PublicStore::head(&client, "runs/r.json")
-            .await
-            .unwrap()
-            .is_some()
-    );
-    let read = PublicStore::get(&client, "runs/r.json", None)
-        .await
-        .unwrap()
-        .unwrap();
-    assert_eq!(collect_body(read.body).await.unwrap(), b"{}");
-    assert_eq!(
-        PublicStore::list_keys(&client, "runs/").await.unwrap(),
-        ["runs/r.json"]
-    );
 }

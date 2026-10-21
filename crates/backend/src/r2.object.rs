@@ -1,13 +1,13 @@
-//! The shapes both object stores answer in, shared by the [Blob](crate::blob)
-//! and [R2](crate::r2) clients and the [public store](crate::public) over them.
+//! The shapes the [R2 client](super) answers in, copied with it from the
+//! artifacts service, where the Blob client and the public store share them.
 //!
 //! A read hands back an [`ObjectStream`]: the object's [`ObjectProperties`] and
 //! its body as a stream of chunks, so a caller relays an object of any size with
 //! a bounded buffer. A write takes an [`ObjectBody`] in the same shape and is cut
 //! into fixed-size pieces by a [`Chunker`]: an object that fits one piece is
-//! written in one request, and a larger one is staged piece by piece (Blob
-//! blocks, S3 multipart parts) and committed whole, so a reader never sees a
-//! partial object and the writer never holds more than one piece.
+//! written in one request, and a larger one is staged piece by piece (S3
+//! multipart parts) and committed whole, so a reader never sees a partial object
+//! and the writer never holds more than one piece.
 
 use std::pin::Pin;
 
@@ -221,5 +221,5 @@ pub(crate) fn response_body(response: reqwest::Response) -> ObjectBody {
 }
 
 #[cfg(test)]
-#[path = "object.test.rs"]
+#[path = "r2.object.test.rs"]
 mod tests;

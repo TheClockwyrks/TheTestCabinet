@@ -2,6 +2,7 @@
 
 use std::convert::Infallible;
 
+use crate::r2::R2Client;
 use axum::Json;
 use axum::body::Body;
 use axum::extract::State;
@@ -9,7 +10,6 @@ use axum::http::{HeaderMap, StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use bytes::Bytes;
 use futures_util::stream;
-use test_cabinet_artifacts::r2::R2Client;
 use test_cabinet_contracts::asset_reference::{REFERENCE_MEDIA_PREFIX, parse_reference_image_key};
 use test_cabinet_contracts::ingest::{
     IngestBody, IngestBodyMode, IngestProgress, IngestResponse, IngestResponseSuite,

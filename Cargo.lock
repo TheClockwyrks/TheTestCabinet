@@ -3512,43 +3512,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "test-cabinet-artifacts"
-version = "0.0.0"
-dependencies = [
- "async-trait",
- "axum",
- "base64",
- "bytes",
- "dotenvy",
- "flate2",
- "futures-util",
- "getrandom 0.3.4",
- "hex",
- "hmac",
- "http",
- "jsonwebtoken",
- "md-5",
- "opentelemetry",
- "percent-encoding",
- "reqwest 0.12.28",
- "serde",
- "serde_json",
- "sha2",
- "tar",
- "tempfile",
- "test-cabinet-contracts",
- "test-cabinet-suites",
- "test-cabinet-telemetry",
- "thiserror",
- "time",
- "tokio",
- "tokio-util",
- "tower",
- "tower-http",
- "tracing",
-]
-
-[[package]]
 name = "test-cabinet-backend"
 version = "0.0.0"
 dependencies = [
@@ -3565,7 +3528,9 @@ dependencies = [
  "http",
  "jsonwebtoken",
  "libsqlite3-sys",
+ "md-5",
  "opentelemetry",
+ "percent-encoding",
  "reqwest 0.12.28",
  "sea-orm",
  "serde",
@@ -3573,7 +3538,6 @@ dependencies = [
  "sha2",
  "tar",
  "tempfile",
- "test-cabinet-artifacts",
  "test-cabinet-contracts",
  "test-cabinet-db-auth",
  "test-cabinet-engines",
@@ -5220,4 +5184,8 @@ version = "0.0.0"
 
 [[patch.unused]]
 name = "test-cabinet-sfx-synth"
+version = "0.0.0"
+
+[[patch.unused]]
+name = "test-cabinet-artifacts"
 version = "0.0.0"
