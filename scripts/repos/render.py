@@ -265,7 +265,7 @@ CRATES: dict[str, tuple[str, str]] = {
 # The release tag each repository's dependents pin, for the repositories that
 # have cut one. A manifest names a dependency at its public source on this tag,
 # and on the `master` branch while the repository has none. `contracts` cut
-# `v0.2.4` and `engines` `v1.1.3`, whose runs published their packages to the
+# `v0.2.4` and `engines` `v1.1.4`, whose runs published their packages to the
 # feed at those versions. `tool-model-core` cut `v0.1.2`, the shared model
 # libraries the model tools build on, and `tool-audio-core` cut `v0.1.2`, the
 # shared audio library the audio tools build on; neither publishes a package.
@@ -273,7 +273,7 @@ CRATES: dict[str, tuple[str, str]] = {
 # reaches all of them, compiles one copy of the contracts crates.
 TAGS: dict[str, str] = {
     "contracts": "v0.2.4",
-    "engines": "v1.1.3",
+    "engines": "v1.1.4",
     "tool-model-core": "v0.1.2",
     "tool-audio-core": "v0.1.2",
 }
