@@ -1,12 +1,12 @@
 import type { RunRecord } from "@clockwyrks/run-record";
-import type { StoredReview, WorkspaceFileRef } from "@clockwyrks/ui/client";
-import { readOutcome } from "@clockwyrks/ui/client";
 import type {
   SeededInput,
   TestCaseDetail,
   TestCaseSummary,
   VariantSummary,
 } from "@clockwyrks/ui/app";
+import type { StoredReview, WorkspaceFileRef } from "@clockwyrks/ui/client";
+import { readOutcome } from "@clockwyrks/ui/client";
 
 // The static files the build writes beside the bundle, and the one place the
 // gallery reads them from.
@@ -162,10 +162,10 @@ export interface StaticFiles {
    */
   requestCaseVersion(slug: string, version: string): void;
   /** Be told when a case version has loaded. Returns the unsubscribe function. */
-  subscribe(listener: () => void): () => void;
+  subscribe: (listener: () => void) => () => void;
   /** How many case versions have loaded — a value that changes exactly when
    * {@link caseVersion} can answer differently. */
-  revision(): number;
+  revision: () => number;
 }
 
 /** How long a background request that failed waits before it may be repeated. */
@@ -212,23 +212,24 @@ export function createStaticFiles(
     const key = `${slug}/${version}`;
     const pending = caseVersionLoads.get(key);
     if (pending) return pending;
-    const load = json<CaseVersionFile>(
-      `cases/${encodeURIComponent(slug)}/${encodeURIComponent(version)}.json`,
-      `version ${version} of case ${slug}`,
-    ).then(
-      (file) => {
-        if (file !== null) {
-          caseVersions.set(key, file);
-          revision += 1;
-          for (const listener of listeners) listener();
-        }
-        return file;
-      },
-      (error: unknown) => {
+    const load = (async () => {
+      let file: CaseVersionFile | null;
+      try {
+        file = await json<CaseVersionFile>(
+          `cases/${encodeURIComponent(slug)}/${encodeURIComponent(version)}.json`,
+          `version ${version} of case ${slug}`,
+        );
+      } catch (error: unknown) {
         caseVersionLoads.delete(key);
         throw error;
-      },
-    );
+      }
+      if (file !== null) {
+        caseVersions.set(key, file);
+        revision += 1;
+        for (const listener of listeners) listener();
+      }
+      return file;
+    })();
     caseVersionLoads.set(key, load);
     return load;
   };
@@ -258,9 +259,13 @@ export function createStaticFiles(
       if (failedAt !== undefined && Date.now() - failedAt < REQUEST_RETRY_MS) {
         return;
       }
-      loadCaseVersion(slug, version).catch(() => {
-        failedRequests.set(key, Date.now());
-      });
+      void (async () => {
+        try {
+          await loadCaseVersion(slug, version);
+        } catch {
+          failedRequests.set(key, Date.now());
+        }
+      })();
     },
     subscribe(listener) {
       listeners.add(listener);

@@ -1,15 +1,5 @@
-import type { Comparison } from "@clockwyrks/backend-api/comparison";
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useState,
-  useSyncExternalStore,
-} from "react";
 import type { RunRecord, RunSubject } from "@clockwyrks/run-record";
 import type { CodeAnalysisDocument } from "@clockwyrks/run-record/code-analysis";
-import type { HarnessEvent, ProgressCallback } from "@clockwyrks/ui/client";
-import { readOutcome, readTextWithProgress } from "@clockwyrks/ui/client";
 import {
   DEFAULT_ENGINE_SLUG,
   findModelByModelId,
@@ -24,6 +14,15 @@ import {
   type RunQuery,
   type VariantSummary,
 } from "@clockwyrks/ui/app";
+import type { HarnessEvent, ProgressCallback } from "@clockwyrks/ui/client";
+import { readOutcome, readTextWithProgress } from "@clockwyrks/ui/client";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import {
   runSummaries as publishedRunSummaries,
   testCases as catalogTestCases,
@@ -33,7 +32,8 @@ import {
   ggRuns as publishedGgRuns,
   catalogShowcaseMediaUrls as publishedCatalogShowcaseMediaUrls,
 } from "virtual:tcab-snapshot";
-import { createStaticFiles } from "./staticFiles";
+
+import { createStaticFiles } from "./static-files";
 
 // The static site's gallery data source. It is the build-time public R2 snapshot
 // — fully static, never querying the backend at runtime — merged in dev with
@@ -86,8 +86,7 @@ function storeUrl(
   prefix: string | null | undefined,
   file: string,
 ): string | null {
-  if (prefix == null || !file.startsWith("img.")) return null;
-  return `${prefix}${file}`;
+  return prefix == null || !file.startsWith("img.") ? null : `${prefix}${file}`;
 }
 
 // The gallery-wide reviews map of a host that holds none outside a run's own
@@ -205,8 +204,9 @@ export function useStaticGallery(): GalleryDataInput {
       staticFiles.loadCaseDetail(slug),
       staticFiles.loadCaseVersion(slug, summary.latestVersion),
     ]);
-    if (detail === null || latest === null) return null;
-    return { ...summary, ...detail, variants: latest.variants };
+    return detail === null || latest === null
+      ? null
+      : { ...summary, ...detail, variants: latest.variants };
   }, []);
 
   // The inputs one run was given: the variant of the run's OWN case version,
@@ -285,17 +285,19 @@ export function useStaticGallery(): GalleryDataInput {
   // backfilled and therefore starts on the day the analyzer shipped. Stable identity
   // so the tab doesn't refetch on every render.
   const readCodeAnalysis = useCallback(async (runId: string) => {
-    const media =
-      staticFiles.runMedia(runId) ?? (await staticFiles.loadRun(runId))?.media;
+    let media = staticFiles.runMedia(runId);
+    if (media === undefined) {
+      const file = await staticFiles.loadRun(runId);
+      media = file?.media;
+    }
     const url = media?.codeAnalysisUrl;
     if (!url) return null;
     const response = await fetch(url);
     // A listed object the store no longer holds is still an absence ("never
     // analysed"); a read that failed for any other reason is reported as one.
-    if (readOutcome(response, `code analysis for run ${runId}`) === "absent") {
-      return null;
-    }
-    return (await response.json()) as CodeAnalysisDocument;
+    return readOutcome(response, `code analysis for run ${runId}`) === "absent"
+      ? null
+      : ((await response.json()) as CodeAnalysisDocument);
   }, []);
 
   // Lazily resolve one run's detail — its full record plus every review. A
@@ -539,9 +541,9 @@ export function useStaticGallery(): GalleryDataInput {
     // rendered read-only (no backend to create/run/publish — those affordances gate
     // on `canExecute`, which is false here). A single comparison is resolved by id
     // for the detail view.
-    comparisons: publishedComparisons as Comparison[],
+    comparisons: publishedComparisons,
     readComparison: (id: string) =>
-      (publishedComparisons as Comparison[]).find((c) => c.id === id) ?? null,
+      publishedComparisons.find((c) => c.id === id) ?? null,
     canExecute: false,
     // The exported gg document corpus, inlined with the index at build time. This is the whole of the
     // site's analysis surface: `useGgSource` evaluates every query against these

@@ -1,9 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
+
 import {
   createStaticFiles,
   REQUEST_RETRY_MS,
   type CaseVersionFile,
-} from "./staticFiles";
+} from "./static-files";
 
 const SHELL = "<!doctype html><div id=root></div>";
 
@@ -24,22 +25,21 @@ function deployment(
           new Response("", { status: 503, statusText: "Unavailable" }),
         );
       }
-      if (url in files) {
-        return Promise.resolve(
-          new Response(JSON.stringify(files[url]), {
-            status: 200,
-            headers: { "content-type": "application/json" },
-          }),
-        );
-      }
-      return Promise.resolve(
-        missing === "404"
-          ? new Response("", { status: 404, statusText: "Not Found" })
-          : new Response(SHELL, {
+      return Object.hasOwn(files, url)
+        ? Promise.resolve(
+            Response.json(files[url], {
               status: 200,
-              headers: { "content-type": "text/html; charset=utf-8" },
+              headers: { "content-type": "application/json" },
             }),
-      );
+          )
+        : Promise.resolve(
+            missing === "404"
+              ? new Response("", { status: 404, statusText: "Not Found" })
+              : new Response(SHELL, {
+                  status: 200,
+                  headers: { "content-type": "text/html; charset=utf-8" },
+                }),
+          );
     },
   };
 }

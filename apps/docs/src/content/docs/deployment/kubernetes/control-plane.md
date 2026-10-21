@@ -120,6 +120,34 @@ credential is absent, expired or refused, the refresh prints
 test cases and the reference-build lockfile the checkout already holds. Every
 other step of `tcab ingest --env <env>` fails it before anything is ingested.
 
+### The state volume
+
+In the `staging` and `prod` overlays the backend's `state` volume, which holds
+the definition store and the ingest checkout, is the `tcab-backend-state` claim,
+16Gi, declared once in
+`deployments/k8s/components/postgres/deployment-backend.yaml`. No overlay
+patches it, so staging and prod have the same size and a change of it reaches
+each with that environment's next deploy. To grow the volume, raise
+`spec.resources.requests.storage` there and deploy as usual, through the
+pipeline:
+
+1. The [catalog preflight](/deployment/kubernetes/overview/#the-catalog-checks)
+   counts the growth as free space, so a full volume does not stop the deploy
+   that enlarges it, and refuses a size the cluster would not apply.
+2. The apply resizes the claim. The cluster grows the disk and then the
+   filesystem on it, which rests on the claim's storage class allowing
+   expansion (`allowVolumeExpansion: true`, which the classes AKS ships have).
+3. `verify` fails the deploy if the ingest sidecar did not ingest.
+
+A volume cannot shrink, and the preflight refuses a deploy that asks for it.
+Once an environment has grown, that covers every checkout that still declares
+the smaller size: re-running an earlier pipeline run, or deploying a branch cut
+before the change, is refused with nothing applied. Put an earlier commit back
+from a checkout that carries the current size
+(`scripts/ci/deploy-environment.sh <env> <sha>`), which changes the images and
+leaves the claim alone. Deploy a change of the size to staging first: it shares
+the manifest, so it takes the same path.
+
 ## Planned disruption
 
 A node drain, a node-image upgrade and a deploy each restart service pods. A

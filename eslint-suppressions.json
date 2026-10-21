@@ -10,30 +10,15 @@
     }
   },
   "apps/site/src/main.tsx": {
-    "import-x/order": {
-      "count": 2
-    },
     "react-refresh/only-export-components": {
-      "count": 1
-    },
-    "unicorn/prefer-query-selector": {
       "count": 1
     }
   },
   "apps/site/src/staticGallery.ts": {
-    "@typescript-eslint/no-unnecessary-type-assertion": {
+    "@typescript-eslint/require-await": {
       "count": 2
     },
-    "@typescript-eslint/require-await": {
-      "count": 4
-    },
     "import-x/no-unresolved": {
-      "count": 1
-    },
-    "import-x/order": {
-      "count": 3
-    },
-    "react-hooks/exhaustive-deps": {
       "count": 1
     },
     "unicorn/filename-case": {
@@ -46,15 +31,7 @@
       "count": 4
     },
     "unicorn/prefer-ternary": {
-      "count": 3
-    }
-  },
-  "apps/site/src/vite-env.d.ts": {
-    "import-x/no-duplicates": {
-      "count": 2
-    },
-    "import-x/order": {
-      "count": 3
+      "count": 1
     }
   }
 }

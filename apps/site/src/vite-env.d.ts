@@ -7,16 +7,16 @@
 // It holds what a listing shows for every run and every case, and nothing else.
 // A run's record, reviews and media and a case's variants, changelog, errata and
 // media are static files the build writes beside the bundle, read through
-// `staticFiles.ts` when a page of that run or case opens.
+// `static-files.ts` when a page of that run or case opens.
 declare module "virtual:tcab-snapshot" {
+  import type { Comparison } from "@clockwyrks/backend-api/comparison";
   import type { RunSummary } from "@clockwyrks/backend-api/snapshot";
+  import type { GgRunDoc } from "@clockwyrks/run-record/gg-query";
   import type {
     TestCaseGroupSummary,
     TestCaseSummary,
   } from "@clockwyrks/ui/app";
   import type { Model } from "@clockwyrks/ui/client";
-  import type { Comparison } from "@clockwyrks/backend-api/comparison";
-  import type { GgRunDoc } from "@clockwyrks/run-record/gg-query";
 
   /**
    * The flat summary index (`runs.json`), newest first — the bounded run-summary
