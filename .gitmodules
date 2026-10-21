@@ -93,3 +93,7 @@
 	path = ui-common
 	url = ../ui-common
 	branch = .
+[submodule "client-tauri"]
+	path = client-tauri
+	url = ../client-tauri
+	branch = .

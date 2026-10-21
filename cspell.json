@@ -25,6 +25,7 @@
     "/package-lock.json",
     "/tmp/**",
     "/cold-storage/**",
+    "/client-tauri/**",
     "/contracts/**",
     "/engines/**",
     "/gg/**",
