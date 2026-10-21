@@ -30,24 +30,24 @@
 # tools/submodule-checkout.sh populates `contracts/` and `engines/`, the
 # contracts and engines repositories whose crates and packages the workspace
 # builds against, `gg/`, whose crate the patch table names and whose pages the
-# documentation site reads, `microservice-repos/`, `tool-model-core/`,
-# `tool-paint/`, `tool-particle/`, `tool-sprite/`, `tool-voxel/`, `tool-mc/`,
-# `tool-sn/`, `tool-dc/`, `tool-audio-core/`, `tool-sfx-synth/`,
-# `tool-sfx-sample/` and `tool-music/`, whose crates the patch table names,
-# `test-suites/`, the suites checkout The Test Cabinet ingests from, and
-# `ui-common/`, the ui-common repository whose packages the web front ends build
-# against. It names those eighteen alone, because cold-storage beside them is
-# optional and about 2 GB. It runs ahead of `npm ci`, which lists contracts', engines' and
-# ui-common's packages in the npm workspace, and after tools/ssh-agent.sh,
-# because the clone goes through the host agent that script publishes: this runs
-# before post-start.sh, so the agent is published here first (the script is
-# idempotent, and post-start.sh publishes it again). The checkout pins Azure
-# DevOps' host key so the first clone stops at no prompt, is a no-op when the
-# host clone the checkout is mounted from already populated it, and says a
-# failure rather than failing the creation of a container that is otherwise
-# ready; a host with no agent to publish is one such failure, said by the agent
-# script and held here, so the submodules are checked out at the next start, or
-# by hand, once SSH works.
+# documentation site reads, `microservice-driver/`, `microservice-repos/`,
+# `tool-model-core/`, `tool-paint/`, `tool-particle/`, `tool-sprite/`,
+# `tool-voxel/`, `tool-mc/`, `tool-sn/`, `tool-dc/`, `tool-audio-core/`,
+# `tool-sfx-synth/`, `tool-sfx-sample/` and `tool-music/`, whose crates the
+# patch table names, `test-suites/`, the suites checkout The Test Cabinet
+# ingests from, and `ui-common/`, the ui-common repository whose packages the
+# web front ends build against. It names those nineteen alone, because
+# cold-storage beside them is optional and about 2 GB. It runs ahead of
+# `npm ci`, which lists contracts', engines' and ui-common's packages in the npm
+# workspace, and after tools/ssh-agent.sh, because the clone goes through the
+# host agent that script publishes: this runs before post-start.sh, so the
+# agent is published here first (the script is idempotent, and post-start.sh
+# publishes it again). The checkout pins Azure DevOps' host key so the first
+# clone stops at no prompt, is a no-op when the host clone the checkout is
+# mounted from already populated it, and says a failure rather than failing
+# the creation of a container that is otherwise ready; a host with no agent to
+# publish is one such failure, said by the agent script and held here, so the
+# submodules are checked out at the next start, or by hand, once SSH works.
 set -euo pipefail
 
 if git rev-parse --git-dir >/dev/null 2>&1; then

@@ -44,13 +44,13 @@ resources:
     - pipeline: main
       source: the-test-cabinet
       trigger: none
-  # The contracts, engines, gg, microservice-repos, tool-model-core, tool-paint,
-  # tool-particle, tool-sprite, tool-voxel, tool-mc, tool-sn, tool-dc,
-  # tool-audio-core, tool-sfx-synth, tool-sfx-sample, tool-music and ui-common
-  # repositories, the submodules every build reads through the patch table, and
-  # test-suites, the catalog the binary jobs' driver tests read, as in
-  # azure-pipelines.yml: a job that builds names them under `uses:` and runs
-  # `scripts/ci/submodules.sh init` with their paths.
+  # The contracts, engines, gg, microservice-driver, microservice-repos,
+  # tool-model-core, tool-paint, tool-particle, tool-sprite, tool-voxel,
+  # tool-mc, tool-sn, tool-dc, tool-audio-core, tool-sfx-synth, tool-sfx-sample,
+  # tool-music and ui-common repositories, the submodules every build reads
+  # through the patch table, and test-suites, the catalog the binary jobs'
+  # driver tests read, as in azure-pipelines.yml: a job that builds names them
+  # under `uses:` and runs `scripts/ci/submodules.sh init` with their paths.
   repositories:
     - repository: contracts
       type: git
@@ -61,6 +61,9 @@ resources:
     - repository: gg
       type: git
       name: the-test-cabinet/gg
+    - repository: microservice-driver
+      type: git
+      name: the-test-cabinet/microservice-driver
     - repository: microservice-repos
       type: git
       name: the-test-cabinet/microservice-repos

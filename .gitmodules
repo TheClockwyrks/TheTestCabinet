@@ -16,6 +16,10 @@
 [submodule "gg"]
 	path = gg
 	url = ../gg
+[submodule "microservice-driver"]
+	path = microservice-driver
+	url = ../microservice-driver
+	branch = master
 [submodule "microservice-repos"]
 	path = microservice-repos
 	url = ../microservice-repos
