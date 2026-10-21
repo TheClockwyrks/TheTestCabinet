@@ -1,16 +1,14 @@
 # Keep the build context lean AND stable. Both the run-container builds
-# (containers/*/Dockerfile — the shared tooling builder in containers/tools/, which
-# compiles every asset binary from crates/, plus the adversarial and performance
-# images, which compile the Foray/Lattice tooling from the engines submodule in their
-# own stages) and the
+# (containers/*/Dockerfile — the adversarial and performance images, which compile the
+# Foray/Lattice tooling from the engines submodule in their own stages) and the
 # service-image builds (deployments/images/services.Dockerfile, which compiles the
-# backend/auth/dispatcher/driver/artifacts/arena/publisher crates) use the
+# backend/auth/driver/artifacts/arena/publisher crates) use the
 # repository root as their context. Almost every one of those builds is just a `cargo
 # build` over the Rust workspace — nothing else — so this is an ALLOWLIST: ignore
 # everything, then re-include only the paths cargo actually reads.
 #
 # (The per-asset-kind images — sprite, voxel, mc, … — no longer read the context at
-# all: they only `COPY --from` the tooling builder or a `tool-*` repository's image.
+# all: they only `COPY --from` a `tool-*` repository's image.
 # They are still built with the
 # repo root as their context for consistency, and it costs them nothing because they
 # read none of it.)
@@ -22,7 +20,7 @@
 # engines are ~15 MB without their test data) — real build inputs, every one of them
 # compiled by some image.
 # The figure is worth keeping honest because it is the unit of the `COPY . .` snapshot
-# each of the seven whole-context builds materialises on a cache miss, which is why the
+# each whole-context build materialises on a cache miss, which is why the
 # re-exclusions at the foot of this file keep ignored output out of it.
 #
 # Flipping to an allowlist (rather than enumerating things to exclude) means a
@@ -33,32 +31,35 @@
 
 # SUBMODULES. A path in a submodule is re-included like any other, by naming it (the
 # submodule's own path, or a path inside it, never a wildcard), and `*` below keeps
-# every submodule this file does not name out of the context, cold-storage's ~2 GB
-# of baseline media included. contracts, engines, gg, microservice-repos,
-# tool-model-core, tool-paint, tool-particle, tool-sprite, tool-voxel, tool-mc, tool-sn,
-# tool-dc, test-suites and ui-common are the ones named, below. What a submodule path
-# adds is a precondition: the build reads what the checkout it runs in holds, and a
-# checkout leaves every submodule empty until it is initialized. So the image jobs run
-# `scripts/ci/submodules.sh init --build-context`, which initializes exactly the
-# submodules this file admits any part of (`scripts/ci/build-context.sh
-# --submodules` prints them), and a local image build needs the same first. The
-# build-context gate checks a re-included path inside a submodule against that
-# submodule's checkout, and names it as unverified where the checkout has none.
+# every submodule this file does not name out of the context, cold-storage's ~2 GB of
+# baseline media included. contracts, engines, gg, microservice-dispatcher,
+# microservice-repos, tool-model-core,
+# tool-paint, tool-particle, tool-sprite, tool-voxel, tool-mc, tool-sn, tool-dc,
+# tool-audio-core, tool-sfx-synth, tool-sfx-sample, tool-music, test-suites and
+# ui-common are the ones named, below. What a submodule path adds is a precondition: the
+# build reads what the checkout it runs in holds, and a checkout leaves every submodule
+# empty until it is initialized. So the image jobs run `scripts/ci/submodules.sh init
+# --build-context`, which initializes exactly the submodules this file admits any part
+# of (`scripts/ci/build-context.sh --submodules` prints them), and a local image build
+# needs the same first. The build-context gate checks a re-included path inside a
+# submodule against that submodule's checkout, and names it as unverified where the
+# checkout has none.
 
 # Ignore everything by default…
 *
 
-# …then re-include the Rust workspace and the few files a build embeds. All
-# workspace members live under crates/. The workspace names the contracts and
-# engines repositories' crates by their public sources, and the patch table in
-# .cargo/ sends each source to its submodule, whose crates inherit their version and
-# dependencies from its own workspace manifest, so cargo reads that too. cargo loads
-# every patch path, a table nothing builds from included, so every checked-out
-# repository the table names is re-included here (microservice-repos,
-# tool-model-core, tool-paint, tool-particle, tool-sprite, tool-voxel, tool-mc, tool-sn,
-# tool-dc, ui-common). This is the complete set cargo needs to resolve and compile any
-# crate; resolving the lock still fetches the patched sources, the public mirrors, over
-# the network.
+# …then re-include the Rust workspace and the few files a build embeds. All workspace
+# members live under crates/. The workspace names the contracts and engines
+# repositories' crates by their public sources, and the patch table in .cargo/ sends
+# each source to its submodule, whose crates inherit their version and dependencies from
+# its own workspace manifest, so cargo reads that too. cargo loads every patch path, a
+# table nothing builds from included, so every checked-out repository the table names is
+# re-included here (microservice-dispatcher, microservice-repos,
+# tool-model-core, tool-paint, tool-particle,
+# tool-sprite, tool-voxel, tool-mc, tool-sn, tool-dc, tool-audio-core, tool-sfx-synth,
+# tool-sfx-sample, tool-music, ui-common). This is the complete set cargo needs to
+# resolve and compile any crate; resolving the lock still fetches the patched sources,
+# the public mirrors, over the network.
 !/Cargo.toml
 !/Cargo.lock
 !/rust-toolchain.toml
@@ -68,6 +69,8 @@
 !/contracts/crates
 !/engines/Cargo.toml
 !/engines/crates
+!/microservice-dispatcher/Cargo.toml
+!/microservice-dispatcher/crates
 !/microservice-repos/Cargo.toml
 !/microservice-repos/crates
 !/tool-model-core/Cargo.toml
@@ -86,6 +89,14 @@
 !/tool-sn/crates
 !/tool-dc/Cargo.toml
 !/tool-dc/crates
+!/tool-audio-core/Cargo.toml
+!/tool-audio-core/crates
+!/tool-sfx-synth/Cargo.toml
+!/tool-sfx-synth/crates
+!/tool-sfx-sample/Cargo.toml
+!/tool-sfx-sample/crates
+!/tool-music/Cargo.toml
+!/tool-music/crates
 !/ui-common/Cargo.toml
 !/ui-common/crates
 # crates/driver and the engines repository's crates/engines bake these three trees
@@ -274,7 +285,7 @@
 # would prefer one, Buildah (Podman, podman-compose, the devcontainer on a rootless
 # Podman host) has been seen to read THIS file instead and die on the first COPY, so
 # one allowlist serves every runtime. scripts/ci/build-context.sh checks the
-# Dockerfile's COPYs against it. What it costs the seven `COPY . .` builds: their
+# Dockerfile's COPYs against it. What it costs the `COPY . .` builds: their
 # cache keys gain these ~30 small files, which move far less often than crates/.
 !/.devcontainer/ai
 !/.devcontainer/languages

@@ -122,6 +122,9 @@ resources:
     - repository: gg.rocks
       type: git
       name: the-test-cabinet/gg.rocks
+    - repository: microservice-dispatcher
+      type: git
+      name: the-test-cabinet/microservice-dispatcher
     - repository: microservice-repos
       type: git
       name: the-test-cabinet/microservice-repos
@@ -149,6 +152,18 @@ resources:
     - repository: tool-dc
       type: git
       name: the-test-cabinet/tool-dc
+    - repository: tool-audio-core
+      type: git
+      name: the-test-cabinet/tool-audio-core
+    - repository: tool-sfx-synth
+      type: git
+      name: the-test-cabinet/tool-sfx-synth
+    - repository: tool-sfx-sample
+      type: git
+      name: the-test-cabinet/tool-sfx-sample
+    - repository: tool-music
+      type: git
+      name: the-test-cabinet/tool-music
     - repository: test-suites
       type: git
       name: the-test-cabinet/test-suites
@@ -181,6 +196,7 @@ jobs:
         - engines
         - gg
         - gg.rocks
+        - microservice-dispatcher
         - microservice-repos
         - tool-model-core
         - tool-paint
@@ -190,6 +206,10 @@ jobs:
         - tool-mc
         - tool-sn
         - tool-dc
+        - tool-audio-core
+        - tool-sfx-synth
+        - tool-sfx-sample
+        - tool-music
         - test-suites
         - ui-common
     steps:
@@ -235,6 +255,7 @@ jobs:
         - engines
         - gg
         - gg.rocks
+        - microservice-dispatcher
         - microservice-repos
         - tool-model-core
         - tool-paint
@@ -244,6 +265,10 @@ jobs:
         - tool-mc
         - tool-sn
         - tool-dc
+        - tool-audio-core
+        - tool-sfx-synth
+        - tool-sfx-sample
+        - tool-music
         - test-suites
         - ui-common
     steps:
@@ -283,6 +308,7 @@ jobs:
         - engines
         - gg
         - gg.rocks
+        - microservice-dispatcher
         - microservice-repos
         - tool-model-core
         - tool-paint
@@ -292,6 +318,10 @@ jobs:
         - tool-mc
         - tool-sn
         - tool-dc
+        - tool-audio-core
+        - tool-sfx-synth
+        - tool-sfx-sample
+        - tool-music
         - test-suites
         - ui-common
     steps:

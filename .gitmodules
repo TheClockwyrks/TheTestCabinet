@@ -17,6 +17,10 @@
 	path = gg
 	url = ../gg
 	branch = .
+[submodule "microservice-dispatcher"]
+	path = microservice-dispatcher
+	url = ../microservice-dispatcher
+	branch = .
 [submodule "microservice-repos"]
 	path = microservice-repos
 	url = ../microservice-repos
@@ -56,6 +60,22 @@
 [submodule "tool-dc"]
 	path = tool-dc
 	url = ../tool-dc
+	branch = .
+[submodule "tool-audio-core"]
+	path = tool-audio-core
+	url = ../tool-audio-core
+	branch = .
+[submodule "tool-sfx-synth"]
+	path = tool-sfx-synth
+	url = ../tool-sfx-synth
+	branch = .
+[submodule "tool-sfx-sample"]
+	path = tool-sfx-sample
+	url = ../tool-sfx-sample
+	branch = .
+[submodule "tool-music"]
+	path = tool-music
+	url = ../tool-music
 	branch = .
 [submodule "ui-common"]
 	path = ui-common

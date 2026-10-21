@@ -65,15 +65,18 @@ Overlays compose in reusable kustomize **components**:
 
 The service container images are built from [`../images/`](../images/) — every Rust
 service is a `--target` of the shared `services.Dockerfile` (`backend`,
-`dispatcher`, `driver`, `artifacts`, `arena`, `publisher`), and the console has its
+`driver`, `artifacts`, `arena`, `publisher`), and the console has its
 own `web.Dockerfile`. The repos service is its own repository, `microservice-repos`,
 whose pipeline builds its image from that repository's `Dockerfile` and pushes it as
-`testcabinet.azurecr.io/microservice-repos:<commit>`. The Azure pipeline builds the
+`testcabinet.azurecr.io/microservice-repos:<commit>`. The dispatcher is likewise
+`microservice-dispatcher`, pushed as
+`testcabinet.azurecr.io/microservice-dispatcher:<commit>`, the image the `staging`
+and `prod` overlays run it from. The Azure pipeline builds the
 others, and the **run-container**
 images the sandbox runs inside ([`containers/`](../../containers/README.md)), on
 every push to `master` and `staging`, and pushes each to
 `testcabinet.azurecr.io/<image>:<sha>` (`tcab-backend`,
-`tcab-dispatcher`, `tcab-driver`, `tcab-artifacts`, `tcab-arena`,
+`tcab-driver`, `tcab-artifacts`, `tcab-arena`,
 `tcab-publisher`, `tcab-web`, and the `test-cabinet-*` run images). The workspace
 template's publish stage retags `tcab-backend:<sha>` as
 `testcabinet.azurecr.io/the-test-cabinet-backend:<sha>`
@@ -81,9 +84,10 @@ template's publish stage retags `tcab-backend:<sha>` as
 `staging` and `prod` overlays run the backend from. Those overlays name every Test
 Cabinet image at the tag `unpinned`, which nothing pushes, so applied as they stand
 they fail to pull; [`scripts/ci/pin-images.sh`](../../scripts/ci/pin-images.sh) pins
-the seven images this repository builds, and the dispatcher's run images and
-run-container tag, to the commit being deployed, and the repos service's image to
-the commit that commit's `microservice-repos` submodule pointer names.
+the six images this repository builds, and the dispatcher's run images and
+run-container tag, to the commit being deployed, and the dispatcher's and the repos
+service's images to the commits that commit's `microservice-dispatcher` and
+`microservice-repos` submodule pointers name.
 
 ## Cluster prerequisites
 
@@ -190,7 +194,7 @@ The dispatcher's
 `TCAB_K8S_*` sandbox settings are documented in
 [`deployment/kubernetes/run-plane.md`](../../apps/docs/src/content/docs/deployment/kubernetes/run-plane.md)
 and the dispatcher's
-[`config.rs`](../../crates/dispatcher/src/config.rs).
+[`config.rs`](../../microservice-dispatcher/crates/dispatcher/src/config.rs).
 
 ## Secrets
 
@@ -211,5 +215,6 @@ your **environment** (`ANTHROPIC_API_KEY` / `OPENAI_API_KEY` / `OPENROUTER_API_K
 for the driver, a dev `SERVICE_TOKEN` for the other two), so no key is written to a
 tracked file.
 
-The repo-root `.env.backend.example`, `.env.artifacts.example` and `.env.dispatcher.example`
+The repo-root `.env.backend.example` and `.env.artifacts.example`, and
+microservice-dispatcher's `.env.dispatcher.example` at that repository's root,
 remain the authoritative reference for every variable each service reads.

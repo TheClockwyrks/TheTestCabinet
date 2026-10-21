@@ -44,10 +44,12 @@ resources:
     - pipeline: main
       source: the-test-cabinet
       trigger: none
-  # The contracts, engines, gg, microservice-repos, tool-model-core, tool-paint,
-  # tool-particle, tool-sprite, tool-voxel, tool-mc, tool-sn, tool-dc and
-  # ui-common repositories, the submodules every build reads through the patch
-  # table, and test-suites, the catalog the binary jobs' driver tests read, as in
+  # The contracts, engines, gg, microservice-dispatcher, microservice-repos,
+  # tool-model-core, tool-paint,
+  # tool-particle, tool-sprite, tool-voxel, tool-mc, tool-sn, tool-dc,
+  # tool-audio-core, tool-sfx-synth, tool-sfx-sample, tool-music and ui-common
+  # repositories, the submodules every build reads through the patch table, and
+  # test-suites, the catalog the binary jobs' driver tests read, as in
   # azure-pipelines.yml: a job that builds names them under `uses:` and runs
   # `scripts/ci/submodules.sh init` with their paths.
   repositories:
@@ -60,6 +62,9 @@ resources:
     - repository: gg
       type: git
       name: the-test-cabinet/gg
+    - repository: microservice-dispatcher
+      type: git
+      name: the-test-cabinet/microservice-dispatcher
     - repository: microservice-repos
       type: git
       name: the-test-cabinet/microservice-repos
@@ -87,6 +92,18 @@ resources:
     - repository: tool-dc
       type: git
       name: the-test-cabinet/tool-dc
+    - repository: tool-audio-core
+      type: git
+      name: the-test-cabinet/tool-audio-core
+    - repository: tool-sfx-synth
+      type: git
+      name: the-test-cabinet/tool-sfx-synth
+    - repository: tool-sfx-sample
+      type: git
+      name: the-test-cabinet/tool-sfx-sample
+    - repository: tool-music
+      type: git
+      name: the-test-cabinet/tool-music
     - repository: test-suites
       type: git
       name: the-test-cabinet/test-suites

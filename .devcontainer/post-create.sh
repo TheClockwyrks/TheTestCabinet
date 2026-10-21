@@ -30,13 +30,15 @@
 # tools/submodule-checkout.sh populates `contracts/` and `engines/`, the
 # contracts and engines repositories whose crates and packages the workspace
 # builds against, `gg/`, whose crate the patch table names and whose pages the
-# documentation site reads, `microservice-repos/`, `tool-model-core/`,
+# documentation site reads, `microservice-dispatcher/`, `microservice-repos/`,
+# `tool-model-core/`,
 # `tool-paint/`, `tool-particle/`, `tool-sprite/`, `tool-voxel/`, `tool-mc/`,
-# `tool-sn/` and `tool-dc/`, whose crates the patch table names, `test-suites/`,
-# the suites checkout The Test Cabinet ingests from, and `ui-common/`, the
-# ui-common repository whose packages the web front ends build against. It names
-# those fourteen alone, because cold-storage beside them is optional and about
-# 2 GB. It runs ahead of `npm ci`, which lists contracts', engines' and
+# `tool-sn/`, `tool-dc/`, `tool-audio-core/`, `tool-sfx-synth/`,
+# `tool-sfx-sample/` and `tool-music/`, whose crates the patch table names,
+# `test-suites/`, the suites checkout The Test Cabinet ingests from, and
+# `ui-common/`, the ui-common repository whose packages the web front ends build
+# against. It names those nineteen alone, because cold-storage beside them is
+# optional and about 2 GB. It runs ahead of `npm ci`, which lists contracts', engines' and
 # ui-common's packages in the npm workspace, and after tools/ssh-agent.sh,
 # because the clone goes through the host agent that script publishes: this runs
 # before post-start.sh, so the agent is published here first (the script is

@@ -2,13 +2,8 @@
 resolver = "3"
 members = [
 	"crates/cli",
-	"crates/audio-core",
-	"crates/sfx-synth",
-	"crates/sfx-sample",
-	"crates/music",
 	"crates/backend",
 	"crates/driver",
-	"crates/dispatcher",
 	"crates/publisher",
 	"crates/artifacts",
 	"crates/arena",
@@ -17,15 +12,19 @@ members = [
 	"crates/migration",
 ]
 # The repositories checked out as submodules carrying a crate (contracts, engines,
-# gg, microservice-repos, tool-model-core, tool-paint, tool-particle, tool-sprite,
-# tool-voxel, tool-mc, tool-sn, tool-dc, ui-common) are workspaces of their own. The
-# contracts, engines, microservice-repos, tool-model-core, tool-sprite and
-# tool-voxel crates are named under `[workspace.dependencies]` by their public
-# source, and the patch table of `.cargo/config.toml` builds them from the
-# checkouts. No member depends on gg's, tool-paint's, tool-particle's, tool-mc's,
-# tool-sn's, tool-dc's or ui-common's source, nor on tool-voxel's `voxel-anim`; the
-# patch table names their crates all the same, and the lock records them as unused.
-exclude = ["contracts", "engines", "gg", "microservice-repos", "tool-model-core", "tool-paint", "tool-particle", "tool-sprite", "tool-voxel", "tool-mc", "tool-sn", "tool-dc", "ui-common"]
+# gg, microservice-dispatcher, microservice-repos, tool-model-core, tool-paint,
+# tool-particle, tool-sprite,
+# tool-voxel, tool-mc, tool-sn, tool-dc, tool-audio-core, tool-sfx-synth,
+# tool-sfx-sample, tool-music, ui-common) are workspaces of their own. The
+# contracts, engines, microservice-repos, tool-model-core, tool-sprite,
+# tool-voxel and tool-audio-core crates are named under `[workspace.dependencies]`
+# by their public source, and the patch table of `.cargo/config.toml` builds them
+# from the checkouts. No member depends on gg's, microservice-dispatcher's,
+# tool-paint's, tool-particle's,
+# tool-mc's, tool-sn's, tool-dc's, tool-sfx-synth's, tool-sfx-sample's,
+# tool-music's or ui-common's source, nor on tool-voxel's `voxel-anim`; the patch
+# table names their crates all the same, and the lock records them as unused.
+exclude = ["contracts", "engines", "gg", "microservice-dispatcher", "microservice-repos", "tool-model-core", "tool-paint", "tool-particle", "tool-sprite", "tool-voxel", "tool-mc", "tool-sn", "tool-dc", "tool-audio-core", "tool-sfx-synth", "tool-sfx-sample", "tool-music", "ui-common"]
 
 [workspace.package]
 edition = "2024"
@@ -158,6 +157,11 @@ test-cabinet-model-skin = { git = "https://github.com/TheClockwyrks/tool-model-c
 # (not the `cli` feature's binaries): the driver regenerates the scored voxel data
 # and preview from a run's recorded operation log through it.
 test-cabinet-voxel = { git = "https://github.com/TheClockwyrks/tool-voxel", branch = "master", default-features = false }
+# The audio crate of the tool-audio-core repository, named the same way at its
+# tag. Only the library (not the `cli` feature's loader): the driver stages a
+# run's sample packs into the tree the in-container audio binaries read, and its
+# tests enable the `cli` feature to read that tree back.
+test-cabinet-audio-core = { git = "https://github.com/TheClockwyrks/tool-audio-core", tag = "v0.1.0", default-features = false }
 # Shared runtime dependencies inherited by member crates via { workspace = true }.
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

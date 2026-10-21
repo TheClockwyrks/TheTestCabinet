@@ -18,9 +18,10 @@
 # `ui`, `texture` and `pbr` from tool-paint; particle-2d, particle-3d and the full-stack
 # images: `particle-2d` and `particle-3d` from tool-particle; voxel, voxel-animation and
 # full-stack-3d: `voxel` and `voxel-anim` from tool-voxel; the meshing and skinned images:
-# `mc`, `mc-anim` and `mc-skin` from tool-mc, and likewise from tool-sn and tool-dc) copy
-# them out of that repository's image at the commit the driver pins, which its own
-# pipeline publishes.
+# `mc`, `mc-anim` and `mc-skin` from tool-mc, and likewise from tool-sn and tool-dc;
+# sfx-synth, sfx-sample, music and the full-stack images: `sfx-synth`, `sfx-sample` and
+# `music` from tool-sfx-synth, tool-sfx-sample and tool-music) copy them out of that
+# repository's image at the commit the driver pins, which its own pipeline publishes.
 # `scripts/ci/tool-images.sh check` runs first, so a pin of a commit that pipeline has not
 # published fails here, naming the commit, before anything is built.
 #
