@@ -50,7 +50,8 @@ lives in, checked out as a submodule at this repository's root.
 Where each responsibility lives, the edges between the repositories and how a
 dependency is named:
 [Repositories](apps/docs/src/content/docs/development/repositories.md#where-each-responsibility-lives).
-Every repository but `contracts`, `engines`, `gg`, `gg.rocks`, `microservice-artifacts`,
+Every repository but `contracts`, `engines`, `gg`, `gg.rocks`, `microservice-arena`,
+`microservice-artifacts`,
 `microservice-dispatcher`, `microservice-driver`, `microservice-repos`,
 `tool-audio-core`, `tool-dc`, `tool-mc`, `tool-model-core`, `tool-music`,
 `tool-paint`, `tool-particle`,

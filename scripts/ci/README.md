@@ -81,14 +81,14 @@ immutable and some hold files those hooks would rewrite.
 
 The project's jobs, from `.azure/project/jobs.yml`:
 
-| Job                                    | Runs on                         | Runs in                           | Scripts                                                                                                                                                                                                                              |
-| -------------------------------------- | ------------------------------- | --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `paths`                                | every run                       | hosted `ubuntu-24.04`             | `changed-paths.sh`, over a two-deep checkout: which of the check jobs below a pull request reaches, as the `detect.rust` and `detect.submodules` outputs                                                                             |
-| `rust_build`                           | every push; a PR reaching Rust  | Rust CI image, 150 min            | `rust-build.sh`, then `rust-build.sh --seed` when no seed is cached, `cargo-target-prune.sh`                                                                                                                                         |
-| `submodule_pins`                       | every push; a PR touching a pin | hosted `ubuntu-24.04`             | `submodule-pins.sh`, with the job token and a checkout of each submodule's repository                                                                                                                                                |
-| `checks`                               | every run                       | agentless                         | none: it succeeds when `paths` and the template's `rust` and `web` did, and every check job above did or was skipped by `paths`                                                                                                      |
-| `mirror`                               | `master`, `staging`, `nightly`  | hosted `ubuntu-24.04`             | `mirror.sh`, once `checks` passed; a failed push is a warning, not a failed stage                                                                                                                                                    |
-| `services_<arch>`, `services_manifest` | `master`, `staging`             | hosted amd64; arm64 pool, 240 min | `submodules.sh init --build-context`, `free-disk-linux.sh` on amd64, then `service-images.sh`, which runs `service-image.sh` per service on one builder, `report-disk.sh` after it, then `manifest.sh` over the four `tcab-*` images |
+| Job                                    | Runs on                         | Runs in                           | Scripts                                                                                                                                                                                                                               |
+| -------------------------------------- | ------------------------------- | --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `paths`                                | every run                       | hosted `ubuntu-24.04`             | `changed-paths.sh`, over a two-deep checkout: which of the check jobs below a pull request reaches, as the `detect.rust` and `detect.submodules` outputs                                                                              |
+| `rust_build`                           | every push; a PR reaching Rust  | Rust CI image, 150 min            | `rust-build.sh`, then `rust-build.sh --seed` when no seed is cached, `cargo-target-prune.sh`                                                                                                                                          |
+| `submodule_pins`                       | every push; a PR touching a pin | hosted `ubuntu-24.04`             | `submodule-pins.sh`, with the job token and a checkout of each submodule's repository                                                                                                                                                 |
+| `checks`                               | every run                       | agentless                         | none: it succeeds when `paths` and the template's `rust` and `web` did, and every check job above did or was skipped by `paths`                                                                                                       |
+| `mirror`                               | `master`, `staging`, `nightly`  | hosted `ubuntu-24.04`             | `mirror.sh`, once `checks` passed; a failed push is a warning, not a failed stage                                                                                                                                                     |
+| `services_<arch>`, `services_manifest` | `master`, `staging`             | hosted amd64; arm64 pool, 240 min | `submodules.sh init --build-context`, `free-disk-linux.sh` on amd64, then `service-images.sh`, which runs `service-image.sh` per service on one builder, `report-disk.sh` after it, then `manifest.sh` over the three `tcab-*` images |
 
 The **check jobs** are the template's `rust` and `web`,
 `rust_build` and `submodule_pins`. A push runs them all; a pull
@@ -112,12 +112,12 @@ and a tarball without `gg-reference/index.json`, and writes `gg` and
 (`TCAB_GG_REFERENCE`). The stage's cache is keyed on the pin file and the two
 scripts alone, so a bump of the pin is what fetches it again.
 
-**One job builds the four service images of an architecture.** `services_<arch>` waits
+**One job builds the three service images of an architecture.** `services_<arch>` waits
 on `checks`, and `service-images.sh` runs `service-image.sh` once per service, in the
-order backend, arena, publisher, web, on one
+order backend, publisher, web, on one
 `docker-container` builder (`tcab-ci`). The `build` stage of
-`deployments/images/services.Dockerfile` is one `cargo build --release` of all three
-Rust service binaries, so it compiles once and the two other Rust targets take it from
+`deployments/images/services.Dockerfile` is one `cargo build --release` of both
+Rust service binaries, so it compiles once and the other Rust target takes it from
 the builder's local cache; `web` has its own Dockerfile and goes last. A job per image
 ran that compile in every one of the Rust jobs (twenty minutes on a hosted amd64
 agent, ten on the arm64 pool, measured on staging run 10763), and the arm64 pool runs

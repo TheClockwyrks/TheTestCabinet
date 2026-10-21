@@ -7,13 +7,13 @@
 # It runs scripts/ci/service-image.sh once per service, in a fixed order, and that
 # script's arguments are the whole contract; this one adds the order and the builder.
 #
-# WHY ONE JOB BUILDS THE FOUR. Three of the services are targets of
-# deployments/images/services.Dockerfile, and every one of them is assembled from
-# the same `build` stage: one `cargo build --release` of all three binaries. Built
-# as four separate jobs, each on a fresh agent with an empty builder, that compile
-# ran three times per architecture — twenty minutes each on a hosted amd64 agent,
+# WHY ONE JOB BUILDS THE THREE. Two of the services are targets of
+# deployments/images/services.Dockerfile, and both are assembled from
+# the same `build` stage: one `cargo build --release` of both binaries. Built
+# as three separate jobs, each on a fresh agent with an empty builder, that compile
+# ran twice per architecture — twenty minutes each on a hosted amd64 agent,
 # ten on the arm64 pool, which also runs one job at a time and pays a VM provision
-# for each. On one builder the first target compiles and the two after it take the
+# for each. On one builder the first target compiles and the one after it takes the
 # `build` stage from the builder's local cache, so the compile happens once per
 # architecture and the assemblies are seconds. `web` has a Dockerfile of its own
 # and shares nothing, so it goes last, after the images that wait on the compile.
@@ -34,8 +34,8 @@ if [[ $# -ne 1 ]]; then
 fi
 readonly SHA="$1"
 
-# The four services scripts/ci/service-image.sh knows, in the order argued above.
-readonly SERVICES=(backend arena publisher web)
+# The three services scripts/ci/service-image.sh knows, in the order argued above.
+readonly SERVICES=(backend publisher web)
 
 for service in "${SERVICES[@]}"; do
 	if ! "${CI_LIB_DIR}/service-image.sh" "$service" "$SHA"; then

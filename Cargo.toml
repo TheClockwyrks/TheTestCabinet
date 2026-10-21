@@ -3,7 +3,6 @@ resolver = "3"
 members = [
 	"crates/backend",
 	"crates/publisher",
-	"crates/arena",
 	"crates/db-auth",
 	"crates/entities",
 	"crates/migration",
@@ -43,80 +42,6 @@ warnings = "deny"
 [workspace.lints.clippy]
 all = "deny"
 
-# `foray-core` and `lattice-core`, from the engines repository, are `cdylib`s (each
-# compiles to `wasm32-unknown-unknown` for the browser playback ABI), so on the native
-# host rustc's incremental codegen for the otherwise unused `.so`, split across the dev
-# profile's codegen units, intermittently drops a `*.rcgu.o` object and fails the link.
-# One codegen unit removes the race. `lattice-core` is the Lattice oracle, written for
-# clarity rather than speed, so the performance validator's tests run it optimised;
-# its integer fixed-point answers are the same at either level. The engines
-# repository's own manifest carries the same pins and their full account.
-[profile.dev.package.foray-core]
-codegen-units = 1
-
-[profile.dev.package.lattice-core]
-codegen-units = 1
-opt-level = 3
-
-# Cranelift compiles wasm modules in test processes: the Foray and Lattice hosts of the
-# engines repository, which the arena links through the match runner,
-# compile each controller with wasmtime, and `cargo nextest` runs ONE PROCESS PER TEST.
-# These are the crates that compile a module and read its debug information —
-# Cranelift, wasmtime's compile path and the DWARF readers — none of them workspace
-# members, so optimising them changes no behaviour under test and makes each compile
-# cheaper; the cost is one slower first build. gg's own manifest carries the same pins
-# for its sandbox's components.
-[profile.dev.package.cranelift-codegen]
-opt-level = 3
-
-[profile.dev.package.cranelift-codegen-shared]
-opt-level = 3
-
-[profile.dev.package.cranelift-frontend]
-opt-level = 3
-
-[profile.dev.package.cranelift-entity]
-opt-level = 3
-
-[profile.dev.package.cranelift-bforest]
-opt-level = 3
-
-[profile.dev.package.cranelift-bitset]
-opt-level = 3
-
-[profile.dev.package.cranelift-control]
-opt-level = 3
-
-[profile.dev.package.cranelift-native]
-opt-level = 3
-
-[profile.dev.package.regalloc2]
-opt-level = 3
-
-[profile.dev.package.wasmparser]
-opt-level = 3
-
-[profile.dev.package.wasmtime]
-opt-level = 3
-
-[profile.dev.package.wasmtime-environ]
-opt-level = 3
-
-[profile.dev.package.wasmtime-internal-core]
-opt-level = 3
-
-[profile.dev.package.wasmtime-internal-cranelift]
-opt-level = 3
-
-[profile.dev.package.gimli]
-opt-level = 3
-
-[profile.dev.package.addr2line]
-opt-level = 3
-
-[profile.dev.package.object]
-opt-level = 3
-
 [workspace.dependencies]
 # The crates of the contracts repository, named by its public source, the GitHub
 # mirror, at the tag its dependents pin (`TAGS` in `scripts/repos/render.py`), as
@@ -130,10 +55,8 @@ test-cabinet-telemetry = { git = "https://github.com/TheClockwyrks/contracts", t
 test-cabinet-redact = { git = "https://github.com/TheClockwyrks/contracts", tag = "v0.2.3" }
 test-cabinet-backend-client = { git = "https://github.com/TheClockwyrks/contracts", tag = "v0.2.3" }
 # The crates of the engines repository, named the same way at its tag. The engine
-# catalog, the match runner, and the Foray rules the arena records a match in.
+# catalog.
 test-cabinet-engines = { git = "https://github.com/TheClockwyrks/engines", tag = "v1.1.2" }
-test-cabinet-match-play = { git = "https://github.com/TheClockwyrks/engines", tag = "v1.1.2" }
-foray-core = { git = "https://github.com/TheClockwyrks/engines", tag = "v1.1.2" }
 # Shared runtime dependencies inherited by member crates via { workspace = true }.
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

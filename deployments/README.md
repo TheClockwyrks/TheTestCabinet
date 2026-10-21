@@ -35,8 +35,7 @@ deployments/
 ├── images/                    # service images, pushed to the ACR (see below)
 │   ├── services.Dockerfile    # EVERY Rust service, one `--target` each, over one
 │   │                          #   shared cargo build stage: backend (+ headless
-│   │                          #   Chromium), arena,
-│   │                          #   publisher
+│   │                          #   Chromium), publisher
 │   ├── backend.Dockerfile     # the-test-cabinet-backend: a retag of tcab-backend
 │   ├── web.Dockerfile         # tcab-web, the console SPA behind nginx (no crate)
 │   └── web/                   # its nginx.conf (no runtime configuration)
@@ -89,14 +88,13 @@ The Azure pipeline ([`azure-pipelines.yml`](../azure-pipelines.yml)) builds the
 service images under `images/` on every push to `master` and `staging`, natively
 for `amd64` and `arm64`, and pushes each to the Test Cabinet Azure Container
 Registry as `testcabinet.azurecr.io/tcab-backend:<sha>`,
-`…/tcab-arena`, `…/tcab-publisher`, and `…/tcab-web`. The
+`…/tcab-publisher`, and `…/tcab-web`. The
 dispatcher's image is built by microservice-dispatcher's pipeline and pushed as
 `testcabinet.azurecr.io/microservice-dispatcher:<commit>`, and the driver's by
 microservice-driver's, as `testcabinet.azurecr.io/microservice-driver:<commit>`. The
 artifacts service's image is built by microservice-artifacts' pipeline and pushed as
-`testcabinet.azurecr.io/microservice-artifacts:<commit>`. The `staging` and `prod`
-overlays run the arena from microservice-arena's image,
-`testcabinet.azurecr.io/microservice-arena:<commit>`. The workspace
+`testcabinet.azurecr.io/microservice-artifacts:<commit>`, and the arena's by
+microservice-arena's, as `testcabinet.azurecr.io/microservice-arena:<commit>`. The workspace
 template's publish stage then
 builds `images/backend.Dockerfile`, a retag of `tcab-backend:<sha>` with no build
 steps, and pushes it as `testcabinet.azurecr.io/the-test-cabinet-backend:<sha>`,

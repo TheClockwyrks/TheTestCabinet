@@ -65,7 +65,7 @@ Overlays compose in reusable kustomize **components**:
 
 The service container images are built from [`../images/`](../images/) — every Rust
 service is a `--target` of the shared `services.Dockerfile` (`backend`,
-`arena`, `publisher`), and the console has its
+`publisher`), and the console has its
 own `web.Dockerfile`. The repos service is its own repository, `microservice-repos`,
 whose pipeline builds its image from that repository's `Dockerfile` and pushes it as
 `testcabinet.azurecr.io/microservice-repos:<commit>`. The dispatcher is likewise
@@ -83,7 +83,7 @@ and `prod` overlays run it from. The arena is `microservice-arena`, pushed as
 `prod` overlays run it from. The Azure pipeline builds the
 others on every push to `master` and `staging`, and pushes each to
 `testcabinet.azurecr.io/<image>:<sha>` (`tcab-backend`,
-`tcab-arena`, `tcab-publisher` and `tcab-web`). The workspace
+`tcab-publisher` and `tcab-web`). The workspace
 template's publish stage retags `tcab-backend:<sha>` as
 `testcabinet.azurecr.io/the-test-cabinet-backend:<sha>`
 ([`../images/backend.Dockerfile`](../images/backend.Dockerfile)), the repository the
