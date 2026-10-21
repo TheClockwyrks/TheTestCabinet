@@ -122,6 +122,9 @@ pub async fn set(
         .set_harness_max_parallelism(&slug, input.max_parallelism, &now)
         .await
         .map_err(ApiError::from)?;
+    // Plans and ladders queue a capped harness only into its free slots, so a raised or
+    // cleared cap is room nothing else would announce.
+    super::launch::spawn_cap_change_passes(&state, &slug);
 
     list(State(state)).await
 }

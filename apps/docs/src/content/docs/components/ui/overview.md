@@ -17,7 +17,9 @@ console and The Spec Cabinet build against it.
 It ships no service and runs in no process of its own. Each GUI mounts the
 shared app inside its own router and supplies it a data source, and the two
 hosts differ only in where that data comes from and which capabilities they
-enable.
+enable. The router is a React Router data router, because only a data router
+can hold a navigation, and a form holding unsaved work asks before any
+navigation leaves it.
 
 ## Subpath entries
 
@@ -85,9 +87,18 @@ page names the latest version and links to it, and the link re-anchors the page
 to that version.
 
 The page's run aggregations scope relative to the anchored coordinate rather
-than selecting one of their own, and that scope lives in the URL alongside it. A
-view widened across engines lists each engine separately rather than folding
-them, since runs under different engines measure different work.
+than selecting one of their own, and that scope lives in the URL alongside it.
+Where the anchored version supports more than one engine, the engine scope
+offers each of those engines by name and then every engine at once. Choosing a
+named engine anchors the whole page to it, exactly as the page's own engine
+selector does. A view widened across engines lists each engine separately
+rather than folding them, since runs under different engines measure different
+work.
+
+The leaderboard ranks each model and harness pair by the average points its runs
+earned, and its metric columns are chosen from a column picker. As on the run
+log, the functional rating and the aesthetic tier are separate columns, and the
+aesthetic columns are hidden until a viewer enables them.
 
 A case's changelog and errata cover every version regardless of the anchor.
 
@@ -112,6 +123,26 @@ enables it from the column picker.
 Every column has a minimum width. When the shown columns need more than the
 log's width, the log scrolls horizontally instead of narrowing a column below
 its minimum.
+
+### A gg run's agents
+
+A gg run's row names its configuration in the model column, and an arrow beside
+the name lists the configuration's agents beneath the row. Each agent's line
+gives its name, its model, and the tokens and cost the run spent on it, in the
+same columns as the run's totals. The primary agent comes first and is tagged as
+such. An agent the run never started is marked as not run. How many instances
+of an agent a run started varies from run to run of one configuration, so the
+line omits it.
+
+The lines come from the run's summary card. The backend builds them whenever it
+builds the card, from the run record's session summary and the capability set
+it ran, so every recorded gg run carries them with nothing stored beyond its
+record. A run whose session wrote no summary, such as one
+stopped before the session ended, has no lines and no arrow.
+
+An agent's cost is priced at that agent's own model, while a gg run's
+comparable cost prices all of the run's tokens at its primary model's list
+price. The agents' costs therefore need not sum to the run's.
 
 ### Deleting a run
 

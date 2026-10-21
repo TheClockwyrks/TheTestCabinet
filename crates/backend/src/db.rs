@@ -728,6 +728,7 @@ impl Db {
             // therefore returns it to the listings.
             run::Column::RecordReadable,
             run::Column::RecordFormat,
+            run::Column::ToolCallsCounted,
         ];
         if validator_rated {
             refreshed_columns.extend([run::Column::Rating, run::Column::ValidatorRated]);
@@ -772,6 +773,7 @@ impl Db {
             // (`set_run_artifacts_stored`): a first push leaves it `NULL`, and a re-push
             // leaves what an earlier report recorded.
             artifacts_stored: NotSet,
+            tool_calls_counted: Set(tool_calls_counted(&record)),
             // `NotSet` on both paths: the mutation timestamp is stamped by
             // `touch_run` below, inside this same transaction, so that exactly one
             // place in the store decides its value. The insert therefore lands on
@@ -5371,6 +5373,42 @@ impl Db {
             .count(&self.conn())
             .await?;
         Ok(count.min(u64::from(u32::MAX)) as u32)
+    }
+
+    /// The queue position of the latest job each plan or ladder enqueued on any of
+    /// `harnesses`, keyed by its [owner prefix](JobOrigin::owner_prefix): the order a freed
+    /// slot of a capped harness is offered in, least recently served first. A plan or
+    /// ladder that never enqueued on them is absent. Jobs of every state count, since what
+    /// is asked is when the owner last got a run onto the harness.
+    pub async fn last_enqueued_by_owner(
+        &self,
+        harnesses: &[String],
+    ) -> Result<HashMap<String, i64>> {
+        if harnesses.is_empty() {
+            return Ok(HashMap::new());
+        }
+        let rows: Vec<(Option<String>, Option<i64>)> = job::Entity::find()
+            .select_only()
+            .column(job::Column::Origin)
+            .column_as(job::Column::QueueSeq.max(), "last")
+            .filter(job::Column::HarnessSlug.is_in(harnesses.iter().cloned()))
+            .filter(job::Column::Origin.is_not_null())
+            .group_by(job::Column::Origin)
+            .into_tuple()
+            .all(&self.conn())
+            .await?;
+        let mut last: HashMap<String, i64> = HashMap::new();
+        for (origin, seq) in rows {
+            let (Some(origin), Some(seq)) = (origin, seq) else {
+                continue;
+            };
+            let Some(owner) = JobOrigin::parse(&origin) else {
+                continue;
+            };
+            let entry = last.entry(owner.owner_prefix()).or_insert(seq);
+            *entry = (*entry).max(seq);
+        }
+        Ok(last)
     }
 
     /// How many of each of an account's plans' jobs are in flight, keyed by plan id, in
@@ -10157,3 +10195,11 @@ mod publish_lease_tests;
 #[cfg(test)]
 #[path = "db.job_events.test.rs"]
 mod job_events_tests;
+
+#[path = "db.tool_calls.rs"]
+mod tool_calls;
+use tool_calls::tool_calls_counted;
+
+#[cfg(test)]
+#[path = "db.tool_calls.test.rs"]
+mod tool_calls_tests;

@@ -2838,6 +2838,56 @@ async fn the_latest_price_is_the_newest_of_a_models_history() {
 }
 
 #[tokio::test]
+async fn staging_s_migrations_apply_beside_the_ones_that_followed_them() {
+    // Staging's database applied seven migrations this branch registers only so its
+    // migrator starts over them, and one of them adds the column a later migration
+    // of the same meaning adds too. A database that got the column from the later
+    // one and the earlier one from neither, as a database migrated without these
+    // seven does, takes the seven without a fault and keeps one column.
+    use sea_orm::{ConnectionTrait, Statement};
+    use test_cabinet_migration::MigratorTrait;
+
+    let db = Db::connect_in_memory().await.unwrap();
+    let conn = db.connection();
+    let backend = conn.get_database_backend();
+    let staging = [
+        "m20261012_000058_add_run_artifacts_stored",
+        "m20261012_000059_add_run_auto_publish_deferred",
+        "m20261012_000060_add_job_held_report",
+        "m20261012_000061_add_run_artifact_retention",
+        "m20261012_000062_add_run_media_manifest",
+        "m20261012_000063_add_run_state_reclaim",
+        "m20261017_000064_add_run_tool_calls_counted",
+    ];
+    let registered: Vec<String> = test_cabinet_migration::Migrator::migrations()
+        .iter()
+        .map(|migration| migration.name().to_string())
+        .collect();
+    for name in staging {
+        assert!(registered.iter().any(|known| known == name), "{name}");
+    }
+
+    // Forget only the earlier `artifacts_stored` migration, as a database that never
+    // applied it records it, and let the migrator apply it again over the column.
+    conn.execute(Statement::from_string(
+        backend,
+        "DELETE FROM seaql_migrations WHERE version = 'm20261012_000058_add_run_artifacts_stored'",
+    ))
+    .await
+    .unwrap();
+    test_cabinet_migration::Migrator::up(&conn, None)
+        .await
+        .unwrap();
+    assert!(
+        test_cabinet_migration::Migrator::get_pending_migrations(&conn)
+            .await
+            .unwrap()
+            .is_empty()
+    );
+    db.push(&record("r1"), &links(), None, None).await.unwrap();
+}
+
+#[tokio::test]
 async fn dropping_the_model_price_rates_keeps_every_rows_facts() {
     // Rolled back, `model_price` has its three rate columns, as a deployment holds
     // it before this migration. Rows written there, with rates, come

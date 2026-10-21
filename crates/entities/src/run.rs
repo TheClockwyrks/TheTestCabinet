@@ -197,6 +197,11 @@ pub struct Model {
     /// field leaves it as it is.
     #[sea_orm(nullable)]
     pub artifacts_stored: Option<bool>,
+    /// Whether the record's tool-call tally has been counted. Read only for a Codex
+    /// or gg run, whose tally is counted off its event stream: one stored before
+    /// that counting existed is counted the first time a comparison holds it, and
+    /// this is what tells a run with no tool calls from one never counted.
+    pub tool_calls_counted: bool,
     /// RFC 3339 of the last write that changed anything observable about this row
     /// — the **mutation timestamp**, distinct from `finished_at` (when the run
     /// stopped executing) and `published_at` (when it went public).

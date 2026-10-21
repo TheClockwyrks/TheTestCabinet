@@ -173,3 +173,33 @@ async fn a_rejected_download_is_surfaced_as_a_status_error() {
         other => panic!("expected a Status error, got {other:?}"),
     }
 }
+
+#[tokio::test]
+async fn a_run_with_no_stored_tree_is_named_as_such() {
+    // The artifact service answers `404` for a run whose upload never landed. The
+    // detail the publish job reports is this error's text, so it has to say what is
+    // wrong with the run rather than only that a download was rejected.
+    let (base, _captured) = stub_artifacts(Vec::new(), StatusCode::NOT_FOUND).await;
+    let dest = tempfile::tempdir().expect("tempdir");
+
+    let err = download_run_tree(
+        &base,
+        "run-9",
+        "pub-job-1",
+        "pub-tok",
+        dest.path(),
+        &crate::retry::Backoff::default(),
+    )
+    .await
+    .expect_err("a 404 should not be reported as success");
+
+    assert!(
+        matches!(&err, DownloadError::NoStoredTree { run_id, .. } if run_id == "run-9"),
+        "expected NoStoredTree, got {err:?}"
+    );
+    let detail = err.to_string();
+    assert!(
+        detail.contains("run `run-9` has no stored artifact tree"),
+        "the detail names the cause: {detail}"
+    );
+}

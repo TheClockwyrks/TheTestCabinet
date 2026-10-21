@@ -26,6 +26,11 @@
 //! A pass acts only on a run-id set that holds at least one run. An empty set makes
 //! every tree an orphan, so a database fault and a fresh database beside a populated
 //! volume would each reclaim the whole volume on the next pass.
+//!
+//! Every scheduled pass ends in exactly one log line ([`ScheduledPass::log`]):
+//! `artifact sweep pass complete` with its counts, a pass that reclaimed nothing
+//! included, or `artifact sweep pass abandoned` with the reason. A pass that did
+//! nothing can therefore be told apart from a sweep that is not running.
 
 use std::collections::HashSet;
 use std::sync::Arc;
@@ -57,6 +62,9 @@ struct TreeListing {
 pub struct SweepOutcome {
     /// Trees the artifact service reported.
     pub listed: usize,
+    /// Trees selected for deletion: those with no run row, past the grace window.
+    /// Each one ends the pass either reclaimed or failed.
+    pub orphans: usize,
     /// Trees deleted this pass.
     pub reclaimed: usize,
     /// Trees selected for deletion whose delete the service refused or did not
@@ -237,7 +245,9 @@ pub async fn sweep_orphaned_trees(
         listed: trees.len(),
         ..SweepOutcome::default()
     };
-    for id in orphaned_trees(&trees, live, now, grace) {
+    let orphans = orphaned_trees(&trees, live, now, grace);
+    outcome.orphans = orphans.len();
+    for id in orphans {
         match delete_tree(http, base, token, &id).await {
             Ok(()) => {
                 outcome.reclaimed += 1;
@@ -283,59 +293,106 @@ pub fn spawn_orphan_sweeper(
     Some(tokio::spawn(async move {
         tokio::time::sleep(FIRST_SWEEP_DELAY).await;
         loop {
-            let live = match db.all_run_ids().await {
-                Ok(live) if !live.is_empty() => live,
-                Ok(_) => {
-                    tracing::warn!(
-                        "skipping the artifact sweep: the backend holds no run rows, \
-                         which would make every stored tree an orphan"
-                    );
-                    tokio::time::sleep(timing.interval).await;
-                    continue;
-                }
-                Err(err) => {
-                    tracing::warn!(
-                        error = %err,
-                        "skipping the artifact sweep: could not read the stored run ids"
-                    );
-                    tokio::time::sleep(timing.interval).await;
-                    continue;
-                }
-            };
-            match sweep_orphaned_trees(
+            scheduled_pass(
+                &db,
                 &http,
                 &base,
                 &token,
-                &live,
                 OffsetDateTime::now_utc(),
                 timing.grace,
             )
             .await
-            {
-                Ok(outcome) if outcome.reclaimed > 0 || outcome.failed > 0 => {
-                    tracing::info!(
-                        listed = outcome.listed,
-                        reclaimed = outcome.reclaimed,
-                        failed = outcome.failed,
-                        "swept orphaned run trees from the artifact service"
-                    );
-                }
-                Ok(outcome) => {
-                    tracing::debug!(
-                        listed = outcome.listed,
-                        "artifact sweep found no orphaned run trees"
-                    );
-                }
-                Err(err) => {
-                    tracing::warn!(
-                        error = %err,
-                        "could not list the artifact service's run trees; skipping this sweep"
-                    );
-                }
-            }
+            .log();
             tokio::time::sleep(timing.interval).await;
         }
     }))
+}
+
+/// How one scheduled pass of the sweep ended. Every pass ends as exactly one of
+/// these and [logs](Self::log) exactly one line for it, so a pass that did nothing
+/// can be told apart from a sweep that is not running.
+#[derive(Debug)]
+pub enum ScheduledPass {
+    /// The pass listed the service's trees and acted on the listing.
+    Complete(SweepOutcome),
+    /// The pass was abandoned before it changed anything, and is retried at the
+    /// next interval.
+    Abandoned(AbandonedPass),
+}
+
+/// Why a scheduled pass was abandoned.
+#[derive(Debug)]
+pub enum AbandonedPass {
+    /// The backend holds no run rows, which would make every stored tree an
+    /// orphan.
+    NoRuns,
+    /// The stored run ids could not be read.
+    RunsUnreadable(crate::error::BackendError),
+    /// The artifact service's trees could not be listed.
+    ListingFailed(reqwest::Error),
+}
+
+impl AbandonedPass {
+    /// The reason as the log line's `reason` field spells it.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::NoRuns => "no_runs",
+            Self::RunsUnreadable(_) => "runs_unreadable",
+            Self::ListingFailed(_) => "listing_failed",
+        }
+    }
+}
+
+impl ScheduledPass {
+    /// Log the pass's one line: `info` for a pass that completed, a pass that
+    /// reclaimed nothing included, and `warn` for one that was abandoned.
+    pub fn log(&self) {
+        match self {
+            Self::Complete(outcome) => tracing::info!(
+                listed = outcome.listed,
+                orphans = outcome.orphans,
+                reclaimed = outcome.reclaimed,
+                failed = outcome.failed,
+                "artifact sweep pass complete"
+            ),
+            Self::Abandoned(why) => {
+                let error = match why {
+                    AbandonedPass::NoRuns => None,
+                    AbandonedPass::RunsUnreadable(err) => Some(err.to_string()),
+                    AbandonedPass::ListingFailed(err) => Some(err.to_string()),
+                };
+                tracing::warn!(
+                    reason = why.as_str(),
+                    error,
+                    "artifact sweep pass abandoned; retrying at the next interval"
+                );
+            }
+        }
+    }
+}
+
+/// Run one scheduled pass: read the run ids, then [`sweep_orphaned_trees`]
+/// against them.
+///
+/// The pass acts only on a run-id set that was read and holds at least one run,
+/// because an empty set makes every tree an orphan.
+pub async fn scheduled_pass(
+    db: &crate::db::Db,
+    http: &reqwest::Client,
+    base: &str,
+    token: &str,
+    now: OffsetDateTime,
+    grace: Duration,
+) -> ScheduledPass {
+    let live = match db.all_run_ids().await {
+        Ok(live) if !live.is_empty() => live,
+        Ok(_) => return ScheduledPass::Abandoned(AbandonedPass::NoRuns),
+        Err(err) => return ScheduledPass::Abandoned(AbandonedPass::RunsUnreadable(err)),
+    };
+    match sweep_orphaned_trees(http, base, token, &live, now, grace).await {
+        Ok(outcome) => ScheduledPass::Complete(outcome),
+        Err(err) => ScheduledPass::Abandoned(AbandonedPass::ListingFailed(err)),
+    }
 }
 
 #[cfg(test)]

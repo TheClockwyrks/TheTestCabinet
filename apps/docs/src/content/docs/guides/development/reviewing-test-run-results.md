@@ -130,6 +130,12 @@ average of its reviews' effective scores and its functional rating the worst
 of their effective ratings; while the run has no reviews the validators' own
 figures stand.
 
+A run whose validators decided no scored point reads `broken` at zero over the
+declared weight. Deciding at least one scored point in your review lifts that
+for your review, which is then rated by the failure-cap rule over the points it
+decides. A review that overrides nothing keeps the `broken` figure, and the run
+takes the worst rating across its reviews.
+
 An override is undoable at any time, including in a later edit of an
 already-submitted review: an overridden point grows a Restore control beside
 its note, and the checklist rail offers Restore validator verdicts to put every

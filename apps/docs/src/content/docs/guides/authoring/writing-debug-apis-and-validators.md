@@ -612,7 +612,8 @@ and this rule is that principle carried into how a validator is written.
 The reason is what a run resolves to. A run carries a single score, and one
 number cannot separate a point lost to a failure from a point that could not be
 decided. An undecided point lowers no rating and falls to a person to settle by
-hand, which is the expense the automation exists to remove.
+hand, which is the expense the automation exists to remove. A run that decides
+no scored point at all is rated `broken` at zero over the declared weight.
 
 The platform holds one class of failure apart, and a validator reporting an
 [unmet precondition](/testing/end-to-end/instrumentation/#unmet-preconditions)
@@ -663,9 +664,17 @@ so the validator is made cheaper and the ceiling stays where it is.
 
 ### The suite finishes inside its budget
 
-A run is validated on a two-core host, and the runner caps a case's whole suite
-run at forty-five minutes, stopping it and leaving every point it had not
-reached undecided. A case is authored to finish in fifteen minutes there,
+A run is validated on a two-core host, and the runner bounds the suites twice. A
+suite still running past the test timeout its project declares fails the point it
+backs, whether or not vitest's own timer could fire, because a check that
+long past its own budget is one the build would not let validation drive. The
+whole suite run is capped at forty-five minutes, and every
+point whose suite had not finished by then is left undecided while the suites that
+finished keep their verdicts. A run the cap leaves with no decided point is rated
+`broken`, which is a further reason a case finishes well inside the budget. See
+[validation that fails to
+complete](/components/driver/validation/#validation-that-fails-to-complete). A case
+is authored to finish in fifteen minutes there,
 measured by running the suites against the reference implementation, which
 leaves the margin a loaded host needs.
 

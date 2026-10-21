@@ -149,22 +149,28 @@ A push to `staging` deploys the `staging` overlay in the workspace template's
 deployment job, inside the private cluster through `az aks command invoke`:
 
 1. `scripts/ci/pre-deploy.sh staging <sha>` pins the overlay, records the commit the
-   namespace runs, gives each rollout 600 seconds, and deletes the backend's
-   Deployment of its old name, `tcab-backend`, which holds the backend's disk, and
-   the artifacts service's StatefulSet, which its stateless Deployment replaces
-   (`scripts/ci/retire-legacy-backend.sh`).
-2. The template's `scripts/ci/deploy.sh <sha>` applies the overlay and waits on
-   `the-test-cabinet-backend`, rolling it back if it does not become ready.
+   namespace runs, gives each rollout 600 seconds, checks the catalog
+   (`scripts/ci/catalog-ingest.sh preflight`), and deletes the objects of an earlier
+   shape (`scripts/ci/retire-legacy-backend.sh`): the backend's Deployment of its old
+   name, `tcab-backend`, which holds the backend's disk, the artifacts service's
+   StatefulSet, which its stateless Deployment replaces, and the internal ingress's
+   Ingresses, its network policies and the `tcab-auth` workload, which the edge
+   replaced.
+2. The template's `scripts/ci/deploy.sh <sha>` runs `scripts/ci/deploy-preflight.sh`,
+   applies the overlay and waits on `the-test-cabinet-backend`, rolling it back if it
+   does not become ready.
 3. `scripts/ci/post-deploy.sh <sha>` waits on every other workload and undoes each
-   that does not become ready (`scripts/ci/settle-workloads.sh`).
+   that does not become ready (`scripts/ci/settle-workloads.sh`), then fails unless
+   the backend's ingest sidecar ingested (`scripts/ci/catalog-ingest.sh verify`).
 4. After a failure, `scripts/ci/settle-workloads.sh --after-failure <sha>` settles
    the rest, prints the pods and events, and prints how to recover: the command that
    puts the namespace back on the commit it ran before, or "fix forward".
 
 A push to `master` deploys the `prod` overlay through
 `scripts/ci/deploy-environment.sh prod <sha>`, which pins a temporary copy, refuses a
-render with anything outside `tcab-prod`, retires `tcab-backend`, applies, and waits
-on every workload, undoing each that fails. It rolls either environment by hand, and
+render with anything outside `tcab-prod`, runs the catalog preflight, retires the
+objects of an earlier shape, applies, waits on every workload, undoing each that
+fails, and reads the ingest sidecar's result. It rolls either environment by hand, and
 previews what it applies without touching a cluster:
 
 ```sh

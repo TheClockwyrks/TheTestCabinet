@@ -64,3 +64,12 @@ mean score fraction: a run contributes its earned share of its own case's
 checklist weight, so runs of cases with different point totals stay comparable.
 Ties break by the better best rating, then by recency. A game jam member
 contributes its whole-game grade in place of a functional rating.
+
+Each entry is a disclosure. Opening it lists the runs the entry is folded from,
+which are the same runs its mean is computed over. A listed run shows its test
+case, version, variant, its own score fraction and points, its cost, its rating
+or grade, and when it started, and links to the run. Runs order by the group's
+case order, then newest first. Several entries can be open at once.
+
+On a phone-width viewport an entry and each listed run stack onto two lines,
+the name above the figures, so a long model or case name wraps in full.

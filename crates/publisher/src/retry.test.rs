@@ -434,16 +434,7 @@ async fn the_download_fails_at_once_on_a_404() {
     .await
     .expect_err("a missing tree is permanent");
 
-    assert!(
-        matches!(
-            err,
-            DownloadError::Status {
-                status: StatusCode::NOT_FOUND,
-                ..
-            }
-        ),
-        "{err}"
-    );
+    assert!(matches!(err, DownloadError::NoStoredTree { .. }), "{err}");
     assert_eq!(script.hits(), 1);
 }
 

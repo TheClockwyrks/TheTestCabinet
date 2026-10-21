@@ -111,7 +111,7 @@ impl Transient for DownloadError {
                 transport_is_transient(source)
             }
             DownloadError::Status { status, .. } => status_is_transient(status.as_u16()),
-            DownloadError::Unpack { .. } => false,
+            DownloadError::NoStoredTree { .. } | DownloadError::Unpack { .. } => false,
         }
     }
 }

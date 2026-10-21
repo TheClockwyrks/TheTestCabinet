@@ -271,7 +271,7 @@ impl Ingestor<'_> {
 
         let staged = self.store.new_staging_dir(slug, version)?;
         let built = self
-            .build_version(&staged, &resolved, Some(&coordinate))
+            .build_version(&staged, slug, &resolved, Some(&coordinate))
             .and_then(|rendered| {
                 verify_stored_files(&staged)?;
                 write_ingest_stamp_in(&staged, stamp)?;

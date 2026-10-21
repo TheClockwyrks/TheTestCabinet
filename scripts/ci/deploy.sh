@@ -30,6 +30,13 @@
 # slug, so a roll by hand needs the commit alone. The pipeline sets the first
 # three from its variables, which are named by the same convention.
 #
+# Before it applies anything, the script runs the project's own preflight
+# hook, scripts/ci/deploy-preflight.sh, where the project has one: a check of
+# what the deployment needs that the cluster cannot roll back from, such as a
+# source the rolled-out server fetches as it starts. The hook is given the
+# commit and the five variables above. A hook that fails fails the run with
+# nothing applied, so the cluster is left exactly as it was.
+#
 # Once the rollout is ready, the script runs the project's own post-deploy
 # hook, scripts/ci/post-deploy.sh, where the project has one: the work that
 # needs the rolled-out server, such as registering what it serves. The hook is
@@ -54,6 +61,7 @@ CLUSTER="${THE_TEST_CABINET_CLUSTER:-testcabinet-staging-westus2-aks}"
 NAMESPACE="${THE_TEST_CABINET_NAMESPACE:-tcab-staging}"
 TIMEOUT="${THE_TEST_CABINET_ROLLOUT_TIMEOUT:-300s}"
 OVERLAY="deployments/k8s/overlays/staging"
+PREFLIGHT="scripts/ci/deploy-preflight.sh"
 POST_DEPLOY="scripts/ci/post-deploy.sh"
 
 commit="${1:-}"
@@ -112,6 +120,34 @@ if [ "$rendered" -ne 1 ]; then
 	exit 1
 fi
 
+# Runs one of the project's hooks on the commit, with the five values as this
+# run resolved them.
+run_hook() { # hook
+	env \
+		THE_TEST_CABINET_REGISTRY="$REGISTRY" \
+		THE_TEST_CABINET_RESOURCE_GROUP="$RESOURCE_GROUP" \
+		THE_TEST_CABINET_CLUSTER="$CLUSTER" \
+		THE_TEST_CABINET_NAMESPACE="$NAMESPACE" \
+		THE_TEST_CABINET_ROLLOUT_TIMEOUT="$TIMEOUT" \
+		"./$1" "$commit"
+}
+
+if [ -e "$PREFLIGHT" ]; then
+	if [ ! -x "$PREFLIGHT" ]; then
+		echo >&2 "deploy.sh: $PREFLIGHT is not executable, so nothing was applied."
+		remediation "Make it executable and commit it:" \
+			"    chmod +x $PREFLIGHT"
+		exit 1
+	fi
+	echo "Running $PREFLIGHT on ${commit}."
+	if ! run_hook "$PREFLIGHT"; then
+		echo >&2 "deploy.sh: $PREFLIGHT failed, above, so nothing was applied."
+		remediation "${NAMESPACE} on ${CLUSTER} runs what it ran. Run the hook again with:" \
+			"    $PREFLIGHT ${commit}"
+		exit 1
+	fi
+fi
+
 # Runs one shell command inside the cluster, with the render beside it, and
 # prints what it wrote; lib.sh's aks_invoke holds the reading of the verdict.
 invoke() { # command
@@ -138,13 +174,7 @@ case "$verdict" in
 		exit 1
 	fi
 	echo "Running $POST_DEPLOY on ${commit}."
-	if ! env \
-		THE_TEST_CABINET_REGISTRY="$REGISTRY" \
-		THE_TEST_CABINET_RESOURCE_GROUP="$RESOURCE_GROUP" \
-		THE_TEST_CABINET_CLUSTER="$CLUSTER" \
-		THE_TEST_CABINET_NAMESPACE="$NAMESPACE" \
-		THE_TEST_CABINET_ROLLOUT_TIMEOUT="$TIMEOUT" \
-		"./$POST_DEPLOY" "$commit"; then
+	if ! run_hook "$POST_DEPLOY"; then
 		echo >&2 "deploy.sh: ${commit} is deployed and stays, but $POST_DEPLOY failed, above."
 		remediation "Nothing was rolled back: the rollout is ready. Run the hook again with:" \
 			"    $POST_DEPLOY ${commit}"
@@ -165,13 +195,20 @@ case "$verdict" in
 		"    az aks command invoke --resource-group ${RESOURCE_GROUP} --name ${CLUSTER} --command \"kubectl -n ${NAMESPACE} get deployment -o wide\""
 	exit 1
 	;;
+4)
+	remediation "Nothing was rolled back: the apply ran, and the rollout may still be" \
+		"under way or may have finished. The cluster reports what it runs:" \
+		"    az aks command invoke --resource-group ${RESOURCE_GROUP} --name ${CLUSTER} --command \"kubectl -n ${NAMESPACE} get deployment -o wide\""
+	exit 1
+	;;
 esac
 
 # A rollout that never becomes ready leaves the cluster holding a new revision
-# that does not serve. Say why it did not, and put the previous revision back.
+# that does not serve. Say why it did not, every container of the pod included,
+# and put the previous revision back.
 echo >&2 "deploy.sh: ${commit} did not become ready. Rolling back."
 invoke "kubectl -n ${NAMESPACE} describe pods -l app.kubernetes.io/part-of=the-test-cabinet; \
-	kubectl -n ${NAMESPACE} logs deployment/the-test-cabinet-backend --tail=100; \
+	kubectl -n ${NAMESPACE} logs deployment/the-test-cabinet-backend --tail=100 --all-containers --prefix; \
 	kubectl -n ${NAMESPACE} rollout undo deployment/the-test-cabinet-backend; \
 	kubectl -n ${NAMESPACE} rollout status deployment/the-test-cabinet-backend --timeout=${TIMEOUT}" >&2 || true
 exit 1

@@ -44,8 +44,14 @@
 # step allowed to fail: the endpoint answers {"suitesUpdated": false} and the backend
 # tells the caller `ingest: test suites update failed; ingesting without them`. Any
 # other failed step answers 500 with the script's output, and the backend fails the
-# ingest before the scan. The startup run ingests what the checkout holds either way,
-# so a cold volume is never left empty.
+# ingest before the scan.
+#
+# RESULT: the startup run records its outcome in /tmp/ingest-result, which
+# scripts/ci/catalog-ingest.sh verify reads once a deployment's rollout is ready:
+# `status=<running|ok|failed>`, `step=<refresh|ingest>`, `branch=` and `commit=` lines,
+# a blank line and the message. A startup refresh that fails ingests nothing, so the
+# backend keeps the catalog and the baselines it had (a cold volume stays empty, and
+# its backend unready, until the cause is fixed and the pod restarted).
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -155,31 +161,55 @@ spec:
               echo "ingest: serving the on-demand refresh at http://$REFRESH_ADDR/cgi-bin/refresh"
               httpd -f -p "$REFRESH_ADDR" -h /srv/refresh &
               HTTPD=$!
+              # The startup run's outcome, which scripts/ci/catalog-ingest.sh verify reads:
+              # record <running|ok|failed> <step> [<message>], written whole and then moved.
+              RESULT=/tmp/ingest-result
+              record() {
+                {
+                  printf 'status=%s\nstep=%s\nbranch=%s\ncommit=%s\n\n' "$1" "$2" "$BRANCH" \
+                    "$(git -C "$CHECKOUT" rev-parse HEAD 2>/dev/null)"
+                  [ -z "${3:-}" ] || printf '%s\n' "$3"
+                } > "$RESULT.tmp" && mv "$RESULT.tmp" "$RESULT"
+              }
               # One-shot: refresh the checkout, then trigger a single forced ingest. No
-              # periodic loop. A failed step still ingests what the checkout holds rather than
-              # leaving the store empty.
-              flock "$LOCK" /usr/local/bin/tcab-refresh
-              case $? in
-                0 | 3) ;;
-                *) echo "ingest: the refresh did not complete; ingesting what the checkout holds" ;;
+              # periodic loop. A refresh that fails (exit 1) ingests nothing: what the checkout
+              # holds is not the tip this deployment shipped. A failed test suites update alone
+              # (exit 3) still ingests.
+              record running refresh
+              flock "$LOCK" /usr/local/bin/tcab-refresh > /tmp/refresh.log 2>&1
+              refreshed=$?
+              cat /tmp/refresh.log
+              case "$refreshed" in
+                0 | 3) record running ingest ;;
+                *)
+                  echo "ingest: the refresh did not complete; nothing was ingested"
+                  record failed refresh "$(tail -n 20 /tmp/refresh.log)"
+                  ;;
               esac
               # Wait on /healthz (LIVENESS), never /readyz: readiness is 503 until the
               # store is populated, which is what the POST below is about to do, so
               # gating on it would deadlock the sidecar against itself.
-              echo "ingest: waiting for backend healthz"
-              until curl -fsS -o /dev/null http://127.0.0.1:8787/healthz; do sleep 3; done
-              n=0
-              until curl -fsS -X POST http://127.0.0.1:8787/ingest \
-                     -H "authorization: Bearer $TCAB_BACKEND_SERVICE_TOKEN" \
-                     -H 'content-type: application/json' -d '{"force": true}' >/dev/null; do
-                n=$((n + 1))
-                if [ "$n" -ge 10 ]; then
-                  echo "ingest: POST /ingest failed 10x; giving up (run tcab ingest --env staging)"
-                  break
+              if [ "$refreshed" -eq 0 ] || [ "$refreshed" -eq 3 ]; then
+                echo "ingest: waiting for backend healthz"
+                until curl -fsS -o /dev/null http://127.0.0.1:8787/healthz; do sleep 3; done
+                n=0
+                until curl -fsS -X POST http://127.0.0.1:8787/ingest \
+                       -H "authorization: Bearer $TCAB_BACKEND_SERVICE_TOKEN" \
+                       -H 'content-type: application/json' -d '{"force": true}' >/dev/null; do
+                  n=$((n + 1))
+                  if [ "$n" -ge 10 ]; then
+                    echo "ingest: POST /ingest failed 10x; giving up (run tcab ingest --env staging)"
+                    break
+                  fi
+                  echo "ingest: POST /ingest failed, retry $n in 10s"; sleep 10
+                done
+                if [ "$n" -lt 10 ]; then
+                  echo "ingest: triggered ok"
+                  record ok ingest
+                else
+                  record failed ingest "POST /ingest failed 10 times; run tcab ingest --env staging"
                 fi
-                echo "ingest: POST /ingest failed, retry $n in 10s"; sleep 10
-              done
-              [ "$n" -lt 10 ] && echo "ingest: triggered ok"
+              fi
               # Idle on the endpoint. Should it exit, so does this container, and the pod
               # restarts it rather than leaving the refresh unserved.
               wait "$HTTPD"
