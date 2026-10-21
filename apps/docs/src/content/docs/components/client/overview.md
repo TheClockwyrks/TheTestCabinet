@@ -31,7 +31,13 @@ holds no credential of its own and adds nothing to a request. See
 
 The shell's affordances reach the console's origin alone. Its script installs
 itself on that origin's pages, and its commands are granted to that origin and
-to no page of the sign-in flow.
+to no page of the sign-in flow. A WebView does not always tell which frame a
+call came from: Android's runs the shell's script and its IPC in every frame
+and reports the main frame's address for a call from any of them. So each
+launch draws a random token, which the script holds once it is on the
+console's origin and sends with every call, and the shell refuses a call
+without it. A frame inside the console, such as a run's playable build, cannot
+reach the shell.
 
 ## What the shell handles
 
@@ -39,18 +45,28 @@ The shell carries the console's affordances that a WebView does not supply:
 
 - A new-window open, such as a published run's playable build or a share link,
   opens in the platform's browser, and so does a link to a site other than the
-  console and its sign-in flow.
+  console and its sign-in flow. An open that names no page does nothing. On
+  Windows and Android the window itself is kept on the console and its sign-in
+  flow, and any other site it would go to opens in the browser instead; a
+  frame inside the console, such as a run's playable build, is not held to
+  this, and a new window it opens on Android goes to the browser. Linux and
+  macOS cannot tell the window's navigation from a frame's, so there the
+  links the console's page follows are all the shell judges.
 - A download, such as a run's archive, is written through the platform's
   download path: the user's download directory on the desktop and the public
-  Downloads collection on Android. It never overwrites a file, and the
-  console's page shows where it went.
+  Downloads folder on Android. Android 7 to 9 ask for the storage permission
+  at the first download, and a download goes nowhere if it is refused. A
+  download never overwrites a file, nor takes the name of another still under
+  way, and the console's page shows where it went.
 - The clipboard is reached through the shell, so copying a share link works on
   every platform.
 - When the app returns from the background, the shell dispatches the event
   `tcab:resume` on the console's `window`, and the console reconnects its event
   stream, so a run watched before the app was suspended resumes updating. The
   app returns when Android resumes it, when its desktop window is shown again
-  after being minimized or hidden, and when the machine wakes from sleep.
+  after being minimized or hidden, when the machine wakes from sleep, and when
+  the console's page becomes visible after it was hidden. One return
+  dispatches the event once, however many of these report it.
 
 ## Targets and distribution
 
