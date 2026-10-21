@@ -512,7 +512,12 @@ new pins.
 A `shell` runs its Rust job and its bundle jobs in the `android` image, the
 Rust image with the Android SDK and NDK and Tauri's build tools on top, which
 the superrepo's image pipeline builds for that kind alone. The desktop bundles
-of the other platforms are built on hosted agents of each platform.
+of the other platforms are built on hosted agents of each platform. A shell's
+tag runs the `bundle` stage once the gates passed: one job per target runs
+`scripts/ci/bundle.sh`, which builds every flavor of the shell, a
+`tauri.<flavor>.conf.json` beside the crate's `tauri.conf.json`, and the job
+publishes the target's bundles as the artifact `client-<target>`, one
+directory per flavor.
 
 A repository `WINDOWS_TESTS` names runs its suite on Windows too, in the
 `windows` job of the gates stage on a hosted `windows-2022` agent. The job runs
