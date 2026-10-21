@@ -1,11 +1,12 @@
 # syntax=docker/dockerfile:1
 # Every Rust SERVICE image for the Kubernetes deployment (and the local stack), in
-# one file: backend, dispatcher, driver, artifacts, arena and publisher.
+# one file: backend, driver, artifacts, arena and publisher. The dispatcher's
+# image is built in its own repository, microservice-dispatcher.
 #
 # Select one with `--target`:
 #   docker build --target backend -t <registry>/tcab-backend:<tag> \
 #     -f deployments/images/services.Dockerfile .
-# The target names are `backend`, `dispatcher`, `driver`, `artifacts`, `arena` and
+# The target names are `backend`, `driver`, `artifacts`, `arena` and
 # `publisher`. The web console is NOT here — it is the one non-Rust
 # service image and keeps its own web.Dockerfile (`npm ci` + `vite build`, no crate
 # compiled).
@@ -20,7 +21,7 @@
 # ~19 workspace crates each service pulls in were rebuilt six or seven times over
 # per invocation, every time, even with no source change at all.
 #
-# One shared build stage compiles all six binaries in a single cargo pass, so the
+# One shared build stage compiles all five binaries in a single cargo pass, so the
 # mtime refresh happens ONCE and each workspace crate is compiled once. `--target`
 # then picks a runtime stage, and BuildKit builds only the stages that target
 # actually depends on — asking for `arena` never runs the gg or npm stages. Two
@@ -98,7 +99,6 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
     find /src -path /src/target -prune -o -type f -exec touch {} + \
     && TCAB_BUILD_COMMIT="${TCAB_BUILD_COMMIT}" cargo build --release \
         -p test-cabinet-backend \
-        -p test-cabinet-dispatcher \
         -p test-cabinet-driver \
         -p test-cabinet-artifacts \
         -p test-cabinet-arena \
@@ -109,7 +109,6 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
     && mkdir -p /out \
     && cp \
         target/release/tcab-backend \
-        target/release/tcab-dispatcher \
         target/release/tcab-driver \
         target/release/tcab-artifacts \
         target/release/tcab-arena \
@@ -201,8 +200,8 @@ RUN --mount=type=cache,target=/root/.npm \
 FROM ${AUDIO_STORE_IMAGE} AS audio-store
 
 # ── Shared slim runtime ──────────────────────────────────────────────────────
-# The base for the three services that render nothing: arena, artifacts and
-# dispatcher. ca-certificates covers their outbound HTTPS (the Kubernetes API, the
+# The base for the two services that render nothing: arena and artifacts.
+# ca-certificates covers their outbound HTTPS (the
 # backend over TLS, the object stores, the Access certificates, telemetry export).
 # No Chromium and no fonts.
 FROM docker.io/library/debian:bookworm-slim AS runtime-slim
@@ -240,19 +239,6 @@ COPY --from=build /out/tcab-artifacts /usr/local/bin/tcab-artifacts
 ENV TCAB_ARTIFACTS_BIND=0.0.0.0:8790
 EXPOSE 8790
 ENTRYPOINT ["tcab-artifacts"]
-
-# ── dispatcher ───────────────────────────────────────────────────────────────
-# The dispatcher is a thin, long-running controller: it claims queued jobs from the
-# backend and creates one driver Job per claim through the Kubernetes API. It runs
-# unprivileged, needs NO container engine of its own, and binds no socket.
-FROM runtime-slim AS dispatcher
-COPY --from=build /out/tcab-dispatcher /usr/local/bin/tcab-dispatcher
-# Run as an unprivileged user: the dispatcher needs only API access (its
-# ServiceAccount token), never host privileges.
-RUN useradd --create-home --uid 1000 dispatcher
-USER dispatcher
-WORKDIR /home/dispatcher
-ENTRYPOINT ["tcab-dispatcher"]
 
 # ── backend ──────────────────────────────────────────────────────────────────
 # The stock `tcab-backend` binary ships no browser, but the backend renders

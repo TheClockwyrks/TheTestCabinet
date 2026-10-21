@@ -1,15 +1,23 @@
 ---
 format: nyxsis-issue
-version: 2
+version: 3
 id: o8kk32ynvy3w5zi5gvketnyf
 zone: REPOS
 number: 13
 title: Extract the dispatcher into microservice-dispatcher
 type: generic
-state: open
+state: done
 depends_on:
   - txf8l556rdhfmbw9k1bxwvet
 created: 2026-10-13T21:13:12.247705977Z
+done: 2026-10-20T23:42:11.800936496Z
+outcome: |
+  Landed in PR 4810 into nightly: microservice-dispatcher added as a submodule
+  (master 7937fe7, pipeline, mirror and image microservice-dispatcher:<commit>
+  published), the deploy sets and pin-images.sh pin tcab-dispatcher at the
+  submodule pointer, crates/dispatcher and the services.Dockerfile target removed.
+  The staging rollout and a claimed run on the extracted dispatcher follow the
+  staging promotion (CICD-4).
 ---
 
 The dispatcher crate lives in the superrepo. The documentation places it in

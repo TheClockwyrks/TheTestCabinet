@@ -74,7 +74,7 @@ The kind decides a repository's shape.
 | `test-suites` | content | The test cases and game jams, and the lattice factory designer |
 
 Every repository but `contracts`, `engines`, `gg`, `gg.rocks`,
-`microservice-repos`, `tool-audio-core`, `tool-dc`, `tool-mc`,
+`microservice-dispatcher`, `microservice-repos`, `tool-audio-core`, `tool-dc`, `tool-mc`,
 `tool-model-core`, `tool-music`, `tool-paint`, `tool-particle`,
 `tool-sfx-sample`, `tool-sfx-synth`, `tool-sn`, `tool-sprite`, `tool-voxel`,
 `test-suites`, `ui-common` and `cold-storage` is still a directory of the

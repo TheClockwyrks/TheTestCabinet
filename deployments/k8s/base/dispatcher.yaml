@@ -14,7 +14,8 @@
 # It runs under the `tcab-dispatcher` ServiceAccount (deployments/k8s/base/rbac.yaml),
 # which grants exactly jobs create/get/list/watch/delete plus pods + pods/log get
 # for failure reporting. See deployment/kubernetes/run-plane.md and the dispatcher's
-# config docs (crates/dispatcher/src/config.rs) for every variable.
+# config docs (crates/dispatcher/src/config.rs in the microservice-dispatcher
+# repository, which builds its image) for every variable.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -34,7 +35,7 @@ spec:
       serviceAccountName: tcab-dispatcher # RBAC to create+watch driver Jobs
       containers:
         - name: dispatcher
-          image: REPLACE_REGISTRY/tcab-dispatcher:latest # the staging and prod overlays name testcabinet.azurecr.io/tcab-dispatcher
+          image: REPLACE_REGISTRY/tcab-dispatcher:latest # the staging and prod overlays name testcabinet.azurecr.io/microservice-dispatcher
           resources:
             # MEMORY REQUEST == LIMIT, as on every ALWAYS-ON service. The scheduler
             # packs a node by requests and ignores limits, so a gap between them is
@@ -141,7 +142,8 @@ spec:
             # first run to outgrow the ceiling was OOM-killed — exit 137 — by its own
             # cgroup, the very outcome the ceiling existed to prevent.) The same rule
             # applies to the driver pod: see DEFAULT_DRIVER_MEMORY_REQUEST in
-            # crates/dispatcher/src/config.rs, which is the canonical argument.
+            # microservice-dispatcher's crates/dispatcher/src/config.rs, which is the
+            # canonical argument.
             #
             # The REQUEST does the work instead, and it must be sized to the real peak
             # of the heaviest case the deployment will run:
@@ -188,7 +190,8 @@ spec:
             #
             # TCAB_K8S_RUN_MEMORY_LIMIT is intentionally NOT set. Set it only if a
             # namespace LimitRange or ResourceQuota refuses pods without one, and then
-            # far above any real peak.
+            # far above any real peak. No shipped manifest sets it or
+            # TCAB_DISPATCHER_DRIVER_MEMORY_LIMIT: the k8s-deploy-sets gate refuses one.
             - name: TCAB_K8S_RUN_CPU_REQUEST
               value: "500m"
             - name: TCAB_K8S_RUN_CPU_LIMIT

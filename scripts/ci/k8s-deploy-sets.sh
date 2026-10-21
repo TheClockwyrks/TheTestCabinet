@@ -20,6 +20,13 @@
 #   - deployments/k8s/cluster/azure-<env> holds cluster-scoped objects only, so what
 #     an administrator applies by hand and what the pipeline applies do not overlap.
 #
+# No manifest under deployments/k8s, and no overlay's render, sets
+# TCAB_K8S_RUN_MEMORY_LIMIT or TCAB_DISPATCHER_DRIVER_MEMORY_LIMIT: a run pod carries
+# a memory request and no limit (deployment/kubernetes/run-plane.md, "Sizing sandbox
+# pods" and "Driver pod reservation"), and either variable would put the OOM kill back
+# on a sandbox or driver pod. The dispatcher's own default sets no limit; this holds
+# the manifests that feed it, which live here rather than in microservice-dispatcher.
+#
 # And for staging, the overlay the template's scripts/ci/deploy.sh rolls: rendered
 # through a layer like the one deploy.sh writes over the pinned overlay, it carries
 # exactly one `image: testcabinet.azurecr.io/the-test-cabinet-backend:<commit>` line,
@@ -38,12 +45,14 @@ readonly CI_DIR
 source "${CI_DIR}/tcab-lib.sh"
 
 readonly SHA="0123456789abcdef0123456789abcdef01234567"
-# The commit the microservice-repos submodule pointer stands at in the rendered
-# deploys: a commit no checkout holds, so pin-images.sh is handed it rather than
-# reading it from SHA's tree, and distinct from SHA, so a submodule image pinned
-# to the superrepo's commit is caught.
+# The commits the microservice-repos and microservice-dispatcher submodule pointers
+# stand at in the rendered deploys: commits no checkout holds, so pin-images.sh is
+# handed them rather than reading them from SHA's tree, and distinct from SHA and
+# from each other, so a submodule image pinned to the superrepo's commit, or to
+# another repository's pointer, is caught.
 readonly REPOS_SHA="89abcdef0123456789abcdef0123456789abcdef"
-export TCAB_PIN_GITLINKS="microservice-repos=${REPOS_SHA}"
+readonly DISPATCHER_SHA="456789abcdef0123456789abcdef0123456789ab"
+export TCAB_PIN_GITLINKS="microservice-dispatcher=${DISPATCHER_SHA} microservice-repos=${REPOS_SHA}"
 readonly BACKEND_IMAGE="${CI_REGISTRY}/the-test-cabinet-backend"
 
 k8s_root="${TCAB_K8S_ROOT:-deployments/k8s}"
@@ -72,14 +81,38 @@ image_refs() {
 	' | { grep -E '(^|/)(tcab|the-test-cabinet|microservice)-' || true; } | sort -u
 }
 
+# The two variables that would put a memory limit on a run pod, and the guidance a
+# refusal points at.
+readonly RUN_MEMORY_LIMITS="TCAB_K8S_RUN_MEMORY_LIMIT|TCAB_DISPATCHER_DRIVER_MEMORY_LIMIT"
+readonly RUN_MEMORY_RULE="a run pod carries a memory request and no limit, and a limit is an OOM kill waiting for the first run that outgrows it (deployment/kubernetes/run-plane.md, \"Sizing sandbox pods\" and \"Driver pod reservation\")"
+
+# Prints each line of a rendered stream that sets one of RUN_MEMORY_LIMITS: an env
+# entry's name, or a ConfigMap or Secret key an envFrom would turn into one.
+run_memory_limits() {
+	grep -nE "^[[:space:]]*(- )?(name: \"?(${RUN_MEMORY_LIMITS})\"?|\"?(${RUN_MEMORY_LIMITS})\"?:)([[:space:]]|$)" || true
+}
+
 for dir in "$k8s_root"/overlays/*/ "$k8s_root"/cluster/*/; do
 	[[ -f "${dir}kustomization.yaml" ]] || continue
-	if kubectl kustomize "$dir" >/dev/null; then
+	if rendered="$(kubectl kustomize "$dir")"; then
 		echo "renders: ${dir#"$k8s_root"/}"
+		if limits="$(run_memory_limits <<<"$rendered")" && [[ -n "$limits" ]]; then
+			fail "${dir#"$k8s_root"/} renders a memory limit on a run pod; ${RUN_MEMORY_RULE}:"
+			echo "$limits" >&2
+		fi
 	else
 		fail "${dir#"$k8s_root"/} does not render"
 	fi
 done
+
+# The source tree too, as the dispatcher's own test once walked it, so a manifest no
+# overlay renders yet is held as well: an uncommented `- name:` entry for either
+# variable in any YAML file under deployments/k8s.
+while IFS= read -r line; do
+	[[ -n "$line" ]] || continue
+	fail "${line#"$k8s_root"/} sets a memory limit on a run pod; ${RUN_MEMORY_RULE}"
+done < <(grep -rnE --include='*.yaml' --include='*.yml' \
+	"^[[:space:]]*- name:.*(${RUN_MEMORY_LIMITS})" "$k8s_root" || true)
 
 for env in staging prod; do
 	namespace="tcab-${env}"
@@ -109,7 +142,8 @@ for env in staging prod; do
 	[[ -n "$refs" ]] || fail "the ${env} deploy names no Test Cabinet image"
 	while IFS= read -r ref; do
 		case "$ref" in
-			"" | "${CI_REGISTRY}/microservice-repos:${REPOS_SHA}") ;;
+			"" | "${CI_REGISTRY}/microservice-repos:${REPOS_SHA}" | \
+				"${CI_REGISTRY}/microservice-dispatcher:${DISPATCHER_SHA}") ;;
 			"${CI_REGISTRY}/microservice-"*)
 				fail "the ${env} deploy names ${ref}, not ${CI_REGISTRY}/<repository>:<the commit its submodule pointer names>" ;;
 			"${CI_REGISTRY}/"*":${SHA}") ;;
@@ -117,7 +151,7 @@ for env in staging prod; do
 		esac
 	done <<<"$refs"
 	for want in "${CI_REGISTRY}/tcab-driver:${SHA}" "${CI_REGISTRY}/tcab-publisher:${SHA}" "${BACKEND_IMAGE}:${SHA}" \
-		"${CI_REGISTRY}/microservice-repos:${REPOS_SHA}"; do
+		"${CI_REGISTRY}/microservice-repos:${REPOS_SHA}" "${CI_REGISTRY}/microservice-dispatcher:${DISPATCHER_SHA}"; do
 		grep -qxF "$want" <<<"$refs" || fail "the ${env} deploy does not name ${want}"
 	done
 	grep -qE "^ *value: \"?${SHA}\"?$" <<<"$deployed" ||

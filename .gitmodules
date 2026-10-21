@@ -16,6 +16,9 @@
 [submodule "gg"]
 	path = gg
 	url = ../gg
+[submodule "microservice-dispatcher"]
+	path = microservice-dispatcher
+	url = ../microservice-dispatcher
 [submodule "microservice-driver"]
 	path = microservice-driver
 	url = ../microservice-driver

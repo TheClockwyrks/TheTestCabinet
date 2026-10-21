@@ -91,7 +91,7 @@ The project's jobs, from `.azure/project/jobs.yml`:
 | `mirror`                                   | `master`, `staging`, `nightly`  | hosted `ubuntu-24.04`             | `mirror.sh`, once `checks` passed; a failed push is a warning, not a failed stage                                                                                                                                                     |
 | `audiostore_<arch>`, `audiostore_manifest` | `master`, `staging`             | hosted amd64; arm64 pool          | `submodules.sh init --build-context`, `audio-store-image.sh`, then `manifest.sh`                                                                                                                                                      |
 | `runimages_<arch>`, `runimages_manifest`   | `master`, `staging`             | hosted amd64; arm64 pool, 360 min | `submodules.sh init --build-context`, `free-disk-linux.sh` on both architectures, `report-disk.sh` either side of `run-images.sh`, which self-checks with the pinned gg release, then `manifest.sh` over `containers/image-names.sh`  |
-| `services_<arch>`, `services_manifest`     | `master`, `staging`             | hosted amd64; arm64 pool, 240 min | `submodules.sh init --build-context`, `free-disk-linux.sh` on amd64, then `service-images.sh`, which runs `service-image.sh` per service on one builder, `report-disk.sh` after it, then `manifest.sh` over the eight `tcab-*` images |
+| `services_<arch>`, `services_manifest`     | `master`, `staging`             | hosted amd64; arm64 pool, 240 min | `submodules.sh init --build-context`, `free-disk-linux.sh` on amd64, then `service-images.sh`, which runs `service-image.sh` per service on one builder, `report-disk.sh` after it, then `manifest.sh` over the six `tcab-*` images   |
 
 The **check jobs** are the template's `rust` and `web`,
 `rust_build`, both binary jobs and `submodule_pins`. A push runs them all; a pull
@@ -117,15 +117,15 @@ file and the two scripts alone, so a bump of the pin is what fetches it again. T
 images' `gg selfcheck` uses the same fetch, and their `-gg` variants copy the
 toolchain image `gg-release.sh toolchains-image` names, which gg's pipeline pushes.
 
-**One job builds the eight service images of an architecture.** `services_<arch>` waits
+**One job builds the six service images of an architecture.** `services_<arch>` waits
 on `checks` and `audiostore_manifest` (the driver bakes the audio
 store), and `service-images.sh` runs `service-image.sh` once per service, in the order
-backend, auth, dispatcher, driver, artifacts, arena, publisher, web, on one
+backend, driver, artifacts, arena, publisher, web, on one
 `docker-container` builder (`tcab-ci`). The `build` stage of
-`deployments/images/services.Dockerfile` is one `cargo build --release` of all seven
-Rust service binaries, so it compiles once and the six other Rust targets take it from
+`deployments/images/services.Dockerfile` is one `cargo build --release` of all five
+Rust service binaries, so it compiles once and the four other Rust targets take it from
 the builder's local cache; `web` has its own Dockerfile and goes last. A job per image
-ran that compile in every one of the seven Rust jobs (twenty minutes on a hosted amd64
+ran that compile in every one of the Rust jobs (twenty minutes on a hosted amd64
 agent, ten on the arm64 pool, measured on staging run 10763), and the arm64 pool runs
 one job at a time with a VM provision of about three minutes per job, so the eight
 arm64 service jobs alone took 100 minutes of that run's four hours. A failing service

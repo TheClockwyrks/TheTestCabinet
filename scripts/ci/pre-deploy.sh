@@ -9,10 +9,11 @@
 # backend alone and waits on it alone; this does the rest a Test Cabinet deployment
 # needs first, in order:
 #
-#   1. Pins the overlay (scripts/ci/pin-images.sh, in place): the other six images
+#   1. Pins the overlay (scripts/ci/pin-images.sh, in place): the other five images
 #      this repository builds and the dispatcher's run-image environment, all at
-#      <commit>, and the repos service's image at the commit <commit>'s
-#      microservice-repos submodule pointer names. deploy.sh lays
+#      <commit>, and the dispatcher's and the repos service's images at the commits
+#      <commit>'s microservice-dispatcher and microservice-repos submodule pointers
+#      name. deploy.sh lays
 #      its own layer over the overlay, so the render it applies carries them.
 #   2. Refuses an overlay that binds a workload to a workload identity annotated
 #      `unprovisioned` (tcab-lib.sh's ci_assert_identities_provisioned), before
