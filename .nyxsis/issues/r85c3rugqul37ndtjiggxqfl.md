@@ -6,8 +6,19 @@ zone: GGH
 number: 4
 title: Release gg with the heartbeat and move the driver's pin to the release
 type: generic
-state: open
+state: done
 created: 2026-10-20T06:15:17.3229195Z
+done: 2026-10-21T16:07:09.086689024Z
+outcome: |
+  Landed in PR 4978 into nightly: gg's nightly (heartbeat events, process-group
+  kill on tool timeout, contracts v0.2.3) was promoted to master and tagged
+  v0.7.2, pipeline 146's tag run uploaded the two musl binaries and
+  gg-reference.tar.gz under gg-releases/v0.7.2 (all answer 200),
+  microservice-driver PR 4954 moved crates/driver/gg-release-version to 0.7.2, and
+  the superrepo's gg (4c7e6738) and microservice-driver (16d4dea2) gitlinks
+  follow. Superrepo gates 28 of 28. Not verified: a staging run showing heartbeat
+  events, which follows the staging promotion (CICD-4). gg.rocks still presents
+  the 0.7.1 docs; releasing.md does not require the site to follow a release.
 ---
 
 A running deployment fetches `gg` at the version the driver pins from the
