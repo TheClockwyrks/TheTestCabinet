@@ -6,8 +6,16 @@ zone: REPOS
 number: 21
 title: Move the superrepo to contracts v0.2.3 and engines v1.1.2 so a clean install resolves
 type: generic
-state: open
+state: done
 created: 2026-10-21T02:34:27.77546927Z
+done: 2026-10-21T05:32:51.889127663Z
+outcome: |
+  Landed in PR 4897 into nightly (651227759): engines moved to 9b5f32c (packages
+  1.1.2 on asset-contract 0.2.3), ui-common to its master commit pinning engines
+  1.1.2, test-suites to the master whose workspace lockfiles resolve engines
+  1.1.2, and package-lock.json refreshed for those versions only, with contracts
+  held at 436608c. A clean clone's npm ci --offline succeeds, and the full gate
+  set passed 28 of 28 on the branch and on nightly after the merge.
 ---
 
 The superrepo links the packages its checked-out repositories produce, and
