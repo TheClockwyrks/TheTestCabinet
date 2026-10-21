@@ -82,7 +82,8 @@ pipeline and the run images use, against the `gg` checkout, so a pin moving
 under gg's `packages/` rebuilds that layer alone.
 
 When the container is created, `.devcontainer/post-create.sh` installs the git
-hooks, initializes `contracts`, `engines`, `gg`, `microservice-artifacts`,
+hooks, initializes `contracts`, `engines`, `gg`, `microservice-arena`,
+`microservice-artifacts`,
 `microservice-dispatcher`,
 `microservice-driver`, `microservice-repos`, `tool-model-core`, `tool-paint`, `tool-particle`,
 `tool-sprite`, `tool-voxel`, `tool-mc`, `tool-sn`, `tool-dc`,

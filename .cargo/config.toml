@@ -158,9 +158,8 @@ test-cabinet-repos = { path = "microservice-repos/crates/repos" }
 #   [patch."https://github.com/TheClockwyrks/microservice-publisher"]
 #   tcab-publisher = { path = "microservice-publisher/crates/publisher" }
 
-# microservice-arena is not checked out; the table joins once it is bootstrapped:
-#   [patch."https://github.com/TheClockwyrks/microservice-arena"]
-#   test-cabinet-arena = { path = "microservice-arena/crates/arena" }
+[patch."https://github.com/TheClockwyrks/microservice-arena"]
+test-cabinet-arena = { path = "microservice-arena/crates/arena" }
 
 [patch."https://github.com/TheClockwyrks/gg"]
 test-cabinet-gg = { path = "gg/crates/gg" }

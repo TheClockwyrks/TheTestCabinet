@@ -25,7 +25,7 @@
 # SUBMODULES. A path in a submodule is re-included like any other, by naming it (the
 # submodule's own path, or a path inside it, never a wildcard), and `*` below keeps
 # every submodule this file does not name out of the context, cold-storage's ~2 GB of
-# baseline media included. contracts, engines, gg, microservice-artifacts, microservice-dispatcher, microservice-driver,
+# baseline media included. contracts, engines, gg, microservice-arena, microservice-artifacts, microservice-dispatcher, microservice-driver,
 # microservice-repos, tool-model-core, tool-paint, tool-particle, tool-sprite,
 # tool-voxel, tool-mc, tool-sn, tool-dc, tool-audio-core, tool-sfx-synth,
 # tool-sfx-sample, tool-music and ui-common are the ones named, below. What
@@ -46,7 +46,7 @@
 # each source to its submodule, whose crates inherit their version and dependencies from
 # its own workspace manifest, so cargo reads that too. cargo loads every patch path, a
 # table nothing builds from included, so every checked-out repository the table names is
-# re-included here (microservice-artifacts, microservice-dispatcher, microservice-driver, microservice-repos, tool-model-core,
+# re-included here (microservice-arena, microservice-artifacts, microservice-dispatcher, microservice-driver, microservice-repos, tool-model-core,
 # tool-paint, tool-particle, tool-sprite, tool-voxel, tool-mc, tool-sn, tool-dc,
 # tool-audio-core, tool-sfx-synth, tool-sfx-sample, tool-music, ui-common). This is the
 # complete set cargo needs to resolve and compile any crate; resolving the lock still
@@ -60,6 +60,8 @@
 !/contracts/crates
 !/engines/Cargo.toml
 !/engines/crates
+!/microservice-arena/Cargo.toml
+!/microservice-arena/crates
 !/microservice-artifacts/Cargo.toml
 !/microservice-artifacts/crates
 !/microservice-dispatcher/Cargo.toml

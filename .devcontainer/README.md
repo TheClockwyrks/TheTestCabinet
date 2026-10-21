@@ -152,7 +152,8 @@ names what installs it, so a toolchain missing here is a check that says so
 rather than one that quietly passes.
 
 `post-create.sh` populates the `contracts/`, `engines/`, `gg/`,
-`microservice-artifacts/`, `microservice-dispatcher/`, `microservice-driver/`,
+`microservice-arena/`, `microservice-artifacts/`, `microservice-dispatcher/`,
+`microservice-driver/`,
 `microservice-repos/`,
 `tool-model-core/`, `tool-paint/`, `tool-particle/`, `tool-sprite/`, `tool-voxel/`,
 `tool-mc/`, `tool-sn/`, `tool-dc/`, `tool-audio-core/`, `tool-sfx-synth/`,
@@ -684,7 +685,8 @@ warning about it.
 
 ## Submodule checkout
 
-The `contracts/`, `engines/`, `gg/`, `microservice-artifacts/`,
+The `contracts/`, `engines/`, `gg/`, `microservice-arena/`,
+`microservice-artifacts/`,
 `microservice-dispatcher/`, `microservice-driver/`,
 `microservice-repos/`, `tool-model-core/`, `tool-paint/`, `tool-particle/`,
 `tool-sprite/`, `tool-voxel/`, `tool-mc/`, `tool-sn/`, `tool-dc/`,
@@ -701,7 +703,7 @@ runs
 
 ```sh
 git submodule update --init \
-  contracts engines gg microservice-artifacts \
+  contracts engines gg microservice-arena microservice-artifacts \
   microservice-dispatcher microservice-driver microservice-repos \
   tool-model-core tool-paint tool-particle tool-sprite tool-voxel tool-mc \
   tool-sn tool-dc tool-audio-core tool-sfx-synth tool-sfx-sample tool-music \
