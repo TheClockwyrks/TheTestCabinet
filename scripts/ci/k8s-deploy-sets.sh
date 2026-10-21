@@ -48,15 +48,16 @@ readonly CI_DIR
 source "${CI_DIR}/tcab-lib.sh"
 
 readonly SHA="0123456789abcdef0123456789abcdef01234567"
-# The commits the microservice-repos, microservice-dispatcher and microservice-driver
-# submodule pointers stand at in the rendered deploys: commits no checkout holds, so
+# The commits the microservice-artifacts, microservice-repos, microservice-dispatcher
+# and microservice-driver submodule pointers stand at in the rendered deploys: commits no checkout holds, so
 # pin-images.sh is handed them rather than reading them from SHA's tree, and distinct
 # from SHA and from each other, so a submodule image pinned to the superrepo's
 # commit, or to another repository's pointer, is caught.
+readonly ARTIFACTS_SHA="abcdef0123456789abcdef0123456789abcdef01"
 readonly REPOS_SHA="89abcdef0123456789abcdef0123456789abcdef"
 readonly DISPATCHER_SHA="456789abcdef0123456789abcdef0123456789ab"
 readonly DRIVER_SHA="cdef0123456789abcdef0123456789abcdef0123"
-export TCAB_PIN_GITLINKS="microservice-dispatcher=${DISPATCHER_SHA} microservice-driver=${DRIVER_SHA} microservice-repos=${REPOS_SHA}"
+export TCAB_PIN_GITLINKS="microservice-artifacts=${ARTIFACTS_SHA} microservice-dispatcher=${DISPATCHER_SHA} microservice-driver=${DRIVER_SHA} microservice-repos=${REPOS_SHA}"
 readonly BACKEND_IMAGE="${CI_REGISTRY}/the-test-cabinet-backend"
 
 k8s_root="${TCAB_K8S_ROOT:-deployments/k8s}"
@@ -148,7 +149,8 @@ for env in staging prod; do
 		case "$ref" in
 			"" | "${CI_REGISTRY}/microservice-repos:${REPOS_SHA}" | \
 				"${CI_REGISTRY}/microservice-dispatcher:${DISPATCHER_SHA}" | \
-				"${CI_REGISTRY}/microservice-driver:${DRIVER_SHA}") ;;
+				"${CI_REGISTRY}/microservice-driver:${DRIVER_SHA}" | \
+				"${CI_REGISTRY}/microservice-artifacts:${ARTIFACTS_SHA}") ;;
 			"${CI_REGISTRY}/microservice-"*)
 				fail "the ${env} deploy names ${ref}, not ${CI_REGISTRY}/<repository>:<the commit its submodule pointer names>" ;;
 			"${CI_REGISTRY}/"*":${SHA}") ;;
@@ -157,7 +159,8 @@ for env in staging prod; do
 	done <<<"$refs"
 	for want in "${CI_REGISTRY}/microservice-driver:${DRIVER_SHA}" "${CI_REGISTRY}/tcab-publisher:${SHA}" \
 		"${BACKEND_IMAGE}:${SHA}" "${CI_REGISTRY}/microservice-repos:${REPOS_SHA}" \
-		"${CI_REGISTRY}/microservice-dispatcher:${DISPATCHER_SHA}"; do
+		"${CI_REGISTRY}/microservice-dispatcher:${DISPATCHER_SHA}" \
+		"${CI_REGISTRY}/microservice-artifacts:${ARTIFACTS_SHA}"; do
 		grep -qxF "$want" <<<"$refs" || fail "the ${env} deploy does not name ${want}"
 	done
 	container_tag="$(awk '

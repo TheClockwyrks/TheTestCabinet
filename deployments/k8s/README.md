@@ -75,7 +75,10 @@ and `prod` overlays run it from. The driver is `microservice-driver`, whose pipe
 pushes its image as `testcabinet.azurecr.io/microservice-driver:<commit>` and,
 beside it, the **run-container** images the sandbox runs inside (its
 [`containers/`](../../microservice-driver/containers/README.md)) as
-`testcabinet.azurecr.io/test-cabinet-<name>:<commit>`. The Azure pipeline builds the
+`testcabinet.azurecr.io/test-cabinet-<name>:<commit>`. The artifacts service is
+`microservice-artifacts`, pushed as
+`testcabinet.azurecr.io/microservice-artifacts:<commit>`, the image the `staging`
+and `prod` overlays run it from. The Azure pipeline builds the
 others on every push to `master` and `staging`, and pushes each to
 `testcabinet.azurecr.io/<image>:<sha>` (`tcab-backend`, `tcab-artifacts`,
 `tcab-arena`, `tcab-publisher` and `tcab-web`). The workspace
@@ -85,11 +88,12 @@ template's publish stage retags `tcab-backend:<sha>` as
 `staging` and `prod` overlays run the backend from. Those overlays name every Test
 Cabinet image at the tag `unpinned`, which nothing pushes, so applied as they stand
 they fail to pull; [`scripts/ci/pin-images.sh`](../../scripts/ci/pin-images.sh) pins
-the five images this repository builds and the dispatcher's publisher image to the
-commit being deployed, the dispatcher's and the repos service's images to the
-commits that commit's `microservice-dispatcher` and `microservice-repos` submodule
-pointers name, and the dispatcher's driver image and run-container tag to the
-commit its `microservice-driver` pointer names.
+the four images the overlays name from this repository's build and the
+dispatcher's publisher image to the commit being deployed, the artifacts
+service's, the dispatcher's and the repos service's images to the commits that
+commit's `microservice-artifacts`, `microservice-dispatcher` and
+`microservice-repos` submodule pointers name, and the dispatcher's driver image and
+run-container tag to the commit its `microservice-driver` pointer names.
 
 ## Cluster prerequisites
 
