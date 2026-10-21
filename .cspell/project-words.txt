@@ -709,6 +709,7 @@ passability
 passthroughs
 passwordless
 pasteable
+patchelf
 pathable
 pathed
 pathfind

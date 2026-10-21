@@ -25,7 +25,7 @@ readonly CI_DIR
 REPO_ROOT="$(cd "$CI_DIR/../.." && pwd)"
 readonly REPO_ROOT
 
-readonly TRACKS=(rust rust-browser web)
+readonly TRACKS=(rust rust-browser web android)
 readonly REGISTRY="testcabinet.azurecr.io"
 readonly BUILDER="the-test-cabinet-ci-images"
 readonly COMPOSE=".devcontainer/docker-compose.yml"
@@ -219,8 +219,9 @@ for track in "${TRACKS[@]}"; do
 	repository="$REGISTRY/ubuntu-the-test-cabinet-${track}-cicd"
 	reference="$repository:$AZURE_COMMIT"
 	build_args="$(build_args_of "$track")"
-	# rust-browser is built on the Rust image this run pushed, at its commit.
-	if [ "$track" = rust-browser ]; then
+	# rust-browser and android are built on the Rust image this run pushed, at
+	# its commit.
+	if [ "$track" = rust-browser ] || [ "$track" = android ]; then
 		build_args+=" --build-arg RUST_CI_IMAGE=$REGISTRY/ubuntu-the-test-cabinet-rust-cicd:$AZURE_COMMIT"
 	fi
 	cache="type=registry,ref=${repository}-cache:latest"
@@ -324,6 +325,17 @@ done <<<"$out"
 check_equal "the rust-browser image takes the playwright image alone from the anchor" \
 	"PLAYWRIGHT_IMAGE=$(sed -n 's/^ *PLAYWRIGHT_IMAGE: *//p' "$CHECKOUT/$COMPOSE")" "$out"
 check_absent "its base image is no pin of the anchor's" "RUST_CI_IMAGE" "$out"
+
+image build android
+pins android
+while read -r pin; do
+	[ -n "$pin" ] || continue
+	check_contains "the android build is handed ${pin%%=*}" "--build-arg $pin " "$log"
+done <<<"$out"
+check_equal "the android image takes the android image alone from the anchor" \
+	"ANDROID_IMAGE=$(sed -n 's/^ *ANDROID_IMAGE: *//p' "$CHECKOUT/$COMPOSE")" "$out"
+check_contains "it is built on the Rust image of the run's commit" \
+	"--build-arg RUST_CI_IMAGE=$REGISTRY/ubuntu-the-test-cabinet-rust-cicd:$AZURE_COMMIT " "$log"
 
 pins rust
 check_equal "the rust image is handed the toolchain image the anchor names, alone" \

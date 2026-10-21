@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Deletes every manifest in a CI image's repository that no live branch pins.
 #
-#   scripts/ci/ci-image-purge.sh [--dry-run] <rust|rust-browser|web>
+#   scripts/ci/ci-image-purge.sh [--dry-run] <rust|rust-browser|web|android>
 #
 # The registry's tier has no retention policy, so without this every CI image
 # ever built stays for ever, and each build leaves untagged manifests behind
@@ -81,7 +81,7 @@ readonly LIVE_BRANCHES=("master" "staging" "nightly")
 
 usage() {
 	cat >&2 <<'USAGE'
-usage: scripts/ci/ci-image-purge.sh [--dry-run] <rust|rust-browser|web>
+usage: scripts/ci/ci-image-purge.sh [--dry-run] <rust|rust-browser|web|android>
 USAGE
 	exit 1
 }
@@ -94,7 +94,7 @@ fi
 
 track="${1:-}"
 case "$track" in
-rust | rust-browser | web) ;;
+rust | rust-browser | web | android) ;;
 *) usage ;;
 esac
 

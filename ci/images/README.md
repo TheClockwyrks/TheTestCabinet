@@ -1,7 +1,8 @@
 # CI images
 
-Three container images, one per pipeline track, holding what the checks in
-[`azure-pipelines.yml`](../../azure-pipelines.yml) execute and nothing else.
+Four container images, one per pipeline track, holding what the checks in
+[`azure-pipelines.yml`](../../azure-pipelines.yml) and the repositories'
+pipelines execute and nothing else.
 [`scripts/ci/ci-image.sh`](../../scripts/ci/ci-image.sh) builds and pushes them,
 and [`azure-pipelines-ci-images.yml`](../../azure-pipelines-ci-images.yml) is
 the pipeline of its own that runs it.
@@ -11,10 +12,13 @@ the pipeline of its own that runs it.
 | `testcabinet.azurecr.io/ubuntu-the-test-cabinet-rust-cicd` | The project's Rust jobs |
 | `testcabinet.azurecr.io/ubuntu-the-test-cabinet-rust-browser-cicd` | The `rust` job, once [`tags.yml`](tags.yml) pins a commit that built it |
 | `testcabinet.azurecr.io/ubuntu-the-test-cabinet-web-cicd` | The `web` job |
+| `testcabinet.azurecr.io/ubuntu-the-test-cabinet-android-cicd` | A `shell` repository's `rust` job and its Linux and Android bundle jobs |
 
 The Rust and web images are the template's. The rust-browser image is this
 project's: the Rust image with the browser engines on top, so that the Rust tests
-that drive a browser run in the `rust` job rather than skip.
+that drive a browser run in the `rust` job rather than skip. The android image
+is this project's too: the Rust image with the template's Android toolchain on
+top, for `client-tauri`, the operator client.
 
 The gates pipeline builds none of them. Each job names its image at the commit
 [`tags.yml`](tags.yml) pins and lets Azure pull it, through the
@@ -121,6 +125,28 @@ on it, and `scripts/ci/ci-image.sh build rust-browser` passes the Rust image's
 reference at the run's commit as the `RUST_CI_IMAGE` build argument. Its
 Dockerfile gives that argument an empty default, so a build without it fails
 rather than pulling some other base.
+
+### Android
+
+[`android.Dockerfile`](android.Dockerfile) starts `FROM` the Rust image of the
+same commit too, and adds the JDK, the Android SDK and the NDK, copied from the
+template's android image `ANDROID_IMAGE` names, at the paths a template
+devcontainer holds them (`/usr/lib/jvm/java-21-openjdk-amd64` and
+`/home/dev/android/sdk`), with `JAVA_HOME`, `ANDROID_HOME`, `ANDROID_NDK_HOME`
+and `NDK_HOME` naming them. What else a Tauri build reads is the toolchain
+image's already on amd64: WebKitGTK and the GTK stack the Linux WebView links,
+`patchelf` and `file` for the AppImage bundler, Node, and the four Android Rust
+targets. The image build runs `java`, `adb` and the NDK's `clang` as the uid a
+step runs as, and checks the WebView's headers are there, so a toolchain a step
+cannot use fails the image rather than a pipeline run.
+
+A repository of the `shell` kind runs its `rust` job and its Linux and Android
+bundle jobs in it (`RUST_TRACKS` in the kit's `render.py`). The workspace
+template renders an android track of its own only beside a Tauri application
+in the superrepo, which this superrepo does not hold, so the track is the
+project's, as rust-browser is. The image pipeline builds it after the Rust one,
+in a job that depends on it, with the Rust image's reference as the
+`RUST_CI_IMAGE` build argument, as for rust-browser.
 
 ### Web
 
@@ -235,16 +261,9 @@ no longer name the image a commit ran in.
 
 ## Tracks still to come
 
-The repository split plans more tracks than these three. None is here yet, and
+The repository split plans more tracks than these four. None is here yet, and
 each waits on the step that brings it:
 
-- **`android`.** The template renders an Android image track only where both
-  its `tauri_desktop` and `tauri_android` answers are true, and this
-  repository answers `tauri_desktop: false`, with no Tauri app to build. The
-  track arrives with those answers, when the superrepo sets them and copier
-  renders the track's Dockerfile, its `.dockerignore` and the pipeline's job; a
-  hand-written track now would build an image no job pulls, and would collide
-  with that render.
 - **`base`.** No template version ships a base track (v0.34.0, the latest, has
   `rust`, `web` and the conditional `android`), so it is a project track like
   `rust-browser`, added when the first image that builds on it does.

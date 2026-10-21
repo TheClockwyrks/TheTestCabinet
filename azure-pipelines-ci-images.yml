@@ -80,6 +80,8 @@ trigger:
       # pin has no commit to follow. Sorted, one path a line.
       - .devcontainer/docker-compose.yml
       - .devcontainer/languages/rust/targets.sh
+      - ci/images/android.Dockerfile
+      - ci/images/android.Dockerfile.dockerignore
       - ci/images/build-args.sh
       - ci/images/rust-browser.Dockerfile
       - ci/images/rust-browser.Dockerfile.dockerignore
@@ -184,8 +186,8 @@ jobs:
   # One job per image, with no `dependsOn` between them but one: none reads
   # what another writes and they push to different repositories, so running
   # them at once makes the pipeline cost the slowest of them rather than their
-  # sum. The exception is the rust-browser image, which is built on the Rust
-  # image this run pushes and so waits for it.
+  # sum. The exceptions are the rust-browser and android images, which are
+  # built on the Rust image this run pushes and so wait for it.
   #
   # None declares a `container:`. These jobs build images; they do not run
   # inside one. They need the hosted agent's own docker and buildx, which is
@@ -362,3 +364,59 @@ jobs:
       - template: .azure/project/ci-image-steps.yml
         parameters:
           image: rust-browser
+
+  # The Rust image plus the template's Android toolchain, which a `shell`
+  # repository's Rust job and its Linux and Android bundle jobs run in
+  # (ci/images/android.Dockerfile). It is built FROM the Rust image of this
+  # run's commit, which ci-image.sh passes in, so it waits for that image to be
+  # pushed and is skipped when it was not.
+  - job: androidImage
+    displayName: Android CI image
+    dependsOn: rustImage
+    timeoutInMinutes: 60
+    uses:
+      repositories:
+        - cold-storage
+        - contracts
+        - engines
+        - gg
+        - gg.rocks
+        - microservice-arena
+        - microservice-artifacts
+        - microservice-dispatcher
+        - microservice-driver
+        - microservice-repos
+        - tool-model-core
+        - tool-paint
+        - tool-particle
+        - tool-sprite
+        - tool-voxel
+        - tool-mc
+        - tool-sn
+        - tool-dc
+        - tool-audio-core
+        - tool-sfx-synth
+        - tool-sfx-sample
+        - tool-music
+        - test-suites
+        - ui-common
+    steps:
+      - checkout: self
+        fetchDepth: 1
+
+      - script: scripts/ci/free-disk.sh
+        displayName: Free disk space on the agent
+
+      - task: Docker@2
+        displayName: Sign in to the registry
+        inputs:
+          command: login
+          containerRegistry: the-test-cabinet-acr
+
+      - script: scripts/ci/ci-image.sh build android
+        displayName: Build and push the Android CI image
+
+      # As on the Rust image job.
+      - template: .azure/project/ci-image-steps.yml
+        parameters:
+          image: android
