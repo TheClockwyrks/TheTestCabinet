@@ -4397,7 +4397,7 @@ version = "0.0.0"
 
 [[patch.unused]]
 name = "test-cabinet-gg"
-version = "0.7.1"
+version = "0.7.2"
 
 [[patch.unused]]
 name = "test-cabinet-model-core"
