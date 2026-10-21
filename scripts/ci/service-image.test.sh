@@ -91,7 +91,7 @@ expected() { # image dockerfile arch extra
 	echo "docker buildx build --platform linux/$3 --file $2 --tag $R/$1:$SHA-$3 --build-arg TCAB_BUILD_COMMIT=$SHA --provenance=false --cache-from type=registry,ref=$R/$1:buildcache-$3 --cache-to type=registry,ref=$R/$1:buildcache-$3,mode=max,image-manifest=true,oci-mediatypes=true --push${4:+ $4} . [cwd=$repo]"
 }
 
-for service in backend arena publisher; do
+for service in backend publisher; do
 	out="$(run "$service" "$SHA")"
 	check_equal "$service builds" "0" "$?"
 	check_equal "$service is tcab-$service, its target of services.Dockerfile" \
@@ -101,6 +101,10 @@ done
 out="$(run auth "$SHA")"
 check_equal "auth is no longer a service" "1" "$?"
 check_contains "and is named unknown" "unknown service 'auth'" "$out"
+
+out="$(run arena "$SHA")"
+check_equal "arena is no longer a service (microservice-arena builds it)" "1" "$?"
+check_contains "and is named unknown" "unknown service 'arena'" "$out"
 
 out="$(run artifacts "$SHA")"
 check_equal "artifacts is no longer a service (microservice-artifacts builds it)" "1" "$?"

@@ -65,7 +65,7 @@ Overlays compose in reusable kustomize **components**:
 
 The service container images are built from [`../images/`](../images/) — every Rust
 service is a `--target` of the shared `services.Dockerfile` (`backend`,
-`arena`, `publisher`), and the console has its
+`publisher`), and the console has its
 own `web.Dockerfile`. The repos service is its own repository, `microservice-repos`,
 whose pipeline builds its image from that repository's `Dockerfile` and pushes it as
 `testcabinet.azurecr.io/microservice-repos:<commit>`. The dispatcher is likewise
@@ -78,22 +78,25 @@ beside it, the **run-container** images the sandbox runs inside (its
 `testcabinet.azurecr.io/test-cabinet-<name>:<commit>`. The artifacts service is
 `microservice-artifacts`, pushed as
 `testcabinet.azurecr.io/microservice-artifacts:<commit>`, the image the `staging`
-and `prod` overlays run it from. The Azure pipeline builds the
+and `prod` overlays run it from. The arena is `microservice-arena`, pushed as
+`testcabinet.azurecr.io/microservice-arena:<commit>`, the image the `staging` and
+`prod` overlays run it from. The Azure pipeline builds the
 others on every push to `master` and `staging`, and pushes each to
 `testcabinet.azurecr.io/<image>:<sha>` (`tcab-backend`,
-`tcab-arena`, `tcab-publisher` and `tcab-web`). The workspace
+`tcab-publisher` and `tcab-web`). The workspace
 template's publish stage retags `tcab-backend:<sha>` as
 `testcabinet.azurecr.io/the-test-cabinet-backend:<sha>`
 ([`../images/backend.Dockerfile`](../images/backend.Dockerfile)), the repository the
 `staging` and `prod` overlays run the backend from. Those overlays name every Test
 Cabinet image at the tag `unpinned`, which nothing pushes, so applied as they stand
 they fail to pull; [`scripts/ci/pin-images.sh`](../../scripts/ci/pin-images.sh) pins
-the four images the overlays name from this repository's build and the
-dispatcher's publisher image to the commit being deployed, the artifacts
-service's, the dispatcher's and the repos service's images to the commits that
-commit's `microservice-artifacts`, `microservice-dispatcher` and
-`microservice-repos` submodule pointers name, and the dispatcher's driver image and
-run-container tag to the commit its `microservice-driver` pointer names.
+the three images the overlays name from this repository's build and the
+dispatcher's publisher image to the commit being deployed, the arena's, the
+artifacts service's, the dispatcher's and the repos service's images to the
+commits that commit's `microservice-arena`, `microservice-artifacts`,
+`microservice-dispatcher` and `microservice-repos` submodule pointers name, and the
+dispatcher's driver image and run-container tag to the commit its
+`microservice-driver` pointer names.
 
 ## Cluster prerequisites
 

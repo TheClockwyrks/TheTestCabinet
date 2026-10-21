@@ -169,6 +169,11 @@ DISPATCHER_COMMIT ?= $(shell sh -c 'h=$$(git -C "$(DISPATCHER_DIR)" rev-parse HE
 ARTIFACTS_DIR    := $(REPO)/microservice-artifacts
 ARTIFACTS_COMMIT ?= $(shell sh -c 'h=$$(git -C "$(ARTIFACTS_DIR)" rev-parse HEAD 2>/dev/null) || exit 0; [ -n "$$(git -C "$(ARTIFACTS_DIR)" status --porcelain 2>/dev/null)" ] && h="$$h-dirty"; printf %s "$$h"')
 
+# The arena is likewise its own repository, microservice-arena, built from that
+# checkout's own Dockerfile with the checkout as the build context.
+ARENA_DIR    := $(REPO)/microservice-arena
+ARENA_COMMIT ?= $(shell sh -c 'h=$$(git -C "$(ARENA_DIR)" rev-parse HEAD 2>/dev/null) || exit 0; [ -n "$$(git -C "$(ARENA_DIR)" status --porcelain 2>/dev/null)" ] && h="$$h-dirty"; printf %s "$$h"')
+
 # The driver is its own repository too, microservice-driver, and with it everything a
 # run executes in: the driver image is built from that checkout's own Dockerfile with
 # the checkout as the build context, and the run images and the audio store by its
@@ -579,14 +584,14 @@ audio-store:
 # from, then load them into the cluster's nodes (no registry needed for local
 # development).
 #
-# The repos, dispatcher, artifacts and driver images are built from the
-# microservice-repos, microservice-dispatcher, microservice-artifacts and
-# microservice-driver checkouts' own Dockerfiles, each with its checkout as its
-# context (REPOS_DIR, DISPATCHER_DIR, ARTIFACTS_DIR and DRIVER_DIR above). Every
-# other service image
-# comes out of ONE file, deployments/images/services.Dockerfile, each selected with
-# `--target`. That file shares a single cargo build stage across every service, so
-# those builds compile the workspace ONCE between them: the first `docker build`
+# The repos, dispatcher, artifacts, arena and driver images are built from the
+# microservice-repos, microservice-dispatcher, microservice-artifacts,
+# microservice-arena and microservice-driver checkouts' own Dockerfiles, each with
+# its checkout as its context (REPOS_DIR, DISPATCHER_DIR, ARTIFACTS_DIR, ARENA_DIR
+# and DRIVER_DIR above). The backend image
+# comes out of deployments/images/services.Dockerfile, selected with
+# `--target`. That file shares a single cargo build stage across every service it
+# holds, so its builds compile the workspace ONCE between them: the first `docker build`
 # runs the shared stage and the others hit it in the layer cache. (When they were six separate Dockerfiles each re-dirtied the shared cargo
 # target/ cache mount, so every service rebuilt the ~19 workspace crates it pulls in
 # — six times over per `make images`, even with no source change.)
@@ -626,7 +631,8 @@ images: audio-store
 	                        -t '$(DRIVER_IMG)' -f '$(DRIVER_DIR)/Dockerfile' '$(DRIVER_DIR)'
 	@[ -f '$(ARTIFACTS_DIR)/Dockerfile' ] || { echo "ERROR: $(ARTIFACTS_DIR) is not checked out; run: git submodule update --init microservice-artifacts" >&2; exit 1; }
 	$(CONTAINER_TOOL) build --build-arg TCAB_BUILD_COMMIT='$(ARTIFACTS_COMMIT)' -t '$(ARTIFACTS_IMG)' -f '$(ARTIFACTS_DIR)/Dockerfile' '$(ARTIFACTS_DIR)'
-	$(CONTAINER_TOOL) build --build-arg TCAB_BUILD_COMMIT='$(TCAB_COMMIT)' --target arena      -t '$(ARENA_IMG)'      -f '$(SERVICES_DOCKERFILE)' '$(REPO)'
+	@[ -f '$(ARENA_DIR)/Dockerfile' ] || { echo "ERROR: $(ARENA_DIR) is not checked out; run: git submodule update --init microservice-arena" >&2; exit 1; }
+	$(CONTAINER_TOOL) build --build-arg TCAB_BUILD_COMMIT='$(ARENA_COMMIT)' -t '$(ARENA_IMG)' -f '$(ARENA_DIR)/Dockerfile' '$(ARENA_DIR)'
 	@[ -f '$(REPOS_DIR)/Dockerfile' ] || { echo "ERROR: $(REPOS_DIR) is not checked out; run: git submodule update --init microservice-repos" >&2; exit 1; }
 	$(CONTAINER_TOOL) build --build-arg TCAB_BUILD_COMMIT='$(REPOS_COMMIT)' -t '$(REPOS_IMG)' -f '$(REPOS_DIR)/Dockerfile' '$(REPOS_DIR)'
 	$(call save_and_import,$(ALL_IMGS))

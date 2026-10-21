@@ -9,12 +9,12 @@
 # backend alone and waits on it alone; this does the rest a Test Cabinet deployment
 # needs first, in order:
 #
-#   1. Pins the overlay (scripts/ci/pin-images.sh, in place): the other three images
+#   1. Pins the overlay (scripts/ci/pin-images.sh, in place): the other two images
 #      this repository builds and the dispatcher's publisher image, all at
-#      <commit>, the artifacts service's, the dispatcher's and the repos service's
-#      images at the commits <commit>'s microservice-artifacts,
-#      microservice-dispatcher and microservice-repos submodule pointers
-#      name, and the dispatcher's driver image and run-container tag at the commit
+#      <commit>, the arena's, the artifacts service's, the dispatcher's and the
+#      repos service's images at the commits <commit>'s microservice-arena,
+#      microservice-artifacts, microservice-dispatcher and microservice-repos
+#      submodule pointers name, and the dispatcher's driver image and run-container tag at the commit
 #      its microservice-driver pointer names, which the run images are built at.
 #      deploy.sh lays its own layer over the overlay, so the render it applies
 #      carries them.

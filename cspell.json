@@ -29,6 +29,7 @@
     "/engines/**",
     "/gg/**",
     "/gg.rocks/**",
+    "/microservice-arena/**",
     "/microservice-artifacts/**",
     "/microservice-dispatcher/**",
     "/microservice-driver/**",
