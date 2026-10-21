@@ -259,6 +259,7 @@ status=$?
 check_failed "fails" "$status"
 check_contains "naming the identity" "unprovisioned workload identity: ServiceAccount/tcab-artifacts" "$out"
 check_contains "and the trees to move" "artifacts-tcab-artifacts-0 in tcab-staging" "$out"
+check_contains "with the script that moves them" "scripts/ci/copy-artifact-trees.sh staging" "$out"
 check_equal "reads and retires nothing" "" "$(cat "$repo/az.log" 2>/dev/null)"
 
 repo="$(fresh_repo)"

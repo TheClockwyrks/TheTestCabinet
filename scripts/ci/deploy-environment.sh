@@ -123,7 +123,7 @@ if ! ci_assert_identities_provisioned <"$manifest"; then
 	remediation "Provision it, put its clientId in the overlay's patch and move the run trees, then deploy again:" \
 		"    the storage account, private container run-trees, the identity with Storage Blob Data Contributor on it and its federated credential (deployments/k8s/overlays/${ENVIRONMENT}/patch-artifacts-identity.yaml)" \
 		"    the private container bundles, the repos identity with Storage Blob Data Contributor on it and its federated credential (deployments/k8s/overlays/${ENVIRONMENT}/patch-repos-identity.yaml)" \
-		"    copy the trees on the claim artifacts-tcab-artifacts-0 in ${NAMESPACE} into the container"
+		"    copy the trees on the claim artifacts-tcab-artifacts-0 in ${NAMESPACE} into the container: scripts/ci/copy-artifact-trees.sh ${ENVIRONMENT}"
 	exit 1
 fi
 
