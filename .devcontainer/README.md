@@ -152,10 +152,10 @@ names what installs it, so a toolchain missing here is a check that says so
 rather than one that quietly passes.
 
 `post-create.sh` populates the `contracts/`, `engines/`, `gg/`,
-`microservice-dispatcher/`, `microservice-repos/`, `tool-model-core/`,
-`tool-paint/`, `tool-particle/`,
-`tool-sprite/`, `tool-voxel/`, `tool-mc/`, `tool-sn/`, `tool-dc/`,
-`tool-audio-core/`, `tool-sfx-synth/`, `tool-sfx-sample/`, `tool-music/` and
+`microservice-dispatcher/`, `microservice-driver/`, `microservice-repos/`,
+`tool-model-core/`, `tool-paint/`, `tool-particle/`, `tool-sprite/`, `tool-voxel/`,
+`tool-mc/`, `tool-sn/`, `tool-dc/`, `tool-audio-core/`, `tool-sfx-synth/`,
+`tool-sfx-sample/`, `tool-music/` and
 `ui-common/` submodules, which every build compiles against, and the
 `test-suites/` submodule, the suites checkout the local backend ingests (not
 `cold-storage/`, which is optional and about 2 GB), through
@@ -266,9 +266,10 @@ them, and `ci/gates/web-browser-test.py` reads the two and fails with both
 values when they disagree, rather than leaving the mismatch to surface inside
 the browser provider.
 
-The `playwright` in `engines/packages/case-harness` and `packages/browser-driver`
-follows the same tag, for the same reason: those launch the Chromium the image
-holds, and a different client version asks for a build that is not there.
+The `playwright` in `engines/packages/case-harness` and
+`contracts/packages/browser-driver` follows the same tag, for the same reason:
+those launch the Chromium the image holds, and a different client version asks
+for a build that is not there.
 
 ## The language toolchains
 
@@ -466,7 +467,7 @@ them together and the gate runs it on every commit.
 ## Where cargo builds
 
 cargo builds into the checkout's `target/`, where `make clean` reaches it and
-where `crates/driver` looks for a locally built gg (`target/debug/gg`,
+where microservice-driver's `crates/driver` looks for a locally built gg (`target/debug/gg`,
 `target/release/gg`). Every machine in the fleet runs Podman with the checkout
 bound in directly, so nothing moves the directory elsewhere; a developer who
 wants it elsewhere sets `CARGO_TARGET_DIR`, which the scripts that look for a
@@ -682,13 +683,12 @@ warning about it.
 
 ## Submodule checkout
 
-The `contracts/`, `engines/`, `gg/`, `microservice-dispatcher/`,
-`microservice-repos/`, `tool-model-core/`,
-`tool-paint/`, `tool-particle/`, `tool-sprite/`, `tool-voxel/`, `tool-mc/`,
-`tool-sn/`, `tool-dc/`, `tool-audio-core/`, `tool-sfx-synth/`,
-`tool-sfx-sample/`, `tool-music/`, `test-suites/` and `ui-common/` submodules
-live in the organization's other repositories, reached over SSH at
-`ssh.dev.azure.com`.
+The `contracts/`, `engines/`, `gg/`, `microservice-dispatcher/`, `microservice-driver/`,
+`microservice-repos/`, `tool-model-core/`, `tool-paint/`, `tool-particle/`,
+`tool-sprite/`, `tool-voxel/`, `tool-mc/`, `tool-sn/`, `tool-dc/`,
+`tool-audio-core/`, `tool-sfx-synth/`, `tool-sfx-sample/`, `tool-music/`,
+`test-suites/` and `ui-common/` submodules live in the organization's other
+repositories, reached over SSH at `ssh.dev.azure.com`.
 `post-create.sh` checks them out ahead of `npm ci`, whose workspace lists the
 packages `contracts/`, `engines/` and `ui-common/` hold, and `post-start.sh`
 checks them out again at every start, each through
@@ -699,11 +699,10 @@ runs
 
 ```sh
 git submodule update --init \
-  contracts engines gg microservice-dispatcher microservice-repos \
-  tool-model-core tool-paint \
-  tool-particle tool-sprite tool-voxel tool-mc tool-sn tool-dc \
-  tool-audio-core tool-sfx-synth tool-sfx-sample tool-music test-suites \
-  ui-common
+  contracts engines gg microservice-dispatcher microservice-driver microservice-repos \
+  tool-model-core tool-paint tool-particle tool-sprite tool-voxel tool-mc \
+  tool-sn tool-dc tool-audio-core tool-sfx-synth tool-sfx-sample tool-music \
+  test-suites ui-common
 ```
 
 through the host's agent when the checkout holds a `.gitmodules`. Passed

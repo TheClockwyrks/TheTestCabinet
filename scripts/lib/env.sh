@@ -16,7 +16,7 @@
 # was the footgun this convention removes.
 #
 # `tcab --env` does not source this file: it reaches a deployed environment through
-# the edge alone, at the origin `DeployEnv::origin` in crates/cli/src/cli.rs names.
+# the edge alone, at the origin `DeployEnv::origin` in microservice-driver's CLI names.
 # Keep that origin equal to TCAB_ORIGIN here.
 #
 # Usage (from a script that has computed its own $script_dir):

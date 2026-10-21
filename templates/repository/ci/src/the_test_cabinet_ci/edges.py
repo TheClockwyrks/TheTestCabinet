@@ -259,6 +259,8 @@ DATA_EDGES: tuple[DataEdge, ...] = (
     DataEdge("microservice-backend", "test-suites", "ingest"),
     DataEdge("microservice-driver", "gg", "the pinned released binary"),
     *(DataEdge("microservice-driver", tool, "the tool images") for tool in TOOL_IMAGES),
+    DataEdge("microservice-driver", "test-suites", "the training scenarios the performance image bakes"),
+    DataEdge("microservice-driver", "microservice-backend", "the sample packs the audio store is staged from"),
     DataEdge("test-suites", "microservice-backend", "the sample packs"),
     DataEdge("console.testcabinet.ai", "test-suites", "the vendored sprite atlas and reference scenarios"),
     DataEdge("the-spec-cabinet", "test-suites", "the suite being authored"),
@@ -287,6 +289,12 @@ SKIPPED = frozenset({"target", "node_modules", ".git", "dist"})
 # from what the run vendors into it, never a build of the repository, so the
 # walk leaves those trees to the content's own gates.
 CONTENT_TREES = frozenset({"test-cases", "game-jams", "test-case-groups", "test-suites"})
+# A crate's copies of committed case versions, which its tests resolve rather
+# than the catalog: `crates/<crate>/testdata/definitions/`, laid out like the
+# test suites root (see "Tests that read case versions" on the Building
+# development page). A manifest there is content, as in the trees above, in
+# every repository.
+CASE_COPIES = ("testdata", "definitions")
 
 
 def edges_of(repo: str) -> tuple[Edge, ...]:
@@ -348,12 +356,15 @@ def manifests(root: Path, name: str = "Cargo.toml", content: frozenset[str] = fr
     """Every manifest called `name` under `root`, outside build output, installed packages and `content`.
 
     `content` names the trees at the root that hold content rather than the
-    repository's build ([`content_trees`]).
+    repository's build ([`content_trees`]); a crate's case copies
+    (`CASE_COPIES`) are left out everywhere.
     """
     found = []
     for path in sorted(root.rglob(name)):
         parts = path.relative_to(root).parts
         if SKIPPED & set(parts) or (len(parts) > 1 and parts[0] in content):
+            continue
+        if len(parts) > 4 and parts[0] == "crates" and parts[2:4] == CASE_COPIES:
             continue
         found.append(path)
     return found

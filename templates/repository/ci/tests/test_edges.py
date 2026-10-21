@@ -339,6 +339,18 @@ def test_only_a_content_repository_leaves_those_trees_out(tmp_path: Path) -> Non
     ]
 
 
+def test_a_crates_case_copies_are_left_out_in_every_repository(tmp_path: Path) -> None:
+    copy = "crates/backend/testdata/definitions/test-cases/x/v1.0.0/workspaces/base/package.json"
+    _package(tmp_path, copy, "x", dependencies={"@clockwyrks/gg-sandbox": "1"})
+    _package(tmp_path, "crates/backend/testdata/other/package.json", "y", dependencies={"@clockwyrks/gg-sandbox": "1"})
+    assert edges.violations(tmp_path, "microservice-backend") == [
+        (
+            "crates/backend/testdata/other/package.json: [dependencies] @clockwyrks/gg-sandbox comes from gg,"
+            " which microservice-backend may not depend on"
+        )
+    ]
+
+
 def test_an_unknown_repository_is_refused() -> None:
     with pytest.raises(ValueError, match="unknown repository"):
         edges.edges_of("elsewhere")

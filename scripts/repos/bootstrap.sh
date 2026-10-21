@@ -10,7 +10,8 @@
 # commits what it holds, pushes it to the remote of the same name beside the
 # superrepo's own, and adds it to the superrepo as a submodule by a relative
 # URL, which git resolves against the superrepo's origin, so the file names no
-# host.
+# host, and with `.` as its branch, so its work lands on the branch of the
+# superrepo's own name.
 #
 # Every step is skipped when it has already happened: a repository with a
 # commit is not committed again, a remote that already holds `master` is not
@@ -25,6 +26,10 @@ set -euo pipefail
 SCRIPTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SUPERREPO="${TCAB_SUPERREPO:-$(cd "$SCRIPTS_DIR/../.." && pwd)}"
 BRANCH="master"
+# The branch the submodule's work lands on: `.`, the branch the superrepo is
+# on, so a branch of the superrepo lands its submodules' work on the branches
+# of their name.
+SUBMODULE_BRANCH="."
 REMOTE_BASE="${TCAB_REMOTE_BASE:-git@ssh.dev.azure.com:v3/genyume/the-test-cabinet}"
 RECORD=".test-cabinet-repo.toml"
 
@@ -132,6 +137,6 @@ fi
 if git -C "$parent" config -f .gitmodules --get "submodule.$name.path" >/dev/null 2>&1; then
 	printf 'bootstrap: %s is already a submodule\n' "$name"
 else
-	git -C "$parent" submodule add -q -b "$BRANCH" "../$name" "$name"
+	git -C "$parent" submodule add -q -b "$SUBMODULE_BRANCH" "../$name" "$name"
 	printf 'bootstrap: added %s as a submodule of the superrepo\n' "$name"
 fi

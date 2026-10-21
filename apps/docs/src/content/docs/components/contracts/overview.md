@@ -20,6 +20,7 @@ The repository holds these crates and packages:
 | `crates/backend-client`                                                  | The backend's HTTP client over the contract types, used by the driver, CLI, arena and publisher |
 | `crates/contract-codegen`, `crates/api-codegen`                          | The generators of the packages below                                                            |
 | `packages/run-record`, `packages/asset-contract`, `packages/backend-api` | The TypeScript bindings and JSON Schemas                                                        |
+| `packages/browser-driver` (private)                                      | The Playwright script the suites crate's browser calls run                                      |
 
 ## The contracts crate
 

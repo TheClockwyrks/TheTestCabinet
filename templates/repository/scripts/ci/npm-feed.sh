@@ -20,8 +20,10 @@
 # the same registry is replaced rather than repeated.
 #
 # The pipeline runs this before the first `npm ci` of a job in a repository
-# whose kind carries the `typescript` gate, with the registry the repository
-# kit renders from the Repositories page of the superrepo's documentation.
+# whose kind carries the `typescript` gate, and before an image build of such a
+# repository, which hands the configuration to the build as a secret, with the
+# registry the repository kit renders from the Repositories page of the
+# superrepo's documentation.
 set -euo pipefail
 
 registry="${1:?npm-feed: the url of the npm registry of the feed is the first argument}"
@@ -47,7 +49,13 @@ esac
 registry="${registry%/}/"
 key="//${registry#https://}:_authToken="
 
-config="$(npm config get userconfig)"
+# An agent building an image runs no Node, and npm, when it is there, reads
+# NPM_CONFIG_USERCONFIG, else ~/.npmrc, which is where this writes without it.
+if command -v npm >/dev/null 2>&1; then
+	config="$(npm config get userconfig)"
+else
+	config="${NPM_CONFIG_USERCONFIG:-${HOME:+${HOME}/.npmrc}}"
+fi
 if [ -z "$config" ]; then
 	echo "npm-feed: npm names no user configuration file" >&2
 	exit 1

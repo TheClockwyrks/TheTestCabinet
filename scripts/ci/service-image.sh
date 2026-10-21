@@ -5,23 +5,21 @@
 #   scripts/ci/service-image.sh <service> <sha>
 #
 # <service> is a target of deployments/images/services.Dockerfile (backend,
-# driver, artifacts, arena, publisher) or `web`, which has a Dockerfile
-# of its own. The build is native: the pipeline runs this once on an amd64 agent and
+# artifacts, arena, publisher) or `web`, which has a Dockerfile of its own. The
+# driver's image is microservice-driver's, built by that repository's pipeline. The build is native: the pipeline runs this once on an amd64 agent and
 # once on an arm64 agent, and scripts/ci/manifest.sh fuses the two arch tags into the
 # multi-arch `<image>:<sha>` a deployment pins. The caller is already logged in to
 # the registry.
 #
 # <sha> is the commit being built. It is stamped into the binaries as
-# TCAB_BUILD_COMMIT, because the build context carries no `.git`. The driver bakes the
-# audio store the same run pushed, `test-cabinet-audio-store:<sha>`, so the images of
-# one commit always travel together.
+# TCAB_BUILD_COMMIT, because the build context carries no `.git`.
 #
 # Layers are cached in the registry per image and architecture, so a build whose
 # inputs did not change skips those stages.
 #
-# The backend and driver bake the gg release the driver pins
-# (crates/driver/gg-release-version), which the Dockerfile's `gg-release` stage reads
-# and fetches itself, so neither needs an argument from here.
+# The backend bakes the reference documents of the gg release the driver pins
+# (microservice-driver/crates/driver/gg-release-version), which the Dockerfile's
+# `gg-release` stage reads and fetches itself, so it needs no argument from here.
 set -euo pipefail
 # shellcheck source=/dev/null
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/tcab-lib.sh"
@@ -36,7 +34,7 @@ readonly SHA="$2"
 dockerfile=deployments/images/services.Dockerfile
 target="$SERVICE"
 case "$SERVICE" in
-	backend | driver | artifacts | arena | publisher) image="tcab-${SERVICE}" ;;
+	backend | artifacts | arena | publisher) image="tcab-${SERVICE}" ;;
 	web)
 		image=tcab-web
 		dockerfile=deployments/images/web.Dockerfile
@@ -63,7 +61,6 @@ args=(
 	--push
 )
 [[ -n "$target" ]] && args+=(--target "$target")
-[[ "$SERVICE" == driver ]] && args+=(--build-arg "AUDIO_STORE_IMAGE=${CI_REGISTRY}/test-cabinet-audio-store:${SHA}")
 
 # The default builder can write neither a registry cache nor a multi-platform
 # manifest. `docker login`'s credentials reach this one through the CLI config.

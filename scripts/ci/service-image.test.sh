@@ -107,10 +107,8 @@ check_equal "dispatcher is no longer a service (microservice-dispatcher builds i
 check_contains "and is named unknown" "unknown service 'dispatcher'" "$out"
 
 out="$(run driver "$SHA")"
-check_equal "driver builds" "0" "$?"
-check_equal "driver bakes the audio store of the same commit" \
-	"$(expected tcab-driver deployments/images/services.Dockerfile amd64 "--target driver --build-arg AUDIO_STORE_IMAGE=$R/test-cabinet-audio-store:$SHA")" \
-	"$(build_line)"
+check_equal "driver is no longer a service (microservice-driver builds it)" "1" "$?"
+check_contains "and is named unknown" "unknown service 'driver'" "$out"
 
 out="$(run web "$SHA")"
 check_equal "web builds" "0" "$?"
@@ -129,13 +127,11 @@ out="$(STUB_CREATE_EXIT=1 run backend "$SHA")"
 check_equal "a builder that already exists is reused" "0" "$?"
 check_contains "by name" "docker buildx use tcab-ci" "$(cat "$tmp/docker.log")"
 
-# The backend and driver fetch the pinned gg release in the Dockerfile itself, so neither
-# is handed a named context or a gg argument.
-for service in backend driver; do
-	out="$(run "$service" "$SHA")"
-	check_lacks "$service takes no gg context" "--build-context" "$(build_line)"
-	check_lacks "$service takes no gg argument" "GG" "$(build_line)"
-done
+# The backend fetches the pinned gg release in the Dockerfile itself, so it is handed
+# neither a named context nor a gg argument.
+out="$(run backend "$SHA")"
+check_lacks "backend takes no gg context" "--build-context" "$(build_line)"
+check_lacks "backend takes no gg argument" "GG" "$(build_line)"
 
 out="$(run gateway "$SHA")"
 check_equal "an unknown service fails" "1" "$?"

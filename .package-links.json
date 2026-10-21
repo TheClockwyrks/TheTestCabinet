@@ -4,6 +4,7 @@
     "contracts": {
       "@clockwyrks/asset-contract": "packages/asset-contract",
       "@clockwyrks/backend-api": "packages/backend-api",
+      "@clockwyrks/browser-driver": "packages/browser-driver",
       "@clockwyrks/run-record": "packages/run-record"
     },
     "engines": {

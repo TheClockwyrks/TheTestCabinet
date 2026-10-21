@@ -8,17 +8,20 @@
 # stands fails to pull. This rewrites deployments/k8s/overlays/<overlay>/kustomization.yaml
 # so that it names the commit being deployed instead:
 #
-#   - each of the six entries of its `images:` block for an image this repository
+#   - each of the five entries of its `images:` block for an image this repository
 #     builds gets `newTag: "<commit>"`, and the entry of each image a repository of
 #     its own builds gets the commit the superrepo's submodule pointer for that
 #     repository names at <commit>, which its pipeline pushed as <name>:<commit>
 #     (Pinning images, in deployment/kubernetes/overview.md);
 #   - a patch of the dispatcher, between two marker comments at the head of its
-#     `patches:` list, points TCAB_DRIVER_IMAGE and TCAB_PUBLISHER_IMAGE at the
-#     driver and publisher images of that commit, and TCAB_CONTAINER_REGISTRY and
-#     TCAB_CONTAINER_TAG at the registry and commit the run-container images are
-#     resolved from. These are environment values, which kustomize's image
-#     transformer does not reach.
+#     `patches:` list, points TCAB_DRIVER_IMAGE at microservice-driver's image at
+#     the commit its submodule pointer names, TCAB_PUBLISHER_IMAGE at the
+#     publisher image of <commit>, and TCAB_CONTAINER_REGISTRY and
+#     TCAB_CONTAINER_TAG at the registry and the driver's commit the run-container
+#     images are resolved from: microservice-driver's pipeline builds the run
+#     images beside the driver's, so the driver and the run images always come
+#     from one of its commits. These are environment values, which kustomize's
+#     image transformer does not reach.
 #
 # It runs again over its own output: the tags are rewritten and the marked patch is
 # replaced, so a second run with another commit leaves the first one nowhere.
@@ -42,16 +45,19 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/tcab-lib.sh"
 
 readonly USAGE="usage: scripts/ci/pin-images.sh <staging|prod> <commit>"
 
-# The six images a Test Cabinet deployment runs or starts that this repository
+# The five images a Test Cabinet deployment runs or starts that this repository
 # builds, as the base names them after its REPLACE_REGISTRY/ placeholder, all at the
 # commit being deployed.
-readonly TCAB_IMAGES=(tcab-backend tcab-driver tcab-artifacts
+readonly TCAB_IMAGES=(tcab-backend tcab-artifacts
 	tcab-arena tcab-publisher tcab-web)
 
 # The images a repository of their own builds, each as `<image>=<submodule path>`:
 # each is pinned to the commit the superrepo's submodule pointer for that repository
-# names at the commit being deployed.
+# names at the commit being deployed. The registry repository is named after the
+# repository (`testcabinet.azurecr.io/microservice-driver:<commit>`), which is how
+# the dispatcher's TCAB_DRIVER_IMAGE names the driver's.
 readonly SUBMODULE_IMAGES=(tcab-dispatcher=microservice-dispatcher
+	tcab-driver=microservice-driver
 	tcab-repos=microservice-repos)
 
 SUPERREPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -96,8 +102,11 @@ gitlink_commit() { # path
 	printf '%s' "${entry%%[[:space:]]*}"
 }
 
-# Every image to pin, as `<image>=<tag>`.
+# Every image to pin, as `<image>=<tag>`, and the image a repository of its own
+# builds, as `<image>=<registry repository>:<tag>`, which the dispatcher's
+# environment names.
 pins=()
+declare -A pinned_refs=()
 for image in "${TCAB_IMAGES[@]}"; do
 	pins+=("${image}=${COMMIT}")
 done
@@ -112,6 +121,7 @@ for pair in "${SUBMODULE_IMAGES[@]}"; do
 		exit 1
 	fi
 	pins+=("${image}=${tag}")
+	pinned_refs["$image"]="${path}:${tag}"
 done
 readonly IMAGE_COUNT=${#pins[@]}
 
@@ -135,7 +145,8 @@ trap 'rm -f "$patch_file" "$out_file" "$pinned_file"' EXIT
 
 cat >"$patch_file" <<YAML
   ${BEGIN_MARK}
-  # Pinned to ${COMMIT}; a second run replaces this patch.
+  # Pinned to ${COMMIT} (the driver and the run images to its microservice-driver
+  # pointer); a second run replaces this patch.
   - target:
       kind: Deployment
       name: tcab-dispatcher
@@ -151,13 +162,13 @@ cat >"$patch_file" <<YAML
               - name: dispatcher
                 env:
                   - name: TCAB_DRIVER_IMAGE
-                    value: "${CI_REGISTRY}/tcab-driver:${COMMIT}"
+                    value: "${CI_REGISTRY}/${pinned_refs[tcab-driver]}"
                   - name: TCAB_PUBLISHER_IMAGE
                     value: "${CI_REGISTRY}/tcab-publisher:${COMMIT}"
                   - name: TCAB_CONTAINER_REGISTRY
                     value: "${CI_REGISTRY}"
                   - name: TCAB_CONTAINER_TAG
-                    value: "${COMMIT}"
+                    value: "${pinned_refs[tcab-driver]##*:}"
   ${END_MARK}
 YAML
 

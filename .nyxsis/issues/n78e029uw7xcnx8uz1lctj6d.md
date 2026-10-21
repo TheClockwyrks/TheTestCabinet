@@ -6,7 +6,7 @@ zone: REPOS
 number: 11
 title: Extract the driver and the CLI into microservice-driver
 type: generic
-state: open
+state: done
 depends_on:
   - txf8l556rdhfmbw9k1bxwvet
   - why63p6o1vq24lae4hpsex0h
@@ -15,6 +15,18 @@ depends_on:
   - poskdbz9r08ecr4qziroj0xr
   - nucz4aaupa56b5r8erjhq960
 created: 2026-10-13T21:13:03.863838776Z
+done: 2026-10-21T03:27:09.820143294Z
+outcome: |
+  Landed in PR 4878 into nightly: microservice-driver added as a submodule (master
+  8783b0bd; kit render with scripts-test and containers-test gates, pipeline 163
+  publishing tcab on a tag and pushing microservice-driver:<commit> and the run
+  images, protection, GitHub mirror), the deploy sets pin the driver image and the
+  run images at the submodule pointer, crates/driver, crates/cli and containers/
+  removed with the audio-store scripts, and the contracts v0.2.3 move carried from
+  REPOS-12's branch. Superrepo gates 28/28 on the merged tree and npm ci --offline
+  resolves. Not verified: a staging deploy of the driver at the pointer and a run
+  completing on staging (follow the staging promotion, CICD-4, and the driver's
+  master run on 8783b0bd being green), the local stack, a v* tag run.
 ---
 
 The driver crate, the CLI crate and the run-container images live in the

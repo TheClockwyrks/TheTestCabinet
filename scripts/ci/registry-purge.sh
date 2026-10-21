@@ -5,9 +5,11 @@
 #
 # Every commit that reaches `master` or `staging` pushes, per architecture,
 # `<image>:<sha>-amd64` and `<image>:<sha>-arm64`, and then the fused
-# multi-arch `<image>:<sha>`, a manifest list naming those two, into the eight
-# service repositories (`tcab-*`) and the run-image repositories
-# (`test-cabinet-*`, `test-cabinet-audio-store` included). The toolchain image
+# multi-arch `<image>:<sha>`, a manifest list naming those two: a superrepo
+# commit into the service repositories this repository builds (`tcab-*`), and a
+# commit of microservice-driver into the run-image repositories
+# (`test-cabinet-*`, `test-cabinet-audio-store` included), which its pipeline
+# builds beside the driver's own image. The toolchain image
 # gg's pipeline pushes, `test-cabinet-gg-toolchains:<version>`, carries a
 # version tag, not a commit's, so nothing here removes it. The registry is on
 # the Basic tier, which has no retention policy, so without this every image
@@ -20,7 +22,11 @@
 # A commit is kept when any of these names it:
 #
 #   - `--keep <sha>`, which is how the pipeline names the commit it just
-#     deployed, whatever became of the deployment;
+#     deployed, whatever became of the deployment, and with it the commit
+#     <sha>'s microservice-driver submodule pointer names, which that
+#     deployment's run images are tagged with. The pointer is read from this
+#     checkout, so a <sha> it does not hold stops the purge with nothing
+#     deleted; a commit from before the pointer existed adds nothing;
 #   - a cluster: what the `tcab-staging` and `tcab-prod` namespaces run, read
 #     through `az aks command invoke` because both API servers are private.
 #     Every Deployment, StatefulSet and DaemonSet contributes the tag of each
@@ -31,15 +37,17 @@
 #     cluster that cannot be read stops the purge with nothing deleted, because
 #     "could not ask" must never read as "runs nothing"; `--no-cluster` skips
 #     both clusters, for one that is gone;
-#   - the newest <n> commits (one unless `--keep-count` says otherwise), each
-#     commit dated by the newest push of any manifest carrying its tags, in any
-#     repository. That is the commit whose images are arriving or have just
-#     arrived, which no cluster runs yet.
+#   - in each repository, its own newest <n> commits (one unless `--keep-count`
+#     says otherwise), each commit dated by the newest push of any manifest
+#     carrying its tags there. That is the commit whose images are arriving or
+#     have just arrived, which no cluster runs yet. It is decided per
+#     repository because the service images and the run images are tagged with
+#     the commits of two repositories, whose pushes say nothing of each other.
 #
 # Then, in every repository whose name starts with `tcab-` or `test-cabinet-`
 # and in no other (the CI images are ci-image-purge.sh's; a split repository's
-# image, `microservice-repos` among them, is tagged with that repository's own
-# commits, which the commits above never name, so it is left whole), each tagged
+# own image, `microservice-repos` and `microservice-driver` among them, is
+# tagged with that repository's own commits and is left whole), each tagged
 # manifest is kept or deleted by its tags:
 #
 #   - a commit tag, `<sha>` or `<sha>-<arch>`, keeps the manifest when its
@@ -106,7 +114,11 @@ readonly CI_DIR
 # shellcheck source=scripts/ci/lib.sh
 source "${CI_DIR}/lib.sh"
 
+SUPERREPO="$(cd "${CI_DIR}/../.." && pwd)"
+readonly SUPERREPO
 readonly REGISTRY="testcabinet"
+# The submodule whose commits tag the run images.
+readonly DRIVER_SUBMODULE="microservice-driver"
 readonly REGISTRY_HOST="testcabinet.azurecr.io"
 readonly UNTAGGED_MIN_AGE="1 hour"
 # The two tag classes with a policy. A tag matching neither is always kept.
@@ -297,9 +309,24 @@ live_commits() { # environment resource-group cluster namespace
 	return 0
 }
 
-# Reads every repository's manifests, concatenated, on stdin and prints the
-# newest <count> distinct commits, one per line: each commit dated by the
-# newest push of any manifest carrying one of its tags.
+# Prints the commit <commit>'s microservice-driver submodule pointer names, read
+# from this checkout, or nothing for a commit from before the pointer existed.
+# Fails, saying why, when the checkout does not hold <commit>.
+driver_commit() {
+	local commit="$1" entry
+	if ! git -C "$SUPERREPO" cat-file -e "${commit}^{commit}" 2>/dev/null; then
+		echo "registry-purge.sh: this checkout does not hold ${commit}, so the ${DRIVER_SUBMODULE} commit its run images are tagged with cannot be read. Fetch it, and run again." >&2
+		return 1
+	fi
+	entry="$(git -C "$SUPERREPO" ls-tree "$commit" -- "$DRIVER_SUBMODULE")" || return 1
+	[[ "$entry" == "160000 commit "* ]] || return 0
+	entry="${entry#160000 commit }"
+	printf '%s\n' "${entry%%[[:space:]]*}"
+}
+
+# Reads one repository's manifests on stdin and prints its newest <count>
+# distinct commits, one per line: each commit dated by the newest push of any
+# manifest carrying one of its tags.
 newest_commits() {
 	local count="$1"
 	jq -r --arg re "$COMMIT_TAG" --argjson count "$count" '
@@ -338,7 +365,7 @@ classify_tagged() {
 # remaining list names. Everything it asks the registry, it asks with the
 # repository's own token.
 purge_repository() {
-	local repository="$1" manifests="$2" kept_commits="$3" token="$4"
+	local repository="$1" manifests="$2" kept_commits="$3" token="$4" newest="$5"
 	local verdict digest tags size classes
 	local protected="" gone="" children=""
 	# Children read once per digest: a list's content is what its digest
@@ -346,6 +373,7 @@ purge_repository() {
 	local -A children_of_digest=()
 
 	echo "${repository}:"
+	[[ -z "$newest" ]] || echo "  newest: ${newest//$'\n'/ }"
 
 	classes="$(classify_tagged "$kept_commits" <<<"$manifests")"
 
@@ -475,11 +503,22 @@ main() {
 	done
 
 	local tool
-	for tool in az curl jq; do
+	for tool in az curl git jq; do
 		if ! command -v "$tool" >/dev/null 2>&1; then
-			echo "registry-purge.sh: no ${tool} on PATH. az signs in to the registry and asks each cluster, curl lists and deletes from the registry, and jq reads their answers." >&2
+			echo "registry-purge.sh: no ${tool} on PATH. az signs in to the registry and asks each cluster, curl lists and deletes from the registry, git reads the run images' commit from this checkout, and jq reads their answers." >&2
 			exit 1
 		fi
+	done
+
+	# The run images of each commit kept by name, which carry the commit its
+	# microservice-driver pointer names.
+	local commit driver
+	for commit in ${kept[@]+"${kept[@]}"}; do
+		if ! driver="$(driver_commit "$commit")"; then
+			echo "registry-purge.sh: nothing was deleted." >&2
+			exit 1
+		fi
+		[[ -n "$driver" ]] && kept+=("$driver")
 	done
 
 	WORK="$(mktemp -d)"
@@ -514,15 +553,15 @@ main() {
 		exit 1
 	fi
 
-	# Every repository's manifests first, because the newest commits are
-	# decided across all of them. A repository that cannot be listed, or that
+	# Every repository's manifests first, so a token without the right to delete
+	# stops the run before anything goes. A repository that cannot be listed, or that
 	# no token could be had for, is reported and left alone; the rest still
 	# run. The token a repository was listed with is the one everything else
 	# done to it uses, so it is the one checked for the right to delete: a
 	# token without it stops the run here, before a listing, let alone a
 	# delete.
 	local repository token
-	local -a listed=() listings=()
+	local -a listed=()
 	local -A tokens=()
 	while read -r repository; do
 		[[ -n "$repository" ]] || continue
@@ -533,7 +572,6 @@ main() {
 		if [[ -n "$token" ]] &&
 			list_manifests "$repository" "$token" >"${WORK}/${repository}.json"; then
 			listed+=("$repository")
-			listings+=("${WORK}/${repository}.json")
 			tokens["$repository"]="$token"
 		else
 			echo "${repository}:"
@@ -542,19 +580,17 @@ main() {
 		fi
 	done <<<"$repositories"
 
-	if [[ ${#listed[@]} -gt 0 ]]; then
-		while read -r tag; do
-			[[ -n "$tag" ]] && kept+=("$tag")
-		done < <(jq -s 'add // []' "${listings[@]}" | newest_commits "$keep_count")
-	fi
-
-	local kept_json
-	kept_json="$(printf '%s\n' "${kept[@]}" | jq -R . | jq -sc 'map(select(. != "")) | unique')"
-	echo "Keeping commits: $(jq -r 'join(" ")' <<<"$kept_json")"
+	local kept_json newest repository_kept
+	kept_json="$(printf '%s\n' ${kept[@]+"${kept[@]}"} | jq -R . | jq -sc 'map(select(. != "")) | unique')"
+	echo "Keeping commits: $(jq -r 'join(" ")' <<<"$kept_json"), and each repository's newest"
 	[[ "$DRY_RUN" == true ]] && echo "Dry run: nothing is deleted."
 
-	for repository in "${listed[@]}"; do
-		purge_repository "$repository" "$(cat "${WORK}/${repository}.json")" "$kept_json" "${tokens[$repository]}"
+	for repository in ${listed[@]+"${listed[@]}"}; do
+		newest="$(newest_commits "$keep_count" <"${WORK}/${repository}.json")"
+		repository_kept="$(jq -c --arg newest "$newest" \
+			'. + ($newest | split("\n") | map(select(. != ""))) | unique' <<<"$kept_json")"
+		purge_repository "$repository" "$(cat "${WORK}/${repository}.json")" "$repository_kept" \
+			"${tokens[$repository]}" "$newest"
 	done
 
 	local gigabytes

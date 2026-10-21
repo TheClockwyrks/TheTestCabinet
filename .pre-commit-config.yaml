@@ -364,7 +364,7 @@ repos:
         name: "Dockerfile build contexts"
         entry: uv run --quiet --project ci gate run build-context
         language: system
-        files: '(^|/)[^/]*[Dd]ockerfile[^/]*$|(^|/)\.dockerignore$|^rust-toolchain\.toml$|^gg$|^ui-common$|^scripts/stage-tcab-packages\.mjs$|^scripts/ci/build-context\.sh$|^ci/gates/build-context\.py$'
+        files: '(^|/)[^/]*[Dd]ockerfile[^/]*$|(^|/)\.dockerignore$|^rust-toolchain\.toml$|^gg$|^ui-common$|^microservice-driver$|^scripts/ci/build-context\.sh$|^ci/gates/build-context\.py$'
         pass_filenames: false
 
       - id: k8s-deploy-sets
@@ -380,7 +380,7 @@ repos:
         language: system
         # The project's pipeline files that name a CI image, and the gate
         # that holds each reference to the commit ci/images/tags.yml pins.
-        files: '^\.azure/|^azure-pipelines-release\.yml$|^ci/gates/ci-image-pins\.py$'
+        files: '^\.azure/|^azure-pipelines\.yml$|^ci/gates/ci-image-pins\.py$'
         pass_filenames: false
 
       - id: dependency-graph
@@ -396,8 +396,6 @@ repos:
         name: "script library tests (node --test)"
         entry: uv run --quiet --project ci gate run scripts-test
         language: system
-        # The library, the staging script and its test, the manifests the staging
-        # script writes from, and the engines pin, whose checkout holds the staged
-        # packages and the gate script whose STRICT list that test reads.
-        files: '^scripts/lib/.*\.m?js$|^scripts/[^/]+\.test\.mjs$|^scripts/stage-tcab-packages\.mjs$|^engines$|^packages/[^/]+/package\.json$|^ci/gates/scripts-test\.py$'
+        # The library, its tests and the gate script.
+        files: '^scripts/lib/.*\.m?js$|^ci/gates/scripts-test\.py$'
         pass_filenames: false
