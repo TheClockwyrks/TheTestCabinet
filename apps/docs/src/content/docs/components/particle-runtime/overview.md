@@ -117,4 +117,5 @@ dependency, so the built game can import `ParticleCanvasPlayer` from
 `@clockwyrks/particle-runtime/canvas`, load a seeded cross-asset `system.json`,
 and simulate it live in-game. The allowlist of shippable packages lives in
 `contracts/crates/contracts/src/test_case.rs` as `SHIPPABLE_PACKAGES` and must stay in lockstep
-with `scripts/stage-tcab-packages.mjs`, which bakes them into the run image.
+with microservice-driver's `scripts/stage-tcab-packages.mjs`, which bakes them
+into the run image.

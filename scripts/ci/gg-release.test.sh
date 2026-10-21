@@ -52,9 +52,9 @@ tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 
 repo="$tmp/repo"
-mkdir -p "$repo/scripts/ci" "$repo/crates/driver" "$repo/bin"
+mkdir -p "$repo/scripts/ci" "$repo/microservice-driver/crates/driver" "$repo/bin"
 cp "$CI_DIR/gg-release.sh" "$CI_DIR/tcab-lib.sh" "$repo/scripts/ci/"
-printf '0.7.1\n' >"$repo/crates/driver/gg-release-version"
+printf '0.7.1\n' >"$repo/microservice-driver/crates/driver/gg-release-version"
 cat >"$repo/bin/uname" <<'STUB'
 #!/usr/bin/env bash
 echo "${STUB_UNAME_M:-x86_64}"
@@ -92,11 +92,11 @@ check_equal "TCAB_GG_RELEASE_VERSION overrides the pin, its v dropped" "0.8.0-rc
 out="$(TCAB_GG_RELEASE_VERSION=0.8.0-rc1 run toolchains-image)"
 check_equal "and the toolchain image follows it" \
 	"testcabinet.azurecr.io/test-cabinet-gg-toolchains:0.8.0-rc1" "$out"
-printf 'latest\n' >"$repo/crates/driver/gg-release-version"
+printf 'latest\n' >"$repo/microservice-driver/crates/driver/gg-release-version"
 out="$(run version)"
 check_equal "a pin that is not a version fails" "1" "$?"
 check_contains "naming the file" "'latest' is not a gg release version" "$out"
-printf '0.7.1\n' >"$repo/crates/driver/gg-release-version"
+printf '0.7.1\n' >"$repo/microservice-driver/crates/driver/gg-release-version"
 out="$(run nonsense)"
 check_equal "an unknown subcommand is a usage error" "2" "$?"
 out="$(run fetch)"
@@ -160,12 +160,12 @@ check_absent "and replaces its documents" "$tmp/again/gg-reference/stale.json"
 echo "--- the checkout's own pin ---"
 out="$("$REPO_ROOT/scripts/ci/gg-release.sh" version 2>&1)"
 check_equal "the checkout's pin reads" "0" "$?"
-check_equal "as the one line of crates/driver/gg-release-version" \
-	"$(tr -d '[:space:]' <"$REPO_ROOT/crates/driver/gg-release-version")" "$out"
+check_equal "as the one line of microservice-driver/crates/driver/gg-release-version" \
+	"$(tr -d '[:space:]' <"$REPO_ROOT/microservice-driver/crates/driver/gg-release-version")" "$out"
 check_contains "which gg_exec.rs compiles in as DEFAULT_RELEASE_VERSION" \
-	'include_str!("../gg-release-version")' "$(cat "$REPO_ROOT/crates/driver/src/gg_exec.rs")"
+	'include_str!("../gg-release-version")' "$(cat "$REPO_ROOT/microservice-driver/crates/driver/src/gg_exec.rs")"
 script_base="$(sed -nE 's/^readonly DEFAULT_BASE_URL="([^"]+)"$/\1/p' "$CI_DIR/gg-release.sh")"
-driver_base="$(grep -A1 'pub const DEFAULT_RELEASE_BASE_URL' "$REPO_ROOT/crates/driver/src/gg_exec.rs" |
+driver_base="$(grep -A1 'pub const DEFAULT_RELEASE_BASE_URL' "$REPO_ROOT/microservice-driver/crates/driver/src/gg_exec.rs" |
 	sed -nE 's/.*"([^"]+)".*/\1/p')"
 check_equal "the base URL is the driver's DEFAULT_RELEASE_BASE_URL" "$driver_base" "$script_base"
 

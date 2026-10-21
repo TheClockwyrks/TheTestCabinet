@@ -74,8 +74,9 @@ The kind decides a repository's shape.
 | `test-suites` | content | The test cases and game jams, and the lattice factory designer |
 
 Every repository but `contracts`, `engines`, `gg`, `gg.rocks`,
-`microservice-dispatcher`, `microservice-repos`, `tool-audio-core`, `tool-dc`, `tool-mc`,
-`tool-model-core`, `tool-music`, `tool-paint`, `tool-particle`,
+`microservice-dispatcher`, `microservice-driver`, `microservice-repos`,
+`tool-audio-core`, `tool-dc`, `tool-mc`, `tool-model-core`, `tool-music`,
+`tool-paint`, `tool-particle`,
 `tool-sfx-sample`, `tool-sfx-synth`, `tool-sn`, `tool-sprite`, `tool-voxel`,
 `test-suites`, `ui-common` and `cold-storage` is still a directory of the
 superrepo's own tree today.
@@ -203,6 +204,10 @@ edges, and the superrepo's `dependency-graph` gate reports them.
 microservice-backend -> test-suites              ingest
 microservice-driver -> gg                        the pinned released binary
 microservice-driver -> tool-*                    the tool images
+microservice-driver -> test-suites              the training scenarios the
+                                                 performance image bakes
+microservice-driver -> microservice-backend      the sample packs the audio store
+                                                 is staged from
 test-suites -> microservice-backend              the sample packs
 console.testcabinet.ai -> test-suites            the vendored sprite atlas and
                                                  reference scenarios
@@ -342,6 +347,10 @@ and the kit's `edges.py` hold:
   a browser, in the `android` image for a `shell`, and in the `rust` image
   otherwise (`RUST_TRACKS` in `render.py`);
 - the Windows job, for a repository `WINDOWS_TESTS` names;
+- the checkout, beside the repository's own, of each repository its Rust
+  suite reads across a data edge, and the variable naming it to the suite
+  (`RUST_CHECKOUTS`: `microservice-backend` checks `test-suites` out as
+  `TCAB_DEFINITIONS_ROOT`);
 - the steps of the gates a repository writes itself, which `EXTRA_GATES` names
   by the job each runs in;
 - for an `application`, the `Dockerfile` scaffold and its `.dockerignore`

@@ -1,9 +1,7 @@
 [workspace]
 resolver = "3"
 members = [
-	"crates/cli",
 	"crates/backend",
-	"crates/driver",
 	"crates/publisher",
 	"crates/artifacts",
 	"crates/arena",
@@ -12,19 +10,16 @@ members = [
 	"crates/migration",
 ]
 # The repositories checked out as submodules carrying a crate (contracts, engines,
-# gg, microservice-dispatcher, microservice-repos, tool-model-core, tool-paint,
-# tool-particle, tool-sprite,
-# tool-voxel, tool-mc, tool-sn, tool-dc, tool-audio-core, tool-sfx-synth,
-# tool-sfx-sample, tool-music, ui-common) are workspaces of their own. The
-# contracts, engines, microservice-repos, tool-model-core, tool-sprite,
-# tool-voxel and tool-audio-core crates are named under `[workspace.dependencies]`
-# by their public source, and the patch table of `.cargo/config.toml` builds them
-# from the checkouts. No member depends on gg's, microservice-dispatcher's,
-# tool-paint's, tool-particle's,
-# tool-mc's, tool-sn's, tool-dc's, tool-sfx-synth's, tool-sfx-sample's,
-# tool-music's or ui-common's source, nor on tool-voxel's `voxel-anim`; the patch
-# table names their crates all the same, and the lock records them as unused.
-exclude = ["contracts", "engines", "gg", "microservice-dispatcher", "microservice-repos", "tool-model-core", "tool-paint", "tool-particle", "tool-sprite", "tool-voxel", "tool-mc", "tool-sn", "tool-dc", "tool-audio-core", "tool-sfx-synth", "tool-sfx-sample", "tool-music", "ui-common"]
+# gg, microservice-dispatcher, microservice-driver, microservice-repos,
+# tool-model-core, tool-paint, tool-particle, tool-sprite, tool-voxel, tool-mc,
+# tool-sn, tool-dc, tool-audio-core, tool-sfx-synth, tool-sfx-sample, tool-music,
+# ui-common) are workspaces of their own. The contracts and engines crates are
+# named under `[workspace.dependencies]` by their public source, and the patch
+# table of `.cargo/config.toml` builds them from the checkouts. No member depends
+# on the other repositories' source (gg's, the microservices', the tools' or
+# ui-common's), nor on every crate of engines; the patch table names their crates
+# all the same, and the lock records them as unused.
+exclude = ["contracts", "engines", "gg", "microservice-dispatcher", "microservice-driver", "microservice-repos", "tool-model-core", "tool-paint", "tool-particle", "tool-sprite", "tool-voxel", "tool-mc", "tool-sn", "tool-dc", "tool-audio-core", "tool-sfx-synth", "tool-sfx-sample", "tool-music", "ui-common"]
 
 [workspace.package]
 edition = "2024"
@@ -63,7 +58,7 @@ codegen-units = 1
 opt-level = 3
 
 # Cranelift compiles wasm modules in test processes: the Foray and Lattice hosts of the
-# engines repository, which the driver and the arena link through the match runner,
+# engines repository, which the arena links through the match runner,
 # compile each controller with wasmtime, and `cargo nextest` runs ONE PROCESS PER TEST.
 # These are the crates that compile a module and read its debug information —
 # Cranelift, wasmtime's compile path and the DWARF readers — none of them workspace
@@ -128,40 +123,16 @@ opt-level = 3
 # path into `contracts/`: inside the superrepo the patch table of
 # `.cargo/config.toml` sends this source to the sibling checkout, which may hold
 # crates and changes the tag does not yet carry.
-test-cabinet-contracts = { git = "https://github.com/TheClockwyrks/contracts", tag = "v0.2.1" }
-test-cabinet-suites = { git = "https://github.com/TheClockwyrks/contracts", tag = "v0.2.1" }
-test-cabinet-telemetry = { git = "https://github.com/TheClockwyrks/contracts", tag = "v0.2.1" }
-test-cabinet-redact = { git = "https://github.com/TheClockwyrks/contracts", tag = "v0.2.1" }
-test-cabinet-backend-client = { git = "https://github.com/TheClockwyrks/contracts", tag = "v0.2.1" }
+test-cabinet-contracts = { git = "https://github.com/TheClockwyrks/contracts", tag = "v0.2.3" }
+test-cabinet-suites = { git = "https://github.com/TheClockwyrks/contracts", tag = "v0.2.3" }
+test-cabinet-telemetry = { git = "https://github.com/TheClockwyrks/contracts", tag = "v0.2.3" }
+test-cabinet-redact = { git = "https://github.com/TheClockwyrks/contracts", tag = "v0.2.3" }
+test-cabinet-backend-client = { git = "https://github.com/TheClockwyrks/contracts", tag = "v0.2.3" }
 # The crates of the engines repository, named the same way at its tag. The engine
-# catalog, the match runner, and the Foray and Lattice rules the validators and the
-# arena record a match or a case's state in.
-test-cabinet-engines = { git = "https://github.com/TheClockwyrks/engines", tag = "v1.1.1" }
-test-cabinet-match-play = { git = "https://github.com/TheClockwyrks/engines", tag = "v1.1.1" }
-foray-core = { git = "https://github.com/TheClockwyrks/engines", tag = "v1.1.1" }
-lattice-core = { git = "https://github.com/TheClockwyrks/engines", tag = "v1.1.1", default-features = false }
-# The drawing crate of the tool-sprite repository, named the same way. `TAGS`
-# records no tag for tool-sprite, so it is named at its `master` branch. Only the
-# library (not the `cli` feature's binaries): the driver regenerates the scored
-# image from a run's recorded action log through it.
-test-cabinet-draw = { git = "https://github.com/TheClockwyrks/tool-sprite", branch = "master", default-features = false }
-# The crates of the tool-model-core repository, named the same way at its tag.
-# Only the libraries: the driver reads the rig, color and meshed-part types
-# through them, and a member whose binaries record, preview or render enables
-# their `cli` feature itself.
-test-cabinet-model-core = { git = "https://github.com/TheClockwyrks/tool-model-core", tag = "v0.1.0", default-features = false }
-test-cabinet-voxel-mesh = { git = "https://github.com/TheClockwyrks/tool-model-core", tag = "v0.1.0", default-features = false }
-test-cabinet-model-skin = { git = "https://github.com/TheClockwyrks/tool-model-core", tag = "v0.1.0", default-features = false }
-# The voxel crate of the tool-voxel repository, named the same way. `TAGS` records
-# no tag for tool-voxel, so it is named at its `master` branch. Only the library
-# (not the `cli` feature's binaries): the driver regenerates the scored voxel data
-# and preview from a run's recorded operation log through it.
-test-cabinet-voxel = { git = "https://github.com/TheClockwyrks/tool-voxel", branch = "master", default-features = false }
-# The audio crate of the tool-audio-core repository, named the same way at its
-# tag. Only the library (not the `cli` feature's loader): the driver stages a
-# run's sample packs into the tree the in-container audio binaries read, and its
-# tests enable the `cli` feature to read that tree back.
-test-cabinet-audio-core = { git = "https://github.com/TheClockwyrks/tool-audio-core", tag = "v0.1.0", default-features = false }
+# catalog, the match runner, and the Foray rules the arena records a match in.
+test-cabinet-engines = { git = "https://github.com/TheClockwyrks/engines", tag = "v1.1.2" }
+test-cabinet-match-play = { git = "https://github.com/TheClockwyrks/engines", tag = "v1.1.2" }
+foray-core = { git = "https://github.com/TheClockwyrks/engines", tag = "v1.1.2" }
 # Shared runtime dependencies inherited by member crates via { workspace = true }.
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -169,13 +140,6 @@ thiserror = "2"
 anyhow = "1"
 tokio = { version = "1", features = ["full"] }
 async-trait = "0.1"
-clap = { version = "4", features = ["derive"] }
-# Terminal styling for the CLI's live event stream. `anstream` auto-detects
-# whether the destination is a TTY (honoring NO_COLOR / CLICOLOR) and strips the
-# `anstyle` escape sequences when it is not, so output is colored only when a
-# terminal is attached.
-anstyle = "1"
-anstream = "1"
 # Collision-resistant unique identifiers. CUID2 ids are short, URL-safe strings
 # generated from entropy plus a per-process fingerprint, so `create_id()` is a
 # drop-in for the stringified UUIDs we previously used for run/job/token ids.
@@ -186,24 +150,6 @@ cuid2 = "0.1"
 # the environment, so an explicitly exported key still wins over the file.
 dotenvy = "0.15"
 time = { version = "0.3", features = ["serde", "formatting", "parsing", "macros"] }
-toml = "0.8"
-# Format-preserving TOML *writing*, for the test suite model's canonical emitter
-# (contracts' `test_suite`). A suite's write model is a whole-file rewrite of
-# canonically formatted TOML, so the emitter has to control table order, array
-# layout and string quoting directly rather than accept whatever a plain
-# serializer produces — which means building a `DocumentMut` and rewriting its
-# formatting before rendering it. `serde` carries the serializer that turns the
-# model into that document.
-toml_edit = { version = "0.25", features = ["serde"] }
-# Semantic-version parsing and ordering. A test case declares, per engine it
-# supports, the range of engine versions it was written against (`[[engine]]`'s
-# `min_version`/`max_version`), and the run gate compares the catalogue's staged
-# engine version against that range before any container work. Ordering versions
-# is exactly the problem semver solves — precedence rules, numeric identifier
-# comparison, pre-release ordering — and getting it wrong silently admits or
-# refuses runs, so it is not hand-rolled. Already in the lock file transitively,
-# so naming it here adds no new fetch.
-semver = { version = "1", features = ["serde"] }
 tempfile = "3"
 # Gzip framing, shared by every crate on the **run-tree artifact** path: a run's
 # whole-run analysis documents (`replay.json.gz`, `code-analysis.json.gz`) are
@@ -215,33 +161,18 @@ tempfile = "3"
 # pure-Rust `miniz_oxide` backend — no zlib, so no system dependency, matching the
 # `png` stance on keeping the workspace buildable on minimal hosts.
 flate2 = "1"
-# PNG decoding for the validator's reference-comparison similarity score, and PNG
-# encoding for the drawing/voxel binaries and the shared mesh preview renderer. The
-# `png` crate is a small, pure-Rust decoder/encoder with no system dependencies,
-# keeping the workspace buildable on minimal hosts.
-png = "0.17"
 # Base64 for inlining a live asset-generation preview frame into the JSON event the
 # driver streams to the run monitor: the run host
 # receives the rendered PNG bytes from the drawing binary and base64-encodes them
 # so the frame travels in the same JSON transport as every other live update.
 base64 = "0.22"
-# JSON Schema generation, feature-gated so normal/CLI/wasm builds never compile
-# it: the `schema` feature of `foray-core`/`lattice-core` emits the per-tick
-# contract schemas each adversarial/performance test case seeds verbatim (a drift
-# test asserts the on-disk copies never diverge from the engine types). The
-# published API and run-record schemas are the contracts repository's.
-schemars = "1"
-# Cross-platform PATH lookup for the container runtime binary. A hand-rolled
-# search misses the `.exe`/`PATHEXT` resolution Windows needs; `which` handles
-# that and the Unix case behind one API.
-which = "8"
 # HTTP client for fetching OpenRouter model prices. rustls avoids a system
 # OpenSSL dependency so the workspace builds cleanly on minimal hosts (NixOS).
 # `stream` is for `Body::wrap_stream`, which is how the driver uploads a
-# produced run tree without holding the tarball in memory (`crates/driver/src/artifacts.rs`);
-# a driver killed for exceeding its memory ceiling mid-upload destroys a run that
-# has already paid for every one of its harness API calls, so the upload body is
-# read off disk a chunk at a time.
+# produced run tree without holding the tarball in memory (microservice-driver's
+# `crates/driver/src/artifacts.rs`); a driver killed for exceeding its memory
+# ceiling mid-upload destroys a run that has already paid for every one of its
+# harness API calls, so the upload body is read off disk a chunk at a time.
 reqwest = { version = "0.12", default-features = false, features = [
 	"json",
 	"rustls-tls",
@@ -269,7 +200,6 @@ tower-http = { version = "0.6", features = [
     "compression-gzip",
 ] }
 tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 # The backend's system of record, accessed through SeaORM so one connection URL
 # selects the driver: SQLite for local/dev/tests, PostgreSQL for deployments.
 # `default-features = false` drops SeaORM's native-tls runtime; we re-add only the
@@ -335,31 +265,6 @@ tokio-util = { version = "0.7", features = ["io"] }
 # `http::HeaderMap` without leaning on a transitive copy from axum/reqwest.
 http = "1"
 opentelemetry = "0.32"
-opentelemetry_sdk = { version = "0.32", features = ["rt-tokio"] }
-opentelemetry-otlp = { version = "0.32", default-features = false, features = [
-	"http-proto",
-	"reqwest-blocking-client",
-	"trace",
-	"metrics",
-	"logs",
-] }
-# `reqwest-rustls` routes the OTLP exporter's reqwest client through rustls,
-# matching the workspace's no-system-OpenSSL stance. The propagation helpers use
-# only the no-default-feature core (the `HeaderExtractor`/`HeaderInjector`).
-opentelemetry-http = { version = "0.32", default-features = false }
-# `semconv_experimental` exposes the stabilized-but-feature-gated keys we use,
-# notably `deployment.environment.name`.
-opentelemetry-semantic-conventions = { version = "0.32", features = [
-	"semconv_experimental",
-] }
-opentelemetry-appender-tracing = "0.32"
-tracing-opentelemetry = "0.33"
-
-
-# The TypeScript/JSX front end `crates/driver`'s analyzer parses a produced source tree with.
-# Pinned to the 0.141 line that crate is written against: oxc's parser and AST move between
-# minor releases, and a silent bump would change what the analyzer reports.
-oxc = { version = "0.141" }
 
 # Line tables alone as the debug info of a development build, which the test
 # profile inherits. A panic message and a backtrace keep their files and lines,

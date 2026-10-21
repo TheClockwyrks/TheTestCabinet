@@ -74,16 +74,16 @@ def test_a_dependency_is_pinned_at_its_tag_or_on_master() -> None:
     its `master`.
     """
     assert render.workspace_dependencies("tool-voxel").splitlines() == [
-        'test-cabinet-contracts = { git = "https://github.com/TheClockwyrks/contracts", tag = "v0.2.2" }',
-        'test-cabinet-model-core = { git = "https://github.com/TheClockwyrks/tool-model-core", tag = "v0.1.0" }',
+        'test-cabinet-contracts = { git = "https://github.com/TheClockwyrks/contracts", tag = "v0.2.3" }',
+        'test-cabinet-model-core = { git = "https://github.com/TheClockwyrks/tool-model-core", tag = "v0.1.1" }',
     ]
     assert render.workspace_dependencies("tool-sfx-synth").splitlines() == [
-        'test-cabinet-contracts = { git = "https://github.com/TheClockwyrks/contracts", tag = "v0.2.2" }',
-        'test-cabinet-audio-core = { git = "https://github.com/TheClockwyrks/tool-audio-core", tag = "v0.1.0" }',
+        'test-cabinet-contracts = { git = "https://github.com/TheClockwyrks/contracts", tag = "v0.2.3" }',
+        'test-cabinet-audio-core = { git = "https://github.com/TheClockwyrks/tool-audio-core", tag = "v0.1.1" }',
     ]
     assert render.workspace_dependencies("microservice-arena").splitlines() == [
-        'test-cabinet-contracts = { git = "https://github.com/TheClockwyrks/contracts", tag = "v0.2.2" }',
-        'test-cabinet-engines = { git = "https://github.com/TheClockwyrks/engines", tag = "v1.1.1" }',
+        'test-cabinet-contracts = { git = "https://github.com/TheClockwyrks/contracts", tag = "v0.2.3" }',
+        'test-cabinet-engines = { git = "https://github.com/TheClockwyrks/engines", tag = "v1.1.2" }',
     ]
     assert (
         'test-cabinet-draw = { git = "https://github.com/TheClockwyrks/tool-sprite", branch = "master" }'
@@ -98,6 +98,72 @@ def test_a_pipeline_declares_the_closure_of_its_rust_edges() -> None:
     assert "repositories:" not in render.ci_resources("contracts", "library")
 
 
+def test_a_rust_job_checks_out_the_data_edges_its_suite_reads() -> None:
+    """The backend's tests read the catalog across its data edge to test-suites, so its Rust job checks it out.
+
+    Every entry of the table is a data edge of the repository reading it, and
+    its pipeline declares the repository beside the closure of its Rust edges.
+    """
+    assert render.RUST_CHECKOUTS["microservice-backend"] == {"test-suites": "TCAB_DEFINITIONS_ROOT"}
+    data = {(one.source, one.target) for one in EDGES.DATA_EDGES}
+    for name, checkouts in render.RUST_CHECKOUTS.items():
+        assert EDGES.KINDS[EDGES.REPOSITORIES[name]].crate, name
+        assert {(name, repo) for repo in checkouts} <= data, name
+        assert render.rust_checkouts(name) == checkouts
+    resources = render.ci_resources("microservice-backend", "application")
+    assert re.findall(r"name: (\S+)", resources) == [
+        "the-test-cabinet/contracts",
+        "the-test-cabinet/engines",
+        "the-test-cabinet/test-suites",
+    ]
+    assert render.rust_repositories("microservice-backend") == ["contracts", "engines", "test-suites"]
+    assert render.rust_root("microservice-backend") == "$(Build.SourcesDirectory)/microservice-backend"
+    assert render.rust_checkouts("microservice-arena") == {}
+    assert render.rust_root("microservice-arena") == "$(Build.SourcesDirectory)"
+    assert render.rust_workdir("microservice-arena") == []
+
+
+@pytest.mark.parametrize(
+    ("name", "checkouts", "said"),
+    [
+        (
+            "microservice-arena",
+            {"test-suites": "TCAB_DEFINITIONS_ROOT"},
+            "no data edge microservice-arena -> test-suites",
+        ),
+        ("microservice-backend", {"contracts": "TCAB_CONTRACTS"}, "no data edge microservice-backend -> contracts"),
+        ("microservice-backend", {"test-suites": "tcab-root"}, "not shaped like an environment variable"),
+        ("contracts", {}, None),
+    ],
+)
+def test_a_checkout_no_data_edge_draws_is_refused(
+    name: str, checkouts: dict[str, str], said: str | None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setitem(render.RUST_CHECKOUTS, name, checkouts)
+    if said is None:
+        assert render.rust_checkouts(name) == {}
+        return
+    with pytest.raises(render.RenderError, match=said):
+        render.variables(name, EDGES.REPOSITORIES[name], "x")
+
+
+def test_a_data_checkout_beside_a_job_it_cannot_reach_is_refused(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The Windows job and a repository's own setup steps run outside the checkout the data repository is beside."""
+    monkeypatch.setattr(render, "WINDOWS_TESTS", frozenset({*render.WINDOWS_TESTS, "microservice-backend"}))
+    with pytest.raises(render.RenderError, match="on Windows too"):
+        render.rust_checkouts("microservice-backend")
+    monkeypatch.setitem(render.PROJECT_PIPELINE, "microservice-backend", ("own",))
+    monkeypatch.setattr(render, "WINDOWS_TESTS", frozenset())
+    with pytest.raises(render.RenderError, match="setup steps of its own"):
+        render.rust_checkouts("microservice-backend")
+
+
+def test_a_site_checking_out_a_data_repository_is_refused(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setitem(render.RUST_CHECKOUTS, "gg.rocks", {"gg": "TCAB_GG"})
+    with pytest.raises(render.RenderError, match="has no Rust job"):
+        render.variables("gg.rocks", "site", "The site")
+
+
 def test_a_repository_without_edges_says_so_once() -> None:
     alone = render.edges_rule("contracts")
     assert alone.count("no other repository of the project") == 1, alone
@@ -109,6 +175,8 @@ def test_a_repository_without_edges_says_so_once() -> None:
 
 def test_a_browser_track_carries_an_npm_workspace() -> None:
     """The browser tests drive the workspace's Playwright, so a browser track's repository has a workspace."""
+    # The driver's suite runs the validators in a browser, as contracts' does.
+    assert render.rust_track("microservice-driver") == "rust-browser"
     for name, track in render.RUST_TRACKS.items():
         if track in render.BROWSER_TRACKS:
             assert EDGES.KINDS[EDGES.REPOSITORIES[name]].typescript, name
@@ -129,6 +197,10 @@ def test_the_windows_and_extra_gate_tables_name_repositories_carrying_a_crate() 
     assert render.EXTRA_GATES["contracts"] == {"rust": ("contract-drift",)}
     # ui-common lints its npm workspace beside the kit's `typescript` gate.
     assert render.extra_gates("ui-common", "library") == {"checks": ("web-lint",)}
+    # The backend's clip store module keeps its Node tests beside it.
+    assert render.extra_gates("microservice-backend", "application") == {"checks": ("scripts-test",)}
+    # The driver's Node scripts and its run-image build keep their tests beside them.
+    assert render.extra_gates("microservice-driver", "application") == {"checks": ("scripts-test", "containers-test")}
     # The content gates the catalog brought with it run beside the kit's prose gates.
     assert render.extra_gates("test-suites", "content") == {
         "checks": ("frozen-paths", "spec-prose", "spec-vocabulary", "audio-packs", "validators-typecheck")
@@ -152,6 +224,11 @@ def test_the_project_pipeline_table_names_repositories_and_stages() -> None:
     assert set(render.PROJECT_PIPELINE) <= set(EDGES.REPOSITORIES)
     assert render.PROJECT_PIPELINE["gg"] == ("release",)
     assert render.PROJECT_PIPELINE["gg.rocks"] == ("deploy",)
+    # The driver builds the run-container images in a stage of its own.
+    assert render.PROJECT_PIPELINE["microservice-driver"] == ("runimages",)
+    assert (
+        render.ci_project_setup("microservice-driver", "application") == f"          - template: {render.PROJECT_SETUP}"
+    )
     for name in render.PROJECT_PIPELINE:
         assert render.project_stages(name)
     assert render.project_stages("microservice-arena") == ()
@@ -163,6 +240,7 @@ def test_the_project_pipeline_table_names_repositories_and_stages() -> None:
     assert render.ci_project_setup("gg.rocks", "site") == ""
     assert set(render.RUST_TIMEOUTS) <= set(EDGES.REPOSITORIES)
     assert render.rust_timeout("gg") == 120
+    assert render.rust_timeout("microservice-driver") == 180
     assert render.rust_timeout("microservice-arena") == render.RUST_TIMEOUT
 
 
@@ -284,6 +362,9 @@ def test_the_image_stage_builds_each_architecture_then_fuses_them() -> None:
     for arch, job in (("amd64", amd64), ("arm64", arm64)):
         assert re.findall(r"^            - (\S+)$", job, re.MULTILINE) == ["contracts", "engines"], arch
         assert "- script: scripts/ci/git-sources.sh\n" in job
+        # npm's credential for the feed, which the build is handed as a secret.
+        feed = job.index(f"- script: {render.NPM_FEED_SCRIPT} {render.FEED_REGISTRY}\n")
+        assert job.index("- script: scripts/ci/git-sources.sh\n") < feed < job.index("- script: scripts/ci/image.sh")
         assert f"containerRegistry: {render.CI_IMAGE_ENDPOINT}\n" in job
         assert job.endswith(
             '- script: scripts/ci/image.sh microservice-arena "$(Build.SourceVersion)"\n'
@@ -542,6 +623,64 @@ def test_a_project_pipeline_repository_passes_its_own_ci_tests(rendered: Callabl
         assert linted.returncode == 0, linted.stdout + linted.stderr
 
 
+def test_a_data_checkout_is_rendered_beside_the_rust_jobs_own(rendered: Callable[[str], Path]) -> None:
+    """The backend's Rust job checks itself and test-suites out by name and runs every step in its own checkout."""
+    root = rendered("microservice-backend")
+    pipeline = (root / "azure-pipelines.yml").read_text(encoding="utf-8")
+    rust = _job(pipeline, "rust")
+    assert (
+        "          - checkout: self\n            path: s/microservice-backend\n"
+        "            fetchDepth: 1\n            clean: true\n"
+        "          - checkout: test-suites\n            path: s/test-suites\n"
+        "            fetchDepth: 1\n            clean: true\n"
+    ) in rust
+    assert "          TCAB_DEFINITIONS_ROOT: $(Build.SourcesDirectory)/test-suites\n" in rust
+    assert "            - test-suites\n" in rust[: rust.index("steps:")]
+    workdir = "            workingDirectory: $(Build.SourcesDirectory)/microservice-backend\n"
+    assert rust.count(workdir) == rust.count("          - script: ") - 1  # the host's disk step alone runs elsewhere
+    assert "              path: microservice-backend/target\n" in rust
+    assert "$(Build.SourcesDirectory)/microservice-backend/target/gate-artifacts/rust-test/junit.xml" in rust
+    for job in ("checks", "image_amd64", "image_arm64", "image_manifest"):
+        steps = pipeline[pipeline.index(f"      - job: {job}\n") :]
+        steps = steps[: steps.find("\n      - job: ", 1) if "\n      - job: " in steps[1:] else len(steps)]
+        assert "- checkout: test-suites" not in steps, job
+        assert "TCAB_DEFINITIONS_ROOT" not in steps, job
+    parsed = yaml.safe_load(pipeline)
+    assert [repo["repository"] for repo in parsed["resources"]["repositories"]] == [
+        "contracts",
+        "engines",
+        "test-suites",
+    ]
+    arena = (rendered("microservice-arena") / "azure-pipelines.yml").read_text(encoding="utf-8")
+    assert "workingDirectory:" not in arena
+    assert "path: s/" not in arena
+    assert "test-suites" not in arena
+    wiring = (root / "ci" / "tests" / "test_wiring.py").read_text(encoding="utf-8")
+    assert 'RUST_DIR = "microservice-backend"' in wiring
+    assert '"test-suites": "TCAB_DEFINITIONS_ROOT",' in wiring
+
+
+def test_a_data_checkout_repository_passes_its_own_ci_tests(rendered: Callable[[str], Path]) -> None:
+    """The wiring test holds the backend's checkouts, its variable and its steps' directory."""
+    root = rendered("microservice-backend")
+    env = {key: value for key, value in os.environ.items() if key not in render.GIT_LOCATING}
+    env["PYTHONPATH"] = str(root / "ci" / "src")
+    done = subprocess.run(
+        [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", "-o", "addopts=", "tests/test_wiring.py"],
+        cwd=root / "ci",
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert done.returncode == 0, done.stdout[-4000:] + done.stderr[-2000:]
+    for command in (["check", "ci"], ["format", "--check", "ci"]):
+        linted = subprocess.run(
+            [sys.executable, "-m", "ruff", *command], cwd=root, capture_output=True, text=True, check=False
+        )
+        assert linted.returncode == 0, linted.stdout + linted.stderr
+
+
 def test_a_crate_is_never_published_and_resolves_as_the_monorepo_does(rendered: Callable[[str], Path]) -> None:
     root = rendered("contracts")
     manifest = tomllib.loads((root / "Cargo.toml").read_text(encoding="utf-8"))
@@ -728,3 +867,15 @@ def test_the_command_line_renders_and_reports(tmp_path: Path, mini_superrepo: Pa
     assert "rendered test-suites (content)" in capsys.readouterr().out
     assert json.loads((into / "package.json").read_text(encoding="utf-8"))["name"] == "test-suites-repository"
     assert render.main(["nowhere", "--description", "x", "--source", str(mini_superrepo)]) == 1
+
+
+def test_a_python_literal_marks_the_entry_ruff_cannot_wrap() -> None:
+    """An entry past the rendered ruff's line length is let pass by name, and only that one."""
+    pyproject = tomllib.loads((render.SUPERREPO / "templates/repository/ci/pyproject.toml").read_text())
+    assert pyproject["tool"]["ruff"]["line-length"] == render.PYTHON_LINE_LENGTH
+    long_value = "x" * render.PYTHON_LINE_LENGTH
+    text = render.python_dict({"short": "y", "long": long_value})
+    lines = text.splitlines()
+    assert lines[1] == '    "short": "y",'
+    assert lines[2] == f'    "long": "{long_value}",  # noqa: E501'
+    assert render.python_dict({}) == "{}"

@@ -1,17 +1,10 @@
-# Keep the build context lean AND stable. Both the run-container builds
-# (containers/*/Dockerfile — the adversarial and performance images, which compile the
-# Foray/Lattice tooling from the engines submodule in their own stages) and the
-# service-image builds (deployments/images/services.Dockerfile, which compiles the
-# backend/auth/driver/artifacts/arena/publisher crates) use the
-# repository root as their context. Almost every one of those builds is just a `cargo
-# build` over the Rust workspace — nothing else — so this is an ALLOWLIST: ignore
-# everything, then re-include only the paths cargo actually reads.
-#
-# (The per-asset-kind images — sprite, voxel, mc, … — no longer read the context at
-# all: they only `COPY --from` a `tool-*` repository's image.
-# They are still built with the
-# repo root as their context for consistency, and it costs them nothing because they
-# read none of it.)
+# Keep the build context lean AND stable. The service-image builds
+# (deployments/images/services.Dockerfile, which compiles the
+# backend/artifacts/arena/publisher crates) use the repository root as their context.
+# Almost every one of those builds is just a `cargo build` over the Rust workspace —
+# nothing else — so this is an ALLOWLIST: ignore everything, then re-include only the
+# paths cargo actually reads. (The driver's image and the run-container images are
+# microservice-driver's, built from that repository's own context.)
 #
 # WHAT THIS ALLOWLIST ACTUALLY WEIGHS, because this paragraph used to say "~100kB" and
 # was wrong by three orders of magnitude for years: it was ~35 MB across ~2,300 files
@@ -32,18 +25,17 @@
 # SUBMODULES. A path in a submodule is re-included like any other, by naming it (the
 # submodule's own path, or a path inside it, never a wildcard), and `*` below keeps
 # every submodule this file does not name out of the context, cold-storage's ~2 GB of
-# baseline media included. contracts, engines, gg, microservice-dispatcher,
-# microservice-repos, tool-model-core,
-# tool-paint, tool-particle, tool-sprite, tool-voxel, tool-mc, tool-sn, tool-dc,
-# tool-audio-core, tool-sfx-synth, tool-sfx-sample, tool-music, test-suites and
-# ui-common are the ones named, below. What a submodule path adds is a precondition: the
-# build reads what the checkout it runs in holds, and a checkout leaves every submodule
-# empty until it is initialized. So the image jobs run `scripts/ci/submodules.sh init
-# --build-context`, which initializes exactly the submodules this file admits any part
-# of (`scripts/ci/build-context.sh --submodules` prints them), and a local image build
-# needs the same first. The build-context gate checks a re-included path inside a
-# submodule against that submodule's checkout, and names it as unverified where the
-# checkout has none.
+# baseline media included. contracts, engines, gg, microservice-dispatcher, microservice-driver,
+# microservice-repos, tool-model-core, tool-paint, tool-particle, tool-sprite,
+# tool-voxel, tool-mc, tool-sn, tool-dc, tool-audio-core, tool-sfx-synth,
+# tool-sfx-sample, tool-music and ui-common are the ones named, below. What
+# a submodule path adds is a precondition: the build reads what the checkout it runs in
+# holds, and a checkout leaves every submodule empty until it is initialized. So the
+# image jobs run `scripts/ci/submodules.sh init --build-context`, which initializes
+# exactly the submodules this file admits any part of (`scripts/ci/build-context.sh
+# --submodules` prints them), and a local image build needs the same first. The
+# build-context gate checks a re-included path inside a submodule against that
+# submodule's checkout, and names it as unverified where the checkout has none.
 
 # Ignore everything by default…
 *
@@ -54,12 +46,11 @@
 # each source to its submodule, whose crates inherit their version and dependencies from
 # its own workspace manifest, so cargo reads that too. cargo loads every patch path, a
 # table nothing builds from included, so every checked-out repository the table names is
-# re-included here (microservice-dispatcher, microservice-repos,
-# tool-model-core, tool-paint, tool-particle,
-# tool-sprite, tool-voxel, tool-mc, tool-sn, tool-dc, tool-audio-core, tool-sfx-synth,
-# tool-sfx-sample, tool-music, ui-common). This is the complete set cargo needs to
-# resolve and compile any crate; resolving the lock still fetches the patched sources,
-# the public mirrors, over the network.
+# re-included here (microservice-dispatcher, microservice-driver, microservice-repos, tool-model-core,
+# tool-paint, tool-particle, tool-sprite, tool-voxel, tool-mc, tool-sn, tool-dc,
+# tool-audio-core, tool-sfx-synth, tool-sfx-sample, tool-music, ui-common). This is the
+# complete set cargo needs to resolve and compile any crate; resolving the lock still
+# fetches the patched sources, the public mirrors, over the network.
 !/Cargo.toml
 !/Cargo.lock
 !/rust-toolchain.toml
@@ -71,6 +62,8 @@
 !/engines/crates
 !/microservice-dispatcher/Cargo.toml
 !/microservice-dispatcher/crates
+!/microservice-driver/Cargo.toml
+!/microservice-driver/crates
 !/microservice-repos/Cargo.toml
 !/microservice-repos/crates
 !/tool-model-core/Cargo.toml
@@ -99,16 +92,18 @@
 !/tool-music/crates
 !/ui-common/Cargo.toml
 !/ui-common/crates
-# crates/driver and the engines repository's crates/engines bake these three trees
-# into the binary verbatim via include_str! (the driver the built-in orchestrator
-# runner scripts and the harness manifests, engines the built-in engine manifests,
-# engines/engines/<slug>/engine.toml), so they must be present in the context even
-# though they are not Rust sources. A tree that is baked in but not re-included here
+# microservice-driver's crates/driver and the engines repository's crates/engines bake
+# these three trees into the binary verbatim via include_str! (the driver the built-in
+# orchestrator runner scripts and the harness manifests, engines the built-in engine
+# manifests, engines/engines/<slug>/engine.toml), so they must be present in the
+# context even though they are not Rust sources; microservice-driver's crate is a patch
+# path no image here compiles, and its two trees are here because a build would compile
+# it should a member ever name it. A tree that is baked in but not re-included here
 # does not fail at COPY like a missing Dockerfile source does — it fails much later,
 # as `error: couldn't read ...: No such file or directory` from the compiler, which
 # is how the engine manifests were missed when engines landed.
-!/orchestrators
-!/harnesses
+!/microservice-driver/orchestrators
+!/microservice-driver/harnesses
 !/engines/engines
 # The gg repository's crate, which no image compiles: the patch table in .cargo/ names
 # it like every repository's crate, and cargo loads every patch path eagerly, so a build
@@ -121,46 +116,18 @@
 !/gg/crates/gg/src/lib.rs
 !/gg/crates/gg/src/main.rs
 
-# The backend service image (services.Dockerfile, `--target backend`) bakes the
-# Playwright browser-driver into its runtime to render references at ingest, so the
-# driver script, the sibling ES modules it imports (its reporter-side `ttc` kit and
-# the `validation` runtime), and its manifest must survive the allowlist too. Any
-# file driver.mjs imports by relative path must be re-included here AND copied by
-# the image Dockerfiles, or ingest dies with a runtime ERR_MODULE_NOT_FOUND. (These
-# are the one non-cargo exception above; editing any of them does bust the backend
-# image's COPY cache, but they change very rarely.)
-!/packages/browser-driver/package.json
-!/packages/browser-driver/driver.mjs
-!/packages/browser-driver/validation.mjs
-!/packages/browser-driver/ttc.mjs
-!/packages/browser-driver/validation.mjs
-
-# The adversarial and performance run-container images assemble a source-only
-# "buildkit" — the verbatim engine crates plus a de-workspaced root Cargo.toml that
-# re-supplies their `workspace = true` inheritance — which they `cp` from the build
-# context and smoke-build standalone (see containers/{adversarial,performance}/Dockerfile).
-# The crates ride in under !/engines/crates, but these de-workspaced root manifests
-# live outside it, so re-include them explicitly or the COPY/cp stages can't see them.
-!/containers/adversarial/buildkit/Cargo.toml
-!/containers/performance/buildkit/Cargo.toml
-
-# The Blender run-container image (containers/blender/Dockerfile) COPYs its two
-# authoring helpers — the importable glTF export module and the `tcab-blend`
-# runner — straight from its own directory into the image (there is no cargo
-# source to ride under !/crates for these). They live outside every path
-# re-included above, so without this the COPYs fail with "not found" against the
-# allowlisted context (transferring context: 2B).
-!/containers/blender/tcab_blend_export.py
-!/containers/blender/tcab-blend
-
-
-# The performance image bakes the committed training scenarios from the
-# Lattice case's version folder in the test-suites submodule (see
-# containers/performance/Dockerfile's `COPY test-suites/test-cases/.../references/training`).
-# It is the one test-case tree a build embeds, so it must survive the allowlist; the
-# path tracks the Dockerfile's COPY, and admitting it is what has an image job
-# initialize the test-suites submodule (scripts/ci/submodules.sh --build-context).
-!/test-suites/test-cases/performance/hard/lattice/v1.0.0/references/training
+# The backend service image (services.Dockerfile, `--target backend`) bakes
+# contracts' Playwright browser-driver into its runtime to render references at
+# ingest, so the driver script, the sibling ES modules it imports (its reporter-side `ttc`
+# kit and the `validation` runtime), and its manifest must survive the allowlist
+# too. Any file driver.mjs imports by relative path must be re-included here AND
+# copied by the image Dockerfile, or a render dies with a runtime
+# ERR_MODULE_NOT_FOUND. (These are the one non-cargo exception above; editing any
+# of them does bust the image's COPY cache, but they change very rarely.)
+!/contracts/packages/browser-driver/package.json
+!/contracts/packages/browser-driver/driver.mjs
+!/contracts/packages/browser-driver/validation.mjs
+!/contracts/packages/browser-driver/ttc.mjs
 
 # The web service image (deployments/images/web.Dockerfile) is the one NON-cargo
 # service image: it `npm ci`s the npm workspace and `vite build`s the web console
@@ -204,38 +171,17 @@
 !/engines/packages/particle-runtime
 !/engines/packages/lattice-runtime
 # The rig/animation half of the generated contract. `run-record` re-exports it, so
-# the console needs it for the same reason it needs `run-record`; separately, it is
-# what the two runtimes above now depend on, so the staging script pulls it into the
-# package store as part of their closure (scripts/ci/build-context.sh asserts this
-# line exists for exactly that reason).
+# the console needs it for the same reason it needs `run-record`, and it is what the
+# two runtimes above depend on.
 !/contracts/packages/asset-contract
-# The engine runtimes are the odd ones out in this block: the console does not
-# bundle them and the ui library does not import them. They ride along for the
-# BASE image below, whose staging script bakes them into the package store beside
-# the shippable packages — an engine runtime is seeded per run rather than named
-# by a case, so each appears in that script's list and in no case manifest.
-!/engines/packages/simple-2d
-!/engines/packages/structured-2d
-!/engines/packages/simple-3d
-!/engines/packages/structured-3d
-# The shared engineless (`none`) validator harness and canvas recorder. Nothing
-# bundles it and no COPY names it: scripts/stage-tcab-packages.mjs bakes it into the
-# package store beside the engine runtimes, and contracts/crates/suites' vitest validator
-# (vitest_validator.rs, `stage_case_harness`) later copies its sources out of that
-# store into a case's staged validator project. So the driver image must carry its
-# sources, and a build context missing them fails inside the staging script
-# ("shippable package @clockwyrks/case-harness not found ..."), taking every service
-# image on services.Dockerfile down with it. scripts/ci/build-context.sh asserts every
-# name in that script's SHIPPABLE list survives this allowlist, because a `COPY . .`
-# stage is invisible to the COPY-source checks.
-!/engines/packages/case-harness
-# The run-container BASE image (containers/base/Dockerfile) reuses this same npm
-# slice: its builder stage `npm ci`s the workspace and runs the staging script to
-# bake the shippable @clockwyrks packages — and the simple-2d engine runtime —
-# into /opt/tcab-packages (see
-# containers/README.md#the-shippable-test-cabinet-packages). The script is the one
-# extra file that build needs beyond the console's slice, so re-include it.
-!/scripts/stage-tcab-packages.mjs
+# The other members of the engines repository's npm workspace, which the console does
+# not build: `npm ci` validates the whole workspace against the lockfile, so each one's
+# manifest rides along, and nothing more of it.
+!/engines/packages/simple-2d/package.json
+!/engines/packages/structured-2d/package.json
+!/engines/packages/simple-3d/package.json
+!/engines/packages/structured-3d/package.json
+!/engines/packages/case-harness/package.json
 # THE gg SLICE the devcontainer image's gg layer (.devcontainer/ubuntu.dockerfile) stages
 # from the gg checkout to install gg's program-language toolchains with gg's own
 # installers: gg's scripts (the installers under scripts/ci, the shared shell they
@@ -267,7 +213,7 @@
 !/gg/packages/gg-sandbox-swift/swift-version.sh
 # The CI scripts: scripts/ci/gg-release.sh with the shared shell it sources, which
 # services.Dockerfile's `gg-release` stage bind-mounts to fetch the release the driver
-# pins (the pin itself rides in under crates/).
+# pins (the pin itself rides in under microservice-driver/crates/).
 !/scripts/ci
 # This image is also the one service Dockerfile that COPYs sibling files from its
 # own deployments/images/ directory (the nginx server block) — the Rust images embed
@@ -315,9 +261,8 @@
 
 # macOS Finder metadata, and the entry most likely to be the reason a `make images` you
 # expected to be cached was not. `.DS_Store` files exist wherever a directory has been
-# opened in Finder — this repository has them at its root and under crates/, packages/,
-# scripts/, harnesses/, orchestrators/ and containers/, six of which sit inside allowlisted
-# trees — and Finder rewrites them for reasons that have nothing to do with the repository:
+# opened in Finder — this repository has had them at its root and under crates/,
+# packages/ and scripts/, inside allowlisted trees — and Finder rewrites them for reasons that have nothing to do with the repository:
 # a window resized, a view mode changed, a folder scrolled. Each rewrite changes the
 # `COPY . .` cache key of every build from this context, and the build stage's first act on
 # a miss is to touch the tree and hand cargo a workspace it must compile from scratch. The
@@ -326,22 +271,3 @@
 # This is not hypothetical here: the primary development host is macOS running the tree
 # through a Linux VM's shared mount, so Finder and the builder see the same directories.
 **/.DS_Store
-
-# The staged AUDIO STORE, and the one thing under dist/ that belongs in this context.
-# The audio clips are not committed to this repository: they live in the private audio
-# object store, and `containers/build.sh` runs scripts/stage-audio-store.mjs, which
-# downloads and verifies every published pack into dist/audio-store/tree.
-# containers/audio-store/Dockerfile then `COPY`s that directory (named through the
-# AUDIO_STAGE_DIR build arg) to /opt/tcab-audio, which is the ONE image that carries
-# audio: no RUN image bakes a pack any more, a run is staged with the packs its test
-# case declares. The blanket `**/dist/` re-exclusion above would keep it out, so
-# re-include just this subtree — and only it, so every OTHER dist/ (a local
-# `npm run build`'s output) stays out as before. This re-inclusion has to come after
-# `**/dist/` to win, which is why it lives here rather than with the allowlist proper.
-#
-# The pattern names the `tree` directory rather than the whole `dist/audio-store` root,
-# which is as narrow as this file's format goes: it is exactly what the COPY reads, so
-# the stager's content-addressed DOWNLOAD CACHE at dist/audio-store/.cache — a second
-# copy of every clip it has ever verified, which no image reads — stays out, and so does
-# anything else that ends up beside the tree.
-!/dist/audio-store/tree

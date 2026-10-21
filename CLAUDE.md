@@ -51,8 +51,9 @@ Where each responsibility lives, the edges between the repositories and how a
 dependency is named:
 [Repositories](apps/docs/src/content/docs/development/repositories.md#where-each-responsibility-lives).
 Every repository but `contracts`, `engines`, `gg`, `gg.rocks`,
-`microservice-dispatcher`, `microservice-repos`, `tool-audio-core`, `tool-dc`, `tool-mc`,
-`tool-model-core`, `tool-music`, `tool-paint`, `tool-particle`,
+`microservice-dispatcher`, `microservice-driver`, `microservice-repos`,
+`tool-audio-core`, `tool-dc`, `tool-mc`, `tool-model-core`, `tool-music`,
+`tool-paint`, `tool-particle`,
 `tool-sfx-sample`, `tool-sfx-synth`, `tool-sn`, `tool-sprite`, `tool-voxel`,
 `test-suites`, `ui-common` and `cold-storage` is still a directory of this tree
 today (`crates/`, `apps/`, `packages/`), so until it is extracted its code is

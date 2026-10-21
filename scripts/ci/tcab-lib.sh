@@ -5,7 +5,7 @@
 # of them (the gates' pipeline plumbing, deploy.sh, build-image.sh, ci-image.sh
 # and the rest), and those source the template's lib.sh beside this file. The
 # project's own scripts, which run its own pipeline jobs and stages
-# (.azure/project/, .azure/tcab/, azure-pipelines-release.yml), source this
+# (.azure/project/, .azure/tcab/), source this
 # file; scripts/ci/README.md lists both. It is named for the project so a
 # template update never renders over it, and a script that needs the
 # template's helpers too (`build_arg`, `aks_invoke`) sources both.

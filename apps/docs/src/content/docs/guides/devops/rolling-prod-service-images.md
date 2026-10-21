@@ -38,7 +38,7 @@ superrepo's submodule pointer for its repository names:
 | Reference                                       | Set to                                                                 |
 | ----------------------------------------------- | ---------------------------------------------------------------------- |
 | Each service's `image:`                         | `testcabinet.azurecr.io/<image>:<commit>` of that service's repository |
-| The dispatcher's `TCAB_DRIVER_IMAGE`            | `testcabinet.azurecr.io/tcab-driver:<driver commit>`                   |
+| The dispatcher's `TCAB_DRIVER_IMAGE`            | `testcabinet.azurecr.io/microservice-driver:<driver commit>`           |
 | The dispatcher's `TCAB_PUBLISHER_IMAGE`         | `testcabinet.azurecr.io/tcab-publisher:<publisher commit>`             |
 | `TCAB_CONTAINER_REGISTRY`, `TCAB_CONTAINER_TAG` | `testcabinet.azurecr.io`, `<driver commit>`                            |
 

@@ -104,27 +104,26 @@ trigger:
 # it. The forty zeros are the placeholder a render carries; see the header.
 
 # The repositories the jobs read beside this one: the contracts, engines, gg,
-# microservice-dispatcher, microservice-repos, tool-model-core, tool-paint,
-# tool-particle, tool-sprite,
-# tool-voxel, tool-mc, tool-sn, tool-dc, tool-audio-core, tool-sfx-synth,
-# tool-sfx-sample and tool-music repositories, the `contracts/`, `engines/`,
-# `gg/`, `microservice-dispatcher/`, `microservice-repos/`, `tool-model-core/`,
-# `tool-paint/`,
-# `tool-particle/`, `tool-sprite/`, `tool-voxel/`, `tool-mc/`, `tool-sn/`,
-# `tool-dc/`, `tool-audio-core/`, `tool-sfx-synth/`, `tool-sfx-sample/` and
-# `tool-music/` submodules every build reads, because the patch table names their
-# crates and cargo loads every patch path (no member uses gg's, tool-paint's,
-# tool-particle's, tool-mc's, tool-sn's, tool-dc's, tool-sfx-synth's,
-# tool-sfx-sample's or tool-music's crates, nor tool-voxel's `voxel-anim`; the
-# documentation site builds gg's pages from its checkout), the
+# microservice-dispatcher, microservice-driver, microservice-repos, tool-model-core, tool-paint,
+# tool-particle, tool-sprite, tool-voxel, tool-mc, tool-sn, tool-dc,
+# tool-audio-core, tool-sfx-synth, tool-sfx-sample and tool-music repositories,
+# the `contracts/`, `engines/`, `gg/`, `microservice-dispatcher/`, `microservice-driver/`,
+# `microservice-repos/`, `tool-model-core/`, `tool-paint/`, `tool-particle/`,
+# `tool-sprite/`, `tool-voxel/`, `tool-mc/`, `tool-sn/`, `tool-dc/`,
+# `tool-audio-core/`, `tool-sfx-synth/`, `tool-sfx-sample/` and `tool-music/`
+# submodules every build reads, because the patch table names their crates and
+# cargo loads every patch path (no member uses gg's, microservice-dispatcher's, microservice-driver's,
+# tool-paint's, tool-particle's, tool-mc's, tool-sn's, tool-dc's,
+# tool-sfx-synth's, tool-sfx-sample's or tool-music's crates, nor tool-voxel's
+# `voxel-anim`; the documentation site builds gg's pages from its checkout), the
 # test-suites repository, the `test-suites/` submodule holding the catalog the
-# tests over the committed catalog read and the performance image bakes from, and
-# the ui-common repository, the `ui-common/` submodule whose crate the patch table
-# names (no member uses it) and whose packages the npm workspace lists. No job
-# checks one out. A job that builds names them under `uses:`, which puts them in
-# the scope of the job's access token, and runs `scripts/ci/submodules.sh init`
-# with their paths after its own checkout, which fetches the commits the
-# superproject pins.
+# tests over the committed catalog read and the performance image bakes from,
+# and the ui-common repository, the `ui-common/` submodule whose crate the patch
+# table names (no member uses it) and whose packages the npm workspace lists. No
+# job checks one out. A job that builds names them under `uses:`, which puts
+# them in the scope of the job's access token, and runs
+# `scripts/ci/submodules.sh init` with their paths after its own checkout, which
+# fetches the commits the superproject pins.
 resources:
   repositories:
     - repository: contracts
@@ -139,6 +138,9 @@ resources:
     - repository: microservice-dispatcher
       type: git
       name: the-test-cabinet/microservice-dispatcher
+    - repository: microservice-driver
+      type: git
+      name: the-test-cabinet/microservice-driver
     - repository: microservice-repos
       type: git
       name: the-test-cabinet/microservice-repos
@@ -260,6 +262,7 @@ stages:
             - engines
             - gg
             - microservice-dispatcher
+            - microservice-driver
             - microservice-repos
             - tool-model-core
             - tool-paint
@@ -299,17 +302,16 @@ stages:
             fetchDepth: 1
             clean: true
 
-          # The contracts, engines, gg, microservice-dispatcher,
-          # microservice-repos, tool-model-core,
-          # tool-paint, tool-particle, tool-sprite, tool-voxel, tool-mc, tool-sn,
-          # tool-dc, tool-audio-core, tool-sfx-synth, tool-sfx-sample,
-          # tool-music, test-suites and ui-common submodules, at the pinned
-          # commits; the job's `uses:` puts their repositories in the token's
-          # scope. The tests over the committed catalog read test-suites, the
-          # documentation site reads gg's pages, and the npm workspace lists
+          # The contracts, engines, gg, microservice-dispatcher, microservice-driver, microservice-repos,
+          # tool-model-core, tool-paint, tool-particle, tool-sprite, tool-voxel,
+          # tool-mc, tool-sn, tool-dc, tool-audio-core, tool-sfx-synth,
+          # tool-sfx-sample, tool-music, test-suites and ui-common submodules, at
+          # the pinned commits; the job's `uses:` puts their repositories in the
+          # token's scope. The tests over the committed catalog read test-suites,
+          # the documentation site reads gg's pages, and the npm workspace lists
           # ui-common's packages.
-          - script: scripts/ci/submodules.sh init contracts engines gg microservice-dispatcher microservice-repos tool-model-core tool-paint tool-particle tool-sprite tool-voxel tool-mc tool-sn tool-dc tool-audio-core tool-sfx-synth tool-sfx-sample tool-music test-suites ui-common
-            displayName: Initialize the contracts, engines, gg, microservice-dispatcher, microservice-repos, tool-model-core, tool-paint, tool-particle, tool-sprite, tool-voxel, tool-mc, tool-sn, tool-dc, tool-audio-core, tool-sfx-synth, tool-sfx-sample, tool-music, test-suites and ui-common submodules
+          - script: scripts/ci/submodules.sh init contracts engines gg microservice-dispatcher microservice-driver microservice-repos tool-model-core tool-paint tool-particle tool-sprite tool-voxel tool-mc tool-sn tool-dc tool-audio-core tool-sfx-synth tool-sfx-sample tool-music test-suites ui-common
+            displayName: Initialize the contracts, engines, gg, microservice-dispatcher, microservice-driver, microservice-repos, tool-model-core, tool-paint, tool-particle, tool-sprite, tool-voxel, tool-mc, tool-sn, tool-dc, tool-audio-core, tool-sfx-synth, tool-sfx-sample, tool-music, test-suites and ui-common submodules
             env:
               SYSTEM_ACCESSTOKEN: $(System.AccessToken)
 
@@ -473,6 +475,7 @@ stages:
             - engines
             - gg
             - microservice-dispatcher
+            - microservice-driver
             - microservice-repos
             - tool-model-core
             - tool-paint
@@ -493,17 +496,16 @@ stages:
             fetchDepth: 1
             clean: true
 
-          # The contracts, engines, gg, microservice-dispatcher,
-          # microservice-repos, tool-model-core,
-          # tool-paint, tool-particle, tool-sprite, tool-voxel, tool-mc, tool-sn,
-          # tool-dc, tool-audio-core, tool-sfx-synth, tool-sfx-sample,
-          # tool-music, test-suites and ui-common submodules, at the pinned
-          # commits; the job's `uses:` puts their repositories in the token's
-          # scope. The tests over the committed catalog read test-suites, the
-          # documentation site reads gg's pages, and the npm workspace lists
+          # The contracts, engines, gg, microservice-dispatcher, microservice-driver, microservice-repos,
+          # tool-model-core, tool-paint, tool-particle, tool-sprite, tool-voxel,
+          # tool-mc, tool-sn, tool-dc, tool-audio-core, tool-sfx-synth,
+          # tool-sfx-sample, tool-music, test-suites and ui-common submodules, at
+          # the pinned commits; the job's `uses:` puts their repositories in the
+          # token's scope. The tests over the committed catalog read test-suites,
+          # the documentation site reads gg's pages, and the npm workspace lists
           # ui-common's packages.
-          - script: scripts/ci/submodules.sh init contracts engines gg microservice-dispatcher microservice-repos tool-model-core tool-paint tool-particle tool-sprite tool-voxel tool-mc tool-sn tool-dc tool-audio-core tool-sfx-synth tool-sfx-sample tool-music test-suites ui-common
-            displayName: Initialize the contracts, engines, gg, microservice-dispatcher, microservice-repos, tool-model-core, tool-paint, tool-particle, tool-sprite, tool-voxel, tool-mc, tool-sn, tool-dc, tool-audio-core, tool-sfx-synth, tool-sfx-sample, tool-music, test-suites and ui-common submodules
+          - script: scripts/ci/submodules.sh init contracts engines gg microservice-dispatcher microservice-driver microservice-repos tool-model-core tool-paint tool-particle tool-sprite tool-voxel tool-mc tool-sn tool-dc tool-audio-core tool-sfx-synth tool-sfx-sample tool-music test-suites ui-common
+            displayName: Initialize the contracts, engines, gg, microservice-dispatcher, microservice-driver, microservice-repos, tool-model-core, tool-paint, tool-particle, tool-sprite, tool-voxel, tool-mc, tool-sn, tool-dc, tool-audio-core, tool-sfx-synth, tool-sfx-sample, tool-music, test-suites and ui-common submodules
             env:
               SYSTEM_ACCESSTOKEN: $(System.AccessToken)
 

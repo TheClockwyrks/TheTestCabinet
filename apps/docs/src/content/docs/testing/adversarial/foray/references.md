@@ -45,7 +45,7 @@ the model targets, so they double as worked examples of reading `world` and
 returning `action`. The buildkit, the CLI, and the reference modules are compiled
 from this repository at image-build time, so they stay in lockstep with the
 engine the validator scores with. The image is defined under
-`containers/adversarial/`.
+microservice-driver's `containers/adversarial/`.
 
 ## The baselines
 

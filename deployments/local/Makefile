@@ -131,8 +131,8 @@ endif
 # overlay's `tcab-<svc>:local` image names resolve to, so the manifests match.
 REGISTRY_PREFIX ?= docker.io/library
 
-# The provenance commit stamped into the service binaries (crates/driver/build.rs →
-# the run record's testCabinetCommit). The build context omits `.git` — the
+# The provenance commit stamped into the service binaries (the run record's
+# testCabinetCommit). The build context omits `.git` — the
 # repo-root .dockerignore is an allowlist that never re-includes it — so the
 # Dockerfiles can't resolve the commit from git themselves; we resolve it here on
 # the host and pass it in as the TCAB_BUILD_COMMIT build arg. Mirrors build.rs: the
@@ -164,6 +164,21 @@ REPOS_COMMIT ?= $(shell sh -c 'h=$$(git -C "$(REPOS_DIR)" rev-parse HEAD 2>/dev/
 DISPATCHER_DIR    := $(REPO)/microservice-dispatcher
 DISPATCHER_COMMIT ?= $(shell sh -c 'h=$$(git -C "$(DISPATCHER_DIR)" rev-parse HEAD 2>/dev/null) || exit 0; [ -n "$$(git -C "$(DISPATCHER_DIR)" status --porcelain 2>/dev/null)" ] && h="$$h-dirty"; printf %s "$$h"')
 
+# The driver is its own repository too, microservice-driver, and with it everything a
+# run executes in: the driver image is built from that checkout's own Dockerfile with
+# the checkout as the build context, and the run images and the audio store by its
+# containers/build.sh, as its pipeline builds them. Its Dockerfile installs the
+# project's packages from the private feed, so the build is handed the npm
+# configuration that carries the feed's credential (NPM_CONFIG_USERCONFIG, else
+# ~/.npmrc) as the secret `npmrc`, as the repository's scripts/ci/image.sh hands it.
+DRIVER_DIR    := $(REPO)/microservice-driver
+DRIVER_COMMIT ?= $(shell sh -c 'h=$$(git -C "$(DRIVER_DIR)" rev-parse HEAD 2>/dev/null) || exit 0; [ -n "$$(git -C "$(DRIVER_DIR)" status --porcelain 2>/dev/null)" ] && h="$$h-dirty"; printf %s "$$h"')
+DRIVER_NPM_CONFIG ?= $(or $(NPM_CONFIG_USERCONFIG),$(HOME)/.npmrc)
+DRIVER_NPM_SECRET := --secret 'id=npmrc,src=$(DRIVER_NPM_CONFIG)'
+
+# A recipe line that stops the target unless the microservice-driver checkout is there.
+require_driver = @[ -f '$(DRIVER_DIR)/containers/build.sh' ] || { echo "ERROR: $(DRIVER_DIR) is not checked out; run: git submodule update --init microservice-driver" >&2; exit 1; }
+
 # The web console is intentionally absent: it runs from source locally
 # (`npm run -w apps/web dev`), not as an in-cluster pod, so there is no tcab-web
 # image to build or import here (see the header comment and the local overlay).
@@ -171,19 +186,21 @@ ALL_IMGS := $(BACKEND_IMG) $(DISPATCHER_IMG) $(DRIVER_IMG) $(ARTIFACTS_IMG) $(AR
 
 # The run-container images — the base end-to-end image plus the per-asset-kind
 # images that BAKE IN their modeling tool (`draw`/`draw-sheet`/`voxel`/`voxel-anim`,
-# and the adversarial/performance tooling). The adversarial/performance tooling is
-# compiled from `crates/` at image build time; every other tool lives in a `tool-*`
+# and the adversarial/performance tooling), all built by microservice-driver's
+# containers/build.sh. The adversarial/performance tooling is compiled from the
+# engines repository at image build time; every other tool lives in a `tool-*`
 # repository (`draw`/`draw-sheet`: `tool-sprite`; `paint`/`ui`/`texture`/`pbr`:
 # `tool-paint`; `particle-2d`/`particle-3d`: `tool-particle`; `voxel`/`voxel-anim`:
 # `tool-voxel`; `mc`/`mc-anim`/`mc-skin`: `tool-mc`, and likewise `tool-sn` and
 # `tool-dc`; `sfx-synth`: `tool-sfx-synth`; `sfx-sample`: `tool-sfx-sample`; `music`:
 # `tool-music`) and is copied out of that repository's image,
 # which `containers/build.sh` builds first from the checked-out repository (see
-# `containers/build.sh` and `containers/*/Dockerfile`). These are
+# `containers/build.sh` and `containers/*/Dockerfile` in microservice-driver). These are
 # DISTINCT from the long-lived service images above: a run pod is a per-run Job the
 # dispatcher creates, running one of these images. In a deployment they come from
-# the Test Cabinet ACR (core's `resolve_run_image` defaults to `testcabinet.azurecr.io`);
-# locally the `run-images` target builds them from THIS checkout and imports them so
+# the Test Cabinet ACR (core's `resolve_run_image` defaults to `testcabinet.azurecr.io`)
+# at the microservice-driver commit the deployment pins; locally the `run-images`
+# target builds them from THIS checkout's submodules and imports them so
 # a change to the baked-in tooling actually reaches run pods, with the local
 # dispatcher overlay pointing `TCAB_CONTAINER_REGISTRY`/`_TAG` at this prefix/tag.
 # The `:local` tag is what makes the kubelet's IfNotPresent default use the imported
@@ -194,7 +211,7 @@ RUN_IMAGE_PREFIX := $(REGISTRY_PREFIX)/test-cabinet-
 RUN_IMAGE_TAG    := local
 
 # The AUDIO STORE image the DRIVER SERVICE image copies its `/opt/tcab-audio` out of
-# (the `FROM ${AUDIO_STORE_IMAGE}` stage in deployments/images/services.Dockerfile).
+# (the `FROM ${AUDIO_STORE_IMAGE}` stage in microservice-driver's Dockerfile).
 # It is not a run image — nothing executes in it, no run resolves it, and it is never
 # imported into the cluster — but it is named with the run-image prefix/tag anyway,
 # because `containers/build.sh` builds it and names everything it builds
@@ -270,8 +287,8 @@ GG_IMAGE_NAMES          := $(addsuffix -gg,$(E2E_IMAGE_NAMES) $(FULL_STACK_IMAGE
 # was shipped without. `full-stack-3d-gg` is the fifth and the least obvious: it carries the
 # same mesa ICU `voxel-gg` does, but on top of base-wasm's packages rather than the bare
 # base's, and it is the only run image that is both. Named here rather than derived because
-# they are the same five `containers/build.sh` names in GG_SELFCHECK_IMAGES and the same
-# five `scripts/ci/run-images.sh` asserts by name. What keeps three lists from drifting
+# they are the same five microservice-driver's `containers/build.sh` names in
+# GG_SELFCHECK_IMAGES and the same five its `scripts/ci/run-images.sh` asserts by name. What keeps three lists from drifting
 # apart is not agreement between them: `assert_gg_environments`, in build.sh, re-derives the
 # grouping from the Dockerfiles and fails a gated build if any variant's environment has no
 # representative.
@@ -302,9 +319,9 @@ run_image_refs = $(foreach n,$(1),$(RUN_IMAGE_PREFIX)$(n):$(RUN_IMAGE_TAG))
 RUN_IMGS         := $(call run_image_refs,$(RUN_IMAGE_NAMES))
 
 # The `tool-*` repositories whose images the run images copy binaries out of, as
-# scripts/ci/tool-images.sh lists them. `run-images` names them to build.sh first.
-TOOL_IMAGE_NAMES := tool-sprite tool-paint tool-particle tool-voxel tool-mc tool-sn tool-dc tool-sfx-synth \
-	tool-sfx-sample tool-music
+# microservice-driver's scripts/ci/tool-images.sh lists them from its pin file,
+# containers/tool-images.toml. `run-images` names them to build.sh first.
+TOOL_IMAGE_NAMES := $(shell bash '$(DRIVER_DIR)/scripts/ci/tool-images.sh' list 2>/dev/null | awk '{ print $$1 }')
 
 # Shared dispatcher↔backend service token. A fixed dev default (no production value
 # lives in the repo); override from the environment, e.g. `SERVICE_TOKEN=… make …`.
@@ -329,7 +346,7 @@ LOAD_ENV  := if [ -f '$(ENV_FILE)' ]; then set -a; . '$(ENV_FILE)'; set +a; fi
 # dev-containers credential helper) that the BuildKit builder invokes even for the
 # PUBLIC base-image pulls and which errors hard in here — the legacy builder
 # tolerated it, BuildKit does not. The service-image Dockerfiles only ever pull
-# public images (the docker.io bases — the audio store the driver stage copies in is
+# public images (the docker.io bases — the audio store the driver image copies in is
 # built locally by the `audio-store` target and never pulled), so an empty auth set
 # is correct. Pointing DOCKER_CONFIG here also pins buildx to its `default`
 # (docker-driver) builder, which loads the result into the daemon image store so the
@@ -499,8 +516,8 @@ endef
 # Build the AUDIO STORE the driver image is given, out of THIS checkout — never pulled.
 #
 # The driver stages each run's declared `[audio] packs` into its run container out of a
-# host store at /opt/tcab-audio (crates/driver `audio_stage`), and the driver IMAGE is what
-# carries that store in a deployment: services.Dockerfile has a
+# host store at /opt/tcab-audio (the driver's `audio_stage`), and the driver IMAGE is what
+# carries that store in a deployment: microservice-driver's Dockerfile has a
 # `FROM ${AUDIO_STORE_IMAGE}` stage it copies the tree from. A local build passes a
 # store built from the checkout rather than the published one — see AUDIO_STORE_IMG
 # above for why. This target produces the ref `images` passes in.
@@ -509,16 +526,16 @@ endef
 #
 #   1. THE AUDIO OBJECT STORE, when the CLOUDFLARE_AUDIO_R2_PRESIGN pair is in the
 #      environment or $(ENV_FILE) — the normal case for anyone working on audio, and the
-#      only one that is authoritative. `containers/build.sh audio-store` runs
-#      scripts/stage-audio-store.mjs, which presigns a short-lived read-only GET for
-#      every published object and verifies each against
-#      containers/sample-packs/objects.lock.json before it lands, then builds the
+#      only one that is authoritative. microservice-driver's `containers/build.sh
+#      audio-store` runs its scripts/stage-audio-store.mjs, which presigns a short-lived
+#      read-only GET for every published object and verifies each against the sample
+#      packs' objects.lock.json before it lands, then builds the
 #      data-only image from the staged tree. THIS IS THE AUDIO ITERATION LOOP: publish a
 #      pack (`node scripts/build-sample-pack.mjs <pack> --publish`, commit the updated
 #      lock), re-run `make images`, enqueue a run. Nothing is pushed to a registry, and
 #      the stager's content-addressed download cache means a re-stage re-reads only the
 #      bytes it does not already have.
-#   2. A TREE ALREADY STAGED at dist/audio-store/tree by an earlier run, when the
+#   2. A TREE ALREADY STAGED at microservice-driver/dist/audio-store/tree by an earlier run, when the
 #      credentials are absent. It is exactly what that staging produced, so it is as
 #      current as the last one, and a machine that has staged once keeps building
 #      offline.
@@ -529,36 +546,38 @@ endef
 #      better failure than `make images` dying for everybody.
 audio-store: export DOCKER_CONFIG := $(BUILD_DOCKER_CONFIG)
 audio-store:
+	$(require_driver)
 	@mkdir -p '$(BUILD_DOCKER_CONFIG)' && printf '{}\n' > '$(BUILD_DOCKER_CONFIG)/config.json'
 	@$(LOAD_ENV); \
 	if [ -n "$${CLOUDFLARE_AUDIO_R2_PRESIGN_ACCESS_KEY_ID:-}" ] && [ -n "$${CLOUDFLARE_AUDIO_R2_PRESIGN_SECRET_ACCESS_KEY:-}" ]; then \
 	  echo '==> staging the audio store from the audio object store'; \
 	  IMAGE_NAME_PREFIX='$(RUN_IMAGE_PREFIX)' IMAGE_TAG='$(RUN_IMAGE_TAG)' DOCKER='$(CONTAINER_TOOL)' \
-	    bash '$(REPO)/containers/build.sh' audio-store; \
-	elif [ -f '$(REPO)/dist/audio-store/tree/objects.lock.json' ]; then \
+	    bash '$(DRIVER_DIR)/containers/build.sh' audio-store; \
+	elif [ -f '$(DRIVER_DIR)/dist/audio-store/tree/objects.lock.json' ]; then \
 	  echo '==> WARNING: no CLOUDFLARE_AUDIO_R2_PRESIGN credentials in the environment or $(ENV_FILE);'; \
-	  echo '             reusing the store already staged at dist/audio-store/tree.'; \
+	  echo '             reusing the store already staged at microservice-driver/dist/audio-store/tree.'; \
 	  $(CONTAINER_TOOL) build --build-arg AUDIO_STAGE_DIR=dist/audio-store/tree \
-	    -t '$(AUDIO_STORE_IMG)' -f '$(REPO)/containers/audio-store/Dockerfile' '$(REPO)'; \
+	    -t '$(AUDIO_STORE_IMG)' -f '$(DRIVER_DIR)/containers/audio-store/Dockerfile' '$(DRIVER_DIR)'; \
 	else \
 	  echo '==> WARNING: no CLOUDFLARE_AUDIO_R2_PRESIGN credentials and nothing staged at'; \
-	  echo '             dist/audio-store/tree — building an EMPTY $(AUDIO_STORE_IMG).'; \
+	  echo '             microservice-driver/dist/audio-store/tree — building an EMPTY $(AUDIO_STORE_IMG).'; \
 	  echo '             The stack comes up and every case that declares no [audio] packs runs'; \
 	  echo '             normally; a full-stack, game-jam, sfx-sample or music case that DOES'; \
 	  echo '             declare packs will fail at staging. Put the CLOUDFLARE_AUDIO_R2_PRESIGN'; \
 	  echo '             pair in $(ENV_FILE) and re-run `make audio-store`.'; \
-	  mkdir -p '$(REPO)/dist/audio-store/tree'; \
+	  mkdir -p '$(DRIVER_DIR)/dist/audio-store/tree'; \
 	  $(CONTAINER_TOOL) build --build-arg AUDIO_STAGE_DIR=dist/audio-store/tree \
-	    -t '$(AUDIO_STORE_IMG)' -f '$(REPO)/containers/audio-store/Dockerfile' '$(REPO)'; \
+	    -t '$(AUDIO_STORE_IMG)' -f '$(DRIVER_DIR)/containers/audio-store/Dockerfile' '$(DRIVER_DIR)'; \
 	fi
 
 # Build the service images from the same Dockerfiles the cluster's images are built
 # from, then load them into the cluster's nodes (no registry needed for local
 # development).
 #
-# The repos and dispatcher images are built from the microservice-repos and
-# microservice-dispatcher checkouts' own Dockerfiles, each with its checkout as its
-# context (REPOS_DIR and DISPATCHER_DIR above). Every other service image
+# The repos, dispatcher and driver images are built from the microservice-repos,
+# microservice-dispatcher and microservice-driver checkouts' own Dockerfiles, each with
+# its checkout as its context (REPOS_DIR, DISPATCHER_DIR and DRIVER_DIR above). Every
+# other service image
 # comes out of ONE file, deployments/images/services.Dockerfile, each selected with
 # `--target`. That file shares a single cargo build stage across every service, so
 # those builds compile the workspace ONCE between them: the first `docker build`
@@ -577,14 +596,15 @@ audio-store:
 #
 # The `audio-store` prerequisite builds the store the DRIVER line copies in, from this
 # checkout, and the driver build is pointed at it with `--build-arg AUDIO_STORE_IMAGE`,
-# which the Dockerfile requires for that target. Building the store locally keeps a local
+# in place of the published store of the commit being built, its Dockerfile's default. Building the store locally keeps a local
 # build off the registry and makes an audio change testable before it has been
 # published. See the `audio-store` target.
 #
-# THE BACKEND AND DRIVER LINES TAKE gg FROM ITS RELEASE: the services Dockerfile's
-# `gg-release` stage fetches the gg release the driver pins (crates/driver/gg-release-version)
-# from the anonymously readable release container, the binary for the driver and the
-# reference documents for the backend. The binary is ~780 MB, so the first build pays for
+# THE BACKEND AND DRIVER LINES TAKE gg FROM ITS RELEASE: each Dockerfile's `gg-release`
+# stage fetches the gg release the driver pins
+# (microservice-driver/crates/driver/gg-release-version) from the anonymously readable
+# release container, the binary for the driver and the reference documents for the
+# backend. The binary is ~780 MB, so the first build pays for
 # the download; the stage is keyed on the pin, so later builds take it from the build
 # cache until the pin moves. `docker compose -f compose.yml up backend` builds the same
 # stage for `--target backend`.
@@ -594,8 +614,10 @@ images: audio-store
 	$(CONTAINER_TOOL) build --build-arg TCAB_BUILD_COMMIT='$(TCAB_COMMIT)' --target backend    -t '$(BACKEND_IMG)'    -f '$(SERVICES_DOCKERFILE)' '$(REPO)'
 	@[ -f '$(DISPATCHER_DIR)/Dockerfile' ] || { echo "ERROR: $(DISPATCHER_DIR) is not checked out; run: git submodule update --init microservice-dispatcher" >&2; exit 1; }
 	$(CONTAINER_TOOL) build --build-arg TCAB_BUILD_COMMIT='$(DISPATCHER_COMMIT)' -t '$(DISPATCHER_IMG)' -f '$(DISPATCHER_DIR)/Dockerfile' '$(DISPATCHER_DIR)'
-	$(CONTAINER_TOOL) build --build-arg TCAB_BUILD_COMMIT='$(TCAB_COMMIT)' --build-arg AUDIO_STORE_IMAGE='$(AUDIO_STORE_IMG)' \
-	                        --target driver    -t '$(DRIVER_IMG)'     -f '$(SERVICES_DOCKERFILE)' '$(REPO)'
+	@[ -f '$(DRIVER_NPM_CONFIG)' ] || echo "WARNING: no npm configuration at $(DRIVER_NPM_CONFIG); the driver image cannot install the project's packages from the feed without its credential" >&2
+	$(CONTAINER_TOOL) build --build-arg TCAB_BUILD_COMMIT='$(DRIVER_COMMIT)' --build-arg AUDIO_STORE_IMAGE='$(AUDIO_STORE_IMG)' \
+	                        $(if $(wildcard $(DRIVER_NPM_CONFIG)),$(DRIVER_NPM_SECRET)) \
+	                        -t '$(DRIVER_IMG)' -f '$(DRIVER_DIR)/Dockerfile' '$(DRIVER_DIR)'
 	$(CONTAINER_TOOL) build --build-arg TCAB_BUILD_COMMIT='$(TCAB_COMMIT)' --target artifacts  -t '$(ARTIFACTS_IMG)'  -f '$(SERVICES_DOCKERFILE)' '$(REPO)'
 	$(CONTAINER_TOOL) build --build-arg TCAB_BUILD_COMMIT='$(TCAB_COMMIT)' --target arena      -t '$(ARENA_IMG)'      -f '$(SERVICES_DOCKERFILE)' '$(REPO)'
 	@[ -f '$(REPOS_DIR)/Dockerfile' ] || { echo "ERROR: $(REPOS_DIR) is not checked out; run: git submodule update --init microservice-repos" >&2; exit 1; }
@@ -603,8 +625,9 @@ images: audio-store
 	$(call save_and_import,$(ALL_IMGS))
 
 # Build the run-container images (the base + per-asset-kind images with their
-# baked-in modeling tool compiled from `crates/`) and import them into the cluster,
-# so run pods use THIS checkout's tooling instead of the published ACR images. This
+# baked-in modeling tools, by microservice-driver's containers/build.sh) and import
+# them into the cluster, so run pods use THIS checkout's tooling instead of the
+# published ACR images. This
 # is the run-pod counterpart of the service-image `images` target and is what closes
 # the gap where a change to `voxel-anim`/`draw`/the core modeling library never
 # reaches a run: those tools live in these images, not in any service.
@@ -637,7 +660,7 @@ images: audio-store
 # so a narrow target works even on a cluster that has never built base — though normal
 # use is after `local-up` has already imported the full set once.
 #
-# `build.sh` builds each named image from the repo root; its IMAGE_NAME_PREFIX/IMAGE_TAG
+# `build.sh` builds each named image from microservice-driver's root; its IMAGE_NAME_PREFIX/IMAGE_TAG
 # name them to match RUN_IMGS, and DOCKER selects the same runtime the service images
 # use. The BuildKit-vs-credsStore DOCKER_CONFIG pin from `images` applies here too
 # (these Dockerfiles also pull only public base images).
@@ -653,16 +676,17 @@ images: audio-store
 # a run image); end-to-end runs schedule against `base-wasm`, imported via the
 # `run-images-e2e` group and the full `run-images`.
 define build_import_run_images
+	$(require_driver)
 	@mkdir -p '$(BUILD_DOCKER_CONFIG)' && printf '{}\n' > '$(BUILD_DOCKER_CONFIG)/config.json'
 	@case ' $(1) ' in *'-gg '*) $(call pull_gg_toolchains) ;; esac
 	IMAGE_NAME_PREFIX='$(RUN_IMAGE_PREFIX)' IMAGE_TAG='$(RUN_IMAGE_TAG)' DOCKER='$(CONTAINER_TOOL)' \
-	  bash '$(REPO)/containers/build.sh' $(1)
+	  bash '$(DRIVER_DIR)/containers/build.sh' $(1)
 	$(call save_and_import,$(2))
 endef
 
 # Pull the gg toolchain image the `-gg` variants copy, with HOST_DOCKER_CONFIG's credentials,
 # unless the local store already holds it. A shell fragment, for a recipe line.
-pull_gg_toolchains = ref="$$(bash '$(REPO)/scripts/ci/gg-release.sh' toolchains-image)" \
+pull_gg_toolchains = ref="$$(bash '$(DRIVER_DIR)/scripts/ci/gg-release.sh' toolchains-image)" \
 	&& { $(CONTAINER_TOOL) image inspect "$$ref" >/dev/null 2>&1 \
 	     || DOCKER_CONFIG='$(HOST_DOCKER_CONFIG)' $(CONTAINER_TOOL) pull "$$ref" \
 	     || { echo "could not pull $$ref; sign in first with: az acr login --name testcabinet" >&2; exit 1; }; }
@@ -739,9 +763,9 @@ run-images-gg:
 # apt-installed one and then exported `/opt/gg` without it.
 #
 # So this target fetches the static `gg` a run is actually given — the release the driver
-# pins, the same binary the driver image bakes in (`scripts/ci/gg-release.sh fetch`) — or
-# takes the file TCAB_GG_BINARY names, and hands it to `containers/build.sh
-# --gg-selfcheck`, which drives every arm's real bootstrap turn inside each image it builds,
+# pins, the same binary the driver image bakes in (microservice-driver's
+# `scripts/ci/gg-release.sh fetch`) — or takes the file TCAB_GG_BINARY names, and hands
+# it to its `containers/build.sh --gg-selfcheck`, which drives every arm's real bootstrap turn inside each image it builds,
 # as the unprivileged `node` run user, in the gap where CI pushes. It is the SAME
 # invocation `scripts/ci/run-images.sh` publishes behind, which is what makes a
 # green run here mean something: not a local approximation of the gate, the gate.
@@ -772,18 +796,19 @@ run-images-gg:
 # to build that parent, which it does the first time this target runs.
 run-images-gg-selfcheck: export DOCKER_CONFIG := $(BUILD_DOCKER_CONFIG)
 run-images-gg-selfcheck:
+	$(require_driver)
 	@mkdir -p '$(BUILD_DOCKER_CONFIG)' && printf '{}\n' > '$(BUILD_DOCKER_CONFIG)/config.json'
 	@$(call pull_gg_toolchains)
 	@if [ -n '$(TCAB_GG_BINARY)' ]; then \
 	  echo "using TCAB_GG_BINARY=$(TCAB_GG_BINARY)"; \
 	elif [ -x '$(GG_SELFCHECK_BIN)' ] \
-	  && [ "$$('$(GG_SELFCHECK_BIN)' --version)" = "gg $$(bash '$(REPO)/scripts/ci/gg-release.sh' version)" ]; then \
+	  && [ "$$('$(GG_SELFCHECK_BIN)' --version)" = "gg $$(bash '$(DRIVER_DIR)/scripts/ci/gg-release.sh' version)" ]; then \
 	  echo "$(GG_SELFCHECK_BIN) is the pinned release already"; \
 	else \
-	  bash '$(REPO)/scripts/ci/gg-release.sh' fetch '$(GG_SELFCHECK_DIR)'; \
+	  bash '$(DRIVER_DIR)/scripts/ci/gg-release.sh' fetch '$(GG_SELFCHECK_DIR)'; \
 	fi
 	IMAGE_NAME_PREFIX='$(RUN_IMAGE_PREFIX)' IMAGE_TAG='$(RUN_IMAGE_TAG)' DOCKER='$(CONTAINER_TOOL)' \
-	  bash '$(REPO)/containers/build.sh' --gg-selfcheck '$(GG_SELFCHECK_BIN)' $(GG_SELFCHECK_IMAGE_NAMES)
+	  bash '$(DRIVER_DIR)/containers/build.sh' --gg-selfcheck '$(GG_SELFCHECK_BIN)' $(GG_SELFCHECK_IMAGE_NAMES)
 
 # Rebuild + import a SINGLE run image by its short name — the finest grain, for
 # iterating on one asset-generation kind (`make run-image-voxel-animation`,

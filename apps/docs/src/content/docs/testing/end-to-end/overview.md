@@ -245,7 +245,7 @@ packages = ["@clockwyrks/particle-runtime"]
 
 Only the repo's shippable packages may be named: the curated set staged into the
 host package store, listed under "The shippable Test Cabinet packages" in
-`containers/README.md`. An unknown name is rejected when the case resolves,
+microservice-driver's `containers/README.md`. An unknown name is rejected when the case resolves,
 before any run is spent.
 
 ### The shipped `package.json` declares the dependency

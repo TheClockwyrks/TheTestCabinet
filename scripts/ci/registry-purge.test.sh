@@ -4,6 +4,9 @@
 #
 # No case reaches the registry or a cluster. A copy of the script and lib.sh
 # runs in a throwaway repository with `az` and `curl` stubbed first on PATH.
+# The repository holds two commits, one from before the microservice-driver
+# submodule pointer and one whose pointer names PINNED, the commit its run
+# images are tagged with.
 # The az stub answers `acr login --expose-token` with a refresh token and
 # `aks command invoke` with the result shape lib.sh's aks_invoke reads, its
 # logs taken from cluster-<resource-group>.txt. The curl stub is the registry:
@@ -16,13 +19,17 @@
 # read from <repository>@<digest>.json, and records every DELETE in a log,
 # answering the status a variable names.
 #
-# The subject is the policy: which commits are kept (the clusters', --keep,
-# the newest), which tagged manifests each keeps, the inputs-tag rule, the
+# The subject is the policy: which commits are kept (the clusters', --keep and
+# the microservice-driver commit its pointer names, each repository's newest),
+# which tagged manifests each keeps, the inputs-tag rule, the
 # untagged pass with its grace period and child protection, that a cluster
 # that cannot be read deletes nothing, and the credential path: one sign-in,
 # one token per repository, each used for that repository alone, and a token
 # without the right to delete stopping the run before it lists anything.
 set -uo pipefail
+# The throwaway repository's git, whatever repository this runs under (a hook's
+# GIT_DIR or GIT_INDEX_FILE would aim it at the caller's).
+unset GIT_DIR GIT_INDEX_FILE GIT_WORK_TREE GIT_OBJECT_DIRECTORY GIT_COMMON_DIR
 
 CI_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 readonly CI_DIR
@@ -257,10 +264,25 @@ readonly NEWEST="bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 readonly OLD="cccccccccccccccccccccccccccccccccccccccc"
 readonly OLDER="dddddddddddddddddddddddddddddddddddddddd"
 readonly ENVSHA="eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+readonly PINNED="9999999999999999999999999999999999999999"
 readonly STAGING_RG="testcabinet-staging-westus2-rg"
 readonly PROD_RG="testcabinet-prod-westus2-rg"
 readonly INDEX="application/vnd.oci.image.index.v1+json"
 readonly IMAGE="application/vnd.oci.image.manifest.v1+json"
+
+# The throwaway repository's two commits: BEFORE_DRIVER, with no
+# microservice-driver pointer, and DEPLOYED, whose pointer names PINNED.
+commit() { git -C "$repo" -c user.name=test -c user.email=test@example.invalid commit -q "$@"; }
+git -C "$repo" init -q
+commit --allow-empty -m "before the driver's pointer"
+BEFORE_DRIVER="$(git -C "$repo" rev-parse HEAD)"
+git -C "$repo" update-index --add --cacheinfo "160000,${PINNED},microservice-driver"
+commit -m "pin the driver"
+DEPLOYED="$(git -C "$repo" rev-parse HEAD)"
+readonly BEFORE_DRIVER DEPLOYED
+
+# The commits a run keeps by name, as its first line lists them.
+keeping() { printf 'Keeping commits: %s, and each repository'"'"'s newest' "$(printf '%s\n' "$@" | sort -u | paste -sd' ')"; }
 
 at() { date --utc --date="$1" +%Y-%m-%dT%H:%M:%S.0000000Z; }
 
@@ -320,6 +342,7 @@ $(manifest sha256:in-only-arm64 "$(at '4 days ago')" 1000 "$IMAGE" inputs-0c0c-a
 $(manifest sha256:reuse-live-amd64 "$(at '2 days ago')" 1000 "$INDEX" "$LIVE-amd64")
 $(manifest sha256:reuse-newest-arm64 "$(at '1 hour ago')" 1000 "$INDEX" "$NEWEST-arm64")
 $(manifest sha256:old-both-arm64 "$(at '1 day ago')" 1000 "$IMAGE" "$OLD-arm64" inputs-0d0d-arm64)
+$(manifest sha256:pinned-amd64 "$(at '3 days ago')" 1000 "$IMAGE" "$PINNED-amd64")
 EOF
 	printf '{"manifests":[{"digest":"sha256:in-newest-amd64"}]}\n' \
 		>"$stub/test-cabinet-gg-toolchains@sha256:reuse-live-amd64.json"
@@ -330,7 +353,7 @@ EOF
 testcabinet.azurecr.io/tcab-backend:$LIVE
 testcabinet.azurecr.io/tcab-dispatcher:$LIVE
 TCAB_CONTAINER_TAG=$LIVE
-TCAB_DRIVER_IMAGE=testcabinet.azurecr.io/tcab-driver:$LIVE
+TCAB_DRIVER_IMAGE=testcabinet.azurecr.io/microservice-driver:$LIVE
 TCAB_PUBLISHER_IMAGE=testcabinet.azurecr.io/tcab-publisher:$ENVSHA
 TCAB_DATABASE_URL=postgres://db:5432/tcab
 OTHER_IMAGE=testcabinet.azurecr.io/tcab-web:$OLD
@@ -353,8 +376,11 @@ echo "--- the default policy ---"
 write_fixtures
 out="$(run)"
 check_equal "exits 0" "0" "$?"
-check_equal "the first line names the kept commits: the clusters', the dispatcher's, the newest" \
-	"Keeping commits: $LIVE $NEWEST $ENVSHA" "$(head -1 <<<"$out")"
+check_equal "the first line names the kept commits: the clusters', the dispatcher's" \
+	"$(keeping "$LIVE" "$ENVSHA")" "$(head -1 <<<"$out")"
+check_contains "and each repository its own newest" "$(printf 'tcab-backend:\n  newest: %s' "$NEWEST")" "$out"
+check_contains "the run images' newest by their own pushes" \
+	"$(printf 'test-cabinet-gg-toolchains:\n  newest: %s' "$NEWEST")" "$out"
 check_lacks "OLDER, which prod runs from another registry, is not kept" "$OLDER" "$(head -1 <<<"$out")"
 check_contains "deletes an old commit's fused tag" "deleted $OLD (sha256:old)" "$out"
 check_contains "and its amd64 tag" "deleted $OLD-amd64 (sha256:old-amd64)" "$out"
@@ -387,7 +413,8 @@ tcab-backend@sha256:old-arm64
 tcab-backend@sha256:older-amd64
 tcab-backend@sha256:orphan-old
 test-cabinet-gg-toolchains@sha256:in-old-amd64
-test-cabinet-gg-toolchains@sha256:in-only-arm64" "$(deleted)"
+test-cabinet-gg-toolchains@sha256:in-only-arm64
+test-cabinet-gg-toolchains@sha256:pinned-amd64" "$(deleted)"
 check_contains "reads staging through az aks command invoke" \
 	"aks command invoke --resource-group $STAGING_RG --name testcabinet-staging-westus2-aks" "$(az_log)"
 check_contains "and prod" \
@@ -445,23 +472,40 @@ check_lacks "sending no DELETE" "DELETE" "$(curl_log)"
 
 echo "--- --keep ---"
 write_fixtures
-out="$(run --keep "$OLDER")"
+out="$(run --keep "$DEPLOYED")"
 check_equal "exits 0" "0" "$?"
-check_contains "adds the commit" "Keeping commits: $LIVE $NEWEST $OLDER $ENVSHA" "$out"
-check_contains "which is then kept" "kept $OLDER-amd64" "$out"
-check_lacks "and not deleted" "sha256:older-amd64" "$(deleted)"
+check_contains "adds the commit and the commit its microservice-driver pointer names" \
+	"$(keeping "$LIVE" "$ENVSHA" "$DEPLOYED" "$PINNED")" "$out"
+check_contains "whose run images are then kept" "kept $PINNED-amd64" "$out"
+check_lacks "and not deleted" "sha256:pinned-amd64" "$(deleted)"
+write_fixtures
+out="$(run --keep "$BEFORE_DRIVER")"
+check_equal "a commit from before the pointer exits 0" "0" "$?"
+check_contains "adding itself alone" "$(keeping "$LIVE" "$ENVSHA" "$BEFORE_DRIVER")" "$out"
+check_contains "so the run images of no pointer are kept" "deleted $PINNED-amd64 (sha256:pinned-amd64)" "$out"
+write_fixtures
+out="$(run --keep "$OLDER")"
+check_equal "a commit this checkout does not hold exits 1" "1" "$?"
+check_contains "saying the pointer cannot be read" \
+	"this checkout does not hold $OLDER, so the microservice-driver commit its run images are tagged with cannot be read" "$out"
+check_contains "and that nothing was deleted" "registry-purge.sh: nothing was deleted." "$out"
+check_equal "which is so" "" "$(deleted)"
+check_equal "before any cluster was asked" "" "$(az_log)"
+check_equal "or the registry touched" "" "$(curl_log)"
 
 echo "--- --keep-count ---"
 write_fixtures
 out="$(run --keep-count 2)"
 check_equal "exits 0" "0" "$?"
-check_contains "keeps the second-newest commit too" "Keeping commits: $LIVE $NEWEST $OLD $ENVSHA" "$out"
+check_contains "keeps each repository's second-newest commit too" \
+	"$(printf 'tcab-backend:\n  newest: %s %s' "$NEWEST" "$OLD")" "$out"
 check_contains "so its tags stay" "kept $OLD-amd64" "$out"
 check_equal "and nothing of it is deleted" \
 	"tcab-backend@sha256:older-amd64
 tcab-backend@sha256:orphan-old
 test-cabinet-gg-toolchains@sha256:in-old-amd64
-test-cabinet-gg-toolchains@sha256:in-only-arm64" "$(deleted)"
+test-cabinet-gg-toolchains@sha256:in-only-arm64
+test-cabinet-gg-toolchains@sha256:pinned-amd64" "$(deleted)"
 check_contains "while the older commit still goes" "deleted $OLDER-amd64 (sha256:older-amd64)" "$out"
 
 echo "--- a cluster that cannot be read ---"
@@ -485,10 +529,11 @@ check_equal "and deletes nothing" "" "$(deleted)"
 echo "--- --no-cluster ---"
 write_fixtures
 rm "$stub/cluster-$PROD_RG.txt" "$stub/cluster-$STAGING_RG.txt"
-out="$(run --no-cluster --keep "$LIVE")"
+out="$(run --no-cluster --keep "$DEPLOYED")"
 check_equal "exits 0" "0" "$?"
 check_lacks "asks no cluster" "aks command invoke" "$(az_log)"
-check_contains "keeps what it was told and the newest" "Keeping commits: $LIVE $NEWEST" "$out"
+check_contains "keeps what it was told and its run images' commit" "$(keeping "$DEPLOYED" "$PINNED")" "$out"
+check_contains "and the newest" "$(printf 'tcab-backend:\n  newest: %s' "$NEWEST")" "$out"
 check_contains "and proceeds" "deleted $OLD (sha256:old)" "$out"
 
 echo "--- a delete that fails ---"
@@ -523,7 +568,8 @@ check_equal "exits 1" "1" "$?"
 check_contains "reports the status" "listing tcab-backend answered HTTP 500." "$out"
 check_contains "and leaves the repository alone" "FAILED to list tcab-backend, so nothing in it is deleted" "$out"
 check_lacks "so nothing of it goes" "tcab-backend@" "$(deleted)"
-check_contains "while the newest commit is still found in the rest" "Keeping commits: $LIVE $NEWEST $ENVSHA" "$out"
+check_contains "while the next repository keeps its own newest" \
+	"$(printf 'test-cabinet-gg-toolchains:\n  newest: %s' "$NEWEST")" "$out"
 check_contains "and the next repository still runs" "deleted inputs-0b0b-amd64 (sha256:in-old-amd64)" "$out"
 
 echo "--- the registry sign-in ---"

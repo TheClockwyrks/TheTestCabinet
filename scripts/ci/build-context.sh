@@ -42,8 +42,8 @@
 # against its sibling one where it has it. The failure message names the file that
 # rejected the source, which is the file to widen.
 #
-# WHICH DOCKERFILES. Every one built from the repository root: `deployments/images/*`,
-# `containers/**`, and `.devcontainer/ubuntu.dockerfile`, whose compose service sets
+# WHICH DOCKERFILES. Every one built from the repository root: `deployments/images/*`
+# and `.devcontainer/ubuntu.dockerfile`, whose compose service sets
 # the context to the repository root so that its last layer can run gg's toolchain
 # installers against the pins under the gg checkout's packages/. The template's two CI images
 # (`ci/images/rust.Dockerfile`, `ci/images/web.Dockerfile`) copy only the
@@ -51,13 +51,6 @@
 # template answers for them, so they are left out by name (TEMPLATE_DOCKERFILES
 # below). The project's own CI image, `ci/images/rust-browser.Dockerfile`, is
 # checked like any other Dockerfile with a sibling ignore file.
-#
-# THE RUST PIN. The template decides the compiler, in `rust-toolchain.toml`. The
-# case images under `containers/` pin their own Rust (`FROM … rust:<v>-bookworm`,
-# `ARG RUST_VERSION=<v>`), and a case built with a different compiler than the
-# checkout is a case nobody tested. So every such pin must equal the toolchain's
-# `channel`, and a template update that moves the compiler fails here until
-# `containers/` follows.
 #
 # Whole-context copies (`COPY . .`) are inspected for neither of the two checks: they
 # take whatever the allowlist admits, which is exactly the question the allowlist
@@ -573,9 +566,11 @@ done
 
 
 # Everything above reads `COPY` sources, and some build inputs are named by no `COPY`.
-# `crates/driver` and `crates/engines` BAKE three directories into the binaries verbatim — the
-# built-in orchestrators' manifests and runner scripts and the harness manifests
-# (the driver), and the engine manifests (engines) — with `include_str!` paths that climb out of `crates/` with `../../../`. They ride
+# microservice-driver's `crates/driver` and the engines repository's `crates/engines`
+# BAKE three directories into the binaries verbatim — the built-in orchestrators'
+# manifests and runner scripts and the harness manifests (the driver), and the engine
+# manifests (engines) — with `include_str!` paths that climb out of `crates/` with
+# `../../../`. Both are submodules the patch table sends cargo to. They ride
 # in on the build stage's `COPY . .`, so the allowlist is the only thing that
 # decides whether the compiler can read them, and nothing above looks at them.
 #
@@ -591,7 +586,7 @@ done
 # `crates/engines/src/lib.rs` now), which reads as a broken checkout, and stopped
 # `make local-up` from standing the cluster up at all. Every service image is built
 # by the one cargo stage that compiles `test-cabinet-engines`, so a tree missing here
-# takes all six of them down at once.
+# takes all four of them down at once.
 #
 # So the rule is asserted from the SOURCE rather than from a list kept in step by
 # hand: every literal `include_str!`/`include_bytes!` path in a compiled Rust source
@@ -715,138 +710,6 @@ while IFS= read -r hit; do
 	echo "       Fix: add '!/$baked_resolved' (or its directory) to the .dockerignore allowlist, with a comment saying what bakes it in." >&2
 	problems=$((problems + 1))
 done < <(grep -Hno 'include_\(str\|bytes\)! *( *"[^"]*"' -- "${rust_sources[@]}" || true)
-
-# --- what a COPY cannot tell you, part two: the host package store -----------
-
-# The third build input no `COPY` names. The services image's `tcab-packages` stage
-# (deployments/images/services.Dockerfile) does `COPY . .`, `npm ci`, and then
-# `node scripts/stage-tcab-packages.mjs` — which reads the SHIPPABLE list in its own
-# source, resolves each name to a package directory of the workspace (the engines
-# submodule's `engines/packages/`, which holds the engines, the runtimes and the case
-# harness, or `contracts/packages/`), and bakes it into
-# /opt/tcab-packages. A name in that list whose directory the allowlist forgets is
-# invisible to every check above, because a whole-context copy is deliberately
-# unchecked: it takes whatever the allowlist admits, and the stage then dies on
-#
-#     Error: shippable package @clockwyrks/<name> not found under ...
-#
-# which reads as a broken checkout and takes EVERY service image down at once — they
-# all share that Dockerfile. The `tcab-packages` stage is the driver's, but a
-# multi-target build of that file builds it regardless.
-#
-# The list is read from the staging script rather than restated here, for the reason
-# the include_str! check gives: the next package staged into the store is covered the
-# day it is added, which a hand-kept list would not be. The transitive
-# `@clockwyrks/*` dependencies are walked too, because the script stages the closure
-# and `npm run build` compiles each member against its siblings.
-#
-# The directory itself must survive, not merely something under it: the script copies
-# each package's `files` entries whole, so `context_includes_dir`'s weaker question
-# (does the copy transfer ANYTHING) would pass a package admitted through some
-# unrelated glob and still leave the store without a `dist/` or a `src/`.
-#
-# Root allowlist only, as above: this is a statement about the builds that STAGE the
-# store, every one of which reads the root file.
-
-STAGING_SCRIPT="scripts/stage-tcab-packages.mjs"
-
-# The package names in the staging script's SHIPPABLE array, one per line. Read from
-# the array's own text: every entry is a quoted name, and a `//` comment inside the
-# array is dropped before the names are pulled out of the line.
-shippable_names() {
-	awk '
-		/^const SHIPPABLE = \[/ { inside = 1; next }
-		inside && /^\]/ { inside = 0; next }
-		inside {
-			line = $0
-			sub(/\/\/.*/, "", line)
-			while (match(line, /"[^"]+"/)) {
-				print substr(line, RSTART + 1, RLENGTH - 2)
-				line = substr(line, RSTART + RLENGTH)
-			}
-		}
-	' "$REPO_ROOT/$STAGING_SCRIPT"
-}
-
-# The `packages/<dir>` holding the package named `$1`, by the `name` its manifest
-# declares — which is what the staging script maps by, and is not always the
-# directory name. Prints nothing and returns 1 when no manifest claims that name.
-package_dir_for() {
-	local name="$1" manifest
-	for manifest in "${package_manifests[@]}"; do
-		if grep -qE "^[[:space:]]*\"name\"[[:space:]]*:[[:space:]]*\"$name\"[[:space:]]*,?[[:space:]]*$" \
-			"$REPO_ROOT/$manifest"; then
-			dirname "$manifest"
-			return 0
-		fi
-	done
-	return 1
-}
-
-# The `@clockwyrks/*` names the manifest at `$1` uses as dependency KEYS, in any
-# block. Deliberately not only `dependencies`: the staging stage also BUILDS each
-# member, and a dev-time dependency on a sibling is a source tree that build reads.
-# The manifest's own `"name"` line is not matched, the scoped name being its value.
-tcab_dependency_names() {
-	grep -oE '"@clockwyrks/[A-Za-z0-9._-]+"[[:space:]]*:' "$1" |
-		sed -E 's/^"([^"]+)".*/\1/'
-}
-
-load_dockerignore "$REPO_ROOT/.dockerignore"
-# Read off the filesystem rather than out of git, exactly as the staging script's own
-# readdirSync does: a package added and not yet committed is a real build input, and a
-# gate that ran before `git add` and rejected it would be wrong. The glob does not
-# descend, so a workspace's own `node_modules` cannot be mistaken for a member. The
-# staging script reads the engines and contracts submodules' packages (the staged
-# packages are the engines', and asset-contract is in the runtimes' closure), so this
-# does as well.
-package_manifests=()
-for staged_manifest in "$REPO_ROOT"/packages/*/package.json "$REPO_ROOT"/engines/packages/*/package.json \
-	"$REPO_ROOT"/contracts/packages/*/package.json; do
-	[[ -f "$staged_manifest" ]] || continue
-	package_manifests+=("${staged_manifest#"$REPO_ROOT/"}")
-done
-((${#package_manifests[@]} > 0)) || {
-	echo "error: no packages/*/package.json found; this check would pass vacuously." >&2
-	exit 1
-}
-mapfile -t staged_names < <(shippable_names)
-((${#staged_names[@]} > 0)) || {
-	echo "error: no SHIPPABLE names found in $STAGING_SCRIPT; this check would pass vacuously." >&2
-	exit 1
-}
-
-# Breadth-first over the closure, exactly as the staging script's own `visit` walks it.
-staged_seen=""
-staged_queue=("${staged_names[@]}")
-staged_checked=0
-while ((${#staged_queue[@]} > 0)); do
-	staged_name="${staged_queue[0]}"
-	staged_queue=("${staged_queue[@]:1}")
-	[[ "$staged_seen" == *"|$staged_name|"* ]] && continue
-	staged_seen="$staged_seen|$staged_name|"
-	if ! staged_dir="$(package_dir_for "$staged_name")"; then
-		echo "error: $STAGING_SCRIPT stages '$staged_name', and no packages/*/package.json, engines/packages/*/package.json or contracts/packages/*/package.json declares that name." >&2
-		for staged_sub in engines contracts; do
-			submodule_checked_out "$staged_sub" ||
-				echo "       The $staged_sub submodule is not checked out: git submodule update --init $staged_sub" >&2
-		done
-		problems=$((problems + 1))
-		continue
-	fi
-	for staged_dep in $(tcab_dependency_names "$REPO_ROOT/$staged_dir/package.json"); do
-		staged_queue+=("$staged_dep")
-	done
-	staged_checked=$((staged_checked + 1))
-	checked=$((checked + 1))
-	context_includes "$staged_dir" && continue
-	echo "error: .dockerignore keeps '$staged_dir' OUT of the build context, and $STAGING_SCRIPT stages '$staged_name' from it." >&2
-	echo "       No COPY names it — the services image's package-store stage copies the whole context" >&2
-	echo "       and then runs that script, so this fails as: Error: shippable package $staged_name" >&2
-	echo "       not found under packages/, engines/packages/ or contracts/packages/ — which takes every image in services.Dockerfile down." >&2
-	echo "       Fix: add '!/$staged_dir' to the .dockerignore allowlist, with a comment saying what stages it." >&2
-	problems=$((problems + 1))
-done
 
 # --- what an allowlist lets in by accident -----------------------------------
 
@@ -1048,60 +911,18 @@ for sub in "${context_subs[@]}"; do
 	UNVERIFIED+=("$sub the root allowlist re-includes it or a path in it")
 done
 
-# --- the Rust the case images pin, against the Rust the template decides -------
-
-# See THE RUST PIN in the header. `rust-toolchain.toml` is template-owned, so this
-# is the one place a compiler bump reaches the case images: every
-# `FROM … rust:<v>-…` and every `ARG RUST_VERSION=<v>` default under `containers/`
-# must name the toolchain's channel. An `ARG RUST_VERSION` without a default takes
-# its value from the build, and is left alone.
-rust_channel="$(sed -nE 's/^[[:space:]]*channel[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/p' "$REPO_ROOT/rust-toolchain.toml")"
-[[ -n "$rust_channel" ]] || {
-	echo "error: rust-toolchain.toml names no channel, so the case images' Rust pins cannot be checked." >&2
-	exit 1
-}
-rust_pins_checked=0
-while IFS= read -r pin; do
-	pin_file="${pin%%:*}"
-	pin="${pin#*:}"
-	pin_line="${pin%%:*}"
-	pin_text="${pin#*:}"
-	if [[ "$pin_text" =~ ^[[:space:]]*ARG[[:space:]]+RUST_VERSION=([^[:space:]]+) ]]; then
-		pin_version="${BASH_REMATCH[1]}"
-	elif [[ "$pin_text" =~ (^|[/[:space:]])rust:([^-[:space:]@]+) ]]; then
-		pin_version="${BASH_REMATCH[2]}"
-	else
-		continue
-	fi
-	rust_pins_checked=$((rust_pins_checked + 1))
-	[[ "$pin_version" == "$rust_channel" ]] && continue
-	echo "error: $pin_file:$pin_line pins Rust $pin_version, and rust-toolchain.toml's channel is $rust_channel." >&2
-	echo "       The template decides the compiler; a case image built with another one is untested." >&2
-	echo "       Fix: set the pin to $rust_channel." >&2
-	problems=$((problems + 1))
-done < <(
-	superproject_files 'containers/**Dockerfile' 'containers/**.Dockerfile' 'containers/**.dockerfile' |
-		tr '\n' '\0' | xargs -0 -r -I{} grep -HnE '^[[:space:]]*(FROM[[:space:]].*[/[:space:]]rust:|ARG[[:space:]]+RUST_VERSION=)' "$REPO_ROOT/{}" |
-		sed "s#^$REPO_ROOT/##"
-)
-((rust_pins_checked > 0)) || {
-	echo "error: no Rust pin found under containers/; the Rust pin check would pass vacuously." >&2
-	problems=$((problems + 1))
-}
-
 ((problems == 0)) || {
 	echo >&2
-	echo "$problems build-context problem(s) found across ${#dockerfiles[@]} Dockerfiles, $baked_checked baked-in includes, $staged_checked staged packages, $installer_checked installer inputs, ${#ignored_paths[@]} git-ignored paths, $shape_checked re-inclusions and $rust_pins_checked Rust pins." >&2
+	echo "$problems build-context problem(s) found across ${#dockerfiles[@]} Dockerfiles, $baked_checked baked-in includes, $installer_checked installer inputs, ${#ignored_paths[@]} git-ignored paths and $shape_checked re-inclusions." >&2
 	exit 1
 }
 
 # A count of CHECKS rather than of distinct paths: a Dockerfile with a sibling
 # allowlist has its sources checked against both, which is the point.
-echo "$checked context-source check(s) — every COPY across ${#dockerfiles[@]} Dockerfiles, against each allowlist that can apply to it (every RUN bind mount of a context path among them), plus the $baked_checked path(s) the workspace bakes in with include_str! and the $staged_checked package(s) $STAGING_SCRIPT bakes into the host package store — all survive."
+echo "$checked context-source check(s) — every COPY across ${#dockerfiles[@]} Dockerfiles, against each allowlist that can apply to it (every RUN bind mount of a context path among them), plus the $baked_checked path(s) the workspace bakes in with include_str! — all survive."
 echo "$installer_checked installer-input check(s) — ${#installer_inputs[@]} tracked path(s) $INSTALLER_REPO/scripts/ci/install-*.sh read, against each of the ${#installer_ignore_files[@]} allowlist(s) an installer-running image is built against — all survive."
 echo "$ignored_checked exclusion check(s) — ${#ignored_paths[@]} git-ignored path(s) against each allowlist — none reach the build context."
 echo "$shape_checked re-inclusion(s) across ${#ignore_files[@]} allowlist(s) name a path rather than a wildcard family."
-echo "$rust_pins_checked Rust pin(s) under containers/ name rust-toolchain.toml's channel, $rust_channel."
 if ((${#context_subs[@]} == 0)); then
 	echo "No submodule is in the build context."
 else

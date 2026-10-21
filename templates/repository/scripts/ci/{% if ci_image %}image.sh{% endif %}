@@ -21,6 +21,15 @@
 # fetches and which never enters a layer. IMAGE_GIT_CONFIG names another file,
 # and with no such file the build fetches from the public sources as named.
 #
+# THE FEED. A Dockerfile that installs a package of the project names the
+# `the-test-cabinet` feed, which is private. scripts/ci/npm-feed.sh has written
+# the job's token as npm's credential for it into the user's npm
+# configuration (NPM_CONFIG_USERCONFIG, else ~/.npmrc); that file is handed to
+# the build as the secret `npmrc`, mounted for the RUN that installs alone.
+# IMAGE_NPM_CONFIG names another file, and with no such file the build is
+# handed none, which a Dockerfile installing nothing from the feed never
+# notices.
+#
 # Layers are cached in the registry per image and architecture
 # (`<image>:buildcache-<arch>`), so a build whose inputs did not change skips
 # those stages. IMAGE_REGISTRY names another registry than the project's.
@@ -57,6 +66,7 @@ readonly registry="${IMAGE_REGISTRY:-testcabinet.azurecr.io}"
 readonly repo="${registry}/${IMAGE}"
 readonly cache="${repo}:buildcache-${arch}"
 git_config="${IMAGE_GIT_CONFIG:-${HOME:-}/.gitconfig}"
+npm_config="${IMAGE_NPM_CONFIG:-${NPM_CONFIG_USERCONFIG:-${HOME:-}/.npmrc}}"
 
 args=(
 	--platform "linux/${arch}"
@@ -72,6 +82,11 @@ if [[ -f "$git_config" ]]; then
 	args+=(--secret "id=gitconfig,src=${git_config}")
 else
 	echo "image.sh: no git configuration at '${git_config}', so the build fetches from the public sources" >&2
+fi
+if [[ -f "$npm_config" ]]; then
+	args+=(--secret "id=npmrc,src=${npm_config}")
+else
+	echo "image.sh: no npm configuration at '${npm_config}', so the build holds no credential for the feed" >&2
 fi
 
 # The default builder can write neither a registry cache nor a multi-platform
