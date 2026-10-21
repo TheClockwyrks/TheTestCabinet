@@ -323,6 +323,30 @@ command, so it uses only what that image carries: `bash`, `kubectl`, `jq` and
 the common text tools `awk`, `grep`, `head`, `tail`, `cut` and `tr`. The image
 has no `sed`.
 
+#### Growing the backend's claim
+
+The overlays mount the backend's definition store and ingest checkout on the
+`tcab-backend-state` claim, declared once in
+`deployments/k8s/components/postgres/deployment-backend.yaml` at 16Gi. No
+overlay patches it, so staging and prod declare the same size and a change of
+it reaches each with that environment's next deploy, through the pipeline:
+
+1. `preflight` counts the growth as free space, so a full volume does not stop
+   the deploy that enlarges it, and refuses a size the cluster would not apply.
+2. The apply resizes the claim. The cluster grows the disk and then the
+   filesystem on it, which rests on the claim's storage class allowing
+   expansion (`allowVolumeExpansion: true`, which the classes AKS ships have).
+3. `verify` fails the deploy if the ingest sidecar did not ingest.
+
+A claim cannot shrink, and `preflight` refuses a deploy that asks for it. Once
+an environment has grown, that covers every checkout that still declares the
+smaller size: re-running an earlier pipeline run, or deploying a branch cut
+before the change, is refused with nothing applied. Put an earlier commit back
+from a checkout that carries the current size
+(`scripts/ci/deploy-environment.sh <env> <sha>`), which changes the images and
+leaves the claim alone. Deploy a change of the size to staging first: it shares
+the manifest, so it takes the same path.
+
 The clusters' API servers are private, which is why every `kubectl` command runs
 inside the cluster. `az aks command invoke` runs it under the caller's Microsoft
 Entra identity, so the cluster's Azure RBAC decides what it may do.

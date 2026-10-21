@@ -162,7 +162,9 @@ denormalized case name, the `validationLoaded` signal, the run state, the links,
 the run's short code, and every headline figure a listing needs: the functional
 `rating`, the `aesthetic` rating, whether the run is `validatorRated`, the
 `score`, and the `reviewCount`. A performance run's fuel result and the ranking
-slice of a run's [code analysis](#code-analysis) ride along too. Each card names
+slice of a run's [code analysis](#code-analysis) ride along too, and a gg run's
+subject carries `ggAgents`, one line per agent profile of the run (see
+[a gg run's agents](/components/ui/overview/#a-gg-runs-agents)). Each card names
 the run's full document by `documentKey`.
 
 The gallery fetches full records lazily, one per run page. This summary index

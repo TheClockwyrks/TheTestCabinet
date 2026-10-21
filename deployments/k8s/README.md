@@ -67,7 +67,7 @@ Overlays compose in reusable kustomize **components**:
 in both overlays. It holds `/state`, the definition store and the ingest checkout.
 To grow it, raise the size in `components/postgres/deployment-backend.yaml` and
 deploy; see
-[the state volume](../../apps/docs/src/content/docs/deployment/kubernetes/control-plane.md#the-state-volume).
+[growing the backend's claim](../../apps/docs/src/content/docs/deployment/kubernetes/overview.md#growing-the-backends-claim).
 
 The service container images are built from [`../images/`](../images/) — every Rust
 service is a `--target` of the shared `services.Dockerfile` (`backend`,

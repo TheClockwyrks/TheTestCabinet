@@ -370,7 +370,10 @@ the contracts' `redact` crate provides:
 The scrubber matches any provider-shaped `sk-…` token, anchored to the `sk-`
 prefix and requiring a long enough body, along with the exact values of the
 key-named environment variables the contract lists where the scrubbing process
-holds them. Each match is replaced with `[REDACTED]`. The third public surface,
+holds them. Each match is replaced with `[REDACTED]`. A JSON document is
+scrubbed in its object keys as well as its strings, since a tool call's
+arguments carry keys the model wrote; two keys of one object that redact to the
+same text are told apart by a number appended to the later one. The third public surface,
 the run's record and event stream in the public dataset, is scrubbed by the
 backend as it writes the run's document; see [the per-run
 record](/components/backend/snapshot/#run-documents).
