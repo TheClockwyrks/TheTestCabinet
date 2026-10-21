@@ -423,8 +423,8 @@ pub async fn run(
 }
 
 /// `POST /ladders/{id}/stop` — end the running dispatch and cancel its `queued` and
-/// `pending` jobs, and with `cancelRunning` its `dispatched`, `starting` and `running`
-/// ones too. `409` when no dispatch is running.
+/// `pending` jobs, and with `cancelRunning` its `dispatched`, `starting`, `running`,
+/// `validating` and `storing` ones too. `409` when no dispatch is running.
 ///
 /// The end is a conditional update. The cancel reaches the jobs whose origin names this
 /// dispatch, and the jobs an earlier dispatch of this ladder left in flight, which this

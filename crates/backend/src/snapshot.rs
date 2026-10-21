@@ -758,6 +758,8 @@ impl SnapshotBuilder {
                 comparisons_prefix: format!("{prefix}/comparisons/"),
                 gg_runs_key: format!("{prefix}/gg-runs.json"),
                 test_case_groups_key: Some(format!("{prefix}/test-case-groups.json")),
+                // The case showcases document is not written yet.
+                case_showcases_key: None,
             },
         )?;
 
@@ -2602,7 +2604,8 @@ fn aggregate_aesthetic_inner(
 /// ([`crate::review::validator_aggregate_score`]: each review's
 /// checklist overlays the validators' verdicts and the run averages the reviews'
 /// effective scores; with zero reviews the validators' own figure stands), always
-/// `Some`. Otherwise the aggregate reviewer score: the case's declared checklist
+/// `Some`; an effective checklist that decides no scored point scores zero over the
+/// declared weight. Otherwise the aggregate reviewer score: the case's declared checklist
 /// weights scored against each of the run's `reviews`, then averaged (see
 /// [`crate::review::aggregate_score`]), `None` when the run carries no
 /// reviews. Either way `None` for a run whose terminal state is not

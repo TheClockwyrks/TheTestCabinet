@@ -20,7 +20,7 @@ use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
 
 use crate::auth::ServiceCaller;
-use crate::db::ReferenceSheetEntry;
+use crate::db::{Db, ReferenceSheetEntry};
 use crate::error::ApiError;
 use crate::ingest::{IngestEvent, IngestReport, IngestRequest, IngestRoots, Ingestor};
 use crate::ingest_refresh::{RefreshError, refresh_checkout};
@@ -98,6 +98,10 @@ pub async fn ingest(
     // `tcab ingest --env` — republish a corrected snapshot instead of leaving the
     // gallery frozen on whatever was built while the store was momentarily empty.
     if scan_changed_store(&report) {
+        // The stored ratings a ladder's gate and the console's sort read wait on the
+        // case versions this scan may just have supplied (see `recompute_ratings`),
+        // so they are settled before the refresh that republishes them.
+        recompute_ratings(&state.db, &state.store).await;
         state.publisher.queue_refresh().await;
         // ...and the gg document index holds a `score` per run that is a fraction of the
         // case manifest's checklist weights. A re-ingest can change those weights (or an
@@ -172,6 +176,21 @@ fn promote_for_store_readiness(mut request: IngestRequest, store_ready: bool) ->
         request.force = true;
     }
     request
+}
+
+/// Finish the one-time recompute of the stored validator ratings
+/// ([`Db::recompute_validator_ratings`]) once a scan has changed the definition
+/// store. A backend that booted on an empty store could not read the case versions
+/// the pass needs, so it left the pass unfinished, and the scan that fills the store
+/// is the moment it can complete without waiting for the next restart. A pass already
+/// complete returns at once. Best-effort, like the startup pass: a failure is logged
+/// and the next scan or boot tries again.
+async fn recompute_ratings(db: &Db, store: &DefinitionStore) {
+    match db.recompute_validator_ratings(store).await {
+        Ok(0) => {}
+        Ok(rewritten) => tracing::info!(rewritten, "recomputed run validator ratings"),
+        Err(err) => tracing::warn!(error = %err, "skipping run validator-rating recompute"),
+    }
 }
 
 /// Whether an ingest scan actually (re)ingested any version, versus a no-op scan
@@ -401,6 +420,7 @@ fn ingest_streaming(state: AppState, request: IngestRequest, refresh: bool) -> R
         };
 
         let blocking_tx = tx.clone();
+        let db = state.db.clone();
         let publisher = state.publisher.clone();
         let gg_docs = state.gg_docs.clone();
         let readiness = state.ready.clone();
@@ -418,6 +438,10 @@ fn ingest_streaming(state: AppState, request: IngestRequest, refresh: bool) -> R
                     // definition store must re-export the snapshot's case metadata
                     // (see `scan_changed_store`).
                     if scan_changed_store(&report) {
+                        // As on the non-streaming path, the stored ratings waiting on
+                        // the versions this scan supplied are settled before the
+                        // refresh, and before the `done` line.
+                        tokio::runtime::Handle::current().block_on(recompute_ratings(&db, &store));
                         // Blocking (this closure runs on a blocking thread) so the
                         // dirty mark is written before the `done` line goes out.
                         tokio::runtime::Handle::current().block_on(publisher.queue_refresh());

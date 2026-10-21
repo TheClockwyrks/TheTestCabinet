@@ -851,12 +851,15 @@ fn validator_domain_ratings_use_the_automated_only_failure_semantics() {
         capped_item("unmet", FailureCap::Broken, &["gameplay"]),
         capped_item("silent", FailureCap::Broken, &["gameplay"]),
         capped_item("unscripted", FailureCap::Broken, &["gameplay"]),
+        capped_item("decided", FailureCap::Broken, &["gameplay"]),
     ];
     // An inconclusive point (`precondition_unmet`), a clean run that decided
-    // nothing, and a point with no script result at all never lower a domain.
+    // nothing, and a point with no script result at all never lower a domain
+    // while another scored point is decided.
     let scripts = [
         script("unmet", None, &[], false, true),
         script("silent", None, &[], true, false),
+        decided("decided", "decided", true),
     ];
     let ratings = validator_domain_ratings(&domains, &items, &scripts);
     assert_eq!(ratings[0].rating, Rating::Flawless);
@@ -959,6 +962,206 @@ fn validator_score_is_the_automated_only_score_with_zero_reviews() {
             earned: 0.0,
             total: 3,
             reviews: 0
+        }
+    );
+}
+
+// --- a checklist that decides no scored point -----------------------------------
+
+#[test]
+fn a_run_whose_validators_decide_no_scored_point_is_broken_in_every_domain() {
+    let domains = [domain("single-player"), domain("versus")];
+    let items = [
+        capped_item("serve", FailureCap::Great, &["single-player"]),
+        capped_category(
+            "gameplay",
+            &[
+                ("ai", FailureCap::Great, &["single-player"]),
+                ("controls", FailureCap::Great, &["versus"]),
+            ],
+        ),
+    ];
+    let broken = vec![
+        DomainRating {
+            domain: "single-player".to_string(),
+            rating: Rating::Broken,
+        },
+        DomainRating {
+            domain: "versus".to_string(),
+            rating: Rating::Broken,
+        },
+    ];
+
+    // Every point inconclusive (an unmet precondition, a suite cut short by the
+    // whole-run cap, a suite that never ran): nothing is decided.
+    let timed_out = DebugScriptResult {
+        inconclusive: Some(Inconclusive::TimedOut),
+        ..script("gameplay", Some("ai"), &[], false, true)
+    };
+    let not_run = DebugScriptResult {
+        inconclusive: Some(Inconclusive::NotRun),
+        ..script("gameplay", Some("controls"), &[], false, true)
+    };
+    let scripts = [script("serve", None, &[], false, true), timed_out, not_run];
+    let ratings = validator_domain_ratings(&domains, &items, &scripts);
+    assert_eq!(ratings, broken);
+    assert_eq!(validator_rating(false, &ratings), Some(Rating::Broken));
+
+    // No script result at all, and a clean run that emitted no verdict.
+    assert_eq!(validator_domain_ratings(&domains, &items, &[]), broken);
+    let silent = [script("serve", None, &[], true, false)];
+    assert_eq!(validator_domain_ratings(&domains, &items, &silent), broken);
+
+    // A verdict naming an undeclared point decides nothing either.
+    let ghost = [decided("ghost", "ghost", true)];
+    assert_eq!(validator_domain_ratings(&domains, &items, &ghost), broken);
+
+    // One decided pass lifts the rule: the ordinary failure-cap rule applies.
+    let one = [decided("gameplay", "gameplay.ai", true)];
+    let ratings = validator_domain_ratings(&domains, &items, &one);
+    assert!(ratings.iter().all(|r| r.rating == Rating::Flawless));
+}
+
+#[test]
+fn an_erratum_excluded_point_never_counts_as_decided() {
+    let domains = [domain("gameplay")];
+    let mut excluded = capped_item("serve", FailureCap::Great, &["gameplay"]);
+    excluded.scored = false;
+    let mut category = capped_category(
+        "gameplay",
+        &[
+            ("ai", FailureCap::Great, &["gameplay"]),
+            ("hud", FailureCap::Great, &["gameplay"]),
+        ],
+    );
+    category.sub_items[0].scored = false;
+    let items = [
+        excluded,
+        category,
+        capped_item("pause", FailureCap::Great, &["gameplay"]),
+    ];
+
+    // Only the excluded whole item and the excluded sub-item are decided.
+    let scripts = [
+        decided("serve", "serve", true),
+        decided("gameplay", "gameplay.ai", true),
+    ];
+    let ratings = validator_domain_ratings(&domains, &items, &scripts);
+    assert_eq!(ratings[0].rating, Rating::Broken);
+    let score = validator_score(false, &items, &scripts);
+    assert_eq!(
+        score,
+        AggregateScore {
+            earned: 0.0,
+            total: 2,
+            reviews: 0
+        },
+        "every scored point counts as lost, the excluded ones toward neither side"
+    );
+
+    // A checklist that declares no scored point at all keeps the ordinary rule.
+    let mut only = capped_item("serve", FailureCap::Great, &["gameplay"]);
+    only.scored = false;
+    let ratings = validator_domain_ratings(&domains, &[only.clone()], &[]);
+    assert_eq!(ratings[0].rating, Rating::Flawless);
+    assert_eq!(
+        validator_score(false, &[only], &[]),
+        AggregateScore {
+            earned: 0.0,
+            total: 0,
+            reviews: 0
+        }
+    );
+}
+
+#[test]
+fn decides_a_scored_point_reads_whole_items_and_sub_items() {
+    let verdict = |id: &str| ReviewVerdict {
+        id: id.to_string(),
+        status: VerdictStatus::Fail,
+        note: None,
+    };
+    let mut excluded_sub = capped_category("gameplay", &[("ai", FailureCap::Great, &[])]);
+    excluded_sub.sub_items[0].scored = false;
+    let mut excluded_item = item("legacy", 1);
+    excluded_item.scored = false;
+    let mut weightless = item("weightless", 0);
+    weightless.failure_cap = None;
+    let items = [
+        capped_item("serve", FailureCap::Great, &[]),
+        capped_category("menu", &[("start", FailureCap::Great, &[])]),
+        excluded_sub,
+        excluded_item,
+        weightless,
+    ];
+
+    assert!(decides_a_scored_point(&items, &[verdict("serve")]));
+    assert!(decides_a_scored_point(&items, &[verdict("menu.start")]));
+    // An uncapped, weight-zero scored point still counts as decided.
+    assert!(decides_a_scored_point(&items, &[verdict("weightless")]));
+    // A category's own id names no point; the points are its sub-items.
+    assert!(!decides_a_scored_point(&items, &[verdict("menu")]));
+    assert!(!decides_a_scored_point(&items, &[verdict("gameplay.ai")]));
+    assert!(!decides_a_scored_point(&items, &[verdict("legacy")]));
+    assert!(!decides_a_scored_point(&items, &[verdict("ghost")]));
+    assert!(!decides_a_scored_point(
+        &items,
+        &[verdict(OVERALL_VERDICT_ID)]
+    ));
+    assert!(!decides_a_scored_point(&items, &[]));
+}
+
+#[test]
+fn a_run_that_decides_no_scored_point_scores_zero_over_the_declared_weight() {
+    let mut weighted = capped_item("serve", FailureCap::Great, &["gameplay"]);
+    weighted.weight = 3;
+    let items = [
+        weighted,
+        capped_category(
+            "gameplay",
+            &[
+                ("ai", FailureCap::Great, &["gameplay"]),
+                ("hud", FailureCap::Great, &["gameplay"]),
+            ],
+        ),
+    ];
+    let scripts = [
+        script("serve", None, &[], false, true),
+        script("gameplay", Some("ai"), &[], false, true),
+    ];
+    let zero = AggregateScore {
+        earned: 0.0,
+        total: 5,
+        reviews: 0,
+    };
+    assert_eq!(validator_score(false, &items, &scripts), zero);
+    // The toolchain gate composes: still broken, still zero over the declared total.
+    assert_eq!(validator_score(true, &items, &scripts), zero);
+    let ratings = validator_domain_ratings(&[domain("gameplay")], &items, &scripts);
+    assert_eq!(validator_rating(true, &ratings), Some(Rating::Broken));
+    assert_eq!(validator_rating(false, &ratings), Some(Rating::Broken));
+
+    let auto = crate::comparison::automated_verdicts(&scripts);
+    assert_eq!(
+        validator_review_score(false, &items, &auto, &[]),
+        Score {
+            earned: 0.0,
+            total: 5
+        }
+    );
+    let none: [&[ReviewVerdict]; 0] = [];
+    assert_eq!(validator_aggregate_score(false, &items, &auto, none), zero);
+    assert_eq!(
+        validator_aggregate_rating(false, &[domain("gameplay")], &items, &auto, none),
+        Some(Rating::Broken)
+    );
+
+    // The comparison core keeps counting only decided points: 0/0.
+    assert_eq!(
+        crate::comparison::covered_score(&items, &auto),
+        Score {
+            earned: 0.0,
+            total: 0
         }
     );
 }

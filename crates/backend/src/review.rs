@@ -17,7 +17,9 @@
 //! [validator-rated](test_cabinet_contracts::test_case::TestCaseVersion::validator_rated) version
 //! it is decided by the validators — every failing point lowers the domains it
 //! declares to its [`FailureCap`], and the run's rating is the lowest cap among
-//! its failures (see [`validator_domain_ratings`]) — **subject to reviewer
+//! its failures (see [`validator_domain_ratings`]), and a checklist that decides
+//! no scored point at all rates every domain [`Broken`](Rating::Broken) (see
+//! [`decides_a_scored_point`]) — **subject to reviewer
 //! overrides**: a reviewer may override any point's verdict (see
 //! [`effective_verdicts`]), each review's figures fold its overrides in
 //! ([`validator_review_rating`] / [`validator_review_score`]), and the run
@@ -328,8 +330,11 @@ pub fn aggregate_aesthetic(
 /// [`failure_cap`](test_cabinet_contracts::test_case::SubReviewItem::failure_cap). So a domain ends
 /// at the lowest cap among its failures. An inconclusive (`precondition_unmet`)
 /// point, a point with no script result at all, and a point excluded from scoring
-/// (`scored == false`, an erratum) never lower anything, and a point whose
-/// verdict id names no declared point is ignored.
+/// (`scored == false`, an erratum) never lower anything while some other scored
+/// point is decided, and a point whose verdict id names no declared point is
+/// ignored. When `items` declare scored points and the validators decide none of
+/// them, every domain is [`Broken`](Rating::Broken) (see
+/// [`decides_a_scored_point`]).
 ///
 /// `items` must be the run's **effective** checklist
 /// ([`TestCaseVersion::review_items_for`](test_cabinet_contracts::test_case::TestCaseVersion::review_items_for))
@@ -357,23 +362,33 @@ pub fn validator_domain_ratings(
 /// [effective checklist](effective_verdicts) (validator verdicts overlaid with
 /// the reviewer's overrides) rates through the identical rule.
 ///
-/// Every domain starts [`Flawless`](Rating::Flawless); each **failing** verdict
-/// on a **scored** point lowers each of the point's declared
+/// When `items` declare at least one scored point and `verdicts` decide none of
+/// them ([`decides_a_scored_point`]), every domain is [`Broken`](Rating::Broken),
+/// whatever left the points undecided: a build nothing could judge has
+/// demonstrated nothing. Otherwise every domain starts
+/// [`Flawless`](Rating::Flawless); each **failing** verdict on a **scored** point
+/// lowers each of the point's declared
 /// [`domains`](test_cabinet_contracts::test_case::SubReviewItem::domains) to `min(current,
 /// cap.rating())`, where `cap` is the point's
 /// [`failure_cap`](test_cabinet_contracts::test_case::SubReviewItem::failure_cap). A point with no
 /// verdict, a point excluded from scoring (`scored == false`, an erratum), and a
-/// verdict naming no declared point never lower anything.
+/// verdict naming no declared point never lower anything. Mirrors
+/// `verdictDomainRatings` in `ui-common/packages/run-stats/src/scoring.ts`.
 pub fn verdict_domain_ratings(
     domains: &[Domain],
     items: &[ReviewItem],
     verdicts: &[ReviewVerdict],
 ) -> Vec<DomainRating> {
+    let start = if decides_nothing(items, verdicts) {
+        Rating::Broken
+    } else {
+        Rating::Flawless
+    };
     let mut ratings: Vec<DomainRating> = domains
         .iter()
         .map(|domain| DomainRating {
             domain: domain.id.clone(),
-            rating: Rating::Flawless,
+            rating: start,
         })
         .collect();
     let mut lower = |domain: &str, cap: FailureCap| {
@@ -393,6 +408,64 @@ pub fn verdict_domain_ratings(
         }
     }
     ratings
+}
+
+/// Whether `verdicts` decide at least one **scored** point of `items`: some
+/// verdict names a scored item graded as a whole, or a scored sub-item of a scored
+/// item. The point's weight and failure cap play no part, so an uncapped or
+/// weight-zero scored point counts as decided. A verdict naming an undeclared
+/// point, the [`OVERALL_VERDICT_ID`], or a point an erratum excludes from scoring
+/// (`scored == false`) decides nothing. Mirrors `decidesAScoredPoint` in
+/// `ui-common/packages/run-stats/src/scoring.ts`.
+pub fn decides_a_scored_point(items: &[ReviewItem], verdicts: &[ReviewVerdict]) -> bool {
+    verdicts
+        .iter()
+        .any(|verdict| scored_point_ids(items).any(|id| id == verdict.id))
+}
+
+/// Whether `items` declare scored points and `verdicts` decide none of them — the
+/// condition under which a validator-rated checklist rates every domain
+/// [`Broken`](Rating::Broken) and scores zero over the declared weight. A
+/// checklist that declares no scored point at all (every point excluded by
+/// errata) keeps the ordinary rule.
+fn decides_nothing(items: &[ReviewItem], verdicts: &[ReviewVerdict]) -> bool {
+    scored_point_ids(items).next().is_some() && !decides_a_scored_point(items, verdicts)
+}
+
+/// The verdict ids of every scored point `items` declare: each scored item graded
+/// as a whole, and each scored sub-item of a scored item.
+fn scored_point_ids(items: &[ReviewItem]) -> impl Iterator<Item = String> + '_ {
+    items
+        .iter()
+        .filter(|item| item.scored)
+        .flat_map(|item| -> Vec<String> {
+            if item.sub_items.is_empty() {
+                vec![item.id.clone()]
+            } else {
+                item.sub_items
+                    .iter()
+                    .filter(|sub| sub.scored)
+                    .map(|sub| ReviewItem::sub_item_verdict_id(&item.id, &sub.id))
+                    .collect()
+            }
+        })
+}
+
+/// The score of a validator-rated checklist of `verdicts` over `items`: the
+/// [covered score](crate::comparison::covered_score), which counts on both sides
+/// only the points holding a verdict, except that a checklist deciding no scored
+/// point (while `items` declare some) scores zero over the declared weight of
+/// every scored point, so every scored point counts as lost. Erratum-excluded
+/// points count toward neither side either way. Mirrors `validatorCoveredScore`
+/// in `ui-common/packages/run-stats/src/scoring.ts`.
+pub fn validator_covered_score(items: &[ReviewItem], verdicts: &[ReviewVerdict]) -> Score {
+    if decides_nothing(items, verdicts) {
+        return Score {
+            earned: 0.0,
+            total: score_checklist(items, &[]).total,
+        };
+    }
+    crate::comparison::covered_score(items, verdicts)
 }
 
 /// The failure cap and domains of the **scored** point `verdict_id` names in
@@ -423,9 +496,12 @@ fn failing_point<'a>(
 
 /// **The validator-decided functional rating of a run**: the worst across its
 /// [per-domain validator ratings](validator_domain_ratings), composed with the
-/// toolchain gate ([`gated_rating`]). Always `Some` for a validator-rated run —
-/// with zero failures it is [`Flawless`](Rating::Flawless) — since the domain set
-/// is never empty. Mirrors `validatorRating` in `ui-common/packages/run-stats/src/scoring.ts`.
+/// toolchain gate ([`gated_rating`]). Always `Some` for a validator-rated run,
+/// since the domain set is never empty: with zero failures it is
+/// [`Flawless`](Rating::Flawless), unless the checklist decided no scored point,
+/// in which case [`verdict_domain_ratings`] has already rated every domain
+/// [`Broken`](Rating::Broken). Mirrors `validatorRating` in
+/// `ui-common/packages/run-stats/src/scoring.ts`.
 pub fn validator_rating(gated: bool, domain_ratings: &[DomainRating]) -> Option<Rating> {
     gated_rating(
         gated,
@@ -439,8 +515,9 @@ pub fn validator_rating(gated: bool, domain_ratings: &[DomainRating]) -> Option<
 /// gate ([`gated_score`]). This is the run's score while it has no reviews —
 /// available the moment the run completes ([`AggregateScore::reviews`] is `0`);
 /// once reviews exist, [`validator_aggregate_score`] folds their overrides in. A
-/// thin wrapper over [`crate::comparison::covered_score`] on the
-/// [validators' verdicts](crate::comparison::automated_verdicts). Mirrors
+/// thin wrapper over [`validator_covered_score`] on the
+/// [validators' verdicts](crate::comparison::automated_verdicts), so validators
+/// that decided no scored point score zero over the declared weight. Mirrors
 /// `validatorScore` in `ui-common/packages/run-stats/src/scoring.ts`.
 pub fn validator_score(
     gated: bool,
@@ -455,15 +532,15 @@ pub fn validator_score(
 }
 
 /// The verdict-slice core of [`validator_score`], and the zero-review fixed point
-/// of [`validator_aggregate_score`]: the [covered
-/// score](crate::comparison::covered_score) of `verdicts` over `items`, gated,
-/// with [`AggregateScore::reviews`] `0`.
+/// of [`validator_aggregate_score`]: the [validator covered
+/// score](validator_covered_score) of `verdicts` over `items`, gated, with
+/// [`AggregateScore::reviews`] `0`.
 fn verdicts_own_score(
     gated: bool,
     items: &[ReviewItem],
     verdicts: &[ReviewVerdict],
 ) -> AggregateScore {
-    let Score { earned, total } = crate::comparison::covered_score(items, verdicts);
+    let Score { earned, total } = validator_covered_score(items, verdicts);
     AggregateScore {
         earned: if gated { 0.0 } else { earned },
         total,
@@ -519,15 +596,16 @@ pub fn validator_review_rating(
     validator_rating(gated, &verdict_domain_ratings(domains, items, &effective))
 }
 
-/// One review's score on a validator-rated run: the [covered
-/// score](crate::comparison::covered_score) of its [effective
+/// One review's score on a validator-rated run: the [validator covered
+/// score](validator_covered_score) of its [effective
 /// checklist](effective_verdicts) — numerator **and** denominator restricted to
 /// the points holding an effective verdict, mirroring
 /// [`automated_only_score`](crate::comparison::automated_only_score)'s exclusion
-/// rule, with erratum-excluded points counting toward neither side — zeroed by
-/// the toolchain gate. A review with no overrides reproduces the automated-only
-/// score exactly; one that decides a point the validators left undecided grows
-/// the denominator by that point's weight. Mirrors `validatorReviewScore` in
+/// rule, with erratum-excluded points counting toward neither side, or zero over
+/// the declared weight when the effective checklist decides no scored point —
+/// zeroed by the toolchain gate. A review with no overrides reproduces the
+/// validators' score exactly; one that decides a point the validators left
+/// undecided grows the denominator by that point's weight. Mirrors `validatorReviewScore` in
 /// `ui-common/packages/run-stats/src/scoring.ts`.
 pub fn validator_review_score(
     gated: bool,
@@ -536,7 +614,7 @@ pub fn validator_review_score(
     overrides: &[ReviewVerdict],
 ) -> Score {
     let effective = effective_verdicts(auto, overrides);
-    let score = crate::comparison::covered_score(items, &effective);
+    let score = validator_covered_score(items, &effective);
     Score {
         earned: if gated { 0.0 } else { score.earned },
         total: score.total,
@@ -583,7 +661,9 @@ pub fn validator_aggregate_rating<'a>(
 /// **average** of the reviews' [effective scores](validator_review_score) over
 /// the shared total (via [`aggregate_score`]). A review with no overrides
 /// reproduces the validators' figures exactly, so today's behavior is the fixed
-/// point. The toolchain gate applies at this aggregation seam ([`gated_score`]).
+/// point; a review whose effective checklist decides no scored point contributes
+/// zero over the declared weight ([`validator_covered_score`]). The toolchain gate
+/// applies at this aggregation seam ([`gated_score`]).
 /// Mirrors `validatorAggregateScore` in `ui-common/packages/run-stats/src/scoring.ts`.
 pub fn validator_aggregate_score<'a>(
     gated: bool,
@@ -593,9 +673,7 @@ pub fn validator_aggregate_score<'a>(
 ) -> AggregateScore {
     let scores: Vec<Score> = reviews
         .into_iter()
-        .map(|overrides| {
-            crate::comparison::covered_score(items, &effective_verdicts(auto, overrides))
-        })
+        .map(|overrides| validator_covered_score(items, &effective_verdicts(auto, overrides)))
         .collect();
     let Some(aggregate) = aggregate_score(&scores) else {
         return verdicts_own_score(gated, items, auto);

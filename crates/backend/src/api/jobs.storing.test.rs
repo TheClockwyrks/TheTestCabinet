@@ -84,6 +84,13 @@ async fn lose(state: &AppState, job_id: &str) {
 /// Enqueue `job_id` and move it to `running` as a claimed, executing run is.
 async fn running_job(state: &AppState, job_id: &str) {
     enqueue_other(state, job_id, "pong", None).await;
+    let claimed = state
+        .db
+        .claim_next_job("2026-10-01T00:10:00Z")
+        .await
+        .unwrap()
+        .expect("a claimable job");
+    assert_eq!(claimed.id, job_id);
     accepted(state, job_id, update(DriverState::Running, None, None)).await;
 }
 

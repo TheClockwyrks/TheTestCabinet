@@ -2,7 +2,7 @@
 //! automated-only score and pass rate, summed diagnostics, and confound detection —
 //! and two harnesses' arms never merge.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 
 use super::*;
 use crate::comparison::{ComparisonArm, ComparisonConfig, ComparisonControls};
@@ -14,14 +14,28 @@ use test_cabinet_contracts::run_record::{
 use test_cabinet_contracts::test_case::{ReviewItem, TestType};
 use test_cabinet_contracts::validation::{AutoVerdict, DebugScriptResult, ValidationSummary};
 
-/// Every id the config's arms record: the liveness set of a store where nothing has
-/// been deleted, which is what most of these tests are about.
-fn all_live(config: &ComparisonConfig) -> BTreeSet<String> {
-    config
-        .arms
-        .iter()
-        .flat_map(|arm| arm.run_ids.iter().cloned())
+/// The runs each arm holds, by arm id, with nothing in flight.
+fn holding(arms: &[(&str, &[&str])]) -> BTreeMap<String, ArmHolding> {
+    arms.iter()
+        .map(|(arm, ids)| {
+            (
+                arm.to_string(),
+                ArmHolding {
+                    run_ids: ids.iter().map(|id| id.to_string()).collect(),
+                    in_flight: 0,
+                    unlaunchable: None,
+                },
+            )
+        })
         .collect()
+}
+
+/// What [`pi_vs_kilo`]'s arms hold: three Pi runs and two Kilo runs.
+fn pi_vs_kilo_held() -> BTreeMap<String, ArmHolding> {
+    holding(&[
+        ("pi", &["pi-1", "pi-2", "pi-3"]),
+        ("kilo", &["kilo-1", "kilo-2"]),
+    ])
 }
 
 /// A binary review item worth `weight`.
@@ -185,7 +199,6 @@ fn pi_vs_kilo() -> ComparisonConfig {
                 model_id: Some("anthropic/claude-opus-4.8".into()),
                 gg_config_id: None,
                 gg_slot_models: BTreeMap::new(),
-                run_ids: vec!["pi-1".into(), "pi-2".into(), "pi-3".into()],
             },
             ComparisonArm {
                 id: "kilo".into(),
@@ -194,7 +207,6 @@ fn pi_vs_kilo() -> ComparisonConfig {
                 model_id: Some("anthropic/claude-opus-4.8".into()),
                 gg_config_id: None,
                 gg_slot_models: BTreeMap::new(),
-                run_ids: vec!["kilo-1".into(), "kilo-2".into()],
             },
         ],
         n: 3,
@@ -244,7 +256,7 @@ fn folds_each_arm_into_its_own_distribution_and_never_merges_them() {
     }
 
     let config = pi_vs_kilo();
-    let arms = aggregate_comparison(&config, &items, &runs, &all_live(&config));
+    let arms = aggregate_comparison(&config, &items, false, &pi_vs_kilo_held(), &runs);
     assert_eq!(arms.len(), 2);
 
     let pi = &arms[0];
@@ -310,9 +322,9 @@ fn a_run_that_drifts_from_a_control_is_surfaced_as_a_confound() {
 
     let mut config = pi_vs_kilo();
     config.arms.truncate(1);
-    config.arms[0].run_ids = vec!["pi-1".into(), "pi-2".into()];
+    let held = holding(&[("pi", &["pi-1", "pi-2"])]);
 
-    let arms = aggregate_comparison(&config, &items, &runs, &all_live(&config));
+    let arms = aggregate_comparison(&config, &items, false, &held, &runs);
     let confound = arms[0]
         .confounds
         .iter()
@@ -365,21 +377,20 @@ fn a_harness_arm_and_a_gg_arm_are_aggregated_side_by_side() {
 
     let mut config = pi_vs_kilo();
     config.arms.truncate(1);
-    config.arms[0].run_ids = vec!["pi-1".into()];
+    let held = holding(&[("pi", &["pi-1"]), ("gg", &["gg-1", "gg-2"])]);
     config.arms.push(ComparisonArm {
         id: "gg".into(),
         label: "gg — configuration A".into(),
         harness_slug: None,
         model_id: None,
-        gg_config_id: Some("builtin:default".into()),
+        gg_config_id: Some("saved:cfg-a".into()),
         gg_slot_models: BTreeMap::from([(
             "primary".to_string(),
             "anthropic/claude-opus-4.8".to_string(),
         )]),
-        run_ids: vec!["gg-1".into(), "gg-2".into()],
     });
 
-    let arms = aggregate_comparison(&config, &items, &runs, &all_live(&config));
+    let arms = aggregate_comparison(&config, &items, false, &held, &runs);
     assert_eq!(arms.len(), 2);
     // Each arm keeps its own runs and its own distribution — never merged.
     assert_eq!(arms[0].n_observed, 1);
@@ -411,9 +422,9 @@ fn a_run_under_a_different_harness_than_the_arm_declares_is_a_confound() {
 
     let mut config = pi_vs_kilo();
     config.arms.truncate(1);
-    config.arms[0].run_ids = vec!["pi-1".into()];
+    let held = holding(&[("pi", &["pi-1"])]);
 
-    let arms = aggregate_comparison(&config, &items, &runs, &all_live(&config));
+    let arms = aggregate_comparison(&config, &items, false, &held, &runs);
     let confound = arms[0]
         .confounds
         .iter()
@@ -427,8 +438,9 @@ fn an_arm_with_no_present_runs_summarizes_to_nothing() {
     let items = [item("a", 3)];
     let runs: BTreeMap<String, RunRecord> = BTreeMap::new();
     let config = pi_vs_kilo();
-    let arms = aggregate_comparison(&config, &items, &runs, &all_live(&config));
+    let arms = aggregate_comparison(&config, &items, false, &BTreeMap::new(), &runs);
     assert_eq!(arms[0].n_observed, 0);
+    assert!(arms[0].run_ids.is_empty());
     assert!(arms[0].cost.is_none());
     assert!(arms[0].tokens.is_none());
     assert!(arms[0].session_duration.is_none());
@@ -465,9 +477,9 @@ fn session_duration_summarizes_measured_runs_and_skips_unmeasured_ones() {
 
     let mut config = pi_vs_kilo();
     config.arms.truncate(1);
-    config.arms[0].run_ids = vec!["pi-1".into(), "pi-2".into(), "pi-3".into()];
+    let held = holding(&[("pi", &["pi-1", "pi-2", "pi-3"])]);
 
-    let arms = aggregate_comparison(&config, &items, &runs, &all_live(&config));
+    let arms = aggregate_comparison(&config, &items, false, &held, &runs);
     let summary = arms[0]
         .session_duration
         .as_ref()
@@ -480,18 +492,14 @@ fn session_duration_summarizes_measured_runs_and_skips_unmeasured_ones() {
     assert!((summary.max - 150.0).abs() < 1e-9);
 }
 
-/// Every counted run is reported as a raw point, in the sorted order of the ids the
-/// arm recorded, carrying the values its distributions summarize, with an unreported
-/// metric left absent. A point names the stored run, whose id is its own rather than
-/// the recorded one: the arm records the job a launch handed back.
+/// Every held run is reported as a raw point, in sorted run-id order rather than the
+/// order the runs finished, carrying the values its distributions summarize, with an
+/// unreported metric left absent.
 #[test]
-fn an_arm_reports_each_counted_run_as_a_raw_point() {
+fn an_arm_reports_each_held_run_as_a_raw_point() {
     let items = [item("a", 3)];
     let mut runs = BTreeMap::new();
-    for (recorded, id, cost, session) in [
-        ("job-2", "run-b", 0.75, None),
-        ("job-1", "run-z", 0.5, Some(90.0)),
-    ] {
+    for (id, cost, session) in [("run-z", 0.5, Some(90.0)), ("run-b", 0.75, None)] {
         let mut run = record(Run {
             id,
             harness: HarnessSlug::Pi,
@@ -503,29 +511,28 @@ fn an_arm_reports_each_counted_run_as_a_raw_point() {
             auth: AuthMode::ApiKey,
         });
         run.metrics.session_seconds = session;
-        runs.insert(recorded.to_string(), run);
+        runs.insert(id.to_string(), run);
     }
 
     let mut config = pi_vs_kilo();
     config.arms.truncate(1);
-    // `job-3` was recorded but never counted, so it has no point.
-    config.arms[0].run_ids = vec!["job-2".into(), "job-1".into(), "job-3".into()];
+    let held = holding(&[("pi", &["run-z", "run-b"])]);
 
-    let arms = aggregate_comparison(&config, &items, &runs, &all_live(&config));
+    let arms = aggregate_comparison(&config, &items, false, &held, &runs);
     assert_eq!(
         arms[0].run_points,
         vec![
-            ArmRunPoint {
-                run_id: "run-z".into(),
-                cost: Some(0.5),
-                tokens: Some(100.0),
-                session_seconds: Some(90.0),
-            },
             ArmRunPoint {
                 run_id: "run-b".into(),
                 cost: Some(0.75),
                 tokens: Some(100.0),
                 session_seconds: None,
+            },
+            ArmRunPoint {
+                run_id: "run-z".into(),
+                cost: Some(0.5),
+                tokens: Some(100.0),
+                session_seconds: Some(90.0),
             },
         ]
     );
@@ -575,9 +582,9 @@ fn a_run_on_a_different_engine_than_the_comparison_declares_is_a_confound() {
 
     let mut config = pi_vs_kilo();
     config.arms.truncate(1);
-    config.arms[0].run_ids = vec!["pi-1".into(), "pi-2".into()];
+    let held = holding(&[("pi", &["pi-1", "pi-2"])]);
 
-    let arms = aggregate_comparison(&config, &items, &runs, &all_live(&config));
+    let arms = aggregate_comparison(&config, &items, false, &held, &runs);
     let confound = arms[0]
         .confounds
         .iter()
@@ -619,9 +626,9 @@ fn an_arm_whose_runs_all_ran_the_declared_engine_is_not_confounded() {
     let mut config = pi_vs_kilo();
     config.controls.engine_slug = "simple-2d".into();
     config.arms.truncate(1);
-    config.arms[0].run_ids = vec!["pi-1".into(), "pi-2".into()];
+    let held = holding(&[("pi", &["pi-1", "pi-2"])]);
 
-    let arms = aggregate_comparison(&config, &items, &runs, &all_live(&config));
+    let arms = aggregate_comparison(&config, &items, false, &held, &runs);
     assert!(
         arms[0].confounds.is_empty(),
         "an arm that held every control constant must report nothing: {:?}",
@@ -629,53 +636,153 @@ fn an_arm_whose_runs_all_ran_the_declared_engine_is_not_confounded() {
     );
 }
 
-/// An arm reports the recorded ids that still exist, in launch order, and it is a
-/// wider set than the runs it aggregates: a run launched a minute ago has no record
-/// yet, so a top-up counted off the reported runs alone would launch it twice.
+/// An arm reports the runs it holds in the order they finished and its jobs in flight
+/// as it was handed them. A held run whose record no longer decodes keeps its place in
+/// `run_ids` and contributes no figure, so `n_observed` falls below it.
 #[test]
-fn an_arm_reports_the_recorded_ids_that_still_exist() {
+fn an_arm_reports_its_held_runs_and_its_jobs_in_flight() {
     let items = [item("a", 3)];
     let mut runs = BTreeMap::new();
-    runs.insert(
-        "pi-1".into(),
-        record(Run {
-            id: "pi-1",
+    for id in ["pi-2", "pi-1"] {
+        runs.insert(
+            id.to_string(),
+            record(Run {
+                id,
+                harness: HarnessSlug::Pi,
+                model: "anthropic/claude-opus-4.8",
+                cost: 0.5,
+                tokens: 100,
+                tool_calls: &[],
+                scripts: vec![script("a", true)],
+                auth: AuthMode::ApiKey,
+            }),
+        );
+    }
+
+    // `pi-2` finished first, and `pi-unreadable` is held but has no record this build
+    // can read.
+    let config = pi_vs_kilo();
+    let held = BTreeMap::from([
+        (
+            "pi".to_string(),
+            ArmHolding {
+                run_ids: vec!["pi-2".into(), "pi-1".into(), "pi-unreadable".into()],
+                in_flight: 0,
+                unlaunchable: None,
+            },
+        ),
+        (
+            "kilo".to_string(),
+            ArmHolding {
+                run_ids: Vec::new(),
+                in_flight: 2,
+                unlaunchable: None,
+            },
+        ),
+    ]);
+    let arms = aggregate_comparison(&config, &items, false, &held, &runs);
+
+    assert_eq!(arms[0].run_ids, vec!["pi-2", "pi-1", "pi-unreadable"]);
+    assert_eq!(arms[0].n_observed, 2);
+    assert_eq!(arms[0].in_flight, 0);
+    assert_eq!(arms[1].run_ids, Vec::<String>::new());
+    assert_eq!(arms[1].in_flight, 2);
+    assert_eq!(arms[1].n_observed, 0);
+}
+
+/// A run another arm holds is never read into this one, even though every record sits in
+/// one shared map.
+#[test]
+fn an_arm_reads_only_the_runs_it_holds() {
+    let items = [item("a", 3)];
+    let mut runs = BTreeMap::new();
+    for id in ["pi-1", "kilo-1"] {
+        runs.insert(
+            id.to_string(),
+            record(Run {
+                id,
+                harness: HarnessSlug::Pi,
+                model: "anthropic/claude-opus-4.8",
+                cost: 0.5,
+                tokens: 100,
+                tool_calls: &[],
+                scripts: vec![script("a", true)],
+                auth: AuthMode::ApiKey,
+            }),
+        );
+    }
+    let config = pi_vs_kilo();
+    let held = holding(&[("pi", &["pi-1"])]);
+    let arms = aggregate_comparison(&config, &items, false, &held, &runs);
+    assert_eq!(arms[0].n_observed, 1);
+    assert_eq!(arms[1].n_observed, 0);
+    assert!(arms[1].run_ids.is_empty());
+}
+
+/// A debug-script result whose suite never finished: the whole-run cap stopped it,
+/// so it decided nothing.
+fn timed_out_script(item_id: &str) -> DebugScriptResult {
+    DebugScriptResult {
+        ran: false,
+        precondition_unmet: true,
+        inconclusive: Some(test_cabinet_contracts::validation::Inconclusive::TimedOut),
+        detail: Some("the vitest step exceeded its 2700s cap".into()),
+        verdicts: vec![],
+        ..script(item_id, true)
+    }
+}
+
+/// On a validator-rated version a completed run whose validators decided no scored
+/// point is broken, so a comparison scores it zero over the declared weight and fails
+/// it on the pass rate, as every other seam does. A run that never completed has no
+/// build to judge and stays out of both, and a version that is not validator-rated
+/// keeps leaving a run with no covered point out.
+#[test]
+fn a_validator_rated_run_that_decided_nothing_scores_zero_over_the_declared_weight() {
+    let items = [item("a", 3), item("b", 2)];
+    let mut runs = BTreeMap::new();
+    for (id, scripts, state) in [
+        (
+            "pi-1",
+            vec![script("a", true), script("b", true)],
+            RunState::Completed,
+        ),
+        (
+            "pi-2",
+            vec![timed_out_script("a"), timed_out_script("b")],
+            RunState::Completed,
+        ),
+        ("pi-3", vec![], RunState::TimedOut),
+    ] {
+        let mut run = record(Run {
+            id,
             harness: HarnessSlug::Pi,
             model: "anthropic/claude-opus-4.8",
             cost: 0.5,
             tokens: 100,
             tool_calls: &[],
-            scripts: vec![script("a", true)],
+            scripts,
             auth: AuthMode::ApiKey,
-        }),
-    );
+        });
+        run.status.state = state;
+        runs.insert(id.to_string(), run);
+    }
+    let mut config = pi_vs_kilo();
+    config.arms.truncate(1);
+    let held = holding(&[("pi", &["pi-1", "pi-2", "pi-3"])]);
 
-    // `pi-1` has reported back, `pi-3` is still in flight, and `pi-2` was deleted.
-    let config = pi_vs_kilo();
-    let live = BTreeSet::from(["pi-1".to_string(), "pi-3".to_string()]);
-    let arms = aggregate_comparison(&config, &items, &runs, &live);
+    let arms = aggregate_comparison(&config, &items, true, &held, &runs);
+    let score = arms[0].score.as_ref().expect("two scored runs");
+    assert_eq!(score.n, 2, "the run that never completed is not scored");
+    let totals: Vec<(f64, u32)> = score.points.iter().map(|p| (p.earned, p.total)).collect();
+    assert_eq!(totals, [(5.0, 5), (0.0, 5)]);
+    assert!((score.mean_fraction - 0.5).abs() < 1e-9);
+    let pass = arms[0].pass_rate.as_ref().expect("a pass rate");
+    assert_eq!((pass.passed, pass.n), (1, 2));
 
-    // Launch order, not sorted order, and not the order the records happened to land.
-    assert_eq!(arms[0].live_run_ids, vec!["pi-1", "pi-3"]);
-    // The three figures are three different questions: what was ever launched, what
-    // exists now, and what has reported back.
-    assert_eq!(arms[0].arm.run_ids.len(), 3);
-    assert_eq!(arms[0].n_observed, 1);
-    assert_eq!(arms[0].n_desired, 3);
-    // An arm whose every run is gone reports none, which is what lets it be
-    // relaunched from nothing.
-    assert!(arms[1].live_run_ids.is_empty());
-}
-
-/// An id another arm records is not folded into this one: liveness is looked up in a
-/// shared set, but an arm only ever reports its own.
-#[test]
-fn an_arm_reports_only_its_own_live_ids() {
-    let items = [item("a", 3)];
-    let runs = BTreeMap::new();
-    let config = pi_vs_kilo();
-    let live = BTreeSet::from(["pi-2".to_string(), "kilo-1".to_string()]);
-    let arms = aggregate_comparison(&config, &items, &runs, &live);
-    assert_eq!(arms[0].live_run_ids, vec!["pi-2"]);
-    assert_eq!(arms[1].live_run_ids, vec!["kilo-1"]);
+    let arms = aggregate_comparison(&config, &items, false, &held, &runs);
+    let score = arms[0].score.as_ref().expect("one scored run");
+    assert_eq!(score.n, 1, "a legacy version leaves an uncovered run out");
+    let pass = arms[0].pass_rate.as_ref().expect("a pass rate");
+    assert_eq!((pass.passed, pass.n), (1, 1));
 }
