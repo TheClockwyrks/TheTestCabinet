@@ -41,6 +41,12 @@ talks to is a path of that origin:
 - `/arena/` is the [arena service](/components/arena/overview/), which runs
   [adversarial](/testing/adversarial/overview/) matches and tournaments.
 
+The console reopens its console stream at once, without backoff, when the
+window receives the `tcab:resume` event. The
+[operator client](/components/client/overview/) dispatches it when the app
+returns from the background, so a run watched before the app was suspended
+resumes updating.
+
 The origin is a Cloudflare Tunnel into the cluster, fronted by Cloudflare
 Access; see [Edge](/deployment/kubernetes/edge/). A person signs in on the
 Microsoft login page the first time they open the origin, and the browser holds
