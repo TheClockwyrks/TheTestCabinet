@@ -2,12 +2,12 @@
 # Checks out the submodules the workspace builds against over SSH, through the
 # host's agent that tools/ssh-agent.sh publishes. The submodules named as
 # arguments are checked out, and with none named, `contracts`, `engines`, `gg`,
-# `microservice-dispatcher`, `microservice-driver`, `microservice-repos`, `tool-model-core`, `tool-paint`,
+# `microservice-artifacts`, `microservice-dispatcher`, `microservice-driver`, `microservice-repos`, `tool-model-core`, `tool-paint`,
 # `tool-particle`, `tool-sprite`, `tool-voxel`, `tool-mc`, `tool-sn`, `tool-dc`,
 # `tool-audio-core`, `tool-sfx-synth`, `tool-sfx-sample`, `tool-music`,
 # `test-suites` and `ui-common`: contracts/ and engines/ hold the crates and packages every build
 # compiles against, and the npm workspace lists their packages and ui-common/'s,
-# so `npm ci` needs the three populated; gg/, microservice-dispatcher/, microservice-driver/,
+# so `npm ci` needs the three populated; gg/, microservice-artifacts/, microservice-dispatcher/, microservice-driver/,
 # microservice-repos/, tool-model-core/, tool-paint/, tool-particle/,
 # tool-sprite/, tool-voxel/, tool-mc/, tool-sn/, tool-dc/, tool-audio-core/,
 # tool-sfx-synth/, tool-sfx-sample/ and tool-music/ hold the crates the patch table names, and
@@ -24,7 +24,7 @@
 #
 # Never fails the step it runs from: a host with no agent, or no network, keeps
 # a working container, and `git submodule update --init contracts engines gg
-# microservice-dispatcher microservice-driver microservice-repos tool-model-core tool-paint
+# microservice-artifacts microservice-dispatcher microservice-driver microservice-repos tool-model-core tool-paint
 # tool-particle tool-sprite tool-voxel tool-mc tool-sn tool-dc tool-audio-core
 # tool-sfx-synth tool-sfx-sample tool-music test-suites ui-common` (or this
 # script) checks them out once it has one. A checkout with no .gitmodules has
@@ -49,7 +49,8 @@
 set -uo pipefail
 
 # How long the checkout runs for, in seconds, where the environment states no
-# deadline of its own. contracts, engines, gg, microservice-dispatcher,
+# deadline of its own. contracts, engines, gg, microservice-artifacts,
+# microservice-dispatcher,
 # deadline of its own. contracts, engines, gg, microservice-driver,
 # microservice-repos, tool-model-core,
 # tool-paint, tool-particle, tool-sprite, tool-voxel, tool-mc, tool-sn, tool-dc, tool-audio-core, tool-sfx-synth, tool-sfx-sample, tool-music and test-suites are a few megabytes each and clone in seconds; the deadline is for a connection that never answers.
@@ -76,7 +77,7 @@ fi
 
 submodules=("$@")
 if [ "${#submodules[@]}" -eq 0 ]; then
-	submodules=(contracts engines gg microservice-dispatcher microservice-driver microservice-repos tool-model-core tool-paint tool-particle tool-sprite tool-voxel tool-mc tool-sn tool-dc tool-audio-core tool-sfx-synth tool-sfx-sample tool-music test-suites ui-common)
+	submodules=(contracts engines gg microservice-artifacts microservice-dispatcher microservice-driver microservice-repos tool-model-core tool-paint tool-particle tool-sprite tool-voxel tool-mc tool-sn tool-dc tool-audio-core tool-sfx-synth tool-sfx-sample tool-music test-suites ui-common)
 fi
 
 if mkdir -p "${HOME}/.ssh" && chmod 700 "${HOME}/.ssh"; then
@@ -124,6 +125,6 @@ case "$status" in
 		echo "submodule checkout did not finish within ${deadline}s and was stopped; SSH reached no answer, which is a key waiting on an approval or a connection carrying nothing"
 		echo "$manual"
 		;;
-	*) echo "submodule checkout failed; contracts/, engines/, gg/, microservice-dispatcher/, microservice-driver/, microservice-repos/, tool-model-core/, tool-paint/, tool-particle/, tool-sprite/, tool-voxel/, tool-mc/, tool-sn/, tool-dc/, tool-audio-core/, tool-sfx-synth/, tool-sfx-sample/, tool-music/ and ui-common/ are build inputs and test-suites/ the suites checkout The Test Cabinet ingests; ${manual}" ;;
+	*) echo "submodule checkout failed; contracts/, engines/, gg/, microservice-artifacts/, microservice-dispatcher/, microservice-driver/, microservice-repos/, tool-model-core/, tool-paint/, tool-particle/, tool-sprite/, tool-voxel/, tool-mc/, tool-sn/, tool-dc/, tool-audio-core/, tool-sfx-synth/, tool-sfx-sample/, tool-music/ and ui-common/ are build inputs and test-suites/ the suites checkout The Test Cabinet ingests; ${manual}" ;;
 esac
 exit 0

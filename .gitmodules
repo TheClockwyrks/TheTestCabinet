@@ -17,6 +17,10 @@
 	path = gg
 	url = ../gg
 	branch = .
+[submodule "microservice-artifacts"]
+	path = microservice-artifacts
+	url = ../microservice-artifacts
+	branch = .
 [submodule "microservice-dispatcher"]
 	path = microservice-dispatcher
 	url = ../microservice-dispatcher

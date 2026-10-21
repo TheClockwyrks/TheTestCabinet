@@ -5222,3 +5222,7 @@ version = "0.0.0"
 [[patch.unused]]
 name = "test-cabinet-sfx-synth"
 version = "0.0.0"
+
+[[patch.unused]]
+name = "test-cabinet-artifacts"
+version = "0.0.0"
