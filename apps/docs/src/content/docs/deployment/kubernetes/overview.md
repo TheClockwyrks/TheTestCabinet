@@ -229,7 +229,9 @@ the commit's submodule pointers name. A push to `staging` rolls `tcab-staging` o
 overlay onto one commit's set, and the project's `before` and `after` steps
 around it (`.azure/project/deploy-steps.yml`):
 
-1. before: `scripts/ci/pre-deploy.sh staging <sha>` pins the overlay with
+1. before: `scripts/ci/pre-deploy.sh staging <sha>` runs the catalog
+   preflight first (see [The catalog checks](#the-catalog-checks)), so a deploy
+   it refuses has retired nothing, pins the overlay with
    `pin-images.sh` from the commit's submodule pointers, records the commit the
    backend runs now as `TCAB_PREVIOUS_COMMIT`, sets a 600-second rollout
    timeout, and retires the objects of an earlier shape (see
