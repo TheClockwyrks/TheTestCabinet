@@ -265,17 +265,17 @@ CRATES: dict[str, tuple[str, str]] = {
 # The release tag each repository's dependents pin, for the repositories that
 # have cut one. A manifest names a dependency at its public source on this tag,
 # and on the `master` branch while the repository has none. `contracts` cut
-# `v0.2.3` and `engines` `v1.1.2`, whose runs published their packages to the
-# feed at those versions. `tool-model-core` cut `v0.1.1`, the shared model
-# libraries the model tools build on, and `tool-audio-core` cut `v0.1.1`, the
+# `v0.2.4` and `engines` `v1.1.3`, whose runs published their packages to the
+# feed at those versions. `tool-model-core` cut `v0.1.2`, the shared model
+# libraries the model tools build on, and `tool-audio-core` cut `v0.1.2`, the
 # shared audio library the audio tools build on; neither publishes a package.
-# Every one of the four names contracts at `v0.2.3`, so the driver, whose build
+# Every one of the four names contracts at `v0.2.4`, so the driver, whose build
 # reaches all of them, compiles one copy of the contracts crates.
 TAGS: dict[str, str] = {
-    "contracts": "v0.2.3",
-    "engines": "v1.1.2",
-    "tool-model-core": "v0.1.1",
-    "tool-audio-core": "v0.1.1",
+    "contracts": "v0.2.4",
+    "engines": "v1.1.3",
+    "tool-model-core": "v0.1.2",
+    "tool-audio-core": "v0.1.2",
 }
 
 # The npm registry of the `the-test-cabinet` feed of the project's Azure
