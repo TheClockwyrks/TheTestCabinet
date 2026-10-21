@@ -3,9 +3,10 @@
 #
 # Each case pins a temporary copy of this checkout's deployments/k8s, named to the
 # script by TCAB_K8S_ROOT, so the checkout itself is never touched. The subject is
-# the kustomization it writes: the four images this repository builds at the
-# commit, the artifacts service's, the dispatcher's, the driver's and the repos
-# service's images at the commits their submodule pointers name, the dispatcher's patch (its driver image
+# the kustomization it writes: the three images this repository builds at the
+# commit, the arena's, the artifacts service's, the dispatcher's, the driver's and
+# the repos service's images at the commits their submodule pointers name, the
+# dispatcher's patch (its driver image
 # and run-container tag at the driver's pointer) once however often it runs, and
 # its refusals. The pointers are handed to the script with TCAB_PIN_GITLINKS, since
 # the commits pinned here are not in any checkout, except in the case that reads
@@ -66,6 +67,8 @@ DRIVER="cdef0123456789abcdef0123456789abcdef0123"
 DRIVER_OTHER="ba9876543210fedcba9876543210fedcba987654"
 ARTIFACTS="abcdef0123456789abcdef0123456789abcdef01"
 ARTIFACTS_OTHER="6543210fedcba9876543210fedcba9876543210f"
+ARENA="9876543210abcdef9876543210abcdef98765432"
+ARENA_OTHER="13579bdf02468ace13579bdf02468ace13579bdf"
 
 stub_path=""
 real_kubectl=1
@@ -85,9 +88,9 @@ fresh_tree() {
 	printf '%s' "$tree/k8s"
 }
 
-pin() { # tree overlay commit [repos-pointer] [dispatcher-pointer] [driver-pointer] [artifacts-pointer]
+pin() { # tree overlay commit [repos-pointer] [dispatcher-pointer] [driver-pointer] [artifacts-pointer] [arena-pointer]
 	(cd / && env PATH="${stub_path}$PATH" TCAB_K8S_ROOT="$1" \
-		TCAB_PIN_GITLINKS="microservice-artifacts=${7:-$ARTIFACTS} microservice-dispatcher=${5:-$DISPATCHER} microservice-driver=${6:-$DRIVER} microservice-repos=${4:-$REPOS}" \
+		TCAB_PIN_GITLINKS="microservice-arena=${8:-$ARENA} microservice-artifacts=${7:-$ARTIFACTS} microservice-dispatcher=${5:-$DISPATCHER} microservice-driver=${6:-$DRIVER} microservice-repos=${4:-$REPOS}" \
 		"$CI_DIR/pin-images.sh" "$2" "$3" 2>&1)
 }
 
@@ -98,7 +101,7 @@ for overlay in staging prod; do
 	status=$?
 	check_equal "passes" 0 "$status"
 	kustomization="$(cat "$tree/overlays/${overlay}/kustomization.yaml")"
-	check_equal "the four images this repository builds are at the commit" 4 \
+	check_equal "the three images this repository builds are at the commit" 3 \
 		"$(grep -c "^    newTag: \"${COMMIT}\"$" <<<"$kustomization")"
 	check_contains "the repos image is at its submodule pointer" \
 		"$(printf '  - name: REPLACE_REGISTRY/tcab-repos\n    newName: testcabinet.azurecr.io/microservice-repos\n    newTag: "%s"' "$REPOS")" \
@@ -108,6 +111,9 @@ for overlay in staging prod; do
 		"$kustomization"
 	check_contains "the artifacts image is at its submodule pointer" \
 		"$(printf '  - name: REPLACE_REGISTRY/tcab-artifacts\n    newName: testcabinet.azurecr.io/microservice-artifacts\n    newTag: "%s"' "$ARTIFACTS")" \
+		"$kustomization"
+	check_contains "the arena image is at its submodule pointer" \
+		"$(printf '  - name: REPLACE_REGISTRY/tcab-arena\n    newName: testcabinet.azurecr.io/microservice-arena\n    newTag: "%s"' "$ARENA")" \
 		"$kustomization"
 	check_contains "the driver image is at its submodule pointer" \
 		"$(printf '  - name: REPLACE_REGISTRY/tcab-driver\n    newName: testcabinet.azurecr.io/microservice-driver\n    newTag: "%s"' "$DRIVER")" \
@@ -134,6 +140,10 @@ for overlay in staging prod; do
 			"image: testcabinet.azurecr.io/microservice-dispatcher:${DISPATCHER}" "$rendered"
 		check_contains "the render runs the artifacts service at its pointer" \
 			"image: testcabinet.azurecr.io/microservice-artifacts:${ARTIFACTS}" "$rendered"
+		check_contains "the render runs the arena at its pointer" \
+			"image: testcabinet.azurecr.io/microservice-arena:${ARENA}" "$rendered"
+		check_equal "the render names no superrepo-built arena image" 0 \
+			"$(grep -c 'azurecr.io/tcab-arena:' <<<"$rendered")"
 		check_equal "the render names no superrepo-built artifacts image" 0 \
 			"$(grep -c 'azurecr.io/tcab-artifacts:' <<<"$rendered")"
 		check_equal "the render names no superrepo-built dispatcher image" 0 \
@@ -145,20 +155,22 @@ for overlay in staging prod; do
 	pin "$tree" "$overlay" "$COMMIT" >/dev/null
 	check_equal "a second run with the same commit changes nothing" "$kustomization" \
 		"$(cat "$tree/overlays/${overlay}/kustomization.yaml")"
-	pin "$tree" "$overlay" "$OTHER" "$REPOS_OTHER" "$DISPATCHER_OTHER" "$DRIVER_OTHER" "$ARTIFACTS_OTHER" >/dev/null
+	pin "$tree" "$overlay" "$OTHER" "$REPOS_OTHER" "$DISPATCHER_OTHER" "$DRIVER_OTHER" "$ARTIFACTS_OTHER" "$ARENA_OTHER" >/dev/null
 	kustomization="$(cat "$tree/overlays/${overlay}/kustomization.yaml")"
-	check_equal "a run with another commit moves all four" 4 "$(grep -c "^    newTag: \"${OTHER}\"$" <<<"$kustomization")"
+	check_equal "a run with another commit moves all three" 3 "$(grep -c "^    newTag: \"${OTHER}\"$" <<<"$kustomization")"
 	check_equal "and the repos image to the other pointer" 1 "$(grep -c "^    newTag: \"${REPOS_OTHER}\"$" <<<"$kustomization")"
 	check_equal "and the dispatcher image to the other pointer" 1 \
 		"$(grep -c "^    newTag: \"${DISPATCHER_OTHER}\"$" <<<"$kustomization")"
 	check_equal "and the artifacts image to the other pointer" 1 \
 		"$(grep -c "^    newTag: \"${ARTIFACTS_OTHER}\"$" <<<"$kustomization")"
+	check_equal "and the arena image to the other pointer" 1 \
+		"$(grep -c "^    newTag: \"${ARENA_OTHER}\"$" <<<"$kustomization")"
 	check_equal "and the driver image to the other pointer" 1 \
 		"$(grep -c "^    newTag: \"${DRIVER_OTHER}\"$" <<<"$kustomization")"
 	check_equal "and the dispatcher's driver image and run-container tag with it" 2 \
 		"$(grep -c "value: .*${DRIVER_OTHER}\"$" <<<"$kustomization")"
 	check_equal "and leaves the first commit nowhere" 0 "$(grep -c "$COMMIT" <<<"$kustomization")"
-	check_equal "and the first pointers nowhere" 0 "$(grep -cE "$REPOS|$DISPATCHER|$DRIVER|$ARTIFACTS" <<<"$kustomization")"
+	check_equal "and the first pointers nowhere" 0 "$(grep -cE "$REPOS|$DISPATCHER|$DRIVER|$ARTIFACTS|$ARENA" <<<"$kustomization")"
 	check_equal "the dispatcher's patch is there once" 1 \
 		"$(grep -c '^  # BEGIN scripts/ci/pin-images.sh' <<<"$kustomization")"
 done
@@ -203,27 +215,34 @@ out="$(cd / && env PATH="${stub_path}$PATH" TCAB_K8S_ROOT="$tree" "$CI_DIR/pin-i
 status=$?
 check_failed "fails" "$status"
 check_contains "names the pointer and the commit" \
-	"tcab-artifacts is pinned to the commit the submodule pointer microservice-artifacts names at ${COMMIT}" "$out"
+	"tcab-arena is pinned to the commit the submodule pointer microservice-arena names at ${COMMIT}" "$out"
 check_equal "leaves the overlay as it was" "$before" "$(cat "$tree/overlays/staging/kustomization.yaml")"
-# Only the repos pointer named: the artifacts service's is read from the commit's
-# tree.
+# Only the repos pointer named: the arena's is read from the commit's tree.
 out="$(cd / && env PATH="${stub_path}$PATH" TCAB_K8S_ROOT="$tree" TCAB_PIN_GITLINKS="microservice-repos=${REPOS}" \
+	"$CI_DIR/pin-images.sh" staging "$COMMIT" 2>&1)"
+status=$?
+check_failed "fails without the arena's pointer" "$status"
+check_contains "names the arena's pointer" "submodule pointer microservice-arena names" "$out"
+# The arena's and the repos service's pointers named: the artifacts service's is
+# read from the commit's tree.
+out="$(cd / && env PATH="${stub_path}$PATH" TCAB_K8S_ROOT="$tree" \
+	TCAB_PIN_GITLINKS="microservice-arena=${ARENA} microservice-repos=${REPOS}" \
 	"$CI_DIR/pin-images.sh" staging "$COMMIT" 2>&1)"
 status=$?
 check_failed "fails without the artifacts service's pointer" "$status"
 check_contains "names the artifacts service's pointer" "submodule pointer microservice-artifacts names" "$out"
-# The artifacts service's and the repos service's pointers named: the dispatcher's
-# is read from the commit's tree.
+# The arena's, the artifacts service's and the repos service's pointers named: the
+# dispatcher's is read from the commit's tree.
 out="$(cd / && env PATH="${stub_path}$PATH" TCAB_K8S_ROOT="$tree" \
-	TCAB_PIN_GITLINKS="microservice-artifacts=${ARTIFACTS} microservice-repos=${REPOS}" \
+	TCAB_PIN_GITLINKS="microservice-arena=${ARENA} microservice-artifacts=${ARTIFACTS} microservice-repos=${REPOS}" \
 	"$CI_DIR/pin-images.sh" staging "$COMMIT" 2>&1)"
 status=$?
 check_failed "fails without the dispatcher's pointer" "$status"
 check_contains "names the dispatcher's pointer" "submodule pointer microservice-dispatcher names" "$out"
-# The artifacts service's, the dispatcher's and the repos service's pointers named:
-# the driver's is read from the commit's tree.
+# The arena's, the artifacts service's, the dispatcher's and the repos service's
+# pointers named: the driver's is read from the commit's tree.
 out="$(cd / && env PATH="${stub_path}$PATH" TCAB_K8S_ROOT="$tree" \
-	TCAB_PIN_GITLINKS="microservice-artifacts=${ARTIFACTS} microservice-dispatcher=${DISPATCHER} microservice-repos=${REPOS}" \
+	TCAB_PIN_GITLINKS="microservice-arena=${ARENA} microservice-artifacts=${ARTIFACTS} microservice-dispatcher=${DISPATCHER} microservice-repos=${REPOS}" \
 	"$CI_DIR/pin-images.sh" staging "$COMMIT" 2>&1)"
 status=$?
 check_failed "fails without the driver's pointer" "$status"
@@ -242,6 +261,9 @@ for value in abc123 "${REPOS^^}"; do
 	out="$(pin "$tree" staging "$COMMIT" "$REPOS" "$DISPATCHER" "$DRIVER" "$value")"
 	status=$?
 	check_failed "refuses the artifacts pointer '${value}'" "$status"
+	out="$(pin "$tree" staging "$COMMIT" "$REPOS" "$DISPATCHER" "$DRIVER" "$ARTIFACTS" "$value")"
+	status=$?
+	check_failed "refuses the arena pointer '${value}'" "$status"
 done
 check_equal "leaves the overlay as it was after the refusals" "$before" \
 	"$(cat "$tree/overlays/staging/kustomization.yaml")"
@@ -256,8 +278,10 @@ driver_gitlink="$(git -C "$CI_DIR" ls-tree "${head:-HEAD}" -- ../../microservice
 	awk '$1 == "160000" { print $3 }')"
 artifacts_gitlink="$(git -C "$CI_DIR" ls-tree "${head:-HEAD}" -- ../../microservice-artifacts 2>/dev/null |
 	awk '$1 == "160000" { print $3 }')"
+arena_gitlink="$(git -C "$CI_DIR" ls-tree "${head:-HEAD}" -- ../../microservice-arena 2>/dev/null |
+	awk '$1 == "160000" { print $3 }')"
 if [ -n "$head" ] && [ -n "$gitlink" ] && [ -n "$dispatcher_gitlink" ] && [ -n "$driver_gitlink" ] &&
-	[ -n "$artifacts_gitlink" ]; then
+	[ -n "$artifacts_gitlink" ] && [ -n "$arena_gitlink" ]; then
 	tree="$(fresh_tree)"
 	out="$(cd / && env PATH="${stub_path}$PATH" TCAB_K8S_ROOT="$tree" "$CI_DIR/pin-images.sh" prod "$head" 2>&1)"
 	status=$?
@@ -268,12 +292,14 @@ if [ -n "$head" ] && [ -n "$gitlink" ] && [ -n "$dispatcher_gitlink" ] && [ -n "
 		"newTag: \"${dispatcher_gitlink}\"" "$(cat "$tree/overlays/prod/kustomization.yaml")"
 	check_contains "pins the artifacts image to the pointer in that commit's tree" \
 		"newTag: \"${artifacts_gitlink}\"" "$(cat "$tree/overlays/prod/kustomization.yaml")"
+	check_contains "pins the arena image to the pointer in that commit's tree" \
+		"newTag: \"${arena_gitlink}\"" "$(cat "$tree/overlays/prod/kustomization.yaml")"
 	check_contains "pins the driver image to the pointer in that commit's tree" \
 		"newTag: \"${driver_gitlink}\"" "$(cat "$tree/overlays/prod/kustomization.yaml")"
 	check_contains "and the dispatcher's driver image" \
 		"value: \"testcabinet.azurecr.io/microservice-driver:${driver_gitlink}\"" "$(cat "$tree/overlays/prod/kustomization.yaml")"
 else
-	ok "(skipped: this checkout has no commit holding the microservice-artifacts, microservice-repos, microservice-dispatcher and microservice-driver pointers)"
+	ok "(skipped: this checkout has no commit holding the microservice-arena, microservice-artifacts, microservice-repos, microservice-dispatcher and microservice-driver pointers)"
 fi
 
 echo "--- an image the pin does not reach ---"
