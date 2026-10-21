@@ -96,7 +96,7 @@ check_contains "it adds the submodule" "added contracts as a submodule" "$out"
 check_equals "the remote holds master" "master" "$(git -C "$base/remotes/contracts" symbolic-ref --short HEAD 2>/dev/null || git -C "$base/remotes/contracts" branch --format='%(refname:short)' | head -1)"
 check_equals "the commit subject is the scaffold" "chore: scaffold the contracts repository" "$(git -C "$base/remotes/contracts" log -1 --format=%s master)"
 check_equals "the submodule URL is relative" "../contracts" "$(git -C "$base/super" config -f .gitmodules --get submodule.contracts.url)"
-check_equals "the submodule tracks master" "master" "$(git -C "$base/super" config -f .gitmodules --get submodule.contracts.branch)"
+check_equals "the submodule's branch is the superrepo's own" "." "$(git -C "$base/super" config -f .gitmodules --get submodule.contracts.branch)"
 check_equals "the checkout's origin is the remote" "$base/remotes/contracts" "$(git -C "$base/super/contracts" remote get-url origin)"
 
 # --- The superrepo's identity reaches the repository -----------------------
