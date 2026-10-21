@@ -125,6 +125,20 @@ check_contains "names the image at the pointer it requires" \
 	"the staging deploy does not name testcabinet.azurecr.io/microservice-dispatcher:456789abcdef0123456789abcdef0123456789ab" \
 	"$out"
 
+echo "--- the artifacts service's image built here rather than in its repository ---"
+
+tree="$(fresh_tree)"
+sed -i 's#^    newName: testcabinet.azurecr.io/microservice-artifacts$#    newName: testcabinet.azurecr.io/tcab-artifacts#' \
+	"$tree/overlays/prod/kustomization.yaml"
+out="$(check "$tree")"
+status=$?
+check_failed "fails" "$status"
+check_contains "names the image it names instead" \
+	"the prod deploy names testcabinet.azurecr.io/tcab-artifacts:abcdef0123456789abcdef0123456789abcdef01" "$out"
+check_contains "names the image at the pointer it requires" \
+	"the prod deploy does not name testcabinet.azurecr.io/microservice-artifacts:abcdef0123456789abcdef0123456789abcdef01" \
+	"$out"
+
 echo "--- the driver built here rather than in its repository ---"
 
 # A patch after the pin's, as an overlay could carry, that puts the dispatcher's

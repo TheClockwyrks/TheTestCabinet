@@ -73,7 +73,7 @@ The kind decides a repository's shape.
 | `client-tauri` | shell | The operator client for Windows, Linux, macOS and Android |
 | `test-suites` | content | The test cases and game jams, and the lattice factory designer |
 
-Every repository but `contracts`, `engines`, `gg`, `gg.rocks`,
+Every repository but `contracts`, `engines`, `gg`, `gg.rocks`, `microservice-artifacts`,
 `microservice-dispatcher`, `microservice-driver`, `microservice-repos`,
 `tool-audio-core`, `tool-dc`, `tool-mc`, `tool-model-core`, `tool-music`,
 `tool-paint`, `tool-particle`,

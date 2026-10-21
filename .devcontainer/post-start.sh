@@ -24,7 +24,7 @@
 # tools/submodule-checkout.sh, which follows tools/ssh-agent.sh because it
 # clones through the agent that script publishes. post-create.sh runs it once at
 # creation, and it runs here again so a container created with no agent, or no
-# network, gets contracts/, engines/, gg/, microservice-dispatcher/, microservice-driver/,
+# network, gets contracts/, engines/, gg/, microservice-artifacts/, microservice-dispatcher/, microservice-driver/,
 # microservice-repos/, tool-model-core/, tool-paint/, tool-particle/,
 # tool-sprite/, tool-voxel/, tool-mc/, tool-sn/, tool-dc/, tool-audio-core/,
 # tool-sfx-synth/, tool-sfx-sample/, tool-music/, test-suites/ and ui-common/ at

@@ -1,15 +1,27 @@
 ---
 format: nyxsis-issue
-version: 2
+version: 3
 id: h13qj6u6mgmcx0fmcpdyp3p0
 zone: REPOS
 number: 14
 title: Extract the artifacts service into microservice-artifacts
 type: generic
-state: open
+state: done
 depends_on:
   - txf8l556rdhfmbw9k1bxwvet
 created: 2026-10-13T21:13:16.321142018Z
+done: 2026-10-21T07:40:59.880450011Z
+outcome: |
+  Landed in PR 4908 into nightly: microservice-artifacts exists on Azure with
+  crates/artifacts' history, kit render, pipeline pushing
+  microservice-artifacts:<commit> (master ae03ff8 green), branch protection and
+  GitHub mirror; the superrepo pins it as a submodule with branch ., the staging
+  and prod deploy sets and pin-images.sh pin tcab-artifacts at the submodule
+  pointer, the artifacts target leaves services.Dockerfile and crates/artifacts is
+  removed. The backend carries an interim copy of the R2 client until DATA-3 moves
+  publishing behind the artifacts service. Superrepo gates 28 of 28,
+  microservice-artifacts 14 of 14. Not verified: a staging rollout and a run tree
+  served through the console, which follow the staging promotion (CICD-4).
 ---
 
 The artifacts crate lives in the superrepo. The documentation places it in

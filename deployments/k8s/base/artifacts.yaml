@@ -82,7 +82,7 @@ spec:
       terminationGracePeriodSeconds: 300
       containers:
         - name: artifacts
-          image: REPLACE_REGISTRY/tcab-artifacts:latest # the staging and prod overlays name testcabinet.azurecr.io/tcab-artifacts
+          image: REPLACE_REGISTRY/tcab-artifacts:latest # the staging and prod overlays name testcabinet.azurecr.io/microservice-artifacts
           resources:
             # MEMORY REQUEST == LIMIT. The scheduler packs a node by requests and
             # ignores limits, so a gap between them is memory promised twice; an
