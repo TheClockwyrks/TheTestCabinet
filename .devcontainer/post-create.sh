@@ -48,6 +48,18 @@
 # the creation of a container that is otherwise ready; a host with no agent to
 # publish is one such failure, said by the agent script and held here, so the
 # submodules are checked out at the next start, or by hand, once SSH works.
+#
+# Last, scripts/repos/link-packages.sh links the TypeScript packages the
+# checked-out repositories produce (contracts' and engines') into every
+# checked-out workspace that names one, so a fresh container builds each
+# workspace against the sibling checkouts rather than the versions the feed
+# holds. It runs after the submodule checkout, since it plans only the
+# workspaces that are checked out, and after `npm ci`, and it leaves the
+# manifests, the locks and .package-links.json as committed. It needs the
+# superrepo's submodules, so a directory with no repository or no .gitmodules
+# skips it and says so; a link that fails, as one does with no network or a
+# submodule SSH could not fetch, says so and names the command to run again,
+# rather than failing the creation of a container that is otherwise ready.
 set -euo pipefail
 
 if git rev-parse --git-dir >/dev/null 2>&1; then
@@ -66,4 +78,14 @@ if [ -f gg/package.json ]; then
 else
   echo "--- gg's npm workspace (skipped: gg/ is not checked out)"
   echo "    run 'npm ci --prefix gg' once it is"
+fi
+
+if git rev-parse --git-dir >/dev/null 2>&1 && [ -f .gitmodules ]; then
+  if ! bash scripts/repos/link-packages.sh; then
+    echo "--- the checked-out repositories' packages (not linked: see above)"
+    echo "    run 'bash scripts/repos/link-packages.sh' once the cause is fixed"
+  fi
+else
+  echo "--- the checked-out repositories' packages (skipped: no submodules here)"
+  echo "    run 'bash scripts/repos/link-packages.sh' once they are checked out"
 fi
