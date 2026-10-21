@@ -17,14 +17,14 @@
 #   v<version>/gg-reference.tar.gz              gg-reference/: index.json plus one
 #                                               document per program language
 #
-# THE PIN is the one line of crates/driver/gg-release-version, which the driver compiles
-# in as `DEFAULT_RELEASE_VERSION` (crates/driver/src/gg_exec.rs). This script is how every
-# image build and script reads it, so a bump is an edit of that file alone:
-# deployments/images/services.Dockerfile runs `fetch` for the driver (the binary) and the
-# backend (the reference documents), containers/build.sh copies the `toolchains-image`
-# into every `-gg` variant, and scripts/ci/run-images.sh and
-# `make -C deployments/local run-images-gg-selfcheck` drive `gg selfcheck` with the
-# fetched binary.
+# THE PIN is the one line of microservice-driver/crates/driver/gg-release-version, which
+# the driver compiles in as `DEFAULT_RELEASE_VERSION` (crates/driver/src/gg_exec.rs in
+# that repository), whose own copy of this script fetches the binary its image and its
+# run images bake. In this repository the script reads the pin from the
+# microservice-driver checkout, so a bump is an edit of that file alone:
+# deployments/images/services.Dockerfile runs `fetch` for the backend (the reference
+# documents), and `make -C deployments/local run-images-gg-selfcheck` drives
+# `gg selfcheck` with the fetched binary.
 #
 # TCAB_GG_RELEASE_VERSION and TCAB_GG_RELEASE_URL override the version and the base URL,
 # under the names the driver reads them by, which is how a prerelease such as
@@ -61,13 +61,13 @@ readonly command out
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/tcab-lib.sh"
 
 # The release container's URL, which DEFAULT_RELEASE_BASE_URL in
-# crates/driver/src/gg_exec.rs names too; scripts/ci/gg-release.test.sh holds the two
+# microservice-driver/crates/driver/src/gg_exec.rs names too; scripts/ci/gg-release.test.sh holds the two
 # equal.
 readonly DEFAULT_BASE_URL="https://testcabinetartifacts.blob.core.windows.net/gg-releases"
 # The toolchain image's repository, as the `gg` repository's
 # scripts/ci/gg-toolchains-image.sh names it.
 readonly TOOLCHAINS_REPOSITORY="test-cabinet-gg-toolchains"
-readonly PIN_FILE="crates/driver/gg-release-version"
+readonly PIN_FILE="microservice-driver/crates/driver/gg-release-version"
 
 # A release version: MAJOR.MINOR.PATCH with an optional prerelease, and no `v`.
 readonly VERSION_SHAPE='^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$'

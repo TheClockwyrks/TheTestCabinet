@@ -134,6 +134,7 @@ fetch it once:
 
 ```sh
 az acr login --name testcabinet
+# In microservice-driver.
 TCAB_CONTAINER_TAG=<master commit> scripts/fetch-audio-store.sh
 ```
 

@@ -115,7 +115,7 @@ result locally: that its engine is correct, and how much fuel it spends, with th
 same numbers the scored run reports. The CLI and the training scenarios are baked
 from this repository at image-build time, so they stay in lockstep with the
 engine the validator scores against. The image is defined under
-`containers/performance/`.
+microservice-driver's `containers/performance/`.
 
 The model uses `lattice` during the harness session to iterate. The scored
 submission is pure wasm running in the sandbox with no host access, so it cannot

@@ -104,14 +104,12 @@ table "the board, manifests and dotfiles reach nothing" "rust=false submodules=f
 	.devcontainer/docker-compose.yml .claude/skills/coding/SKILL.md .vscode/settings.json
 table "the gates' own sources reach nothing" "rust=false submodules=false" \
 	ci/gates/format.py ci/tests/test_wiring.py ci/pyproject.toml
-table "a run-container definition reaches nothing" "rust=false submodules=false" \
-	containers/python/Dockerfile containers/build.sh
-table "the image names list reaches the Rust jobs" "rust=true submodules=false" \
-	containers/image-names.sh
+table "the sample packs reach nothing" "rust=false submodules=false" \
+	containers/sample-packs/README.md containers/sample-packs/clips.toml
 table "Markdown outside crates reaches nothing" "rust=false submodules=false" \
-	README.md CLAUDE.md orchestrators/README.md apps/docs/src/content/docs/gg/overview.md
+	README.md CLAUDE.md scripts/ci/README.md apps/docs/src/content/docs/gg/overview.md
 table "Markdown inside crates reaches the Rust jobs" "rust=true submodules=false" \
-	crates/driver/README.md
+	crates/backend/README.md
 table "a shell test reaches nothing" "rust=false submodules=false" \
 	scripts/ci/gg-release.test.sh scripts/devcontainer-setup.test.sh scripts/lib/audio-store.test.mjs
 table "lint configuration reaches nothing" "rust=false submodules=false" \
@@ -122,8 +120,6 @@ table "a crate reaches the Rust jobs" "rust=true submodules=false" \
 	crates/backend/src/api.rs
 table "the lockfile reaches the Rust jobs" "rust=true submodules=false" Cargo.lock
 table "a workspace manifest reaches the Rust jobs" "rust=true submodules=false" Cargo.toml
-table "a harness and an orchestrator reach the Rust jobs" "rust=true submodules=false" \
-	harnesses/pi/harness.toml orchestrators/one-shot/runner.sh
 table "a script a Rust job runs reaches the Rust jobs" "rust=true submodules=false" \
 	scripts/ci/provision-node.sh
 table "the gg release helper, which only the image jobs run, reaches nothing" \
@@ -133,8 +129,7 @@ table "a script with no rule reaches the Rust jobs" "rust=true submodules=false"
 table "a directory with no rule reaches the Rust jobs" "rust=true submodules=false" \
 	brand-new-area/thing.txt
 
-table "the release scripts reach the Rust jobs" "rust=true submodules=false" \
-	scripts/ci/release-build.sh scripts/ci/binary-smoke.sh scripts/ci/install-nextest.sh \
+table "the Rust build script reaches the Rust jobs" "rust=true submodules=false" \
 	scripts/ci/rust-build.sh
 table "the build output prune, which the Rust jobs run, reaches them" "rust=true submodules=false" \
 	scripts/ci/cargo-target-prune.sh
@@ -155,9 +150,9 @@ table "the pin check reaches submodule_pins alone" "rust=false submodules=true" 
 
 table "the pipeline reaches everything" "rust=true submodules=true" .azure/project/jobs.yml
 table "a job template reaches everything" "rust=true submodules=true" \
-	.azure/tcab/binary-jobs.yml
-table "the release pipeline reaches everything" "rust=true submodules=true" \
-	azure-pipelines-release.yml
+	.azure/tcab/rust-job-steps.yml
+table "the root pipeline reaches everything" "rust=true submodules=true" \
+	azure-pipelines.yml
 table "a CI image input reaches everything" "rust=true submodules=true" \
 	ci/images/rust.Dockerfile ci/images/tags.yml
 table "the toolchain pin reaches everything" "rust=true submodules=true" rust-toolchain.toml
@@ -167,7 +162,7 @@ table "the script library reaches everything" "rust=true submodules=true" \
 	scripts/ci/tcab-lib.sh
 
 table "a mixed change is the union" "rust=true submodules=true" \
-	apps/docs/src/content/docs/index.md scripts/ci/release-test.sh cold-storage
+	apps/docs/src/content/docs/index.md scripts/ci/rust-build.sh cold-storage
 table "no changed path reaches nothing" "rust=false submodules=false" ""
 
 out="$(classify crates/core/src/lib.rs apps/docs/x.md)"

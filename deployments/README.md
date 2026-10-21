@@ -21,8 +21,9 @@ documented in the Development section, not here:
 
 (Published at <https://docs.testcabinet.ai/deployment/overview/>.)
 
-Read the docs first. As with [`containers/`](../containers/README.md), the prose
-lives on the docs site and this README is just a map.
+Read the docs first. As with microservice-driver's
+[`containers/`](../microservice-driver/containers/README.md), the prose lives on the
+docs site and this README is just a map.
 
 ## Layout
 
@@ -141,23 +142,27 @@ would apply.
 `k8s-deploy-sets` gate, holds both deploy sets to that shape.
 
 These are the long-running **service** images, distinct from the **run-container**
-images a run executes inside ([`containers/`](../containers/README.md)), which the
-same pipeline run builds and pushes at the same sha.
+images a run executes inside (microservice-driver's
+[`containers/`](../microservice-driver/containers/README.md)), which that repository's
+pipeline builds and pushes at its own commit.
 
-The `tcab-driver` stage carries the [audio store](../containers/README.md#the-audio-store)
-at `/opt/tcab-audio`, resolved through the `AUDIO_STORE_IMAGE` build arg, so the
+The driver's image, built from microservice-driver's
+[`Dockerfile`](../microservice-driver/Dockerfile), carries the
+[audio store](../microservice-driver/containers/README.md#the-audio-store) at
+`/opt/tcab-audio`, resolved through the `AUDIO_STORE_IMAGE` build arg, so the
 build itself reads no audio credential. The driver stages each run's declared packs
 out of that store, so it and `TCAB_CONTAINER_TAG` move to the same commit; see
 [Pinning images](../apps/docs/src/content/docs/deployment/kubernetes/overview.md#pinning-images).
 
 Where that store comes from depends on who is building:
 
-- **A pipeline build** passes the `test-cabinet-audio-store:<sha>` the same run
-  pushed to the registry, so the driver bakes the store of its own commit.
+- **A pipeline build** takes the arg's default,
+  `testcabinet.azurecr.io/test-cabinet-audio-store:<TCAB_BUILD_COMMIT>`, the store
+  microservice-driver's pipeline pushed at the same commit, so the driver bakes the
+  store of its own commit.
 - **Any other driver build** passes the arg itself, naming a
   `testcabinet.azurecr.io/test-cabinet-audio-store:<sha>` the pipeline pushed or a
-  store built from the checkout. The arg defaults to `scratch`, so a driver build
-  without it fails rather than baking an empty store.
+  store built from the checkout.
 - **A local build does not pull anything.** `local/Makefile`'s `audio-store` target
   builds the store from the checkout (staging it out of the audio object store with
   the read-scoped `CLOUDFLARE_AUDIO_R2_PRESIGN` credentials) and `make images` passes

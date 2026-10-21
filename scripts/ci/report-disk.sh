@@ -14,13 +14,13 @@
 # reports a filesystem that stayed flat while the build ran another one out, which is exactly
 # how the last `no space left on device` arrived with no usable figure.
 #
-# THE RUN-IMAGE JOB IS WHAT THIS EXISTS FOR. That job builds fifty-five images on one agent and
-# ran out of disk on both architectures with nothing in its log saying how much it had.
-# `containers/build.sh` reports after every `-gg` variant under RECLAIM; this covers the two
-# edges outside it, and `scripts/ci/free-disk-linux.sh` uses it either side of its removals.
+# THE RUN-IMAGE JOB IS WHAT THIS WAS WRITTEN FOR. That job, microservice-driver's now, builds
+# fifty-five images on one agent and ran out of disk on both architectures with nothing in its
+# log saying how much it had. Here the service-image jobs read it after their build, and
+# `scripts/ci/free-disk-linux.sh` uses it either side of its removals.
 #
 # It is a script of its own rather than a helper in scripts/ci/tcab-lib.sh because the
-# run-image job's steps (.azure/project/jobs.yml) call it directly, and it needs nothing from
+# service-image jobs' steps (.azure/project/jobs.yml) call it directly, and it needs nothing from
 # that helper: it defines its own `log` and sets no `-e`, so nothing in it can fail a step.
 set -uo pipefail
 

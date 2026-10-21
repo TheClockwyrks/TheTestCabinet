@@ -73,7 +73,8 @@ whose pipeline builds its image from that repository's `Dockerfile` and pushes i
 `testcabinet.azurecr.io/microservice-dispatcher:<commit>`, the image the `staging`
 and `prod` overlays run it from. The Azure pipeline builds the
 others, and the **run-container**
-images the sandbox runs inside ([`containers/`](../../containers/README.md)), on
+images the sandbox runs inside (microservice-driver's
+[`containers/`](../../microservice-driver/containers/README.md)), on
 every push to `master` and `staging`, and pushes each to
 `testcabinet.azurecr.io/<image>:<sha>` (`tcab-backend`,
 `tcab-driver`, `tcab-artifacts`, `tcab-arena`,

@@ -225,7 +225,7 @@ function defaultVariant(versionDir) {
  * config the binary reads, an empty layer document, and (via the binary's own
  * `init`, run by the caller) a blank preview and empty log per declared frame.
  *
- * This mirrors `seed_asset_tool` in `crates/driver/src/seeding.rs`. It is deliberately
+ * This mirrors `seed_asset_tool` in microservice-driver's `crates/driver/src/seeding.rs`. It is deliberately
  * derived from the manifest rather than hard-coded, for the same reason the real
  * seeding is: a script must never restate its case's canvas or frame count, so the
  * only way a mismatch can surface is if the config comes from the manifest.
@@ -273,7 +273,7 @@ function seedWorkspace(outDir, manifest, kind) {
 
 /**
  * Locate the directory holding the case's drawing binary, using the same order as
- * `resolve_binary_dir` in `crates/driver/src/asset_reference.rs` so a preview and a
+ * `resolve_binary_dir` in microservice-driver's `crates/driver/src/asset_reference.rs` so a preview and a
  * publish always draw with the same tool.
  */
 function resolveBinaryDir(binary) {

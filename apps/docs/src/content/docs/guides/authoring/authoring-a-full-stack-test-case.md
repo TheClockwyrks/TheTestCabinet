@@ -178,7 +178,7 @@ lockfile links. Generate it from a staged package store, so the linked versions
 are the ones the host package store holds:
 
 ```sh
-# In the-test-cabinet: build and stage the package store.
+# In microservice-driver: build and stage the package store.
 npm ci
 node scripts/stage-tcab-packages.mjs /tmp/tcab-packages
 

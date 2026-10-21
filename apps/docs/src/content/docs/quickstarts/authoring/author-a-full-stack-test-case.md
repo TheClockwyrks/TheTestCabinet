@@ -71,7 +71,7 @@ for everything shared, with these differences.
    `package.json` or the store's versions change:
 
    ```sh
-   # In the-test-cabinet.
+   # In microservice-driver.
    npm ci
    node scripts/stage-tcab-packages.mjs /tmp/tcab-packages
    # In test-suites.

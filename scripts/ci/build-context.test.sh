@@ -95,7 +95,9 @@ mkdir -p "$base"
 		[ -e "$sub/.git" ] || continue
 		git -C "$sub" ls-files -z | sed -z "s|^|$sub/|"
 	done
-	git -C test-suites ls-files -z -- "${case_sources[@]#test-suites/}" | sed -z 's|^|test-suites/|'
+	if ((${#case_sources[@]} > 0)); then
+		git -C test-suites ls-files -z -- "${case_sources[@]#test-suites/}" | sed -z 's|^|test-suites/|'
+	fi
 } | tar --null -T - -cf -) | tar -C "$base" -xf -
 # A directory holding a commit of the files under it, so a superproject records it as a gitlink.
 commit_tree() {
@@ -122,7 +124,7 @@ run() { (cd "$tmp" && "$1/scripts/ci/build-context.sh" 2>&1); }
 repo="$(fresh_repo)"
 out="$(run "$repo")"
 check_equal "the checkout's tree passes" "0" "$?"
-check_contains "and reports what it checked" "Rust pin(s) under containers/ name rust-toolchain.toml's channel" "$out"
+check_contains "and reports what it checked" "re-inclusion(s) across" "$out"
 
 # A nested checkout .gitmodules declares, holding a Dockerfile whose COPY could
 # never be satisfied from the superproject's context. Its files are another
@@ -171,7 +173,7 @@ check_contains "naming the source and the allowlist" "copies './gg/packages/gg-s
 
 echo "--- a Dockerfile that copies a path that does not exist ---"
 repo="$(fresh_repo)"
-dockerfile="containers/adversarial/Dockerfile"
+dockerfile="deployments/images/services.Dockerfile"
 own "$repo/$dockerfile"
 printf '\nCOPY scripts/ci/no-such-helper.sh /tmp/\n' >>"$repo/$dockerfile"
 out="$(run "$repo")"
@@ -183,29 +185,20 @@ echo "--- a RUN bind mount of a path that does not exist ---"
 repo="$(fresh_repo)"
 dockerfile="deployments/images/services.Dockerfile"
 own "$repo/$dockerfile"
-sed -i 's#source=crates/driver/gg-release-version#source=crates/driver/no-such-pin#' "$repo/$dockerfile"
+sed -i 's#source=microservice-driver/crates/driver/gg-release-version#source=microservice-driver/crates/driver/no-such-pin#' "$repo/$dockerfile"
 out="$(run "$repo")"
 check_equal "fails" "1" "$?"
 check_contains "naming the Dockerfile and the mounted source" \
-	"copies 'crates/driver/no-such-pin', which does not exist in the repository." "$out"
+	"copies 'microservice-driver/crates/driver/no-such-pin', which does not exist in the repository." "$out"
 
 echo "--- a RUN bind mount of a path the allowlist drops ---"
 repo="$(fresh_repo)"
 own "$repo/.dockerignore"
-printf '\n/crates/driver/gg-release-version\n' >>"$repo/.dockerignore"
+printf '\n/microservice-driver/crates/driver/gg-release-version\n' >>"$repo/.dockerignore"
 out="$(run "$repo")"
 check_equal "fails" "1" "$?"
 check_contains "naming the source and the allowlist" \
-	"copies 'crates/driver/gg-release-version', which .dockerignore keeps OUT of the build context." "$out"
-
-echo "--- a case image pinning another Rust ---"
-repo="$(fresh_repo)"
-own "$repo/containers/base-wasm/Dockerfile"
-sed -i 's/^ARG RUST_VERSION=.*/ARG RUST_VERSION=1.0.0/' "$repo/containers/base-wasm/Dockerfile"
-channel="$(sed -nE 's/^[[:space:]]*channel[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/p' "$repo/rust-toolchain.toml")"
-out="$(run "$repo")"
-check_equal "fails" "1" "$?"
-check_contains "naming the pin and the channel" "pins Rust 1.0.0, and rust-toolchain.toml's channel is $channel." "$out"
+	"copies 'microservice-driver/crates/driver/gg-release-version', which .dockerignore keeps OUT of the build context." "$out"
 
 echo "--- a re-inclusion by wildcard ---"
 repo="$(fresh_repo)"

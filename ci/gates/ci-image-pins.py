@@ -6,9 +6,8 @@ that file to one variable and a full commit id. The project's Rust jobs run in
 that image too, and a template file cannot read the expression: a
 `${{ variables.* }}` inside a jobs template that a pipeline includes expands to
 nothing, which a preview compile of this pipeline showed as an image named
-with an empty tag. So the root pipelines, `azure-pipelines.yml` and
-`azure-pipelines-release.yml`, are the only files that name a CI image, each
-with that expression; the gates pipeline hands it to `.azure/project/jobs.yml`
+with an empty tag. So the root pipeline, `azure-pipelines.yml`, is the only
+file that names a CI image, with that expression; the gates pipeline hands it to `.azure/project/jobs.yml`
 as its `rustImage` parameter, and a file under `.azure/` takes the image as a
 parameter and never names one. This gate holds all of that, so every Rust job
 of a run compiles in the one image and shares the template `rust` job's
@@ -39,7 +38,7 @@ TAGS_INCLUDE = re.compile(r"^variables:\n(?:(?:  .*|)\n)*?  - template: " + re.e
 # The root pipelines, the only files that may name a CI image. Each names the
 # Rust one at least once, or a reference removed by mistake would pass as none
 # to check, and each includes the file that sets the tag.
-ROOTS = [Path("azure-pipelines.yml"), Path("azure-pipelines-release.yml")]
+ROOTS = [Path("azure-pipelines.yml")]
 # The project's jobs, which the gates pipeline includes with the image as this
 # parameter.
 JOBS = Path(".azure/project/jobs.yml")
