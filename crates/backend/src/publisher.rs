@@ -36,9 +36,9 @@ use tracing::Instrument;
 
 use crate::db::Db;
 use crate::error::{BackendError, Result};
+use crate::r2::R2Client;
 use crate::snapshot::SnapshotBuilder;
 use crate::store::DefinitionStore;
-use test_cabinet_artifacts::r2::R2Client;
 
 /// The outcome of a forced refresh (`POST /snapshot/refresh`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -147,7 +147,7 @@ pub enum BackendError {
 
     /// A request to the R2 object store failed.
     #[error("{0}")]
-    R2(#[from] test_cabinet_artifacts::r2::R2Error),
+    R2(#[from] crate::r2::R2Error),
 
     /// A snapshot upload or deploy-hook fire failed.
     #[error("{0}")]

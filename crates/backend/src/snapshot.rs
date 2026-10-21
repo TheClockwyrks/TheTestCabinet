@@ -45,8 +45,8 @@ use test_cabinet_suites::content_labels::{self, ContentLabels};
 use crate::api::ModelOut;
 use crate::db::StoredRun;
 use crate::error::{BackendError, Result};
+use crate::r2::R2Client;
 use crate::store::{DefinitionStore, StoredManifest};
-use test_cabinet_artifacts::r2::R2Client;
 
 pub use test_cabinet_contracts::backend_api::snapshot::{
     CaseCheckOut, CaseDomainOut, CaseErratumOut, CaseMetadata, CasePackageOut, CaseReferenceOut,
@@ -352,7 +352,7 @@ impl SnapshotBuilder {
     }
 
     /// Supply the set of media object keys already present in the bucket (from
-    /// [`R2Client::list_keys`](test_cabinet_artifacts::r2::R2Client::list_keys) over the
+    /// [`R2Client::list_keys`](crate::r2::R2Client::list_keys) over the
     /// `media/` and `files/` prefixes).
     /// For any run-media object whose stable key is in this set, the builder emits the
     /// snapshot metadata pointing at it but does **not** read the source bytes or
@@ -367,7 +367,7 @@ impl SnapshotBuilder {
     }
 
     /// Supply the set of run-document keys already present in the bucket (from
-    /// [`R2Client::list_keys`](test_cabinet_artifacts::r2::R2Client::list_keys) over
+    /// [`R2Client::list_keys`](crate::r2::R2Client::list_keys) over
     /// [`RUN_DOCUMENT_PREFIX`]). A run whose freshly built document hashes to a key in
     /// this set is referenced from `runs.json` without being uploaded again, which is
     /// what makes the steady-state cost of a refresh proportional to the runs that
@@ -1964,7 +1964,7 @@ pub const SNAPSHOT_PREFIX: &str = "snapshots/";
 ///
 /// The returned keys are exactly the input keys that belong to a pruned generation,
 /// so a caller can hand them straight to
-/// [`R2Client::delete_objects`](test_cabinet_artifacts::r2::R2Client::delete_objects).
+/// [`R2Client::delete_objects`](crate::r2::R2Client::delete_objects).
 /// Keys outside [`SNAPSHOT_PREFIX`] are ignored entirely — run media, case media and
 /// `index.json` are never candidates.
 pub fn stale_generation_keys(

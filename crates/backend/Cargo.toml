@@ -23,10 +23,6 @@ test-cabinet-suites = { workspace = true }
 test-cabinet-engines = { workspace = true }
 # Secret scrubbing of the documents the snapshot publishes.
 test-cabinet-redact = { workspace = true }
-# The R2 client the snapshot refresh and ingest write and list the public bucket
-# with. An interim edge onto the artifacts service's crate: the dataset writes move
-# behind the artifacts service's API, after which the backend reaches it over HTTP.
-test-cabinet-artifacts = { path = "../artifacts" }
 # Passwordless (Microsoft Entra managed-identity) auth for the managed-PostgreSQL
 # deployments — mints a token as the Postgres password and rotates the pool.
 # Engaged only when `TCAB_BACKEND_DB_AZURE_AD` is truthy; the default password /
@@ -64,6 +60,11 @@ jsonwebtoken = { workspace = true }
 sha2 = { workspace = true }
 hmac = { workspace = true }
 hex = { workspace = true }
+# The R2 client's (`src/r2.rs`) `Content-MD5` of a `DeleteObjects` body, which
+# it sends base64-encoded (the Access tests decode their fixed test keys with
+# `base64` too).
+md-5 = { workspace = true }
+base64 = { workspace = true }
 # Gzip decoding for the run-tree artifact routes. The store keeps a run's analysis
 # documents exactly as they were uploaded (gzipped), so serving a client that does
 # not advertise `Accept-Encoding: gzip` — every caller built on the workspace
@@ -75,9 +76,9 @@ tar = "0.4"
 
 [dev-dependencies]
 tempfile = { workspace = true }
-# Decodes the fixed test keys the Access tests sign assertions with.
-base64 = { workspace = true }
 tokio = { workspace = true, features = ["full", "test-util"] }
+# Decodes the query strings the stub R2 bucket (`r2.stub.test.rs`) receives.
+percent-encoding = { workspace = true }
 
 [lints]
 workspace = true
