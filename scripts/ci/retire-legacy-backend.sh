@@ -19,7 +19,7 @@
 # so the Service would route part of the traffic to the old pod and its volume. Its
 # claim, `artifacts-tcab-artifacts-0`, is left in place: deleting the StatefulSet
 # never deletes a claim its template made, and the trees on it are an operator's
-# to move or drop.
+# to move (scripts/ci/copy-artifact-trees.sh) or drop.
 #
 # The edge (Cloudflare Access over a Cloudflare Tunnel) replaced the internal
 # ingress and the sign-in service in front of it. A namespace deployed before still

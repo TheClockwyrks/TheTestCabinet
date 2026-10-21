@@ -349,6 +349,15 @@ from a checkout that carries the current size
 leaves the claim alone. Deploy a change of the size to staging first: it shares
 the manifest, so it takes the same path.
 
+A namespace deployed before the artifacts service ran over Blob still holds its
+run trees on the claim `artifacts-tcab-artifacts-0`, which the deploy leaves in
+place when it retires the old `StatefulSet`. The `Deployment` reads the container
+only, so `scripts/ci/copy-artifact-trees.sh <staging|prod>` copies every tree on
+the claim into the container, in the layout the service reads, before the first
+deploy that binds the artifacts identity. It skips a run already in the
+container, so it runs once more just before that deploy, to copy the trees
+finished since.
+
 The clusters' API servers are private, which is why every `kubectl` command runs
 inside the cluster. `az aks command invoke` runs it under the caller's Microsoft
 Entra identity, so the cluster's Azure RBAC decides what it may do.

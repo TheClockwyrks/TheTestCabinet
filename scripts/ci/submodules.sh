@@ -82,7 +82,9 @@ select_paths() {
 	mapfile -t declared < <(declared_paths)
 	for path in "${wanted[@]}"; do
 		[[ -n "$path" ]] || continue
-		if ! printf '%s\n' "${declared[@]}" | grep -qxF -- "$path"; then
+		# grep reads a here-string, not a pipe: under pipefail, `grep -q` leaving on
+		# its first match would fail the writer with SIGPIPE, and the lookup with it.
+		if ! grep -qxF -- "$path" <<<"$(printf '%s\n' "${declared[@]}")"; then
 			echo "submodules.sh: .gitmodules declares no submodule at '$path'" >&2
 			exit 1
 		fi
@@ -119,7 +121,7 @@ check() {
 		name="$(name_of "$path")"
 		url="$(git config -f .gitmodules "submodule.${name}.url")"
 		repository="$(repository_of "$url")"
-		if printf '%s\n' "${listed[@]}" | grep -qxF -- "$path $repository"; then
+		if grep -qxF -- "$path $repository" <<<"$(printf '%s\n' "${listed[@]}")"; then
 			echo "ok   ${path}: ${JOBS_FILE} checks out ${repository}"
 		else
 			echo "FAIL ${path}: .gitmodules declares it from ${url}, and the submodules parameter of ${JOBS_FILE} has no entry 'path: ${path}' with 'repository: ${repository}'" >&2
@@ -130,7 +132,7 @@ check() {
 	for entry in "${listed[@]}"; do
 		[[ -n "$entry" ]] || continue
 		path="${entry%% *}"
-		if ! declared_paths | grep -qxF -- "$path"; then
+		if ! grep -qxF -- "$path" <<<"$(declared_paths)"; then
 			echo "FAIL ${path}: the submodules parameter of ${JOBS_FILE} lists it, and .gitmodules declares no submodule there" >&2
 			failed=1
 		fi

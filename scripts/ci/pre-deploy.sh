@@ -147,7 +147,8 @@ fi
 if ! kubectl kustomize "deployments/k8s/overlays/${OVERLAY}" | ci_assert_identities_provisioned; then
 	echo "pre-deploy.sh: overlays/${OVERLAY} binds a workload to an unprovisioned identity, above; nothing was retired or applied." >&2
 	remediation "Provision it, put its clientId in deployments/k8s/overlays/${OVERLAY}/patch-artifacts-identity.yaml or patch-repos-identity.yaml" \
-		"and copy the trees on the claim artifacts-tcab-artifacts-0 in ${NAMESPACE} into the container, then deploy again."
+		"and copy the trees on the claim artifacts-tcab-artifacts-0 in ${NAMESPACE} into the container" \
+		"(scripts/ci/copy-artifact-trees.sh ${OVERLAY}), then deploy again."
 	exit 1
 fi
 
