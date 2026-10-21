@@ -6,8 +6,18 @@ zone: CICD
 number: 3
 title: Link the checked-out repositories' packages in the devcontainer's post-create
 type: generic
-state: open
+state: done
 created: 2026-10-20T06:15:06.755559236Z
+done: 2026-10-21T10:41:59.586280827Z
+outcome: |
+  Landed in PR 4919 into nightly: .devcontainer/post-create.sh runs
+  scripts/repos/link-packages.sh after the submodule checkout and npm ci, so a
+  fresh container links every initialized checkout's @clockwyrks packages instead
+  of resolving them from the feed; a failed link reports itself and names the
+  command to rerun without failing the container's creation. The step order is
+  covered by scripts/post-create.test.sh, and the superrepo gates passed 28 of 28.
+  Not verified: a rebuilt devcontainer running post-create end to end, which
+  cannot be done from inside the container.
 ---
 
 The documentation states that `.devcontainer/post-create.sh` installs the git
