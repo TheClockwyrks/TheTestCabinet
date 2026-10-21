@@ -6,8 +6,19 @@ zone: ENGINE
 number: 1
 title: Remove the timing dependence from case-harness's late-bed audio test
 type: generic
-state: open
+state: done
 created: 2026-10-20T06:15:36.988899275Z
+done: 2026-10-21T01:29:20.436197563Z
+outcome: |
+  Landed in PR 4855 into nightly with engines PR 4814 (9b5f32c): the case-harness
+  fixture bed settles its decode on a microtask instead of a timer, so the bed
+  starts on a determined frame, and the late-bed test asserts that frame. The
+  engines typescript gate passed 10 of 10 sequential runs and the superrepo's
+  workspace-test 10 of 10. The reviewer found the reported `expected 1 to be +0`
+  failure matches the earlier wall-clock timer version of the fixture (engines
+  addc938), which the superrepo pinned until 2026-10-19; this change hardens the
+  remaining frame nondeterminism on top of that. The original failure was not
+  reproduced, since no artificial load is applied.
 ---
 
 `@clockwyrks/case-harness` in the `engines` repository is the shared

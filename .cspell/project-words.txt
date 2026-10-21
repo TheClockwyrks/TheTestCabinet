@@ -6,20 +6,14 @@
 # Arc Foundry redesign — combination-tower ids, abilities, terms.
 # Arc Foundry reference-mockup CSS identifiers (harness-side only).
 # Arc Foundry vocabulary (compound item ids / screen names).
-# are written for.
-# Asset-generation: deep-sea pursuer sprites, the player forager, and the drawing tool.
 # Asset-generation: Foray (foray) colony sprites.
-# bindings the vitest validators draw on, and rendering/pacing terms of art.
+# Asset-generation: deep-sea pursuer sprites, the player forager, and the drawing tool.
 # Caldera hex-terrain strategy tower-defense test case.
 # Canvas 2D's storage model, in the Shatter v2.0.1 changelog: `getImageData`
 # Carom v3.0.0 manifest prose: the vitest runner the case's in-process validators
 # Cascade (Klondike solitaire) vocabulary.
-# celestial challenge names, and the spec's hold/rotation terms.
-# controls, code identifiers in mockups, and common dev abbreviations.
 # Deepcore (Motherload-style dig-and-build full-stack case): fiction + coined ore/material names.
 # Deepcore reference-mockup CSS identifiers (harness-side only).
-# dictionary does not know. See `cspell.json` and the `spell` script in
-# domain-tailored instrument banks (cinematic / synthwave).
 # Fathom (fathom) reference mockup class names.
 # Fathom v2.0.0 changelog prose. Ordinary English the locked
 # First cases per new asset-generation kind (material, skinned, audio, ui, music).
@@ -30,7 +24,6 @@
 # Gantry showcase capture driver: the Chromium GL backend, the VP9 encoder and the prober it shells out to, all named verbatim on a command line.
 # Gantry v1.0.0 authoring notes and manifest prose: the load model — static
 # Generic asset-pack test-case prose (2D / particle / music briefs) and the
-# in — a cell with no pose, a tape row not shown, a machine with no set sigil.
 # Includes graphics/particle jargon and bold-prefix markup fragments the tokenizer
 # Junction reference-impl DESIGN/README (Rust→wasm city builder).
 # Kessler (kessler) orbital-demolition full-stack case: the screen id, pod kinds, and asset names.
@@ -47,18 +40,13 @@
 # Project-specific words accepted by cspell. One word per line, case-insensitive.
 # R2 sample-pack publish/presign tooling (scripts/lib/r2.mjs, build.sh).
 # Refract v1.0.0 manifest prose: the silhouette-mask comparison the board
-# rendering validators describe.
-# returns color with the alpha divided back out of the premultiplied store.
 # Siege first-person voxel last-stand test case.
 # Siege-rifle / siege-turret asset-gen briefs (firearm & 3D-modeling terms).
 # Simple 2D engine docs: DOM event names and key codes, the @napi-rs/canvas
-# slugs, coined game/sim terms, and reference-mockup CSS identifiers.
-# solves under inertial loads derived from prescribed motion.
 # Spec and gameplay vocabulary.
 # Spec, changelog, and reference-impl vocabulary: coined game terms, audio
 # Spectra (spectra) manifest validation ids (coined identifiers).
 # Spectra (spectra) reference mockup class names.
-# splits out of words like **GEN**erator and **PRIO**rity.
 # Standard input-device term (siege-rifleman brief).
 # Sunfront tug-of-war game + Duneforged voxel asset cases (unit & structure roster).
 # Surface-extraction meshing vocabulary (mc/sn/dc binaries + wgpu renderer).
@@ -74,18 +62,144 @@
 # Wireworm circuit-board arcade case family (data-worm + charged nodes).
 # Wireworm reference-mockup CSS identifiers (harness-side only).
 # `package.json`.
+# are written for.
+# bindings the vitest validators draw on, and rendering/pacing terms of art.
+# celestial challenge names, and the spec's hold/rotation terms.
+# controls, code identifiers in mockups, and common dev abbreviations.
+# dictionary does not know. See `cspell.json` and the `spell` script in
+# domain-tailored instrument banks (cinematic / synthwave).
+# in — a cell with no pose, a tape row not shown, a machine with no set sigil.
+# rendering validators describe.
+# returns color with the alpha divided back out of the premultiplied store.
+# slugs, coined game/sim terms, and reference-mockup CSS identifiers.
+# solves under inertial loads derived from prescribed motion.
+# splits out of words like **GEN**erator and **PRIO**rity.
+ACCESSTOKEN
+ADSR
+AZERTY
+Aegi
+Aegis
+Aetherfall
+Awarnings
+BAYFILL
+Backquote
+Balatro
+Bastion
+Bloons
+Bombard
+Bresenham
+Buildah
+Bulwark
+CSPRNG
+CUDA
+Cabe
+Capturable
+Carom
+Chebyshev
+Clippy
+Colour
+Consolas
+Cpanic
+Cranelift
+Cstrip
+Cutover
+Devstral
+Dockerfiles
+Dokka
+Doto
+Duneforged
+FREESOUND
+Factorio
+Flak
+Flakhound
+Flarefish
+FreeCell
+Freesound
+GIVEUP
+Galaga
+Gini
+Gyre
+HRTF
+Hostnames
+Kustomization
+LIBCPP
+Lancer
+Lattice
+Libc
+Litestream
+Lumen
+Macromass
+Menlo
+Microtask
+Mirrorwright
+Monatom
+Monatoms
+Monolith
+Mtok
+NEXTEST
+Noto
+OPENCODE
+Opencode
+Osize
+PGPASSWORD
+PRNG
+PURESCRIPT
+PURS
+PYTHONHASHSEED
+PYTHONPATH
+Passwordless
+Perlin
+Phong
+Pyroscope
+Quan
+Quickstarts
+RELINKS
+RUSTFLAGS
+Relatedly
+Reliquary
+Rolloff
+SIGABRT
+SKRS
+SPDY
+STATN
+Scarab
+Scourge
+SeaORM
+Sela
+Sentinel
+Skyworks
+Slerp
+Spago
+Stardew
+Sunfront
+Sunhawk
+TCQ
+TEAVM
+Tauri
+Temurin
+UICOM
+UNPROJECTED
+USERNS
+Unifont
+Unreviewed
+VBCS
+VSTSAGENT
+Vite
+WASD
+WEBASSEMBLY
+Wdocumentation
+Werror
+Worktrees
+Xdoclint
+Xexplicit
+Xrender
 aadauth
 abil
 abyssal
-ACCESSTOKEN
 accs
 accum
 activatable
 adamite
-ADSR
-Aegi
-Aegis
-Aetherfall
 affordances
 aggregatable
 aggs
@@ -121,19 +235,13 @@ autotile
 autotiled
 autotiles
 autotiling
-Awarnings
-AZERTY
 backbeats
 backgrounded
 backpressure
-Backquote
-Balatro
 bandpass
 baselined
 baselining
-Bastion
 battlespace
-BAYFILL
 beatability
 behaviour
 behavioural
@@ -160,35 +268,27 @@ blits
 blitted
 blobbiness
 blockwork
-Bloons
 bmesh
 boardable
-Bombard
 bondsnap
 bottombar
 boxel
 bpanel
 bpy
-Bresenham
 browsable
 buildability
 buildables
-Buildah
 buildcache
 buildcontext
 buildkit
 buildkits
 buildx
-Bulwark
 burnhit
 burnup
 bursty
 bylight
-Cabe
 cacheonly
 camo
-Capturable
-Carom
 catchable
 ccore
 cdylib
@@ -196,7 +296,6 @@ centerplane
 cfargotunnel
 charconv
 chartable
-Chebyshev
 chevron
 chevrons
 chippable
@@ -208,7 +307,6 @@ cicd
 cindrite
 classpaths
 cliffed
-Clippy
 clippy
 clockwyrks
 cloudflareaccess
@@ -219,7 +317,6 @@ codegen
 codegen'd
 codesearch
 collidable
-Colour
 colour
 colouring
 colours
@@ -227,7 +324,6 @@ comborecipe
 comboupgrade
 componentizer
 conftest
-Consolas
 cooldown
 cooldowns
 coprime
@@ -238,13 +334,11 @@ corruptors
 cosnt
 counterline
 counterplay
-Cpanic
 cppm
 cpuset
 craftable
 crafter
 crafters
-Cranelift
 cranelift
 crds
 creds
@@ -257,14 +351,10 @@ crossable
 crossguard
 cryenite
 cryo
-CSPRNG
-Cstrip
 ctrls
 ctypes
-CUDA
 cuda
 cuprite
-Cutover
 cutover
 cutscenes
 dashboarding
@@ -301,7 +391,6 @@ dests
 desync
 detuned
 devkade
-Devstral
 devtheops
 dframes
 difficultyselect
@@ -312,7 +401,6 @@ dispatchable
 distinguishability
 dlopen
 dmgboard
-Dockerfiles
 doclet
 docstrings
 doctest
@@ -321,27 +409,24 @@ docview
 dodgeable
 dogfighter
 dogfighting
-Dokka
 dokka
-Doto
 dpkg
 dragdrop
 drillable
 driveable
 dropship
-Duneforged
 earendil
 ebullet
 echolocation
 elif
 embedder's
+emptydir
 erator
 esac
 evictable
 existentials
 extensionless
 eyelessness
-Factorio
 ferron
 ffile
 ffprobe
@@ -351,9 +436,6 @@ fingerpicked
 fingerpicking
 firemode
 firerate
-Flak
-Flakhound
-Flarefish
 flarefish
 flate
 flyin
@@ -365,9 +447,6 @@ foregrip
 forkarray
 formedness
 fountaining
-FreeCell
-FREESOUND
-Freesound
 freesound
 frogger
 frontends
@@ -375,7 +454,6 @@ frontmatter
 frontmost
 fusecluster
 fwasm
-Galaga
 gamejams
 gameover
 gangline
@@ -389,11 +467,9 @@ ggalias
 ggmodule
 ggop
 gifenc
-Gini
 gitlink
 gitlinks
 gitrun
-GIVEUP
 glimmerfin
 glissandos
 gloamfin
@@ -406,7 +482,6 @@ greebles
 groupable
 growthtail
 gvproxy
-Gyre
 halcite
 handguard
 hatchery
@@ -425,14 +500,12 @@ hitmarker
 hitpoints
 hitscan
 hollowdeep
-Hostnames
 hostnames
 hotbar
 hotspot
 hoverable
 hpbar
 hppc
-HRTF
 hypot
 impls
 indexmap
@@ -481,15 +554,12 @@ kotlinx
 kubeconfig
 kubelet
 kubelet's
-Kustomization
 kustomization
 kustomize
-Lancer
 landvalue
 langversion
 lanternjaw
 lanternjaws
-Lattice
 launchable
 lavapipe
 lerp
@@ -502,11 +572,9 @@ levelups
 libasound
 libatk
 libatspi
-Libc
 libc
 libcairo
 libclang
-LIBCPP
 libcups
 libdrm
 libgbm
@@ -527,7 +595,6 @@ libxfixes
 libxkbcommon
 libxrandr
 licence
-Litestream
 litestream
 lldb
 llvmpipe
@@ -540,10 +607,8 @@ lookback
 loopable
 lowpass
 lufs
-Lumen
 lunwind
 lzma
-Macromass
 malloc
 mand
 mandibled
@@ -560,17 +625,14 @@ meaned
 mecha
 mechs
 medoid
-Menlo
 menuless
 mesher
 meshers
 mesoscale
 metalness
 microfacet
-Microtask
 microtask
 midwave
-Mirrorwright
 misattributed
 misrotated
 mistralai
@@ -581,9 +643,6 @@ modeselect
 modularised
 modulemap
 mold
-Monatom
-Monatoms
-Monolith
 monopolise
 moonshotai
 moov
@@ -592,7 +651,6 @@ mothwing
 mothwings
 mouselook
 msbuild
-Mtok
 mult
 multiball
 multiplicatively
@@ -607,12 +665,12 @@ neighbour
 neighbourhood
 neighbouring
 neighbours
-NEXTEST
 nextest
 nextest's
 nginx
 nobuild
 noconfig
+nodepool
 nonblank
 nondeterministically
 nonfiring
@@ -623,7 +681,6 @@ nostack
 nostdinc
 nostdlib
 notell
-Noto
 nslookup
 nullcore
 numpad
@@ -632,15 +689,12 @@ nyxsis
 nyxsisdev
 offence
 offsuit
-OPENCODE
-Opencode
 opencode
 openrouter
 optimiser
 optout
 organisation
 organisation's
-Osize
 overcounts
 overcurrent
 overfitting
@@ -653,7 +707,6 @@ parameterised
 parameterizes
 passability
 passthroughs
-Passwordless
 passwordless
 pasteable
 pathable
@@ -668,12 +721,9 @@ pbullet
 peekable
 peerings
 penalise
-Perlin
 permadeath
 pgaadauth
-PGPASSWORD
 pgrep
-Phong
 pickable
 pickupable
 pinnable
@@ -712,24 +762,16 @@ presigns
 pressable
 println
 prio
-PRNG
 procps
 prowed
 pullable
-PURESCRIPT
 purescript
-PURS
 purs
 pyproject
 pyronium
-Pyroscope
 pytest
-PYTHONHASHSEED
-PYTHONPATH
-Quan
 quantizations
 quickjs
-Quickstarts
 quickstarts
 qwen
 railgun
@@ -768,11 +810,9 @@ regrant
 regranted
 reharmonize
 rehit
+reimaged
 reingest
 reinitialises
-Relatedly
-RELINKS
-Reliquary
 relocks
 renderable
 repath
@@ -815,7 +855,6 @@ rlibs
 roadline
 rockbed
 roguelike
-Rolloff
 rolloff
 rollouts
 rollups
@@ -833,7 +872,6 @@ rupturenode
 rustc
 rustdoc
 rustdocflags
-RUSTFLAGS
 rustlint
 rustls
 rustup
@@ -842,19 +880,14 @@ sawtooths
 scaffolder
 scanline
 scanlines
-Scarab
 schedulable
 schemars
 scorable
 scoreable
-Scourge
 screenful
 scroller
-SeaORM
 seedable
-Sela
 selfcheck
-Sentinel
 serde
 serialises
 serp
@@ -870,15 +903,11 @@ sideload
 sideloaded
 sideloading
 siegeworks
-SIGABRT
 sightline
 sightlines
-SKRS
 skybox
 skyshard
-Skyworks
 slagdriver
-Slerp
 slingshotting
 slowability
 slowable
@@ -886,10 +915,8 @@ slowhit
 socat
 soname
 sonames
-Spago
 spago
 spawnable
-SPDY
 specvocabulary
 splitter
 splitters
@@ -898,12 +925,10 @@ srgb
 sslmode
 stackable
 standardised
-Stardew
 stardew
 statefulset
 staticmethod
 staticweb
-STATN
 statsig
 stdlib
 steppable
@@ -921,8 +946,6 @@ substep
 suddendeath
 sulphurous
 summarise
-Sunfront
-Sunhawk
 supercover
 superproject
 superproject's
@@ -942,17 +965,13 @@ tanky
 tappable
 targ
 targetable
-Tauri
 tauri
 tcab
 tchip
-TCQ
-TEAVM
 teavm
 teleporter
 teleporters
 teleporting
-Temurin
 terraforming
 teslaprime
 testcabinet
@@ -1003,6 +1022,8 @@ unbuildable
 unbuilt
 uncatchable
 unconfigured
+uncordon
+uncordoned
 uncurated
 undeclarable
 undercount
@@ -1012,6 +1033,7 @@ undertune
 undertuned
 undoable
 undos
+undrainable
 undrained
 undrawn
 undrillable
@@ -1025,7 +1047,6 @@ ungated
 ungranted
 unheld
 unhighlighted
-Unifont
 unindexed
 unioned
 unioning
@@ -1054,14 +1075,12 @@ unpossession
 unpowered
 unpremultiplied
 unpressured
-UNPROJECTED
 unprovisioned
 unpublishing
 unranked
 unrecognised
 unreleasable
 unreportable
-Unreviewed
 unreviewed
 unrigged
 unrotated
@@ -1087,11 +1106,9 @@ unzipper
 upserting
 upserts
 userbyid
-USERNS
 userns
 varargs
 varint
-VBCS
 verdicted
 verdite
 vhera
@@ -1099,13 +1116,10 @@ viewmodel
 viewmodels
 viewports
 virtiofs
-Vite
 vitest
 vnet
 voicings
 voltite
-VSTSAGENT
-WASD
 wasi
 wasip
 wasmtime
@@ -1113,11 +1127,8 @@ waveclear
 wavefronts
 waveshape
 waveshaping
-Wdocumentation
-WEBASSEMBLY
 webgl
 webtest
-Werror
 westus
 wgpu
 wizer
@@ -1126,19 +1137,9 @@ worklists
 workspaced
 worktree
 worktree's
-Worktrees
 worktrees
 worley
 writeups
-Xdoclint
-Xexplicit
 xhigh
-Xrender
 xtal
 zoneable
-emptydir
-nodepool
-uncordon
-undrainable
-reimaged
-uncordoned
