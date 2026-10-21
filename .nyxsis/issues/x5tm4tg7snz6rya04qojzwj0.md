@@ -6,8 +6,17 @@ zone: UICOM
 number: 1
 title: Remove the timing dependence from the console's reference-page redirect test
 type: generic
-state: open
+state: done
 created: 2026-10-21T01:27:57.004626233Z
+done: 2026-10-21T05:38:56.850809295Z
+outcome: |
+  Landed in PR 4900 into nightly with ui-common PRs 4876 and 4890 (5ca8cc22): the
+  console's reference-page redirect test observes the redirect through the router
+  rather than a timer, and the README pre-bundle test parses only its import
+  regions, so neither depends on timing. The ui-common typescript gate and the
+  superrepo workspace-test gate passed 10 of 10 sequential runs each. The original
+  failure needed a process stall over one second and was not provoked, since no
+  artificial load is applied.
 ---
 
 `@clockwyrks/ui` in the `ui-common` repository holds the console's pages,
