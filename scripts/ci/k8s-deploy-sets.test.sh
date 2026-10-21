@@ -125,6 +125,48 @@ check_contains "names the image at the pointer it requires" \
 	"the staging deploy does not name testcabinet.azurecr.io/microservice-dispatcher:456789abcdef0123456789abcdef0123456789ab" \
 	"$out"
 
+echo "--- the driver built here rather than in its repository ---"
+
+# A patch after the pin's, as an overlay could carry, that puts the dispatcher's
+# driver image and run-container tag back at the superrepo's commit.
+dispatcher_env_patch() { # tree overlay name value
+	cat >>"$1/overlays/$2/kustomization.yaml" <<YAML
+  - target: { kind: Deployment, name: tcab-dispatcher }
+    patch: |-
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: tcab-dispatcher
+      spec:
+        template:
+          spec:
+            containers:
+              - name: dispatcher
+                env:
+                  - name: $3
+                    value: "$4"
+YAML
+}
+
+tree="$(fresh_tree)"
+dispatcher_env_patch "$tree" staging TCAB_DRIVER_IMAGE \
+	testcabinet.azurecr.io/tcab-driver:0123456789abcdef0123456789abcdef01234567
+out="$(check "$tree")"
+status=$?
+check_failed "fails" "$status"
+check_contains "names the driver image at the pointer it requires" \
+	"the staging deploy does not name testcabinet.azurecr.io/microservice-driver:cdef0123456789abcdef0123456789abcdef0123" \
+	"$out"
+
+tree="$(fresh_tree)"
+dispatcher_env_patch "$tree" prod TCAB_CONTAINER_TAG 0123456789abcdef0123456789abcdef01234567
+out="$(check "$tree")"
+status=$?
+check_failed "a run-container tag at the superrepo's commit fails" "$status"
+check_contains "naming the tag and the driver's pointer" \
+	"the prod deploy sets the dispatcher's TCAB_CONTAINER_TAG to '0123456789abcdef0123456789abcdef01234567', not cdef0123456789abcdef0123456789abcdef0123" \
+	"$out"
+
 echo "--- a manifest that sets a memory limit on a run pod ---"
 
 tree="$(fresh_tree)"

@@ -13,7 +13,10 @@
 #   - that set names every Test Cabinet image, and the dispatcher's driver and
 #     publisher images, at `testcabinet.azurecr.io/<image>:<commit>`, an image a
 #     repository of its own builds (`microservice-*`) at the commit its submodule
-#     pointer names, and leaves no REPLACE_ placeholder anywhere;
+#     pointer names (the dispatcher's driver image, `microservice-driver`, among
+#     them), sets the dispatcher's TCAB_CONTAINER_TAG to the commit the
+#     microservice-driver pointer names, since the run images are built beside the
+#     driver, and leaves no REPLACE_ placeholder anywhere;
 #   - the overlay on its own names every Test Cabinet image at the tag `unpinned`
 #     and at no other, so the pin is the only thing that chooses a deployment's
 #     images;
@@ -45,14 +48,15 @@ readonly CI_DIR
 source "${CI_DIR}/tcab-lib.sh"
 
 readonly SHA="0123456789abcdef0123456789abcdef01234567"
-# The commits the microservice-repos and microservice-dispatcher submodule pointers
-# stand at in the rendered deploys: commits no checkout holds, so pin-images.sh is
-# handed them rather than reading them from SHA's tree, and distinct from SHA and
-# from each other, so a submodule image pinned to the superrepo's commit, or to
-# another repository's pointer, is caught.
+# The commits the microservice-repos, microservice-dispatcher and microservice-driver
+# submodule pointers stand at in the rendered deploys: commits no checkout holds, so
+# pin-images.sh is handed them rather than reading them from SHA's tree, and distinct
+# from SHA and from each other, so a submodule image pinned to the superrepo's
+# commit, or to another repository's pointer, is caught.
 readonly REPOS_SHA="89abcdef0123456789abcdef0123456789abcdef"
 readonly DISPATCHER_SHA="456789abcdef0123456789abcdef0123456789ab"
-export TCAB_PIN_GITLINKS="microservice-dispatcher=${DISPATCHER_SHA} microservice-repos=${REPOS_SHA}"
+readonly DRIVER_SHA="cdef0123456789abcdef0123456789abcdef0123"
+export TCAB_PIN_GITLINKS="microservice-dispatcher=${DISPATCHER_SHA} microservice-driver=${DRIVER_SHA} microservice-repos=${REPOS_SHA}"
 readonly BACKEND_IMAGE="${CI_REGISTRY}/the-test-cabinet-backend"
 
 k8s_root="${TCAB_K8S_ROOT:-deployments/k8s}"
@@ -143,19 +147,25 @@ for env in staging prod; do
 	while IFS= read -r ref; do
 		case "$ref" in
 			"" | "${CI_REGISTRY}/microservice-repos:${REPOS_SHA}" | \
-				"${CI_REGISTRY}/microservice-dispatcher:${DISPATCHER_SHA}") ;;
+				"${CI_REGISTRY}/microservice-dispatcher:${DISPATCHER_SHA}" | \
+				"${CI_REGISTRY}/microservice-driver:${DRIVER_SHA}") ;;
 			"${CI_REGISTRY}/microservice-"*)
 				fail "the ${env} deploy names ${ref}, not ${CI_REGISTRY}/<repository>:<the commit its submodule pointer names>" ;;
 			"${CI_REGISTRY}/"*":${SHA}") ;;
 			*) fail "the ${env} deploy names ${ref}, not ${CI_REGISTRY}/<image>:<commit>" ;;
 		esac
 	done <<<"$refs"
-	for want in "${CI_REGISTRY}/tcab-driver:${SHA}" "${CI_REGISTRY}/tcab-publisher:${SHA}" "${BACKEND_IMAGE}:${SHA}" \
-		"${CI_REGISTRY}/microservice-repos:${REPOS_SHA}" "${CI_REGISTRY}/microservice-dispatcher:${DISPATCHER_SHA}"; do
+	for want in "${CI_REGISTRY}/microservice-driver:${DRIVER_SHA}" "${CI_REGISTRY}/tcab-publisher:${SHA}" \
+		"${BACKEND_IMAGE}:${SHA}" "${CI_REGISTRY}/microservice-repos:${REPOS_SHA}" \
+		"${CI_REGISTRY}/microservice-dispatcher:${DISPATCHER_SHA}"; do
 		grep -qxF "$want" <<<"$refs" || fail "the ${env} deploy does not name ${want}"
 	done
-	grep -qE "^ *value: \"?${SHA}\"?$" <<<"$deployed" ||
-		fail "the ${env} deploy does not set the dispatcher's TCAB_CONTAINER_TAG to the commit"
+	container_tag="$(awk '
+		want && /^ *value: / { v = $NF; gsub(/"/, "", v); print v }
+		{ want = ($0 ~ /name: TCAB_CONTAINER_TAG$/) }
+	' <<<"$deployed" | sort -u)"
+	[[ "$container_tag" == "$DRIVER_SHA" ]] ||
+		fail "the ${env} deploy sets the dispatcher's TCAB_CONTAINER_TAG to '${container_tag//$'\n'/ }', not ${DRIVER_SHA}, the commit the microservice-driver pointer names, which the run images are built at"
 
 	cluster="${k8s_root}/cluster/azure-${env}"
 	if [[ -d "$cluster" ]]; then

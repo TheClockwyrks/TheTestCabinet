@@ -3,9 +3,10 @@
 #
 # Each case pins a temporary copy of this checkout's deployments/k8s, named to the
 # script by TCAB_K8S_ROOT, so the checkout itself is never touched. The subject is
-# the kustomization it writes: the six images this repository builds at the
-# commit, the dispatcher's and the repos service's images at the commits their
-# submodule pointers name, the dispatcher's patch once however often it runs, and
+# the kustomization it writes: the five images this repository builds at the
+# commit, the dispatcher's, the driver's and the repos service's images at the
+# commits their submodule pointers name, the dispatcher's patch (its driver image
+# and run-container tag at the driver's pointer) once however often it runs, and
 # its refusals. The pointers are handed to the script with TCAB_PIN_GITLINKS, since
 # the commits pinned here are not in any checkout, except in the case that reads
 # them from this checkout's HEAD.
@@ -61,6 +62,8 @@ REPOS="89abcdef0123456789abcdef0123456789abcdef"
 REPOS_OTHER="76543210fedcba9876543210fedcba9876543210"
 DISPATCHER="456789abcdef0123456789abcdef0123456789ab"
 DISPATCHER_OTHER="3210fedcba9876543210fedcba9876543210fedc"
+DRIVER="cdef0123456789abcdef0123456789abcdef0123"
+DRIVER_OTHER="ba9876543210fedcba9876543210fedcba987654"
 
 stub_path=""
 real_kubectl=1
@@ -80,9 +83,9 @@ fresh_tree() {
 	printf '%s' "$tree/k8s"
 }
 
-pin() { # tree overlay commit [repos-pointer] [dispatcher-pointer]
+pin() { # tree overlay commit [repos-pointer] [dispatcher-pointer] [driver-pointer]
 	(cd / && env PATH="${stub_path}$PATH" TCAB_K8S_ROOT="$1" \
-		TCAB_PIN_GITLINKS="microservice-dispatcher=${5:-$DISPATCHER} microservice-repos=${4:-$REPOS}" \
+		TCAB_PIN_GITLINKS="microservice-dispatcher=${5:-$DISPATCHER} microservice-driver=${6:-$DRIVER} microservice-repos=${4:-$REPOS}" \
 		"$CI_DIR/pin-images.sh" "$2" "$3" 2>&1)
 }
 
@@ -93,7 +96,7 @@ for overlay in staging prod; do
 	status=$?
 	check_equal "passes" 0 "$status"
 	kustomization="$(cat "$tree/overlays/${overlay}/kustomization.yaml")"
-	check_equal "the six images this repository builds are at the commit" 6 \
+	check_equal "the five images this repository builds are at the commit" 5 \
 		"$(grep -c "^    newTag: \"${COMMIT}\"$" <<<"$kustomization")"
 	check_contains "the repos image is at its submodule pointer" \
 		"$(printf '  - name: REPLACE_REGISTRY/tcab-repos\n    newName: testcabinet.azurecr.io/microservice-repos\n    newTag: "%s"' "$REPOS")" \
@@ -101,9 +104,15 @@ for overlay in staging prod; do
 	check_contains "the dispatcher image is at its submodule pointer" \
 		"$(printf '  - name: REPLACE_REGISTRY/tcab-dispatcher\n    newName: testcabinet.azurecr.io/microservice-dispatcher\n    newTag: "%s"' "$DISPATCHER")" \
 		"$kustomization"
+	check_contains "the driver image is at its submodule pointer" \
+		"$(printf '  - name: REPLACE_REGISTRY/tcab-driver\n    newName: testcabinet.azurecr.io/microservice-driver\n    newTag: "%s"' "$DRIVER")" \
+		"$kustomization"
 	check_equal "none is left unpinned" 0 "$(grep -c 'newTag: unpinned' <<<"$kustomization")"
-	check_contains "the dispatcher's driver image is at the commit" \
-		"value: \"testcabinet.azurecr.io/tcab-driver:${COMMIT}\"" "$kustomization"
+	check_contains "the dispatcher's driver image is microservice-driver's at its pointer" \
+		"value: \"testcabinet.azurecr.io/microservice-driver:${DRIVER}\"" "$kustomization"
+	check_contains "the run-container tag is the driver's pointer" \
+		"$(printf -- '- name: TCAB_CONTAINER_TAG\n                    value: "%s"' "$DRIVER")" "$kustomization"
+	check_equal "no superrepo-built driver image is named" 0 "$(grep -c 'tcab-driver:' <<<"$kustomization")"
 	check_contains "the dispatcher's publisher image is at the commit" \
 		"value: \"testcabinet.azurecr.io/tcab-publisher:${COMMIT}\"" "$kustomization"
 	check_contains "the run-container registry is the ACR" "value: \"testcabinet.azurecr.io\"" "$kustomization"
@@ -111,7 +120,9 @@ for overlay in staging prod; do
 		rendered="$(kubectl kustomize "$tree/overlays/${overlay}")"
 		check_contains "the render runs the backend at the commit" \
 			"image: testcabinet.azurecr.io/the-test-cabinet-backend:${COMMIT}" "$rendered"
-		check_contains "the render sets the run-container tag" "value: ${COMMIT}" "$rendered"
+		check_contains "the render sets the run-container tag to the driver's pointer" "value: ${DRIVER}" "$rendered"
+		check_contains "the render starts the driver at its pointer" \
+			"value: testcabinet.azurecr.io/microservice-driver:${DRIVER}" "$rendered"
 		check_contains "the render runs the repos service at its pointer" \
 			"image: testcabinet.azurecr.io/microservice-repos:${REPOS}" "$rendered"
 		check_contains "the render runs the dispatcher at its pointer" \
@@ -125,14 +136,18 @@ for overlay in staging prod; do
 	pin "$tree" "$overlay" "$COMMIT" >/dev/null
 	check_equal "a second run with the same commit changes nothing" "$kustomization" \
 		"$(cat "$tree/overlays/${overlay}/kustomization.yaml")"
-	pin "$tree" "$overlay" "$OTHER" "$REPOS_OTHER" "$DISPATCHER_OTHER" >/dev/null
+	pin "$tree" "$overlay" "$OTHER" "$REPOS_OTHER" "$DISPATCHER_OTHER" "$DRIVER_OTHER" >/dev/null
 	kustomization="$(cat "$tree/overlays/${overlay}/kustomization.yaml")"
-	check_equal "a run with another commit moves all six" 6 "$(grep -c "^    newTag: \"${OTHER}\"$" <<<"$kustomization")"
+	check_equal "a run with another commit moves all five" 5 "$(grep -c "^    newTag: \"${OTHER}\"$" <<<"$kustomization")"
 	check_equal "and the repos image to the other pointer" 1 "$(grep -c "^    newTag: \"${REPOS_OTHER}\"$" <<<"$kustomization")"
 	check_equal "and the dispatcher image to the other pointer" 1 \
 		"$(grep -c "^    newTag: \"${DISPATCHER_OTHER}\"$" <<<"$kustomization")"
+	check_equal "and the driver image to the other pointer" 1 \
+		"$(grep -c "^    newTag: \"${DRIVER_OTHER}\"$" <<<"$kustomization")"
+	check_equal "and the dispatcher's driver image and run-container tag with it" 2 \
+		"$(grep -c "value: .*${DRIVER_OTHER}\"$" <<<"$kustomization")"
 	check_equal "and leaves the first commit nowhere" 0 "$(grep -c "$COMMIT" <<<"$kustomization")"
-	check_equal "and the first pointers nowhere" 0 "$(grep -cE "$REPOS|$DISPATCHER" <<<"$kustomization")"
+	check_equal "and the first pointers nowhere" 0 "$(grep -cE "$REPOS|$DISPATCHER|$DRIVER" <<<"$kustomization")"
 	check_equal "the dispatcher's patch is there once" 1 \
 		"$(grep -c '^  # BEGIN scripts/ci/pin-images.sh' <<<"$kustomization")"
 done
@@ -185,6 +200,15 @@ out="$(cd / && env PATH="${stub_path}$PATH" TCAB_K8S_ROOT="$tree" TCAB_PIN_GITLI
 status=$?
 check_failed "fails without the dispatcher's pointer" "$status"
 check_contains "names the dispatcher's pointer" "submodule pointer microservice-dispatcher names" "$out"
+# The dispatcher's and the repos service's pointers named: the driver's is read from
+# the commit's tree.
+out="$(cd / && env PATH="${stub_path}$PATH" TCAB_K8S_ROOT="$tree" \
+	TCAB_PIN_GITLINKS="microservice-dispatcher=${DISPATCHER} microservice-repos=${REPOS}" \
+	"$CI_DIR/pin-images.sh" staging "$COMMIT" 2>&1)"
+status=$?
+check_failed "fails without the driver's pointer" "$status"
+check_contains "names the driver's pointer" \
+	"tcab-driver is pinned to the commit the submodule pointer microservice-driver names" "$out"
 for value in abc123 "${REPOS^^}"; do
 	out="$(pin "$tree" staging "$COMMIT" "$value")"
 	status=$?
@@ -192,6 +216,9 @@ for value in abc123 "${REPOS^^}"; do
 	out="$(pin "$tree" staging "$COMMIT" "$REPOS" "$value")"
 	status=$?
 	check_failed "refuses the dispatcher pointer '${value}'" "$status"
+	out="$(pin "$tree" staging "$COMMIT" "$REPOS" "$DISPATCHER" "$value")"
+	status=$?
+	check_failed "refuses the driver pointer '${value}'" "$status"
 done
 check_equal "leaves the overlay as it was after the refusals" "$before" \
 	"$(cat "$tree/overlays/staging/kustomization.yaml")"
@@ -202,7 +229,9 @@ head="$(git -C "$CI_DIR" rev-parse --verify --quiet HEAD 2>/dev/null || true)"
 gitlink="$(git -C "$CI_DIR" ls-tree "${head:-HEAD}" -- ../../microservice-repos 2>/dev/null | awk '$1 == "160000" { print $3 }')"
 dispatcher_gitlink="$(git -C "$CI_DIR" ls-tree "${head:-HEAD}" -- ../../microservice-dispatcher 2>/dev/null |
 	awk '$1 == "160000" { print $3 }')"
-if [ -n "$head" ] && [ -n "$gitlink" ] && [ -n "$dispatcher_gitlink" ]; then
+driver_gitlink="$(git -C "$CI_DIR" ls-tree "${head:-HEAD}" -- ../../microservice-driver 2>/dev/null |
+	awk '$1 == "160000" { print $3 }')"
+if [ -n "$head" ] && [ -n "$gitlink" ] && [ -n "$dispatcher_gitlink" ] && [ -n "$driver_gitlink" ]; then
 	tree="$(fresh_tree)"
 	out="$(cd / && env PATH="${stub_path}$PATH" TCAB_K8S_ROOT="$tree" "$CI_DIR/pin-images.sh" prod "$head" 2>&1)"
 	status=$?
@@ -211,8 +240,12 @@ if [ -n "$head" ] && [ -n "$gitlink" ] && [ -n "$dispatcher_gitlink" ]; then
 		"newTag: \"${gitlink}\"" "$(cat "$tree/overlays/prod/kustomization.yaml")"
 	check_contains "pins the dispatcher image to the pointer in that commit's tree" \
 		"newTag: \"${dispatcher_gitlink}\"" "$(cat "$tree/overlays/prod/kustomization.yaml")"
+	check_contains "pins the driver image to the pointer in that commit's tree" \
+		"newTag: \"${driver_gitlink}\"" "$(cat "$tree/overlays/prod/kustomization.yaml")"
+	check_contains "and the dispatcher's driver image" \
+		"value: \"testcabinet.azurecr.io/microservice-driver:${driver_gitlink}\"" "$(cat "$tree/overlays/prod/kustomization.yaml")"
 else
-	ok "(skipped: this checkout has no commit holding the microservice-repos and microservice-dispatcher pointers)"
+	ok "(skipped: this checkout has no commit holding the microservice-repos, microservice-dispatcher and microservice-driver pointers)"
 fi
 
 echo "--- an image the pin does not reach ---"
