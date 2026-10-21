@@ -228,8 +228,8 @@ lock says which bytes exist and what they hash to.
 ## Publishing the store a run stages out of
 
 Every published pack lives in the audio store, and a run container is given the
-subset its test case declares. `scripts/stage-audio-store.mjs` materializes that
-store under `dist/audio-store/tree`:
+subset its test case declares. microservice-driver's `scripts/stage-audio-store.mjs`
+materializes that store under `dist/audio-store/tree` in that checkout:
 
 ```
 objects.lock.json                     the published objects, copied in as-is
@@ -254,17 +254,19 @@ and build the data-only `audio-store` image over its output. Run the stager on
 its own to materialize the tree without building.
 
 ```sh
+# In microservice-driver.
 node scripts/stage-audio-store.mjs                 # every published pack
 node scripts/stage-audio-store.mjs gm-lite@0.1.0   # only the refs you name
 
-microservice-driver/containers/build.sh audio-store   # the image, locally
+containers/build.sh audio-store                    # the image, locally
 ```
 
 The `audio-store` image is what carries the store to a machine with no audio
 credentials. The pipeline publishes it on every push to `master` and `staging`
 as `testcabinet.azurecr.io/test-cabinet-audio-store:<sha>`. The driver image
 copies it in at `/opt/tcab-audio`, and a local checkout fetches it with
-`scripts/fetch-audio-store.sh`, which pulls the image and extracts the tree.
+microservice-driver's `scripts/fetch-audio-store.sh`, which pulls the image and
+extracts the tree.
 Pulling it needs `az acr login --name testcabinet` and `TCAB_CONTAINER_TAG` set
 to the commit whose store you want.
 
@@ -283,7 +285,7 @@ take the bytes straight from the object store:
 make -C deployments/local audio-store
 make -C deployments/local local-rebuild
 
-# a host-side `tcab validate`
+# a host-side `tcab validate`, in microservice-driver
 scripts/fetch-audio-store.sh --stage
 ```
 
