@@ -2,7 +2,6 @@
 resolver = "3"
 members = [
 	"crates/backend",
-	"crates/publisher",
 	"crates/db-auth",
 	"crates/entities",
 	"crates/migration",
@@ -53,7 +52,6 @@ test-cabinet-contracts = { git = "https://github.com/TheClockwyrks/contracts", t
 test-cabinet-suites = { git = "https://github.com/TheClockwyrks/contracts", tag = "v0.2.4" }
 test-cabinet-telemetry = { git = "https://github.com/TheClockwyrks/contracts", tag = "v0.2.4" }
 test-cabinet-redact = { git = "https://github.com/TheClockwyrks/contracts", tag = "v0.2.4" }
-test-cabinet-backend-client = { git = "https://github.com/TheClockwyrks/contracts", tag = "v0.2.4" }
 # The crates of the engines repository, named the same way at its tag. The engine
 # catalog.
 test-cabinet-engines = { git = "https://github.com/TheClockwyrks/engines", tag = "v1.1.4" }

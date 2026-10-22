@@ -10,7 +10,7 @@
 # submodule pointer names at the commit being deployed.
 #
 # TCAB_GITHUB_ORG + TCAB_PAGES_PROJECT are the crux of publish decoupling:
-# tcab_publisher::release::PublishConfig::from_env requires both (no compiled-in fallback), so
+# microservice-publisher's release::PublishConfig::from_env requires both (no compiled-in fallback), so
 # every environment names its own org and Cloudflare Pages project. The dispatcher
 # forwards both into every publish Job (PUBLISHER_PASSTHROUGH_VARS), where from_env
 # reads them.

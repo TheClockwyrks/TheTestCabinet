@@ -35,7 +35,7 @@ deployments/
 ├── images/                    # service images, pushed to the ACR (see below)
 │   ├── services.Dockerfile    # EVERY Rust service, one `--target` each, over one
 │   │                          #   shared cargo build stage: backend (+ headless
-│   │                          #   Chromium), publisher
+│   │                          #   Chromium)
 │   └── backend.Dockerfile     # the-test-cabinet-backend: a retag of tcab-backend
 ├── azure/
 │   └── aks-command-invoke.role.json # the deploy identity's custom AKS role
@@ -85,8 +85,7 @@ of each service's configuration.
 The Azure pipeline ([`azure-pipelines.yml`](../azure-pipelines.yml)) builds the
 service images under `images/` on every push to `master` and `staging`, natively
 for `amd64` and `arm64`, and pushes each to the Test Cabinet Azure Container
-Registry as `testcabinet.azurecr.io/tcab-backend:<sha>` and
-`…/tcab-publisher`. The
+Registry as `testcabinet.azurecr.io/tcab-backend:<sha>`. The
 dispatcher's image is built by microservice-dispatcher's pipeline and pushed as
 `testcabinet.azurecr.io/microservice-dispatcher:<commit>`, and the driver's by
 microservice-driver's, as `testcabinet.azurecr.io/microservice-driver:<commit>`. The

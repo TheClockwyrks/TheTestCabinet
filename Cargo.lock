@@ -3025,31 +3025,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "tcab-publisher"
-version = "0.0.0"
-dependencies = [
- "async-trait",
- "axum",
- "bytes",
- "hex",
- "reqwest 0.12.28",
- "serde",
- "serde_json",
- "sha2",
- "tar",
- "tempfile",
- "test-cabinet-backend-client",
- "test-cabinet-contracts",
- "test-cabinet-redact",
- "test-cabinet-suites",
- "test-cabinet-telemetry",
- "thiserror",
- "time",
- "tokio",
- "tracing",
-]
-
-[[package]]
 name = "tempfile"
 version = "3.27.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3102,21 +3077,6 @@ dependencies = [
  "tokio",
  "tower",
  "tower-http",
- "tracing",
-]
-
-[[package]]
-name = "test-cabinet-backend-client"
-version = "0.2.4"
-dependencies = [
- "async-trait",
- "http",
- "reqwest 0.12.28",
- "serde",
- "serde_json",
- "test-cabinet-contracts",
- "test-cabinet-telemetry",
- "thiserror",
  "tracing",
 ]
 
@@ -4510,3 +4470,7 @@ version = "0.0.0"
 [[patch.unused]]
 name = "tcab-publisher"
 version = "0.0.0"
+
+[[patch.unused]]
+name = "test-cabinet-backend-client"
+version = "0.2.4"

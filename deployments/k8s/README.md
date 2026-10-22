@@ -70,8 +70,8 @@ deploy; see
 [growing the backend's claim](../../apps/docs/src/content/docs/deployment/kubernetes/overview.md#growing-the-backends-claim).
 
 The service container images are built from [`../images/`](../images/) — every Rust
-service is a `--target` of the shared `services.Dockerfile` (`backend`,
-`publisher`). The repos service is its own repository, `microservice-repos`,
+service is a `--target` of the shared `services.Dockerfile` (`backend`). The repos
+service is its own repository, `microservice-repos`,
 whose pipeline builds its image from that repository's `Dockerfile` and pushes it as
 `testcabinet.azurecr.io/microservice-repos:<commit>`. The dispatcher is likewise
 `microservice-dispatcher`, pushed as
@@ -91,8 +91,7 @@ and `prod` overlays run `tcab-web` from. The publisher is `microservice-publishe
 pushed as `testcabinet.azurecr.io/microservice-publisher:<commit>`, the image the
 dispatcher's `TCAB_PUBLISHER_IMAGE` names. The Azure pipeline builds the
 others on every push to `master` and `staging`, and pushes each to
-`testcabinet.azurecr.io/<image>:<sha>` (`tcab-backend`
-and `tcab-publisher`). The workspace
+`testcabinet.azurecr.io/<image>:<sha>` (`tcab-backend`). The workspace
 template's publish stage retags `tcab-backend:<sha>` as
 `testcabinet.azurecr.io/the-test-cabinet-backend:<sha>`
 ([`../images/backend.Dockerfile`](../images/backend.Dockerfile)), the repository the
