@@ -148,11 +148,10 @@ This project's own gates, wired in the same way:
 | `ci-image-pins` | project jobs pin the Rust CI image | web | yes |
 | `scripts-test` | script library tests (node --test) | web | yes |
 | `workspace-test` | npm workspace tests (vitest) | web | no |
-| `site-build` | gallery build (vite build) | web | no |
 
-The two without a hook build the workspace packages, or the Rust workspace,
-before they check anything, which is more than a commit waits on; `HOOKLESS`
-in `tests/test_wiring.py` names them, with `rust-test` and `rust-doctest`.
+The one without a hook builds the workspace packages before it checks
+anything, which is more than a commit waits on; `HOOKLESS` in
+`tests/test_wiring.py` names it, with `rust-test` and `rust-doctest`.
 `scripts-test` and `workspace-test` run tests, so their steps name an
 artifact directory and the web job's test results carry their reports.
 

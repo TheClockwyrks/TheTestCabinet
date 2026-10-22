@@ -92,7 +92,7 @@ reaches_rust() { # path
 	is_pipeline "$1" && return 0
 	case "$1" in
 		contracts | engines | gg | test-suites | ui-common | scripts/ci/submodules.sh) return 0 ;;
-		apps/docs/* | apps/site/*) return 1 ;;
+		apps/docs/*) return 1 ;;
 		tasks/* | .github/* | .devcontainer/* | .claude/* | .vscode/*) return 1 ;;
 		deployments/*) return 1 ;;
 		containers/*) return 1 ;;

@@ -528,8 +528,8 @@ stages:
             displayName: Free disk space on the agent
             target: host
 
-          # The web track's checks *are* the npm workspace — eslint, tsc,
-          # vitest, prettier, markdownlint, cspell and astro all run out of
+          # The web track's checks *are* the npm workspace — tsc, vitest,
+          # prettier, markdownlint, cspell and astro all run out of
           # node_modules — so it installs it. The script refuses a Node other
           # than the one .devcontainer/docker-compose.yml pins, which is the
           # same pin the image was built from.
@@ -609,10 +609,6 @@ stages:
 
           - script: uv run --quiet --project ci gate run shell-tests
             displayName: shell tests
-            condition: eq(variables['checksReady'], 'true')
-
-          - script: uv run --quiet --project ci gate run web-lint
-            displayName: web lint (eslint)
             condition: eq(variables['checksReady'], 'true')
 
           # Rendered only for a project that deploys to Kubernetes, because
@@ -696,10 +692,6 @@ stages:
             condition: eq(variables['checksReady'], 'true')
             env:
               CI_GATE_ARTIFACTS: target/gate-artifacts/workspace-test
-
-          - script: uv run --quiet --project ci gate run site-build
-            displayName: "gallery build (vite build)"
-            condition: eq(variables['checksReady'], 'true')
 
           # The project's own steps for this job, after its last check and
           # before the job's test results.

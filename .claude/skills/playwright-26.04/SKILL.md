@@ -91,7 +91,8 @@ EOF
 
 ## Gallery Screenshot Script
 
-The gallery site's screenshot helper (`apps/site/scripts/screenshot.mjs`) sets
+The gallery site's screenshot helper (`apps/site/scripts/screenshot.mjs` in the
+`testcabinet.ai` checkout) sets
 `PLAYWRIGHT_HOST_PLATFORM_OVERRIDE` automatically when it detects Ubuntu 26.04 on
 `x64` or `arm64`, unless the environment already sets an explicit override. This
 keeps screenshot capture working across both amd64 and aarch64 hosts without
@@ -100,6 +101,6 @@ hard-coding one host architecture.
 Run the screenshot helper from the gallery site folder:
 
 ```sh
-cd apps/site
+cd testcabinet.ai/apps/site
 npm run screenshot -- / tmp/screenshots/index.png
 ```

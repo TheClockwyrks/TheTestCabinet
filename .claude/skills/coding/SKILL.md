@@ -106,7 +106,8 @@ gates for what it touched:
 | `contracts/` | its own `make gate` (`contract-drift` among them, after `npm run gen:contract` in that checkout when a contract or backend API type changed) |
 | `engines/` | its own `make gate` (`seeded-contract` among them) |
 | `console.testcabinet.ai/` | its own `make gate` (`web-lint`, `web-browser-test` among them) |
-| `packages/`, `apps/site/` | `web-lint`, `workspace-test`, `site-build`, `format` |
+| `testcabinet.ai/` | its own `make gate` (`web-lint` among them) |
+| `packages/` | `workspace-test`, `format` |
 | Documentation (`apps/docs/`) | `markdownlint`, `cspell`, `docs-typecheck`, `docs-build` |
 | Any Markdown elsewhere | `markdownlint`, `cspell` |
 | `test-suites/` (a test case, game jam or group) | its own `make gate` (`frozen-paths`, `spec-prose`, `spec-vocabulary`, `audio-packs`, `validators-typecheck` among them) |

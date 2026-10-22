@@ -65,9 +65,6 @@ HOOKLESS: set[str] = {
     "rust-doctest",
     # Compiles every crate's test binary and runs the whole suite.
     "rust-test",
-    # Builds every workspace package the gallery imports, then Vite's
-    # production build of it.
-    "site-build",
     # Builds the workspace packages, then runs every npm workspace's vitest
     # suite.
     "workspace-test",

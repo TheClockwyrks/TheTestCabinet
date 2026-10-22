@@ -58,7 +58,8 @@ Every repository but `console.testcabinet.ai`,
 `tool-audio-core`, `tool-dc`, `tool-mc`, `tool-model-core`, `tool-music`,
 `tool-paint`, `tool-particle`,
 `tool-sfx-sample`, `tool-sfx-synth`, `tool-sn`, `tool-sprite`, `tool-voxel`,
-`test-suites`, `ui-common` and `cold-storage` is still a directory of this tree
+`test-suites`, `testcabinet.ai`,
+`ui-common` and `cold-storage` is still a directory of this tree
 today (`crates/`, `apps/`, `packages/`), so until it is extracted its code is
 found there.
 

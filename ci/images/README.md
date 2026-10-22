@@ -128,9 +128,8 @@ rather than pulling some other base.
   devcontainer copies, with the system libraries they link against, which
   `console.testcabinet.ai`'s `web-browser-test` drives in that repository's
   pipeline.
-- Node and npm, which `web-lint`, `workspace-test`, `site-build`,
-  `docs-typecheck`, `docs-build`, `markdownlint`, `cspell` and `format` all
-  reach through the npm workspace.
+- Node and npm, which `workspace-test`, `docs-typecheck`, `docs-build`,
+  `markdownlint`, `cspell` and `format` all reach through the npm workspace.
 - `kubectl`, for `k8s-manifests`, which renders the overlays under
   [`deployments/`](../../deployments/) through kubectl's built-in kustomize.
   Nothing in CI stands a cluster up.
