@@ -2,7 +2,6 @@
 resolver = "3"
 members = [
 	"crates/backend",
-	"crates/publisher",
 	"crates/db-auth",
 	"crates/entities",
 	"crates/migration",
@@ -10,7 +9,7 @@ members = [
 # The repositories checked out as submodules carrying a crate (contracts, engines,
 # gg, microservice-arena, microservice-artifacts, microservice-dispatcher,
 # microservice-driver,
-# microservice-repos,
+# microservice-publisher, microservice-repos,
 # tool-model-core, tool-paint, tool-particle, tool-sprite, tool-voxel, tool-mc,
 # tool-sn, tool-dc, tool-audio-core, tool-sfx-synth, tool-sfx-sample, tool-music,
 # ui-common) are workspaces of their own. The contracts and engines crates are
@@ -19,7 +18,7 @@ members = [
 # on the other repositories' source (gg's, the microservices', the tools' or
 # ui-common's), nor on every crate of engines; the patch table names their crates
 # all the same, and the lock records them as unused.
-exclude = ["contracts", "engines", "gg", "microservice-arena", "microservice-artifacts", "microservice-dispatcher", "microservice-driver", "microservice-repos", "tool-model-core", "tool-paint", "tool-particle", "tool-sprite", "tool-voxel", "tool-mc", "tool-sn", "tool-dc", "tool-audio-core", "tool-sfx-synth", "tool-sfx-sample", "tool-music", "ui-common"]
+exclude = ["contracts", "engines", "gg", "microservice-arena", "microservice-artifacts", "microservice-dispatcher", "microservice-driver", "microservice-publisher", "microservice-repos", "tool-model-core", "tool-paint", "tool-particle", "tool-sprite", "tool-voxel", "tool-mc", "tool-sn", "tool-dc", "tool-audio-core", "tool-sfx-synth", "tool-sfx-sample", "tool-music", "ui-common"]
 
 [workspace.package]
 edition = "2024"
@@ -53,7 +52,6 @@ test-cabinet-contracts = { git = "https://github.com/TheClockwyrks/contracts", t
 test-cabinet-suites = { git = "https://github.com/TheClockwyrks/contracts", tag = "v0.2.4" }
 test-cabinet-telemetry = { git = "https://github.com/TheClockwyrks/contracts", tag = "v0.2.4" }
 test-cabinet-redact = { git = "https://github.com/TheClockwyrks/contracts", tag = "v0.2.4" }
-test-cabinet-backend-client = { git = "https://github.com/TheClockwyrks/contracts", tag = "v0.2.4" }
 # The crates of the engines repository, named the same way at its tag. The engine
 # catalog.
 test-cabinet-engines = { git = "https://github.com/TheClockwyrks/engines", tag = "v1.1.4" }

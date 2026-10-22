@@ -104,11 +104,11 @@ trigger:
 # it. The forty zeros are the placeholder a render carries; see the header.
 
 # The repositories the jobs read beside this one: the contracts, engines, gg,
-# microservice-arena, microservice-artifacts, microservice-dispatcher, microservice-driver, microservice-repos, tool-model-core, tool-paint,
+# microservice-arena, microservice-artifacts, microservice-dispatcher, microservice-driver, microservice-publisher, microservice-repos, tool-model-core, tool-paint,
 # tool-particle, tool-sprite, tool-voxel, tool-mc, tool-sn, tool-dc,
 # tool-audio-core, tool-sfx-synth, tool-sfx-sample and tool-music repositories,
 # the `contracts/`, `engines/`, `gg/`, `microservice-arena/`, `microservice-artifacts/`, `microservice-dispatcher/`, `microservice-driver/`,
-# `microservice-repos/`, `tool-model-core/`, `tool-paint/`, `tool-particle/`,
+# `microservice-publisher/`, `microservice-repos/`, `tool-model-core/`, `tool-paint/`, `tool-particle/`,
 # `tool-sprite/`, `tool-voxel/`, `tool-mc/`, `tool-sn/`, `tool-dc/`,
 # `tool-audio-core/`, `tool-sfx-synth/`, `tool-sfx-sample/` and `tool-music/`
 # submodules every build reads, because the patch table names their crates and
@@ -147,6 +147,9 @@ resources:
     - repository: microservice-driver
       type: git
       name: the-test-cabinet/microservice-driver
+    - repository: microservice-publisher
+      type: git
+      name: the-test-cabinet/microservice-publisher
     - repository: microservice-repos
       type: git
       name: the-test-cabinet/microservice-repos
@@ -271,6 +274,7 @@ stages:
             - microservice-artifacts
             - microservice-dispatcher
             - microservice-driver
+            - microservice-publisher
             - microservice-repos
             - tool-model-core
             - tool-paint
@@ -310,7 +314,7 @@ stages:
             fetchDepth: 1
             clean: true
 
-          # The contracts, engines, gg, microservice-arena, microservice-artifacts, microservice-dispatcher, microservice-driver, microservice-repos,
+          # The contracts, engines, gg, microservice-arena, microservice-artifacts, microservice-dispatcher, microservice-driver, microservice-publisher, microservice-repos,
           # tool-model-core, tool-paint, tool-particle, tool-sprite, tool-voxel,
           # tool-mc, tool-sn, tool-dc, tool-audio-core, tool-sfx-synth,
           # tool-sfx-sample, tool-music, test-suites and ui-common submodules, at
@@ -318,8 +322,8 @@ stages:
           # token's scope. The tests over the committed catalog read test-suites,
           # the documentation site reads gg's pages, and the npm workspace lists
           # ui-common's packages.
-          - script: scripts/ci/submodules.sh init contracts engines gg microservice-arena microservice-artifacts microservice-dispatcher microservice-driver microservice-repos tool-model-core tool-paint tool-particle tool-sprite tool-voxel tool-mc tool-sn tool-dc tool-audio-core tool-sfx-synth tool-sfx-sample tool-music test-suites ui-common
-            displayName: Initialize the contracts, engines, gg, microservice-arena, microservice-artifacts, microservice-dispatcher, microservice-driver, microservice-repos, tool-model-core, tool-paint, tool-particle, tool-sprite, tool-voxel, tool-mc, tool-sn, tool-dc, tool-audio-core, tool-sfx-synth, tool-sfx-sample, tool-music, test-suites and ui-common submodules
+          - script: scripts/ci/submodules.sh init contracts engines gg microservice-arena microservice-artifacts microservice-dispatcher microservice-driver microservice-publisher microservice-repos tool-model-core tool-paint tool-particle tool-sprite tool-voxel tool-mc tool-sn tool-dc tool-audio-core tool-sfx-synth tool-sfx-sample tool-music test-suites ui-common
+            displayName: Initialize the contracts, engines, gg, microservice-arena, microservice-artifacts, microservice-dispatcher, microservice-driver, microservice-publisher, microservice-repos, tool-model-core, tool-paint, tool-particle, tool-sprite, tool-voxel, tool-mc, tool-sn, tool-dc, tool-audio-core, tool-sfx-synth, tool-sfx-sample, tool-music, test-suites and ui-common submodules
             env:
               SYSTEM_ACCESSTOKEN: $(System.AccessToken)
 
@@ -486,6 +490,7 @@ stages:
             - microservice-artifacts
             - microservice-dispatcher
             - microservice-driver
+            - microservice-publisher
             - microservice-repos
             - tool-model-core
             - tool-paint
@@ -506,7 +511,7 @@ stages:
             fetchDepth: 1
             clean: true
 
-          # The contracts, engines, gg, microservice-arena, microservice-artifacts, microservice-dispatcher, microservice-driver, microservice-repos,
+          # The contracts, engines, gg, microservice-arena, microservice-artifacts, microservice-dispatcher, microservice-driver, microservice-publisher, microservice-repos,
           # tool-model-core, tool-paint, tool-particle, tool-sprite, tool-voxel,
           # tool-mc, tool-sn, tool-dc, tool-audio-core, tool-sfx-synth,
           # tool-sfx-sample, tool-music, test-suites and ui-common submodules, at
@@ -514,8 +519,8 @@ stages:
           # token's scope. The tests over the committed catalog read test-suites,
           # the documentation site reads gg's pages, and the npm workspace lists
           # ui-common's packages.
-          - script: scripts/ci/submodules.sh init contracts engines gg microservice-arena microservice-artifacts microservice-dispatcher microservice-driver microservice-repos tool-model-core tool-paint tool-particle tool-sprite tool-voxel tool-mc tool-sn tool-dc tool-audio-core tool-sfx-synth tool-sfx-sample tool-music test-suites ui-common
-            displayName: Initialize the contracts, engines, gg, microservice-arena, microservice-artifacts, microservice-dispatcher, microservice-driver, microservice-repos, tool-model-core, tool-paint, tool-particle, tool-sprite, tool-voxel, tool-mc, tool-sn, tool-dc, tool-audio-core, tool-sfx-synth, tool-sfx-sample, tool-music, test-suites and ui-common submodules
+          - script: scripts/ci/submodules.sh init contracts engines gg microservice-arena microservice-artifacts microservice-dispatcher microservice-driver microservice-publisher microservice-repos tool-model-core tool-paint tool-particle tool-sprite tool-voxel tool-mc tool-sn tool-dc tool-audio-core tool-sfx-synth tool-sfx-sample tool-music test-suites ui-common
+            displayName: Initialize the contracts, engines, gg, microservice-arena, microservice-artifacts, microservice-dispatcher, microservice-driver, microservice-publisher, microservice-repos, tool-model-core, tool-paint, tool-particle, tool-sprite, tool-voxel, tool-mc, tool-sn, tool-dc, tool-audio-core, tool-sfx-synth, tool-sfx-sample, tool-music, test-suites and ui-common submodules
             env:
               SYSTEM_ACCESSTOKEN: $(System.AccessToken)
 

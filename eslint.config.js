@@ -131,7 +131,7 @@ const CONFIG = defineConfig([
     // gate reads what the others leave alone.
     "cold-storage/**",
     // The contracts, engines, gg, gg.rocks, microservice-arena, microservice-artifacts, microservice-dispatcher, microservice-driver,
-    // microservice-repos, tool-model-core, tool-paint, tool-particle,
+    // microservice-publisher, microservice-repos, tool-model-core, tool-paint, tool-particle,
     // tool-sprite, tool-voxel, tool-mc, tool-sn, tool-dc, tool-audio-core,
     // tool-sfx-synth, tool-sfx-sample, tool-music, test-suites, ui-common and
     // console.testcabinet.ai repositories, submodules with gates of their own,
@@ -144,6 +144,7 @@ const CONFIG = defineConfig([
     "microservice-artifacts/**",
     "microservice-dispatcher/**",
     "microservice-driver/**",
+    "microservice-publisher/**",
     "microservice-repos/**",
     "tool-model-core/**",
     "tool-paint/**",

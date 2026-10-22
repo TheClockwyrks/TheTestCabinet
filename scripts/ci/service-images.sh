@@ -7,15 +7,15 @@
 # It runs scripts/ci/service-image.sh once per service, in a fixed order, and that
 # script's arguments are the whole contract; this one adds the order and the builder.
 #
-# WHY ONE JOB BUILDS THEM. Both services are targets of
-# deployments/images/services.Dockerfile, and both are assembled from
-# the same `build` stage: one `cargo build --release` of both binaries. Built
+# WHY ONE JOB BUILDS THEM. Every service is a target of
+# deployments/images/services.Dockerfile, assembled from
+# the same `build` stage: one `cargo build --release` of every binary. Built
 # as separate jobs, each on a fresh agent with an empty builder, that compile
-# ran twice per architecture — twenty minutes each on a hosted amd64 agent,
+# ran once per service per architecture — twenty minutes each on a hosted amd64 agent,
 # ten on the arm64 pool, which also runs one job at a time and pays a VM provision
-# for each. On one builder the first target compiles and the one after it takes the
+# for each. On one builder the first target compiles and any after it takes the
 # `build` stage from the builder's local cache, so the compile happens once per
-# architecture and the assemblies are seconds.
+# architecture and the assemblies are seconds. The backend is the one service today.
 #
 # The order is `backend` (the one that takes the pinned gg release) first. A
 # failure stops the job at the failing service, which the last line names; a re-run of the same
@@ -33,7 +33,7 @@ fi
 readonly SHA="$1"
 
 # The services scripts/ci/service-image.sh knows, in the order argued above.
-readonly SERVICES=(backend publisher)
+readonly SERVICES=(backend)
 
 for service in "${SERVICES[@]}"; do
 	if ! "${CI_LIB_DIR}/service-image.sh" "$service" "$SHA"; then

@@ -86,7 +86,8 @@ When the container is created, `.devcontainer/post-create.sh` installs the git
 hooks, initializes `contracts`, `engines`, `gg`, `microservice-arena`,
 `microservice-artifacts`,
 `microservice-dispatcher`,
-`microservice-driver`, `microservice-repos`, `tool-model-core`, `tool-paint`, `tool-particle`,
+`microservice-driver`, `microservice-publisher`, `microservice-repos`,
+`tool-model-core`, `tool-paint`, `tool-particle`,
 `tool-sprite`, `tool-voxel`, `tool-mc`, `tool-sn`, `tool-dc`,
 `tool-audio-core`, `tool-sfx-synth`, `tool-sfx-sample`, `tool-music`,
 `ui-common`, `test-suites` and `console.testcabinet.ai`, runs `npm ci`
