@@ -7,8 +7,24 @@ number: 1
 title: Rebuild the CI images on nightly and move the ciImageTag pin
 type: generic
 priority: 3
-state: open
+state: done
 created: 2026-10-20T06:14:56.137595413Z
+done: 2026-10-22T18:46:54.24828773Z
+outcome: |
+  The project setting "Protect access to repositories in YAML pipelines" is off,
+  matching the vantaloc project, so the job token reads every repository; the docs
+  state that rule (90802bab3). Landed in PR 5069 into nightly: the token-scoping
+  uses: lists and per-repository checkouts removed (submodule_pins checks out the
+  superrepo alone), the purge spares images pushed in the last day, the CI images
+  rebuilt by the image pipeline on the branch at ed9c9929f and pinned as
+  ciImageTag (39f826731), and every kit-rendered repository re-rendered onto that
+  tag through PRs 5033-5058 into their masters with the gitlinks moved. Gates run
+  18360 on the branch was green in every job, the Rust jobs included; superrepo
+  gates 22 of 22. Left for decisions: the kit's rendered pipelines still declare
+  the Rust-edge closure under resources and uses: because repositories.md "The
+  kit" mandates it; gg took a pin-only commit with its copier record at the old
+  commit, since no gg image build exists (build one or exempt gg from the image
+  kinds).
 ---
 
 The gates of every superrepo pipeline job run inside the CI images at the
