@@ -49,9 +49,9 @@ resources:
 # serve it behind the edge component). Baking the console
 # into an in-cluster pod forces a full image rebuild + re-import on every UI edit,
 # which makes iterating on the console painfully slow. Locally we run it straight from
-# source instead: `npm run -w apps/web dev` serves it on 127.0.0.1:1430 and proxies
+# source instead: `npm run dev` in console.testcabinet.ai/ serves it on 127.0.0.1:1430 and proxies
 # `/api`, `/artifacts` and `/arena` of its own origin to the backend/artifacts/arena
-# `make local-forward` exposes on localhost (apps/web/vite.config.ts), adding the
+# `make local-forward` exposes on localhost (that repository's apps/web/vite.config.ts), adding the
 # `Cf-Access-Authenticated-User-Email` header (`dev@local` by default) that each
 # service takes the identity from, since this overlay sets no TCAB_ACCESS_* variable.
 components:

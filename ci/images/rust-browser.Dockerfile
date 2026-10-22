@@ -29,7 +29,7 @@
 # the web image do. PLAYWRIGHT_IMAGE comes from the `x-devcontainer-build-args`
 # anchor in .devcontainer/docker-compose.yml, extracted by
 # ci/images/build-args.sh, like every CI image's argument, and its tag is the
-# Playwright version `web-browser-test` holds the workspace's `playwright` to,
+# Playwright version `ci-image-pins` holds the workspace's `playwright` to,
 # so the workspace's Playwright finds the build copied here. Nothing is
 # installed, and nothing of the checkout is copied. Built for linux/amd64 only.
 # scripts/ci/ci-image.sh builds and pushes this file. See ci/images/README.md.

@@ -63,17 +63,17 @@ calls() { sed 's/ \[cwd=.*//' "$tmp/calls.log"; }
 
 expected_order() {
 	local service
-	for service in backend publisher web; do
+	for service in backend publisher; do
 		echo "service-image.sh $service $SHA"
 	done
 }
 
 out="$(run "$SHA")"
 check_equal "every service builds" "0" "$?"
-check_equal "the three services, Rust ones first and web last, each with the sha" \
+check_equal "the services, backend first, each with the sha" \
 	"$(expected_order)" "$(calls)"
 check_contains "and the summary names the tag" "every service image is pushed as <image>:$SHA-amd64" "$out"
-check_equal "each call runs from the repository root" "3" "$(grep -c "\[cwd=$repo\]" "$tmp/calls.log")"
+check_equal "each call runs from the repository root" "2" "$(grep -c "\[cwd=$repo\]" "$tmp/calls.log")"
 
 out="$(STUB_UNAME_M=aarch64 run "$SHA")"
 check_equal "an arm64 build succeeds" "0" "$?"

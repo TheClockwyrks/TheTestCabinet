@@ -20,7 +20,7 @@
 # The version is PLAYWRIGHT_VERSION when it is set. Run from a checkout without
 # it, the script reads the tag of the PLAYWRIGHT_IMAGE
 # .devcontainer/docker-compose.yml names, which is the Playwright version that
-# image's engines were downloaded with. `web-browser-test` holds the
+# image's engines were downloaded with. `ci-image-pins` holds the
 # workspace's `playwright` package to the same version, so the Chromium build
 # installed here is the one the workspace's Playwright looks for. Playwright
 # installs into PLAYWRIGHT_BROWSERS_PATH when that is set, and into

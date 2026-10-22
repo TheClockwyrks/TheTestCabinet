@@ -47,7 +47,6 @@ import tseslint from "typescript-eslint";
  * `apps/docs/src/content/docs/development/building.md`).
  */
 const PROJECTS = [
-  { sources: "apps/web/src", tsconfig: "apps/web/tsconfig.json" },
   { sources: "apps/site/src", tsconfig: "apps/site/tsconfig.json" },
 ];
 
@@ -69,7 +68,6 @@ const TESTS = PROJECTS.flatMap(({ sources }) => [
  */
 const CONFIGS = [
   "eslint.config.js",
-  "apps/web/vite.config.ts",
   "apps/site/vite.config.ts",
   "apps/site/vite-plugin-*.ts",
 ];
@@ -122,10 +120,7 @@ const CONFIG = defineConfig([
     // The documentation site is Astro's own toolchain, and `astro check` is the
     // gate it answers to.
     "apps/docs/**",
-    // Served verbatim rather than compiled. `backend.js` is committed empty and
-    // written by whatever serves a build elsewhere. The gallery's is its static
-    // assets.
-    "apps/web/public/**",
+    // The gallery's static assets, served verbatim rather than compiled.
     "apps/site/public/**",
     // Scratch work, which `.gitignore` keeps out of the repository and the
     // prose and format gates leave alone. It may hold another repository, whose

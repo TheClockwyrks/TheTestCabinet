@@ -119,9 +119,8 @@ check_equal "driver is no longer a service (microservice-driver builds it)" "1" 
 check_contains "and is named unknown" "unknown service 'driver'" "$out"
 
 out="$(run web "$SHA")"
-check_equal "web builds" "0" "$?"
-check_equal "web has its own Dockerfile and no target" \
-	"$(expected tcab-web deployments/images/web.Dockerfile amd64 "")" "$(build_line)"
+check_equal "web is no longer a service (console.testcabinet.ai builds it)" "1" "$?"
+check_contains "and is named unknown" "unknown service 'web'" "$out"
 
 out="$(STUB_UNAME_M=aarch64 run backend "$SHA")"
 check_equal "an arm64 build succeeds" "0" "$?"

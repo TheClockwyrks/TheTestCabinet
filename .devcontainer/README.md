@@ -263,14 +263,16 @@ image rather than the test gate here. The engines occupy a little over a
 gigabyte, and nothing is downloaded when the container opens.
 
 The playwright image's tag is the Playwright version that downloaded the
-engines, and it is one of two. `PLAYWRIGHT_IMAGE` in `docker-compose.yml`
-decides which build of each engine the image holds, and
-`apps/web/package.json`'s `playwright` decides which build the app's tests ask
-for, because Playwright resolves an engine per client version. A bump
-therefore moves both, which for the image means a template version holding
-them, and `ci/gates/web-browser-test.py` reads the two and fails with both
-values when they disagree, rather than leaving the mismatch to surface inside
-the browser provider.
+engines, and the clients that drive them follow it. `PLAYWRIGHT_IMAGE` in
+`docker-compose.yml` decides which build of each engine the image holds, and
+each `playwright` package decides which build its tests ask for, because
+Playwright resolves an engine per client version: the one the workspace's lock
+resolves, `contracts`' own and the console's in
+`console.testcabinet.ai/apps/web/package.json`. A bump therefore moves them
+all, which for the image means a template version holding them, and
+`ci/gates/ci-image-pins.py` reads them and fails with every value when they
+disagree, rather than leaving the mismatch to surface inside the browser
+provider.
 
 The `playwright` in `engines/packages/case-harness` and
 `contracts/packages/browser-driver` follows the same tag, for the same reason:
