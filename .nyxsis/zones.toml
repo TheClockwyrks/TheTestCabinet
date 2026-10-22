@@ -39,3 +39,6 @@ name = "Continuous integration and the development environment"
 
 [zone.UICOM]
 name = "UI library (ui-common)"
+
+[zone.NYX]
+name = "Filed by Nyxsis"
