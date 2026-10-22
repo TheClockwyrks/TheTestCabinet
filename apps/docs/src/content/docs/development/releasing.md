@@ -209,6 +209,9 @@ In the Cloudflare dashboard:
   `staging.testcabinet.ai` on the staging project.
 - Set the public bucket's read URL on the pipeline as `TCAB_SNAPSHOT_URL`,
   per branch, which the build writes into the page as the dataset's origin.
+  The pipeline definition holds the two as `TCAB_SNAPSHOT_URL_MASTER` and
+  `TCAB_SNAPSHOT_URL_STAGING`, and the deploy stage hands the build the one
+  its branch names.
 - Deploy the two Workers from the same repository with `wrangler deploy`: the
   `tcab.ai` Worker, bound to the production bucket and routed at `tcab.ai`,
   with `staging.tcab.ai` over the staging bucket; and the preview-tag Worker,

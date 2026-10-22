@@ -719,10 +719,12 @@ git submodule update --init \
 
 through the host's agent when the checkout holds a `.gitmodules`. Passed
 submodule paths, it checks out those instead; `cold-storage/` is left to a
-`git submodule update --init cold-storage` by hand. It never fails the step it
-runs from: a host with no agent, or no network, keeps a working container and
-says so, and the next start or that command checks the submodules out once SSH
-works.
+`git submodule update --init cold-storage` by hand, and `gg.rocks/` and
+`testcabinet.ai/`, the public sites no local service runs from, to a
+`git submodule update --init gg.rocks testcabinet.ai` when a task touches
+them. It never fails the step it runs from: a host with no agent, or no network,
+keeps a working container and says so, and the next start or that command
+checks the submodules out once SSH works.
 
 It never holds the step either. A connection can stall where it cannot fail: an
 agent whose key waits on an approval nobody is there to give answers

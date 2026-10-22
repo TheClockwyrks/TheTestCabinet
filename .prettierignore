@@ -23,9 +23,6 @@ apps/docs/.astro/
 # npm writes this file and its formatting is npm's own; reformatting it makes
 # the next `npm install` rewrite it back.
 package-lock.json
-# ESLint writes the lint ratchet's baseline (`npm run lint:baseline`,
-# `npm run lint:prune`) in its own formatting, and rewrites it on every prune.
-/eslint-suppressions.json
 # The environments uv builds for the Python projects, each kept out of git by an
 # ignore file of its own inside the folder, which Prettier does not read.
 .venv/
@@ -58,15 +55,15 @@ deployments/k8s/
 
 # --- The project's own -----------------------------------------------------
 
-# The project's own ignored paths, which .markdownlint-cli2.yaml, cspell.json and
-# eslint.config.js leave out too, so the gates never disagree about a path.
+# The project's own ignored paths, which .markdownlint-cli2.yaml and cspell.json
+# leave out too, so the gates never disagree about a path.
 /cold-storage/**
 # The contracts, engines, gg, gg.rocks, microservice-arena, microservice-artifacts, microservice-dispatcher, microservice-driver, microservice-publisher, microservice-repos,
 # tool-model-core, tool-paint, tool-particle, tool-sprite, tool-voxel, tool-mc,
 # tool-sn, tool-dc, tool-audio-core, tool-sfx-synth, tool-sfx-sample,
-# tool-music, test-suites, ui-common and console.testcabinet.ai repositories,
-# submodules whose own gates format them, and the docs tree's gg/ entry, which
-# points into the gg checkout.
+# tool-music, test-suites, ui-common, console.testcabinet.ai and testcabinet.ai
+# repositories, submodules whose own gates format them, and the docs tree's
+# gg/ entry, which points into the gg checkout.
 /contracts/**
 /engines/**
 /gg/**
@@ -93,6 +90,7 @@ deployments/k8s/
 /test-suites/**
 /ui-common/**
 /console.testcabinet.ai/**
+/testcabinet.ai/**
 /tasks/**/done/**
 /.claude/workflows/**
 /.claude/worktrees/**

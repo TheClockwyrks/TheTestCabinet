@@ -58,7 +58,8 @@ Every repository but `console.testcabinet.ai`,
 `tool-audio-core`, `tool-dc`, `tool-mc`, `tool-model-core`, `tool-music`,
 `tool-paint`, `tool-particle`,
 `tool-sfx-sample`, `tool-sfx-synth`, `tool-sn`, `tool-sprite`, `tool-voxel`,
-`test-suites`, `ui-common` and `cold-storage` is still a directory of this tree
+`test-suites`, `testcabinet.ai`,
+`ui-common` and `cold-storage` is still a directory of this tree
 today (`crates/`, `apps/`, `packages/`), so until it is extracted its code is
 found there.
 
@@ -175,8 +176,9 @@ same command: a Rust workspace's `rust-*` gates, an npm workspace's
 `typescript` gate, `build-context` in a kind that builds an image, and the
 gates a repository adds (`contract-drift` in `contracts`, `seeded-contract` in
 `engines`, `web-lint` in `ui-common`, `web-lint` and `web-browser-test` in
-`console.testcabinet.ai`, `frozen-paths`, `spec-prose`,
-`spec-vocabulary`, `audio-packs` and `validators-typecheck` in `test-suites`).
+`console.testcabinet.ai`, `web-lint` in `testcabinet.ai`, `frozen-paths`,
+`spec-prose`, `spec-vocabulary`, `audio-packs` and `validators-typecheck` in
+`test-suites`).
 gg's suite runs in the `gg` repository.
 
 ```sh

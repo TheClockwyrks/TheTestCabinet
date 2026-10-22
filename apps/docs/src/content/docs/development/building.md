@@ -86,7 +86,8 @@ git submodule update --init contracts engines gg microservice-arena \
   tool-model-core tool-paint \
   tool-particle tool-sprite tool-voxel tool-mc tool-sn tool-dc \
   tool-audio-core tool-sfx-synth tool-sfx-sample tool-music ui-common
-git submodule update --init gg.rocks console.testcabinet.ai   # what the task touches
+git submodule update --init gg.rocks console.testcabinet.ai \
+  testcabinet.ai   # what the task touches
 git submodule update --init --depth 1 cold-storage
 git submodule update --init test-suites
 ```

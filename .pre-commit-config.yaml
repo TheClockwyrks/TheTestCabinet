@@ -28,10 +28,11 @@
 # meaning: touch any Rust source anywhere in the push and the Rust gates run.
 # rust-test and rust-doctest have no hook at all (see below).
 #
-# The web and documentation hooks (web-lint, markdownlint, cspell, format,
-# docs-typecheck, docs-build) run the npm workspace's own locked tools, so they
-# need `npm ci` to have run; each says so when it has not. The console's
-# typecheck, tests, browser tests and build are console.testcabinet.ai's gates.
+# The documentation hooks (markdownlint, cspell, format, docs-typecheck,
+# docs-build) run the npm workspace's own locked tools, so they need `npm ci`
+# to have run; each says so when it has not. The console's typecheck, tests,
+# browser tests and build are console.testcabinet.ai's gates, and the
+# gallery's lint, typecheck, tests and build are testcabinet.ai's.
 #
 # Setup is a single idempotent command: `scripts/setup-hooks.sh`, which the
 # devcontainer runs when it is created. It installs both hook types;
@@ -74,10 +75,8 @@ repos:
         # A reviewer that has to notice a missing one is being spent on what a
         # hook settles. Binary assets are left alone, and so are the copies of
         # test-case versions the Rust tests read, which keep their source's
-        # bytes, some of them files that end without a newline. ESLint writes
-        # the lint ratchet's baseline, `eslint-suppressions.json`, without one
-        # and rewrites it on every prune, so it is left alone too.
-        exclude: '\.(svg|png|ico|woff2?)$|^crates/[^/]+/testdata/definitions/|^eslint-suppressions\.json$'
+        # bytes, some of them files that end without a newline.
+        exclude: '\.(svg|png|ico|woff2?)$|^crates/[^/]+/testdata/definitions/'
       - id: check-shebang-scripts-are-executable
         # Rust files open with inner attributes like `#![forbid(unsafe_code)]`,
         # which this hook mistakes for a shebang; opt them out entirely.
@@ -190,23 +189,6 @@ repos:
       # commit. They run in the pipeline's Rust track and in `make gate`, and
       # ci/tests/test_wiring.py names them among the gates held to having none.
 
-      # The TypeScript lint gate. It runs an npm script, which reads its own
-      # configuration for its file set, so it takes no staged paths. It
-      # triggers on the sources ESLint reads (the gallery's; the console's are
-      # console.testcabinet.ai's, linted there) and on the configuration that
-      # decides its verdict: the root package.json and the lockfile pin the
-      # tools, and the gate's own script is an input to it.
-      - id: web-lint
-        name: web lint (eslint)
-        description: Lint the TypeScript with the workspace's own locked ESLint configuration.
-        entry: uv run --quiet --project ci gate run web-lint
-        language: system
-        # The rules live in the root eslint.config.js, so a commit that only
-        # edits the configuration changes the verdict for every source under
-        # it and has to run.
-        files: '^apps/site/.*\.(ts|tsx|m?js|json)$|^eslint\.config\.js$|^tsconfig\.base\.json$|^package(-lock)?\.json$|^ci/gates/web-lint\.py$'
-        pass_filenames: false
-
       - id: k8s-manifests
         name: kubernetes manifests
         description: Render every deployment overlay and assert what the manifests are only correct if they hold.
@@ -311,10 +293,10 @@ repos:
         files: '^ci/|^azure-pipelines\.yml$|^\.pre-commit-config\.yaml$|^scripts/repos/|^templates/repository/|^copier\.yml$|^\.cargo/config\.toml$|^\.package-links\.json$'
         pass_filenames: false
 
-      # This project's own gates, each a script under ci/gates/. The ones too
-      # slow for a commit (workspace-test and site-build, which build the
-      # workspace or its packages first) have no hook and run in the pipeline
-      # and in `make gate` only; ci/tests/test_wiring.py names them.
+      # This project's own gates, each a script under ci/gates/. The one too
+      # slow for a commit (workspace-test, which builds the workspace packages
+      # first) has no hook and runs in the pipeline and in `make gate` only;
+      # ci/tests/test_wiring.py names it.
       - id: build-context
         name: "Dockerfile build contexts"
         entry: uv run --quiet --project ci gate run build-context

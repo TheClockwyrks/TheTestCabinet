@@ -81,7 +81,8 @@ Every repository but `console.testcabinet.ai`,
 `tool-audio-core`, `tool-dc`, `tool-mc`, `tool-model-core`, `tool-music`,
 `tool-paint`, `tool-particle`,
 `tool-sfx-sample`, `tool-sfx-synth`, `tool-sn`, `tool-sprite`, `tool-voxel`,
-`test-suites`, `ui-common` and `cold-storage` is still a directory of the
+`test-suites`, `testcabinet.ai`,
+`ui-common` and `cold-storage` is still a directory of the
 superrepo's own tree today.
 
 ### Where each responsibility lives
@@ -186,7 +187,8 @@ microservice-publisher  -> contracts
 microservice-arena      -> contracts, engines
 gg                      -> contracts
 the-spec-cabinet        -> contracts, engines, ui-common
-testcabinet.ai          -> contracts (run-record), engines (runtimes), ui-common
+testcabinet.ai          -> contracts (run-record, backend-api), engines (runtimes),
+                           ui-common
 console.testcabinet.ai  -> contracts (run-record, backend-api), engines, ui-common
 client-tauri            -> nothing of this project (it loads the console by URL)
 test-suites             -> engines (packages alone; the validators and the
@@ -440,9 +442,9 @@ The kit renders the gate runner into every repository, with these gates:
 
 A repository may add gates of its own, such as `contracts`' `contract-drift`,
 `engines`' `seeded-contract`, `ui-common`'s `web-lint`,
-`console.testcabinet.ai`'s `web-lint` and `web-browser-test`, or `test-suites`'
-`frozen-paths`, `spec-prose`, `spec-vocabulary`, `audio-packs` and
-`validators-typecheck`. The gate is a file
+`console.testcabinet.ai`'s `web-lint` and `web-browser-test`, `testcabinet.ai`'s
+`web-lint`, or `test-suites`' `frozen-paths`, `spec-prose`, `spec-vocabulary`,
+`audio-packs` and `validators-typecheck`. The gate is a file
 the repository writes under `ci/gates/`, and the kit leaves it to the
 repository; `EXTRA_GATES` in `render.py` names it and the job it runs in, and
 the render gives it one step there. Every gate a repository adds is hookless,
@@ -450,9 +452,10 @@ and the rendered `ci/tests/test_wiring.py` holds each to its one step.
 
 A repository whose pipeline runs work beyond the kit's, such as `gg`, which
 releases its binaries, its reference and its toolchains image on a tag, or
-`gg.rocks`, whose `deploy` stage uploads the site to its Pages project, writes
-it as the superrepo writes its own: its jobs in `.azure/project/jobs.yml`,
-which the gates stage includes after the kit's jobs, and its stages in
+`gg.rocks` and `testcabinet.ai`, whose `deploy` stages upload each site to its
+Pages project, writes it as the superrepo writes its own: its jobs in
+`.azure/project/jobs.yml`, which the gates stage includes after the kit's
+jobs, and its stages in
 `.azure/project/stages.yml`, which the pipeline includes after the publish
 stage. `PROJECT_PIPELINE` in `render.py` names the repository and its stages,
 and the kit leaves both files to it. Each is handed the image of the Rust

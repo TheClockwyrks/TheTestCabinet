@@ -232,7 +232,7 @@ BUILD_EDGES: Mapping[str, tuple[Edge, ...]] = {
         Edge("ui-common", False, None, "the UI library"),
     ),
     "testcabinet.ai": (
-        Edge("contracts", False, None, "run-record"),
+        Edge("contracts", False, None, "run-record and backend-api"),
         Edge("engines", False, None, "the playback runtimes"),
         Edge("ui-common", False, None, "the UI library"),
     ),

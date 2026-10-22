@@ -96,8 +96,9 @@ function fixExpressiveCodeStylesheet() {
 
 // Developer documentation site for The Test Cabinet. Built as a fully static
 // bundle by `astro build` and deployed to Cloudflare Pages at docs.testcabinet.ai
-// (see scripts/ci/deploy-docs.sh). The public gallery (apps/site) is a
-// separate deployment at testcabinet.ai; these are two sites, not one.
+// (see scripts/ci/deploy-docs.sh). The public gallery (the testcabinet.ai
+// repository) is a separate deployment at testcabinet.ai; these are two sites,
+// not one.
 //
 // `site` is the canonical origin used for generated absolute URLs (sitemap,
 // canonical links). The site serves from the subdomain root, so no `base` is set.
@@ -128,7 +129,7 @@ export default defineConfig({
       title: "The Test Cabinet",
       description:
         "Developer documentation for The Test Cabinet, a benchmark for AI models and the coding harnesses that drive them.",
-      // Brand the docs to match the public gallery (apps/site): the same arcade
+      // Brand the docs to match the public gallery (testcabinet.ai): the same arcade
       // cabinet mark, favicon, synthwave palette, and monospace type. The palette
       // remap lives in `src/styles/theme.css`; the gallery stays a separate
       // deployment with its own animated backdrop that the docs deliberately omit.

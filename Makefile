@@ -30,10 +30,9 @@ docs:
 # Every workspace's own `node_modules` goes with the root one. npm hoists the
 # packages a workspace depends on to the root, so a nested `node_modules` holds
 # the tooling's caches and nothing else: Astro writes its content store and Vite
-# its bundled dependencies into `apps/docs/node_modules` and `apps/site/node_modules`,
-# both of which grow with what they serve. The globs are the `workspaces`
-# package.json declares, so a workspace added there is cleaned without touching
-# this target.
+# its bundled dependencies into `apps/docs/node_modules`, which grows with what
+# it serves. The globs are the `workspaces` package.json declares, so a
+# workspace added there is cleaned without touching this target.
 #
 # `apps/docs/dist` is the documentation site's build.
 #
