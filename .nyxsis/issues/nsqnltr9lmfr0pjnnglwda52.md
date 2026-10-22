@@ -6,8 +6,22 @@ zone: REPOS
 number: 22
 title: Pin the engines runtimes to asset-contract 0.2.4 and move ui-common and test-suites to that engines release so a clean install resolves
 type: generic
-state: open
+state: done
 created: 2026-10-21T16:49:09.576458186Z
+done: 2026-10-22T03:35:48.653838524Z
+outcome: |
+  Landed in PR 4998 into nightly (24a546b59) with CICD-4: engines v1.1.4 (bf2ee59,
+  tagged, its tag run published the packages to the feed) pins the particle and
+  voxel runtimes' asset-contract at 0.2.4, ui-common d276934b (PR 4985) pins the
+  engines packages at 1.1.4, test-suites 5754daa47 (PR 4988) pins the lattice
+  designer at 1.1.4 with the unfrozen versions' workspace lockfiles regenerated,
+  microservice-driver 06a0065 (PR 4987) takes engines at the tag, the kit's TAGS
+  names engines v1.1.4 and package-lock.json is refreshed. npm ci --offline
+  --dry-run succeeds in the worktree, npm ci succeeds from a clean clone of the
+  branch, and the superrepo gates passed 28 of 28 on the branch and on nightly
+  after the merge. Also fixed on the way: a flaky service-image.test.sh check
+  whose mktemp cwd suffix could contain "GG", and a cspell override for Nyxsis
+  issue ids in .nyxsis/issues.
 ---
 
 The superrepo links the packages its checked-out repositories produce, and every
