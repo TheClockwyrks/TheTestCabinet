@@ -157,7 +157,7 @@ rather than one that quietly passes.
 `microservice-publisher/`, `microservice-repos/`,
 `tool-model-core/`, `tool-paint/`, `tool-particle/`, `tool-sprite/`, `tool-voxel/`,
 `tool-mc/`, `tool-sn/`, `tool-dc/`, `tool-audio-core/`, `tool-sfx-synth/`,
-`tool-sfx-sample/`, `tool-music/` and
+`tool-sfx-sample/`, `tool-music/`, `client-tauri/` and
 `ui-common/` submodules, which every build compiles against, and the
 `test-suites/` submodule, the suites checkout the local backend ingests, and the
 `console.testcabinet.ai/` submodule, whose development server runs the console (not
@@ -698,7 +698,8 @@ The `contracts/`, `engines/`, `gg/`, `microservice-arena/`,
 `tool-paint/`, `tool-particle/`,
 `tool-sprite/`, `tool-voxel/`, `tool-mc/`, `tool-sn/`, `tool-dc/`,
 `tool-audio-core/`, `tool-sfx-synth/`, `tool-sfx-sample/`, `tool-music/`,
-`test-suites/`, `ui-common/` and `console.testcabinet.ai/` submodules live in the
+`client-tauri/`, `test-suites/`, `ui-common/` and `console.testcabinet.ai/`
+submodules live in the
 organization's other repositories, reached over SSH at `ssh.dev.azure.com`.
 `post-create.sh` checks them out ahead of `npm ci`, whose workspace lists the
 packages `contracts/`, `engines/` and `ui-common/` hold, and `post-start.sh`
@@ -714,7 +715,7 @@ git submodule update --init \
   microservice-dispatcher microservice-driver microservice-publisher microservice-repos \
   tool-model-core tool-paint tool-particle tool-sprite tool-voxel tool-mc \
   tool-sn tool-dc tool-audio-core tool-sfx-synth tool-sfx-sample tool-music \
-  test-suites ui-common console.testcabinet.ai
+  client-tauri test-suites ui-common console.testcabinet.ai
 ```
 
 through the host's agent when the checkout holds a `.gitmodules`. Passed

@@ -90,7 +90,7 @@ hooks, initializes `contracts`, `engines`, `gg`, `microservice-arena`,
 `tool-model-core`, `tool-paint`, `tool-particle`,
 `tool-sprite`, `tool-voxel`, `tool-mc`, `tool-sn`, `tool-dc`,
 `tool-audio-core`, `tool-sfx-synth`, `tool-sfx-sample`, `tool-music`,
-`ui-common`, `test-suites` and `console.testcabinet.ai`, runs `npm ci`
+`client-tauri`, `ui-common`, `test-suites` and `console.testcabinet.ai`, runs `npm ci`
 (and gg's own in the `gg` checkout) and links the
 checked-out repositories' packages, and nothing runs in the background
 afterwards. In a container built before a gg pin moved, the two installers
