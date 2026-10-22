@@ -110,6 +110,9 @@ resources:
     - repository: cold-storage
       type: git
       name: the-test-cabinet/cold-storage
+    - repository: console.testcabinet.ai
+      type: git
+      name: the-test-cabinet/console.testcabinet.ai
     - repository: contracts
       type: git
       name: the-test-cabinet/contracts
@@ -201,6 +204,7 @@ jobs:
     uses:
       repositories:
         - cold-storage
+        - console.testcabinet.ai
         - contracts
         - engines
         - gg
@@ -263,6 +267,7 @@ jobs:
     uses:
       repositories:
         - cold-storage
+        - console.testcabinet.ai
         - contracts
         - engines
         - gg
@@ -319,6 +324,7 @@ jobs:
     uses:
       repositories:
         - cold-storage
+        - console.testcabinet.ai
         - contracts
         - engines
         - gg

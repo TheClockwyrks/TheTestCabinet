@@ -93,3 +93,7 @@
 	path = ui-common
 	url = ../ui-common
 	branch = .
+[submodule "console.testcabinet.ai"]
+	path = console.testcabinet.ai
+	url = ../console.testcabinet.ai
+	branch = .

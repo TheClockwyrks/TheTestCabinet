@@ -159,7 +159,8 @@ rather than one that quietly passes.
 `tool-mc/`, `tool-sn/`, `tool-dc/`, `tool-audio-core/`, `tool-sfx-synth/`,
 `tool-sfx-sample/`, `tool-music/` and
 `ui-common/` submodules, which every build compiles against, and the
-`test-suites/` submodule, the suites checkout the local backend ingests (not
+`test-suites/` submodule, the suites checkout the local backend ingests, and the
+`console.testcabinet.ai/` submodule, whose development server runs the console (not
 `cold-storage/`, which is optional and about 2 GB), through
 `tools/submodule-checkout.sh` (see [Submodule checkout](#submodule-checkout)),
 installs the git hook through `scripts/setup-hooks.sh`, places cargo's target
@@ -694,8 +695,8 @@ The `contracts/`, `engines/`, `gg/`, `microservice-arena/`,
 `microservice-repos/`, `tool-model-core/`, `tool-paint/`, `tool-particle/`,
 `tool-sprite/`, `tool-voxel/`, `tool-mc/`, `tool-sn/`, `tool-dc/`,
 `tool-audio-core/`, `tool-sfx-synth/`, `tool-sfx-sample/`, `tool-music/`,
-`test-suites/` and `ui-common/` submodules live in the organization's other
-repositories, reached over SSH at `ssh.dev.azure.com`.
+`test-suites/`, `ui-common/` and `console.testcabinet.ai/` submodules live in the
+organization's other repositories, reached over SSH at `ssh.dev.azure.com`.
 `post-create.sh` checks them out ahead of `npm ci`, whose workspace lists the
 packages `contracts/`, `engines/` and `ui-common/` hold, and `post-start.sh`
 checks them out again at every start, each through
@@ -710,7 +711,7 @@ git submodule update --init \
   microservice-dispatcher microservice-driver microservice-repos \
   tool-model-core tool-paint tool-particle tool-sprite tool-voxel tool-mc \
   tool-sn tool-dc tool-audio-core tool-sfx-synth tool-sfx-sample tool-music \
-  test-suites ui-common
+  test-suites ui-common console.testcabinet.ai
 ```
 
 through the host's agent when the checkout holds a `.gitmodules`. Passed
