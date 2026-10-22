@@ -610,63 +610,6 @@ stages:
             displayName: web lint (eslint)
             condition: eq(variables['checksReady'], 'true')
 
-          - script: uv run --quiet --project ci gate run web-typecheck
-            displayName: web typecheck (tsc -b)
-            condition: eq(variables['checksReady'], 'true')
-
-          # As the Rust job's test step does, the web tests name an artifact
-          # directory, which has the gate leave vitest's JUnit report there.
-          - script: uv run --quiet --project ci gate run web-test
-            displayName: web tests (vitest)
-            condition: eq(variables['checksReady'], 'true')
-            env:
-              CI_GATE_ARTIFACTS: target/gate-artifacts/web-test
-
-          - task: PublishTestResults@2
-            displayName: Publish the web test results
-            condition: and(succeededOrFailed(), eq(variables['checksReady'], 'true'))
-            inputs:
-              testResultsFormat: JUnit
-              # Where the web tests step told its gate to leave the report.
-              testResultsFiles: $(Build.SourcesDirectory)/target/gate-artifacts/web-test/junit.xml
-              testRunTitle: Web tests
-              failTaskOnMissingResultsFile: false
-
-          # As the Rust job's test step does, the browser tests name an
-          # artifact directory, which has the gate leave its JUnit report there
-          # and has the suite give each browser instance a directory of its own
-          # beneath it for what a test attached: among it the screenshot an
-          # engine takes of a test that failed, which is otherwise lost with
-          # the rest of the working directory.
-          - script: uv run --quiet --project ci gate run web-browser-test
-            displayName: web browser tests (vitest, playwright)
-            condition: eq(variables['checksReady'], 'true')
-            env:
-              CI_GATE_ARTIFACTS: target/gate-artifacts/web-browser-test
-
-          # Both whether the suite passed or failed, since a failure is when
-          # they are read. The artifact's name carries the job attempt, so a
-          # rerun of the job publishes beside its first attempt rather than
-          # colliding with it.
-          - publish: $(Build.SourcesDirectory)/target/gate-artifacts/web-browser-test
-            displayName: Publish the web browser tests' report and screenshots
-            artifact: web-browser-test-$(System.JobAttempt)
-            condition: and(succeededOrFailed(), eq(variables['checksReady'], 'true'))
-
-          - task: PublishTestResults@2
-            displayName: Publish the web browser test results
-            condition: and(succeededOrFailed(), eq(variables['checksReady'], 'true'))
-            inputs:
-              testResultsFormat: JUnit
-              # Where the browser tests step told its gate to leave the report.
-              testResultsFiles: $(Build.SourcesDirectory)/target/gate-artifacts/web-browser-test/junit.xml
-              testRunTitle: Web browser tests
-              failTaskOnMissingResultsFile: false
-
-          - script: uv run --quiet --project ci gate run web-build
-            displayName: web build (vite build)
-            condition: eq(variables['checksReady'], 'true')
-
           # Rendered only for a project that deploys to Kubernetes, because
           # the gate it runs is rendered only then. A step for a gate that is
           # not there would fail every run of this track.

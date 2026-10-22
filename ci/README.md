@@ -101,9 +101,9 @@ pipeline artifact `test-results-<job>-<attempt>`, so `test-results-rust-1` and
 
 ```text
 test-results-web-1/
-  web-test/junit.xml
-  web-browser-test/junit.xml
   ci-tests/junit.xml
+  scripts-test/junit.xml
+  workspace-test/junit.xml
 ```
 
 A job whose gates wrote no report publishes no such artifact, and a rerun of a

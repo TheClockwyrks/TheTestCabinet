@@ -5,7 +5,7 @@
 #   scripts/ci/service-image.sh <service> <sha>
 #
 # <service> is a target of deployments/images/services.Dockerfile (backend,
-# publisher) or `web`, which has a Dockerfile of its own. The artifacts
+# publisher). The console's image is console.testcabinet.ai's, the artifacts
 # service's image is microservice-artifacts', the arena's microservice-arena's and the driver's microservice-driver's,
 # each built by its repository's pipeline. The build is native: the pipeline runs this once on an amd64 agent and
 # once on an arm64 agent, and scripts/ci/manifest.sh fuses the two arch tags into the
@@ -36,11 +36,6 @@ dockerfile=deployments/images/services.Dockerfile
 target="$SERVICE"
 case "$SERVICE" in
 	backend | publisher) image="tcab-${SERVICE}" ;;
-	web)
-		image=tcab-web
-		dockerfile=deployments/images/web.Dockerfile
-		target=""
-		;;
 	*)
 		echo "service-image.sh: unknown service '${SERVICE}'" >&2
 		exit 1

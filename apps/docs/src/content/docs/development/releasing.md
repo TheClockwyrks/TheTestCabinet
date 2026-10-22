@@ -143,7 +143,9 @@ client is downloaded from.
 Each `microservice-*` repository's pipeline builds its image on every gated
 push to `master` and `staging`, natively per architecture and fused by
 `scripts/ci/manifest.sh` into the multi-arch `<name>:<commit>` a deployment
-pins, and pushes it to `testcabinet.azurecr.io`. `microservice-driver`'s run
+pins, and pushes it to `testcabinet.azurecr.io`. `console.testcabinet.ai`'s
+pipeline builds the console's image, nginx serving its `vite build` bundle,
+the same way. `microservice-driver`'s run
 also builds the run-container images under its `containers/`, each carrying
 the binaries it copies from the `tool-*` images at the commits the driver
 pins, and the `-gg` variants the toolchain tree of the gg release the driver

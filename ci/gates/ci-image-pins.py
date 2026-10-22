@@ -12,8 +12,22 @@ as its `rustImage` parameter, and a file under `.azure/` takes the image as a
 parameter and never names one. This gate holds all of that, so every Rust job
 of a run compiles in the one image and shares the template `rust` job's
 caches, and a tag written by hand cannot fall out of step with the pin.
+
+It also holds Playwright's pins to one version. The playwright image the
+devcontainer's compose file names is what holds the browser engines, and its
+reference's tag is the Playwright version that downloaded them; each
+`playwright` package that drives those engines is a client, which resolves an
+engine by the build its own release names. A pin that moves alone leaves a
+client asking for a revision the image does not carry, and the failure surfaces
+deep inside a browser provider rather than here. The clients are the one this
+workspace's lock resolves, the contracts checkout's and the console's
+(console.testcabinet.ai's app). Each repository's pipeline runs in the CI image
+this checkout pins, and moving that image is this repository's change, so this
+is where they are held together; a checkout that has not initialized a
+submodule has nothing of it to compare, and is said to.
 """
 
+import json
 import re
 from pathlib import Path
 
@@ -112,3 +126,43 @@ if problems:
     )
 
 say(f"Every CI image the project's pipelines name is pinned by {TAGS}, and the project's jobs take it as a parameter.")
+
+# Playwright's pins: the compose file's image tag, then every client of it.
+COMPOSE = Path(".devcontainer/docker-compose.yml")
+LOCK = Path("package-lock.json")
+# A submodule's manifest naming `playwright` among its devDependencies, and the
+# command that moves it in that repository.
+CLIENTS = {
+    Path("contracts/package.json"): "scripts/repos/render.py --update contracts",
+    Path("console.testcabinet.ai/apps/web/package.json"): "an edit of apps/web/package.json in console.testcabinet.ai",
+}
+
+images = re.findall(r"^ *PLAYWRIGHT_IMAGE: *(\S+?) *$", COMPOSE.read_text(encoding="utf-8"), flags=re.MULTILINE)
+if len(images) != 1:
+    fail(f"{COMPOSE.as_posix()} names PLAYWRIGHT_IMAGE {len(images)} times; it names the one playwright image once.")
+image_pin = images[0].rpartition(":")[2]
+
+disagreements: list[str] = []
+locked = json.loads(LOCK.read_text(encoding="utf-8")).get("packages", {}).get("node_modules/playwright", {})
+if locked and locked.get("version") != image_pin:
+    disagreements.append(f"    {LOCK.as_posix()} resolves playwright {locked.get('version')}")
+absent: list[str] = []
+for manifest, move in CLIENTS.items():
+    if not manifest.is_file():
+        absent.append(manifest.parts[0])
+        continue
+    pin = json.loads(manifest.read_text(encoding="utf-8")).get("devDependencies", {}).get("playwright")
+    if pin != image_pin:
+        disagreements.append(f"    {manifest.as_posix()} names {pin} (moved by {move})")
+if disagreements:
+    fail(
+        "Playwright's pins disagree, so a client asks for engines the image does not carry:",
+        f"    PLAYWRIGHT_IMAGE in {COMPOSE.as_posix()} holds the engines of {image_pin}",
+        *disagreements,
+        "Move each client to the image's version (a submodule's in its own repository, then",
+        "bump the submodule pin here), or update the workspace to a template version whose",
+        "playwright image holds the clients' version and rebuild the devcontainer.",
+    )
+if absent:
+    say(f"Not initialized, so their Playwright pins were not compared: {', '.join(absent)}.")
+say(f"Every Playwright client this checkout holds names {image_pin}, the version of the engines the image carries.")

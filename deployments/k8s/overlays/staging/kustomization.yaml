@@ -68,8 +68,9 @@ components:
 # `microservice-arena`, the artifacts service's
 # `microservice-artifacts`, the repos service's `microservice-repos`, the
 # dispatcher's `microservice-dispatcher` and the driver's
-# `microservice-driver`, the repositories they are built in, each pinned to the
-# commit its submodule pointer names; the other two keep their `tcab-*` names.
+# `microservice-driver` and the console's `console.testcabinet.ai`, the
+# repositories they are built in, each pinned to the commit its submodule pointer
+# names; the publisher keeps its `tcab-*` name.
 images:
   - name: REPLACE_REGISTRY/tcab-backend
     newName: testcabinet.azurecr.io/the-test-cabinet-backend
@@ -93,7 +94,7 @@ images:
     newName: testcabinet.azurecr.io/tcab-publisher
     newTag: unpinned
   - name: REPLACE_REGISTRY/tcab-web
-    newName: testcabinet.azurecr.io/tcab-web
+    newName: testcabinet.azurecr.io/console.testcabinet.ai
     newTag: unpinned
 
 patches:

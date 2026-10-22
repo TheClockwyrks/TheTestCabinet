@@ -107,7 +107,7 @@ the browser engines, copied from the playwright image `PLAYWRIGHT_IMAGE` names,
 as the devcontainer and the web image copy them, into
 `/home/dev/.cache/ms-playwright`, which `PLAYWRIGHT_BROWSERS_PATH` names. Node
 and npm, and the system libraries the engines link against, are the toolchain
-image's already. `web-browser-test` holds the workspace's `playwright` package
+image's already. `ci-image-pins` holds the workspace's `playwright` package
 to that image's tag, so the workspace's Playwright finds the build copied here.
 
 The `rust` job runs in it with `TCAB_REQUIRE_BROWSER=1`, which turns a Rust test
@@ -126,8 +126,9 @@ rather than pulling some other base.
 
 - Chromium, Firefox and WebKit, copied from the playwright image the
   devcontainer copies, with the system libraries they link against, which
-  `web-browser-test` drives.
-- Node and npm, which `web-lint`, `web-typecheck`, `web-test`, `web-build`,
+  `console.testcabinet.ai`'s `web-browser-test` drives in that repository's
+  pipeline.
+- Node and npm, which `web-lint`, `workspace-test`, `site-build`,
   `docs-typecheck`, `docs-build`, `markdownlint`, `cspell` and `format` all
   reach through the npm workspace.
 - `kubectl`, for `k8s-manifests`, which renders the overlays under
@@ -140,7 +141,7 @@ rather than pulling some other base.
 The browser engines are in the account's Playwright cache,
 `/home/dev/.cache/ms-playwright`, where the devcontainer holds them, and
 `PLAYWRIGHT_BROWSERS_PATH` names that directory, because `HOME` here is
-root's. [`ci/gates/web-browser-test.py`](../gates/web-browser-test.py) asks
+root's. `console.testcabinet.ai`'s `ci/gates/web-browser-test.py` asks
 Playwright for `executablePath()`, which reads the same variable.
 
 `markdownlint-cli2` and Prettier are not installed globally. Their gates run

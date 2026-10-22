@@ -8,9 +8,8 @@
 # Select one with `--target`:
 #   docker build --target backend -t <registry>/tcab-backend:<tag> \
 #     -f deployments/images/services.Dockerfile .
-# The target names are `backend` and `publisher`. The web console is NOT here — it is the one non-Rust
-# service image and keeps its own web.Dockerfile (`npm ci` + `vite build`, no crate
-# compiled).
+# The target names are `backend` and `publisher`. The web console is NOT here — its
+# image is console.testcabinet.ai's, built by that repository's pipeline.
 #
 # Why one file
 # ------------

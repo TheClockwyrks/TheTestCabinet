@@ -47,7 +47,6 @@ import tseslint from "typescript-eslint";
  * `apps/docs/src/content/docs/development/building.md`).
  */
 const PROJECTS = [
-  { sources: "apps/web/src", tsconfig: "apps/web/tsconfig.json" },
   { sources: "apps/site/src", tsconfig: "apps/site/tsconfig.json" },
 ];
 
@@ -69,7 +68,6 @@ const TESTS = PROJECTS.flatMap(({ sources }) => [
  */
 const CONFIGS = [
   "eslint.config.js",
-  "apps/web/vite.config.ts",
   "apps/site/vite.config.ts",
   "apps/site/vite-plugin-*.ts",
 ];
@@ -122,10 +120,7 @@ const CONFIG = defineConfig([
     // The documentation site is Astro's own toolchain, and `astro check` is the
     // gate it answers to.
     "apps/docs/**",
-    // Served verbatim rather than compiled. `backend.js` is committed empty and
-    // written by whatever serves a build elsewhere. The gallery's is its static
-    // assets.
-    "apps/web/public/**",
+    // The gallery's static assets, served verbatim rather than compiled.
     "apps/site/public/**",
     // Scratch work, which `.gitignore` keeps out of the repository and the
     // prose and format gates leave alone. It may hold another repository, whose
@@ -138,9 +133,9 @@ const CONFIG = defineConfig([
     // The contracts, engines, gg, gg.rocks, microservice-arena, microservice-artifacts, microservice-dispatcher, microservice-driver,
     // microservice-repos, tool-model-core, tool-paint, tool-particle,
     // tool-sprite, tool-voxel, tool-mc, tool-sn, tool-dc, tool-audio-core,
-    // tool-sfx-synth, tool-sfx-sample, tool-music, test-suites and ui-common
-    // repositories, submodules with gates of their own, and the docs tree's gg/
-    // entry, which points into the gg checkout.
+    // tool-sfx-synth, tool-sfx-sample, tool-music, test-suites, ui-common and
+    // console.testcabinet.ai repositories, submodules with gates of their own,
+    // and the docs tree's gg/ entry, which points into the gg checkout.
     "contracts/**",
     "engines/**",
     "gg/**",
@@ -165,6 +160,7 @@ const CONFIG = defineConfig([
     "apps/docs/src/content/docs/gg/**",
     "test-suites/**",
     "ui-common/**",
+    "console.testcabinet.ai/**",
     "tasks/**/done/**",
     ".claude/workflows/**",
     ".claude/worktrees/**",

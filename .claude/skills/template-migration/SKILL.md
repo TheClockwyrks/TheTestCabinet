@@ -84,9 +84,8 @@ everywhere else.
   context.
 - The lint gate's scope and ratchet: the template renders `eslint.config.js`
   over `apps/web/src` alone, and the project's derives every file set from a
-  `PROJECTS` list (`apps/web/src`, `packages/ui/src`, `apps/site/src`,
-  `apps/lattice-designer/src`), adds those projects' build configurations to
-  `CONFIGS` and a `TOOLS` set for `apps/site/scripts/`, ignores
+  `PROJECTS` list (`apps/site/src` alone today), adds those projects' build
+  configurations to `CONFIGS` and a `TOOLS` set for `apps/site/scripts/`, ignores
   `apps/site/public/`, passes the resolver every project's `tsconfig.json` with
   `noWarnOnMultipleProjects`, and wraps the config in `escalate`, which raises
   every `warn` to an error, with `reportUnusedDisableDirectives: "error"`. Keep
@@ -99,6 +98,22 @@ everywhere else.
   ESLint writes it in its own formatting with no final newline (keep both).
   `ci/gates/web-lint.py`'s docstring and failure message name the baseline;
   keep both.
+- The web app: the project has none. The console the template renders as
+  `apps/web` is the `console.testcabinet.ai` repository, checked out as a
+  submodule, which builds, tests and images it with gates and a pipeline of
+  its own. So the project holds none of `apps/web/`, its
+  `deployments/images/web.Dockerfile` and `deployments/images/web/`, or the
+  `web-typecheck`, `web-test`, `web-browser-test` and `web-build` gates, their
+  `.pre-commit-config.yaml` hooks and their `azure-pipelines.yml` steps (with
+  the web tests' `PublishTestResults@2` and the browser tests' `publish`), and
+  `workspace-test`'s `OWN_GATES` names `apps/docs` alone. An update that
+  changes any of them meets a file the project deleted: delete it again, and
+  carry a template change the console needs into `console.testcabinet.ai`.
+  `web-lint` stays, over `apps/site/src` (above), with its hook's `files`
+  naming `apps/site/`. The Playwright pin agreement the template's
+  `web-browser-test` holds is `ci-image-pins`' here: the compose file's
+  `PLAYWRIGHT_IMAGE` tag against the lock's `playwright`, `contracts`' and the
+  console's; keep it there.
 - The CI image tracks: the template renders two, `rust` and `web`, and the
   project adds a third, `rust-browser` (`ci/images/rust-browser.Dockerfile` and
   its `.dockerignore`, the project's own files): the Rust image of the same

@@ -49,6 +49,7 @@
     "/apps/docs/src/content/docs/gg/**",
     "/test-suites/**",
     "/ui-common/**",
+    "/console.testcabinet.ai/**",
     "/tasks/**/done/**",
     "/.claude/workflows/**",
     "/.claude/worktrees/**",
