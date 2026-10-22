@@ -225,16 +225,16 @@ export function TestCaseDetailLayout({
       <header className={styles.header}>
         <div className={styles.titleRow}>
           <div className={styles.titleGroup}>
-            {/* Back returns to the tab the user came from; on a fresh deep link
-                (nothing recorded) it falls back to this case's own type tab
-                rather than the catalog default. */}
+            {/* Back returns to the page the viewer came from (the catalog tab,
+                a run, a model's runs); on a fresh deep link it falls back to this
+                case's own type tab rather than the catalog default. */}
             <BackChevron
-              to={
+              scope={routes.testCaseDetail(testCase.slug)}
+              fallback={
                 tabOf(testCase)
                   ? routes.testCasesCatalog(tabOf(testCase)!)
                   : routes.testCases()
               }
-              section="testCases"
               label="All test cases"
             />
             <h1 className={styles.title}>{testCase.name}</h1>

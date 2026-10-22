@@ -354,10 +354,12 @@ export function ComparisonEditPage() {
     try {
       if (editing && id && backend?.updateComparison) {
         await backend.updateComparison(id, input, token);
-        navigate(routes.comparisonDetail(id));
+        // Replaced, not pushed: the saved form is no page to come back to, so the
+        // comparison's back control returns to wherever the form was opened from.
+        navigate(routes.comparisonDetail(id), { replace: true });
       } else if (backend?.createComparison) {
         const created = await backend.createComparison(input, token);
-        navigate(routes.comparisonDetail(created.id));
+        navigate(routes.comparisonDetail(created.id), { replace: true });
       }
     } catch (e) {
       setError(String(e));
@@ -371,7 +373,8 @@ export function ComparisonEditPage() {
         <header className={styles.detailHeader}>
           <div className={styles.detailTitleRow}>
             <BackChevron
-              to={routes.runsComparisons()}
+              scope={id ? routes.comparisonEdit(id) : routes.comparisonNew()}
+              fallback={routes.runsComparisons()}
               label="All comparisons"
             />
             <h1 className={styles.detailTitle}>
@@ -396,7 +399,11 @@ export function ComparisonEditPage() {
     <PageLayout>
       <header className={styles.detailHeader}>
         <div className={styles.detailTitleRow}>
-          <BackChevron to={routes.runsComparisons()} label="All comparisons" />
+          <BackChevron
+            scope={id ? routes.comparisonEdit(id) : routes.comparisonNew()}
+            fallback={routes.runsComparisons()}
+            label="All comparisons"
+          />
           <h1 className={styles.detailTitle}>
             {editing ? name || "Comparison" : "New comparison"}
           </h1>

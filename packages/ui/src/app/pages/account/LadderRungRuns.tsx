@@ -8,7 +8,6 @@ import type {
 import { canonicalModelId } from "@clockwyrks/ui";
 import { LoadingState } from "../../components/LoadingState";
 import { RunLog, useRunTable } from "../../components/RunLog";
-import { claimSectionReturn } from "../../components/backReturn";
 import { useGalleryData } from "../../data/galleryContext";
 import { resolveEngineSlug } from "../../data/engines";
 import { ggConfigKey } from "./comboLabels";
@@ -162,15 +161,7 @@ export function RungRuns({
   const empty = summaries.length === 0 && active.length === 0;
 
   return (
-    // Any link out of this list leads into a run's pages, so the claim is made
-    // for the whole list rather than per row: a run opened from here returns to this
-    // ladder, not to the global runs index.
-    <div
-      className={ladderStyles.rungRuns}
-      onClickCapture={() =>
-        claimSectionReturn("coverage", "Back to the ladder")
-      }
-    >
+    <div className={ladderStyles.rungRuns}>
       {loading && empty ? (
         <LoadingState size="section" label="Loading this rung's runs…" />
       ) : empty ? (

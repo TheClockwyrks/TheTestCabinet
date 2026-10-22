@@ -2,6 +2,11 @@ import "@testing-library/jest-dom/vitest";
 import { cleanup } from "@testing-library/react";
 import { afterEach, vi } from "vitest";
 
+// The in-app history record persists to sessionStorage; each test starts without one.
+if (typeof window !== "undefined") {
+  afterEach(() => window.sessionStorage.clear());
+}
+
 // Whether this file's tests run against a DOM at all. Almost all of them do — the
 // suite's default environment is jsdom — but a file may ask for `node` instead
 // (the replay parity test does, because it draws real pixels through a native

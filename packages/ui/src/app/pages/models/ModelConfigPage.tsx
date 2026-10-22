@@ -440,9 +440,10 @@ export function ModelConfigPage() {
         ? await config.updateModel(slug, body)
         : await config.createModel(body);
       // The catalog just changed, so nudge the data source to re-read it, then
-      // land on the saved model's detail page.
+      // land on the saved model's detail page. It replaces the form, which is no page
+      // for the model's back control to return to.
       runtime.requestRefresh();
-      navigate(routes.modelDetail(result.slug));
+      navigate(routes.modelDetail(result.slug), { replace: true });
     } catch (e) {
       setError(String(e));
       setBusy(false);

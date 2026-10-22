@@ -25,11 +25,8 @@ import {
   type WorkersContextValue,
 } from "../../../client/context";
 import type { GgConfigOption } from "../runs/gg/useGgConfigs";
-import {
-  sectionReturnLabel,
-  sectionReturnTo,
-  useRecordSectionIndex,
-} from "../../components/backReturn";
+import { BackChevron } from "../../components/BackChevron";
+import { NavHistoryProvider } from "../../components/navHistory";
 import {
   GalleryDataProvider,
   type GalleryDataInput,
@@ -1046,11 +1043,19 @@ describe("CoverageReviewQueue", () => {
     };
   }
 
-  // Stands in for the dashboard, which records itself as the coverage section's
-  // index as it renders.
+  // Stands in for the dashboard the queue sits on.
   function Dashboard() {
-    useRecordSectionIndex("coverage");
     return <CoverageReviewQueue queue={queue()} />;
+  }
+
+  // Stands in for a run's page: its back control, as the run detail layout renders it.
+  function RunStub() {
+    return (
+      <>
+        <BackChevron scope="/runs/r1" fallback="/runs" label="All runs" />
+        <p>a run</p>
+      </>
+    );
   }
 
   function longQueue(count: number): CoverageQueue {
@@ -1170,56 +1175,30 @@ describe("CoverageReviewQueue", () => {
     expect(links[0]!.getAttribute("href")).toBe("/runs/r1/verdict");
   });
 
-  it("hands the run's back control a return to the plan it was opened from", () => {
-    // Routed, so the dashboard unmounts on navigation exactly as it does in the
-    // app — a still-mounted index would re-record itself at the run's URL.
+  // The review loop: open a run from the queue, review it, press back, and land on
+  // the plan again rather than on the runs index.
+  it("returns the run's back control to the plan it was opened from", async () => {
     render(
       <MemoryRouter initialEntries={["/account/coverage/p1"]}>
-        <GalleryDataProvider value={galleryValue()}>
-          <Routes>
-            <Route path="/account/coverage/:planId" element={<Dashboard />} />
-            <Route path="/runs/:runId/verdict" element={<p>a run</p>} />
-          </Routes>
-        </GalleryDataProvider>
+        <NavHistoryProvider>
+          <GalleryDataProvider value={galleryValue()}>
+            <Routes>
+              <Route path="/account/coverage/:planId" element={<Dashboard />} />
+              <Route path="/runs/:runId/verdict" element={<RunStub />} />
+            </Routes>
+          </GalleryDataProvider>
+        </NavHistoryProvider>
       </MemoryRouter>,
     );
-    // Before the click, a run's back control is the runs section's own default.
-    expect(sectionReturnTo("runs", "/runs")).toBe("/runs");
     fireEvent.click(screen.getAllByRole("link")[0]!);
     expect(screen.getByText("a run")).toBeTruthy();
-    expect(sectionReturnTo("runs", "/runs")).toBe("/account/coverage/p1");
-  });
-
-  // The run page's back control labels itself "All runs". Once a claim has pointed it
-  // at a dashboard instead, that label is simply untrue — and it is the only thing an
-  // icon-only chevron says to a screen reader, so the claim carries its own wording.
-  it("renames the run's back control to the dashboard it now returns to", () => {
-    function LadderDashboard() {
-      useRecordSectionIndex("coverage");
-      return (
-        <CoverageReviewQueue queue={queue()} returnLabel="Back to the ladder" />
-      );
-    }
-    render(
-      <MemoryRouter initialEntries={["/account/ladders/l1"]}>
-        <GalleryDataProvider value={galleryValue()}>
-          <Routes>
-            <Route
-              path="/account/ladders/:ladderId"
-              element={<LadderDashboard />}
-            />
-            <Route path="/runs/:runId" element={<p>a run</p>} />
-          </Routes>
-        </GalleryDataProvider>
-      </MemoryRouter>,
+    const back = screen.getByRole("link", { name: "Back" });
+    expect(back.getAttribute("href")).toBe("/account/coverage/p1");
+    fireEvent.click(back);
+    await waitFor(() => expect(screen.queryByText("a run")).toBeNull());
+    expect(screen.getAllByRole("link")[0]!.getAttribute("href")).toBe(
+      "/runs/r1/verdict",
     );
-    expect(sectionReturnLabel("runs", "All runs")).toBe("All runs");
-    fireEvent.click(screen.getAllByRole("link")[0]!);
-    expect(sectionReturnTo("runs", "/runs")).toBe("/account/ladders/l1");
-    expect(sectionReturnLabel("runs", "All runs")).toBe("Back to the ladder");
-    // A page with no section is one whose parent list is fixed — the dashboard's own
-    // "all ladders" chevron — and must never be redirected or relabelled.
-    expect(sectionReturnLabel(undefined, "All ladders")).toBe("All ladders");
   });
 });
 

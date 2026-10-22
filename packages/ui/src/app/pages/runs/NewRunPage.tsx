@@ -539,7 +539,9 @@ export function NewRunPage() {
     const only = outcomes.length === 1 ? outcomes[0] : undefined;
     if (only) {
       if (only.monitorPath) {
-        navigate(only.monitorPath);
+        // The launched run replaces the form, so the run's back control returns to
+        // wherever the launch was started from rather than to a spent form.
+        navigate(only.monitorPath, { replace: true });
         return;
       }
       setLaunchError(only.error ?? "Launch failed.");

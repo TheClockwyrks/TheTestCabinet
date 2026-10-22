@@ -3,7 +3,6 @@ import { NavLink } from "react-router";
 import { useGalleryData } from "../../data/galleryContext";
 import { useOptionalWorkers } from "../../../client/context";
 import { useRunsRuntime } from "../../runtime/runsRuntime";
-import { useRecordSectionIndex } from "../../components/backReturn";
 import { useLiveRunUpdates } from "../../runtime/useLiveRunUpdates";
 import { routes } from "../../routes";
 import styles from "./RunsTabs.module.scss";
@@ -48,11 +47,6 @@ export function RunsTabs({ active }: { active: RunsTab }) {
   // runs, and the header's stop controls size themselves from the same list — so the
   // run-lifecycle topic is declared here, once, rather than by each tab.
   useLiveRunUpdates();
-  // Remember this surface so a run's detail back-control returns to the tab the
-  // user was on (Tests / Comparisons / Failures / Unreviewed / Unpublished), not
-  // always the default Tests tab. Recorded unconditionally, even where the bar itself is
-  // dropped below.
-  useRecordSectionIndex("runs");
   const unreadable = useUnreadableCount();
   const tabs: { key: RunsTab; label: string; to: string }[] = [
     { key: "runs", label: "Tests", to: routes.runs() },

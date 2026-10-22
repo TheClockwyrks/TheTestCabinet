@@ -290,7 +290,8 @@ export function ComparisonDetailPage() {
         <header className={styles.detailHeader}>
           <div className={styles.detailTitleRow}>
             <BackChevron
-              to={routes.runsComparisons()}
+              scope={routes.comparisonDetail(id)}
+              fallback={routes.runsComparisons()}
               label="All comparisons"
             />
             <h1 className={styles.detailTitle}>Comparison</h1>
@@ -317,7 +318,8 @@ export function ComparisonDetailPage() {
         <header className={styles.detailHeader}>
           <div className={styles.detailTitleRow}>
             <BackChevron
-              to={routes.runsComparisons()}
+              scope={routes.comparisonDetail(id)}
+              fallback={routes.runsComparisons()}
               label="All comparisons"
             />
             <h1 className={styles.detailTitle}>Comparison</h1>
@@ -392,7 +394,11 @@ export function ComparisonDetailPage() {
     <PageLayout>
       <header className={styles.detailHeader}>
         <div className={styles.detailTitleRow}>
-          <BackChevron to={routes.runsComparisons()} label="All comparisons" />
+          <BackChevron
+            scope={routes.comparisonDetail(id)}
+            fallback={routes.runsComparisons()}
+            label="All comparisons"
+          />
           <h1 className={styles.detailTitle}>{comparison.name}</h1>
           {comparison.published && (
             <span className={styles.publishedBadge}>Published</span>

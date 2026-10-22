@@ -21,10 +21,8 @@ import {
   BackendProvider,
   type BackendContextValue,
 } from "../../../client/context";
-import {
-  sectionReturnTo,
-  useRecordSectionIndex,
-} from "../../components/backReturn";
+import { BackChevron } from "../../components/BackChevron";
+import { NavHistoryProvider } from "../../components/navHistory";
 import {
   GalleryDataProvider,
   type GalleryDataInput,
@@ -783,7 +781,6 @@ describe("ClimberRow", () => {
 // The review loop: a rung's runs must open with a return to the ladder behind them.
 describe("the ladder's back-return", () => {
   function Dashboard() {
-    useRecordSectionIndex("coverage");
     return (
       <ClimberRow
         climber={climber()}
@@ -793,29 +790,47 @@ describe("the ladder's back-return", () => {
     );
   }
 
-  it("hands a run's back control a return to the ladder it was opened from", async () => {
+  // Stands in for a run's page: its back control, as the run detail layout renders it.
+  function RunStub() {
+    return (
+      <>
+        <BackChevron scope="/runs/run-1" fallback="/runs" label="All runs" />
+        <p>the run</p>
+      </>
+    );
+  }
+
+  it("returns a run's back control to the ladder it was opened from", async () => {
     render(
       <MemoryRouter initialEntries={["/account/ladders/l1"]}>
-        <GalleryDataProvider
-          value={galleryValue(async () => ({
-            summaries: [runSummary("run-1", "case-0")],
-            total: 1,
-          }))}
-        >
-          <Routes>
-            <Route path="/account/ladders/:ladderId" element={<Dashboard />} />
-            <Route path="/runs/:runId" element={<p>the run</p>} />
-          </Routes>
-        </GalleryDataProvider>
+        <NavHistoryProvider>
+          <GalleryDataProvider
+            value={galleryValue(async () => ({
+              summaries: [runSummary("run-1", "case-0")],
+              total: 1,
+            }))}
+          >
+            <Routes>
+              <Route
+                path="/account/ladders/:ladderId"
+                element={<Dashboard />}
+              />
+              <Route path="/runs/:runId" element={<RunStub />} />
+            </Routes>
+          </GalleryDataProvider>
+        </NavHistoryProvider>
       </MemoryRouter>,
     );
-    expect(sectionReturnTo("runs", "/runs")).toBe("/runs");
     fireEvent.click(screen.getByRole("button", { expanded: false }));
     fireEvent.click(screen.getAllByRole("button", { name: /Runs$/ })[0]!);
     const row = await screen.findByRole("link", { name: /opus/i });
     fireEvent.click(row);
     expect(screen.getByText("the run")).toBeTruthy();
-    expect(sectionReturnTo("runs", "/runs")).toBe("/account/ladders/l1");
+    const back = screen.getByRole("link", { name: "Back" });
+    expect(back.getAttribute("href")).toBe("/account/ladders/l1");
+    fireEvent.click(back);
+    await waitFor(() => expect(screen.queryByText("the run")).toBeNull());
+    expect(screen.getAllByRole("button").length).toBeGreaterThan(0);
   });
 });
 

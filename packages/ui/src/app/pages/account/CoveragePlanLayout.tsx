@@ -21,7 +21,6 @@ import { PageLayout } from "../../components/PageLayout";
 import { BackChevron } from "../../components/BackChevron";
 import { useConfirm } from "../../components/ConfirmDialog";
 import { SubmitNotice } from "../../components/SubmitNotice";
-import { useRecordSectionIndex } from "../../components/backReturn";
 import { useAuth } from "../../../client/auth";
 import { useBackend, useWorkers } from "../../../client/context";
 import { useTestCaseName } from "../../data/useTestCaseName";
@@ -210,10 +209,6 @@ export function CoveragePlanLayout() {
     loading: ggLoading,
     error: ggError,
   } = useGgConfigs();
-
-  // Record this plan as the coverage section's index, so a run opened from a cell or
-  // from the review queue returns to the tab it was opened from (see `backReturn`).
-  useRecordSectionIndex("coverage");
 
   // The board's counts move as the plan's runs finish and as the backend launches the
   // next ones, so the page holds the console stream's run-lifecycle topic open for as
@@ -554,7 +549,11 @@ export function CoveragePlanLayout() {
       <PageLayout>
         <header className={styles.detailHeader}>
           <div className={styles.detailTitleRow}>
-            <BackChevron to={routes.accountCoverage()} label="All plans" />
+            <BackChevron
+              scope={routes.accountCoveragePlan(planId)}
+              fallback={routes.accountCoverage()}
+              label="All plans"
+            />
             <h1 className={styles.detailTitle}>Coverage plan</h1>
           </div>
         </header>
@@ -569,7 +568,11 @@ export function CoveragePlanLayout() {
     <PageLayout>
       <header className={styles.detailHeader}>
         <div className={[styles.detailTitleRow, styles.dashTitleRow].join(" ")}>
-          <BackChevron to={routes.accountCoverage()} label="All plans" />
+          <BackChevron
+            scope={routes.accountCoveragePlan(planId)}
+            fallback={routes.accountCoverage()}
+            label="All plans"
+          />
           <h1 className={[styles.detailTitle, styles.dashTitle].join(" ")}>
             {plan?.name ?? planId}
           </h1>

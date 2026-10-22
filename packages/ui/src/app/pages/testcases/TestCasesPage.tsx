@@ -6,7 +6,6 @@ import { PageLayout } from "../../components/PageLayout";
 import { LoadingState } from "../../components/LoadingState";
 import { PromptHeader } from "../../components/PromptHeader";
 import { CabinetIcon } from "../../components/CabinetIcon";
-import { useRecordSectionIndex } from "../../components/backReturn";
 import { useTestCases } from "../../data/useTestCases";
 import { useGalleryData } from "../../data/galleryContext";
 import type { ShowcaseMediaRef, TestCaseSummary } from "../../data/testCases";
@@ -74,9 +73,6 @@ export function TestCasesPage({ tab }: TestCasesPageProps) {
   // returns to the 40/60 default.
   const [splitFraction, setSplitFraction] = useState(SPLIT_DEFAULT);
   const splitRef = useRef<HTMLDivElement | null>(null);
-  // Remember the viewed tab so a case's detail back-control returns here, not to
-  // the catalog default tab.
-  useRecordSectionIndex("testCases");
 
   // On the static site (no execution) drop tabs the catalog has no case for, so
   // the bar advertises only types with a published run; the consoles keep the
