@@ -1109,6 +1109,7 @@ upserting
 upserts
 userbyid
 userns
+vantaloc
 varargs
 varint
 verdicted
