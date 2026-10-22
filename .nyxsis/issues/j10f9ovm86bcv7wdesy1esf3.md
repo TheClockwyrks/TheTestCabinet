@@ -7,8 +7,20 @@ number: 2
 title: Carry the back-navigation fix from staging into ui-common and the console
 type: generic
 priority: 3
-state: open
+state: done
 created: 2026-10-22T14:47:09.756279949Z
+done: 2026-10-22T18:28:12.172594881Z
+outcome: |
+  Landed in PR 5068 into nightly (bbaeed318): the "Back navigation" docs section
+  carried from staging's PR 5005, ui-common PR 5017 porting the code onto its tree
+  and PR 5018 releasing @clockwyrks/ui and @clockwyrks/run-stats 0.1.2 to the feed
+  (tag v0.1.2), console.testcabinet.ai PR 5032 pinning 0.1.2 with a browser test
+  that a run page opened from the runs list returns to the list, and the
+  superrepo's ui-common and console pointers and lock following. Superrepo gates
+  22 of 22 on the branch; a clean clone's npm ci resolves. Not exercised: the back
+  controls in a running console or on staging (covered by ui-common's vitest suite
+  and the console's browser test). The gallery in testcabinet.ai still pins ui
+  0.1.1 (SITE-4).
 ---
 
 Every on-page back control returns to the page the viewer came from, the app

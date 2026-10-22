@@ -6,8 +6,18 @@ zone: REPOS
 number: 23
 title: Move the testcabinet.ai pointer to its master merge after the prod deploy
 type: generic
-state: open
+priority: 3
+state: done
 created: 2026-10-22T11:50:07.23380437Z
+done: 2026-10-22T14:59:02.858745461Z
+outcome: |
+  PR 5008 completed in testcabinet.ai and its master run 18216 deployed the Pages
+  project the-test-cabinet from master merge 4600d3ba (production deployment
+  0b882875; https://testcabinet.ai/, /runs and a run page answer 200). The GitHub
+  mirror TheClockwyrks/testcabinet.ai defaults to master, which equals Azure's
+  master. The superrepo's testcabinet.ai pointer moved to 4600d3ba in PR 5016 into
+  nightly (15b72382c); dependency-graph, ci-tests and shell-tests passed on the
+  branch.
 ---
 
 The superrepo's `testcabinet.ai` submodule names the repository's `staging`
