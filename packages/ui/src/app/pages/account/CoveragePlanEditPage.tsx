@@ -224,7 +224,15 @@ export function CoveragePlanEditPage() {
       <PageLayout>
         <header className={styles.detailHeader}>
           <div className={styles.detailTitleRow}>
-            <BackChevron to={routes.accountCoverage()} label="All plans" />
+            <BackChevron
+              scope={
+                planId
+                  ? routes.accountCoveragePlanEdit(planId)
+                  : routes.accountCoveragePlanNew()
+              }
+              fallback={routes.accountCoverage()}
+              label="All plans"
+            />
             <h1 className={styles.detailTitle}>
               {editing ? "Coverage plan" : "New plan"}
             </h1>
@@ -241,7 +249,15 @@ export function CoveragePlanEditPage() {
     <PageLayout>
       <header className={styles.detailHeader}>
         <div className={styles.detailTitleRow}>
-          <BackChevron to={routes.accountCoverage()} label="All plans" />
+          <BackChevron
+            scope={
+              planId
+                ? routes.accountCoveragePlanEdit(planId)
+                : routes.accountCoveragePlanNew()
+            }
+            fallback={routes.accountCoverage()}
+            label="All plans"
+          />
           <h1 className={styles.detailTitle}>
             {editing ? name || "Coverage plan" : "New plan"}
           </h1>

@@ -17,7 +17,6 @@ export function CoveragePlanReviewsPage() {
       // than as a blank tab: either way there is nothing here to open, and a surface
       // that renders nothing at all cannot be told from a bug.
       queue={queue ?? { runs: [], truncated: false }}
-      returnLabel="Back to the plan's reviews"
       intro="Completed runs of this plan you have not reviewed, in the order the plan runs them. A review adds an aesthetic rating and a writeup after the fact; it never launches or holds back a run."
       emptyMessage="No unreviewed runs. Completed runs of this plan land here, in the order the plan runs them."
     />

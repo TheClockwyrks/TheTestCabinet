@@ -2,7 +2,6 @@ import { useCallback } from "react";
 import { Link, useSearchParams } from "react-router";
 import { Pagination, Panel } from "@clockwyrks/ui";
 import type { CoverageQueue } from "@clockwyrks/run-record/coverage";
-import { claimSectionReturn } from "../../components/backReturn";
 import { useClientPage } from "../../components/useClientPage";
 import { useTestCaseName } from "../../data/useTestCaseName";
 import { formatTimeAgo } from "../../format";
@@ -22,11 +21,8 @@ import styles from "./Coverage.module.scss";
 // of identical rows and pressing one. Each
 // row is itself the link, so the press target is the row rather than a word inside it.
 //
-// Each row claims the coverage back-return before it navigates, so reviewing a run
-// and pressing back lands here rather than on the runs index: open, review, back,
-// repeat. `returnLabel` is what the run page's back control then calls this
-// dashboard — the ladder reuses this component verbatim, and the two must not both
-// announce themselves as the plan.
+// A run opened from a row returns here when its back control is pressed, as every
+// back control returns to the page it was reached from: open, review, back, repeat.
 //
 // `emptyMessage` decides what an empty queue renders. A surface that is nothing but
 // this queue (the plan's Reviews tab) passes one and gets the widget with the message
@@ -72,13 +68,11 @@ function useQueuePage() {
 
 export function CoverageReviewQueue({
   queue,
-  returnLabel = "Back to the coverage plan",
   title = "Label runs (optional)",
   emptyMessage,
   intro,
 }: {
   queue: CoverageQueue;
-  returnLabel?: string;
   title?: string;
   emptyMessage?: string;
   intro?: string;
@@ -113,7 +107,6 @@ export function CoverageReviewQueue({
             <Link
               className={styles.queueRow}
               to={routes.runVerdict(entry.runId)}
-              onClick={() => claimSectionReturn("coverage", returnLabel)}
             >
               <span className={styles.queueIdentity}>
                 <span className={styles.queueName}>

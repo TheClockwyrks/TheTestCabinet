@@ -3,7 +3,6 @@ import { Link, NavLink } from "react-router";
 import { PageLayout } from "../../components/PageLayout";
 import { LoadingState } from "../../components/LoadingState";
 import { PromptHeader } from "../../components/PromptHeader";
-import { useRecordSectionIndex } from "../../components/backReturn";
 import { useGalleryData } from "../../data/galleryContext";
 import type { TestCaseSummary } from "../../data/testCases";
 import { useTestCases } from "../../data/useTestCases";
@@ -64,9 +63,6 @@ interface OtherPageProps {
 export function OtherPage({ tab }: OtherPageProps) {
   const { canExecute, arena } = useGalleryData();
   const { testCases, status } = useTestCases();
-  // Record the viewed tab so a jam or tournament detail page's back chevron
-  // returns here rather than to the section default.
-  useRecordSectionIndex("other");
 
   // Jams are excluded from the Test Cases catalog and surface only here. Listed
   // alphabetically, never ranked.

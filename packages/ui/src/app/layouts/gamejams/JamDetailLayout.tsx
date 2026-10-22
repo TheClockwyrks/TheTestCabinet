@@ -126,12 +126,12 @@ export function JamDetailLayout({
       <header className={styles.header}>
         <div className={styles.titleRow}>
           <div className={styles.titleGroup}>
-            {/* Back returns to the Other tab the user came from; on a fresh deep
-                link (nothing recorded) it falls back to the Game Jams tab, which
-                is where a jam is listed. */}
+            {/* Back returns to the page the viewer came from; on a fresh deep
+                link it falls back to the Game Jams tab, which is where a jam is
+                listed. */}
             <BackChevron
-              to={routes.otherGameJams()}
-              section="other"
+              scope={routes.gameJamDetail(testCase.slug)}
+              fallback={routes.otherGameJams()}
               label="All game jams"
             />
             <h1 className={styles.title}>{testCase.name}</h1>

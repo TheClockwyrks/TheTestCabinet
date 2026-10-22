@@ -119,7 +119,15 @@ export function GroupEditPage() {
       <PageLayout>
         <header className={styles.detailHeader}>
           <div className={styles.detailTitleRow}>
-            <BackChevron to={routes.accountGroups()} label="All groups" />
+            <BackChevron
+              scope={
+                groupId
+                  ? routes.accountGroupEdit(groupId)
+                  : routes.accountGroupNew()
+              }
+              fallback={routes.accountGroups()}
+              label="All groups"
+            />
             <h1 className={styles.detailTitle}>
               {editing ? "Group" : "New group"}
             </h1>
@@ -136,7 +144,15 @@ export function GroupEditPage() {
     <PageLayout>
       <header className={styles.detailHeader}>
         <div className={styles.detailTitleRow}>
-          <BackChevron to={routes.accountGroups()} label="All groups" />
+          <BackChevron
+            scope={
+              groupId
+                ? routes.accountGroupEdit(groupId)
+                : routes.accountGroupNew()
+            }
+            fallback={routes.accountGroups()}
+            label="All groups"
+          />
           <h1 className={styles.detailTitle}>
             {editing ? name || "Group" : "New group"}
           </h1>

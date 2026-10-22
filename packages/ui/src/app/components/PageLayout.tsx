@@ -7,6 +7,7 @@ import { useAuth } from "../../client/auth";
 import { selectUnreadCount, useNotifications } from "../runtime/notifications";
 import { BellIcon } from "./BellIcon";
 import { CabinetIcon } from "./CabinetIcon";
+import { useBackTarget } from "./navHistory";
 import { StorageNotice } from "./StorageNotice";
 import styles from "./PageLayout.module.scss";
 import exec from "../pages/runs/RunExec.module.scss";
@@ -18,15 +19,21 @@ import exec from "../pages/runs/RunExec.module.scss";
  * control and the nav links differ.
  */
 export interface TopbarChrome {
-  /** Where the brand control goes — for a mode, back out of it. */
+  /**
+   * Where the brand control goes. For a mode with `back`, this is only the fallback
+   * for a mode entered with no in-app history behind it.
+   */
   home: string;
   /** The wordmark beside the mark. */
   label: string;
   /**
    * Render the brand's mark as a back arrow rather than the cabinet icon, so the
-   * control reads as "leave this mode" rather than "go home".
+   * control reads as "leave this mode" rather than "go home", and make it return to
+   * the page the viewer was on before entering the mode. `scope` is the path every
+   * route of the mode lives under, so moving between the mode's own tabs is never
+   * the step back.
    */
-  back?: boolean;
+  back?: { scope: string };
   /** The section nav's links, in order. */
   links: ReadonlyArray<{ label: string; to: string; end?: boolean }>;
 }
@@ -150,6 +157,12 @@ export function PageLayout({
   // evaluates). Gated on the union, and it must stay the same condition the router mounts
   // the section on — a control leading to an unmounted route is a dead end.
   const hasGgData = ggData != null;
+  // The brand control: home on an ordinary page; for a mode, back out to the page the
+  // viewer entered the mode from, or the mode's `home` on a fresh deep link.
+  const exit = useBackTarget(
+    chrome?.back?.scope ?? null,
+    chrome?.home ?? routes.home(),
+  );
   // The consoles reach run configuration through the Settings gear; the static
   // site keeps the About link in the nav. Both surface the Settings gear — on
   // the site it opens the Appearance-only settings (the sun and feed-style
@@ -203,9 +216,16 @@ export function PageLayout({
               leads back out of the mode, with a back arrow in place of the mark so
               the affordance is unmistakable. */}
           <Link
-            to={chrome?.home ?? routes.home()}
+            to={exit.href}
+            onClick={exit.onClick}
             className={styles.brand}
-            title={chrome?.back ? "Back to The Test Cabinet" : undefined}
+            title={
+              !chrome?.back
+                ? undefined
+                : exit.fromHistory
+                  ? "Back"
+                  : "Back to The Test Cabinet"
+            }
           >
             {chrome?.back ? (
               <BackArrowIcon className={styles.mark} />

@@ -255,7 +255,15 @@ export function LadderEditPage() {
       <PageLayout>
         <header className={styles.detailHeader}>
           <div className={styles.detailTitleRow}>
-            <BackChevron to={routes.accountLadders()} label="All ladders" />
+            <BackChevron
+              scope={
+                ladderId
+                  ? routes.accountLadderEdit(ladderId)
+                  : routes.accountLadderNew()
+              }
+              fallback={routes.accountLadders()}
+              label="All ladders"
+            />
             <h1 className={styles.detailTitle}>
               {editing ? "Ladder" : "New ladder"}
             </h1>
@@ -272,7 +280,15 @@ export function LadderEditPage() {
     <PageLayout>
       <header className={styles.detailHeader}>
         <div className={styles.detailTitleRow}>
-          <BackChevron to={routes.accountLadders()} label="All ladders" />
+          <BackChevron
+            scope={
+              ladderId
+                ? routes.accountLadderEdit(ladderId)
+                : routes.accountLadderNew()
+            }
+            fallback={routes.accountLadders()}
+            label="All ladders"
+          />
           <h1 className={styles.detailTitle}>
             {editing ? name || "Ladder" : "New ladder"}
           </h1>

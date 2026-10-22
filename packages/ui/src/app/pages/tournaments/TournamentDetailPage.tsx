@@ -64,8 +64,8 @@ export function TournamentDetailPage() {
           is unavailable — so a deep link can always get back to the list. */}
       <div className={styles.titleRow}>
         <BackChevron
-          to={routes.otherTournaments()}
-          section="other"
+          scope={routes.tournamentDetail(id ?? "")}
+          fallback={routes.otherTournaments()}
           label="All tournaments"
         />
         <h1 className={styles.caption}>

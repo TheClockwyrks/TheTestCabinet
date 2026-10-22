@@ -4,7 +4,7 @@ import { PageLayout } from "../../components/PageLayout";
 import { LoadingState } from "../../components/LoadingState";
 import { LoadFailureState } from "../../components/LoadFailureState";
 import { AddModelFromRunControl } from "../../components/AddModelFromRunControl";
-import { BackChevron } from "../../components/BackChevron";
+import { BackChevron, BackLink } from "../../components/BackChevron";
 import { ModelProviderMark } from "../../components/ModelProviderMark";
 import type { ModelSummary } from "../../data/models";
 import { useModelConfig } from "../../data/useModelConfig";
@@ -65,7 +65,12 @@ export function ModelDetailLayout({ tab, children }: ModelDetailLayoutProps) {
         <PageLayout>
           <LoadFailureState subject="the model catalog" />
           <p className={styles.line}>
-            <Link to={routes.models()}>&larr; All models</Link>
+            <BackLink
+              scope={routes.modelDetail(modelId ?? "")}
+              fallback={routes.models()}
+            >
+              All models
+            </BackLink>
           </p>
         </PageLayout>
       );
@@ -75,7 +80,12 @@ export function ModelDetailLayout({ tab, children }: ModelDetailLayoutProps) {
       <PageLayout>
         <p className={styles.empty}>Unknown model: {modelId}</p>
         <p className={styles.line}>
-          <Link to={routes.models()}>&larr; All models</Link>
+          <BackLink
+            scope={routes.modelDetail(modelId ?? "")}
+            fallback={routes.models()}
+          >
+            All models
+          </BackLink>
         </p>
       </PageLayout>
     );
@@ -95,7 +105,14 @@ export function ModelDetailLayout({ tab, children }: ModelDetailLayoutProps) {
           {/* The back chevron and provider mark hugging the model name, then the
               OpenRouter link pushed to the right edge. */}
           <span className={styles.nameGroup}>
-            <BackChevron to={routes.models()} label="All models" />
+            <BackChevron
+              scope={[
+                routes.modelDetail(model.slug),
+                routes.modelDetail(modelId ?? model.slug),
+              ]}
+              fallback={routes.models()}
+              label="All models"
+            />
             <ModelProviderMark
               logoSvg={model.logoSvg}
               provider={model.provider}

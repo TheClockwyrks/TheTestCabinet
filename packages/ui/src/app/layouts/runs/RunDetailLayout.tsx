@@ -395,7 +395,11 @@ export function RunDetailLayout({
       <header className={styles.header}>
         <div className={styles.titleRow}>
           <h2 className={styles.title}>
-            <BackChevron to={routes.runs()} section="runs" label="All runs" />
+            <BackChevron
+              scope={routes.runDetail(run.id)}
+              fallback={routes.runs()}
+              label="All runs"
+            />
             <Link
               className={styles.titleLink}
               to={routes.testCaseDetail(subject.testCaseSlug)}

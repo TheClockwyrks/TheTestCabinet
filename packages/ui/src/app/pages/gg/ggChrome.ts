@@ -14,7 +14,7 @@ import { routes } from "../../routes";
 export const GG_CHROME: TopbarChrome = {
   home: routes.runs(),
   label: "gg analysis",
-  back: true,
+  back: { scope: routes.ggAnalysis() },
   links: [
     { label: "Sessions", to: routes.ggAnalysis(), end: true },
     { label: "Dashboards", to: routes.ggAnalysisDashboards() },
@@ -46,7 +46,7 @@ export const GG_CHROME: TopbarChrome = {
 export const GG_PUBLIC_CHROME: TopbarChrome = {
   home: routes.home(),
   label: "gg analysis",
-  back: true,
+  back: { scope: routes.ggAnalysis() },
   links: [{ label: "Discover", to: routes.ggAnalysisDiscover(), end: true }],
 };
 

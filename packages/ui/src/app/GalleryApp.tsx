@@ -1,6 +1,7 @@
 import { Backdrop } from "./components/Backdrop";
 import { ConfirmDialogProvider } from "./components/ConfirmDialog";
 import { NotificationsLayer } from "./components/NotificationsLayer";
+import { NavHistoryProvider } from "./components/navHistory";
 import { PageErrorBoundary } from "./components/PageErrorBoundary";
 import { useGalleryData } from "./data/galleryContext";
 import { AppRoutes } from "./pages/router";
@@ -22,19 +23,24 @@ export function GalleryApp() {
   // which the layer reads, isn't provided there).
   const { canExecute } = useGalleryData();
   return (
-    // Every page asks its destructive questions through the themed dialog rather
-    // than the browser's own `confirm()`, so the provider wraps the whole routed
-    // app — including the portalled run context menu, which raises one too.
-    <ConfirmDialogProvider>
-      {/* Neon grid + scanline atmosphere, painted behind the routed pages. */}
-      <Backdrop />
-      {/* Only the routed body is guarded, and deliberately so: a page that throws
-          loses itself, not the chrome around it and not the notification layer
-          above it, so there is still a nav to leave by. */}
-      <PageErrorBoundary>
-        <AppRoutes />
-      </PageErrorBoundary>
-      {canExecute && <NotificationsLayer />}
-    </ConfirmDialogProvider>
+    // Every on-page back control returns to the page the viewer came from, so the
+    // tab's in-app history is recorded around everything that renders one.
+    <NavHistoryProvider>
+      {/* Every page asks its destructive questions through the themed dialog
+          rather than the browser's own `confirm()`, so the provider wraps the
+          whole routed app — including the portalled run context menu, which
+          raises one too. */}
+      <ConfirmDialogProvider>
+        {/* Neon grid + scanline atmosphere, painted behind the routed pages. */}
+        <Backdrop />
+        {/* Only the routed body is guarded, and deliberately so: a page that
+            throws loses itself, not the chrome around it and not the
+            notification layer above it, so there is still a nav to leave by. */}
+        <PageErrorBoundary>
+          <AppRoutes />
+        </PageErrorBoundary>
+        {canExecute && <NotificationsLayer />}
+      </ConfirmDialogProvider>
+    </NavHistoryProvider>
   );
 }

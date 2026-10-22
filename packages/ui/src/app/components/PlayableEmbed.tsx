@@ -22,7 +22,11 @@ function EmbeddedFrame({ src, title, iframeRef }: EmbeddedFrameProps) {
   useEffect(() => setLoaded(false), [src]);
   return (
     <div className={styles.frame}>
+      {/* Keyed by `src` so a re-pointed embed is a new frame: re-pointing a loaded
+          frame adds an entry to the tab's history the app never sees, which would
+          throw off the back controls' step count. */}
       <iframe
+        key={src}
         ref={iframeRef}
         className={styles.embed}
         src={src}
