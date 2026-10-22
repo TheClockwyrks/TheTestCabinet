@@ -4506,3 +4506,7 @@ version = "0.0.0"
 [[patch.unused]]
 name = "test-cabinet-repos"
 version = "0.0.0"
+
+[[patch.unused]]
+name = "tcab-publisher"
+version = "0.0.0"

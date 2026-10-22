@@ -67,7 +67,7 @@ directory empty. The superrepo's own gates and the docs site read
 repositories still held in the superrepo's own tree build against,
 `microservice-arena/`, `microservice-artifacts/`, `microservice-dispatcher/`,
 `microservice-driver/`,
-`microservice-repos/`,
+`microservice-publisher/`, `microservice-repos/`,
 `tool-model-core/`, `tool-paint/`, `tool-particle/`, `tool-sprite/`,
 `tool-voxel/`, `tool-mc/`, `tool-sn/`, `tool-dc/`, `tool-audio-core/`,
 `tool-sfx-synth/`, `tool-sfx-sample/`, `tool-music/`, `ui-common/` and `gg/`,
@@ -82,7 +82,8 @@ it:
 git clone <superrepo-url>
 git submodule update --init contracts engines gg microservice-arena \
   microservice-artifacts microservice-dispatcher \
-  microservice-driver microservice-repos tool-model-core tool-paint \
+  microservice-driver microservice-publisher microservice-repos \
+  tool-model-core tool-paint \
   tool-particle tool-sprite tool-voxel tool-mc tool-sn tool-dc \
   tool-audio-core tool-sfx-synth tool-sfx-sample tool-music ui-common
 git submodule update --init gg.rocks   # what the task touches
@@ -93,7 +94,7 @@ git submodule update --init test-suites
 The devcontainer populates `contracts/`, `engines/`, `gg/`,
 `microservice-arena/`, `microservice-artifacts/`, `microservice-dispatcher/`,
 `microservice-driver/`,
-`microservice-repos/`,
+`microservice-publisher/`, `microservice-repos/`,
 `tool-model-core/`, `tool-paint/`, `tool-particle/`, `tool-sprite/`,
 `tool-voxel/`, `tool-mc/`, `tool-sn/`, `tool-dc/`, `tool-audio-core/`,
 `tool-sfx-synth/`, `tool-sfx-sample/`, `tool-music/`, `test-suites/` and

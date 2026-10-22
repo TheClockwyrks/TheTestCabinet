@@ -154,7 +154,7 @@ rather than one that quietly passes.
 `post-create.sh` populates the `contracts/`, `engines/`, `gg/`,
 `microservice-arena/`, `microservice-artifacts/`, `microservice-dispatcher/`,
 `microservice-driver/`,
-`microservice-repos/`,
+`microservice-publisher/`, `microservice-repos/`,
 `tool-model-core/`, `tool-paint/`, `tool-particle/`, `tool-sprite/`, `tool-voxel/`,
 `tool-mc/`, `tool-sn/`, `tool-dc/`, `tool-audio-core/`, `tool-sfx-synth/`,
 `tool-sfx-sample/`, `tool-music/` and
@@ -691,7 +691,8 @@ warning about it.
 The `contracts/`, `engines/`, `gg/`, `microservice-arena/`,
 `microservice-artifacts/`,
 `microservice-dispatcher/`, `microservice-driver/`,
-`microservice-repos/`, `tool-model-core/`, `tool-paint/`, `tool-particle/`,
+`microservice-publisher/`, `microservice-repos/`, `tool-model-core/`,
+`tool-paint/`, `tool-particle/`,
 `tool-sprite/`, `tool-voxel/`, `tool-mc/`, `tool-sn/`, `tool-dc/`,
 `tool-audio-core/`, `tool-sfx-synth/`, `tool-sfx-sample/`, `tool-music/`,
 `test-suites/` and `ui-common/` submodules live in the organization's other
@@ -707,7 +708,7 @@ runs
 ```sh
 git submodule update --init \
   contracts engines gg microservice-arena microservice-artifacts \
-  microservice-dispatcher microservice-driver microservice-repos \
+  microservice-dispatcher microservice-driver microservice-publisher microservice-repos \
   tool-model-core tool-paint tool-particle tool-sprite tool-voxel tool-mc \
   tool-sn tool-dc tool-audio-core tool-sfx-synth tool-sfx-sample tool-music \
   test-suites ui-common
