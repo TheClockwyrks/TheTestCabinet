@@ -25,10 +25,18 @@
 # the commit this run is on: the image the job pushed a step ago is tagged with
 # it, and nothing pins it until the next commit writes it into the file.
 # Usually that is one or two tags; it is more while a change sits on `nightly`
-# or `staging` and has not reached `master`. Nothing older is kept. This project
-# runs no CI on an old commit, so an image that no live branch names is an
-# image nothing will ever pull, and a count or an age would only decide how
-# long to pay for it.
+# or `staging` and has not reached `master`.
+#
+# Every tag pushed within the last day is kept as well, pinned or not. Runs of
+# the image pipeline on other branches go on at the same time as this one, and
+# each pushes its Rust image a job before the rust-browser job builds on it:
+# deleting that tag in between fails the other run's rust-browser job with the
+# Rust image "not found". And the documented loop pins a run's commit only in
+# the commit after the run, so its image waits unpinned until that lands. Each
+# tag spared this way is printed. Nothing older is kept. This project runs no
+# CI on an old commit, so an image that no live branch names once that day is
+# over is an image nothing will ever pull, and a longer age would only decide
+# how long to pay for it.
 #
 # Keeping every live branch is what stops this breaking the branches it is not
 # run from: each pins the tag it was merged with until a change reaches it, and
@@ -69,6 +77,14 @@ readonly PINS_FILE="ci/images/tags.yml"
 # pushed the image and not yet the index that names it, and deleting the image
 # underneath it would leave a tag that resolves to nothing.
 readonly UNTAGGED_MIN_AGE_SECONDS=3600
+
+# A tag no live branch pins is left until it is this old. Another branch's run
+# in flight has pushed its Rust image and not yet built its rust-browser image
+# on it, and a run's own image is unpinned until the commit after the run
+# writes it into ci/images/tags.yml. A day covers the jobs' 60-minute ceilings
+# and that pin commit; an image whose pin lands later is rebuilt by queuing the
+# image pipeline on the pinned commit.
+readonly TAGGED_MIN_AGE_SECONDS=86400
 
 # The branches whose pins are kept. A branch this cannot resolve stops the
 # purge, because a fetch that failed must not read as "no branch names this
@@ -267,9 +283,8 @@ kept_tags() {
 # repository of media costs what its trees do. Anything that cannot be listed,
 # fetched or read stops the purge, for the reason a superrepo branch does.
 #
-# On an agent the job's token reaches only the repositories the job names, so
-# each job running this declares every such repository under `uses:`
-# (azure-pipelines-ci-images.yml).
+# On an agent the job's access token reads every repository of the project, so
+# a submodule a branch adds is reached as soon as its .gitmodules names it.
 submodule_pins() {
 	[ "${#GITMODULES_TEXTS[@]}" -gt 0 ] || return 0
 	local base entry key url name remote heads branch repo text pins count=0
@@ -378,21 +393,39 @@ delete_manifest() {
 	esac
 }
 
-# Reads the catalogue on stdin and prints the digest of every manifest a kept
-# tag names, one per line. `all` as the kept tags names every tagged manifest,
-# which is the cache repository's rule.
+# Reads the catalogue on stdin and prints the digest of every tagged manifest
+# that stays, one per line: one a kept tag names, and one last written at or
+# after the tagged cutoff, which is spared for its age. `all` as the kept tags
+# names every tagged manifest, which is the cache repository's rule.
 kept_manifests() {
-	local kept="$1"
+	local kept="$1" tagged_cutoff="$2"
 	local kept_json="$kept"
 	[ "$kept" != all ] || kept_json='null'
-	jq -r --argjson kept "$kept_json" '
+	jq -r --argjson kept "$kept_json" --arg tagged_cutoff "$tagged_cutoff" '
 		.manifests[]
 		| select(
 			((.tags // []) | length > 0)
 			and ($kept == null
-				or ([.tags[] | select(. as $t | $kept | index($t))] | length) > 0)
+				or ([.tags[] | select(. as $t | $kept | index($t))] | length) > 0
+				or .lastUpdateTime >= $tagged_cutoff)
 		)
 		| .digest
+	'
+}
+
+# Reads the catalogue on stdin and prints one line for every tagged manifest
+# that only its age keeps: no kept tag names it and it was last written at or
+# after the tagged cutoff.
+spared_manifests() {
+	local kept="$1" tagged_cutoff="$2"
+	jq -r --argjson kept "$kept" --arg tagged_cutoff "$tagged_cutoff" '
+		.manifests[]
+		| select(
+			((.tags // []) | length > 0)
+			and ([.tags[] | select(. as $t | $kept | index($t))] | length) == 0
+			and .lastUpdateTime >= $tagged_cutoff
+		)
+		| "  sparing \(.tags | join(" ")) (pushed \(.lastUpdateTime)), younger than a day"
 	'
 }
 
@@ -412,12 +445,13 @@ children_of() {
 }
 
 # Every digest a purge of one repository must leave alone, as a JSON array:
-# the manifest each kept tag names, read off the catalogue on stdin, and
-# whatever each of those names in turn. Fails, printing nothing, when one of
-# them cannot be read back from the registry, because a kept index whose
-# children are unknown is a kept index whose children would be deleted.
+# the manifest each kept tag names and each tagged one its age spares, read off
+# the catalogue, and whatever each of those names in turn. Fails, printing
+# nothing, when one of them cannot be read back from the registry, because a
+# kept index whose children are unknown is a kept index whose children would be
+# deleted, an hour after they were pushed, while the index lives a day.
 protected_manifests() {
-	local repository="$1" authorization="$2" kept="$3" catalogue="$4"
+	local repository="$1" authorization="$2" kept="$3" tagged_cutoff="$4" catalogue="$5"
 	local digest children
 	local digests=()
 	while read -r digest; do
@@ -431,28 +465,32 @@ protected_manifests() {
 			[ -n "$digest" ] || continue
 			digests+=("$digest")
 		done <<<"$children"
-	done < <(kept_manifests "$kept" <<<"$catalogue")
+	done < <(kept_manifests "$kept" "$tagged_cutoff" <<<"$catalogue")
 	printf '%s\n' "${digests[@]}" | jq -R -s 'split("\n") | map(select(. != ""))'
 }
 
 # Reads the catalogue on stdin and prints the digest of every manifest to
-# delete: one whose tags are all unkept, and one with no tag at all that is
-# older than the grace period above and that no kept manifest names. `all` as
-# the kept tags keeps every tagged manifest, which is the cache repository's
-# rule. The age is for a build in flight, whose image is pushed before the
-# index that will name it; the protected list is for the children of what is
-# already kept, which no age would save.
+# delete: one whose tags are all unkept and that is older than the tagged
+# cutoff, and one with no tag at all that is older than the untagged cutoff and
+# that no kept manifest names. `all` as the kept tags keeps every tagged
+# manifest, which is the cache repository's rule. The untagged age is for a
+# build in flight, whose image is pushed before the index that will name it;
+# the tagged age for a run in flight on another branch, and for an image whose
+# pin has not landed yet (TAGGED_MIN_AGE_SECONDS); the protected list is for
+# the children of what is already kept, which no age would save.
 select_manifests() {
-	local kept="$1" cutoff="$2" protected="$3"
+	local kept="$1" cutoff="$2" tagged_cutoff="$3" protected="$4"
 	local kept_json="$kept"
 	[ "$kept" != all ] || kept_json='null'
-	jq -r --argjson kept "$kept_json" --arg cutoff "$cutoff" --argjson protected "$protected" '
+	jq -r --argjson kept "$kept_json" --arg cutoff "$cutoff" --arg tagged_cutoff "$tagged_cutoff" \
+		--argjson protected "$protected" '
 		.manifests[]
 		| select(.digest as $digest | ($protected | index($digest)) == null)
 		| select(
 			if (.tags // []) | length > 0
 			then $kept != null
 				and ([.tags[] | select(. as $t | $kept | index($t))] | length) == 0
+				and (.lastUpdateTime < $tagged_cutoff)
 			else (.lastUpdateTime < $cutoff)
 			end
 		)
@@ -461,7 +499,7 @@ select_manifests() {
 }
 
 main() {
-	local authorization cache_authorization kept kept_json cutoff catalogue protected digest failed=0
+	local authorization cache_authorization kept kept_json cutoff tagged_cutoff catalogue protected digest failed=0
 
 	if ! authorization="$(authorization_for "$REPOSITORY")"; then
 		exit 1
@@ -481,29 +519,31 @@ main() {
 	echo "${REPOSITORY}: keeping $(tr '\n' ' ' <<<"$kept")"
 
 	cutoff="$(date -u -d "-${UNTAGGED_MIN_AGE_SECONDS} seconds" +%Y-%m-%dT%H:%M:%S.0000000Z)"
+	tagged_cutoff="$(date -u -d "-${TAGGED_MIN_AGE_SECONDS} seconds" +%Y-%m-%dT%H:%M:%S.0000000Z)"
 
 	if ! catalogue="$(manifests_in "$REPOSITORY" "$authorization")"; then
 		echo "ci-image-purge.sh: cannot list ${REPOSITORY}" >&2
 		exit 1
 	fi
-	if ! protected="$(protected_manifests "$REPOSITORY" "$authorization" "$kept_json" "$catalogue")"; then
+	if ! protected="$(protected_manifests "$REPOSITORY" "$authorization" "$kept_json" "$tagged_cutoff" "$catalogue")"; then
 		exit 1
 	fi
+	spared_manifests "$kept_json" "$tagged_cutoff" <<<"$catalogue"
 	while read -r digest; do
 		[ -n "$digest" ] || continue
 		delete_manifest "$REPOSITORY" "$digest" "$authorization" || failed=1
-	done < <(select_manifests "$kept_json" "$cutoff" "$protected" <<<"$catalogue")
+	done < <(select_manifests "$kept_json" "$cutoff" "$tagged_cutoff" "$protected" <<<"$catalogue")
 
 	# The cache repository holds one tag, which buildx overwrites. Everything
 	# untagged in it is an overwrite's leavings; at most 200 go per run, which
 	# is far more than one build orphans and keeps a first run bounded.
 	if cache_authorization="$(authorization_for "$CACHE_REPOSITORY" 2>/dev/null)" &&
 		catalogue="$(manifests_in "$CACHE_REPOSITORY" "$cache_authorization" 2>/dev/null)" &&
-		protected="$(protected_manifests "$CACHE_REPOSITORY" "$cache_authorization" all "$catalogue")"; then
+		protected="$(protected_manifests "$CACHE_REPOSITORY" "$cache_authorization" all "$tagged_cutoff" "$catalogue")"; then
 		while read -r digest; do
 			[ -n "$digest" ] || continue
 			delete_manifest "$CACHE_REPOSITORY" "$digest" "$cache_authorization" || failed=1
-		done < <(select_manifests all "$cutoff" "$protected" <<<"$catalogue" | head -n 200)
+		done < <(select_manifests all "$cutoff" "$tagged_cutoff" "$protected" <<<"$catalogue" | head -n 200)
 	fi
 
 	exit "$failed"
