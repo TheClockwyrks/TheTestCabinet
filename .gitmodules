@@ -101,3 +101,7 @@
 	path = console.testcabinet.ai
 	url = ../console.testcabinet.ai
 	branch = .
+[submodule "testcabinet.ai"]
+	path = testcabinet.ai
+	url = ../testcabinet.ai
+	branch = .

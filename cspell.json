@@ -51,6 +51,7 @@
     "/test-suites/**",
     "/ui-common/**",
     "/console.testcabinet.ai/**",
+    "/testcabinet.ai/**",
     "/tasks/**/done/**",
     "/.claude/workflows/**",
     "/.claude/worktrees/**",

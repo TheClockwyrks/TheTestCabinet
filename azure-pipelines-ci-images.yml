@@ -185,6 +185,9 @@ resources:
     - repository: ui-common
       type: git
       name: the-test-cabinet/ui-common
+    - repository: testcabinet.ai
+      type: git
+      name: the-test-cabinet/testcabinet.ai
 
 jobs:
   # One job per image, with no `dependsOn` between them but one: none reads
@@ -232,6 +235,7 @@ jobs:
         - tool-music
         - test-suites
         - ui-common
+        - testcabinet.ai
     steps:
       # One commit is enough. The tag is the commit Azure names in
       # BUILD_SOURCEVERSION, and nothing here reads the history.
@@ -296,6 +300,7 @@ jobs:
         - tool-music
         - test-suites
         - ui-common
+        - testcabinet.ai
     steps:
       - checkout: self
         fetchDepth: 1
@@ -354,6 +359,7 @@ jobs:
         - tool-music
         - test-suites
         - ui-common
+        - testcabinet.ai
     steps:
       - checkout: self
         fetchDepth: 1
