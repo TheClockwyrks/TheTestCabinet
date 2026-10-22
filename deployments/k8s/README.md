@@ -86,7 +86,9 @@ beside it, the **run-container** images the sandbox runs inside (its
 `testcabinet.azurecr.io/microservice-artifacts:<commit>`, the image the `staging`
 and `prod` overlays run it from. The arena is `microservice-arena`, pushed as
 `testcabinet.azurecr.io/microservice-arena:<commit>`, the image the `staging` and
-`prod` overlays run it from. The Azure pipeline builds the
+`prod` overlays run it from. The console is `console.testcabinet.ai`, pushed as
+`testcabinet.azurecr.io/console.testcabinet.ai:<commit>`, the image the `staging`
+and `prod` overlays run `tcab-web` from. The Azure pipeline builds the
 others on every push to `master` and `staging`, and pushes each to
 `testcabinet.azurecr.io/<image>:<sha>` (`tcab-backend`,
 `tcab-publisher` and `tcab-web`). The workspace
@@ -96,11 +98,12 @@ template's publish stage retags `tcab-backend:<sha>` as
 `staging` and `prod` overlays run the backend from. Those overlays name every Test
 Cabinet image at the tag `unpinned`, which nothing pushes, so applied as they stand
 they fail to pull; [`scripts/ci/pin-images.sh`](../../scripts/ci/pin-images.sh) pins
-the three images the overlays name from this repository's build and the
+the two images the overlays name from this repository's build and the
 dispatcher's publisher image to the commit being deployed, the arena's, the
-artifacts service's, the dispatcher's and the repos service's images to the
-commits that commit's `microservice-arena`, `microservice-artifacts`,
-`microservice-dispatcher` and `microservice-repos` submodule pointers name, and the
+artifacts service's, the dispatcher's, the repos service's and the console's images
+to the commits that commit's `microservice-arena`, `microservice-artifacts`,
+`microservice-dispatcher`, `microservice-repos` and `console.testcabinet.ai`
+submodule pointers name, and the
 dispatcher's driver image and run-container tag to the commit its
 `microservice-driver` pointer names.
 

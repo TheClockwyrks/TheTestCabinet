@@ -94,7 +94,10 @@ dispatcher's image is built by microservice-dispatcher's pipeline and pushed as
 microservice-driver's, as `testcabinet.azurecr.io/microservice-driver:<commit>`. The
 artifacts service's image is built by microservice-artifacts' pipeline and pushed as
 `testcabinet.azurecr.io/microservice-artifacts:<commit>`, and the arena's by
-microservice-arena's, as `testcabinet.azurecr.io/microservice-arena:<commit>`. The workspace
+microservice-arena's, as `testcabinet.azurecr.io/microservice-arena:<commit>`. The
+console's image is built by console.testcabinet.ai's pipeline and pushed as
+`testcabinet.azurecr.io/console.testcabinet.ai:<commit>`, which the `staging` and
+`prod` overlays run `tcab-web` from. The workspace
 template's publish stage then
 builds `images/backend.Dockerfile`, a retag of `tcab-backend:<sha>` with no build
 steps, and pushes it as `testcabinet.azurecr.io/the-test-cabinet-backend:<sha>`,
@@ -106,11 +109,12 @@ instead, see the build instructions in each Dockerfile's header.
 The `staging` and `prod` overlays name every Test Cabinet image at the tag
 `unpinned`, which nothing pushes, so an overlay applied as it stands fails to pull.
 [`scripts/ci/pin-images.sh`](../scripts/ci/pin-images.sh) pins an overlay to one
-commit: the three images the overlays name from this repository's build, and the
+commit: the two images the overlays name from this repository's build, and the
 dispatcher's publisher image and run-container registry, at that commit, the
-arena's, the artifacts service's, the dispatcher's and the repos service's own
-images at the commits its `microservice-arena`, `microservice-artifacts`,
-`microservice-dispatcher` and `microservice-repos` submodule pointers name, and the
+arena's, the artifacts service's, the dispatcher's, the repos service's and the
+console's own images at the commits its `microservice-arena`,
+`microservice-artifacts`, `microservice-dispatcher`, `microservice-repos` and
+`console.testcabinet.ai` submodule pointers name, and the
 dispatcher's driver image and run-container tag at the commit its
 `microservice-driver` pointer names, which the driver and the run images were
 pushed at together. Every deployment goes through it.

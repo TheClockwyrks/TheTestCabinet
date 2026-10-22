@@ -15,7 +15,7 @@
 # overlays/<env> with scripts/ci/pin-images.sh: every Test Cabinet image at
 # `testcabinet.azurecr.io/<image>:<commit>` (the backend's repository is
 # `the-test-cabinet-backend`; `microservice-arena`, `microservice-artifacts`,
-# `microservice-dispatcher` and `microservice-repos` are at
+# `microservice-dispatcher`, `microservice-repos` and `console.testcabinet.ai` are at
 # the commits their submodule pointers name), the dispatcher's publisher image at the
 # same registry and commit, and its driver image and run-container tag at the commit
 # the microservice-driver pointer names, whose pipeline pushed the driver and the run

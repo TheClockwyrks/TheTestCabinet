@@ -67,7 +67,7 @@ trap 'rm -rf "$tmp"' EXIT
 
 COMMIT="0123456789abcdef0123456789abcdef01234567"
 PREVIOUS="89abcdef0123456789abcdef0123456789abcdef"
-IMAGES="tcab-backend tcab-publisher tcab-web"
+IMAGES="tcab-backend tcab-publisher"
 # The repos service's image, built in microservice-repos and pinned to the submodule
 # pointer, which the throwaway repository holds no commit for: TCAB_PIN_GITLINKS
 # names it.
@@ -82,6 +82,8 @@ DRIVER="cdef0123456789abcdef0123456789abcdef0123"
 ARTIFACTS="abcdef0123456789abcdef0123456789abcdef01"
 # The arena's image, built in microservice-arena and pinned the same way.
 ARENA="9876543210abcdef9876543210abcdef98765432"
+# The console's image, built in console.testcabinet.ai and pinned the same way.
+CONSOLE="02468ace13579bdf02468ace13579bdf02468ace"
 
 fresh_repo() {
 	local repo image
@@ -101,6 +103,7 @@ fresh_repo() {
 		printf '  - name: REPLACE_REGISTRY/tcab-dispatcher\n    newName: testcabinet.azurecr.io/microservice-dispatcher\n    newTag: unpinned\n'
 		printf '  - name: REPLACE_REGISTRY/tcab-driver\n    newName: testcabinet.azurecr.io/microservice-driver\n    newTag: unpinned\n'
 		printf '  - name: REPLACE_REGISTRY/tcab-repos\n    newName: testcabinet.azurecr.io/microservice-repos\n    newTag: unpinned\n'
+		printf '  - name: REPLACE_REGISTRY/tcab-web\n    newName: testcabinet.azurecr.io/console.testcabinet.ai\n    newTag: unpinned\n'
 		printf 'patches:\n  - path: patch-env.yaml\n'
 	} >"$repo/deployments/k8s/overlays/staging/kustomization.yaml"
 	cp "$repo/deployments/k8s/overlays/staging/kustomization.yaml" "$repo/unpinned.yaml"
@@ -163,7 +166,7 @@ run() { # repo [env-assignment...] -- [argument...]
 	(
 		cd / || exit 1
 		env PATH="$repo/bin:$PATH" STUB_AZ_LOG="$repo/az.log" STUB_SENT="$repo/sent" \
-			TCAB_PIN_GITLINKS="microservice-arena=${ARENA} microservice-artifacts=${ARTIFACTS} microservice-dispatcher=${DISPATCHER} microservice-driver=${DRIVER} microservice-repos=${REPOS}" \
+			TCAB_PIN_GITLINKS="microservice-arena=${ARENA} microservice-artifacts=${ARTIFACTS} microservice-dispatcher=${DISPATCHER} microservice-driver=${DRIVER} microservice-repos=${REPOS} console.testcabinet.ai=${CONSOLE}" \
 			"${assignments[@]}" "$repo/scripts/ci/pre-deploy.sh" "$@" 2>&1
 	)
 }
@@ -182,6 +185,7 @@ check_contains "shows the repos image pinned to its pointer" "microservice-repos
 check_contains "shows the dispatcher image pinned to its pointer" "microservice-dispatcher:${DISPATCHER}" "$out"
 check_contains "shows the artifacts image pinned to its pointer" "microservice-artifacts:${ARTIFACTS}" "$out"
 check_contains "shows the arena image pinned to its pointer" "microservice-arena:${ARENA}" "$out"
+check_contains "shows the console image pinned to its pointer" "console.testcabinet.ai:${CONSOLE}" "$out"
 check_contains "shows the dispatcher's driver image pinned to its pointer" \
 	"value: \"testcabinet.azurecr.io/microservice-driver:${DRIVER}\"" "$out"
 check_contains "shows the dispatcher's publisher image" "value: \"testcabinet.azurecr.io/tcab-publisher:${COMMIT}\"" "$out"
@@ -206,12 +210,13 @@ out="$(run "$repo" THE_TEST_CABINET_RESOURCE_GROUP=case-rg THE_TEST_CABINET_CLUS
 status=$?
 check_equal "passes" 0 "$status"
 overlay="$(cat "$repo/deployments/k8s/overlays/staging/kustomization.yaml")"
-check_equal "pins all three images in place" 3 "$(grep -c "newTag: \"${COMMIT}\"" <<<"$overlay")"
+check_equal "pins both images in place" 2 "$(grep -c "newTag: \"${COMMIT}\"" <<<"$overlay")"
 check_contains "pins the repos image to its pointer in place" "newTag: \"${REPOS}\"" "$overlay"
 check_contains "pins the dispatcher image to its pointer in place" "newTag: \"${DISPATCHER}\"" "$overlay"
 check_contains "pins the driver image to its pointer in place" "newTag: \"${DRIVER}\"" "$overlay"
 check_contains "pins the artifacts image to its pointer in place" "newTag: \"${ARTIFACTS}\"" "$overlay"
 check_contains "pins the arena image to its pointer in place" "newTag: \"${ARENA}\"" "$overlay"
+check_contains "pins the console image to its pointer in place" "newTag: \"${CONSOLE}\"" "$overlay"
 check_contains "and the dispatcher's run-container tag with it" \
 	"$(printf -- '- name: TCAB_CONTAINER_TAG\n                    value: "%s"' "$DRIVER")" "$overlay"
 check_contains "adds the dispatcher's patch in place" "TCAB_PUBLISHER_IMAGE" "$overlay"

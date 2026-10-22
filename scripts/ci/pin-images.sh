@@ -8,7 +8,7 @@
 # stands fails to pull. This rewrites deployments/k8s/overlays/<overlay>/kustomization.yaml
 # so that it names the commit being deployed instead:
 #
-#   - each of the three entries of its `images:` block for an image this repository
+#   - each of the two entries of its `images:` block for an image this repository
 #     builds gets `newTag: "<commit>"`, and the entry of each image a repository of
 #     its own builds gets the commit the superrepo's submodule pointer for that
 #     repository names at <commit>, which its pipeline pushed as <name>:<commit>
@@ -45,11 +45,11 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/tcab-lib.sh"
 
 readonly USAGE="usage: scripts/ci/pin-images.sh <staging|prod> <commit>"
 
-# The three images a Test Cabinet deployment runs or starts that this repository
+# The two images a Test Cabinet deployment runs or starts that this repository
 # builds, as the base names them after its REPLACE_REGISTRY/ placeholder, all at the
 # commit being deployed.
 readonly TCAB_IMAGES=(tcab-backend
-	tcab-publisher tcab-web)
+	tcab-publisher)
 
 # The images a repository of their own builds, each as `<image>=<submodule path>`:
 # each is pinned to the commit the superrepo's submodule pointer for that repository
@@ -60,7 +60,8 @@ readonly SUBMODULE_IMAGES=(tcab-arena=microservice-arena
 	tcab-artifacts=microservice-artifacts
 	tcab-dispatcher=microservice-dispatcher
 	tcab-driver=microservice-driver
-	tcab-repos=microservice-repos)
+	tcab-repos=microservice-repos
+	tcab-web=console.testcabinet.ai)
 
 SUPERREPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 readonly SUPERREPO

@@ -153,6 +153,36 @@ check_contains "names the image at the pointer it requires" \
 	"the staging deploy does not name testcabinet.azurecr.io/microservice-arena:9876543210abcdef9876543210abcdef98765432" \
 	"$out"
 
+echo "--- the console's image built here rather than in its repository ---"
+
+tree="$(fresh_tree)"
+sed -i 's#^    newName: testcabinet.azurecr.io/console.testcabinet.ai$#    newName: testcabinet.azurecr.io/tcab-web#' \
+	"$tree/overlays/prod/kustomization.yaml"
+out="$(check "$tree")"
+status=$?
+check_failed "fails" "$status"
+check_contains "names the image it names instead" \
+	"the prod deploy names testcabinet.azurecr.io/tcab-web:fedcba9876543210fedcba9876543210fedcba98" "$out"
+check_contains "names the image at the pointer it requires" \
+	"the prod deploy does not name testcabinet.azurecr.io/console.testcabinet.ai:fedcba9876543210fedcba9876543210fedcba98" \
+	"$out"
+
+echo "--- the console's image at the superrepo's commit ---"
+
+tree="$(fresh_tree)"
+cat >>"$tree/overlays/staging/kustomization.yaml" <<'YAML'
+  - target: { kind: Deployment, name: tcab-web }
+    patch: |-
+      - op: replace
+        path: /spec/template/spec/containers/0/image
+        value: testcabinet.azurecr.io/console.testcabinet.ai:0123456789abcdef0123456789abcdef01234567
+YAML
+out="$(check "$tree")"
+status=$?
+check_failed "fails" "$status"
+check_contains "names the image and what it is pinned to" \
+	"the staging deploy names testcabinet.azurecr.io/console.testcabinet.ai:0123456789abcdef0123456789abcdef01234567, not testcabinet.azurecr.io/<repository>:<the commit its submodule pointer names>" "$out"
+
 echo "--- the driver built here rather than in its repository ---"
 
 # A patch after the pin's, as an overlay could carry, that puts the dispatcher's
