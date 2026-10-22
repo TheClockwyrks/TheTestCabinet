@@ -35,7 +35,7 @@ deployments/
 ├── images/                    # service images, pushed to the ACR (see below)
 │   ├── services.Dockerfile    # EVERY Rust service, one `--target` each, over one
 │   │                          #   shared cargo build stage: backend (+ headless
-│   │                          #   Chromium), publisher
+│   │                          #   Chromium)
 │   └── backend.Dockerfile     # the-test-cabinet-backend: a retag of tcab-backend
 ├── azure/
 │   └── aks-command-invoke.role.json # the deploy identity's custom AKS role
@@ -85,8 +85,7 @@ of each service's configuration.
 The Azure pipeline ([`azure-pipelines.yml`](../azure-pipelines.yml)) builds the
 service images under `images/` on every push to `master` and `staging`, natively
 for `amd64` and `arm64`, and pushes each to the Test Cabinet Azure Container
-Registry as `testcabinet.azurecr.io/tcab-backend:<sha>` and
-`…/tcab-publisher`. The
+Registry as `testcabinet.azurecr.io/tcab-backend:<sha>`. The
 dispatcher's image is built by microservice-dispatcher's pipeline and pushed as
 `testcabinet.azurecr.io/microservice-dispatcher:<commit>`, and the driver's by
 microservice-driver's, as `testcabinet.azurecr.io/microservice-driver:<commit>`. The
@@ -95,7 +94,10 @@ artifacts service's image is built by microservice-artifacts' pipeline and pushe
 microservice-arena's, as `testcabinet.azurecr.io/microservice-arena:<commit>`. The
 console's image is built by console.testcabinet.ai's pipeline and pushed as
 `testcabinet.azurecr.io/console.testcabinet.ai:<commit>`, which the `staging` and
-`prod` overlays run `tcab-web` from. The workspace
+`prod` overlays run `tcab-web` from. The publisher's image is built by
+microservice-publisher's pipeline and pushed as
+`testcabinet.azurecr.io/microservice-publisher:<commit>`, which the dispatcher's
+`TCAB_PUBLISHER_IMAGE` names. The workspace
 template's publish stage then
 builds `images/backend.Dockerfile`, a retag of `tcab-backend:<sha>` with no build
 steps, and pushes it as `testcabinet.azurecr.io/the-test-cabinet-backend:<sha>`,
@@ -107,12 +109,13 @@ instead, see the build instructions in each Dockerfile's header.
 The `staging` and `prod` overlays name every Test Cabinet image at the tag
 `unpinned`, which nothing pushes, so an overlay applied as it stands fails to pull.
 [`scripts/ci/pin-images.sh`](../scripts/ci/pin-images.sh) pins an overlay to one
-commit: the two images the overlays name from this repository's build, and the
-dispatcher's publisher image and run-container registry, at that commit, the
-arena's, the artifacts service's, the dispatcher's, the repos service's and the
-console's own images at the commits its `microservice-arena`,
-`microservice-artifacts`, `microservice-dispatcher`, `microservice-repos` and
-`console.testcabinet.ai` submodule pointers name, and the
+commit: the backend's image, the one the overlays name from this repository's
+build, and the dispatcher's run-container registry, at that commit, the arena's,
+the artifacts service's, the dispatcher's, the repos service's, the console's and
+the publisher's own images at the commits its `microservice-arena`,
+`microservice-artifacts`, `microservice-dispatcher`, `microservice-repos`,
+`console.testcabinet.ai` and `microservice-publisher` submodule pointers name (the
+dispatcher's publisher image with the last), and the
 dispatcher's driver image and run-container tag at the commit its
 `microservice-driver` pointer names, which the driver and the run images were
 pushed at together. Every deployment goes through it.

@@ -33,6 +33,7 @@
     "/microservice-artifacts/**",
     "/microservice-dispatcher/**",
     "/microservice-driver/**",
+    "/microservice-publisher/**",
     "/microservice-repos/**",
     "/tool-model-core/**",
     "/tool-paint/**",

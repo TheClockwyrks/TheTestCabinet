@@ -62,10 +62,7 @@ run() {
 calls() { sed 's/ \[cwd=.*//' "$tmp/calls.log"; }
 
 expected_order() {
-	local service
-	for service in backend publisher; do
-		echo "service-image.sh $service $SHA"
-	done
+	echo "service-image.sh backend $SHA"
 }
 
 out="$(run "$SHA")"
@@ -73,17 +70,17 @@ check_equal "every service builds" "0" "$?"
 check_equal "the services, backend first, each with the sha" \
 	"$(expected_order)" "$(calls)"
 check_contains "and the summary names the tag" "every service image is pushed as <image>:$SHA-amd64" "$out"
-check_equal "each call runs from the repository root" "2" "$(grep -c "\[cwd=$repo\]" "$tmp/calls.log")"
+check_equal "each call runs from the repository root" "1" "$(grep -c "\[cwd=$repo\]" "$tmp/calls.log")"
 
 out="$(STUB_UNAME_M=aarch64 run "$SHA")"
 check_equal "an arm64 build succeeds" "0" "$?"
 check_contains "and names its own tag" "<image>:$SHA-arm64" "$out"
 
-out="$(STUB_FAIL_ON=publisher run "$SHA")"
+out="$(STUB_FAIL_ON=backend run "$SHA")"
 check_equal "a failing service fails the build" "1" "$?"
-check_contains "naming it" "the publisher image did not build; the ones before it are pushed." "$out"
-check_equal "after the services before it and none after" \
-	"$(expected_order | head -2)" "$(calls)"
+check_contains "naming it" "the backend image did not build; the ones before it are pushed." "$out"
+check_equal "and builds none after it" \
+	"$(expected_order | head -1)" "$(calls)"
 
 out="$(run)"
 check_equal "no sha is a usage error" "1" "$?"

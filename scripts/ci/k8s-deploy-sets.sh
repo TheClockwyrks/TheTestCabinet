@@ -13,10 +13,11 @@
 #   - that set names every Test Cabinet image, and the dispatcher's driver and
 #     publisher images, at `testcabinet.azurecr.io/<image>:<commit>`, an image a
 #     repository of its own builds (`microservice-*`, `console.testcabinet.ai`) at
-#     the commit its submodule pointer names (the dispatcher's driver image,
-#     `microservice-driver`, among them), sets the dispatcher's TCAB_CONTAINER_TAG
-#     to the commit the microservice-driver pointer names, since the run images are
-#     built beside the driver, and leaves no REPLACE_ placeholder anywhere;
+#     the commit its submodule pointer names (the dispatcher's driver and
+#     publisher images, `microservice-driver` and `microservice-publisher`, among
+#     them), sets the dispatcher's TCAB_CONTAINER_TAG to the commit the
+#     microservice-driver pointer names, since the run images are built beside the
+#     driver, and leaves no REPLACE_ placeholder anywhere;
 #   - the overlay on its own names every Test Cabinet image at the tag `unpinned`
 #     and at no other, so the pin is the only thing that chooses a deployment's
 #     images;
@@ -49,8 +50,8 @@ source "${CI_DIR}/tcab-lib.sh"
 
 readonly SHA="0123456789abcdef0123456789abcdef01234567"
 # The commits the microservice-arena, microservice-artifacts, microservice-repos,
-# microservice-dispatcher, microservice-driver and console.testcabinet.ai submodule
-# pointers stand at in the rendered deploys: commits no checkout holds, so
+# microservice-dispatcher, microservice-driver, console.testcabinet.ai and
+# microservice-publisher submodule pointers stand at in the rendered deploys: commits no checkout holds, so
 # pin-images.sh is handed them rather than reading them from SHA's tree, and distinct
 # from SHA and from each other, so a submodule image pinned to the superrepo's
 # commit, or to another repository's pointer, is caught.
@@ -60,7 +61,8 @@ readonly REPOS_SHA="89abcdef0123456789abcdef0123456789abcdef"
 readonly DISPATCHER_SHA="456789abcdef0123456789abcdef0123456789ab"
 readonly DRIVER_SHA="cdef0123456789abcdef0123456789abcdef0123"
 readonly CONSOLE_SHA="fedcba9876543210fedcba9876543210fedcba98"
-export TCAB_PIN_GITLINKS="microservice-arena=${ARENA_SHA} microservice-artifacts=${ARTIFACTS_SHA} microservice-dispatcher=${DISPATCHER_SHA} microservice-driver=${DRIVER_SHA} microservice-repos=${REPOS_SHA} console.testcabinet.ai=${CONSOLE_SHA}"
+readonly PUBLISHER_SHA="13579bdf02468ace13579bdf02468ace13579bdf"
+export TCAB_PIN_GITLINKS="microservice-arena=${ARENA_SHA} microservice-artifacts=${ARTIFACTS_SHA} microservice-dispatcher=${DISPATCHER_SHA} microservice-driver=${DRIVER_SHA} microservice-repos=${REPOS_SHA} console.testcabinet.ai=${CONSOLE_SHA} microservice-publisher=${PUBLISHER_SHA}"
 readonly BACKEND_IMAGE="${CI_REGISTRY}/the-test-cabinet-backend"
 
 k8s_root="${TCAB_K8S_ROOT:-deployments/k8s}"
@@ -155,6 +157,7 @@ for env in staging prod; do
 				"${CI_REGISTRY}/microservice-driver:${DRIVER_SHA}" | \
 				"${CI_REGISTRY}/microservice-artifacts:${ARTIFACTS_SHA}" | \
 				"${CI_REGISTRY}/microservice-arena:${ARENA_SHA}" | \
+				"${CI_REGISTRY}/microservice-publisher:${PUBLISHER_SHA}" | \
 				"${CI_REGISTRY}/console.testcabinet.ai:${CONSOLE_SHA}") ;;
 			"${CI_REGISTRY}/microservice-"* | "${CI_REGISTRY}/console.testcabinet.ai:"*)
 				fail "the ${env} deploy names ${ref}, not ${CI_REGISTRY}/<repository>:<the commit its submodule pointer names>" ;;
@@ -162,7 +165,8 @@ for env in staging prod; do
 			*) fail "the ${env} deploy names ${ref}, not ${CI_REGISTRY}/<image>:<commit>" ;;
 		esac
 	done <<<"$refs"
-	for want in "${CI_REGISTRY}/microservice-driver:${DRIVER_SHA}" "${CI_REGISTRY}/tcab-publisher:${SHA}" \
+	for want in "${CI_REGISTRY}/microservice-driver:${DRIVER_SHA}" \
+		"${CI_REGISTRY}/microservice-publisher:${PUBLISHER_SHA}" \
 		"${BACKEND_IMAGE}:${SHA}" "${CI_REGISTRY}/microservice-repos:${REPOS_SHA}" \
 		"${CI_REGISTRY}/microservice-dispatcher:${DISPATCHER_SHA}" \
 		"${CI_REGISTRY}/microservice-artifacts:${ARTIFACTS_SHA}" \

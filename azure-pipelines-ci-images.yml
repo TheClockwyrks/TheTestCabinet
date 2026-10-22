@@ -137,6 +137,9 @@ resources:
     - repository: microservice-driver
       type: git
       name: the-test-cabinet/microservice-driver
+    - repository: microservice-publisher
+      type: git
+      name: the-test-cabinet/microservice-publisher
     - repository: microservice-repos
       type: git
       name: the-test-cabinet/microservice-repos
@@ -213,6 +216,7 @@ jobs:
         - microservice-artifacts
         - microservice-dispatcher
         - microservice-driver
+        - microservice-publisher
         - microservice-repos
         - tool-model-core
         - tool-paint
@@ -276,6 +280,7 @@ jobs:
         - microservice-artifacts
         - microservice-dispatcher
         - microservice-driver
+        - microservice-publisher
         - microservice-repos
         - tool-model-core
         - tool-paint
@@ -333,6 +338,7 @@ jobs:
         - microservice-artifacts
         - microservice-dispatcher
         - microservice-driver
+        - microservice-publisher
         - microservice-repos
         - tool-model-core
         - tool-paint
