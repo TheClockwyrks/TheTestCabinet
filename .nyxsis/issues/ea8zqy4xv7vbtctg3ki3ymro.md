@@ -1,6 +1,6 @@
 ---
 format: nyxsis-issue
-version: 2
+version: 3
 id: ea8zqy4xv7vbtctg3ki3ymro
 zone: SITE
 number: 2
@@ -24,8 +24,8 @@ Workers", "DNS and TLS", "Deploying" and "Staging".
 
 ## What is missing
 
-Both Workers in `apps/site`'s repository, deployed by its pipeline as the
-public-gallery page states, the `tcab.ai` zone and the staging hostnames
+Both Workers in the `testcabinet.ai` repository, deployed by its pipeline as
+the public-gallery page states, the `tcab.ai` zone and the staging hostnames
 routed as its "DNS and TLS" and "Staging" sections state, and the caching the
 serving page's "Caching" section states.
 
