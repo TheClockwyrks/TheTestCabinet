@@ -139,7 +139,10 @@ check_contains "by name" "docker buildx use tcab-ci" "$(cat "$tmp/docker.log")"
 # neither a named context nor a gg argument.
 out="$(run backend "$SHA")"
 check_lacks "backend takes no gg context" "--build-context" "$(build_line)"
-check_lacks "backend takes no gg argument" "GG" "$(build_line)"
+# The stub annotates each line with its working directory, a mktemp path whose
+# random suffix can hold any letters, so the arguments are judged without it.
+args="$(build_line)"
+check_lacks "backend takes no gg argument" "GG" "${args% \[cwd=*}"
 
 out="$(run gateway "$SHA")"
 check_equal "an unknown service fails" "1" "$?"
