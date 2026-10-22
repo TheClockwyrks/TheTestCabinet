@@ -264,6 +264,8 @@ def test_the_windows_and_extra_gate_tables_name_repositories_carrying_a_crate() 
     # The console lints its TypeScript and runs its browser suite beside the
     # kit's `typescript` gate.
     assert render.extra_gates("console.testcabinet.ai", "site") == {"checks": ("web-lint", "web-browser-test")}
+    # The gallery lints its TypeScript beside the kit's `typescript` gate.
+    assert render.extra_gates("testcabinet.ai", "site") == {"checks": ("web-lint",)}
     # gg, an application, takes the kit's `build-context` gate, which holds its
     # Dockerfiles (the `gg-toolchains` image's among them) to its build context.
     assert render.extra_gates("gg", "application") == {}
@@ -283,6 +285,8 @@ def test_the_project_pipeline_table_names_repositories_and_stages() -> None:
     assert set(render.PROJECT_PIPELINE) <= set(EDGES.REPOSITORIES)
     assert render.PROJECT_PIPELINE["gg"] == ("release",)
     assert render.PROJECT_PIPELINE["gg.rocks"] == ("deploy",)
+    # The gallery deploys to the Pages project of the branch's environment.
+    assert render.PROJECT_PIPELINE["testcabinet.ai"] == ("deploy",)
     # The driver builds the run-container images in a stage of its own.
     assert render.PROJECT_PIPELINE["microservice-driver"] == ("runimages",)
     assert (
@@ -297,6 +301,7 @@ def test_the_project_pipeline_table_names_repositories_and_stages() -> None:
     assert render.ci_project_setup("microservice-arena", "application") == ""
     assert render.ci_project_setup("gg", "application") == f"          - template: {render.PROJECT_SETUP}"
     assert render.ci_project_setup("gg.rocks", "site") == ""
+    assert render.ci_project_setup("testcabinet.ai", "site") == ""
     assert set(render.RUST_TIMEOUTS) <= set(EDGES.REPOSITORIES)
     assert render.rust_timeout("gg") == 120
     assert render.rust_timeout("microservice-driver") == 180
@@ -590,10 +595,34 @@ def test_a_site_checks_out_its_data_in_the_checks_job(rendered: Callable[[str], 
     assert 'REPOSITORY_PIPELINE_ONLY = "web-lint web-browser-test"' in wiring
 
 
+def test_the_gallery_lints_in_its_checks_job_and_deploys_without_an_image(rendered: Callable[[str], Path]) -> None:
+    """The gallery lints once in its checks job and deploys in a stage before the mirror, building no image."""
+    root = rendered("testcabinet.ai")
+    pipeline = (root / "azure-pipelines.yml").read_text(encoding="utf-8")
+    checks = _job(pipeline, "checks")
+    assert checks.count("gate run web-lint\n") == 1
+    assert "web-browser-test" not in pipeline
+    assert "  - stage: image\n" not in pipeline
+    assert "repositories:" not in pipeline
+    assert "workingDirectory:" not in pipeline
+    assert f"  - template: {render.PROJECT_STAGES}\n" in pipeline
+    mirror = pipeline[pipeline.index("  - stage: mirror\n") :]
+    assert "      - gates\n      - publish\n      - deploy\n    condition:" in mirror
+    for path in ("Dockerfile", ".dockerignore", "ci/gates/build-context.py", "scripts/ci/image.sh"):
+        assert not (root / path).exists(), path
+    wiring = (root / "ci" / "tests" / "test_wiring.py").read_text(encoding="utf-8")
+    assert 'REPOSITORY_PIPELINE_ONLY = "web-lint"' in wiring
+    _passes_its_own_ci_and_shell_tests(root)
+
+
 @pytest.mark.parametrize("name", ["console.testcabinet.ai", "microservice-arena"])
 def test_an_image_repository_passes_its_own_ci_and_shell_tests(name: str, rendered: Callable[[str], Path]) -> None:
     """The wiring test holds the site's image and checkouts as it holds an application's, and its table tests pass."""
-    root = rendered(name)
+    _passes_its_own_ci_and_shell_tests(rendered(name))
+
+
+def _passes_its_own_ci_and_shell_tests(root: Path) -> None:
+    """A rendered repository's ci tests, its ruff check and format and its shell table tests pass."""
     env = {key: value for key, value in os.environ.items() if key not in render.GIT_LOCATING}
     env["PYTHONPATH"] = str(root / "ci" / "src")
     done = subprocess.run(

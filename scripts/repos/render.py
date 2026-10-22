@@ -173,7 +173,7 @@ EXTRA_GATES: dict[str, dict[str, tuple[str, ...]]] = {
     "contracts": {"rust": ("contract-drift",)},
     "engines": {"checks": ("seeded-contract",)},
     # ui-common lints the hand-written TypeScript of its npm workspace with
-    # ESLint, as the superrepo's `web-lint` does, under the same ratchet.
+    # ESLint, under a ratchet of suppressions it may only shrink.
     "ui-common": {"checks": ("web-lint",)},
     "test-suites": {
         "checks": ("frozen-paths", "spec-prose", "spec-vocabulary", "audio-packs", "validators-typecheck"),
@@ -191,6 +191,9 @@ EXTRA_GATES: dict[str, dict[str, tuple[str, ...]]] = {
     # does, and runs its browser suite, whose Playwright the web image's
     # browser serves, beside the kit's `typescript` gate, which runs the rest.
     "console.testcabinet.ai": {"checks": ("web-lint", "web-browser-test")},
+    # The gallery lints its TypeScript with ESLint, as ui-common's and the
+    # console's `web-lint` do, beside the kit's `typescript` gate.
+    "testcabinet.ai": {"checks": ("web-lint",)},
 }
 # The jobs of the gates stage an extra gate may name.
 GATE_JOBS = ("rust", "checks")
@@ -206,14 +209,16 @@ GATE_JOBS = ("rust", "checks")
 # what the repository releases from it is out. gg's `release` stage publishes
 # its binaries, its reference and its toolchains image on a tag, and gg.rocks's
 # `deploy` stage uploads the site to its Pages project from `master` and
-# `staging`. microservice-driver's jobs build `tcab` on every run and publish
-# it on a tag, and stage the audio store its image copies; its `runimages`
-# stage builds the run-container images from `master` and `staging`, copying
-# the tools' binaries from their images.
+# `staging`, as testcabinet.ai's uploads the gallery to the Pages project of
+# the environment the branch names. microservice-driver's jobs build `tcab` on
+# every run and publish it on a tag, and stage the audio store its image
+# copies; its `runimages` stage builds the run-container images from `master`
+# and `staging`, copying the tools' binaries from their images.
 PROJECT_PIPELINE: dict[str, tuple[str, ...]] = {
     "gg": ("release",),
     "gg.rocks": ("deploy",),
     "microservice-driver": ("runimages",),
+    "testcabinet.ai": ("deploy",),
 }
 PROJECT_JOBS = ".azure/project/jobs.yml"
 PROJECT_STAGES = ".azure/project/stages.yml"
