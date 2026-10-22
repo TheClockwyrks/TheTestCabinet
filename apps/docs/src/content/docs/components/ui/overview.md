@@ -42,6 +42,27 @@ capabilities from context, so a host varies it by what it provides rather than
 by swapping screens. Route paths are built through the exported route builders,
 so each path is defined in one place.
 
+## Back navigation
+
+Every on-page back control returns to the page the viewer was on before
+entering the current page, exactly as the browser's own back button would. This
+covers the chevron beside a detail page's title, a text link that leads back,
+and the brand control that leaves a mode such as gg analysis. A page spans every
+route under its own path, so its tabs and sub-views count as one page and back
+skips over them.
+
+The app records the in-app history of the browser tab, and a back control takes
+the step by moving back through that history rather than pushing a new entry.
+The record survives a reload of the tab. A page opened with no in-app history
+behind it, such as a fresh deep link, falls back to a fixed parent route the
+control names.
+
+A form that leads to the entity it saved or launched replaces itself in the
+history, so back from that entity returns to where the form was opened from.
+
+A back control that must ask before leaving, such as an editor holding unsaved
+work, takes the same step once the question is answered.
+
 ## The data and capability context
 
 Each host builds the gallery data value from its own source. The gallery
