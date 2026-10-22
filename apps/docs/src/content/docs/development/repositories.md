@@ -351,13 +351,17 @@ and the kit's `edges.py` hold:
 - the checkout, beside the repository's own, of each repository its Rust
   suite reads across a data edge, and the variable naming it to the suite
   (`RUST_CHECKOUTS`: `microservice-backend` checks `test-suites` out as
-  `TCAB_DEFINITIONS_ROOT`);
+  `TCAB_DEFINITIONS_ROOT`), and the same in the checks job of a kind carrying
+  no crate, whose tests run there (`CHECKS_CHECKOUTS`:
+  `console.testcabinet.ai` checks `test-suites` out as `TCAB_DEFINITIONS_ROOT`);
 - the steps of the gates a repository writes itself, which `EXTRA_GATES` names
   by the job each runs in;
 - for an `application`, the `Dockerfile` scaffold and its `.dockerignore`
   allowlist, the `build-context` gate, and the image stage that builds the
   image natively on an amd64 and an arm64 agent and fuses the two into
-  `<name>:<commit>` (`IMAGE_KINDS` in `render.py`);
+  `<name>:<commit>` (`IMAGE_KINDS` in `render.py`), and the same for the one
+  `site` a deployment serves, `console.testcabinet.ai` (`IMAGE_SITES`), whose
+  scaffold builds the npm workspace and serves the bundle through nginx;
 - the includes of the jobs, stages and Rust setup steps a repository writes
   itself, which `PROJECT_PIPELINE` names with the stages the mirror waits on,
   and the Rust job's time limit (`RUST_TIMEOUTS`);
@@ -433,7 +437,8 @@ The kit renders the gate runner into every repository, with these gates:
 | `python-lint`, `ci-tests`, `shell-tests`, `no-nul-bytes` | The gate runner and the scripts |
 
 A repository may add gates of its own, such as `contracts`' `contract-drift`,
-`engines`' `seeded-contract`, `ui-common`'s `web-lint` or `test-suites`'
+`engines`' `seeded-contract`, `ui-common`'s `web-lint`,
+`console.testcabinet.ai`'s `web-lint` and `web-browser-test`, or `test-suites`'
 `frozen-paths`, `spec-prose`, `spec-vocabulary`, `audio-packs` and
 `validators-typecheck`. The gate is a file
 the repository writes under `ci/gates/`, and the kit leaves it to the
@@ -464,11 +469,11 @@ A repository's `azure-pipelines.yml` runs on every push to `master`, `staging`
 and `nightly` and to a `v*` tag. The gates stage runs the Rust gates in the
 Rust job and every other check in the checks job, inside the web image. On
 `master` and `staging` an application's run then builds its image and pushes
-it to the registry as `<name>:<commit>`, and a tool's run builds the image
-carrying its binaries the same way. A tag's run publishes each public package
-of the workspace to the feed, at the version its manifest carries, which is
-the tag's, and an application's or shell's tag publishes its binaries or
-bundles as pipeline artifacts of that run; see
+it to the registry as `<name>:<commit>`, as `console.testcabinet.ai`'s does,
+and a tool's run builds the image carrying its binaries the same way. A tag's
+run publishes each public package of the workspace to the feed, at the version
+its manifest carries, which is the tag's, and an application's or shell's tag
+publishes its binaries or bundles as pipeline artifacts of that run; see
 [Releasing](/development/releasing/).
 
 A repository's pipeline names each CI image it runs in by commit,

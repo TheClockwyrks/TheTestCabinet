@@ -6,6 +6,7 @@
 # wildcard family.
 *
 
+{% if rust_crate %}
 # The Rust workspace: its manifests, its lock, its configuration, the pinned
 # toolchain and the crates.
 !/Cargo.toml
@@ -16,3 +17,18 @@
 
 # What a build leaves behind never enters the context.
 **/target
+{% else %}
+# The npm workspace: its manifest, its lock, the registry `.npmrc` names for
+# the project's packages, the TypeScript configuration its members extend, and
+# the members.
+!/package.json
+!/package-lock.json
+!/.npmrc
+!/tsconfig.base.json
+!/packages
+!/apps
+
+# What an install or a build leaves behind never enters the context.
+**/node_modules
+**/dist
+{% endif %}
