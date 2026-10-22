@@ -6,7 +6,8 @@
 # keyvault-csi component. The publisher needs no Kubernetes API access.
 #
 # TCAB_PUBLISHER_IMAGE, which enables the publish path, is set by
-# scripts/ci/pin-images.sh to the tcab-publisher image of the commit being deployed.
+# scripts/ci/pin-images.sh to the microservice-publisher image at the commit its
+# submodule pointer names at the commit being deployed.
 #
 # TCAB_GITHUB_ORG + TCAB_PAGES_PROJECT are the crux of publish decoupling:
 # tcab_publisher::release::PublishConfig::from_env requires both (no compiled-in fallback), so

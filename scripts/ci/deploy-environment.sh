@@ -15,12 +15,12 @@
 # overlays/<env> with scripts/ci/pin-images.sh: every Test Cabinet image at
 # `testcabinet.azurecr.io/<image>:<commit>` (the backend's repository is
 # `the-test-cabinet-backend`; `microservice-arena`, `microservice-artifacts`,
-# `microservice-dispatcher`, `microservice-repos` and `console.testcabinet.ai` are at
-# the commits their submodule pointers name), the dispatcher's publisher image at the
-# same registry and commit, and its driver image and run-container tag at the commit
-# the microservice-driver pointer names, whose pipeline pushed the driver and the run
-# images together. The checkout is
-# left as it was. `--render` prints that render and touches no cluster;
+# `microservice-dispatcher`, `microservice-repos`, `console.testcabinet.ai` and
+# `microservice-publisher` are at the commits their submodule pointers name), the
+# dispatcher's publisher image at microservice-publisher's, and its driver image and
+# run-container tag at the commit the microservice-driver pointer names, whose
+# pipeline pushed the driver and the run images together. The checkout is left as it
+# was. `--render` prints that render and touches no cluster;
 # scripts/ci/k8s-deploy-sets.sh gates on the same bytes. TCAB_K8S_ROOT names another
 # deployments/k8s tree to copy, which is how the gate's test feeds it broken ones.
 #

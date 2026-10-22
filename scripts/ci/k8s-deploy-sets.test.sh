@@ -225,6 +225,27 @@ check_contains "naming the tag and the driver's pointer" \
 	"the prod deploy sets the dispatcher's TCAB_CONTAINER_TAG to '0123456789abcdef0123456789abcdef01234567', not cdef0123456789abcdef0123456789abcdef0123" \
 	"$out"
 
+echo "--- the publisher built here rather than in its repository ---"
+
+tree="$(fresh_tree)"
+dispatcher_env_patch "$tree" prod TCAB_PUBLISHER_IMAGE \
+	testcabinet.azurecr.io/tcab-publisher:0123456789abcdef0123456789abcdef01234567
+out="$(check "$tree")"
+status=$?
+check_failed "fails" "$status"
+check_contains "names the publisher image at the pointer it requires" \
+	"the prod deploy does not name testcabinet.azurecr.io/microservice-publisher:13579bdf02468ace13579bdf02468ace13579bdf" \
+	"$out"
+
+tree="$(fresh_tree)"
+dispatcher_env_patch "$tree" staging TCAB_PUBLISHER_IMAGE \
+	testcabinet.azurecr.io/microservice-publisher:0123456789abcdef0123456789abcdef01234567
+out="$(check "$tree")"
+status=$?
+check_failed "the publisher image at the superrepo's commit fails" "$status"
+check_contains "naming the image and what it is pinned to" \
+	"the staging deploy names testcabinet.azurecr.io/microservice-publisher:0123456789abcdef0123456789abcdef01234567, not testcabinet.azurecr.io/<repository>:<the commit its submodule pointer names>" "$out"
+
 echo "--- a manifest that sets a memory limit on a run pod ---"
 
 tree="$(fresh_tree)"
