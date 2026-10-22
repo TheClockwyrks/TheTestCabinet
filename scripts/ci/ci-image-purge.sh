@@ -283,9 +283,8 @@ kept_tags() {
 # repository of media costs what its trees do. Anything that cannot be listed,
 # fetched or read stops the purge, for the reason a superrepo branch does.
 #
-# On an agent the job's token reaches only the repositories the job names, so
-# each job running this declares every such repository under `uses:`
-# (azure-pipelines-ci-images.yml).
+# On an agent the job's access token reads every repository of the project, so
+# a submodule a branch adds is reached as soon as its .gitmodules names it.
 submodule_pins() {
 	[ "${#GITMODULES_TEXTS[@]}" -gt 0 ] || return 0
 	local base entry key url name remote heads branch repo text pins count=0

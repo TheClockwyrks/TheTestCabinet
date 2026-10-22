@@ -26,10 +26,9 @@
 # blobs, so the check costs kilobytes even for cold-storage.
 #
 # On an Azure Pipelines agent the job passes its access token in
-# SYSTEM_ACCESSTOKEN, and it is sent to dev.azure.com over HTTPS. The job must
-# name each submodule repository (it checks each one out, see the
-# `submodule_pins` job), because the project scopes the job token to the
-# repositories a job names.
+# SYSTEM_ACCESSTOKEN, and it is sent to dev.azure.com over HTTPS. The token
+# reads every repository of the project, so the `submodule_pins` job checks out
+# the superproject alone and names no submodule repository.
 set -euo pipefail
 # shellcheck source=/dev/null
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/tcab-lib.sh"
@@ -143,7 +142,7 @@ for pin in "${pins[@]}"; do
 		echo "FAIL ${path}: could not list the branches of ${url}" >&2
 		printf '     %s\n' "$heads" >&2
 		if [[ ${#auth[@]} -gt 0 ]]; then
-			echo "     The job token reaches only the repositories the job names; the submodule_pins job checks each one out." >&2
+			echo "     The job token reads every repository of the project only while the project setting \"Protect access to repositories in YAML pipelines\" is off and the repository is authorized for the pipeline." >&2
 		fi
 		failed=1
 		continue

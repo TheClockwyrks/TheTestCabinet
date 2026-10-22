@@ -157,7 +157,7 @@ credential) deletes from the track's `ubuntu-the-test-cabinet-<track>-cicd`
 repository every tag that `master`, `staging`, `nightly` and the checkout do not
 pin as `ciImageTag` in `ci/images/tags.yml`, nor the `azure-pipelines.yml` of
 those branches of a submodule repository (each `.gitmodules` entry with a
-relative URL, which the image jobs name under `uses:`) names as
+relative URL, read through the job's access token) names as
 `ubuntu-the-test-cabinet-<track>-cicd:<commit>`, nor was pushed within the last
 day (so the image of a run still in flight on another branch, and an image whose
 pin has not landed yet, survive; each tag spared for its age is logged), and
@@ -224,7 +224,7 @@ its own tag; gg is released by its own repository.
 | `report-disk.sh [label]`                                                                              | print the room left on `/`, the container store and the agent work folder, and `docker system df`; always exits 0                                                               | `report-disk.test.sh`                 |
 | `install-playwright-chromium.sh`                                                                      | Playwright's Chromium and its system libraries at the `PLAYWRIGHT_IMAGE` tag, started once, for a machine outside the devcontainer; run as root                                 | `install-playwright-chromium.test.sh` |
 | `submodule-pins.sh [--branch <b>]`                                                                    | every submodule pin is an ancestor of that submodule's branch of the same name, or of its `master`, fetched commits-only                                                        | `submodule-pins.test.sh`              |
-| `submodules.sh init\|list [--build-context] [<path>...]`, `submodules.sh check`                       | initialize only the named submodules, and those the root `.dockerignore` admits, one deep and never recursively; `check` holds the `submodule_pins` job's list to `.gitmodules` | `submodules.test.sh`                  |
+| `submodules.sh init\|list [--build-context] [<path>...]`                                              | initialize only the named submodules, and those the root `.dockerignore` admits, one deep and never recursively                                                                 | `submodules.test.sh`                  |
 | `mirror.sh [--url <mirror>] [--allow-rewrite] <key-file> <ref>`                                       | push the built branch with its tags, or the tag, to the declared mirror, refusing a non-ancestor head                                                                           | `mirror.test.sh`                      |
 | `gg-release.sh version\|toolchains-image\|fetch <out-dir>`                                            | the gg release the driver pins: its version, the toolchain image the `-gg` variants copy, or the binary and reference documents, checked                                        | `gg-release.test.sh`                  |
 | `service-image.sh <service> <commit>`                                                                 | one service image, pushed per architecture                                                                                                                                      | `service-image.test.sh`               |
