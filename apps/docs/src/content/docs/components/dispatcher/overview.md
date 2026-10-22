@@ -185,7 +185,8 @@ A lapsed lease resolves by the job's state:
   at its original queue position with a fresh per-job token, and no attempt is
   counted. This recovers a claim whose `Job` creation failed and a claim made by
   a dispatcher that died before creating its `Job`.
-- `starting`, `running` or `storing`: the driver is [lost](#lost-drivers).
+- `starting`, `running`, `validating` or `storing`: the driver is
+  [lost](#lost-drivers).
 
 A driver whose job returned to the queue presents a token the backend no longer
 accepts. Its first report is refused, and it deletes its sandbox and exits.
@@ -193,7 +194,8 @@ accepts. Its first report is refused, and it deletes its sandbox and exits.
 ## Lost drivers
 
 The backend believes a driver is executing every job it holds as `dispatched`,
-`starting`, `running` or `storing`. That belief outlives the driver when nobody is left to
+`starting`, `running`, `validating` or `storing`. That belief outlives the
+driver when nobody is left to
 report its death:
 
 - the whole machine restarted, taking every driver pod and the dispatcher down

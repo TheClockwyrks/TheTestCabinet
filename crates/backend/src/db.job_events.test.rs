@@ -220,7 +220,7 @@ async fn deleting_a_run_takes_its_jobs_stream_with_the_job() {
 }
 
 #[tokio::test]
-async fn a_retried_attempt_kept_by_a_run_delete_keeps_its_stream() {
+async fn a_retried_attempt_goes_with_its_run_and_takes_its_stream() {
     let db = with_jobs(&["attempt"]).await;
     db.store_job_events("attempt", 0, &events(&["a"]))
         .await
@@ -238,8 +238,10 @@ async fn a_retried_attempt_kept_by_a_run_delete_keeps_its_stream() {
 
     db.delete_run("r1").await.unwrap();
 
-    assert!(db.get_job("attempt").await.unwrap().is_some());
-    assert_eq!(messages(&db.job_events("attempt").await.unwrap()), ["a"]);
+    // A comparison arm holds its runs' ids, so nothing keeps the attempt.
+    assert!(db.get_job("attempt").await.unwrap().is_none());
+    assert!(db.job_events("attempt").await.unwrap().is_empty());
+    assert!(db.get_job("retry").await.unwrap().is_some());
 }
 
 #[tokio::test]

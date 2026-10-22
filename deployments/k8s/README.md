@@ -63,6 +63,12 @@ Overlays compose in reusable kustomize **components**:
 | `components/web`           | The in-cluster web console (`tcab-web`) `Deployment` + `ClusterIP` `Service` — the static SPA, which carries no service URL and takes no configuration: it addresses `/api`, `/artifacts` and `/arena` of its own origin. Nested in the `edge` component, which serves it at `/` of the environment's origin. `overlays/local` deliberately does NOT include it — locally the console runs from source (`npm run -w apps/web dev`) against a `kubectl port-forward`ed backend, so a UI edit needs no image rebuild.                                                                                                                                                                                                                                                                                                                               |
 | `components/edge`          | The `tcab-cloudflared` Cloudflare Tunnel connector (`Deployment`, 2 replicas, `cloudflare/cloudflared` at a pinned version), its generated `tcab-cloudflared` `ConfigMap` routing the origin by path (`/api/`, `/artifacts/`, `/arena/`, `/` to the console) and the Grafana host to `tcab-lgtm`, and the `NetworkPolicy` admitting it to those services. Nests `components/web`. Defaults to prod's tunnel and hostnames; `overlays/staging` patches the `ConfigMap`. The tunnel credentials are the `tcab-cloudflared` `Secret` `keyvault-csi` syncs. See [Edge](../../apps/docs/src/content/docs/deployment/kubernetes/edge.md).                                                                                                                                                                                                               |
 
+`components/postgres` declares the backend's `tcab-backend-state` claim, 16Gi, the same
+in both overlays. It holds `/state`, the definition store and the ingest checkout.
+To grow it, raise the size in `components/postgres/deployment-backend.yaml` and
+deploy; see
+[growing the backend's claim](../../apps/docs/src/content/docs/deployment/kubernetes/overview.md#growing-the-backends-claim).
+
 The service container images are built from [`../images/`](../images/) — every Rust
 service is a `--target` of the shared `services.Dockerfile` (`backend`,
 `publisher`), and the console has its
@@ -152,22 +158,28 @@ A push to `staging` deploys the `staging` overlay in the workspace template's
 deployment job, inside the private cluster through `az aks command invoke`:
 
 1. `scripts/ci/pre-deploy.sh staging <sha>` pins the overlay, records the commit the
-   namespace runs, gives each rollout 600 seconds, and deletes the backend's
-   Deployment of its old name, `tcab-backend`, which holds the backend's disk, and
-   the artifacts service's StatefulSet, which its stateless Deployment replaces
-   (`scripts/ci/retire-legacy-backend.sh`).
-2. The template's `scripts/ci/deploy.sh <sha>` applies the overlay and waits on
-   `the-test-cabinet-backend`, rolling it back if it does not become ready.
+   namespace runs, gives each rollout 600 seconds, checks the catalog
+   (`scripts/ci/catalog-ingest.sh preflight`), and deletes the objects of an earlier
+   shape (`scripts/ci/retire-legacy-backend.sh`): the backend's Deployment of its old
+   name, `tcab-backend`, which holds the backend's disk, the artifacts service's
+   StatefulSet, which its stateless Deployment replaces, and the internal ingress's
+   Ingresses, its network policies and the `tcab-auth` workload, which the edge
+   replaced.
+2. The template's `scripts/ci/deploy.sh <sha>` runs `scripts/ci/deploy-preflight.sh`,
+   applies the overlay and waits on `the-test-cabinet-backend`, rolling it back if it
+   does not become ready.
 3. `scripts/ci/post-deploy.sh <sha>` waits on every other workload and undoes each
-   that does not become ready (`scripts/ci/settle-workloads.sh`).
+   that does not become ready (`scripts/ci/settle-workloads.sh`), then fails unless
+   the backend's ingest sidecar ingested (`scripts/ci/catalog-ingest.sh verify`).
 4. After a failure, `scripts/ci/settle-workloads.sh --after-failure <sha>` settles
    the rest, prints the pods and events, and prints how to recover: the command that
    puts the namespace back on the commit it ran before, or "fix forward".
 
 A push to `master` deploys the `prod` overlay through
 `scripts/ci/deploy-environment.sh prod <sha>`, which pins a temporary copy, refuses a
-render with anything outside `tcab-prod`, retires `tcab-backend`, applies, and waits
-on every workload, undoing each that fails. It rolls either environment by hand, and
+render with anything outside `tcab-prod`, runs the catalog preflight, retires the
+objects of an earlier shape, applies, waits on every workload, undoing each that
+fails, and reads the ingest sidecar's result. It rolls either environment by hand, and
 previews what it applies without touching a cluster:
 
 ```sh

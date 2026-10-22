@@ -33,6 +33,21 @@ pub enum DownloadError {
     /// The download request could not be sent (a transport/connection error).
     #[error("downloading the run source tree from the artifact service: {0}")]
     Transport(#[source] reqwest::Error),
+    /// The artifact service holds no tree for the run (`404`): its upload never
+    /// landed, or the tree was removed. Kept apart from [`Self::Status`] so the
+    /// reported detail names the cause; a release has nothing to publish and a
+    /// retry cannot change that.
+    #[error(
+        "run `{run_id}` has no stored artifact tree, so there is nothing to release \
+         (the artifact service answered HTTP 404{})",
+        body_suffix(.body)
+    )]
+    NoStoredTree {
+        /// The run whose tree is absent.
+        run_id: String,
+        /// The response body, for diagnostics.
+        body: String,
+    },
     /// The artifact service rejected the download with a non-success status.
     #[error("the artifact service rejected the download: HTTP {status}{}", body_suffix(.body))]
     Status {
@@ -90,7 +105,7 @@ pub async fn download_run_tree(
     let url = format!("{}/runs/{}/tree.tar", artifacts_url, run_id);
     let http = reqwest::Client::new();
     let bytes = retry(backoff, "the source tree download", || {
-        fetch_tree(&http, &url, publish_job_id, job_token)
+        fetch_tree(&http, &url, run_id, publish_job_id, job_token)
     })
     .await?;
 
@@ -105,10 +120,12 @@ pub async fn download_run_tree(
     Ok(run_dir)
 }
 
-/// One `GET` of the `tree.tar` at `url`, returning the archive's bytes.
+/// One `GET` of the `tree.tar` at `url`, returning the archive's bytes. A `404`
+/// is [`DownloadError::NoStoredTree`] for `run_id`.
 async fn fetch_tree(
     http: &reqwest::Client,
     url: &str,
+    run_id: &str,
     publish_job_id: &str,
     job_token: &str,
 ) -> Result<bytes::Bytes, DownloadError> {
@@ -122,6 +139,12 @@ async fn fetch_tree(
     let status = response.status();
     if !status.is_success() {
         let body = response.text().await.unwrap_or_default();
+        if status == reqwest::StatusCode::NOT_FOUND {
+            return Err(DownloadError::NoStoredTree {
+                run_id: run_id.to_string(),
+                body,
+            });
+        }
         return Err(DownloadError::Status { status, body });
     }
     response.bytes().await.map_err(DownloadError::Body)

@@ -16,7 +16,10 @@ published is private, and a run that can never be published, such as an
 infrastructure failure or a
 [`canceled`](/components/contracts/run-records/#status) run, never reaches
 them. The [gg document corpus](#gg-runsjson--the-gg-document-corpus) is the one
-exception, and it is redacted rather than gated on publication.
+exception, and it is redacted rather than gated on publication.[Case
+showcases](#case-showcasesjson--case-showcases) are gated on a case having a
+published run, of any version, rather than on the version itself: they present
+a case, not a run.
 
 A publish is an upload. After each publish the backend marks the run published,
 mints the run's [short code](#short-codes) and writes its object, has the
@@ -73,6 +76,7 @@ The index objects, written with every generation:
 index.json
 snapshots/<snapshotId>/runs.json
 snapshots/<snapshotId>/cases/<slug>/<version>.json
+snapshots/<snapshotId>/case-showcases.json
 snapshots/<snapshotId>/models.json
 snapshots/<snapshotId>/comparisons.json
 snapshots/<snapshotId>/comparisons/<id>.json
@@ -131,13 +135,16 @@ run count, and the keys and prefixes the rest of the generation lives under.
   "comparisonsPrefix": "snapshots/2026-06-17T2148Z-1a7b9c3d/comparisons/",
   "ggRunsKey": "snapshots/2026-06-17T2148Z-1a7b9c3d/gg-runs.json",
   "testCaseGroupsKey": "snapshots/2026-06-17T2148Z-1a7b9c3d/test-case-groups.json",
+  "caseShowcasesKey": "snapshots/2026-06-17T2148Z-1a7b9c3d/case-showcases.json",
 }
 ```
 
 `runDocumentsPrefix` is informational: a run document's key carries a content
 digest, so a reader reaches it through the `documentKey` on the run's summary
 card rather than by composing a path. `testCaseGroupsKey` is optional, and a
-reader treats its absence as an empty group set.
+reader treats its absence as an empty group set. `caseShowcasesKey` is optional
+too, and a reader without it previews a case with the showcase on its newest
+case document instead.
 
 Schema:
 [`snapshot/index.schema.json`](https://docs.testcabinet.ai/schema/snapshot/index.schema.json).
@@ -155,7 +162,9 @@ denormalized case name, the `validationLoaded` signal, the run state, the links,
 the run's short code, and every headline figure a listing needs: the functional
 `rating`, the `aesthetic` rating, whether the run is `validatorRated`, the
 `score`, and the `reviewCount`. A performance run's fuel result and the ranking
-slice of a run's [code analysis](#code-analysis) ride along too. Each card names
+slice of a run's [code analysis](#code-analysis) ride along too, and a gg run's
+subject carries `ggAgents`, one line per agent profile of the run (see
+[a gg run's agents](/components/ui/overview/#a-gg-runs-agents)). Each card names
 the run's full document by `documentKey`.
 
 The gallery fetches full records lazily, one per run page. This summary index
@@ -302,7 +311,11 @@ validation baselines, and each variant's `showcase` for its authored [case
 showcase](/components/driver/showcase/#the-case-showcase) media, under
 `media/cases/<slug>/<version>/`. A version with a published run is
 [frozen](/development/frozen-versions/), so re-uploading its baselines on every
-publish would be waste.
+publish would be waste. Showcase media is published for every non-experimental
+version of a case with a published run, frozen or not, and
+[`case-showcases.json`](#case-showcasesjson--case-showcases) names it. A
+showcase edited on a version that is not frozen yet publishes under a new
+digest, so a key never changes what it holds.
 
 `validationBaselines[]` covers every committed file of each engine and variant's
 baseline directory, including the [shared image
@@ -444,7 +457,10 @@ addressing is inlined, so the gallery fetches a starter file on demand.
 
 Only a version that at least one published run built is emitted. The gallery
 keys lookups by `(slug, version)` from each run's subject, so it fetches exactly
-the case files that are present.
+the case files that are present. A version's showcases do not wait on a run of
+that version: they are published for every non-experimental version of a case
+with any published run, in
+[`case-showcases.json`](#case-showcasesjson--case-showcases).
 
 This metadata is read from the backend's ingested definition store rather than
 from the run record, which carries only the run's `(slug, version, variant)`
@@ -459,6 +475,30 @@ cycle.
 
 Schema:
 [`snapshot/case.schema.json`](https://docs.testcabinet.ai/schema/snapshot/case.schema.json).
+
+## `case-showcases.json` — case showcases
+
+The [case showcase](/components/driver/showcase/#the-case-showcase) of every
+non-experimental version of each case that has at least one published run,
+whichever version that run built. The site lists a case once any run of it is
+published, and a showcase is the case's own presentation rather than anything a
+run produced, so a listed case previews its newest showcase while its runs are
+still on older versions. A case with no published run publishes none, because
+the site does not list it. The experimental gate applies to each version,
+because an experimental version is not public at all.
+
+A `showcases` array holds one entry per version that declares at least one
+showcase: its `slug`, its `version`, and a `variants` array in manifest order,
+each a variant's `variant` slug with its `showcase` (the description and the
+carousel, each media entry naming the [case-media key](#case-media) its bytes
+are at). A variant that declares no showcase is omitted, and so is a version
+none of whose variants declares one.
+
+The site previews each case it lists with the first variant, in manifest order,
+whose showcase has media, of the newest version in this file that has one.
+
+Schema:
+[`snapshot/case-showcases.schema.json`](https://docs.testcabinet.ai/schema/snapshot/case-showcases.schema.json).
 
 ## Test-case groups
 

@@ -59,27 +59,36 @@ use crate::store::{CaseNames, StoredManifest};
 /// list, counts toward coverage, and is cancelable. `queued` and `pending` have no
 /// driver yet (the dispatcher will claim a `queued` one; a `pending` one is held
 /// back because its harness is at its parallelism cap); `dispatched`, `starting`,
-/// and `running` each have a driver Job coming up or executing, and a `storing` one
-/// has a driver handing its finished run to durable storage.
-const IN_FLIGHT_STATES: [&str; 6] = [
+/// `running` and `validating` each have a driver Job coming up or executing (a
+/// `validating` one has ended its harness session and is collecting and validating
+/// the run), and a `storing` one has a driver handing its finished run to durable
+/// storage.
+const IN_FLIGHT_STATES: [&str; 7] = [
     "queued",
     "pending",
     "dispatched",
     "starting",
     "running",
+    "validating",
     "storing",
 ];
 
-/// What one id a comparison arm recorded stands for ([`Db::resolve_arm_runs`]).
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ArmRunStatus {
-    /// The run's job, or its retry's, is still queued or running.
-    InFlight,
-    /// The run landed and counts toward the arm's `n`; the id of the stored run.
-    Counted(String),
-    /// The run landed but does not count, was deleted, or its job stored none.
-    NotCounted,
-}
+/// The job state of a run whose harness session has ended and whose driver is doing
+/// the post-session work: collecting the tree, the post-run analysis, the case's
+/// toolchain and validation.
+pub const VALIDATING_STATE: &str = "validating";
+
+/// The driven job states a driver's `validating` report moves a job out of: every
+/// one before `validating` in the lifecycle. A job already `validating` stays put, a
+/// `storing` one holds its record and is past it, and nothing terminal is ever moved,
+/// so a late report never moves a job backwards or overwrites a cancellation.
+const VALIDATING_FROM_STATES: [&str; 3] = ["dispatched", "starting", "running"];
+
+/// The driven job states a driver's `running` report moves a job out of: the ones
+/// before `running` in the lifecycle, and `running` itself, whose repeat report
+/// refreshes it. A `validating` job's session is over, so a late `running` report
+/// leaves it, a `storing` one, and anything terminal where they are.
+const RUNNING_FROM_STATES: [&str; 3] = ["dispatched", "starting", "running"];
 
 /// The column value that stores an [unbounded](InFlightLimit::Unbounded) runs-in-flight
 /// limit.
@@ -120,14 +129,26 @@ fn in_flight_limit_to_column(limit: InFlightLimit) -> i32 {
 /// parallelism — `queued`/`pending` jobs have no driver yet, so they do not count. A
 /// `storing` job's driver is still alive, uploading the finished run, so it keeps its
 /// slot until its terminal report lands.
-const ACTIVE_SLOT_STATES: [&str; 4] = ["dispatched", "starting", "running", "storing"];
+const ACTIVE_SLOT_STATES: [&str; 5] = [
+    "dispatched",
+    "starting",
+    "running",
+    VALIDATING_STATE,
+    "storing",
+];
 
 /// The job states a driver exists for, or is being created for: what the dispatcher
 /// may report lost, what a `storing` report may move to `storing`, and the states whose
 /// [claim lease](JOB_LEASE) a renewal extends. Same members as `ACTIVE_SLOT_STATES`,
 /// different question: that one asks which jobs hold a parallelism slot, this one
 /// asks which jobs the backend believes a driver is executing.
-pub const DRIVEN_STATES: [&str; 4] = ["dispatched", "starting", "running", "storing"];
+pub const DRIVEN_STATES: [&str; 5] = [
+    "dispatched",
+    "starting",
+    "running",
+    VALIDATING_STATE,
+    "storing",
+];
 
 /// How long a job's claim lease runs: the claim sets the expiry this far past the
 /// claim, and each renewal this far past the renewal (the dispatcher overview's
@@ -193,14 +214,20 @@ fn parse_instant(now: &str) -> Result<OffsetDateTime> {
 pub const CANCELABLE_WAITING_STATES: [&str; 2] = ["queued", "pending"];
 
 /// The in-flight job states that are **already spending**: a driver Job exists and is
-/// being created, starting up, executing, or storing the finished run, so the tokens
-/// for that run are partly or wholly paid for.
+/// being created, starting up, executing, validating, or storing the finished run,
+/// so the tokens for that run are partly or wholly paid for.
 ///
 /// Cancelling these discards work in progress, which is why the controls that reach
 /// them — `halt all`, the Runs page's "Kill active" — are the rare ones and confirm
 /// first. Same members as `ACTIVE_SLOT_STATES`, different question: that one asks
 /// which jobs hold a parallelism slot, this one asks which are expensive to cancel.
-pub const CANCELABLE_ACTIVE_STATES: [&str; 4] = ["dispatched", "starting", "running", "storing"];
+pub const CANCELABLE_ACTIVE_STATES: [&str; 5] = [
+    "dispatched",
+    "starting",
+    "running",
+    VALIDATING_STATE,
+    "storing",
+];
 
 /// How long a launch-pass claim on a coverage plan or ladder stays valid before another
 /// caller may take it over.
@@ -507,6 +534,12 @@ const RUN_GG_CONFIG_ID_BACKFILL: &str = "run.gg_config_id";
 /// The `backfill_state` key of [`Db::backfill_in_flight_gg_config_ids`].
 const JOB_GG_CONFIG_ID_BACKFILL: &str = "job.gg_config_id";
 
+/// The `backfill_state` key of [`Db::recompute_validator_ratings`], named for the rating
+/// rule whose arrival it applies to the stored runs: a validator-rated run whose
+/// checklist decides no scored point is broken. Each change to how the validators rate
+/// a run names a key of its own here, so the pass runs once more under the new rule.
+const RUN_VALIDATOR_RATING_UNDECIDED_BROKEN: &str = "run.validator_rating.undecided_broken";
+
 /// The SeaORM-backed store.
 pub struct Db {
     handle: ConnHandle,
@@ -695,6 +728,7 @@ impl Db {
             // therefore returns it to the listings.
             run::Column::RecordReadable,
             run::Column::RecordFormat,
+            run::Column::ToolCallsCounted,
         ];
         if validator_rated {
             refreshed_columns.extend([run::Column::Rating, run::Column::ValidatorRated]);
@@ -739,6 +773,7 @@ impl Db {
             // (`set_run_artifacts_stored`): a first push leaves it `NULL`, and a re-push
             // leaves what an earlier report recorded.
             artifacts_stored: NotSet,
+            tool_calls_counted: Set(tool_calls_counted(&record)),
             // `NotSet` on both paths: the mutation timestamp is stamped by
             // `touch_run` below, inside this same transaction, so that exactly one
             // place in the store decides its value. The insert therefore lands on
@@ -1063,20 +1098,9 @@ impl Db {
         // key back to the run), so they would otherwise be orphaned — delete them in
         // the same transaction so a deleted run leaves nothing behind.
         //
-        // The one job kept is an attempt the backend retried: a comparison arm
-        // records the attempt's job id and reaches the retry's run through its
-        // `retried_by`, which nothing else links back to. It keeps that link and
-        // loses the run.
-        //
         // A deleted job's stored events (`job_event`) go with it through their
         // `ON DELETE CASCADE` foreign key.
         run::Entity::delete_by_id(run_id.to_string())
-            .exec(&txn)
-            .await?;
-        job::Entity::update_many()
-            .col_expr(job::Column::RecordId, Expr::value(Option::<String>::None))
-            .filter(job::Column::RecordId.eq(run_id))
-            .filter(job::Column::RetriedBy.is_not_null())
             .exec(&txn)
             .await?;
         job::Entity::delete_many()
@@ -2565,8 +2589,9 @@ pub(crate) fn aggregate_review_aesthetic(reviews: &[StoredReview]) -> Option<Aes
 /// [scored](test_cabinet_contracts::run_record::RunState::is_scored) — a catastrophic
 /// failure, a timeout, or any tier that released nothing — has no rating at all
 /// (`None`), whatever its case version. Its build never loaded, so no validator
-/// ran against it, and the validators' figure over an empty verdict set would
-/// otherwise read as flawless.
+/// ran against it, and the run is unscored rather than rated. A completed run whose
+/// validators decided no scored point is rated broken instead
+/// ([`verdict_domain_ratings`](crate::review::verdict_domain_ratings)).
 pub(crate) fn functional_rating(
     manifest: Option<&StoredManifest>,
     record: &RunRecord,
@@ -3662,135 +3687,6 @@ impl Db {
         Ok(res.rows_affected > 0)
     }
 
-    /// What each id a comparison arm recorded stands for (docs/comparisons/experiments.md,
-    /// "Which runs an arm holds"), keyed by the recorded id. Every id in `ids` has an
-    /// entry.
-    ///
-    /// The id a launch hands back is a **job** id, and the record its driver mints later
-    /// carries an id of its own (the driver's `mint_run_id`). So a recorded job
-    /// id is followed along `retried_by` to the last attempt (an attempt and its retry
-    /// are one run), and that attempt along `record_id` to the run it stored. An id no
-    /// job carries is read as a run id directly.
-    ///
-    /// The run then counts or it does not: a completed run and a catastrophic, timed-out,
-    /// limit-exceeded or hung one count, and a harness or infrastructure failure, a
-    /// cancel, a deleted run and a job that stored none do not, nor does a run whose
-    /// record this build cannot read.
-    pub async fn resolve_arm_runs(
-        &self,
-        ids: &[String],
-    ) -> Result<std::collections::BTreeMap<String, ArmRunStatus>> {
-        use std::collections::{BTreeMap, BTreeSet};
-        if ids.is_empty() {
-            return Ok(BTreeMap::new());
-        }
-        let conn = self.conn();
-
-        // Every job reachable from the recorded ids along `retried_by`, fetched a
-        // generation at a time: (state, record_id, retried_by) by job id.
-        let mut jobs: BTreeMap<String, (String, Option<String>, Option<String>)> = BTreeMap::new();
-        let mut frontier: BTreeSet<String> = ids.iter().cloned().collect();
-        while !frontier.is_empty() {
-            let rows: Vec<(String, String, Option<String>, Option<String>)> = job::Entity::find()
-                .select_only()
-                .column(job::Column::Id)
-                .column(job::Column::State)
-                .column(job::Column::RecordId)
-                .column(job::Column::RetriedBy)
-                .filter(job::Column::Id.is_in(frontier.iter().cloned().collect::<Vec<_>>()))
-                .into_tuple()
-                .all(&conn)
-                .await?;
-            frontier.clear();
-            for (id, state, record_id, retried_by) in rows {
-                if let Some(next) = &retried_by
-                    && !jobs.contains_key(next)
-                {
-                    frontier.insert(next.clone());
-                }
-                jobs.insert(id, (state, record_id, retried_by));
-            }
-            frontier.retain(|id| !jobs.contains_key(id));
-        }
-
-        // Each recorded id's last attempt: in flight, or the run id it resolves to.
-        enum Resolved {
-            InFlight,
-            Run(String),
-            Nothing,
-        }
-        let mut resolved: Vec<(String, Resolved)> = Vec::with_capacity(ids.len());
-        for id in ids {
-            let mut current = id.clone();
-            let mut seen = BTreeSet::new();
-            let outcome = loop {
-                let Some((state, record_id, retried_by)) = jobs.get(&current) else {
-                    // No job carries the id: an id that is already a run id.
-                    break Resolved::Run(current);
-                };
-                if let Some(next) = retried_by
-                    && jobs.contains_key(next)
-                    && seen.insert(current.clone())
-                {
-                    current = next.clone();
-                    continue;
-                }
-                if IN_FLIGHT_STATES.contains(&state.as_str()) {
-                    break Resolved::InFlight;
-                }
-                break match record_id {
-                    Some(record_id) => Resolved::Run(record_id.clone()),
-                    None => Resolved::Nothing,
-                };
-            };
-            resolved.push((id.clone(), outcome));
-        }
-
-        // The stored state of every run a recorded id resolved to, and whether this
-        // build can read its record: a comparison's statistics read the record, so a
-        // run they cannot read is not one the arm holds.
-        let wanted: Vec<String> = resolved
-            .iter()
-            .filter_map(|(_, r)| match r {
-                Resolved::Run(id) => Some(id.clone()),
-                _ => None,
-            })
-            .collect();
-        let states: BTreeMap<String, String> = if wanted.is_empty() {
-            BTreeMap::new()
-        } else {
-            run::Entity::find()
-                .select_only()
-                .column(run::Column::Id)
-                .column(run::Column::RunState)
-                .filter(run::Column::Id.is_in(wanted))
-                .filter(run::Column::RecordReadable.eq(true))
-                .into_tuple::<(String, String)>()
-                .all(&conn)
-                .await?
-                .into_iter()
-                .collect()
-        };
-        let counted = arm_counted_run_states();
-
-        Ok(resolved
-            .into_iter()
-            .map(|(id, r)| {
-                let status = match r {
-                    Resolved::InFlight => ArmRunStatus::InFlight,
-                    Resolved::Run(run_id) => match states.get(&run_id) {
-                        Some(state) if counted.contains(&state.as_str()) => {
-                            ArmRunStatus::Counted(run_id)
-                        }
-                        _ => ArmRunStatus::NotCounted,
-                    },
-                    Resolved::Nothing => ArmRunStatus::NotCounted,
-                };
-                (id, status)
-            })
-            .collect())
-    }
-
     /// The legacy single-per-account plans that the startup backfill has not yet
     /// copied into `coverage_plan` (`migrated = false`). Each is returned with its
     /// parsed combinations and cases so the backfill can inline them as one-off
@@ -3959,9 +3855,9 @@ impl Db {
             .collect())
     }
 
-    /// Count the **in-flight** jobs — queued, pending, dispatched, starting, or
-    /// running — for every coverage cell whose case slug is in `slugs`, in a single
-    /// grouped query (the companion to [`Self::count_counted_runs_by_cell`], keyed the
+    /// Count the **in-flight** jobs — queued, pending, dispatched, starting,
+    /// running, validating or storing — for every coverage cell whose case slug is
+    /// in `slugs`, in a single grouped query (the companion to [`Self::count_counted_runs_by_cell`], keyed the
     /// same way). In-flight jobs count toward a cell's target alongside counted runs, so
     /// a launch pass never launches a cell twice while its runs are still executing (or
     /// waiting to).
@@ -5479,6 +5375,42 @@ impl Db {
         Ok(count.min(u64::from(u32::MAX)) as u32)
     }
 
+    /// The queue position of the latest job each plan or ladder enqueued on any of
+    /// `harnesses`, keyed by its [owner prefix](JobOrigin::owner_prefix): the order a freed
+    /// slot of a capped harness is offered in, least recently served first. A plan or
+    /// ladder that never enqueued on them is absent. Jobs of every state count, since what
+    /// is asked is when the owner last got a run onto the harness.
+    pub async fn last_enqueued_by_owner(
+        &self,
+        harnesses: &[String],
+    ) -> Result<HashMap<String, i64>> {
+        if harnesses.is_empty() {
+            return Ok(HashMap::new());
+        }
+        let rows: Vec<(Option<String>, Option<i64>)> = job::Entity::find()
+            .select_only()
+            .column(job::Column::Origin)
+            .column_as(job::Column::QueueSeq.max(), "last")
+            .filter(job::Column::HarnessSlug.is_in(harnesses.iter().cloned()))
+            .filter(job::Column::Origin.is_not_null())
+            .group_by(job::Column::Origin)
+            .into_tuple()
+            .all(&self.conn())
+            .await?;
+        let mut last: HashMap<String, i64> = HashMap::new();
+        for (origin, seq) in rows {
+            let (Some(origin), Some(seq)) = (origin, seq) else {
+                continue;
+            };
+            let Some(owner) = JobOrigin::parse(&origin) else {
+                continue;
+            };
+            let entry = last.entry(owner.owner_prefix()).or_insert(seq);
+            *entry = (*entry).max(seq);
+        }
+        Ok(last)
+    }
+
     /// How many of each of an account's plans' jobs are in flight, keyed by plan id, in
     /// one query: what the plans summary reports without a query per plan.
     pub async fn count_in_flight_jobs_by_plan(
@@ -6237,18 +6169,6 @@ pub(crate) fn counted_run_states() -> Vec<&'static str> {
         .collect()
 }
 
-/// The wire strings of the run states a comparison arm counts toward its `N`: the
-/// [counted](counted_run_states) states less `harness_error`, for which an arm launches a
-/// replacement (docs/comparisons/experiments.md, "Which runs an arm holds").
-fn arm_counted_run_states() -> Vec<&'static str> {
-    use test_cabinet_contracts::run_record::RunState;
-    RunState::ALL
-        .into_iter()
-        .filter(|state| state.counts_as_model_result() && *state != RunState::HarnessError)
-        .map(run_state_str)
-        .collect()
-}
-
 /// A condition on `run` that holds for every run **not** produced by a job that was
 /// automatically retried: the run's id is not the `record_id` of any job with a
 /// `retried_by`. What every count goes through, so an attempt and its retry are one run
@@ -6795,8 +6715,9 @@ impl Db {
     /// runs started (and so finished) before the next case's. Enforces each harness's
     /// configured maximum parallelism: a job is claimable only when its harness has
     /// fewer than its limit of runs already occupying a parallelism slot
-    /// (`ACTIVE_SLOT_STATES` — `dispatched`/`starting`/`running`). A harness with
-    /// no configured limit is always claimable.
+    /// (`ACTIVE_SLOT_STATES` —
+    /// `dispatched`/`starting`/`running`/`validating`/`storing`). A harness with no
+    /// configured limit is always claimable.
     ///
     /// It additionally **serializes a game jam per model**: a `game-jam` job is not
     /// claimable while another run of the same jam and model occupies a slot, no
@@ -7220,7 +7141,7 @@ impl Db {
         let mut active = model.into_active_model();
         active.state = Set(state.to_string());
         active.updated_at = Set(now.to_string());
-        if unstarted && matches!(state, "starting" | "running") {
+        if unstarted && matches!(state, "starting" | "running" | "validating") {
             active.started_at = Set(Some(now.to_string()));
         }
         if let Some(detail) = detail {
@@ -7271,6 +7192,59 @@ impl Db {
         let updated = active.update(&txn).await?;
         txn.commit().await?;
         Ok(Some(updated))
+    }
+
+    /// Move a job to `validating`: its driver's harness session has ended and the
+    /// driver is collecting and validating the run. Stamps `updated_at`, and
+    /// `started_at` when the job has none (a run whose session ended has started,
+    /// whatever reports were missed).
+    ///
+    /// Only a `dispatched`, `starting` or `running` job moves. Returns the updated
+    /// row, or `None` when nothing moved: the job is unknown, still waiting for a
+    /// driver, already `validating` or `storing`, or terminal. The move is one
+    /// conditional `UPDATE`, so a cancellation, the held report or a terminal report
+    /// that commits beside it is never overwritten, and a job is never moved
+    /// backwards.
+    pub async fn set_job_validating(&self, id: &str, now: &str) -> Result<Option<job::Model>> {
+        let update = job::Entity::update_many()
+            .col_expr(job::Column::State, Expr::value(VALIDATING_STATE))
+            .col_expr(job::Column::UpdatedAt, Expr::value(now))
+            .col_expr(
+                job::Column::StartedAt,
+                Func::coalesce([Expr::col(job::Column::StartedAt).into(), Expr::value(now)]).into(),
+            )
+            .filter(job::Column::Id.eq(id))
+            .filter(job::Column::State.is_in(VALIDATING_FROM_STATES));
+        if update.exec(&self.conn()).await?.rows_affected == 0 {
+            return Ok(None);
+        }
+        self.get_job(id).await
+    }
+
+    /// Move a job to `running`: its driver's harness session has started. Stamps
+    /// `updated_at`, and `started_at` when the job has none, the fallback anchor
+    /// for a driver that never reported `starting` (see
+    /// [`set_job_state`](Self::set_job_state)).
+    ///
+    /// Only a `dispatched`, `starting` or `running` job moves. Returns the updated
+    /// row, or `None` when nothing moved: the job is unknown, still waiting for a
+    /// driver, already `validating` or `storing`, or terminal. One conditional
+    /// `UPDATE`, for the reason [`set_job_validating`](Self::set_job_validating)
+    /// is: a late `running` report never moves a job backwards.
+    pub async fn set_job_running(&self, id: &str, now: &str) -> Result<Option<job::Model>> {
+        let update = job::Entity::update_many()
+            .col_expr(job::Column::State, Expr::value("running"))
+            .col_expr(job::Column::UpdatedAt, Expr::value(now))
+            .col_expr(
+                job::Column::StartedAt,
+                Func::coalesce([Expr::col(job::Column::StartedAt).into(), Expr::value(now)]).into(),
+            )
+            .filter(job::Column::Id.eq(id))
+            .filter(job::Column::State.is_in(RUNNING_FROM_STATES));
+        if update.exec(&self.conn()).await?.rows_affected == 0 {
+            return Ok(None);
+        }
+        self.get_job(id).await
     }
 
     /// Record that the dispatcher reported job `id` lost, at `now`. A terminal report
@@ -8791,6 +8765,138 @@ impl Db {
         Ok(backfilled)
     }
 
+    /// Recompute the lifted `run.rating` and `run.validator_rating` columns of every
+    /// completed validator-rated run once, when the validator rating rule changes, so the
+    /// readers of the stored columns (the console's rating sort and filter, the stats
+    /// board, a ladder's gate) agree with the snapshot and the run detail, which decide
+    /// the figures afresh on every read.
+    ///
+    /// [`Self::backfill_validator_rating`] fills only `NULL`s, so it cannot correct a row
+    /// that holds the previous rule's figure; this pass rewrites each candidate through
+    /// the same seams [`Self::push`] and [`Self::add_review`] use (`lifted_rating` over
+    /// the run's reviews, `validator_only_rating` without them) and writes only the rows
+    /// whose figures changed. A changed row is stamped (`touch_run`), and a changed
+    /// published row marks the snapshot dirty so the gallery refreshes once.
+    ///
+    /// **One-shot**, marked in [`backfill_state`] under
+    /// `RUN_VALIDATOR_RATING_UNDECIDED_BROKEN`; a later change to the rating rule names
+    /// a new key. A candidate whose case version the store cannot read (a deployment
+    /// whose store starts empty, or a version that left it) leaves the pass unmarked,
+    /// so the next ingest that changes the store, or the next boot, runs it again. A
+    /// record that no longer deserializes is skipped without blocking the marker, as
+    /// [`Self::backfill_validator_rating`] skips it, since no later pass could read it
+    /// either. Paged by an `id` cursor. Returns how many rows were rewritten.
+    ///
+    /// A verdict a ladder dispatch has already recorded stands, as every recorded
+    /// verdict does; the rewritten ratings reach the verdicts the gate decides after
+    /// the pass.
+    pub async fn recompute_validator_ratings(
+        &self,
+        store: &crate::store::DefinitionStore,
+    ) -> Result<usize> {
+        const BATCH: u64 = 256;
+        if self
+            .backfill_completed(RUN_VALIDATOR_RATING_UNDECIDED_BROKEN)
+            .await?
+        {
+            return Ok(0);
+        }
+        type Row = (
+            String,
+            String,
+            String,
+            String,
+            Option<String>,
+            Option<String>,
+            bool,
+        );
+        let mut manifests: HashMap<(String, String), Option<StoredManifest>> = HashMap::new();
+        let mut unresolved = false;
+        let mut published_changed = false;
+        let mut rewritten = 0usize;
+        let mut cursor: Option<String> = None;
+        loop {
+            let mut query = run::Entity::find()
+                .select_only()
+                .column(run::Column::Id)
+                .column(run::Column::TestCaseSlug)
+                .column(run::Column::TestCaseVersion)
+                .column(run::Column::RecordJson)
+                .column(run::Column::Rating)
+                .column(run::Column::ValidatorRating)
+                .column(run::Column::Published)
+                .filter(run::Column::RunState.eq("completed"))
+                .filter(run::Column::ValidatorRated.eq(true));
+            if let Some(after) = cursor.as_deref() {
+                query = query.filter(run::Column::Id.gt(after));
+            }
+            let rows: Vec<Row> = query
+                .order_by_asc(run::Column::Id)
+                .limit(BATCH)
+                .into_tuple()
+                .all(&self.conn())
+                .await?;
+            let Some(last) = rows.last() else {
+                break;
+            };
+            cursor = Some(last.0.clone());
+
+            // The batch's reviews in one query, grouped by run.
+            let ids: Vec<String> = rows.iter().map(|row| row.0.clone()).collect();
+            let mut review_map: HashMap<String, Vec<StoredReview>> = HashMap::new();
+            for review in review::Entity::find()
+                .filter(review::Column::RunId.is_in(ids))
+                .all(&self.conn())
+                .await?
+            {
+                review_map
+                    .entry(review.run_id.clone())
+                    .or_default()
+                    .push(stored_review(review)?);
+            }
+
+            for (id, slug, version, record_json, rating, validator_rating, published) in rows {
+                let Ok(record) = serde_json::from_str::<RunRecord>(&record_json) else {
+                    continue;
+                };
+                let manifest = manifests
+                    .entry((slug.clone(), version.clone()))
+                    .or_insert_with(|| store.read_manifest(&slug, &version).ok());
+                let Some(manifest) = manifest.as_ref() else {
+                    unresolved = true;
+                    continue;
+                };
+                if !manifest.validator_rated() {
+                    continue;
+                }
+                let reviews = review_map.get(&id).map(Vec::as_slice).unwrap_or(&[]);
+                let next_rating = lifted_rating(Some(manifest), &record, reviews);
+                let next_validator = validator_only_rating(Some(manifest), &record)
+                    .map(|rating| rating.as_str().to_string());
+                if next_rating == rating && next_validator == validator_rating {
+                    continue;
+                }
+                run::Entity::update_many()
+                    .col_expr(run::Column::Rating, Expr::value(next_rating))
+                    .col_expr(run::Column::ValidatorRating, Expr::value(next_validator))
+                    .filter(run::Column::Id.eq(id.as_str()))
+                    .exec(&self.conn())
+                    .await?;
+                touch_run(&self.conn(), &id).await?;
+                published_changed |= published;
+                rewritten += 1;
+            }
+        }
+        if published_changed {
+            set_dirty(&self.conn()).await?;
+        }
+        if !unresolved {
+            self.mark_backfill_complete(RUN_VALIDATOR_RATING_UNDECIDED_BROKEN)
+                .await?;
+        }
+        Ok(rewritten)
+    }
+
     /// Backfill the lifted `code_analyzer_version` column for runs whose record already
     /// carries a code analysis but which were stored before the column existed.
     ///
@@ -10089,3 +10195,11 @@ mod publish_lease_tests;
 #[cfg(test)]
 #[path = "db.job_events.test.rs"]
 mod job_events_tests;
+
+#[path = "db.tool_calls.rs"]
+mod tool_calls;
+use tool_calls::tool_calls_counted;
+
+#[cfg(test)]
+#[path = "db.tool_calls.test.rs"]
+mod tool_calls_tests;

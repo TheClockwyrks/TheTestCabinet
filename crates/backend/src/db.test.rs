@@ -2838,6 +2838,56 @@ async fn the_latest_price_is_the_newest_of_a_models_history() {
 }
 
 #[tokio::test]
+async fn staging_s_migrations_apply_beside_the_ones_that_followed_them() {
+    // Staging's database applied seven migrations this branch registers only so its
+    // migrator starts over them, and one of them adds the column a later migration
+    // of the same meaning adds too. A database that got the column from the later
+    // one and the earlier one from neither, as a database migrated without these
+    // seven does, takes the seven without a fault and keeps one column.
+    use sea_orm::{ConnectionTrait, Statement};
+    use test_cabinet_migration::MigratorTrait;
+
+    let db = Db::connect_in_memory().await.unwrap();
+    let conn = db.connection();
+    let backend = conn.get_database_backend();
+    let staging = [
+        "m20261012_000058_add_run_artifacts_stored",
+        "m20261012_000059_add_run_auto_publish_deferred",
+        "m20261012_000060_add_job_held_report",
+        "m20261012_000061_add_run_artifact_retention",
+        "m20261012_000062_add_run_media_manifest",
+        "m20261012_000063_add_run_state_reclaim",
+        "m20261017_000064_add_run_tool_calls_counted",
+    ];
+    let registered: Vec<String> = test_cabinet_migration::Migrator::migrations()
+        .iter()
+        .map(|migration| migration.name().to_string())
+        .collect();
+    for name in staging {
+        assert!(registered.iter().any(|known| known == name), "{name}");
+    }
+
+    // Forget only the earlier `artifacts_stored` migration, as a database that never
+    // applied it records it, and let the migrator apply it again over the column.
+    conn.execute(Statement::from_string(
+        backend,
+        "DELETE FROM seaql_migrations WHERE version = 'm20261012_000058_add_run_artifacts_stored'",
+    ))
+    .await
+    .unwrap();
+    test_cabinet_migration::Migrator::up(&conn, None)
+        .await
+        .unwrap();
+    assert!(
+        test_cabinet_migration::Migrator::get_pending_migrations(&conn)
+            .await
+            .unwrap()
+            .is_empty()
+    );
+    db.push(&record("r1"), &links(), None, None).await.unwrap();
+}
+
+#[tokio::test]
 async fn dropping_the_model_price_rates_keeps_every_rows_facts() {
     // Rolled back, `model_price` has its three rate columns, as a deployment holds
     // it before this migration. Rows written there, with rates, come
@@ -5854,7 +5904,6 @@ fn sample_stored_comparison(id: &str) -> StoredComparison {
                 model_id: Some("anthropic/claude-opus-4.8".to_string()),
                 gg_config_id: None,
                 gg_slot_models: BTreeMap::new(),
-                run_ids: vec!["pi-1".to_string()],
             }],
             n: 3,
         },
@@ -6603,6 +6652,128 @@ async fn the_backfill_rates_validator_rated_runs_stored_before_the_column() {
     assert_eq!(db.backfill_validator_rating(&store, None).await.unwrap(), 0);
     // And it never touched the reviewed rating column.
     assert_eq!(lifted(&db, "r1").await.rating.as_deref(), Some("great"));
+}
+
+/// Overwrite one run's lifted `rating` and `validator_rating`, as a row stored under an
+/// earlier rating rule reads.
+async fn stale_ratings(db: &Db, id: &str, rating: &str, validator_rating: &str) {
+    run::Entity::update_many()
+        .col_expr(run::Column::Rating, Expr::value(rating))
+        .col_expr(run::Column::ValidatorRating, Expr::value(validator_rating))
+        .filter(run::Column::Id.eq(id))
+        .exec(&db.conn())
+        .await
+        .unwrap();
+}
+
+/// [`validator_record`] whose every point the validators left undecided: each script
+/// was stopped by the whole-run cap.
+fn undecided_record(id: &str) -> RunRecord {
+    use test_cabinet_contracts::validation::Inconclusive;
+    let mut record = validator_record(id, &[("serve", true), ("hud", true)]);
+    for script in &mut record.validation.debug_scripts {
+        script.ran = false;
+        script.precondition_unmet = true;
+        script.inconclusive = Some(Inconclusive::TimedOut);
+        script.verdicts.clear();
+    }
+    record
+}
+
+#[tokio::test]
+async fn the_recompute_rewrites_stored_ratings_under_the_current_rule_once() {
+    use test_cabinet_contracts::review::AestheticRating;
+    let dir = tempfile::tempdir().unwrap();
+    let store = crate::store::DefinitionStore::open(dir.path()).unwrap();
+    let db = Db::connect_in_memory().await.unwrap();
+    let manifest = validator_manifest();
+    let mut legacy = validator_manifest();
+    legacy.version = "v0.9.0".to_string();
+    legacy.engine_format = false;
+
+    // Two runs the validators decided nothing about, stored with the previous rule's
+    // flawless figure; one of them published and reviewed with a deciding override.
+    for id in ["undecided", "reviewed"] {
+        db.push(&undecided_record(id), &links(), None, Some(&manifest))
+            .await
+            .unwrap();
+        stale_ratings(&db, id, "flawless", "flawless").await;
+    }
+    db.add_review(
+        "reviewed",
+        &override_review("u1", AestheticRating::Good, &[("hud", false)]),
+        None,
+        None,
+    )
+    .await
+    .unwrap();
+    stale_ratings(&db, "reviewed", "flawless", "flawless").await;
+    run::Entity::update_many()
+        .col_expr(run::Column::Published, Expr::value(true))
+        .filter(run::Column::Id.eq("reviewed"))
+        .exec(&db.conn())
+        .await
+        .unwrap();
+    // A decided run whose stored figures are already right, and a legacy run.
+    db.push(
+        &validator_record("decided", &[("serve", true), ("hud", false)]),
+        &links(),
+        None,
+        Some(&manifest),
+    )
+    .await
+    .unwrap();
+    let mut legacy_record = record("legacy");
+    legacy_record.subject.test_case_version = legacy.version.clone();
+    db.push(&legacy_record, &links(), None, Some(&legacy))
+        .await
+        .unwrap();
+    let generation = db.snapshot_state().await.unwrap().generation;
+    db.mark_uploaded("2026-10-01T00:00:00Z", 0, generation)
+        .await
+        .unwrap();
+    let decided_before = lifted(&db, "decided").await;
+    let legacy_before = lifted(&db, "legacy").await;
+
+    // The store does not hold the version yet: nothing is written, and the pass stays
+    // unmarked so the ingest that supplies the version, or the next boot, runs it again.
+    assert_eq!(db.recompute_validator_ratings(&store).await.unwrap(), 0);
+    assert_eq!(
+        lifted(&db, "undecided").await.rating.as_deref(),
+        Some("flawless")
+    );
+    assert!(!db.snapshot_state().await.unwrap().dirty);
+
+    store.write_manifest(&manifest).unwrap();
+    store.write_manifest(&legacy).unwrap();
+    assert_eq!(db.recompute_validator_ratings(&store).await.unwrap(), 2);
+    let undecided = lifted(&db, "undecided").await;
+    assert_eq!(undecided.rating.as_deref(), Some("broken"));
+    assert_eq!(undecided.validator_rating.as_deref(), Some("broken"));
+    // The review's override decides `hud` (capped at great) for that review, so the
+    // run's rating folds it in while the validators' own figure stays broken.
+    let reviewed = lifted(&db, "reviewed").await;
+    assert_eq!(reviewed.rating.as_deref(), Some("great"));
+    assert_eq!(reviewed.validator_rating.as_deref(), Some("broken"));
+    assert!(
+        db.snapshot_state().await.unwrap().dirty,
+        "a changed published run refreshes the gallery"
+    );
+    // Rows whose figures were already right are left untouched, stamp included.
+    let decided = lifted(&db, "decided").await;
+    assert_eq!(decided.rating.as_deref(), Some("great"));
+    assert_eq!(decided.updated_at, decided_before.updated_at);
+    let legacy_after = lifted(&db, "legacy").await;
+    assert_eq!(legacy_after.rating, legacy_before.rating);
+    assert_eq!(legacy_after.validator_rating, None);
+
+    // One-shot: a stale row written after the pass completed is no longer examined.
+    stale_ratings(&db, "undecided", "flawless", "flawless").await;
+    assert_eq!(db.recompute_validator_ratings(&store).await.unwrap(), 0);
+    assert_eq!(
+        lifted(&db, "undecided").await.rating.as_deref(),
+        Some("flawless")
+    );
 }
 
 #[tokio::test]
@@ -8674,8 +8845,38 @@ fn functional_rating_takes_the_lowest_cap_among_failing_points() {
     let manifest = validator_manifest();
     // No failure: every domain is flawless.
     assert_eq!(
-        functional_rating(Some(&manifest), &validator_record("r", &[]), &[]),
+        functional_rating(
+            Some(&manifest),
+            &validator_record("r", &[("serve", true), ("hud", true)]),
+            &[]
+        ),
         Some(Rating::Flawless)
+    );
+    // Nothing decided at all: every domain is broken.
+    assert_eq!(
+        functional_rating(Some(&manifest), &validator_record("r", &[]), &[]),
+        Some(Rating::Broken)
+    );
+    // A review deciding a point lifts that; an aesthetic-only one does not.
+    assert_eq!(
+        functional_rating(
+            Some(&manifest),
+            &validator_record("r", &[]),
+            &[override_review(
+                "u1",
+                AestheticRating::Good,
+                &[("hud", true)]
+            )]
+        ),
+        Some(Rating::Flawless)
+    );
+    assert_eq!(
+        functional_rating(
+            Some(&manifest),
+            &validator_record("r", &[]),
+            &[aesthetic_review("u1", AestheticRating::Good)]
+        ),
+        Some(Rating::Broken)
     );
     // The cosmetic point fails: both domains capped at great.
     assert_eq!(
@@ -8786,10 +8987,19 @@ fn a_run_that_did_not_complete_has_no_functional_rating() {
             None
         );
     }
-    // The completed tier is the one that rates.
+    // The completed tier is the one that rates, and a completed run whose
+    // validators decided nothing is broken.
+    assert_eq!(
+        functional_rating(
+            Some(&manifest),
+            &validator_record("r", &[("serve", true), ("hud", true)]),
+            &[]
+        ),
+        Some(Rating::Flawless)
+    );
     assert_eq!(
         functional_rating(Some(&manifest), &validator_record("r", &[]), &[]),
-        Some(Rating::Flawless)
+        Some(Rating::Broken)
     );
 }
 
@@ -9175,211 +9385,6 @@ async fn a_validator_rated_run_stays_in_the_unreviewed_worklist_until_reviewed()
     .unwrap();
     let stored = db.get_run("r1").await.unwrap().unwrap();
     assert_eq!(stored.reviews.len(), 1);
-}
-
-/// A recorded run in `state`, stored under `run_id` and produced by the finished job
-/// `job_id` — the shape every arm run takes once it lands, the arm holding the job id.
-async fn landed(db: &Db, job_id: &str, run_id: &str, state: RunState) {
-    db.enqueue_job(new_job(job_id, "2026-06-23T00:00:00Z"))
-        .await
-        .unwrap();
-    let mut r = record(run_id);
-    r.status.state = state;
-    db.push(&r, &links(), None, None).await.unwrap();
-    db.set_job_state(job_id, "failed", "2026-06-23T00:30:00Z", None, Some(run_id))
-        .await
-        .unwrap();
-}
-
-/// The defect this exists for: an arm records the job id a launch hands back, and the
-/// run its driver stores carries an id of its own minting. The recorded id resolves to
-/// that run, so an arm's statistics read the runs it launched.
-#[tokio::test]
-async fn resolve_arm_runs_follows_a_job_to_the_run_it_stored() {
-    let db = Db::connect_in_memory().await.unwrap();
-    landed(&db, "job", "produced", RunState::Completed).await;
-    // An id that is already a run id resolves to itself.
-    db.push(&record("direct"), &links(), None, None)
-        .await
-        .unwrap();
-
-    let resolved = db
-        .resolve_arm_runs(&["job".to_string(), "direct".to_string()])
-        .await
-        .unwrap();
-    assert_eq!(
-        resolved,
-        BTreeMap::from([
-            (
-                "job".to_string(),
-                ArmRunStatus::Counted("produced".to_string())
-            ),
-            (
-                "direct".to_string(),
-                ArmRunStatus::Counted("direct".to_string())
-            ),
-        ])
-    );
-}
-
-/// A run of the model's own failure counts, as a coverage cell counts it: the model had
-/// its attempt. A harness or infrastructure failure and a cancel do not.
-#[tokio::test]
-async fn resolve_arm_runs_counts_a_model_failure_and_not_a_harness_failure_or_cancel() {
-    let db = Db::connect_in_memory().await.unwrap();
-    landed(
-        &db,
-        "catastrophic",
-        "r-catastrophic",
-        RunState::Catastrophic,
-    )
-    .await;
-    landed(&db, "timed-out", "r-timed-out", RunState::TimedOut).await;
-    landed(&db, "harness", "r-harness", RunState::HarnessError).await;
-    landed(&db, "infra", "r-infra", RunState::Infrastructure).await;
-    landed(&db, "canceled", "r-canceled", RunState::Canceled).await;
-
-    let ids: Vec<String> = ["catastrophic", "timed-out", "harness", "infra", "canceled"]
-        .iter()
-        .map(|s| s.to_string())
-        .collect();
-    let resolved = db.resolve_arm_runs(&ids).await.unwrap();
-    assert_eq!(
-        resolved["catastrophic"],
-        ArmRunStatus::Counted("r-catastrophic".to_string())
-    );
-    assert_eq!(
-        resolved["timed-out"],
-        ArmRunStatus::Counted("r-timed-out".to_string())
-    );
-    assert_eq!(resolved["harness"], ArmRunStatus::NotCounted);
-    assert_eq!(resolved["infra"], ArmRunStatus::NotCounted);
-    assert_eq!(resolved["canceled"], ArmRunStatus::NotCounted);
-}
-
-/// Every in-flight state holds the run, including the two the queue has not
-/// dispatched yet: relaunching one would double the arm.
-#[tokio::test]
-async fn resolve_arm_runs_holds_a_job_in_every_in_flight_state() {
-    let db = Db::connect_in_memory().await.unwrap();
-    for (i, state) in IN_FLIGHT_STATES.iter().enumerate() {
-        db.enqueue_job(new_job(state, &format!("2026-06-23T00:0{i}:00Z")))
-            .await
-            .unwrap();
-        db.set_job_state(state, state, "2026-06-23T00:10:00Z", None, None)
-            .await
-            .unwrap();
-    }
-    let ids: Vec<String> = IN_FLIGHT_STATES.iter().map(|s| s.to_string()).collect();
-    let resolved = db.resolve_arm_runs(&ids).await.unwrap();
-    assert!(
-        resolved.values().all(|s| *s == ArmRunStatus::InFlight),
-        "{resolved:?}"
-    );
-}
-
-/// An attempt the backend retried is one run with its retry: the recorded id follows
-/// `retried_by` and stands for whatever the last attempt is.
-#[tokio::test]
-async fn resolve_arm_runs_follows_an_automatic_retry() {
-    let db = Db::connect_in_memory().await.unwrap();
-    db.enqueue_job(new_job("attempt", "2026-06-23T00:00:00Z"))
-        .await
-        .unwrap();
-    let mut failed = record("attempt-run");
-    failed.status.state = RunState::Infrastructure;
-    assert!(
-        db.enqueue_retry(
-            "attempt",
-            Some("attempt-run"),
-            NewJob {
-                attempt: 1,
-                ..new_job("retry", "2026-06-23T00:50:00Z")
-            },
-        )
-        .await
-        .unwrap()
-    );
-    db.push(&failed, &links(), None, None).await.unwrap();
-    db.set_job_state(
-        "attempt",
-        "failed",
-        "2026-06-23T00:40:00Z",
-        None,
-        Some("attempt-run"),
-    )
-    .await
-    .unwrap();
-
-    // While the retry is queued, the recorded attempt is in flight.
-    let resolved = db.resolve_arm_runs(&["attempt".to_string()]).await.unwrap();
-    assert_eq!(resolved["attempt"], ArmRunStatus::InFlight);
-
-    // Once the retry lands, the attempt stands for the retry's run.
-    db.push(&record("retry-run"), &links(), None, None)
-        .await
-        .unwrap();
-    db.set_job_state(
-        "retry",
-        "succeeded",
-        "2026-06-23T01:20:00Z",
-        None,
-        Some("retry-run"),
-    )
-    .await
-    .unwrap();
-    let resolved = db.resolve_arm_runs(&["attempt".to_string()]).await.unwrap();
-    assert_eq!(
-        resolved["attempt"],
-        ArmRunStatus::Counted("retry-run".to_string())
-    );
-
-    // Deleting the failed attempt's run keeps the attempt's job, so the arm still
-    // reaches the retry's run through it.
-    db.delete_run("attempt-run").await.unwrap();
-    let resolved = db.resolve_arm_runs(&["attempt".to_string()]).await.unwrap();
-    assert_eq!(
-        resolved["attempt"],
-        ArmRunStatus::Counted("retry-run".to_string())
-    );
-}
-
-/// A run deleted after it landed, a job that ended without storing a run, and an id
-/// nothing carries are not held, so the arm can be topped back up.
-#[tokio::test]
-async fn resolve_arm_runs_holds_nothing_for_a_deleted_run_or_a_job_with_no_run() {
-    let db = Db::connect_in_memory().await.unwrap();
-    landed(&db, "deleted", "r-deleted", RunState::Completed).await;
-    db.delete_run("r-deleted").await.unwrap();
-    db.enqueue_job(new_job("no-record", "2026-06-23T00:01:00Z"))
-        .await
-        .unwrap();
-    db.set_job_state(
-        "no-record",
-        "failed",
-        "2026-06-23T00:05:00Z",
-        Some("could not pull the run image"),
-        None,
-    )
-    .await
-    .unwrap();
-
-    let ids: Vec<String> = ["deleted", "no-record", "never-existed"]
-        .iter()
-        .map(|s| s.to_string())
-        .collect();
-    let resolved = db.resolve_arm_runs(&ids).await.unwrap();
-    assert_eq!(resolved.len(), 3);
-    assert!(
-        resolved.values().all(|s| *s == ArmRunStatus::NotCounted),
-        "{resolved:?}"
-    );
-}
-
-#[tokio::test]
-async fn resolve_arm_runs_of_nothing_is_empty() {
-    let db = Db::connect_in_memory().await.unwrap();
-    assert!(db.resolve_arm_runs(&[]).await.unwrap().is_empty());
 }
 
 /// The list-price write puts a complete, dated, sourced price onto a curated entry and

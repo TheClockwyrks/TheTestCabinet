@@ -120,17 +120,24 @@ A push to `staging` deploys staging in the workspace template's deployment job
 
 1. **Before**: [`scripts/ci/pre-deploy.sh`](../scripts/ci/pre-deploy.sh) pins the
    overlay, records the commit the namespace runs now, gives every rollout 600
-   seconds, and retires the backend Deployment of its old name, `tcab-backend`, which
-   holds the backend's disk, and the artifacts service's StatefulSet, which its
-   stateless Deployment replaces
-   ([`retire-legacy-backend.sh`](../scripts/ci/retire-legacy-backend.sh)).
-2. **The template's deploy**: `scripts/ci/deploy.sh` applies the overlay and waits on
-   `the-test-cabinet-backend`, rolling it back if it does not become ready.
+   seconds, checks the catalog the new backend will ingest
+   ([`catalog-ingest.sh`](../scripts/ci/catalog-ingest.sh) `preflight`), and retires
+   the objects of an earlier shape
+   ([`retire-legacy-backend.sh`](../scripts/ci/retire-legacy-backend.sh)): the
+   backend Deployment of its old name, `tcab-backend`, which holds the backend's disk,
+   the artifacts service's StatefulSet, which its stateless Deployment replaces, and
+   the internal ingress's Ingresses, its network policies and the `tcab-auth`
+   workload, which the edge replaced.
+2. **The template's deploy**: `scripts/ci/deploy.sh` runs the catalog preflight
+   ([`deploy-preflight.sh`](../scripts/ci/deploy-preflight.sh)), applies the overlay
+   and waits on `the-test-cabinet-backend`, rolling it back if it does not become
+   ready.
 3. **Post-deploy**: once the backend is ready,
    [`scripts/ci/post-deploy.sh`](../scripts/ci/post-deploy.sh) settles every other
    workload through
    [`scripts/ci/settle-workloads.sh`](../scripts/ci/settle-workloads.sh), which waits
-   on each and undoes each that does not become ready.
+   on each and undoes each that does not become ready, and reads the ingest sidecar's
+   result (`catalog-ingest.sh verify`).
 4. **After a failure**: `settle-workloads.sh --after-failure` settles the rest,
    prints the pods and events, and prints the recovery: the command that puts the
    namespace back on the commit it ran before, or "fix forward" when there is no
@@ -139,8 +146,9 @@ A push to `staging` deploys staging in the workspace template's deployment job
 A push to `master` deploys prod in the pipeline's own prod stage, which publishes
 the same retag and runs `scripts/ci/deploy-environment.sh prod <sha>`
 ([source](../scripts/ci/deploy-environment.sh)): it pins a temporary copy, refuses
-a render with anything outside `tcab-prod`, retires `tcab-backend`, applies, and
-waits on every workload, undoing each that fails. The same script rolls either
+a render with anything outside `tcab-prod`, runs the catalog preflight, retires the
+objects of an earlier shape, applies, waits on every workload, undoing each that
+fails, and reads the ingest sidecar's result. The same script rolls either
 environment by hand onto any commit the registry holds, and `--render` prints what it
 would apply.
 [`scripts/ci/k8s-deploy-sets.sh`](../scripts/ci/k8s-deploy-sets.sh), the

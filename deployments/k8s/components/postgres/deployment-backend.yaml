@@ -28,7 +28,7 @@
 # resolve a single test case — it is held out of its Service by /readyz for that whole
 # window, so the queue stalls. An emptyDir paid that cost on EVERY reschedule, and
 # reschedules are not rare: AKS node-image auto-upgrade drains nodes on its own
-# schedule and moved this pod repeatedly. A 10Gi disk that survives the move turns a
+# schedule and moved this pod repeatedly. A disk that survives the move turns a
 # multi-minute cold rebuild into an attach.
 apiVersion: v1
 kind: PersistentVolumeClaim
@@ -41,9 +41,14 @@ spec:
   # update would deadlock on the disk (new pod Pending on attach, old pod never
   # released) — which is another reason not to relax `Recreate` below.
   accessModes: ["ReadWriteOnce"]
+  # The size of /state, for staging and prod alike: no overlay patches it. To grow
+  # the volume, raise this and deploy. The deploy's preflight
+  # (scripts/ci/catalog-ingest.sh) compares it with the live claim: it counts the
+  # growth as free space, and refuses a deploy that asks for a smaller size, which
+  # Kubernetes rejects, or for a larger one on a storage class that cannot expand.
   resources:
     requests:
-      storage: 10Gi
+      storage: 16Gi
   # storageClassName: <your-block-storage-class>   # defaults to the cluster's default
 ---
 apiVersion: apps/v1

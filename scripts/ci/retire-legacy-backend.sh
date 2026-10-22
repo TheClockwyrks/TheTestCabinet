@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
-# Deletes the workloads of an earlier shape from one namespace, before an apply:
-# the backend Deployment of its old name, `tcab-backend`, and the artifacts
-# service's StatefulSet, `tcab-artifacts`.
+# Deletes the objects of an earlier shape from one namespace, before an apply: the
+# backend Deployment of its old name, `tcab-backend`, the artifacts service's
+# StatefulSet, `tcab-artifacts`, and what the edge replaced (the internal ingress's
+# Ingresses and the network policies that admitted it, and the `tcab-auth` sign-in
+# workload).
 #
 #   scripts/ci/retire-legacy-backend.sh [--dry-run]
 #
@@ -19,9 +21,23 @@
 # never deletes a claim its template made, and the trees on it are an operator's
 # to move (scripts/ci/copy-artifact-trees.sh) or drop.
 #
-# This deletes both, and waits for their pods to be gone, before anything is
-# applied. It is idempotent: once a workload is gone, its delete finds nothing and
-# succeeds, so every deployment runs it.
+# The edge (Cloudflare Access over a Cloudflare Tunnel) replaced the internal
+# ingress and the sign-in service in front of it. A namespace deployed before still
+# holds their objects, which no render names any more and an apply never prunes:
+#
+#   - the Ingresses `tcab-api`, `tcab-arena`, `tcab-artifacts`, `tcab-auth`,
+#     `tcab-console` and `tcab-grafana`, which still publish the services through the
+#     ingress controller, around Access;
+#   - the network policies `tcab-allow-services-from-ingress`,
+#     `tcab-allow-web-from-ingress`, `tcab-allow-lgtm-from-ingress` and
+#     `tcab-allow-arena-from-console`, which still admit the ingress controller's
+#     traffic to the services;
+#   - the `tcab-auth` Deployment, its Service, its ServiceAccount and its Secret
+#     `tcab-auth-secrets`, a workload nothing routes to any more.
+#
+# This deletes them all, and waits for the workloads' pods to be gone, before
+# anything is applied. It is idempotent: once an object is gone, its delete finds
+# nothing and succeeds, so every deployment runs it.
 #
 # The cluster's API server is private, so the delete runs inside the cluster
 # through `az aks command invoke` (lib.sh's aks_invoke), under the caller's Azure
@@ -43,7 +59,12 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
 readonly RESOURCE_GROUP="${THE_TEST_CABINET_RESOURCE_GROUP:-testcabinet-staging-westus2-rg}"
 readonly CLUSTER="${THE_TEST_CABINET_CLUSTER:-testcabinet-staging-westus2-aks}"
 readonly NAMESPACE="${THE_TEST_CABINET_NAMESPACE:-tcab-staging}"
-readonly LEGACY="deployment/tcab-backend statefulset/tcab-artifacts"
+readonly LEGACY="deployment/tcab-backend statefulset/tcab-artifacts \
+ingress/tcab-api ingress/tcab-arena ingress/tcab-artifacts ingress/tcab-auth \
+ingress/tcab-console ingress/tcab-grafana \
+networkpolicy/tcab-allow-services-from-ingress networkpolicy/tcab-allow-web-from-ingress \
+networkpolicy/tcab-allow-lgtm-from-ingress networkpolicy/tcab-allow-arena-from-console \
+deployment/tcab-auth service/tcab-auth serviceaccount/tcab-auth secret/tcab-auth-secrets"
 
 dry_run=""
 if [[ "${1:-}" == --dry-run ]]; then
@@ -77,13 +98,13 @@ work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 printf 'set -eu\n%s\n' "$COMMAND" >"${work}/retire-legacy-backend.sh"
 
-echo "Retiring the legacy workloads ${LEGACY} from ${NAMESPACE} on ${CLUSTER}."
+echo "Retiring the legacy objects ${LEGACY} from ${NAMESPACE} on ${CLUSTER}."
 verdict=0
 aks_invoke "$RESOURCE_GROUP" "$CLUSTER" "${work}/retire-legacy-backend.sh" "sh retire-legacy-backend.sh" || verdict=$?
 if [[ "$verdict" -ne 0 ]]; then
-	echo "retire-legacy-backend.sh: the legacy workloads ${LEGACY} were not retired from ${NAMESPACE}, above." >&2
+	echo "retire-legacy-backend.sh: the legacy objects ${LEGACY} were not retired from ${NAMESPACE}, above." >&2
 	remediation "Nothing was applied. Delete them by hand, then deploy again:" \
 		"    az aks command invoke --resource-group ${RESOURCE_GROUP} --name ${CLUSTER} --command \"${COMMAND}\""
 	exit 1
 fi
-echo "The legacy workloads ${LEGACY} are not in ${NAMESPACE}."
+echo "The legacy objects ${LEGACY} are not in ${NAMESPACE}."

@@ -26,7 +26,7 @@ use tokio::time::Instant;
 
 use crate::client::PublishJobClient;
 use crate::config::Config;
-use crate::download::download_run_tree;
+use crate::download::{DownloadError, download_run_tree};
 use crate::publish::{PreparedRelease, ReleasedLinks};
 use crate::release::SystemCommandRunner;
 use crate::retry::Backoff;
@@ -435,7 +435,12 @@ impl Steps for JobSteps<'_> {
             &Backoff::default(),
         )
         .await
-        .map_err(|err| format!("downloading the run source tree: {err}"))?;
+        .map_err(|err| match err {
+            // Stated on its own: this detail is what the operator's publish-failed
+            // notification shows, and the cause is the run, not the download.
+            DownloadError::NoStoredTree { .. } => err.to_string(),
+            err => format!("downloading the run source tree: {err}"),
+        })?;
         self.release = Some(PreparedRelease::from_env(&run_dir).map_err(|err| err.to_string())?);
         Ok(())
     }

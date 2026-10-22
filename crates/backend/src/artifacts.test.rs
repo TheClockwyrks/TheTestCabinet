@@ -218,6 +218,7 @@ async fn a_sweep_with_no_live_runs_deletes_nothing() {
         outcome,
         SweepOutcome {
             listed: 2,
+            orphans: 0,
             reclaimed: 0,
             failed: 0,
         }
@@ -313,6 +314,7 @@ async fn a_sweep_deletes_only_the_stale_orphan() {
         outcome,
         SweepOutcome {
             listed: 3,
+            orphans: 1,
             reclaimed: 1,
             failed: 0,
         }
@@ -343,6 +345,7 @@ async fn a_refused_sweep_delete_is_counted_and_the_pass_finishes() {
         outcome,
         SweepOutcome {
             listed: 2,
+            orphans: 2,
             reclaimed: 0,
             failed: 2,
         }
@@ -375,4 +378,93 @@ fn an_unrepresentable_grace_window_spares_every_tree() {
     let trees = vec![tree("ancient", 100_000)];
     let selected = orphaned_trees(&trees, &live(&["another-run"]), now(), Duration::MAX);
     assert!(selected.is_empty(), "{selected:?}");
+}
+
+// ---------------------------------------------------------------------------
+// A scheduled pass
+// ---------------------------------------------------------------------------
+
+/// A database holding a pushed run for each of `ids`.
+async fn db_with(ids: &[&str]) -> crate::db::Db {
+    let db = crate::db::Db::connect_in_memory().await.unwrap();
+    for id in ids {
+        db.push(
+            &crate::db::tests::record(id),
+            &crate::db::tests::links(),
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+    }
+    db
+}
+
+/// One scheduled pass against the stub at `base`, with a day's grace.
+async fn scheduled(db: &crate::db::Db, base: &str) -> ScheduledPass {
+    scheduled_pass(
+        db,
+        &reqwest::Client::new(),
+        base,
+        TOKEN,
+        now(),
+        Duration::from_secs(24 * 60 * 60),
+    )
+    .await
+}
+
+#[tokio::test]
+async fn a_scheduled_pass_that_changes_nothing_still_completes_with_its_counts() {
+    let db = db_with(&["kept"]).await;
+    let (base, stub) = spawn_stub(listing(&[("kept", 200)]), StatusCode::NO_CONTENT).await;
+
+    let pass = scheduled(&db, &base).await;
+
+    let ScheduledPass::Complete(outcome) = pass else {
+        panic!("expected a complete pass, got {pass:?}");
+    };
+    assert_eq!(
+        outcome,
+        SweepOutcome {
+            listed: 1,
+            orphans: 0,
+            reclaimed: 0,
+            failed: 0,
+        }
+    );
+    assert!(stub.recorder.lock().unwrap().deleted.is_empty());
+}
+
+#[tokio::test]
+async fn a_scheduled_pass_with_no_run_rows_is_abandoned_before_it_lists() {
+    // A fresh database beside a populated store: every tree would be an orphan.
+    let db = db_with(&[]).await;
+    let (base, stub) = spawn_stub(listing(&[("a", 200), ("b", 200)]), StatusCode::NO_CONTENT).await;
+
+    let pass = scheduled(&db, &base).await;
+
+    let ScheduledPass::Abandoned(why) = pass else {
+        panic!("expected an abandoned pass, got {pass:?}");
+    };
+    assert_eq!(why.as_str(), "no_runs");
+    assert!(
+        stub.recorder.lock().unwrap().deleted.is_empty(),
+        "nothing is swept"
+    );
+}
+
+#[tokio::test]
+async fn a_scheduled_pass_whose_listing_fails_is_abandoned() {
+    let db = db_with(&["kept"]).await;
+    // A base URL nothing answers on: a listener bound, then dropped.
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    drop(listener);
+
+    let pass = scheduled(&db, &format!("http://{addr}")).await;
+
+    let ScheduledPass::Abandoned(why) = pass else {
+        panic!("expected an abandoned pass, got {pass:?}");
+    };
+    assert_eq!(why.as_str(), "listing_failed");
 }

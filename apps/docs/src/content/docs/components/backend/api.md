@@ -500,7 +500,9 @@ image store](/components/driver/validation/#the-shared-image-store) its recordin
 draw from), synthesized from the reference implementation. The engine is part of
 the address because a variant has one reference implementation per
 [engine](/components/engines/engines/), and a run is only comparable against the
-one it was itself built on.
+one it was itself built on. A version captured before engines existed answers
+under the `none` engine; see
+[where baselines live](/components/driver/validation/#where-baselines-live).
 
 ### `GET /test-cases/{slug}/versions/{version}/showcase/{variant}/{file}`
 
@@ -712,7 +714,7 @@ attempt is counted. The backend refuses the old token from then on.
 past `dispatched`, its driver [gone without
 reporting](/components/dispatcher/overview/#lost-drivers). It requires the
 service token and takes a `failed` status with a detail and no record (`422`
-otherwise). A `starting`, `running` or `storing` job that holds a record is
+otherwise). A `starting`, `running`, `validating` or `storing` job that holds a record is
 finished from it. One that holds none is failed as
 [`infrastructure`](/components/contracts/run-records/#status), exactly as the
 driver's own `failed` report would fail it. A job in any other state is left
@@ -833,10 +835,7 @@ because a public run is in the snapshot and the gallery. A published run whose
 record this build cannot read is deleted, since it is already absent from both.
 `404` if unknown. The response reports the run id and `deleted: true`.
 
-The job that produced the run is deleted with it, except a job the backend
-[retried](/components/backend/coverage/#which-runs-count). That job is kept with
-no run, because a comparison arm that recorded it follows its `retried_by` to the
-retry's run.
+The job that produced the run is deleted with it.
 
 The run's playable build and recorded logs live on the separate [artifacts
 service](/components/artifacts/overview/), and its bundle on the [repos
@@ -1006,7 +1005,9 @@ cannot read answers `404` here and is reached through [`GET
 - `rating`: the run's functional rating. On a validator-rated run the
   validators' rating while the run has no reviews, present from completion,
   and the worst of its reviews' effective ratings once it has any; on a legacy
-  run the review aggregate. Composed with the toolchain gate either way. `null`
+  run the review aggregate. A completed validator-rated run whose effective
+  checklist decides no scored point is `broken`. Composed with the toolchain
+  gate either way. `null`
   while unset, which is a legacy run with no review, and `null` for every run
   that did not complete: a catastrophic failure, a timeout, or any other
   failure tier is unscored, whatever its case version, since no build loaded
@@ -1018,7 +1019,9 @@ cannot read answers `404` here and is reached through [`GET
   same `{ earned, total, reviews, overallGrade }` the summary card carries. On
   a validator-rated run the validators' score while the run has no reviews
   (`reviews` is `0`), present from completion, and the mean of its reviews'
-  effective scores once it has any, with `reviews` counting them; on a legacy
+  effective scores once it has any, with `reviews` counting them. A run or review
+  whose effective checklist decides no scored point scores `earned: 0` over the
+  declared weight of the scored points. On a legacy
   run the mean across its reviews, `null` while unreviewed. `null` when the
   run's case version is not ingested, and `null` for every run that did not
   complete, for the same reason its `rating` is.
@@ -1229,10 +1232,10 @@ those runs, so a cell never reads more than its target.
 
 ### Halting a plan
 
-| endpoint                             | ends filling | cancels                                            |
-| ------------------------------------ | ------------ | -------------------------------------------------- |
-| `POST /coverage-plans/{id}/halt`     | yes          | its `queued` + `pending` jobs                      |
-| `POST /coverage-plans/{id}/halt-all` | yes          | the above plus `dispatched`, `starting`, `running` |
+| endpoint                             | ends filling | cancels                                                                     |
+| ------------------------------------ | ------------ | --------------------------------------------------------------------------- |
+| `POST /coverage-plans/{id}/halt`     | yes          | its `queued` + `pending` jobs                                               |
+| `POST /coverage-plans/{id}/halt-all` | yes          | the above plus `dispatched`, `starting`, `running`, `validating`, `storing` |
 
 Both reuse the same atomic cancel transition
 [`POST /jobs/{id}/cancel`](#stopping-runs-in-bulk) uses, and reach only jobs whose
@@ -1282,7 +1285,8 @@ starts a dispatch of it.
   resolves no climbers, or holds a rung that is not validator-rated.
 - `POST /ladders/{id}/stop` — end the running dispatch and cancel the `queued` and
   `pending` jobs it launched. With `{ "cancelRunning": true }` it also cancels
-  the `dispatched`, `starting`, and `running` jobs it launched, which a client
+  the `dispatched`, `starting`, `running`, `validating` and `storing` jobs it
+  launched, which a client
   must confirm first. Both reach the jobs an
   [earlier dispatch](/components/backend/ladders/#stopping-a-dispatch) of the
   ladder left in flight as well.
@@ -1320,11 +1324,11 @@ climber's Retry, and every finishing run of one of its rung slots' cells
 Three global sweeps. All take a person's assertion, and all answer
 `{ "canceled": n, "includedWaiting": bool, "includedActive": bool }`.
 
-| endpoint                    | sweeps                              |
-| --------------------------- | ----------------------------------- |
-| `POST /jobs/cancel-waiting` | `queued`, `pending`                 |
-| `POST /jobs/cancel-active`  | `dispatched`, `starting`, `running` |
-| `POST /jobs/cancel-all`     | both, in one transition             |
+| endpoint                    | sweeps                                                       |
+| --------------------------- | ------------------------------------------------------------ |
+| `POST /jobs/cancel-waiting` | `queued`, `pending`                                          |
+| `POST /jobs/cancel-active`  | `dispatched`, `starting`, `running`, `validating`, `storing` |
+| `POST /jobs/cancel-all`     | both, in one transition                                      |
 
 These are global and scoped to nothing: they cancel matching jobs whatever
 launched them, including runs launched by hand and runs launched by another

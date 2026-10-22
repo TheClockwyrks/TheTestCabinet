@@ -39,6 +39,7 @@ use time::format_description::well_known::Rfc3339;
 use time::macros::format_description;
 
 use test_cabinet_contracts::run_record::RunRecord;
+use test_cabinet_contracts::test_case::version_key;
 use test_cabinet_redact::SecretScrubber;
 use test_cabinet_suites::content_labels::{self, ContentLabels};
 
@@ -51,11 +52,12 @@ use crate::store::{DefinitionStore, StoredManifest};
 pub use test_cabinet_contracts::backend_api::snapshot::{
     CaseCheckOut, CaseDomainOut, CaseErratumOut, CaseMetadata, CasePackageOut, CaseReferenceOut,
     CaseReferenceSheetOut, CaseReviewItemOut, CaseReviewValidationOut, CaseSeededInputOut,
-    CaseShowcaseMediaOut, CaseShowcaseOut, CaseSubReviewItemOut, CaseValidationBaselineOut,
-    CaseVariantOut, CaseVariantRenderingOut, CaseWorkspaceFileOut, CodeSummaryOut, ComparisonFile,
-    ComparisonsIndex, GgRunsFile, LinksOut, ModelCatalogFile, PerRun, PerformanceSummaryOut,
-    Review, RunAssetOut, RunProofOut, RunScoreOut, RunShowcaseOut, RunSummary,
-    RunValidationMediaOut, RunsIndex, SnapshotIndex, SubjectOut, TestCaseGroupsFile,
+    CaseShowcaseMediaOut, CaseShowcaseOut, CaseShowcasesFile, CaseSubReviewItemOut,
+    CaseValidationBaselineOut, CaseVariantOut, CaseVariantRenderingOut, CaseVariantShowcase,
+    CaseVersionShowcases, CaseWorkspaceFileOut, CodeSummaryOut, ComparisonFile, ComparisonsIndex,
+    GgRunsFile, LinksOut, ModelCatalogFile, PerRun, PerformanceSummaryOut, Review, RunAssetOut,
+    RunProofOut, RunScoreOut, RunShowcaseOut, RunSummary, RunValidationMediaOut, RunsIndex,
+    SnapshotIndex, SubjectOut, TestCaseGroupsFile,
 };
 
 /// The schema version stamped into every snapshot document.
@@ -616,14 +618,52 @@ impl SnapshotBuilder {
                 )
             })
             .collect();
+        //
+        // A version's showcases follow a looser rule (see [`CaseShowcasesFile`]): every
+        // non-experimental version of a case with a published run of *any* version
+        // publishes them, so the gallery can preview a listed case with its newest
+        // showcase. A version that has a case document names the same showcase
+        // objects on it.
+        let cases_with_runs: std::collections::HashSet<&str> =
+            versions_with_runs.iter().map(|(slug, _)| *slug).collect();
+        let mut case_showcases: Vec<CaseVersionShowcases> = Vec::new();
         for manifest in &self.cases {
-            if !versions_with_runs.contains(&(manifest.slug.as_str(), manifest.version.as_str())) {
+            let has_runs =
+                versions_with_runs.contains(&(manifest.slug.as_str(), manifest.version.as_str()));
+            let showcased =
+                !manifest.experimental && cases_with_runs.contains(manifest.slug.as_str());
+            if !has_runs && !showcased {
+                continue;
+            }
+            let (showcases, showcase_objects) = self.case_showcases(manifest).await;
+            objects.extend(showcase_objects);
+            if showcased {
+                let variants: Vec<CaseVariantShowcase> = manifest
+                    .variants
+                    .iter()
+                    .filter_map(|variant| {
+                        showcases
+                            .get(&variant.slug)
+                            .map(|showcase| CaseVariantShowcase {
+                                variant: variant.slug.clone(),
+                                showcase: showcase.clone(),
+                            })
+                    })
+                    .collect();
+                if !variants.is_empty() {
+                    case_showcases.push(CaseVersionShowcases {
+                        slug: manifest.slug.clone(),
+                        version: manifest.version.clone(),
+                        variants,
+                    });
+                }
+            }
+            if !has_runs {
                 continue;
             }
             let (references, reference_objects) = self.case_references(manifest);
             let (validation_baselines, baseline_objects) =
                 self.case_validation_baselines(manifest).await;
-            let (showcases, showcase_objects) = self.case_showcases(manifest).await;
             let (workspace_files, workspace_objects) = self.case_workspace_files(manifest);
             let variant_reference_builds = self
                 .reference_builds
@@ -646,9 +686,25 @@ impl SnapshotBuilder {
             )?);
             objects.extend(reference_objects);
             objects.extend(baseline_objects);
-            objects.extend(showcase_objects);
             objects.extend(workspace_objects);
         }
+
+        // case-showcases.json — the showcases of every non-experimental version of
+        // each case with a published run, in slug then version order so the document
+        // is stable across refreshes.
+        case_showcases.sort_by(|a, b| {
+            a.slug
+                .cmp(&b.slug)
+                .then_with(|| version_key(&a.version).cmp(&version_key(&b.version)))
+                .then_with(|| a.version.cmp(&b.version))
+        });
+        objects.push(json_object(
+            format!("{prefix}/case-showcases.json"),
+            &CaseShowcasesFile {
+                schema_version: SCHEMA_VERSION,
+                showcases: case_showcases,
+            },
+        )?);
 
         // models.json — the composed model catalog (curated ⋃ derived-from-runs,
         // with each model's list price), so the public site renders the Models section from
@@ -758,6 +814,7 @@ impl SnapshotBuilder {
                 comparisons_prefix: format!("{prefix}/comparisons/"),
                 gg_runs_key: format!("{prefix}/gg-runs.json"),
                 test_case_groups_key: Some(format!("{prefix}/test-case-groups.json")),
+                case_showcases_key: Some(format!("{prefix}/case-showcases.json")),
             },
         )?;
 
@@ -2602,7 +2659,8 @@ fn aggregate_aesthetic_inner(
 /// ([`crate::review::validator_aggregate_score`]: each review's
 /// checklist overlays the validators' verdicts and the run averages the reviews'
 /// effective scores; with zero reviews the validators' own figure stands), always
-/// `Some`. Otherwise the aggregate reviewer score: the case's declared checklist
+/// `Some`; an effective checklist that decides no scored point scores zero over the
+/// declared weight. Otherwise the aggregate reviewer score: the case's declared checklist
 /// weights scored against each of the run's `reviews`, then averaged (see
 /// [`crate::review::aggregate_score`]), `None` when the run carries no
 /// reviews. Either way `None` for a run whose terminal state is not

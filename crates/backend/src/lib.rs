@@ -181,6 +181,18 @@ async fn build_with_prices(
         Err(err) => tracing::warn!(error = %err, "skipping run validator-rating backfill"),
     }
 
+    // The stored functional ratings of completed validator-rated runs, recomputed once
+    // under the current validator rating rule, so the columns the console's sort, the
+    // stats board and a ladder's gate read agree with the snapshot, which recomputes on
+    // every refresh. A run whose version the store does not hold yet leaves the pass
+    // unmarked, and the ingest that supplies the version (or the next boot) finishes
+    // it. Best-effort, never blocks startup.
+    match db.recompute_validator_ratings(&store).await {
+        Ok(0) => {}
+        Ok(rewritten) => tracing::info!(rewritten, "recomputed run validator ratings"),
+        Err(err) => tracing::warn!(error = %err, "skipping run validator-rating recompute"),
+    }
+
     // The static analyzer's generation, lifted out of records that already carry a code
     // analysis but were stored before the column existed. This lifts a number the record
     // blob already holds — it never *analyses* anything, because a historical run's tree

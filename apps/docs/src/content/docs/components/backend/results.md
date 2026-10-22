@@ -370,7 +370,10 @@ the contracts' `redact` crate provides:
 The scrubber matches any provider-shaped `sk-…` token, anchored to the `sk-`
 prefix and requiring a long enough body, along with the exact values of the
 key-named environment variables the contract lists where the scrubbing process
-holds them. Each match is replaced with `[REDACTED]`. The third public surface,
+holds them. Each match is replaced with `[REDACTED]`. A JSON document is
+scrubbed in its object keys as well as its strings, since a tool call's
+arguments carry keys the model wrote; two keys of one object that redact to the
+same text are told apart by a number appended to the later one. The third public surface,
 the run's record and event stream in the public dataset, is scrubbed by the
 backend as it writes the run's document; see [the per-run
 record](/components/backend/snapshot/#run-documents).
@@ -448,9 +451,11 @@ verdict carries the reviewer's whole-game mark on the same scale.
 
 A review's score is the earned weight over the total declared weight. On a
 validator-rated run both sides of that ratio include only the points that have an
-effective verdict, so a point nothing decided costs the build nothing. An item
-excluded from scoring for the version, through an erratum, contributes to neither
-side of the ratio while remaining visible and checked.
+effective verdict, so a point nothing decided costs the build nothing while some
+other scored point is decided. An effective checklist that decides no scored point
+scores zero over the declared weight of every scored point. An item excluded from
+scoring for the version, through an erratum, contributes to neither side of the
+ratio while remaining visible and checked.
 
 ### Ratings
 
@@ -465,7 +470,8 @@ tier for the whole run.
   run each domain's rating is decided from a review's effective checklist and
   each failing item's failure cap, as
   [Evaluation](/testing/end-to-end/evaluation/#the-validator-decided-functional-rating)
-  specifies. On a legacy run the reviewer assigns it.
+  specifies, and an effective checklist that decides no scored point rates every
+  domain `broken`. On a legacy run the reviewer assigns it.
 - The aesthetic rating, best to worst, is `legendary`, `amazing`, `good`, `okay`,
   or `slop`. It is one judgement about how the whole build looks, sounds, and
   feels to play, so a review carries a single tier for the run. The reviewer
@@ -485,13 +491,15 @@ are aggregated across them:
   each review's earned weight over the shared total declared weight. On a
   validator-rated run it is each review's effective-checklist score, so a review
   with no overrides reproduces the validators' figure exactly. While a
-  validator-rated run has no reviews, the validators' own score stands.
+  validator-rated run has no reviews, the validators' own score stands, which is
+  zero over the declared weight when they decided no scored point.
 - The run's functional rating is the worst across all of its reviews: the worst
   across domains within each review, then the worst of those across reviews. On a
   validator-rated run each review's rating is derived from its effective
-  checklist, the validators' own rating stands while the run has no reviews, and
-  the [toolchain gate](/components/driver/validation/#the-toolchain-gate) applies
-  to the aggregate.
+  checklist, the validators' own rating stands while the run has no reviews
+  (`broken` when they decided no scored point), and the
+  [toolchain gate](/components/driver/validation/#the-toolchain-gate) applies to the
+  aggregate.
 - The run's aesthetic rating is the worst run-wide tier across its reviews. A
   validator-rated run with no review has a functional rating and score and no
   aesthetic rating.

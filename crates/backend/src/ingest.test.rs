@@ -1236,6 +1236,95 @@ fn ingest_without_cold_storage_succeeds_with_empty_baselines() {
     );
 }
 
+/// A deploy's submodule fetch can fail, and the ingest that follows is forced.
+/// Cold storage that is not checked out says nothing about a version, so the
+/// baselines already stored have to survive it.
+#[test]
+fn a_forced_reingest_without_cold_storage_keeps_the_stored_baselines() {
+    let checkout = TempDir::new().unwrap();
+    write_e2e_case(checkout.path(), "demo", "demo");
+    let cold_root = checkout
+        .path()
+        .join(test_cabinet_contracts::cold_storage::COLD_STORAGE_DIR);
+    write(
+        &cold_baseline_dir(&cold_root, "demo").join("none/base/spin__still.png"),
+        "png:still",
+    );
+    let store_dir = TempDir::new().unwrap();
+    let store = DefinitionStore::open(store_dir.path()).unwrap();
+    let cold = ColdStorage::at(checkout.path(), &cold_root);
+    Ingestor::new(checkout.path(), &store)
+        .with_cold_storage(cold.clone())
+        .scan(&IngestRequest::default())
+        .expect("the first scan ingests the case with its baselines");
+
+    // The submodule as a failed fetch leaves it: nothing but git's own entry.
+    std::fs::remove_dir_all(&cold_root).unwrap();
+    write(
+        &cold_root.join(".git"),
+        "gitdir: ../.git/modules/cold-storage",
+    );
+    let report = Ingestor::new(checkout.path(), &store)
+        .with_cold_storage(cold)
+        .scan(&IngestRequest {
+            force: true,
+            ..IngestRequest::default()
+        })
+        .expect("the forced scan re-ingests the case");
+
+    assert!(report.test_case_versions[0].ingested);
+    assert_eq!(
+        store
+            .read_validation_baseline("demo", "v1.0.0", "none", "base", "spin__still.png")
+            .unwrap(),
+        b"png:still",
+    );
+}
+
+/// Cold storage that IS checked out is authoritative: a version whose baselines
+/// were removed from it loses them at the next forced ingest, rather than keeping
+/// a stale copy forever.
+#[test]
+fn a_forced_reingest_drops_baselines_a_checked_out_cold_storage_no_longer_holds() {
+    let checkout = TempDir::new().unwrap();
+    write_e2e_case(checkout.path(), "demo", "demo");
+    let cold_root = checkout
+        .path()
+        .join(test_cabinet_contracts::cold_storage::COLD_STORAGE_DIR);
+    write(
+        &cold_baseline_dir(&cold_root, "demo").join("none/base/spin__still.png"),
+        "png:still",
+    );
+    let store_dir = TempDir::new().unwrap();
+    let store = DefinitionStore::open(store_dir.path()).unwrap();
+    let cold = ColdStorage::at(checkout.path(), &cold_root);
+    Ingestor::new(checkout.path(), &store)
+        .with_cold_storage(cold.clone())
+        .scan(&IngestRequest::default())
+        .unwrap();
+
+    // Still checked out (it holds another case's media), without this version's.
+    std::fs::remove_dir_all(cold_baseline_dir(&cold_root, "demo")).unwrap();
+    write(
+        &cold_baseline_dir(&cold_root, "other").join("none/base/x__y.png"),
+        "png",
+    );
+    Ingestor::new(checkout.path(), &store)
+        .with_cold_storage(cold)
+        .scan(&IngestRequest {
+            force: true,
+            ..IngestRequest::default()
+        })
+        .unwrap();
+
+    assert!(
+        store
+            .list_validation_baseline("demo", "v1.0.0", "none", "base")
+            .unwrap()
+            .is_empty()
+    );
+}
+
 #[test]
 fn ingest_reads_baselines_from_an_overridden_cold_storage_root() {
     let checkout = TempDir::new().unwrap();

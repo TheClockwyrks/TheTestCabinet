@@ -31,6 +31,36 @@ publishes. A run's full record, its events, and all media are objects fetched
 when that run's page opens, so what a page carries stays the same as the corpus
 grows.
 
+### Fetching the snapshot
+
+The snapshot holds one document per published run, and the bucket serves them
+without an edge cache, so a build makes about a thousand requests and a dropped
+connection among them is expected. Every snapshot request is therefore retried
+and bounded:
+
+- An attempt has 60 seconds to return its whole body.
+- A network error, a timeout, and an HTTP 408, 429 or 5xx are transient. A
+  transient failure is retried up to 5 attempts in total, after a jittered
+  backoff that starts at 500 ms, doubles per attempt and is capped at 8 seconds.
+- Any other status is final on the first attempt. A 404 keeps its meaning: an
+  absent `index.json` is the empty dataset, and an absent file that `index.json`
+  references is a broken snapshot.
+
+The per-run documents are fetched 8 at a time, which `TCAB_SNAPSHOT_CONCURRENCY`
+overrides with any positive integer. Eight is roughly what a browser opens to
+one host: a document's cost is its round trip, so it cuts a four-minute
+sequential download to about half a minute while staying far below any rate the
+bucket limits. The build's output is independent of the concurrency, because
+each document is assembled and its assets emitted in the order of the summary
+index whatever order the responses arrive in.
+
+A run document or the summary index that still fails after its last attempt
+fails the build, with a message naming the URL and the number of attempts made.
+A per-case file or one of the optional payloads (models, comparisons, test-case
+groups, the gg corpus) that fails the same way is left out and the build
+continues. A successful fetch logs one line with the number of documents
+fetched, how many of them needed a retry, and the elapsed time.
+
 ## Gallery
 
 The site presents published runs as a browsable gallery. Each run is attributed
@@ -88,8 +118,9 @@ the runs that recorded the figure. A game jam carries a whole-game overall
 grade in place of a domain rating.
 
 A run's score is carried on its summary card in the run index. A
-validator-rated run's score is its validators' earned share of the declared
-checklist weight while the run has no reviews, and the average of its reviews'
+validator-rated run's score is its validators' earned share of the checklist
+weight they decided, or zero of the declared weight when they decided none,
+while the run has no reviews, and the average of its reviews'
 effective scores once it has any. A legacy run's reviews each contribute their
 earned share, averaged across the run's reviews.
 

@@ -244,6 +244,13 @@ retried at the next interval, so a database fault or a backend brought up
 against a fresh database beside a populated container leaves the container
 intact. A failing tree listing abandons the pass the same way.
 
+Every pass logs exactly one line: `artifact sweep pass complete` with the trees
+it listed, the orphans it found, and how many it reclaimed and failed to
+reclaim, a pass that reclaimed nothing included, or `artifact sweep pass
+abandoned` with its reason (`no_runs`, `runs_unreadable` or `listing_failed`).
+A pass that did nothing can therefore be told apart from a sweep that is not
+running.
+
 ## Review scheduling
 
 The backend holds each reviewer's scheduling state: what runs that reviewer

@@ -110,6 +110,14 @@ sidecar force-ingests the `test-suites` repository's `master` tip. `tcab ingest
 --env prod`, with the Access service token, refreshes the catalog after any
 other roll and between deploys.
 
+A deploy fails when the sidecar did not ingest. Before it applies anything it
+checks that the `master` tip and the cold-storage commit it pins can be fetched,
+and after the rollout it reads the sidecar's result and prints the step that
+failed and why. A deploy that fails there has rolled the images and left the
+catalog and its baselines as they were; fix what the message names and run
+`tcab ingest --env prod`. See [the catalog
+checks](/deployment/kubernetes/overview/#the-catalog-checks).
+
 ## Rolling back
 
 Run the deploy by hand with the earlier superrepo commit, whose pointers name

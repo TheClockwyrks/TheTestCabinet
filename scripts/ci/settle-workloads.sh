@@ -15,10 +15,12 @@
 # `app.kubernetes.io/part-of=test-cabinet` pod and prints the namespace's recent
 # events, and it exits non-zero. A workload that became ready is never undone.
 #
-# The template's deployment job has thirty minutes, and the backend's rollout
-# (THE_TEST_CABINET_ROLLOUT_TIMEOUT, 600s once scripts/ci/pre-deploy.sh set it) has
-# already spent up to ten of them, so all of this fits in SETTLE_BUDGET_SECONDS
-# (840): the waits take the rollout timeout, and the undo waits what remains.
+# The deployment job has forty-five minutes. The backend's rollout
+# (THE_TEST_CABINET_ROLLOUT_TIMEOUT, 600s once scripts/ci/pre-deploy.sh set it)
+# spends up to ten of them, this spends up to SETTLE_BUDGET_SECONDS (840: the waits
+# take the rollout timeout, and the undo waits what remains), and the read of the
+# ingest sidecar's result (scripts/ci/catalog-ingest.sh verify) waits up to ten
+# more, which leaves the steps around them eleven.
 #
 # The modes:
 #
@@ -26,9 +28,15 @@
 #   --after-failure    The deployment job's step after a failed deploy. The
 #                      workloads have had the backend's whole rollout to settle,
 #                      so each is given two minutes (SETTLE_AFTER_FAILURE_TIMEOUT)
-#                      and an undo two more. It then prints how to put the
-#                      environment back: scripts/ci/deploy-environment.sh on the
-#                      commit the namespace ran before (TCAB_PREVIOUS_COMMIT, which
+#                      and an undo two more. It reads the image the backend
+#                      Deployment names, which says which failure this is. A
+#                      backend at <commit> is rolled out, so a check after the
+#                      rollout failed (the ingest, a sibling): it prints the
+#                      commands that read and repeat the ingest and that roll
+#                      the environment again. Any other backend was rolled back
+#                      by deploy.sh: it prints how to put the environment back,
+#                      scripts/ci/deploy-environment.sh on the commit the
+#                      namespace ran before (TCAB_PREVIOUS_COMMIT, which
 #                      pre-deploy.sh recorded), or "fix forward" when there is no
 #                      earlier revision of the renamed backend to go back to.
 #   --include-backend  scripts/ci/deploy-environment.sh, which waits on the
@@ -120,12 +128,22 @@ readonly SCRIPT="${work}/settle-workloads.sh"
 # The script that runs in the cluster. Its settings are written at its head; the
 # rest is quoted, so it reaches the cluster as written here.
 {
-	printf 'NAMESPACE=%q\nWAIT=%q\nUNDO_WAIT=%q\nEXCLUDE=%q\n' \
-		"$NAMESPACE" "${wait_seconds}s" "${undo_seconds}s" "$exclude"
+	report_backend=""
+	[[ "$mode" != after-failure ]] || report_backend="$BACKEND"
+	printf 'NAMESPACE=%q\nWAIT=%q\nUNDO_WAIT=%q\nEXCLUDE=%q\nREPORT_BACKEND=%q\n' \
+		"$NAMESPACE" "${wait_seconds}s" "${undo_seconds}s" "$exclude" "$report_backend"
 	cat <<'SCRIPT'
 set -u
 k() { kubectl -n "$NAMESPACE" "$@"; }
 state="$(mktemp -d)"
+
+# The image the backend Deployment names, which tells a deployment that was rolled
+# back from one that stayed.
+if [ -n "$REPORT_BACKEND" ]; then
+	image="$(k get deployment "$REPORT_BACKEND" --ignore-not-found \
+		-o jsonpath='{.spec.template.spec.containers[?(@.name=="backend")].image}' 2>/dev/null)" || image=""
+	echo "BACKEND_IMAGE ${image:-none}"
+fi
 
 if ! listed="$(k get deployments,statefulsets -o name)"; then
 	echo "FAILED: the workloads of ${NAMESPACE} could not be listed"
@@ -199,7 +217,8 @@ SCRIPT
 
 echo "Settling ${NAMESPACE} on ${CLUSTER} at ${COMMIT}."
 verdict=0
-aks_invoke "$RESOURCE_GROUP" "$CLUSTER" "$SCRIPT" "bash settle-workloads.sh" || verdict=$?
+aks_invoke "$RESOURCE_GROUP" "$CLUSTER" "$SCRIPT" "bash settle-workloads.sh" >"${work}/answer" || verdict=$?
+cat "${work}/answer"
 case "$verdict" in
 	0) echo "Every workload in ${NAMESPACE} is ready at ${COMMIT}." ;;
 	1) echo >&2 "settle-workloads.sh: a workload in ${NAMESPACE} did not become ready at ${COMMIT}, above; it was undone." ;;
@@ -209,7 +228,16 @@ esac
 if [[ "$mode" == after-failure ]]; then
 	previous="${TCAB_PREVIOUS_COMMIT:-}"
 	previous_backend="${TCAB_PREVIOUS_BACKEND:-$BACKEND}"
-	if [[ "$previous" =~ ^[0-9a-f]{40}$ && "$previous_backend" != "$LEGACY_BACKEND" ]]; then
+	backend_image="$(sed -n 's/^BACKEND_IMAGE //p' "${work}/answer" | head -n 1)"
+	if [[ "${backend_image##*:}" == "$COMMIT" ]]; then
+		remediation "${COMMIT} is deployed: the ${BACKEND} of ${NAMESPACE} runs it, and nothing" \
+			"rolled it back. A check after the rollout failed, above. When it was the catalog" \
+			"ingest, read the sidecar's result again, or ingest once its cause is fixed:" \
+			"    scripts/ci/catalog-ingest.sh verify ${ENVIRONMENT}" \
+			"    tcab ingest --env ${ENVIRONMENT}" \
+			"When it was a workload that did not become ready, roll the environment again:" \
+			"    scripts/ci/deploy-environment.sh ${ENVIRONMENT} ${COMMIT}"
+	elif [[ "$previous" =~ ^[0-9a-f]{40}$ && "$previous_backend" != "$LEGACY_BACKEND" ]]; then
 		remediation "${COMMIT} is not deployed. The backend was rolled back by deploy.sh. To put" \
 			"all of ${NAMESPACE} back on ${previous}, the commit it ran before:" \
 			"    scripts/ci/deploy-environment.sh ${ENVIRONMENT} ${previous}"

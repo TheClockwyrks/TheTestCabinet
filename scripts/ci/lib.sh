@@ -98,6 +98,12 @@ AKS_RESULT_POLLS="${AKS_RESULT_POLLS:-180}"
 # answers 3, naming the command that reads it back: the command runs on in
 # the cluster, and nothing the caller did has been undone.
 #
+# AKS ends a command that has run for ten minutes, and answers 4 here. It
+# reports one as a failed invocation whose reason is `timeout`, with no start
+# time, no exit code and none of what the command wrote, so the command ran
+# and what it did before it was ended is not known. A command that waits is
+# given a wait well under that.
+#
 # az waits five minutes on a command and then answers with the invocation
 # still running, which an apply followed by a rollout outlasts, so a result
 # that is still running is read back until the command ends. The invocation
@@ -131,6 +137,11 @@ aks_invoke() { # resource-group cluster file command
 	status="$(jq -r '.exitCode // empty' "$result" 2>/dev/null || true)"
 	if [ -z "$status" ]; then
 		cat >&2 "$result" "$errors"
+		if aks_result_timed_out "$result"; then
+			echo >&2 "AKS ended the command at its time limit, ten minutes, and kept none of what it wrote."
+			rm -f "$result" "$errors"
+			return 4
+		fi
 		echo >&2 "The invocation reported no exit code, so the command never ran."
 		rm -f "$result" "$errors"
 		return 2
@@ -151,4 +162,9 @@ aks_result_running() { # file
 	else
 		grep -q 'status: Running' "$1"
 	fi
+}
+
+# True when the result file reports a command AKS ended at its time limit.
+aks_result_timed_out() { # file
+	[ "$(jq -r '"\(.provisioningState // "") \(.reason // "")"' "$1" 2>/dev/null)" = "Failed timeout" ]
 }

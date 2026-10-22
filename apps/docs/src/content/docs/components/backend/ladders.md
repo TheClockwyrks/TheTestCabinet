@@ -104,8 +104,9 @@ runs themselves are the results, and stay in the run list like any run.
 
 - **Stop** ends the dispatch and cancels the `queued` and `pending` jobs it
   launched. Runs already dispatched or running finish.
-- **Stop and cancel running** also cancels the `dispatched`, `starting`, and
-  `running` jobs it launched. Those are partly or wholly paid for, so the
+- **Stop and cancel running** also cancels the `dispatched`, `starting`,
+  `running`, `validating` and `storing` jobs it launched. Those are partly or
+  wholly paid for, so the
   console confirms it first.
 
 Both also reach the jobs an earlier dispatch of the same ladder launched and
@@ -322,7 +323,9 @@ The gate reads the [slot's runs](#a-rung-slots-runs). A completed run is read
 at its validator rating: the functional rating the
 [validators decide](/testing/end-to-end/evaluation/#the-validator-decided-functional-rating)
 from the run record and the case version's checklist, with the toolchain gate on
-top. A run that ended on the model's own failure (catastrophic, timed out,
+top. A completed run whose validators decided no scored point carries the
+validator rating `broken`, so it fails any floor above `broken`. A run that ended
+on the model's own failure (catastrophic, timed out,
 harness error, limit exceeded, or hung) is read as `broken`, whatever
 `unloadedCountsAsBroken` says, and uses one of the rung's runs. The model had its
 attempt and produced nothing to rate.
@@ -335,6 +338,14 @@ The run's stored `rating` folds in every reviewer's checklist overrides, so the
 gate never reads it, and it never reads a review. The backend lifts the validator
 rating onto the run row as `validator_rating` when the run is pushed, and a
 re-push rewrites it.
+
+Every change to how the validators rate a run ships with a one-time pass that
+recomputes the stored `validator_rating` and `rating` of every completed
+validator-rated run under the new rule. The pass runs at startup and again after
+each ingest that changes the definition store, and completes once it has read
+the case version of every such run. A verdict a dispatch recorded before the
+pass rewrote its runs stands, as every recorded verdict does, so only the
+verdicts the gate decides afterwards read the recomputed rating.
 
 A completed run whose build never loaded counts as `broken` outright when the
 ladder's `unloadedCountsAsBroken` is on, which it is by default.
@@ -409,7 +420,8 @@ emission-order-is-execution-order mechanism a plan uses:
   answering "how far does this model get?" soonest.
 
 The dispatch's runs in flight are the jobs it launched that are `queued`,
-`pending`, `dispatched`, `starting`, or `running`, across every rung. The limit
+`pending`, `dispatched`, `starting`, `running`, `validating` or `storing`, across
+every rung. The limit
 caps those alone. A bound of `0` launches nothing, so a dispatch under it climbs
 only as far as existing runs take it.
 
@@ -418,6 +430,13 @@ one of its climbers is retried, when a job of one of its rung slots' cells
 reaches a terminal state, and once at startup. A job feeds every running
 dispatch that holds its cell, whoever launched the job, as it feeds every
 filling plan. A failed job that enqueued an automatic retry feeds nothing.
+
+A job of a harness with a parallelism cap that reaches a terminal state also
+feeds every running dispatch while that harness has a free slot, and so does a
+change to a harness's cap, because a launch pass enqueues for a capped harness
+only into its free slots. Dispatches and plans waiting on the same harness take
+turns at its freed slots, as described under
+[harness parallelism comes first](/components/backend/coverage/#harness-parallelism-comes-first).
 
 No launch pass runs between an attempt failing and its retry being enqueued. The
 retry is enqueued, and the attempt stamped with it, before the attempt becomes

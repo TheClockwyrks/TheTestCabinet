@@ -10,8 +10,11 @@
 //! A version's baseline validation media is not in its folder: it lives in the
 //! cold-storage checkout beside the catalog checkout (see [`ColdStorage`]). Ingest
 //! copies it into the stored version under `validation-baseline/`, so the store
-//! serves and snapshots it as part of the version. Without that checkout every
-//! version ingests with no baseline media.
+//! serves and snapshots it as part of the version. Cold storage that is checked
+//! out is authoritative for what a version's baselines are; cold storage that is
+//! not (the checkout is optional, and a fetch of it can fail) says nothing, so a
+//! re-ingest then carries each stored version's baselines over rather than
+//! replacing them with nothing.
 //!
 //! Container images are **not** ingested from the checkout: they are distributed
 //! via a registry and pulled by digest by each runner from its own
@@ -545,6 +548,17 @@ impl<'a> Ingestor<'a> {
                 .or_else(|| self.store.catalog_version()),
         };
 
+        // Said once per scan rather than once per version: this is the one line an
+        // operator needs to see when a deploy's cold-storage fetch failed.
+        if !self.cold.is_checked_out() {
+            tracing::warn!(
+                cold_storage = %self.cold.root().display(),
+                "cold storage is not checked out; no baseline validation media can be \
+                 read from it, so each re-ingested version keeps the baselines already \
+                 stored for it"
+            );
+        }
+
         let mut targets = self.version_targets(request)?;
         // What each tree declared, counted before a refused suite version's
         // definitions are dropped: the prune guard asks whether a tree was empty,
@@ -1049,7 +1063,7 @@ impl<'a> Ingestor<'a> {
 
         let staged = self.store.new_staging_dir(&slug, version)?;
         let built = self
-            .build_version(&staged, &resolved, None)
+            .build_version(&staged, &slug, &resolved, None)
             .and_then(|rendered| {
                 write_ingest_stamp_in(&staged, &decider.stamp(digest))?;
                 Ok(rendered)
@@ -1088,13 +1102,14 @@ impl<'a> Ingestor<'a> {
     fn build_version(
         &self,
         dest: &Path,
+        slug: &str,
         resolved: &TestCaseVersion,
         suite: Option<&StoredSuiteCoordinate>,
     ) -> Result<usize> {
         let keys = match suite {
             None => {
                 copy_tree(&resolved.root, dest)?;
-                self.copy_baselines(dest, resolved)?;
+                self.copy_baselines(dest, slug, resolved)?;
                 Keys::rooted(&resolved.root)
             }
             Some(_) => suites::copy_suite_version(dest, resolved)?,
@@ -1105,19 +1120,32 @@ impl<'a> Ingestor<'a> {
         Ok(rendered)
     }
 
-    /// Copy a version's baseline validation media from cold storage into `dest`'s
-    /// `validation-baseline/`, where the store serves it from. A version with no
-    /// counterpart in cold storage, including every version of a checkout without
-    /// the submodule, copies nothing.
-    fn copy_baselines(&self, dest: &Path, resolved: &TestCaseVersion) -> Result<()> {
+    /// Copy a version's baseline validation media into `dest`'s
+    /// `validation-baseline/`, where the store serves it from.
+    ///
+    /// Cold storage that is checked out is the source and is authoritative: the
+    /// version's baselines there are copied, and a version with none there gets
+    /// none. Cold storage that is not checked out says nothing about the version,
+    /// so the baselines the store already holds for it are carried into the new
+    /// build. Without that, a forced re-ingest from a checkout whose cold-storage
+    /// fetch failed would publish every version with its baselines removed.
+    fn copy_baselines(&self, dest: &Path, slug: &str, resolved: &TestCaseVersion) -> Result<()> {
+        let staged = dest.join(test_cabinet_contracts::layout::VALIDATION_BASELINE_DIR);
+        if !self.cold.is_checked_out() {
+            let stored = self
+                .store
+                .version_dir(slug, &resolved.version)
+                .join(test_cabinet_contracts::layout::VALIDATION_BASELINE_DIR);
+            if stored.is_dir() {
+                copy_tree(&stored, &staged)?;
+            }
+            return Ok(());
+        }
         let Some(src) = self.cold.validation_baseline_dir(&resolved.root) else {
             return Ok(());
         };
         if src.is_dir() {
-            copy_tree(
-                &src,
-                &dest.join(test_cabinet_contracts::layout::VALIDATION_BASELINE_DIR),
-            )?;
+            copy_tree(&src, &staged)?;
         }
         Ok(())
     }
