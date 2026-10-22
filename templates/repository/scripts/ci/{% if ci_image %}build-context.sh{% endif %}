@@ -26,7 +26,9 @@
 #
 # THE RUST PIN. rust-toolchain.toml decides the compiler, and an image built
 # with another one is a build nobody tested, so every `FROM … rust:<v>…` and
-# every `ARG RUST_VERSION=<v>` default must name the toolchain's channel.
+# every `ARG RUST_VERSION=<v>` default must name the toolchain's channel. A
+# repository carrying no crate has no rust-toolchain.toml and pins no Rust, so
+# a pin there has nothing to be held to and fails.
 #
 # The evaluation mirrors Docker's: patterns apply in order, the last to match
 # wins, a `!` pattern re-includes, and a path is ignored when it or an ancestor
@@ -268,4 +270,8 @@ if ((problems > 0)); then
 	exit 1
 fi
 echo "$checked context-source check(s) across ${#dockerfiles[@]} Dockerfile(s), against each allowlist that can apply, all survive."
-echo "$rust_pins Rust pin(s) name rust-toolchain.toml's channel${rust_channel:+, $rust_channel}."
+if [[ -f rust-toolchain.toml ]]; then
+	echo "$rust_pins Rust pin(s) name rust-toolchain.toml's channel${rust_channel:+, $rust_channel}."
+else
+	echo "No rust-toolchain.toml, and no Dockerfile pins Rust."
+fi

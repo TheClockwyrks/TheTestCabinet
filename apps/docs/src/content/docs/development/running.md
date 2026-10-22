@@ -28,8 +28,9 @@ namespace they live in and the edge in front of them.
   them yourself on a bare host.
 - The repositories the stack builds checked out under the superrepo: every
   `microservice-*`, with `contracts` and `engines` they build against, the
-  `tool-*` repositories the run images copy from, and `test-suites`, which the
-  backend ingests; see
+  `tool-*` repositories the run images copy from, `test-suites`, which the
+  backend ingests, and `console.testcabinet.ai`, whose dev server serves the
+  console; see
   [Cloning](/development/building/#cloning).
 - A harness API key for the harness you will run, for example
   `ANTHROPIC_API_KEY` for `claude`.
@@ -89,7 +90,7 @@ hooks, initializes `contracts`, `engines`, `gg`, `microservice-arena`,
 `tool-model-core`, `tool-paint`, `tool-particle`,
 `tool-sprite`, `tool-voxel`, `tool-mc`, `tool-sn`, `tool-dc`,
 `tool-audio-core`, `tool-sfx-synth`, `tool-sfx-sample`, `tool-music`,
-`ui-common` and `test-suites`, runs `npm ci`
+`ui-common`, `test-suites` and `console.testcabinet.ai`, runs `npm ci`
 (and gg's own in the `gg` checkout) and links the
 checked-out repositories' packages, and nothing runs in the background
 afterwards. In a container built before a gg pin moved, the two installers

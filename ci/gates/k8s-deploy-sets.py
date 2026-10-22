@@ -36,7 +36,8 @@ if run(["scripts/ci/k8s-deploy-sets.sh"], unset=GIT_LOCATION_VARIABLES).returnco
         "    microservice-artifacts=abcdef0123456789abcdef0123456789abcdef01",
         "    microservice-dispatcher=456789abcdef0123456789abcdef0123456789ab",
         "    microservice-driver=cdef0123456789abcdef0123456789abcdef0123",
-        "    microservice-repos=89abcdef0123456789abcdef0123456789abcdef' \\",
+        "    microservice-repos=89abcdef0123456789abcdef0123456789abcdef",
+        "    console.testcabinet.ai=fedcba9876543210fedcba9876543210fedcba98' \\",
         "    scripts/ci/deploy-environment.sh --render staging 0123456789abcdef0123456789abcdef01234567",
     )
 

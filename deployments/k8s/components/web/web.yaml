@@ -1,5 +1,7 @@
-# The in-cluster web console (apps/web, packaged as the tcab-web image — a static
-# SPA served by nginx, see deployments/images/web.Dockerfile). In the staging and
+# The in-cluster web console (the console.testcabinet.ai repository, packaged as the
+# tcab-web image — a static SPA served by nginx, see that repository's Dockerfile;
+# its pipeline pushes it as testcabinet.azurecr.io/console.testcabinet.ai:<commit>,
+# pinned to the console.testcabinet.ai submodule pointer). In the staging and
 # prod overlays the edge component (components/edge) nests this one and routes the
 # environment's origin to it: `/` of console[.staging].testcabinet.ai reaches
 # tcab-web:8080 through the Cloudflare Tunnel. The local overlay does not include
@@ -47,7 +49,7 @@ spec:
     spec:
       containers:
         - name: web
-          image: REPLACE_REGISTRY/tcab-web:latest # the staging and prod overlays name testcabinet.azurecr.io/tcab-web
+          image: REPLACE_REGISTRY/tcab-web:latest # the staging and prod overlays name testcabinet.azurecr.io/console.testcabinet.ai
           resources:
             # MEMORY REQUEST == LIMIT. The scheduler packs a node by requests and
             # ignores limits, so a gap between them is memory promised twice; an

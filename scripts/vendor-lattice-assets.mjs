@@ -18,7 +18,7 @@
 // generated from the scored set by the bundle's own `gen-reference.mjs`.
 //
 // The copies live in the ui-common checkout, whose package ships them, and are
-// committed there. `apps/web/src/lattice-assets.test.ts` asserts the copies the
+// committed there. console.testcabinet.ai's `apps/web/src/lattice-assets.test.ts` asserts the copies the
 // resolved `@clockwyrks/ui` ships are byte-identical to the bundle, so a
 // forgotten resync fails CI. Run this to fix such a failure (then rebuild the
 // package and commit the copies in ui-common):

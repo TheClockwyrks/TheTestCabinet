@@ -86,7 +86,7 @@ git submodule update --init contracts engines gg microservice-arena \
   tool-model-core tool-paint \
   tool-particle tool-sprite tool-voxel tool-mc tool-sn tool-dc \
   tool-audio-core tool-sfx-synth tool-sfx-sample tool-music ui-common
-git submodule update --init gg.rocks   # what the task touches
+git submodule update --init gg.rocks console.testcabinet.ai   # what the task touches
 git submodule update --init --depth 1 cold-storage
 git submodule update --init test-suites
 ```
@@ -97,9 +97,11 @@ The devcontainer populates `contracts/`, `engines/`, `gg/`,
 `microservice-publisher/`, `microservice-repos/`,
 `tool-model-core/`, `tool-paint/`, `tool-particle/`, `tool-sprite/`,
 `tool-voxel/`, `tool-mc/`, `tool-sn/`, `tool-dc/`, `tool-audio-core/`,
-`tool-sfx-synth/`, `tool-sfx-sample/`, `tool-music/`, `test-suites/` and
-`ui-common/` when it creates a container, `test-suites/` because a local
-backend ingests its suites from that checkout.
+`tool-sfx-synth/`, `tool-sfx-sample/`, `tool-music/`, `test-suites/`,
+`ui-common/` and `console.testcabinet.ai/` when it creates a container,
+`test-suites/` because a local backend ingests its suites from that checkout
+and `console.testcabinet.ai/` because the console's development server runs
+from it.
 `.gitmodules` gives every repository but `cold-storage` the branch `.`, the
 branch of the superrepo's own name. `git submodule update --remote <name>` on
 the superrepo's `nightly` therefore moves that checkout to the tip of its

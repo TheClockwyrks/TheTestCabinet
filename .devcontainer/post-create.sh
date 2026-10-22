@@ -35,9 +35,10 @@
 # `tool-voxel/`, `tool-mc/`, `tool-sn/`, `tool-dc/`, `tool-audio-core/`,
 # `tool-sfx-synth/`, `tool-sfx-sample/` and `tool-music/`, whose crates the
 # patch table names, `test-suites/`, the suites checkout The Test Cabinet
-# ingests from, and `ui-common/`, the ui-common repository whose packages the
-# web front ends build against. It names those twenty-three alone, because
-# cold-storage beside them is optional and about 2 GB. It runs ahead of
+# ingests from, `ui-common/`, the ui-common repository whose packages the web
+# front ends build against, and `console.testcabinet.ai/`, the console, whose
+# development server runs from its checkout. It names those twenty-four alone,
+# because cold-storage beside them is optional and about 2 GB. It runs ahead of
 # `npm ci`, which lists contracts', engines' and ui-common's packages in the npm
 # workspace, and after tools/ssh-agent.sh, because the clone goes through the
 # host agent that script publishes: this runs before post-start.sh, so the
