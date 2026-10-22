@@ -103,96 +103,6 @@ trigger:
 # never used, so a reference names one image for as long as the registry keeps
 # it. The forty zeros are the placeholder a render carries; see the header.
 
-# The repositories the jobs read beside this one: the contracts, engines, gg,
-# microservice-arena, microservice-artifacts, microservice-dispatcher, microservice-driver, microservice-repos, tool-model-core, tool-paint,
-# tool-particle, tool-sprite, tool-voxel, tool-mc, tool-sn, tool-dc,
-# tool-audio-core, tool-sfx-synth, tool-sfx-sample and tool-music repositories,
-# the `contracts/`, `engines/`, `gg/`, `microservice-arena/`, `microservice-artifacts/`, `microservice-dispatcher/`, `microservice-driver/`,
-# `microservice-repos/`, `tool-model-core/`, `tool-paint/`, `tool-particle/`,
-# `tool-sprite/`, `tool-voxel/`, `tool-mc/`, `tool-sn/`, `tool-dc/`,
-# `tool-audio-core/`, `tool-sfx-synth/`, `tool-sfx-sample/` and `tool-music/`
-# submodules every build reads, because the patch table names their crates and
-# cargo loads every patch path (no member uses gg's, microservice-arena's, microservice-artifacts', microservice-dispatcher's, microservice-driver's,
-# tool-paint's, tool-particle's, tool-mc's, tool-sn's, tool-dc's,
-# tool-sfx-synth's, tool-sfx-sample's or tool-music's crates, nor tool-voxel's
-# `voxel-anim`; the documentation site builds gg's pages from its checkout), the
-# test-suites repository, the `test-suites/` submodule holding the catalog the
-# tests over the committed catalog read and the performance image bakes from,
-# and the ui-common repository, the `ui-common/` submodule whose crate the patch
-# table names (no member uses it) and whose packages the npm workspace lists. No
-# job checks one out. A job that builds names them under `uses:`, which puts
-# them in the scope of the job's access token, and runs
-# `scripts/ci/submodules.sh init` with their paths after its own checkout, which
-# fetches the commits the superproject pins.
-resources:
-  repositories:
-    - repository: contracts
-      type: git
-      name: the-test-cabinet/contracts
-    - repository: engines
-      type: git
-      name: the-test-cabinet/engines
-    - repository: gg
-      type: git
-      name: the-test-cabinet/gg
-    - repository: microservice-arena
-      type: git
-      name: the-test-cabinet/microservice-arena
-    - repository: microservice-artifacts
-      type: git
-      name: the-test-cabinet/microservice-artifacts
-    - repository: microservice-dispatcher
-      type: git
-      name: the-test-cabinet/microservice-dispatcher
-    - repository: microservice-driver
-      type: git
-      name: the-test-cabinet/microservice-driver
-    - repository: microservice-repos
-      type: git
-      name: the-test-cabinet/microservice-repos
-    - repository: tool-model-core
-      type: git
-      name: the-test-cabinet/tool-model-core
-    - repository: tool-paint
-      type: git
-      name: the-test-cabinet/tool-paint
-    - repository: tool-particle
-      type: git
-      name: the-test-cabinet/tool-particle
-    - repository: tool-sprite
-      type: git
-      name: the-test-cabinet/tool-sprite
-    - repository: tool-voxel
-      type: git
-      name: the-test-cabinet/tool-voxel
-    - repository: tool-mc
-      type: git
-      name: the-test-cabinet/tool-mc
-    - repository: tool-sn
-      type: git
-      name: the-test-cabinet/tool-sn
-    - repository: tool-dc
-      type: git
-      name: the-test-cabinet/tool-dc
-    - repository: tool-audio-core
-      type: git
-      name: the-test-cabinet/tool-audio-core
-    - repository: tool-sfx-synth
-      type: git
-      name: the-test-cabinet/tool-sfx-synth
-    - repository: tool-sfx-sample
-      type: git
-      name: the-test-cabinet/tool-sfx-sample
-    - repository: tool-music
-      type: git
-      name: the-test-cabinet/tool-music
-    - repository: test-suites
-      type: git
-      name: the-test-cabinet/test-suites
-    - repository: ui-common
-      type: git
-      name: the-test-cabinet/ui-common
-
 pool:
   vmImage: ubuntu-24.04
 
@@ -262,30 +172,6 @@ stages:
         # free tier, and the organisation's purchased parallel jobs lift that
         # cap to 360.
         timeoutInMinutes: 120
-        uses:
-          repositories:
-            - contracts
-            - engines
-            - gg
-            - microservice-arena
-            - microservice-artifacts
-            - microservice-dispatcher
-            - microservice-driver
-            - microservice-repos
-            - tool-model-core
-            - tool-paint
-            - tool-particle
-            - tool-sprite
-            - tool-voxel
-            - tool-mc
-            - tool-sn
-            - tool-dc
-            - tool-audio-core
-            - tool-sfx-synth
-            - tool-sfx-sample
-            - tool-music
-            - test-suites
-            - ui-common
         variables:
           # The registry and the git checkouts, under the directory the cache
           # task saves, which is the whole reason CARGO_HOME moves at all.
@@ -310,16 +196,18 @@ stages:
             fetchDepth: 1
             clean: true
 
-          # The contracts, engines, gg, microservice-arena, microservice-artifacts, microservice-dispatcher, microservice-driver, microservice-repos,
+          # The contracts, engines, gg, microservice-arena, microservice-artifacts, microservice-dispatcher, microservice-driver, microservice-publisher, microservice-repos,
           # tool-model-core, tool-paint, tool-particle, tool-sprite, tool-voxel,
           # tool-mc, tool-sn, tool-dc, tool-audio-core, tool-sfx-synth,
           # tool-sfx-sample, tool-music, test-suites and ui-common submodules, at
-          # the pinned commits; the job's `uses:` puts their repositories in the
-          # token's scope. The tests over the committed catalog read test-suites,
-          # the documentation site reads gg's pages, and the npm workspace lists
-          # ui-common's packages.
-          - script: scripts/ci/submodules.sh init contracts engines gg microservice-arena microservice-artifacts microservice-dispatcher microservice-driver microservice-repos tool-model-core tool-paint tool-particle tool-sprite tool-voxel tool-mc tool-sn tool-dc tool-audio-core tool-sfx-synth tool-sfx-sample tool-music test-suites ui-common
-            displayName: Initialize the contracts, engines, gg, microservice-arena, microservice-artifacts, microservice-dispatcher, microservice-driver, microservice-repos, tool-model-core, tool-paint, tool-particle, tool-sprite, tool-voxel, tool-mc, tool-sn, tool-dc, tool-audio-core, tool-sfx-synth, tool-sfx-sample, tool-music, test-suites and ui-common submodules
+          # the pinned commits, fetched through the job's access token, which
+          # reads every repository of the project. Every build reads the first
+          # twenty-one, because the patch table names their crates and cargo
+          # loads every patch path; the tests over the committed catalog read
+          # test-suites, the documentation site reads gg's pages, and the npm
+          # workspace lists ui-common's packages.
+          - script: scripts/ci/submodules.sh init contracts engines gg microservice-arena microservice-artifacts microservice-dispatcher microservice-driver microservice-publisher microservice-repos tool-model-core tool-paint tool-particle tool-sprite tool-voxel tool-mc tool-sn tool-dc tool-audio-core tool-sfx-synth tool-sfx-sample tool-music test-suites ui-common
+            displayName: Initialize the contracts, engines, gg, microservice-arena, microservice-artifacts, microservice-dispatcher, microservice-driver, microservice-publisher, microservice-repos, tool-model-core, tool-paint, tool-particle, tool-sprite, tool-voxel, tool-mc, tool-sn, tool-dc, tool-audio-core, tool-sfx-synth, tool-sfx-sample, tool-music, test-suites and ui-common submodules
             env:
               SYSTEM_ACCESSTOKEN: $(System.AccessToken)
 
@@ -477,45 +365,23 @@ stages:
           image: testcabinet.azurecr.io/ubuntu-the-test-cabinet-web-cicd:${{ variables.ciImageTag }}
           endpoint: the-test-cabinet-acr
         timeoutInMinutes: 60
-        uses:
-          repositories:
-            - contracts
-            - engines
-            - gg
-            - microservice-arena
-            - microservice-artifacts
-            - microservice-dispatcher
-            - microservice-driver
-            - microservice-repos
-            - tool-model-core
-            - tool-paint
-            - tool-particle
-            - tool-sprite
-            - tool-voxel
-            - tool-mc
-            - tool-sn
-            - tool-dc
-            - tool-audio-core
-            - tool-sfx-synth
-            - tool-sfx-sample
-            - tool-music
-            - test-suites
-            - ui-common
         steps:
           - checkout: self
             fetchDepth: 1
             clean: true
 
-          # The contracts, engines, gg, microservice-arena, microservice-artifacts, microservice-dispatcher, microservice-driver, microservice-repos,
+          # The contracts, engines, gg, microservice-arena, microservice-artifacts, microservice-dispatcher, microservice-driver, microservice-publisher, microservice-repos,
           # tool-model-core, tool-paint, tool-particle, tool-sprite, tool-voxel,
           # tool-mc, tool-sn, tool-dc, tool-audio-core, tool-sfx-synth,
           # tool-sfx-sample, tool-music, test-suites and ui-common submodules, at
-          # the pinned commits; the job's `uses:` puts their repositories in the
-          # token's scope. The tests over the committed catalog read test-suites,
-          # the documentation site reads gg's pages, and the npm workspace lists
-          # ui-common's packages.
-          - script: scripts/ci/submodules.sh init contracts engines gg microservice-arena microservice-artifacts microservice-dispatcher microservice-driver microservice-repos tool-model-core tool-paint tool-particle tool-sprite tool-voxel tool-mc tool-sn tool-dc tool-audio-core tool-sfx-synth tool-sfx-sample tool-music test-suites ui-common
-            displayName: Initialize the contracts, engines, gg, microservice-arena, microservice-artifacts, microservice-dispatcher, microservice-driver, microservice-repos, tool-model-core, tool-paint, tool-particle, tool-sprite, tool-voxel, tool-mc, tool-sn, tool-dc, tool-audio-core, tool-sfx-synth, tool-sfx-sample, tool-music, test-suites and ui-common submodules
+          # the pinned commits, fetched through the job's access token, which
+          # reads every repository of the project. Every build reads the first
+          # twenty-one, because the patch table names their crates and cargo
+          # loads every patch path; the tests over the committed catalog read
+          # test-suites, the documentation site reads gg's pages, and the npm
+          # workspace lists ui-common's packages.
+          - script: scripts/ci/submodules.sh init contracts engines gg microservice-arena microservice-artifacts microservice-dispatcher microservice-driver microservice-publisher microservice-repos tool-model-core tool-paint tool-particle tool-sprite tool-voxel tool-mc tool-sn tool-dc tool-audio-core tool-sfx-synth tool-sfx-sample tool-music test-suites ui-common
+            displayName: Initialize the contracts, engines, gg, microservice-arena, microservice-artifacts, microservice-dispatcher, microservice-driver, microservice-publisher, microservice-repos, tool-model-core, tool-paint, tool-particle, tool-sprite, tool-voxel, tool-mc, tool-sn, tool-dc, tool-audio-core, tool-sfx-synth, tool-sfx-sample, tool-music, test-suites and ui-common submodules
             env:
               SYSTEM_ACCESSTOKEN: $(System.AccessToken)
 
@@ -523,8 +389,8 @@ stages:
             displayName: Free disk space on the agent
             target: host
 
-          # The web track's checks *are* the npm workspace — eslint, tsc,
-          # vitest, prettier, markdownlint, cspell and astro all run out of
+          # The web track's checks *are* the npm workspace — tsc, vitest,
+          # prettier, markdownlint, cspell and astro all run out of
           # node_modules — so it installs it. The script refuses a Node other
           # than the one .devcontainer/docker-compose.yml pins, which is the
           # same pin the image was built from.
@@ -604,67 +470,6 @@ stages:
 
           - script: uv run --quiet --project ci gate run shell-tests
             displayName: shell tests
-            condition: eq(variables['checksReady'], 'true')
-
-          - script: uv run --quiet --project ci gate run web-lint
-            displayName: web lint (eslint)
-            condition: eq(variables['checksReady'], 'true')
-
-          - script: uv run --quiet --project ci gate run web-typecheck
-            displayName: web typecheck (tsc -b)
-            condition: eq(variables['checksReady'], 'true')
-
-          # As the Rust job's test step does, the web tests name an artifact
-          # directory, which has the gate leave vitest's JUnit report there.
-          - script: uv run --quiet --project ci gate run web-test
-            displayName: web tests (vitest)
-            condition: eq(variables['checksReady'], 'true')
-            env:
-              CI_GATE_ARTIFACTS: target/gate-artifacts/web-test
-
-          - task: PublishTestResults@2
-            displayName: Publish the web test results
-            condition: and(succeededOrFailed(), eq(variables['checksReady'], 'true'))
-            inputs:
-              testResultsFormat: JUnit
-              # Where the web tests step told its gate to leave the report.
-              testResultsFiles: $(Build.SourcesDirectory)/target/gate-artifacts/web-test/junit.xml
-              testRunTitle: Web tests
-              failTaskOnMissingResultsFile: false
-
-          # As the Rust job's test step does, the browser tests name an
-          # artifact directory, which has the gate leave its JUnit report there
-          # and has the suite give each browser instance a directory of its own
-          # beneath it for what a test attached: among it the screenshot an
-          # engine takes of a test that failed, which is otherwise lost with
-          # the rest of the working directory.
-          - script: uv run --quiet --project ci gate run web-browser-test
-            displayName: web browser tests (vitest, playwright)
-            condition: eq(variables['checksReady'], 'true')
-            env:
-              CI_GATE_ARTIFACTS: target/gate-artifacts/web-browser-test
-
-          # Both whether the suite passed or failed, since a failure is when
-          # they are read. The artifact's name carries the job attempt, so a
-          # rerun of the job publishes beside its first attempt rather than
-          # colliding with it.
-          - publish: $(Build.SourcesDirectory)/target/gate-artifacts/web-browser-test
-            displayName: Publish the web browser tests' report and screenshots
-            artifact: web-browser-test-$(System.JobAttempt)
-            condition: and(succeededOrFailed(), eq(variables['checksReady'], 'true'))
-
-          - task: PublishTestResults@2
-            displayName: Publish the web browser test results
-            condition: and(succeededOrFailed(), eq(variables['checksReady'], 'true'))
-            inputs:
-              testResultsFormat: JUnit
-              # Where the browser tests step told its gate to leave the report.
-              testResultsFiles: $(Build.SourcesDirectory)/target/gate-artifacts/web-browser-test/junit.xml
-              testRunTitle: Web browser tests
-              failTaskOnMissingResultsFile: false
-
-          - script: uv run --quiet --project ci gate run web-build
-            displayName: web build (vite build)
             condition: eq(variables['checksReady'], 'true')
 
           # Rendered only for a project that deploys to Kubernetes, because
@@ -749,10 +554,6 @@ stages:
             env:
               CI_GATE_ARTIFACTS: target/gate-artifacts/workspace-test
 
-          - script: uv run --quiet --project ci gate run site-build
-            displayName: "gallery build (vite build)"
-            condition: eq(variables['checksReady'], 'true')
-
           # The project's own steps for this job, after its last check and
           # before the job's test results.
           - template: .azure/project/steps.yml
@@ -810,7 +611,10 @@ stages:
     jobs:
       - deployment: staging
         displayName: staging
-        timeoutInMinutes: 30
+        # The backend's rollout (ten minutes), the settling of the other
+        # workloads (fourteen) and the wait on the ingest sidecar's result (ten)
+        # can each run their whole bound in one deployment.
+        timeoutInMinutes: 45
         environment: ${{ variables.deployEnvironment }}
         strategy:
           runOnce:

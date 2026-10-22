@@ -1,16 +1,16 @@
 # syntax=docker/dockerfile:1
 # Every Rust SERVICE image for the Kubernetes deployment (and the local stack), in
-# one file: backend and publisher. The dispatcher's image is
+# one file: backend. The dispatcher's image is
 # built in its own repository, microservice-dispatcher, the artifacts service's in
-# microservice-artifacts, the arena's in microservice-arena, and the driver's in
+# microservice-artifacts, the arena's in microservice-arena, the publisher's in
+# microservice-publisher, and the driver's in
 # microservice-driver, beside the run-container images.
 #
 # Select one with `--target`:
 #   docker build --target backend -t <registry>/tcab-backend:<tag> \
 #     -f deployments/images/services.Dockerfile .
-# The target names are `backend` and `publisher`. The web console is NOT here — it is the one non-Rust
-# service image and keeps its own web.Dockerfile (`npm ci` + `vite build`, no crate
-# compiled).
+# The target name is `backend`. The web console is NOT here — its
+# image is console.testcabinet.ai's, built by that repository's pipeline.
 #
 # Why one file
 # ------------
@@ -22,23 +22,16 @@
 # ~19 workspace crates each service pulls in were rebuilt six or seven times over
 # per invocation, every time, even with no source change at all.
 #
-# One shared build stage compiles both binaries in a single cargo pass, so the
+# One shared build stage compiles the binary in a single cargo pass, so the
 # mtime refresh happens ONCE and each workspace crate is compiled once. `--target`
 # then picks a runtime stage, and BuildKit builds only the stages that target
-# actually depends on — asking for `publisher` never runs the gg stage. One target
-# depends on the gg stage, which fetches the gg release the driver pins rather than
-# building one: `backend` bakes the reference documents of that release (see the
-# stage's own header below).
+# actually depends on. The target depends on the gg stage, which fetches the gg
+# release the driver pins rather than building one: `backend` bakes the reference
+# documents of that release (see the stage's own header below).
 #
 # The canonical images are built by the Azure pipeline (scripts/ci/service-image.sh)
 # on every push to master and staging, natively per architecture, and pushed to the
 # Test Cabinet ACR as testcabinet.azurecr.io/tcab-<name>:<sha>.
-
-# Pinned wrangler version, used by the publisher stage. Bump deliberately
-# (Cloudflare ships frequent releases); pinning keeps the publish path reproducible
-# across image builds. Declared before the first FROM so the publisher stage's own
-# `ARG WRANGLER_VERSION` inherits this default.
-ARG WRANGLER_VERSION=4.40.3
 
 # ── Shared build stage ───────────────────────────────────────────────────────
 # Compiles every service binary in ONE cargo invocation. The cargo registry/git, the
@@ -91,14 +84,12 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
     find /src -path /src/target -prune -o -type f -exec touch {} + \
     && TCAB_BUILD_COMMIT="${TCAB_BUILD_COMMIT}" cargo build --release \
         -p test-cabinet-backend \
-        -p tcab-publisher \
-    # target/ is a cache mount, not a layer, so the binaries are copied to a stable
-    # path inside the same RUN, before the mount is detached; the runtime stages
-    # COPY them from there.
+    # target/ is a cache mount, not a layer, so the binary is copied to a stable
+    # path inside the same RUN, before the mount is detached; the runtime stage
+    # COPYs it from there.
     && mkdir -p /out \
     && cp \
         target/release/tcab-backend \
-        target/release/tcab-publisher \
         /out/
 
 # ── gg release stage (backend) ───────────────────────────────────────────────
@@ -212,74 +203,3 @@ ENV TCAB_BACKEND_BIND=0.0.0.0:8787 \
 
 EXPOSE 8787
 ENTRYPOINT ["tcab-backend"]
-
-# ── publisher ────────────────────────────────────────────────────────────────
-# The dispatcher creates one publisher Job per *publish* (a parallel queue to the
-# run path); each publisher pod runs THIS image, resolves its publish job from the
-# environment the dispatcher set, downloads the reviewed run's source tree from the
-# artifact service, performs the GitHub-repo + Cloudflare Pages release (the
-# publisher's own BackendPublisher, `crates/publisher/src/release.rs`)
-# while streaming progress to the backend, reports the terminal result, and exits.
-#
-# Unlike the driver image (which renders builds to screenshot them and therefore
-# carries Playwright + a Playwright-managed Chromium), the publisher renders
-# NOTHING — it only releases. So it DROPS the entire browser layer and instead
-# carries the three tools the release path shells out to:
-#   - `git`, to commit the model's working tree into each run's seeded repository
-#     and push it to the run's public repo (crates/publisher release.rs
-#     `commit_implementation` sets a per-repo `user.name`/`user.email`, so no
-#     global git identity is needed here; the push authenticates through `gh`'s
-#     credential helper — see below — so no git credential helper is configured).
-#   - `gh`, the GitHub CLI, for the idempotent `gh repo view` gate, `gh repo
-#     create --public` (the empty repo), and — via `gh auth git-credential` — the
-#     credential helper the implementation push authenticates through
-#     (crates/publisher release.rs `release_code`/`push_implementation`; create and push are kept
-#     separate so the push can retry through GitHub's post-create permission lag).
-#     Installed from GitHub's official apt repository so it is a current, supported
-#     build rather than Debian's older packaged one.
-#   - `wrangler`, Cloudflare's CLI, for `wrangler pages deploy <dir> --project-name
-#     <p> --branch=<run>` (crates/publisher release.rs `release_playable_build`). It is
-#     an npm package and the base is already Node, so it is installed globally and
-#     PINNED below; the release invokes the bare `wrangler` on PATH.
-# `gh`/`wrangler` authenticate from the Job's env (GH_TOKEN / CLOUDFLARE_API_TOKEN,
-# wired by the deployment overlay), and the git push borrows `gh`'s token via its
-# credential helper; the binary itself never reads those tokens.
-FROM docker.io/library/node:24-bookworm-slim AS publisher
-
-ARG WRANGLER_VERSION
-
-# ca-certificates covers the publisher's outbound HTTPS (the backend and
-# artifact service over TLS, GitHub and Cloudflare APIs, telemetry export); git
-# commits each run's working tree before push; gnupg + the GitHub apt key let us
-# pull `gh` from GitHub's official repository (a current, supported build). The
-# pinned wrangler is installed globally so the release invokes the bare `wrangler`
-# on PATH. Everything is removed from the layer that no longer needs it.
-RUN apt-get update \
-  && apt-get install -y --no-install-recommends \
-       ca-certificates \
-       git \
-       curl \
-       gnupg \
-  && mkdir -p -m 755 /etc/apt/keyrings \
-  && curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
-       | tee /etc/apt/keyrings/githubcli-archive-keyring.gpg > /dev/null \
-  && chmod go+r /etc/apt/keyrings/githubcli-archive-keyring.gpg \
-  && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
-       > /etc/apt/sources.list.d/github-cli.list \
-  && apt-get update \
-  && apt-get install -y --no-install-recommends gh \
-  && npm install -g --no-audit --no-fund "wrangler@${WRANGLER_VERSION}" \
-  && apt-get purge -y --auto-remove curl gnupg \
-  && rm -rf /var/lib/apt/lists/* /root/.npm
-
-COPY --from=build /out/tcab-publisher /usr/local/bin/tcab-publisher
-
-# Run as an unprivileged user: the Kubernetes runtime needs only API access (its
-# ServiceAccount token + the per-publish-job token), never host privileges. The Node
-# base already ships a non-root `node` user (uid 1000) — reuse it rather than minting
-# another at the same uid (which would collide). Its home is writable for the
-# downloaded source-tree scratch (TCAB_WORK_DIR) and the CLIs' caches/config.
-USER node
-WORKDIR /home/node
-
-ENTRYPOINT ["tcab-publisher"]

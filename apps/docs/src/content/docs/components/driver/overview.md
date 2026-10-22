@@ -41,15 +41,23 @@ console. It produces the run record and reports it with the terminal status,
 and the backend persists it with the events it stored as each batch arrived.
 
 The driver reports `starting` before any work and advances the job to `running`
-once setup finishes and the harness session is about to begin. Once the run has
-a record, the driver hands it to the backend in a held report, uploads the run's
-files, and posts its terminal status last, after the backend has acknowledged
-every event batch so that the stored stream is complete first (see [Delivery to
-the backend](/components/driver/events/#delivery-to-the-backend)). [Finishing a
+once setup finishes and the harness session is about to begin, and to
+`validating` once the session has ended. Once the run has a record, the driver
+hands it to the backend in a held report, uploads the run's files, and posts its
+terminal status last, after the backend has acknowledged every event batch so
+that the stored stream is complete first (see [Delivery to the
+backend](/components/driver/events/#delivery-to-the-backend)). [Finishing a
 run](#finishing-a-run) gives the order and the retries. The run's own start is
 taken immediately after the `starting` report, so the
 [`startedAt`](/components/backend/api/#topics) the backend stamps from that
 transition names the same instant the produced record does.
+
+A `validating` job is one whose model has finished working. The state covers
+everything after the session: collecting the tree, the post-run analysis, the
+case's toolchain, validation and the upload of the tree. The engine announces
+the session's end through its event sink, and the driver posts `validating`
+after the events that preceded it, so a console never shows the run validating
+while the session's last events are still arriving.
 
 ## Sandbox container runtime
 

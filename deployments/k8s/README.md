@@ -60,13 +60,18 @@ Overlays compose in reusable kustomize **components**:
 | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `components/observability` | Runs the Grafana LGTM stack (`grafana/otel-lgtm`: collector + Tempo/Mimir/Loki + Grafana) in-cluster as `tcab-lgtm` (StatefulSet + ClusterIP Service + PVC for Grafana state) plus a NetworkPolicy admitting the services' OTLP. Included by `overlays/{local,staging,prod}`; each overlay's env patch sets every workload's `OTEL_EXPORTER_OTLP_ENDPOINT=http://tcab-lgtm:4318`. Grafana is `ClusterIP`-only — reach it via `kubectl port-forward svc/tcab-lgtm 3000:3000`, or, in `staging` and `prod`, at `grafana[.staging].testcabinet.ai` through the edge (the `edge` component's route + the overlay's `patch-grafana-auth.yaml`, which disables the image's anonymous-admin default and sets creds from the `tcab-grafana-admin` Secret). Drop it (and the endpoint) to send telemetry to Grafana Cloud / an external collector instead. |
 | `components/postgres`      | Converts the backend from its SQLite `StatefulSet` shape to a stateless `Deployment` wired to a managed database via Secret. Environment-agnostic — each overlay supplies its own namespace, `TCAB_ENV`, images, and connection-string Secret (Azure Database for PostgreSQL — Flexible Server in the `staging` and `prod` overlays).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
-| `components/web`           | The in-cluster web console (`tcab-web`) `Deployment` + `ClusterIP` `Service` — the static SPA, which carries no service URL and takes no configuration: it addresses `/api`, `/artifacts` and `/arena` of its own origin. Nested in the `edge` component, which serves it at `/` of the environment's origin. `overlays/local` deliberately does NOT include it — locally the console runs from source (`npm run -w apps/web dev`) against a `kubectl port-forward`ed backend, so a UI edit needs no image rebuild.                                                                                                                                                                                                                                                                                                                               |
+| `components/web`           | The in-cluster web console (`tcab-web`) `Deployment` + `ClusterIP` `Service` — the static SPA, which carries no service URL and takes no configuration: it addresses `/api`, `/artifacts` and `/arena` of its own origin. Nested in the `edge` component, which serves it at `/` of the environment's origin. `overlays/local` deliberately does NOT include it — locally the console runs from source (`npm run dev` in `console.testcabinet.ai/`) against a `kubectl port-forward`ed backend, so a UI edit needs no image rebuild.                                                                                                                                                                                                                                                                                                              |
 | `components/edge`          | The `tcab-cloudflared` Cloudflare Tunnel connector (`Deployment`, 2 replicas, `cloudflare/cloudflared` at a pinned version), its generated `tcab-cloudflared` `ConfigMap` routing the origin by path (`/api/`, `/artifacts/`, `/arena/`, `/` to the console) and the Grafana host to `tcab-lgtm`, and the `NetworkPolicy` admitting it to those services. Nests `components/web`. Defaults to prod's tunnel and hostnames; `overlays/staging` patches the `ConfigMap`. The tunnel credentials are the `tcab-cloudflared` `Secret` `keyvault-csi` syncs. See [Edge](../../apps/docs/src/content/docs/deployment/kubernetes/edge.md).                                                                                                                                                                                                               |
 
+`components/postgres` declares the backend's `tcab-backend-state` claim, 16Gi, the same
+in both overlays. It holds `/state`, the definition store and the ingest checkout.
+To grow it, raise the size in `components/postgres/deployment-backend.yaml` and
+deploy; see
+[growing the backend's claim](../../apps/docs/src/content/docs/deployment/kubernetes/overview.md#growing-the-backends-claim).
+
 The service container images are built from [`../images/`](../images/) — every Rust
-service is a `--target` of the shared `services.Dockerfile` (`backend`,
-`publisher`), and the console has its
-own `web.Dockerfile`. The repos service is its own repository, `microservice-repos`,
+service is a `--target` of the shared `services.Dockerfile` (`backend`). The repos
+service is its own repository, `microservice-repos`,
 whose pipeline builds its image from that repository's `Dockerfile` and pushes it as
 `testcabinet.azurecr.io/microservice-repos:<commit>`. The dispatcher is likewise
 `microservice-dispatcher`, pushed as
@@ -80,21 +85,25 @@ beside it, the **run-container** images the sandbox runs inside (its
 `testcabinet.azurecr.io/microservice-artifacts:<commit>`, the image the `staging`
 and `prod` overlays run it from. The arena is `microservice-arena`, pushed as
 `testcabinet.azurecr.io/microservice-arena:<commit>`, the image the `staging` and
-`prod` overlays run it from. The Azure pipeline builds the
+`prod` overlays run it from. The console is `console.testcabinet.ai`, pushed as
+`testcabinet.azurecr.io/console.testcabinet.ai:<commit>`, the image the `staging`
+and `prod` overlays run `tcab-web` from. The publisher is `microservice-publisher`,
+pushed as `testcabinet.azurecr.io/microservice-publisher:<commit>`, the image the
+dispatcher's `TCAB_PUBLISHER_IMAGE` names. The Azure pipeline builds the
 others on every push to `master` and `staging`, and pushes each to
-`testcabinet.azurecr.io/<image>:<sha>` (`tcab-backend`,
-`tcab-publisher` and `tcab-web`). The workspace
+`testcabinet.azurecr.io/<image>:<sha>` (`tcab-backend`). The workspace
 template's publish stage retags `tcab-backend:<sha>` as
 `testcabinet.azurecr.io/the-test-cabinet-backend:<sha>`
 ([`../images/backend.Dockerfile`](../images/backend.Dockerfile)), the repository the
 `staging` and `prod` overlays run the backend from. Those overlays name every Test
 Cabinet image at the tag `unpinned`, which nothing pushes, so applied as they stand
 they fail to pull; [`scripts/ci/pin-images.sh`](../../scripts/ci/pin-images.sh) pins
-the three images the overlays name from this repository's build and the
-dispatcher's publisher image to the commit being deployed, the arena's, the
-artifacts service's, the dispatcher's and the repos service's images to the
-commits that commit's `microservice-arena`, `microservice-artifacts`,
-`microservice-dispatcher` and `microservice-repos` submodule pointers name, and the
+the backend's image, the one the overlays name from this repository's build, to
+the commit being deployed, the arena's, the artifacts service's, the dispatcher's,
+the repos service's, the console's and the publisher's images to the commits that
+commit's `microservice-arena`, `microservice-artifacts`, `microservice-dispatcher`,
+`microservice-repos`, `console.testcabinet.ai` and `microservice-publisher`
+submodule pointers name (the dispatcher's publisher image with the last), and the
 dispatcher's driver image and run-container tag to the commit its
 `microservice-driver` pointer names.
 
@@ -152,22 +161,28 @@ A push to `staging` deploys the `staging` overlay in the workspace template's
 deployment job, inside the private cluster through `az aks command invoke`:
 
 1. `scripts/ci/pre-deploy.sh staging <sha>` pins the overlay, records the commit the
-   namespace runs, gives each rollout 600 seconds, and deletes the backend's
-   Deployment of its old name, `tcab-backend`, which holds the backend's disk, and
-   the artifacts service's StatefulSet, which its stateless Deployment replaces
-   (`scripts/ci/retire-legacy-backend.sh`).
-2. The template's `scripts/ci/deploy.sh <sha>` applies the overlay and waits on
-   `the-test-cabinet-backend`, rolling it back if it does not become ready.
+   namespace runs, gives each rollout 600 seconds, checks the catalog
+   (`scripts/ci/catalog-ingest.sh preflight`), and deletes the objects of an earlier
+   shape (`scripts/ci/retire-legacy-backend.sh`): the backend's Deployment of its old
+   name, `tcab-backend`, which holds the backend's disk, the artifacts service's
+   StatefulSet, which its stateless Deployment replaces, and the internal ingress's
+   Ingresses, its network policies and the `tcab-auth` workload, which the edge
+   replaced.
+2. The template's `scripts/ci/deploy.sh <sha>` runs `scripts/ci/deploy-preflight.sh`,
+   applies the overlay and waits on `the-test-cabinet-backend`, rolling it back if it
+   does not become ready.
 3. `scripts/ci/post-deploy.sh <sha>` waits on every other workload and undoes each
-   that does not become ready (`scripts/ci/settle-workloads.sh`).
+   that does not become ready (`scripts/ci/settle-workloads.sh`), then fails unless
+   the backend's ingest sidecar ingested (`scripts/ci/catalog-ingest.sh verify`).
 4. After a failure, `scripts/ci/settle-workloads.sh --after-failure <sha>` settles
    the rest, prints the pods and events, and prints how to recover: the command that
    puts the namespace back on the commit it ran before, or "fix forward".
 
 A push to `master` deploys the `prod` overlay through
 `scripts/ci/deploy-environment.sh prod <sha>`, which pins a temporary copy, refuses a
-render with anything outside `tcab-prod`, retires `tcab-backend`, applies, and waits
-on every workload, undoing each that fails. It rolls either environment by hand, and
+render with anything outside `tcab-prod`, runs the catalog preflight, retires the
+objects of an earlier shape, applies, waits on every workload, undoing each that
+fails, and reads the ingest sidecar's result. It rolls either environment by hand, and
 previews what it applies without touching a cluster:
 
 ```sh

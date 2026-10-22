@@ -91,12 +91,10 @@ expected() { # image dockerfile arch extra
 	echo "docker buildx build --platform linux/$3 --file $2 --tag $R/$1:$SHA-$3 --build-arg TCAB_BUILD_COMMIT=$SHA --provenance=false --cache-from type=registry,ref=$R/$1:buildcache-$3 --cache-to type=registry,ref=$R/$1:buildcache-$3,mode=max,image-manifest=true,oci-mediatypes=true --push${4:+ $4} . [cwd=$repo]"
 }
 
-for service in backend publisher; do
-	out="$(run "$service" "$SHA")"
-	check_equal "$service builds" "0" "$?"
-	check_equal "$service is tcab-$service, its target of services.Dockerfile" \
-		"$(expected "tcab-$service" deployments/images/services.Dockerfile amd64 "--target $service")" "$(build_line)"
-done
+out="$(run backend "$SHA")"
+check_equal "backend builds" "0" "$?"
+check_equal "backend is tcab-backend, its target of services.Dockerfile" \
+	"$(expected tcab-backend deployments/images/services.Dockerfile amd64 "--target backend")" "$(build_line)"
 
 out="$(run auth "$SHA")"
 check_equal "auth is no longer a service" "1" "$?"
@@ -119,9 +117,12 @@ check_equal "driver is no longer a service (microservice-driver builds it)" "1" 
 check_contains "and is named unknown" "unknown service 'driver'" "$out"
 
 out="$(run web "$SHA")"
-check_equal "web builds" "0" "$?"
-check_equal "web has its own Dockerfile and no target" \
-	"$(expected tcab-web deployments/images/web.Dockerfile amd64 "")" "$(build_line)"
+check_equal "web is no longer a service (console.testcabinet.ai builds it)" "1" "$?"
+check_contains "and is named unknown" "unknown service 'web'" "$out"
+
+out="$(run publisher "$SHA")"
+check_equal "publisher is no longer a service (microservice-publisher builds it)" "1" "$?"
+check_contains "and is named unknown" "unknown service 'publisher'" "$out"
 
 out="$(STUB_UNAME_M=aarch64 run backend "$SHA")"
 check_equal "an arm64 build succeeds" "0" "$?"
@@ -139,7 +140,10 @@ check_contains "by name" "docker buildx use tcab-ci" "$(cat "$tmp/docker.log")"
 # neither a named context nor a gg argument.
 out="$(run backend "$SHA")"
 check_lacks "backend takes no gg context" "--build-context" "$(build_line)"
-check_lacks "backend takes no gg argument" "GG" "$(build_line)"
+# The stub annotates each line with its working directory, a mktemp path whose
+# random suffix can hold any letters, so the arguments are judged without it.
+args="$(build_line)"
+check_lacks "backend takes no gg argument" "GG" "${args% \[cwd=*}"
 
 out="$(run gateway "$SHA")"
 check_equal "an unknown service fails" "1" "$?"

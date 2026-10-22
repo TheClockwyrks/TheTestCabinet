@@ -154,12 +154,13 @@ rather than one that quietly passes.
 `post-create.sh` populates the `contracts/`, `engines/`, `gg/`,
 `microservice-arena/`, `microservice-artifacts/`, `microservice-dispatcher/`,
 `microservice-driver/`,
-`microservice-repos/`,
+`microservice-publisher/`, `microservice-repos/`,
 `tool-model-core/`, `tool-paint/`, `tool-particle/`, `tool-sprite/`, `tool-voxel/`,
 `tool-mc/`, `tool-sn/`, `tool-dc/`, `tool-audio-core/`, `tool-sfx-synth/`,
 `tool-sfx-sample/`, `tool-music/` and
 `ui-common/` submodules, which every build compiles against, and the
-`test-suites/` submodule, the suites checkout the local backend ingests (not
+`test-suites/` submodule, the suites checkout the local backend ingests, and the
+`console.testcabinet.ai/` submodule, whose development server runs the console (not
 `cold-storage/`, which is optional and about 2 GB), through
 `tools/submodule-checkout.sh` (see [Submodule checkout](#submodule-checkout)),
 installs the git hook through `scripts/setup-hooks.sh`, places cargo's target
@@ -262,14 +263,16 @@ image rather than the test gate here. The engines occupy a little over a
 gigabyte, and nothing is downloaded when the container opens.
 
 The playwright image's tag is the Playwright version that downloaded the
-engines, and it is one of two. `PLAYWRIGHT_IMAGE` in `docker-compose.yml`
-decides which build of each engine the image holds, and
-`apps/web/package.json`'s `playwright` decides which build the app's tests ask
-for, because Playwright resolves an engine per client version. A bump
-therefore moves both, which for the image means a template version holding
-them, and `ci/gates/web-browser-test.py` reads the two and fails with both
-values when they disagree, rather than leaving the mismatch to surface inside
-the browser provider.
+engines, and the clients that drive them follow it. `PLAYWRIGHT_IMAGE` in
+`docker-compose.yml` decides which build of each engine the image holds, and
+each `playwright` package decides which build its tests ask for, because
+Playwright resolves an engine per client version: the one the workspace's lock
+resolves, `contracts`' own and the console's in
+`console.testcabinet.ai/apps/web/package.json`. A bump therefore moves them
+all, which for the image means a template version holding them, and
+`ci/gates/ci-image-pins.py` reads them and fails with every value when they
+disagree, rather than leaving the mismatch to surface inside the browser
+provider.
 
 The `playwright` in `engines/packages/case-harness` and
 `contracts/packages/browser-driver` follows the same tag, for the same reason:
@@ -691,11 +694,12 @@ warning about it.
 The `contracts/`, `engines/`, `gg/`, `microservice-arena/`,
 `microservice-artifacts/`,
 `microservice-dispatcher/`, `microservice-driver/`,
-`microservice-repos/`, `tool-model-core/`, `tool-paint/`, `tool-particle/`,
+`microservice-publisher/`, `microservice-repos/`, `tool-model-core/`,
+`tool-paint/`, `tool-particle/`,
 `tool-sprite/`, `tool-voxel/`, `tool-mc/`, `tool-sn/`, `tool-dc/`,
 `tool-audio-core/`, `tool-sfx-synth/`, `tool-sfx-sample/`, `tool-music/`,
-`test-suites/` and `ui-common/` submodules live in the organization's other
-repositories, reached over SSH at `ssh.dev.azure.com`.
+`test-suites/`, `ui-common/` and `console.testcabinet.ai/` submodules live in the
+organization's other repositories, reached over SSH at `ssh.dev.azure.com`.
 `post-create.sh` checks them out ahead of `npm ci`, whose workspace lists the
 packages `contracts/`, `engines/` and `ui-common/` hold, and `post-start.sh`
 checks them out again at every start, each through
@@ -707,18 +711,20 @@ runs
 ```sh
 git submodule update --init \
   contracts engines gg microservice-arena microservice-artifacts \
-  microservice-dispatcher microservice-driver microservice-repos \
+  microservice-dispatcher microservice-driver microservice-publisher microservice-repos \
   tool-model-core tool-paint tool-particle tool-sprite tool-voxel tool-mc \
   tool-sn tool-dc tool-audio-core tool-sfx-synth tool-sfx-sample tool-music \
-  test-suites ui-common
+  test-suites ui-common console.testcabinet.ai
 ```
 
 through the host's agent when the checkout holds a `.gitmodules`. Passed
 submodule paths, it checks out those instead; `cold-storage/` is left to a
-`git submodule update --init cold-storage` by hand. It never fails the step it
-runs from: a host with no agent, or no network, keeps a working container and
-says so, and the next start or that command checks the submodules out once SSH
-works.
+`git submodule update --init cold-storage` by hand, and `gg.rocks/` and
+`testcabinet.ai/`, the public sites no local service runs from, to a
+`git submodule update --init gg.rocks testcabinet.ai` when a task touches
+them. It never fails the step it runs from: a host with no agent, or no network,
+keeps a working container and says so, and the next start or that command
+checks the submodules out once SSH works.
 
 It never holds the step either. A connection can stall where it cannot fail: an
 agent whose key waits on an approval nobody is there to give answers

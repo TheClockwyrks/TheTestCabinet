@@ -10,8 +10,9 @@
 # fixture holds its ci/images/tags.yml and shows that file. A submodule's
 # repository is a real one on disk, which the stub hands to git itself. The
 # subject is which tags are kept (the three live branches' pins, the
-# checkout's and the submodule repositories' live branches'), what goes, the
-# cache repository, the credential forms, and the refusals.
+# checkout's and the submodule repositories' live branches', and every tag
+# younger than a day), what goes, the cache repository, the credential forms,
+# and the refusals.
 set -uo pipefail
 
 # Azure sets BUILD_SOURCEVERSION for every step, and the script keeps the image
@@ -85,6 +86,12 @@ readonly STALE="c0ffee0000000000000000000000000000000005"
 readonly OWN="c0ffee0000000000000000000000000000000006"
 # The image a submodule repository's master pins and no superrepo branch does.
 readonly SUBMODULE="c0ffee0000000000000000000000000000000007"
+# Images nothing pins, by their age: one another branch's run pushed minutes
+# ago and has not built on yet, one whose index was pushed hours ago and whose
+# untagged children are past their own hour, and one a little over a day old.
+readonly RECENT="c0ffee0000000000000000000000000000000008"
+readonly YOUNG="c0ffee0000000000000000000000000000000009"
+readonly AGING="c0ffee000000000000000000000000000000000a"
 
 # curl: the URL is the one argument that names the registry. A DELETE is
 # answered with the status STUB_DELETE_STATUS names and logged; a GET of a
@@ -255,7 +262,7 @@ write_fixtures() {
 	pins "$NIGHTLY" >"$stub/branch-nightly.yml"
 	{
 		echo '{"manifests":['
-		manifest sha256:checkout "$(at '1 hour ago')" "$CHECKOUT"
+		manifest sha256:checkout "$(at '2 days ago')" "$CHECKOUT"
 		echo ,
 		manifest sha256:master "$(at '3 days ago')" "$MASTER"
 		echo ,
@@ -265,7 +272,18 @@ write_fixtures() {
 		echo ,
 		manifest sha256:stale "$(at '10 days ago')" "$STALE"
 		echo ,
-		manifest sha256:own "$(at '1 minute ago')" "$OWN"
+		# Older than a day, so that only its name can keep it.
+		manifest sha256:own "$(at '2 days ago')" "$OWN"
+		echo ,
+		manifest sha256:recent "$(at '10 minutes ago')" "$RECENT"
+		echo ,
+		manifest sha256:young-index "$(at '3 hours ago')" "$YOUNG"
+		echo ,
+		manifest sha256:young-image "$(at '3 hours ago')"
+		echo ,
+		manifest sha256:young-attestation "$(at '3 hours ago')"
+		echo ,
+		manifest sha256:aging "$(at '25 hours ago')" "$AGING"
 		echo ,
 		manifest sha256:untagged-old "$(at '2 hours ago')"
 		echo ,
@@ -283,6 +301,7 @@ write_fixtures() {
 	# with the same content; each names an attestation of its own.
 	index "$REPOSITORY" sha256:staging sha256:staging-image sha256:staging-attestation
 	index "$REPOSITORY" sha256:stale sha256:staging-image sha256:stale-attestation
+	index "$REPOSITORY" sha256:young-index sha256:young-image sha256:young-attestation
 	{
 		echo '{"manifests":['
 		manifest sha256:cache-tag "$(at '10 days ago')" buildcache
@@ -316,9 +335,21 @@ check_contains "deletes an unkept index's own attestation" "deleted ${REPOSITORY
 check_lacks "keeps the cache repository's tag" "sha256:cache-tag" "$out"
 check_contains "deletes the cache repository's old untagged manifests" "deleted ${REPOSITORY}-cache@sha256:cache-old" "$out"
 check_lacks "not its young one" "sha256:cache-young" "$out"
+check_contains "keeps an unpinned tag pushed minutes ago" "sparing $RECENT (pushed " "$out"
+check_lacks "and does not delete it" "sha256:recent" "$(deleted)"
+check_contains "keeps an unpinned index pushed hours ago" "sparing $YOUNG (pushed " "$out"
+check_lacks "and does not delete it" "sha256:young-index" "$(deleted)"
+check_lacks "nor the image it names, though that is untagged and past its hour" "sha256:young-image" "$(deleted)"
+check_lacks "nor its attestation" "sha256:young-attestation" "$(deleted)"
+check_contains "reads back the index its age keeps" \
+	"GET https://${REGISTRY}/v2/${REPOSITORY}/manifests/sha256:young-index Basic" "$(cat "$stub/curl.log")"
+check_contains "deletes an unpinned tag older than a day" "deleted ${REPOSITORY}@sha256:aging" "$out"
+check_lacks "and spares no pinned tag for its age" "sparing $NIGHTLY" "$out"
+check_lacks "nor an old one" "sparing $STALE" "$out"
 check_equal "the deletes, in order" \
 	"${REPOSITORY}@sha256:stale
 ${REPOSITORY}@sha256:own
+${REPOSITORY}@sha256:aging
 ${REPOSITORY}@sha256:untagged-old
 ${REPOSITORY}@sha256:stale-attestation
 ${REPOSITORY}-cache@sha256:cache-old" "$(deleted)"

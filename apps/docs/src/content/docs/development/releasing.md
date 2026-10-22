@@ -149,7 +149,9 @@ earlier one only once the earlier one is removed.
 Each `microservice-*` repository's pipeline builds its image on every gated
 push to `master` and `staging`, natively per architecture and fused by
 `scripts/ci/manifest.sh` into the multi-arch `<name>:<commit>` a deployment
-pins, and pushes it to `testcabinet.azurecr.io`. `microservice-driver`'s run
+pins, and pushes it to `testcabinet.azurecr.io`. `console.testcabinet.ai`'s
+pipeline builds the console's image, nginx serving its `vite build` bundle,
+the same way. `microservice-driver`'s run
 also builds the run-container images under its `containers/`, each carrying
 the binaries it copies from the `tool-*` images at the commits the driver
 pins, and the `-gg` variants the toolchain tree of the gg release the driver
@@ -213,6 +215,9 @@ In the Cloudflare dashboard:
   `staging.testcabinet.ai` on the staging project.
 - Set the public bucket's read URL on the pipeline as `TCAB_SNAPSHOT_URL`,
   per branch, which the build writes into the page as the dataset's origin.
+  The pipeline definition holds the two as `TCAB_SNAPSHOT_URL_MASTER` and
+  `TCAB_SNAPSHOT_URL_STAGING`, and the deploy stage hands the build the one
+  its branch names.
 - Deploy the two Workers from the same repository with `wrangler deploy`: the
   `tcab.ai` Worker, bound to the production bucket and routed at `tcab.ai`,
   with `staging.tcab.ai` over the staging bucket; and the preview-tag Worker,

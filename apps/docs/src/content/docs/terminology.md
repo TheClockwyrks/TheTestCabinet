@@ -223,10 +223,12 @@ suites](/test-suites/overview/#exported-versions).
 
 A failure cap is a review item's declared `failure_cap`: the highest functional
 [rating](#rating) the item's `domains` may reach while the item's validator
-fails, one of `broken`, `scuffed`, `passable`, or `great`. A domain's functional
+fails, one of `broken`, `scuffed`, `passable`, or `great`. While the run's
+effective checklist decides at least one scored item, a domain's functional
 rating is the lowest cap among its failing items, so the caps let the validators
-decide the rating without a reviewer. Every item of a
-[validator-rated](#validator-rated) case version declares one.
+decide the rating without a reviewer. A checklist that decides no scored item
+rates every domain `broken`. Every item of a [validator-rated](#validator-rated)
+case version declares one.
 
 ## Harness
 
@@ -342,9 +344,10 @@ The functional rating says how faithfully a domain implements the spec:
 `flawless`, `great`, `passable`, `scuffed`, or `broken`, and a run's is the
 worst across its domains. On a [validator-rated](#validator-rated) run the
 validators decide each domain's rating from its failing items' [failure
-caps](#failure-cap); a [review](#review) that overrides verdicts recomputes
-those ratings for itself, and a run with reviews takes the worst effective
-rating across them. On a legacy run each review carries one per domain and the
+caps](#failure-cap), and rates every domain `broken` when its effective
+checklist decides no scored point; a [review](#review) that overrides verdicts
+recomputes those ratings for itself, and a run with reviews takes the worst
+effective rating across them. On a legacy run each review carries one per domain and the
 run's is the worst across every review.
 
 The aesthetic rating says how the build looks, sounds, and feels to play:
@@ -461,7 +464,8 @@ watches it.
 
 The runs-in-flight limit is how many of a [coverage](#coverage) plan's or a
 [ladder](#ladder) dispatch's own jobs may be queued, pending, dispatched,
-starting, or running at once. It exists so one plan or ladder shares the global
+starting, running, validating or storing at once. It exists so one plan or
+ladder shares the global
 queue fairly with everything else waiting on it. It is a reviewer-wide setting
 overridable per plan and per ladder, and is either a bound or no limit, which
 launches every missing run at once. Completed runs never occupy it.
@@ -475,8 +479,9 @@ item's weight. An item with sub-items earns the fraction of its weight whose
 sub-items passed, so an earned score can be fractional. A
 [validator-rated](#validator-rated) run scores from its validators' verdicts
 the moment it completes; each of its [reviews](#review) scores from its
-effective checklist, and a run with reviews scores the average of them. A
-legacy run scores per review and a run carrying several reviews scores the
+effective checklist, and a run with reviews scores the average of them. An
+effective checklist that decides no scored point scores zero over the declared
+weight. A legacy run scores per review and a run carrying several reviews scores the
 average. The run's score is shown alongside its functional [rating](#rating),
 and is what the per-case [leaderboard](#leaderboard) ranks on.
 
@@ -594,11 +599,13 @@ format, the `[workspaces]` / `engines` / `[[engine]]` spelling of its starter
 project, and is not a game jam. A run is validator-rated when its case version
 is. Its validators decide its functional [rating](#rating) and [score](#score)
 at completion, so it is publishable with no review, and those figures stand
-while the run has none. Its reviewers supply a single run-wide aesthetic rating
-and may override individual checklist verdicts, and a run with reviews averages
-their effective scores and takes their worst effective functional rating. Every
-other version is a legacy version, whose reviewers supply the functional rating
-and checklist verdicts.
+while the run has none, including the
+[`broken` rating](/testing/end-to-end/evaluation/#the-validator-decided-functional-rating)
+of a run whose validators decided no scored point. Its reviewers supply a single
+run-wide aesthetic rating and may override individual checklist verdicts, and a
+run with reviews averages their effective scores and takes their worst effective
+functional rating. Every other version is a legacy version, whose reviewers
+supply the functional rating and checklist verdicts.
 
 ## Variant
 

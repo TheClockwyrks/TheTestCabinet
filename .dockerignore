@@ -1,6 +1,6 @@
 # Keep the build context lean AND stable. The service-image builds
 # (deployments/images/services.Dockerfile, which compiles the
-# backend/publisher crates) use the repository root as their context.
+# backend crate) use the repository root as their context.
 # Almost every one of those builds is just a `cargo build` over the Rust workspace —
 # nothing else — so this is an ALLOWLIST: ignore everything, then re-include only the
 # paths cargo actually reads. (The driver's image and the run-container images are
@@ -26,7 +26,7 @@
 # submodule's own path, or a path inside it, never a wildcard), and `*` below keeps
 # every submodule this file does not name out of the context, cold-storage's ~2 GB of
 # baseline media included. contracts, engines, gg, microservice-arena, microservice-artifacts, microservice-dispatcher, microservice-driver,
-# microservice-repos, tool-model-core, tool-paint, tool-particle, tool-sprite,
+# microservice-publisher, microservice-repos, tool-model-core, tool-paint, tool-particle, tool-sprite,
 # tool-voxel, tool-mc, tool-sn, tool-dc, tool-audio-core, tool-sfx-synth,
 # tool-sfx-sample, tool-music and ui-common are the ones named, below. What
 # a submodule path adds is a precondition: the build reads what the checkout it runs in
@@ -46,7 +46,7 @@
 # each source to its submodule, whose crates inherit their version and dependencies from
 # its own workspace manifest, so cargo reads that too. cargo loads every patch path, a
 # table nothing builds from included, so every checked-out repository the table names is
-# re-included here (microservice-arena, microservice-artifacts, microservice-dispatcher, microservice-driver, microservice-repos, tool-model-core,
+# re-included here (microservice-arena, microservice-artifacts, microservice-dispatcher, microservice-driver, microservice-publisher, microservice-repos, tool-model-core,
 # tool-paint, tool-particle, tool-sprite, tool-voxel, tool-mc, tool-sn, tool-dc,
 # tool-audio-core, tool-sfx-synth, tool-sfx-sample, tool-music, ui-common). This is the
 # complete set cargo needs to resolve and compile any crate; resolving the lock still
@@ -68,6 +68,8 @@
 !/microservice-dispatcher/crates
 !/microservice-driver/Cargo.toml
 !/microservice-driver/crates
+!/microservice-publisher/Cargo.toml
+!/microservice-publisher/crates
 !/microservice-repos/Cargo.toml
 !/microservice-repos/crates
 !/tool-model-core/Cargo.toml
@@ -133,59 +135,6 @@
 !/contracts/packages/browser-driver/validation.mjs
 !/contracts/packages/browser-driver/ttc.mjs
 
-# The web service image (deployments/images/web.Dockerfile) is the one NON-cargo
-# service image: it `npm ci`s the npm workspace and `vite build`s the web console
-# (apps/web) into static assets nginx serves. So its build context needs the npm
-# workspace too — but only the slice the console build reads:
-#   - the root npm manifests (package.json + the lockfile npm ci validates against),
-#   - EVERY workspace member's package.json (npm ci validates the whole workspace
-#     against the lockfile, so a missing member's manifest aborts the install), and
-#   - the SOURCE of the packages the console actually bundles: apps/web itself
-#     plus its workspace deps @clockwyrks/ui, @clockwyrks/run-record and
-#     @clockwyrks/backend-api, and @clockwyrks/run-stats,
-#     @clockwyrks/voxel-runtime, @clockwyrks/particle-runtime and
-#     @clockwyrks/lattice-runtime, whose compiled subpaths the ui library
-#     imports (run-stats' scoring rules and rollup; the voxel and particle
-#     runtimes' `./three`; the lattice runtime's renderer and its
-#     `lattice-core.wasm`).
-#     The ui library and run-stats are the ui-common repository's, under
-#     ui-common/packages/, and the runtimes the engines repository's, under
-#     engines/packages/. Every one of them is consumed as its built dist/: the
-#     Dockerfile builds each before the console — the sources ride along here,
-#     dist/ is re-excluded below and rebuilt in-image.
-# node_modules/ and dist/ are re-excluded below (those re-exclusions come last and
-# win), so a local install/build never rides along.
-!/package.json
-!/package-lock.json
-!/tsconfig.base.json
-!/apps/docs/package.json
-!/apps/site/package.json
-!/apps/web
-# The contracts packages extend the contracts repository's own base tsconfig.
-!/contracts/tsconfig.base.json
-!/contracts/packages/run-record
-!/contracts/packages/backend-api
-# The ui-common packages extend the ui-common repository's own base tsconfig.
-!/ui-common/tsconfig.base.json
-!/ui-common/packages/run-stats
-!/ui-common/packages/ui
-# The engines packages extend the engines repository's own base tsconfig.
-!/engines/tsconfig.base.json
-!/engines/packages/voxel-runtime
-!/engines/packages/particle-runtime
-!/engines/packages/lattice-runtime
-# The rig/animation half of the generated contract. `run-record` re-exports it, so
-# the console needs it for the same reason it needs `run-record`, and it is what the
-# two runtimes above depend on.
-!/contracts/packages/asset-contract
-# The other members of the engines repository's npm workspace, which the console does
-# not build: `npm ci` validates the whole workspace against the lockfile, so each one's
-# manifest rides along, and nothing more of it.
-!/engines/packages/simple-2d/package.json
-!/engines/packages/structured-2d/package.json
-!/engines/packages/simple-3d/package.json
-!/engines/packages/structured-3d/package.json
-!/engines/packages/case-harness/package.json
 # THE gg SLICE the devcontainer image's gg layer (.devcontainer/ubuntu.dockerfile) stages
 # from the gg checkout to install gg's program-language toolchains with gg's own
 # installers: gg's scripts (the installers under scripts/ci, the shared shell they
@@ -219,11 +168,6 @@
 # services.Dockerfile's `gg-release` stage bind-mounts to fetch the release the driver
 # pins (the pin itself rides in under microservice-driver/crates/).
 !/scripts/ci
-# This image is also the one service Dockerfile that COPYs sibling files from its
-# own deployments/images/ directory (the nginx server block) — the Rust images embed
-# nothing from here. They live outside every path re-included above, so without
-# this the COPYs fail with "not found" against the allowlisted context.
-!/deployments/images/web
 
 # The DEVCONTAINER image (.devcontainer/ubuntu.dockerfile) builds from this same
 # context, because its last layer installs gg's program-language toolchains with gg's
@@ -254,13 +198,13 @@
 # and the copies weigh tens of megabytes.
 /crates/*/testdata/
 /engines/crates/*/testdata/
-# TypeScript's incremental build state. `ui-common/packages/run-stats/tsconfig.tsbuildinfo`
-# is gitignored output that lands inside `!/ui-common/packages/run-stats` — re-included for
-# the web console image, which builds that package — and it is REWRITTEN by every local `tsc -b`. So a
-# type-check on the host changes the context, which changes the `COPY . .` cache key, which
-# recompiles the whole Rust workspace in an image that does not contain a line of
-# TypeScript. As a glob rather than the one path, because the next package to gain a
-# composite tsconfig should not have to rediscover this.
+# TypeScript's incremental build state. A `tsconfig.tsbuildinfo` is gitignored output that
+# lands inside a package's directory, and it is REWRITTEN by every local `tsc -b`. So under
+# a re-included path a type-check on the host changes the context, which changes the
+# `COPY . .` cache key, which recompiles the whole Rust workspace in an image that does not
+# contain a line of TypeScript. It bit once, when the console's image (built in
+# console.testcabinet.ai now) re-included a package of ui-common here; as a glob, so the
+# next package re-included under a composite tsconfig does not have to rediscover this.
 **/*.tsbuildinfo
 
 # macOS Finder metadata, and the entry most likely to be the reason a `make images` you

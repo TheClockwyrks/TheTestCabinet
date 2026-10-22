@@ -57,8 +57,8 @@ ENV UV_TOOL_DIR=/home/dev/.local/share/uv/tools \
 
 # The engines are read where the playwright image put them rather than from
 # HOME's cache, which is root's here. Playwright reads this variable when a
-# test asks for an engine, so ci/gates/web-browser-test.py resolves them
-# through `executablePath()` unchanged.
+# test asks for an engine, so console.testcabinet.ai's
+# ci/gates/web-browser-test.py resolves them through `executablePath()` unchanged.
 ENV PLAYWRIGHT_BROWSERS_PATH=/home/dev/.cache/ms-playwright
 
 # The PATH has to be complete here. A pipeline step reads no rc file, and

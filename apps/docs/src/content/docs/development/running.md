@@ -28,8 +28,9 @@ namespace they live in and the edge in front of them.
   them yourself on a bare host.
 - The repositories the stack builds checked out under the superrepo: every
   `microservice-*`, with `contracts` and `engines` they build against, the
-  `tool-*` repositories the run images copy from, and `test-suites`, which the
-  backend ingests; see
+  `tool-*` repositories the run images copy from, `test-suites`, which the
+  backend ingests, and `console.testcabinet.ai`, whose dev server serves the
+  console; see
   [Cloning](/development/building/#cloning).
 - A harness API key for the harness you will run, for example
   `ANTHROPIC_API_KEY` for `claude`.
@@ -85,10 +86,11 @@ When the container is created, `.devcontainer/post-create.sh` installs the git
 hooks, initializes `contracts`, `engines`, `gg`, `microservice-arena`,
 `microservice-artifacts`,
 `microservice-dispatcher`,
-`microservice-driver`, `microservice-repos`, `tool-model-core`, `tool-paint`, `tool-particle`,
+`microservice-driver`, `microservice-publisher`, `microservice-repos`,
+`tool-model-core`, `tool-paint`, `tool-particle`,
 `tool-sprite`, `tool-voxel`, `tool-mc`, `tool-sn`, `tool-dc`,
 `tool-audio-core`, `tool-sfx-synth`, `tool-sfx-sample`, `tool-music`,
-`ui-common` and `test-suites`, runs `npm ci`
+`ui-common`, `test-suites` and `console.testcabinet.ai`, runs `npm ci`
 (and gg's own in the `gg` checkout) and links the
 checked-out repositories' packages, and nothing runs in the background
 afterwards. In a container built before a gg pin moved, the two installers
@@ -342,10 +344,12 @@ git submodule update --init --depth 1 cold-storage
 ```
 
 Without it every version ingests with no baseline media, and a review shows only
-the build's half of each side-by-side. `TCAB_COLD_STORAGE_ROOT` in `.env.backend`
-points the backend at a copy kept elsewhere; when it is unset the backend reads
-`TCAB_COLD_STORAGE_DIR`, the override the capture commands also read. The same
-applies to the k3d stack, which ingests the checkout it mounts.
+the build's half of each side-by-side. A version that was ingested while the
+submodule was present keeps the baselines it was stored with.
+`TCAB_COLD_STORAGE_ROOT` in `.env.backend` points the backend at a copy kept
+elsewhere; when it is unset the backend reads `TCAB_COLD_STORAGE_DIR`, the
+override the capture commands also read. The same applies to the k3d stack,
+which ingests the checkout it mounts.
 
 Re-ingest after editing a test case, so the backend serves the change. A plain
 scan skips any version it already holds, because the store is immutable per

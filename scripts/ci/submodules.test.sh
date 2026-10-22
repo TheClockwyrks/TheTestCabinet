@@ -5,9 +5,7 @@
 #   scripts/ci/submodules.test.sh
 #
 # The cases build a superproject and its submodule repositories as local
-# directories, which needs no network and no credentials. The last case runs
-# `check` against this repository, so a submodule added to .gitmodules and not
-# to the `submodule_pins` job's list (or the other way round) fails here.
+# directories, which needs no network and no credentials.
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -75,7 +73,7 @@ super() {
 	rm -rf "$repo"
 	git init --quiet --initial-branch=master "$repo"
 	git -C "$repo" remote add origin "$repo"
-	mkdir -p "${repo}/scripts/ci" "${repo}/.azure/project"
+	mkdir -p "${repo}/scripts/ci"
 	cp "${HERE}/submodules.sh" "${HERE}/build-context.sh" "${HERE}/tcab-lib.sh" "${repo}/scripts/ci/"
 	printf '%s\n' '*' "$@" >"${repo}/.dockerignore"
 	git -C "$repo" submodule --quiet add ../contracts contracts
@@ -137,38 +135,6 @@ report "its own submodule is not" \
 	"$([[ -e "${host}/super/contracts/nested/.git" ]] && echo false || echo true)" "nested was initialized"
 expect "an undeclared path initializes nothing" fail helper init media nope
 report "media is still not" "$(initialized media && echo false || echo true)" "media was initialized"
-
-echo "--- check ---"
-jobs() { # yaml-lines...: the superproject's .azure/project/jobs.yml
-	printf '%s\n' "parameters:" "  - name: rustImage" "    type: string" "$@" "" "jobs:" "  - job: x" \
-		>"${host}/super/.azure/project/jobs.yml"
-}
-super
-jobs "  - name: submodules" "    type: object" "    default:" \
-	"      - path: contracts" "        repository: contracts" \
-	"      - path: media" "        repository: media"
-expect "every submodule listed passes" pass helper check
-jobs "  - name: submodules" "    type: object" "    default:" \
-	"      - path: contracts" "        repository: contracts"
-expect "a submodule missing from the list fails" fail helper check
-jobs "  - name: submodules" "    type: object" "    default:" \
-	"      - path: contracts" "        repository: contracts" \
-	"      - path: media" "        repository: media" \
-	"      - path: gone" "        repository: gone"
-expect "an entry .gitmodules lacks fails" fail helper check
-jobs "  - name: submodules" "    type: object" "    default:" \
-	"      - path: contracts" "        repository: contracts" \
-	"      - path: media" "        repository: cold-storage"
-expect "the wrong repository fails" fail helper check
-jobs "  - name: other" "    type: object" "    default:" \
-	"      - path: contracts" "        repository: contracts" \
-	"      - path: media" "        repository: media"
-expect "another parameter's list does not count" fail helper check
-rm "${host}/super/.azure/project/jobs.yml"
-expect "no jobs file fails" fail helper check
-
-echo "--- this repository ---"
-expect "the submodule_pins job checks out every submodule" pass "${HERE}/submodules.sh" check
 
 echo
 echo "${pass} passed, ${fail} failed"

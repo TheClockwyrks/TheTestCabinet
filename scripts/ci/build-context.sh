@@ -332,7 +332,7 @@ self_test() {
 *
 !/crates
 !/scripts/ci/install-java.sh
-!/apps/web
+!/apps/site
 !/docs/*.md
 !/vendor/**/keep.txt
 !/packages/gg-sandbox-*/*-version.sh
@@ -364,12 +364,12 @@ packages/gg-sandbox-java/src/Main.java ignored
 packages/gg-sandbox-swift/.build/debug/swift-version.sh ignored
 packages/gg-sandbox-java ignored
 ui-common/packages/ui/src/index.ts ignored
-apps/web/src/main.tsx included
+apps/site/src/main.ts included
 apps/docs/astro.config.mjs ignored
 crates/gg/target/debug/gg ignored
 crates/target ignored
 target ignored
-apps/web/node_modules/left-pad/index.js ignored
+apps/site/node_modules/left-pad/index.js ignored
 Cargo.toml ignored
 docs/overview.md included
 docs/nested/overview.md ignored

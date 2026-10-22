@@ -34,6 +34,7 @@
     "/microservice-artifacts/**",
     "/microservice-dispatcher/**",
     "/microservice-driver/**",
+    "/microservice-publisher/**",
     "/microservice-repos/**",
     "/tool-model-core/**",
     "/tool-paint/**",
@@ -50,6 +51,8 @@
     "/apps/docs/src/content/docs/gg/**",
     "/test-suites/**",
     "/ui-common/**",
+    "/console.testcabinet.ai/**",
+    "/testcabinet.ai/**",
     "/tasks/**/done/**",
     "/.claude/workflows/**",
     "/.claude/worktrees/**",
@@ -70,7 +73,11 @@
   "overrides": [
     {
       "filename": "/.nyxsis/issues/**",
-      "ignoreRegExpList": ["/^id: [a-z0-9]+$/gm", "/^  - [a-z0-9]{20,}$/gm"]
+      "ignoreRegExpList": [
+        "/^id: [a-z0-9]+$/gm",
+        "/^  - [a-z0-9]{20,}$/gm",
+        "/\\b(?=[a-z]*[0-9])[a-z0-9]{20,}\\b/g"
+      ]
     }
   ]
 }

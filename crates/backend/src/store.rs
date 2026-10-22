@@ -1518,16 +1518,42 @@ impl DefinitionStore {
             ));
         }
         let path = self
-            .version_dir(slug, version)
-            .join(test_cabinet_contracts::layout::VALIDATION_BASELINE_DIR)
-            .join(engine)
-            .join(variant)
+            .validation_baseline_dir(slug, version, engine, variant)
             .join(file);
         std::fs::read(&path).map_err(|_| {
             BackendError::NotFound(format!(
                 "validation baseline `{engine}/{variant}/{file}` not stored"
             ))
         })
+    }
+
+    /// The stored directory one reference build's baseline media is read from:
+    /// `validation-baseline/<engine>/<variant>/`.
+    ///
+    /// A version captured before engines existed keeps its baselines one level
+    /// shallower, at `validation-baseline/<variant>/`. Those are the baselines of
+    /// its engineless build, so the `none` engine falls back to that directory
+    /// when the version has no `none/<variant>/` of its own. Only `none` does: a
+    /// pre-engine version has no build under any other engine. `engine` and
+    /// `variant` must already be validated as safe segments.
+    fn validation_baseline_dir(
+        &self,
+        slug: &str,
+        version: &str,
+        engine: &str,
+        variant: &str,
+    ) -> PathBuf {
+        let root = self
+            .version_dir(slug, version)
+            .join(test_cabinet_contracts::layout::VALIDATION_BASELINE_DIR);
+        let keyed = root.join(engine).join(variant);
+        if engine == test_cabinet_contracts::engine::NONE_SLUG && !keyed.is_dir() {
+            let legacy = root.join(variant);
+            if legacy.is_dir() {
+                return legacy;
+            }
+        }
+        keyed
     }
 
     /// List one reference build's committed **baseline** validation media file names
@@ -1549,11 +1575,7 @@ impl DefinitionStore {
                 "invalid validation-baseline engine or variant".to_string(),
             ));
         }
-        let dir = self
-            .version_dir(slug, version)
-            .join(test_cabinet_contracts::layout::VALIDATION_BASELINE_DIR)
-            .join(engine)
-            .join(variant);
+        let dir = self.validation_baseline_dir(slug, version, engine, variant);
         let read = match std::fs::read_dir(&dir) {
             Ok(read) => read,
             Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),

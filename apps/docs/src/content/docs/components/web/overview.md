@@ -158,6 +158,13 @@ engine](/components/driver/validation/). A review records one run-wide aesthetic
 tier, a writeup, and a verdict for each point of that checklist. Publish is
 offered whether or not a review exists.
 
+A run whose model has finished working reads "validating" in the run listings,
+from the end of its session until it finishes, counts as an active run for the
+stop controls, and a gg run's status pill reads "Validating". A run log's
+in-progress marker draws a validating run with an animation of its own, distinct
+from a running run's spinner, so a view that shows the marker without the state
+still tells a working model from a build being validated.
+
 The publish backlog is its own worklist because a publish is asynchronous and
 can fail. Its slice is the publish gate rather than everything unpublished, so
 it offers only rows the backend will accept. A batch publish enqueues each
@@ -186,6 +193,11 @@ an ordered climb each combination ascends automatically until it fails a rung.
 Both serve their own unreviewed queue in their own order rather than
 newest-first. A review queue is for labelling runs after the fact, and nothing on
 it launches or holds back a run.
+
+The console shows a review queue, Label runs, 20 runs a page in the queue's
+order. The page lives in the URL as `labelPage`, so reviewing a run and going
+back returns to the same page. A page the shrinking queue no longer reaches
+falls back to its last one.
 
 The reviewer's runs-in-flight limit lives in Settings → Runs. A plan and a
 ladder may override it, and either may be set to no limit.
@@ -281,6 +293,10 @@ whole ladder, never one climber: running, passed, failed, and skipped. A
 unfinished work, so it is counted in the running total. A ladder never run shows
 an empty bar and zero totals in the same slots, so a first Run moves nothing.
 
+The list shows 20 ladders a page. A list longer than one page carries a search
+field that narrows it by name. The page and the search live in the URL as `page`
+and `q`, so a narrowed list is a link.
+
 ### A ladder
 
 A ladder's dashboard heads with its status, Run ladder, Stop, and Stop and cancel
@@ -302,10 +318,32 @@ its rung: "Running rung 2", "Failed at rung 3", "Blocked at rung 4" with the
 reason, and "Completed". Once a dispatch is stopped, a climber that was running
 or blocked reads "Stopped at rung 2".
 
-Expanded, a climber lists every rung with its slot status: Running, Blocked,
+The board shows 20 climbers a page in the dispatch's climb order, so a climber
+holds its place for as long as the dispatch runs, and an expanded climber stays
+expanded when the board is read again. A board longer than one page carries a
+search field and a status filter. The search narrows the climbers by harness,
+model, provider, or gg configuration. The status filter narrows them to Running,
+Blocked, Failed, or Completed, and on a stopped dispatch to Stopped, Failed, or
+Completed, and offers each status with the number of climbers the search leaves
+in it.
+
+The page, the search, and the status live in the URL as `page`, `q`, and
+`status`. A change to the search or the status returns to the first page, and a
+page the narrowed board no longer reaches falls back to its last one.
+
+The page and the filters choose which cards are drawn and nothing else. The
+summary, the status note, and Run and Stop describe and act on the whole
+dispatch. The console reads the whole board in one
+[`GET /ladders/{id}/progress`](/components/backend/api/#ladders) and pages it
+itself, which keeps the filters and the counts beside them exact between reads.
+
+Expanded, a climber lists its rungs with their slot status: Running, Blocked,
 Passed, Failed, Pending, or Skipped. Only a running climber's current rung is
-highlighted, and the highlight changes no row's layout. A rung's evidence reads
-as its tally, for example "2 of 3 runs passed (1 needed)".
+highlighted, and the highlight changes no row's layout. The rungs show 5 a page,
+and a climber opens on the page holding the rung it stands at: its current rung,
+or the rung it failed, was blocked or was stopped at. A completed climber opens
+on the first page. The rung track in the card's header shows every rung. A
+rung's evidence reads as its tally, for example "2 of 3 runs passed (1 needed)".
 
 A ladder's status note states only what the summary figures cannot: the blocked
 climbers and the fix for each, or a dispatch that cannot climb because its

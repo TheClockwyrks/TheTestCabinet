@@ -15,7 +15,7 @@ set -euo pipefail
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/tcab-lib.sh"
 
 # The wrangler release the publisher image pins (WRANGLER_VERSION in
-# deployments/images/services.Dockerfile).
+# microservice-publisher's Dockerfile).
 readonly WRANGLER_VERSION="4.40.3"
 
 if [[ $# -ne 1 ]]; then

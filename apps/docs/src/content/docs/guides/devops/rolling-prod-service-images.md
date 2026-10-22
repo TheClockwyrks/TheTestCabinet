@@ -39,7 +39,7 @@ superrepo's submodule pointer for its repository names:
 | ----------------------------------------------- | ---------------------------------------------------------------------- |
 | Each service's `image:`                         | `testcabinet.azurecr.io/<image>:<commit>` of that service's repository |
 | The dispatcher's `TCAB_DRIVER_IMAGE`            | `testcabinet.azurecr.io/microservice-driver:<driver commit>`           |
-| The dispatcher's `TCAB_PUBLISHER_IMAGE`         | `testcabinet.azurecr.io/tcab-publisher:<publisher commit>`             |
+| The dispatcher's `TCAB_PUBLISHER_IMAGE`         | `testcabinet.azurecr.io/microservice-publisher:<publisher commit>`     |
 | `TCAB_CONTAINER_REGISTRY`, `TCAB_CONTAINER_TAG` | `testcabinet.azurecr.io`, `<driver commit>`                            |
 
 The overlay names every image at the tag `unpinned`, which nothing pushes, so
@@ -109,6 +109,14 @@ A roll that moves the backend's pin restarts the backend pod, and its ingest
 sidecar force-ingests the `test-suites` repository's `master` tip. `tcab ingest
 --env prod`, with the Access service token, refreshes the catalog after any
 other roll and between deploys.
+
+A deploy fails when the sidecar did not ingest. Before it applies anything it
+checks that the `master` tip and the cold-storage commit it pins can be fetched,
+and after the rollout it reads the sidecar's result and prints the step that
+failed and why. A deploy that fails there has rolled the images and left the
+catalog and its baselines as they were; fix what the message names and run
+`tcab ingest --env prod`. See [the catalog
+checks](/deployment/kubernetes/overview/#the-catalog-checks).
 
 ## Rolling back
 

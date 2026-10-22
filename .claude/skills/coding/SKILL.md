@@ -105,15 +105,16 @@ gates for what it touched:
 | `gg/` | its own `make gate`, plus its `scripts/ci/gg-test.sh` |
 | `contracts/` | its own `make gate` (`contract-drift` among them, after `npm run gen:contract` in that checkout when a contract or backend API type changed) |
 | `engines/` | its own `make gate` (`seeded-contract` among them) |
-| `apps/web/` | `web-lint`, `web-typecheck`, `web-test`, `web-browser-test`, `web-build` |
-| `packages/`, `apps/site/` | `web-lint`, `workspace-test`, `site-build`, `format` |
+| `console.testcabinet.ai/` | its own `make gate` (`web-lint`, `web-browser-test` among them) |
+| `testcabinet.ai/` | its own `make gate` (`web-lint` among them) |
+| `packages/` | `workspace-test`, `format` |
 | Documentation (`apps/docs/`) | `markdownlint`, `cspell`, `docs-typecheck`, `docs-build` |
 | Any Markdown elsewhere | `markdownlint`, `cspell` |
 | `test-suites/` (a test case, game jam or group) | its own `make gate` (`frozen-paths`, `spec-prose`, `spec-vocabulary`, `audio-packs`, `validators-typecheck` among them) |
 | A Dockerfile, `.dockerignore`, `rust-toolchain.toml` | `build-context` |
 | `deployments/k8s/`, the deploy scripts | `k8s-manifests`, `k8s-deploy-sets` |
 | `scripts/` | `shell-tests`, `scripts-test`, and `shellcheck` (`pre-commit run shellcheck --files …`) |
-| `ci/`, `.azure/project/`, `ci/images/tags.yml` | `python-lint`, `ci-tests`, `ci-image-pins` |
+| `ci/`, `.azure/project/`, `ci/images/tags.yml`, a Playwright pin | `python-lint`, `ci-tests`, `ci-image-pins` |
 | The repository kit (`copier.yml`, `templates/repository/`, `scripts/repos/`), `.gitmodules`, `.cargo/config.toml`, `.package-links.json` | `python-lint`, `ci-tests`, `shell-tests`, `dependency-graph` |
 | `.claude/hooks/` | every `.claude/hooks/*.test.sh`, run directly, and `shellcheck` |
 | Anything | `no-nul-bytes`, and `pre-commit run --all-files` for the upstream file checks |

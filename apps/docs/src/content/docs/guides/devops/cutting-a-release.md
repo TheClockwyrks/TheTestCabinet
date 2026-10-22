@@ -202,8 +202,9 @@ do to production, and its tip is what Phase 3 promotes.
    overlay's content and the waits are the same, with the staging cluster and
    namespace.
 2. **Confirm the catalog.** A deploy that moves the backend's pin restarts the
-   backend, whose ingest sidecar force-ingests the `staging` tip; after any
-   other deploy, `tcab ingest --env staging` does. That is what makes the
+   backend, whose ingest sidecar force-ingests the `staging` tip, and the
+   deploy fails if it did not; after any other deploy,
+   `tcab ingest --env staging` does. That is what makes the
    merged catalog visible, including the cases that just stopped being
    experimental.
 3. **Exercise it.** Enqueue runs of the cases that changed in this release,

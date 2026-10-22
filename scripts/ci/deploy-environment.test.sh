@@ -4,8 +4,8 @@
 #
 # No case reaches Azure or a cluster. Each builds a throwaway repository holding
 # the script, the template's lib.sh and tcab-lib.sh, a two-overlay k8s tree, and
-# stubs of the scripts it hands work to (pin-images.sh, retire-legacy-backend.sh,
-# settle-workloads.sh), each recording its arguments and the THE_TEST_CABINET_*
+# stubs of the scripts it hands work to (pin-images.sh, catalog-ingest.sh,
+# retire-legacy-backend.sh, settle-workloads.sh), each recording its arguments and the THE_TEST_CABINET_*
 # variables it saw. `kubectl kustomize` prints the overlay's `rendered.yaml`,
 # and `az` records the invocation and answers with the exit code the case
 # declares. The subject is the order and content of what it does, that the
@@ -96,11 +96,14 @@ metadata:
   namespace: tcab-$environment
 YAML
 	done
-	for name in pin-images retire-legacy-backend settle-workloads; do
+	for name in pin-images catalog-ingest retire-legacy-backend settle-workloads; do
 		cat >"$repo/scripts/ci/$name.sh" <<STUB
 #!/usr/bin/env bash
 echo "$name \$* [k8s=\${TCAB_K8S_ROOT:-} rg=\${THE_TEST_CABINET_RESOURCE_GROUP:-} cluster=\${THE_TEST_CABINET_CLUSTER:-} ns=\${THE_TEST_CABINET_NAMESPACE:-} timeout=\${THE_TEST_CABINET_ROLLOUT_TIMEOUT:-}]" >>"\$STUB_LOG"
 [[ "$name" == pin-images ]] && echo "pinned" >>"\$TCAB_K8S_ROOT/overlays/\$1/rendered.yaml.pins"
+[[ "$name" == catalog-ingest && -n "\${TCAB_INGEST_MANIFEST:-}" ]] && cp "\$TCAB_INGEST_MANIFEST" "\$STUB_LOG.\$1-manifest"
+mode="STUB_EXIT_catalog_ingest_\${1:-}"
+[[ "$name" == catalog-ingest ]] && exit "\${!mode:-0}"
 exit "\${STUB_EXIT_${name//-/_}:-0}"
 STUB
 		chmod +x "$repo/scripts/ci/$name.sh"
@@ -140,14 +143,20 @@ echo "--- a staging deploy ---"
 repo="$(fresh_repo)"
 out="$(run "$repo" -- staging "$COMMIT")"
 check_equal "succeeds" "0" "$?"
-check_equal "pins a copy, retires the legacy backend, applies, then settles" \
+check_equal "pins a copy, checks the catalog, retires the legacy backend, applies, settles, then reads the ingest" \
 	"pin-images staging $COMMIT [k8s=K8S rg= cluster= ns= timeout=]
+catalog-ingest preflight staging $COMMIT [k8s= rg= cluster= ns= timeout=]
 retire-legacy-backend  [k8s= rg=testcabinet-staging-westus2-rg cluster=testcabinet-staging-westus2-aks ns=tcab-staging timeout=600s]
 az aks command invoke --resource-group testcabinet-staging-westus2-rg --name testcabinet-staging-westus2-aks --file TMP/tcab-staging.yaml --command kubectl apply -f tcab-staging.yaml -o json
-settle-workloads --include-backend $COMMIT [k8s= rg=testcabinet-staging-westus2-rg cluster=testcabinet-staging-westus2-aks ns=tcab-staging timeout=600s]" \
+settle-workloads --include-backend $COMMIT [k8s= rg=testcabinet-staging-westus2-rg cluster=testcabinet-staging-westus2-aks ns=tcab-staging timeout=600s]
+catalog-ingest verify staging [k8s= rg=testcabinet-staging-westus2-rg cluster=testcabinet-staging-westus2-aks ns=tcab-staging timeout=600s]" \
 	"$(calls "$repo")"
 check_absent "the checkout's overlay is never edited" "$repo/deployments/k8s/overlays/staging/rendered.yaml.pins"
+check_equal "the preflight is handed the file about to be applied" \
+	"$(cat "$repo/deployments/k8s/overlays/staging/rendered.yaml")" "$(cat "$repo/calls.log.preflight-manifest" 2>/dev/null)"
+check_absent "and the verify no file" "$repo/calls.log.verify-manifest"
 check_contains "and the result is reported" "staging is at $COMMIT" "$out"
+check_contains "with the catalog's" "staging serves the catalog of its branch tip" "$out"
 
 echo "--- a prod deploy ---"
 repo="$(fresh_repo)"
@@ -156,13 +165,15 @@ check_equal "succeeds" "0" "$?"
 check_contains "against the prod cluster and namespace" \
 	"az aks command invoke --resource-group testcabinet-prod-westus2-rg --name testcabinet-prod-westus2-aks" "$(calls "$repo")"
 check_contains "settling in tcab-prod" "ns=tcab-prod timeout=600s" "$(grep '^settle-workloads' "$repo/calls.log")"
+check_contains "checking prod's catalog first" "catalog-ingest preflight prod $COMMIT" "$(sed -n 2p "$repo/calls.log")"
+check_contains "and reading prod's ingest last" "catalog-ingest verify prod" "$(tail -n 1 "$repo/calls.log")"
 
 echo "--- --render ---"
 repo="$(fresh_repo)"
 out="$(run "$repo" -- --render staging "$COMMIT")"
 check_equal "succeeds" "0" "$?"
 check_equal "prints the rendered overlay alone" "$(cat "$repo/deployments/k8s/overlays/staging/rendered.yaml")" "$out"
-check_equal "after pinning it" "pin-images" "$(cut -d' ' -f1 "$repo/calls.log")"
+check_equal "after pinning it, and checking no catalog" "pin-images" "$(cut -d' ' -f1 "$repo/calls.log")"
 
 echo "--- TCAB_K8S_ROOT ---"
 repo="$(fresh_repo)"
@@ -211,6 +222,7 @@ check_equal "a workload bound to an unprovisioned identity fails" "1" "$?"
 check_contains "naming it" "unprovisioned workload identity: ServiceAccount/tcab-artifacts" "$out"
 check_contains "saying nothing was retired" "nothing was retired or applied" "$out"
 check_contains "and the trees to move" "artifacts-tcab-artifacts-0 in tcab-prod" "$out"
+check_contains "with the script that moves them" "scripts/ci/copy-artifact-trees.sh prod" "$out"
 check_equal "before retiring or reaching the cluster" "pin-images" "$(cut -d' ' -f1 "$repo/calls.log")"
 out="$(run "$repo" -- --render prod "$COMMIT")"
 check_equal "while its render still succeeds" "0" "$?"
@@ -222,6 +234,20 @@ check_contains "saying so" "the staging overlay could not be pinned to $COMMIT" 
 check_equal "and goes no further" "pin-images" "$(cut -d' ' -f1 "$repo/calls.log")"
 
 repo="$(fresh_repo)"
+out="$(run "$repo" STUB_EXIT_catalog_ingest_preflight=1 -- staging "$COMMIT")"
+check_equal "a catalog that cannot be fetched fails" "1" "$?"
+check_contains "saying nothing was applied" "the staging deploy preflight failed, above; nothing was applied" "$out"
+check_lacks "before retiring anything" "retire-legacy-backend" "$(cat "$repo/calls.log")"
+check_lacks "and before reaching the cluster" "az " "$(cat "$repo/calls.log")"
+
+repo="$(fresh_repo)"
+out="$(run "$repo" STUB_EXIT_catalog_ingest_verify=1 -- staging "$COMMIT")"
+check_equal "a sidecar that did not ingest fails" "1" "$?"
+check_contains "saying the commit runs without its catalog" \
+	"staging runs $COMMIT, but its backend did not ingest the catalog" "$out"
+check_contains "after every workload settled" "staging is at $COMMIT" "$out"
+
+repo="$(fresh_repo)"
 out="$(run "$repo" STUB_AZ_EXIT_CODE=1 -- staging "$COMMIT")"
 check_equal "a failed apply fails" "1" "$?"
 check_contains "saying so" "the apply of $COMMIT to tcab-staging did not succeed" "$out"
@@ -231,6 +257,7 @@ repo="$(fresh_repo)"
 out="$(run "$repo" STUB_EXIT_settle_workloads=1 -- staging "$COMMIT")"
 check_equal "workloads that do not settle fail" "1" "$?"
 check_contains "saying the environment is not at the commit" "staging is not at $COMMIT" "$out"
+check_lacks "without reading an ingest that was undone" "catalog-ingest verify" "$(cat "$repo/calls.log")"
 
 repo="$(fresh_repo)"
 out="$(run "$repo" -- local "$COMMIT")"

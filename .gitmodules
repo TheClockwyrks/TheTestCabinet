@@ -37,6 +37,10 @@
 	path = microservice-repos
 	url = ../microservice-repos
 	branch = .
+[submodule "microservice-publisher"]
+	path = microservice-publisher
+	url = ../microservice-publisher
+	branch = .
 [submodule "gg.rocks"]
 	path = gg.rocks
 	url = ../gg.rocks
@@ -92,6 +96,14 @@
 [submodule "ui-common"]
 	path = ui-common
 	url = ../ui-common
+	branch = .
+[submodule "console.testcabinet.ai"]
+	path = console.testcabinet.ai
+	url = ../console.testcabinet.ai
+	branch = .
+[submodule "testcabinet.ai"]
+	path = testcabinet.ai
+	url = ../testcabinet.ai
 	branch = .
 [submodule "client-tauri"]
 	path = client-tauri

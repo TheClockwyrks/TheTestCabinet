@@ -2,24 +2,24 @@
 resolver = "3"
 members = [
 	"crates/backend",
-	"crates/publisher",
 	"crates/db-auth",
 	"crates/entities",
 	"crates/migration",
 ]
-# The repositories checked out as submodules carrying a crate (contracts, engines,
+# The repositories checked out as submodules carrying a crate (client-tauri,
+# contracts, engines,
 # gg, microservice-arena, microservice-artifacts, microservice-dispatcher,
 # microservice-driver,
-# microservice-repos,
+# microservice-publisher, microservice-repos,
 # tool-model-core, tool-paint, tool-particle, tool-sprite, tool-voxel, tool-mc,
 # tool-sn, tool-dc, tool-audio-core, tool-sfx-synth, tool-sfx-sample, tool-music,
 # ui-common) are workspaces of their own. The contracts and engines crates are
 # named under `[workspace.dependencies]` by their public source, and the patch
 # table of `.cargo/config.toml` builds them from the checkouts. No member depends
-# on the other repositories' source (gg's, the microservices', the tools' or
-# ui-common's), nor on every crate of engines; the patch table names their crates
-# all the same, and the lock records them as unused.
-exclude = ["contracts", "engines", "gg", "microservice-arena", "microservice-artifacts", "microservice-dispatcher", "microservice-driver", "microservice-repos", "tool-model-core", "tool-paint", "tool-particle", "tool-sprite", "tool-voxel", "tool-mc", "tool-sn", "tool-dc", "tool-audio-core", "tool-sfx-synth", "tool-sfx-sample", "tool-music", "ui-common"]
+# on the other repositories' source (client-tauri's, gg's, the microservices',
+# the tools' or ui-common's), nor on every crate of engines; the patch table
+# names their crates all the same, and the lock records them as unused.
+exclude = ["client-tauri", "contracts", "engines", "gg", "microservice-arena", "microservice-artifacts", "microservice-dispatcher", "microservice-driver", "microservice-publisher", "microservice-repos", "tool-model-core", "tool-paint", "tool-particle", "tool-sprite", "tool-voxel", "tool-mc", "tool-sn", "tool-dc", "tool-audio-core", "tool-sfx-synth", "tool-sfx-sample", "tool-music", "ui-common"]
 
 [workspace.package]
 edition = "2024"
@@ -49,14 +49,13 @@ all = "deny"
 # path into `contracts/`: inside the superrepo the patch table of
 # `.cargo/config.toml` sends this source to the sibling checkout, which may hold
 # crates and changes the tag does not yet carry.
-test-cabinet-contracts = { git = "https://github.com/TheClockwyrks/contracts", tag = "v0.2.3" }
-test-cabinet-suites = { git = "https://github.com/TheClockwyrks/contracts", tag = "v0.2.3" }
-test-cabinet-telemetry = { git = "https://github.com/TheClockwyrks/contracts", tag = "v0.2.3" }
-test-cabinet-redact = { git = "https://github.com/TheClockwyrks/contracts", tag = "v0.2.3" }
-test-cabinet-backend-client = { git = "https://github.com/TheClockwyrks/contracts", tag = "v0.2.3" }
+test-cabinet-contracts = { git = "https://github.com/TheClockwyrks/contracts", tag = "v0.2.4" }
+test-cabinet-suites = { git = "https://github.com/TheClockwyrks/contracts", tag = "v0.2.4" }
+test-cabinet-telemetry = { git = "https://github.com/TheClockwyrks/contracts", tag = "v0.2.4" }
+test-cabinet-redact = { git = "https://github.com/TheClockwyrks/contracts", tag = "v0.2.4" }
 # The crates of the engines repository, named the same way at its tag. The engine
 # catalog.
-test-cabinet-engines = { git = "https://github.com/TheClockwyrks/engines", tag = "v1.1.2" }
+test-cabinet-engines = { git = "https://github.com/TheClockwyrks/engines", tag = "v1.1.4" }
 # Shared runtime dependencies inherited by member crates via { workspace = true }.
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

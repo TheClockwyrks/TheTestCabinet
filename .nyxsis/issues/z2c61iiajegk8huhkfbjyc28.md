@@ -1,6 +1,6 @@
 ---
 format: nyxsis-issue
-version: 2
+version: 3
 id: z2c61iiajegk8huhkfbjyc28
 zone: SITE
 number: 1
@@ -23,14 +23,17 @@ static shell", "Reading the dataset", "The public read surface" and
 
 ## What is missing
 
-- The shell in `apps/site` built without the snapshot, reading the objects
-  the serving page lists at runtime and rendering the empty states for a
-  bucket with no pointer.
+- The shell in the `testcabinet.ai` repository built without the snapshot,
+  reading the objects the serving page lists at runtime and rendering the
+  empty states for a bucket with no pointer.
 - Listing pages answered from the run index with the paging, filtering and
   sorting the console's backend query has, as the serving page states.
 - The site's build and deploy as
   `apps/docs/src/content/docs/development/releasing.md`, section "Gallery
-  (Cloudflare Pages and Workers, one-time)", states, with no deploy hook.
+  (Cloudflare Pages and Workers, one-time)", states, with no deploy hook: the
+  backend's `TCAB_SITE_DEPLOY_HOOK_URL` and the Pages projects' deploy hooks
+  retired, as `apps/docs/src/content/docs/components/backend/overview.md`
+  states under "Publish".
 
 ## Verify
 

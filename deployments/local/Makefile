@@ -18,9 +18,9 @@
 # match/tournament runs on the arena service. The web console is the ONE piece that
 # does NOT run in-cluster locally: baking it into a pod forces a full image
 # rebuild+re-import on every UI edit, so instead you run it from source with
-# `npm run -w apps/web dev` (serves 127.0.0.1:1430 and proxies `/api`, `/artifacts`
-# and `/arena` to the forwarded services, adding the `dev@local` identity header —
-# see apps/web/.env.development; no VITE_BACKEND_URL to set). It reaches the data
+# `npm run dev` in console.testcabinet.ai/ (serves 127.0.0.1:1430 and proxies `/api`,
+# `/artifacts` and `/arena` to the forwarded services, adding the `dev@local` identity
+# header — see that repository's .env.development; no VITE_BACKEND_URL to set). It reaches the data
 # plane over `make local-forward`.
 # (Prod still serves the console in-cluster; only the local overlay drops it.) The
 # observability stack (the local overlay's `components/observability`) replaces the
@@ -61,7 +61,7 @@
 #                   environment-representative `-gg` images WITH the `gg selfcheck` gate — the same command CI
 #                   publishes behind (builds only; imports nothing)
 #   local-reapply   re-apply the overlay ONLY (after a manifest-only change — RBAC, env, volumes; no image rebuild)
-#   local-forward   foreground-forward backend→:8787, artifacts→:8790, arena→:8791, repos→:8792, AND Grafana→:3000 to localhost (the console runs from source via `npm run -w apps/web dev`)
+#   local-forward   foreground-forward backend→:8787, artifacts→:8790, arena→:8791, repos→:8792, AND Grafana→:3000 to localhost (the console runs from source via `npm run dev` in console.testcabinet.ai/)
 #   local-grafana   foreground-forward Grafana→:3000 AND the OTLP collector→:4318/:4317 to localhost (use when you also need the OTLP ports; local-forward already exposes Grafana)
 #   local-ingest    re-ingest the whole catalog (`tcab ingest --force`) — the scripted whole-catalog refresh
 #   local-import    re-import EVERY already-built service + run image into the node, no rebuild (recovery after the node lost its images)
@@ -190,7 +190,7 @@ DRIVER_NPM_SECRET := --secret 'id=npmrc,src=$(DRIVER_NPM_CONFIG)'
 require_driver = @[ -f '$(DRIVER_DIR)/containers/build.sh' ] || { echo "ERROR: $(DRIVER_DIR) is not checked out; run: git submodule update --init microservice-driver" >&2; exit 1; }
 
 # The web console is intentionally absent: it runs from source locally
-# (`npm run -w apps/web dev`), not as an in-cluster pod, so there is no tcab-web
+# (`npm run dev` in console.testcabinet.ai/), not as an in-cluster pod, so there is no tcab-web
 # image to build or import here (see the header comment and the local overlay).
 ALL_IMGS := $(BACKEND_IMG) $(DISPATCHER_IMG) $(DRIVER_IMG) $(ARTIFACTS_IMG) $(ARENA_IMG) $(REPOS_IMG)
 
@@ -391,7 +391,7 @@ local-up: cluster images run-images apply-overlay local-ingest apply-wait
 	@echo "Stack is up in namespace '$(NS)' (services only — the web console runs from source, see below)."
 	@echo "Forward the data plane with:  make -C deployments/local local-forward"
 	@echo "  backend → http://127.0.0.1:8787   artifacts → http://127.0.0.1:8790   arena → http://127.0.0.1:8791   repos → http://127.0.0.1:8792   Grafana → http://127.0.0.1:3000"
-	@echo "Then start the web console from source (a separate terminal):  npm run -w apps/web dev  →  http://127.0.0.1:1430"
+	@echo "Then start the web console from source (a separate terminal, in console.testcabinet.ai/):  npm run dev  →  http://127.0.0.1:1430"
 	@echo "  (it proxies /api, /artifacts and /arena to the forwards above as dev@local — no extra flags; edits hot-reload with no image rebuild)"
 	@echo "Observe it with Grafana at http://127.0.0.1:3000 (anonymous admin) — local-forward above already exposes it; local-grafana adds the OTLP ports for out-of-cluster exporters."
 
@@ -1093,7 +1093,7 @@ local-ingest:
 	  TCAB_BACKEND_URL=http://127.0.0.1:$$port TCAB_BACKEND_SERVICE_TOKEN='$(SERVICE_TOKEN)' $(TCAB) ingest --force
 
 # Hold the data-plane services open on localhost until interrupted (Ctrl-C). The web
-# console is NOT forwarded here — it runs from source (`npm run -w apps/web dev` on
+# console is NOT forwarded here — it runs from source (`npm run dev` in console.testcabinet.ai/ on
 # 127.0.0.1:1430), whose dev server proxies `/api`, `/artifacts` and `/arena` of its own
 # origin to these forwarded addresses, adding the local identity header. The CLI
 # reaches the forwarded backend directly. Everything the browser touches
@@ -1106,7 +1106,7 @@ local-ingest:
 # run OUTSIDE the cluster — which this data-plane forward deliberately leaves out.
 local-forward:
 	@echo "Forwarding backend→127.0.0.1:8787, artifacts→127.0.0.1:8790, arena→127.0.0.1:8791, repos→127.0.0.1:8792, Grafana→http://127.0.0.1:3000 (Ctrl-C to stop)…"
-	@echo "Start the console separately with:  npm run -w apps/web dev  →  http://127.0.0.1:1430"
+	@echo "Start the console separately with (in console.testcabinet.ai/):  npm run dev  →  http://127.0.0.1:1430"
 	@$(KUBECTL) -n '$(NS)' port-forward svc/tcab-backend 8787:8787 & \
 	  $(KUBECTL) -n '$(NS)' port-forward svc/tcab-artifacts 8790:8790 & \
 	  $(KUBECTL) -n '$(NS)' port-forward svc/tcab-arena 8791:8791 & \

@@ -5,7 +5,8 @@
 # Each case runs a copy of the script in a throwaway git repository holding a
 # small Rust workspace, a Dockerfile and an allowlist that pass, then breaks
 # the one thing the case names. The subject is that each kind of break fails,
-# naming the file to fix.
+# naming the file to fix, and that a repository carrying no crate passes with
+# no toolchain to hold a pin to.
 set -uo pipefail
 
 CI_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -158,6 +159,33 @@ sed -i 's#docker.io/library/rust:1.97.1#rust:1.96.0#' "$repo/Dockerfile"
 out="$(run "$repo")"
 check_equal "is a pin too" "1" "$?"
 check_contains "naming it" "pins Rust 1.96.0" "$out"
+
+echo "--- a repository carrying no crate, whose image builds an npm workspace ---"
+repo="$(fresh_repo)"
+git -C "$repo" rm --quiet -r --cached rust-toolchain.toml Cargo.toml Cargo.lock .cargo crates
+rm -r "$repo/rust-toolchain.toml" "$repo/Cargo.toml" "$repo/Cargo.lock" "$repo/.cargo" "$repo/crates"
+printf '{"private": true}\n' >"$repo/package.json"
+printf '{}\n' >"$repo/package-lock.json"
+cat >"$repo/Dockerfile" <<'DOCKERFILE'
+# syntax=docker/dockerfile:1
+FROM docker.io/library/node:24-bookworm-slim AS build
+WORKDIR /src
+COPY package.json package-lock.json ./
+COPY . .
+RUN npm ci && npm run build
+FROM docker.io/nginxinc/nginx-unprivileged:1-bookworm
+COPY --from=build /src/dist /usr/share/nginx/html
+DOCKERFILE
+printf '*\n!/package.json\n!/package-lock.json\n**/node_modules\n' >"$repo/.dockerignore"
+git -C "$repo" add -A
+out="$(run "$repo")"
+check_equal "passes with no toolchain to hold a pin to" "0" "$?"
+check_contains "counting what it checked" "2 context-source check(s) across 1 Dockerfile(s)" "$out"
+check_contains "saying it holds no Rust pin" "No rust-toolchain.toml, and no Dockerfile pins Rust." "$out"
+sed -i 's#docker.io/library/node:24-bookworm-slim#docker.io/library/rust:1.97.1-bookworm#' "$repo/Dockerfile"
+out="$(run "$repo")"
+check_equal "a Rust pin there fails" "1" "$?"
+check_contains "naming the missing channel" "Dockerfile:2 pins Rust 1.97.1, and rust-toolchain.toml names no channel to hold it to." "$out"
 
 echo "--- no Dockerfile at the root ---"
 repo="$(fresh_repo)"

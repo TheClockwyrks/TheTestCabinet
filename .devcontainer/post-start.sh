@@ -25,10 +25,10 @@
 # clones through the agent that script publishes. post-create.sh runs it once at
 # creation, and it runs here again so a container created with no agent, or no
 # network, gets contracts/, engines/, gg/, microservice-arena/, microservice-artifacts/, microservice-dispatcher/, microservice-driver/,
-# microservice-repos/, tool-model-core/, tool-paint/, tool-particle/,
+# microservice-publisher/, microservice-repos/, tool-model-core/, tool-paint/, tool-particle/,
 # tool-sprite/, tool-voxel/, tool-mc/, tool-sn/, tool-dc/, tool-audio-core/,
-# tool-sfx-synth/, tool-sfx-sample/, tool-music/, test-suites/ and ui-common/ at
-# its next start. The script never fails, and the `|| true` holds that here as
+# tool-sfx-synth/, tool-sfx-sample/, tool-music/, test-suites/, ui-common/ and
+# console.testcabinet.ai/ at its next start. The script never fails, and the `|| true` holds that here as
 # well. It stops a checkout that outlives its deadline too, so an SSH connection
 # that never answers does not hold the start.
 set -euo pipefail

@@ -810,11 +810,11 @@ pub(super) fn build_new_job(
 }
 
 /// `GET /jobs/active` — the runs still in flight (queued, pending, dispatched,
-/// starting, running, or storing), each described by the identity captured at enqueue,
-/// with its claim lease's expiry when it holds one. The console seeds its in-progress
-/// list from this so a run it is watching survives a reload — including runs held back
-/// (`pending`) or still spinning up (`starting`) — and the dispatcher reads it, after
-/// renewing, to judge which driven jobs' leases have lapsed.
+/// starting, running, validating or storing), each described by the identity captured
+/// at enqueue, with its claim lease's expiry when it holds one. The console seeds its
+/// in-progress list from this so a run it is watching survives a reload — including
+/// runs held back (`pending`) or still spinning up (`starting`) — and the dispatcher
+/// reads it, after renewing, to judge which driven jobs' leases have lapsed.
 pub async fn active(State(state): State<AppState>) -> Result<Json<Vec<ActiveJobOut>>, ApiError> {
     let jobs = state.db.active_jobs().await.map_err(ApiError::from)?;
     Ok(Json(
@@ -851,9 +851,9 @@ pub async fn status(
 /// records who *launched* it (`job.user_id`), not who stopped it.
 ///
 /// A job still in a non-terminal state (`queued`, `pending`, `dispatched`,
-/// `starting`, `running`, or `storing`) is atomically moved to the terminal `canceled` state
-/// and its live stream is closed,
-/// so every watching console's monitor reflects the end at once. The
+/// `starting`, `running`, `validating` or `storing`) is atomically moved to the
+/// terminal `canceled` state and its live stream is closed, so every watching
+/// console's monitor reflects the end at once. The
 /// [driver](crate) polls its own job's state while it runs, so it observes the
 /// cancellation, drops the in-flight harness exec, tears its sandbox down, and
 /// exits — the same both on the local cluster and in production, since both drive a
@@ -963,8 +963,8 @@ pub async fn cancel_waiting(
 }
 
 /// `POST /jobs/cancel-active` — cancel every run that is already executing
-/// (`dispatched`, `starting`, `running`, or `storing`), whoever launched it. Takes a person's
-/// assertion, the same gate as the other job mutations.
+/// (`dispatched`, `starting`, `running`, `validating` or `storing`), whoever launched
+/// it. Takes a person's assertion, the same gate as the other job mutations.
 ///
 /// This is the Runs page's **"Kill active"** control. Unlike [`cancel_waiting`] it
 /// throws work away: each of these runs has a driver Job that is being created,
@@ -1344,11 +1344,11 @@ pub async fn update_status(
 }
 
 /// `POST /jobs/{id}/lost` — the dispatcher reports a job whose driver is gone without
-/// having reported: the job is `dispatched`, `starting`, `running` or `storing`, and the
-/// cluster has had no live driver `Job` for it for a while (it failed, completed without
-/// a terminal report reaching the backend, or no longer exists). Requires the service
-/// token, since a dispatcher that restarted holds no per-job token for the jobs an
-/// earlier process dispatched.
+/// having reported: the job is `dispatched`, `starting`, `running`, `validating` or
+/// `storing`, and the cluster has had no live driver `Job` for it for a while (it
+/// failed, completed without a terminal report reaching the backend, or no longer
+/// exists). Requires the service token, since a dispatcher that restarted holds no
+/// per-job token for the jobs an earlier process dispatched.
 ///
 /// The body is a `failed` [`StatusUpdate`] with no record; its detail says what the
 /// dispatcher found. A job that holds a record (its driver's held `storing` report
@@ -1663,19 +1663,44 @@ async fn apply_status(
             ));
             Ok(StatusCode::NO_CONTENT)
         }
-        DriverState::Running => {
-            // The same freshness requirement: for a driver that never reported
-            // `starting`, this is the transition that stamps the anchor.
-            let running = state
+        DriverState::Validating => {
+            // The harness session has ended and the driver is collecting and
+            // validating the run. Only a job before `validating` in the lifecycle
+            // moves, in one conditional update, so a cancellation, the held report or
+            // a terminal report committed beside this one is never overwritten and a
+            // late report never moves a job backwards. Announced only when a row moved.
+            let validating = state
                 .db
-                .set_job_state(&id, "running", &now, None, None)
+                .set_job_validating(&id, &now)
                 .await
                 .map_err(ApiError::from)?;
-            state.relay.notifier().publish_run(RunEvent::state_changed(
-                &id,
-                job_summary(running.as_ref().unwrap_or(&job)),
-                JobState::Running,
-            ));
+            if let Some(validating) = validating {
+                state.relay.notifier().publish_run(RunEvent::state_changed(
+                    &id,
+                    job_summary(&validating),
+                    JobState::Validating,
+                ));
+            }
+            Ok(StatusCode::NO_CONTENT)
+        }
+        DriverState::Running => {
+            // The same freshness requirement: for a driver that never reported
+            // `starting`, this is the transition that stamps the anchor. Only a job
+            // not yet past `running` moves, in one conditional update, so a late
+            // report never takes a `validating` job back to `running`, and nothing
+            // is announced when no row moved.
+            let running = state
+                .db
+                .set_job_running(&id, &now)
+                .await
+                .map_err(ApiError::from)?;
+            if let Some(running) = running {
+                state.relay.notifier().publish_run(RunEvent::state_changed(
+                    &id,
+                    job_summary(&running),
+                    JobState::Running,
+                ));
+            }
             Ok(StatusCode::NO_CONTENT)
         }
         DriverState::Storing => {
@@ -2768,3 +2793,7 @@ mod lease_tests;
 #[cfg(test)]
 #[path = "jobs.events.test.rs"]
 mod events_tests;
+
+#[cfg(test)]
+#[path = "jobs.validating.test.rs"]
+mod validating_tests;

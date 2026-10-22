@@ -97,6 +97,9 @@ run() { # repo [env-assignment...]
 
 echo "--- the staging defaults ---"
 
+# Every object the retirement deletes, in the order it names them.
+LEGACY="deployment/tcab-backend statefulset/tcab-artifacts ingress/tcab-api ingress/tcab-arena ingress/tcab-artifacts ingress/tcab-auth ingress/tcab-console ingress/tcab-grafana networkpolicy/tcab-allow-services-from-ingress networkpolicy/tcab-allow-web-from-ingress networkpolicy/tcab-allow-lgtm-from-ingress networkpolicy/tcab-allow-arena-from-console deployment/tcab-auth service/tcab-auth serviceaccount/tcab-auth secret/tcab-auth-secrets"
+
 repo="$(fresh_repo)"
 out="$(run "$repo")"
 status=$?
@@ -106,11 +109,25 @@ check_contains "names the staging resource group" "--resource-group testcabinet-
 check_contains "names the staging cluster" "--name testcabinet-staging-westus2-aks" "$invocation"
 check_contains "runs the file it sends" "--command sh retire-legacy-backend.sh" "$invocation"
 sent="$(cat "$repo/sent/retire-legacy-backend.sh" 2>/dev/null)"
-check_contains "deletes the legacy workloads, idempotently, and waits for their pods" \
-	"kubectl -n tcab-staging delete deployment/tcab-backend statefulset/tcab-artifacts --ignore-not-found --cascade=foreground --wait=true" "$sent"
+check_contains "deletes the legacy objects, idempotently, and waits for their pods" \
+	"kubectl -n tcab-staging delete ${LEGACY} --ignore-not-found --cascade=foreground --wait=true" "$sent"
+for object in ingress/tcab-api ingress/tcab-arena ingress/tcab-artifacts ingress/tcab-auth \
+	ingress/tcab-console ingress/tcab-grafana; do
+	check_contains "retires the internal ingress's ${object}" " ${object} " "$sent"
+done
+for object in networkpolicy/tcab-allow-services-from-ingress networkpolicy/tcab-allow-web-from-ingress \
+	networkpolicy/tcab-allow-lgtm-from-ingress networkpolicy/tcab-allow-arena-from-console; do
+	check_contains "retires the policy ${object}" " ${object} " "$sent"
+done
+for object in deployment/tcab-auth service/tcab-auth serviceaccount/tcab-auth secret/tcab-auth-secrets; do
+	check_contains "retires the sign-in workload's ${object}" " ${object} " "$sent"
+done
+check_lacks "keeps the edge's tunnel" "cloudflared" "$sent"
+check_lacks "keeps the default-deny policy" "default-deny" "$sent"
+check_lacks "keeps the artifacts Service the Deployment answers on" "service/tcab-artifacts" "$sent"
 check_lacks "keeps the old artifacts claim" "persistentvolumeclaim" "$sent"
 check_contains "says what it did" \
-	"The legacy workloads deployment/tcab-backend statefulset/tcab-artifacts are not in tcab-staging." "$out"
+	"The legacy objects ${LEGACY} are not in tcab-staging." "$out"
 
 echo "--- the environment names another namespace ---"
 
@@ -120,7 +137,7 @@ out="$(run "$repo" THE_TEST_CABINET_RESOURCE_GROUP=testcabinet-prod-westus2-rg \
 status=$?
 check_equal "passes" 0 "$status"
 check_contains "names the prod cluster" "--name testcabinet-prod-westus2-aks" "$(cat "$repo/az.log")"
-check_contains "deletes from tcab-prod" "kubectl -n tcab-prod delete deployment/tcab-backend statefulset/tcab-artifacts" \
+check_contains "deletes from tcab-prod" "kubectl -n tcab-prod delete ${LEGACY} --ignore-not-found" \
 	"$(cat "$repo/sent/retire-legacy-backend.sh" 2>/dev/null)"
 
 echo "--- the command fails in the cluster ---"
@@ -129,7 +146,7 @@ repo="$(fresh_repo)"
 out="$(run "$repo" STUB_AZ_EXIT_CODE=1)"
 status=$?
 check_failed "fails" "$status"
-check_contains "names the command that retires them by hand" "delete deployment/tcab-backend statefulset/tcab-artifacts --ignore-not-found" "$out"
+check_contains "names the command that retires them by hand" "delete ${LEGACY} --ignore-not-found" "$out"
 
 echo "--- the invocation never reaches the cluster ---"
 
@@ -146,7 +163,7 @@ out="$(cd / && env PATH="$repo/bin:$PATH" STUB_AZ_LOG="$repo/az.log" STUB_SENT="
 	THE_TEST_CABINET_NAMESPACE=tcab-prod "$repo/scripts/ci/retire-legacy-backend.sh" --dry-run 2>&1)"
 status=$?
 check_equal "passes" 0 "$status"
-check_contains "prints the command" "kubectl -n tcab-prod delete deployment/tcab-backend statefulset/tcab-artifacts --ignore-not-found" "$out"
+check_contains "prints the command" "kubectl -n tcab-prod delete ${LEGACY} --ignore-not-found" "$out"
 check_equal "reaches no cluster" "" "$(cat "$repo/az.log" 2>/dev/null)"
 
 echo "--- an argument ---"

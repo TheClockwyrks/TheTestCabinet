@@ -229,11 +229,16 @@ the commit's submodule pointers name. A push to `staging` rolls `tcab-staging` o
 overlay onto one commit's set, and the project's `before` and `after` steps
 around it (`.azure/project/deploy-steps.yml`):
 
-1. before: `scripts/ci/pre-deploy.sh staging <sha>` pins the overlay with
+1. before: `scripts/ci/pre-deploy.sh staging <sha>` runs the catalog
+   preflight first (see [The catalog checks](#the-catalog-checks)), so a deploy
+   it refuses has retired nothing, pins the overlay with
    `pin-images.sh` from the commit's submodule pointers, records the commit the
-   backend runs now as `TCAB_PREVIOUS_COMMIT`, and sets a 600-second rollout
-   timeout;
-2. the template's `scripts/ci/deploy.sh <sha>` renders the pinned overlay,
+   backend runs now as `TCAB_PREVIOUS_COMMIT`, sets a 600-second rollout
+   timeout, and retires the objects of an earlier shape (see
+   [Retiring an earlier shape](#retiring-an-earlier-shape));
+2. the template's `scripts/ci/deploy.sh <sha>` renders the pinned overlay, runs
+   the project's `scripts/ci/deploy-preflight.sh` (the catalog preflight, see
+   [The catalog checks](#the-catalog-checks)) before it changes anything,
    applies it inside the cluster, and waits on
    `deployment/the-test-cabinet-backend`, undoing it if it does not become
    ready;
@@ -241,7 +246,8 @@ around it (`.azure/project/deploy-steps.yml`):
    `scripts/ci/settle-workloads.sh`: one wait, concurrently, on every other
    `Deployment` and `StatefulSet` in the namespace, each bounded by the rollout
    timeout, undoing each that does not become ready, describing its pods and
-   printing recent events, and failing if any did;
+   printing recent events, and failing if any did, and then the catalog
+   `verify`;
 4. after, on failure only: `scripts/ci/settle-workloads.sh --after-failure <sha>`
    settles and diagnoses whatever the failed apply rolled, and prints the
    backend's recovery command,
@@ -257,12 +263,100 @@ around it (`.azure/project/deploy-steps.yml`):
    refuses the file if it holds anything outside the environment's namespace, or
    binds a workload to a workload identity whose client id is still
    `unprovisioned` (a pod that cannot reach its store never becomes ready);
-3. runs `kubectl apply -f` on the file inside the cluster through
+3. runs the catalog preflight against that file;
+4. retires the objects of an earlier shape;
+5. runs `kubectl apply -f` on the file inside the cluster through
    `az aks command invoke`, which uploads the file with the command;
-4. waits up to 600 seconds, concurrently, on every `Deployment` and
+6. waits up to 600 seconds, concurrently, on every `Deployment` and
    `StatefulSet` rollout, the backend's included. A rollout that does not become
    ready is described, its logs are printed, and it is undone, and the deploy
-   fails.
+   fails;
+7. runs the catalog `verify`.
+
+### Retiring an earlier shape
+
+An apply creates and changes objects and never deletes one the render no
+longer names. `scripts/ci/retire-legacy-backend.sh` deletes, before every
+apply, the objects of an earlier shape that would otherwise stay in a namespace
+deployed before:
+
+- the backend's `Deployment` of its old name, `tcab-backend`, whose pod holds
+  the `ReadWriteOnce` claim `tcab-backend-state` the renamed one mounts;
+- the artifacts service's `StatefulSet`, `tcab-artifacts`, replaced by a
+  stateless `Deployment` of the same name. Its claim,
+  `artifacts-tcab-artifacts-0`, is never deleted;
+- what [the edge](/deployment/kubernetes/edge/) replaced: the internal
+  ingress's `Ingress` objects (`tcab-api`, `tcab-arena`, `tcab-artifacts`,
+  `tcab-auth`, `tcab-console` and `tcab-grafana`), the network policies that
+  admitted the ingress controller (`tcab-allow-services-from-ingress`,
+  `tcab-allow-web-from-ingress`, `tcab-allow-lgtm-from-ingress` and
+  `tcab-allow-arena-from-console`), and the `tcab-auth` sign-in workload with
+  its `Service`, `ServiceAccount` and `Secret` `tcab-auth-secrets`.
+
+It waits for the deleted workloads' pods to be gone, and it is idempotent, so
+every deploy runs it.
+
+### The catalog checks
+
+Every deploy starts a new backend pod, whose `ingest` sidecar refreshes the
+checkout to the tip of the environment's catalog branch on the GitHub mirror,
+with the `cold-storage` submodule at the commit that tip pins, and asks the
+backend for one forced ingest. `scripts/ci/catalog-ingest.sh` checks that on
+both sides of the rollout:
+
+- `preflight`, before anything is applied, checks that the branch tip and its
+  `cold-storage` commit can be fetched, that the backend's state volume has
+  room for the fetch, and that the render's size for the `tcab-backend-state`
+  claim (16Gi) is one the cluster can apply: never smaller than the claim, and
+  larger only on a storage class that allows expansion. It fails with nothing
+  applied.
+- `verify`, once the rollout is ready, reads the result the sidecar recorded in
+  `/tmp/ingest-result` and fails the deploy unless the sidecar ingested. A
+  sidecar whose refresh failed ingests nothing, so the backend keeps the
+  catalog and the baselines it had; `tcab ingest --env <env>` ingests again once
+  the cause is fixed.
+
+`verify` spends its wait, at most `TCAB_INGEST_WAIT_SECONDS` (600), in calls of
+at most `TCAB_INGEST_CALL_SECONDS` (240) each, because AKS ends a command after
+ten minutes and keeps none of its output. A wait that ends with no outcome
+prints what the last read answered together with the sidecar's log. The script
+a deploy step runs inside the cluster runs in the image AKS provides for a
+command, so it uses only what that image carries: `bash`, `kubectl`, `jq` and
+the common text tools `awk`, `grep`, `head`, `tail`, `cut` and `tr`. The image
+has no `sed`.
+
+#### Growing the backend's claim
+
+The overlays mount the backend's definition store and ingest checkout on the
+`tcab-backend-state` claim, declared once in
+`deployments/k8s/components/postgres/deployment-backend.yaml` at 16Gi. No
+overlay patches it, so staging and prod declare the same size and a change of
+it reaches each with that environment's next deploy, through the pipeline:
+
+1. `preflight` counts the growth as free space, so a full volume does not stop
+   the deploy that enlarges it, and refuses a size the cluster would not apply.
+2. The apply resizes the claim. The cluster grows the disk and then the
+   filesystem on it, which rests on the claim's storage class allowing
+   expansion (`allowVolumeExpansion: true`, which the classes AKS ships have).
+3. `verify` fails the deploy if the ingest sidecar did not ingest.
+
+A claim cannot shrink, and `preflight` refuses a deploy that asks for it. Once
+an environment has grown, that covers every checkout that still declares the
+smaller size: re-running an earlier pipeline run, or deploying a branch cut
+before the change, is refused with nothing applied. Put an earlier commit back
+from a checkout that carries the current size
+(`scripts/ci/deploy-environment.sh <env> <sha>`), which changes the images and
+leaves the claim alone. Deploy a change of the size to staging first: it shares
+the manifest, so it takes the same path.
+
+A namespace deployed before the artifacts service ran over Blob still holds its
+run trees on the claim `artifacts-tcab-artifacts-0`, which the deploy leaves in
+place when it retires the old `StatefulSet`. The `Deployment` reads the container
+only, so `scripts/ci/copy-artifact-trees.sh <staging|prod>` copies every tree on
+the claim into the container, in the layout the service reads, before the first
+deploy that binds the artifacts identity. It skips a run already in the
+container, so it runs once more just before that deploy, to copy the trees
+finished since.
 
 The clusters' API servers are private, which is why every `kubectl` command runs
 inside the cluster. `az aks command invoke` runs it under the caller's Microsoft

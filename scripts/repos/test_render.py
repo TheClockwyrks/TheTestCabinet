@@ -74,16 +74,16 @@ def test_a_dependency_is_pinned_at_its_tag_or_on_master() -> None:
     its `master`.
     """
     assert render.workspace_dependencies("tool-voxel").splitlines() == [
-        'test-cabinet-contracts = { git = "https://github.com/TheClockwyrks/contracts", tag = "v0.2.3" }',
-        'test-cabinet-model-core = { git = "https://github.com/TheClockwyrks/tool-model-core", tag = "v0.1.1" }',
+        'test-cabinet-contracts = { git = "https://github.com/TheClockwyrks/contracts", tag = "v0.2.4" }',
+        'test-cabinet-model-core = { git = "https://github.com/TheClockwyrks/tool-model-core", tag = "v0.1.2" }',
     ]
     assert render.workspace_dependencies("tool-sfx-synth").splitlines() == [
-        'test-cabinet-contracts = { git = "https://github.com/TheClockwyrks/contracts", tag = "v0.2.3" }',
-        'test-cabinet-audio-core = { git = "https://github.com/TheClockwyrks/tool-audio-core", tag = "v0.1.1" }',
+        'test-cabinet-contracts = { git = "https://github.com/TheClockwyrks/contracts", tag = "v0.2.4" }',
+        'test-cabinet-audio-core = { git = "https://github.com/TheClockwyrks/tool-audio-core", tag = "v0.1.2" }',
     ]
     assert render.workspace_dependencies("microservice-arena").splitlines() == [
-        'test-cabinet-contracts = { git = "https://github.com/TheClockwyrks/contracts", tag = "v0.2.3" }',
-        'test-cabinet-engines = { git = "https://github.com/TheClockwyrks/engines", tag = "v1.1.2" }',
+        'test-cabinet-contracts = { git = "https://github.com/TheClockwyrks/contracts", tag = "v0.2.4" }',
+        'test-cabinet-engines = { git = "https://github.com/TheClockwyrks/engines", tag = "v1.1.4" }',
     ]
     assert (
         'test-cabinet-draw = { git = "https://github.com/TheClockwyrks/tool-sprite", branch = "master" }'
@@ -164,6 +164,62 @@ def test_a_site_checking_out_a_data_repository_is_refused(monkeypatch: pytest.Mo
         render.variables("gg.rocks", "site", "The site")
 
 
+def test_a_checks_job_checks_out_the_data_edges_its_tests_read() -> None:
+    """The console's tests read the case bundles across its data edge to test-suites, so its checks job checks it out.
+
+    Every entry of the table is a data edge of a repository carrying no crate,
+    and its pipeline declares the repository, which it fetches nothing beside.
+    """
+    assert render.CHECKS_CHECKOUTS["console.testcabinet.ai"] == {"test-suites": "TCAB_DEFINITIONS_ROOT"}
+    data = {(one.source, one.target) for one in EDGES.DATA_EDGES}
+    for name, checkouts in render.CHECKS_CHECKOUTS.items():
+        assert not EDGES.KINDS[EDGES.REPOSITORIES[name]].crate, name
+        assert {(name, repo) for repo in checkouts} <= data, name
+        assert render.checks_checkouts(name) == checkouts
+    resources = render.ci_resources("console.testcabinet.ai", "site")
+    assert re.findall(r"name: (\S+)", resources) == ["the-test-cabinet/test-suites"]
+    assert render.rust_repositories("console.testcabinet.ai") == ["test-suites"]
+    assert render.checks_root("console.testcabinet.ai") == "$(Build.SourcesDirectory)/console.testcabinet.ai"
+    assert render.checks_workdir("console.testcabinet.ai") == [
+        "            workingDirectory: $(Build.SourcesDirectory)/console.testcabinet.ai"
+    ]
+    assert render.ci_checks_head("console.testcabinet.ai").splitlines() == [
+        "        uses:",
+        "          repositories:",
+        "            - test-suites",
+        "        variables:",
+        "          TCAB_DEFINITIONS_ROOT: $(Build.SourcesDirectory)/test-suites",
+    ]
+    for name in ("gg.rocks", "microservice-backend"):
+        assert render.checks_checkouts(name) == {}
+        assert render.checks_root(name) == "$(Build.SourcesDirectory)"
+        assert render.checks_workdir(name) == []
+        assert render.ci_checks_head(name) == ""
+        assert render.ci_checks_checkout(name).splitlines() == [
+            "          - checkout: self",
+            "            fetchDepth: 1",
+            "            clean: true",
+        ]
+    assert "repositories:" not in render.ci_resources("gg.rocks", "site")
+
+
+@pytest.mark.parametrize(
+    ("name", "checkouts", "said"),
+    [
+        ("gg.rocks", {"test-suites": "TCAB_DEFINITIONS_ROOT"}, "no data edge gg.rocks -> test-suites"),
+        ("console.testcabinet.ai", {"contracts": "TCAB_CONTRACTS"}, "no data edge console.testcabinet.ai -> contracts"),
+        ("console.testcabinet.ai", {"test-suites": "tcab-root"}, "not shaped like an environment variable"),
+        ("microservice-backend", {"test-suites": "TCAB_DEFINITIONS_ROOT"}, "reads its data in its Rust job"),
+    ],
+)
+def test_a_checks_checkout_the_table_cannot_carry_is_refused(
+    name: str, checkouts: dict[str, str], said: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setitem(render.CHECKS_CHECKOUTS, name, checkouts)
+    with pytest.raises(render.RenderError, match=re.escape(said)):
+        render.variables(name, EDGES.REPOSITORIES[name], "x")
+
+
 def test_a_repository_without_edges_says_so_once() -> None:
     alone = render.edges_rule("contracts")
     assert alone.count("no other repository of the project") == 1, alone
@@ -205,6 +261,11 @@ def test_the_windows_and_extra_gate_tables_name_repositories_carrying_a_crate() 
     assert render.extra_gates("test-suites", "content") == {
         "checks": ("frozen-paths", "spec-prose", "spec-vocabulary", "audio-packs", "validators-typecheck")
     }
+    # The console lints its TypeScript and runs its browser suite beside the
+    # kit's `typescript` gate.
+    assert render.extra_gates("console.testcabinet.ai", "site") == {"checks": ("web-lint", "web-browser-test")}
+    # The gallery lints its TypeScript beside the kit's `typescript` gate.
+    assert render.extra_gates("testcabinet.ai", "site") == {"checks": ("web-lint",)}
     # gg, an application, takes the kit's `build-context` gate, which holds its
     # Dockerfiles (the `gg-toolchains` image's among them) to its build context.
     assert render.extra_gates("gg", "application") == {}
@@ -224,6 +285,8 @@ def test_the_project_pipeline_table_names_repositories_and_stages() -> None:
     assert set(render.PROJECT_PIPELINE) <= set(EDGES.REPOSITORIES)
     assert render.PROJECT_PIPELINE["gg"] == ("release",)
     assert render.PROJECT_PIPELINE["gg.rocks"] == ("deploy",)
+    # The gallery deploys to the Pages project of the branch's environment.
+    assert render.PROJECT_PIPELINE["testcabinet.ai"] == ("deploy",)
     # The driver builds the run-container images in a stage of its own.
     assert render.PROJECT_PIPELINE["microservice-driver"] == ("runimages",)
     assert (
@@ -238,6 +301,7 @@ def test_the_project_pipeline_table_names_repositories_and_stages() -> None:
     assert render.ci_project_setup("microservice-arena", "application") == ""
     assert render.ci_project_setup("gg", "application") == f"          - template: {render.PROJECT_SETUP}"
     assert render.ci_project_setup("gg.rocks", "site") == ""
+    assert render.ci_project_setup("testcabinet.ai", "site") == ""
     assert set(render.RUST_TIMEOUTS) <= set(EDGES.REPOSITORIES)
     assert render.rust_timeout("gg") == 120
     assert render.rust_timeout("microservice-driver") == 180
@@ -349,6 +413,33 @@ def test_a_tool_builds_an_image_when_a_run_image_carries_its_binaries() -> None:
     assert '- script: scripts/ci/manifest.sh "$(Build.SourceVersion)" tool-sprite\n' in stage
 
 
+def test_a_site_builds_an_image_when_a_deployment_serves_it() -> None:
+    """The console is served by the cluster, so its pipeline builds its image; every other site is on Pages."""
+    sites = [repo for repo, kind in EDGES.REPOSITORIES.items() if kind == render.IMAGE_SITE_KIND]
+    assert {"console.testcabinet.ai"} == render.IMAGE_SITES
+    assert set(sites) >= render.IMAGE_SITES
+    for site in sites:
+        assert render.builds_image(site, "site") is (site in render.IMAGE_SITES), site
+    # The exception is a site's alone: the console's name makes no other kind build one.
+    for kind in ("library", "shell", "content"):
+        assert not render.builds_image("console.testcabinet.ai", kind), kind
+    stage = render.ci_image_stage("console.testcabinet.ai", "site")
+    jobs = re.findall(r"^      - job: (\S+)$", stage, re.MULTILINE)
+    assert jobs == ["image_amd64", "image_arm64", "image_manifest"]
+    for arch in render.IMAGE_ARCHITECTURES:
+        job = _job(stage + "\n", f"image_{arch}")
+        # A site fetches no repository, so the job uses none and rewrites no source.
+        assert "uses:" not in job, arch
+        assert "git-sources.sh" not in job, arch
+        feed = job.index(f"- script: {render.NPM_FEED_SCRIPT} {render.FEED_REGISTRY}\n")
+        assert feed < job.index("- task: Docker@2\n") < job.index("- script: scripts/ci/image.sh")
+        assert job.endswith(
+            '- script: scripts/ci/image.sh console.testcabinet.ai "$(Build.SourceVersion)"\n'
+            f"            displayName: Build and push the image ({arch})\n"
+        )
+    assert '- script: scripts/ci/manifest.sh "$(Build.SourceVersion)" console.testcabinet.ai\n' in stage
+
+
 def test_the_image_stage_builds_each_architecture_then_fuses_them() -> None:
     stage = render.ci_image_stage("microservice-arena", "application")
     assert stage.startswith("  - stage: image\n    displayName: Image\n    dependsOn: gates\n")
@@ -426,6 +517,131 @@ def test_a_tool_is_rendered_the_image_of_its_binaries(rendered: Callable[[str], 
     assert "/Cargo.lock" in (root / ".gitignore").read_text(encoding="utf-8")
     readme = (root / "README.md").read_text(encoding="utf-8")
     assert f"under `{render.TOOL_BINARIES}/`" in readme
+
+
+def test_a_site_is_rendered_the_image_serving_its_bundle(rendered: Callable[[str], Path]) -> None:
+    """A node build of the workspace, handed the feed's credential, then nginx serving what it built."""
+    root = rendered("console.testcabinet.ai")
+    dockerfile = (root / "Dockerfile").read_text(encoding="utf-8")
+    assert "FROM docker.io/library/node:24-bookworm-slim AS build\n" in dockerfile
+    assert "--mount=type=secret,id=npmrc,target=/root/.npmrc,required=false" in dockerfile
+    assert "npm ci" in dockerfile and "npm run build" in dockerfile
+    assert "FROM docker.io/nginxinc/nginx-unprivileged:1-bookworm\n" in dockerfile
+    assert "COPY --from=build /src/dist /usr/share/nginx/html\n" in dockerfile
+    assert "USER 101\nEXPOSE 8080\n" in dockerfile
+    assert "rust" not in dockerfile.lower() and "gitconfig" not in dockerfile
+    assert "{{" not in dockerfile and "{%" not in dockerfile
+    ignore = (root / ".dockerignore").read_text(encoding="utf-8")
+    for line in ("*", "!/package.json", "!/package-lock.json", "!/.npmrc", "!/apps", "!/packages", "**/node_modules"):
+        assert f"\n{line}\n" in f"\n{ignore}", line
+    assert "Cargo" not in ignore and "**/target" not in ignore
+    assert not (root / "rust-toolchain.toml").exists()
+    assert not (root / "scripts" / "ci" / "git-sources.sh").exists()
+    env = {key: value for key, value in os.environ.items() if key not in render.GIT_LOCATING}
+    done = subprocess.run(
+        ["scripts/ci/build-context.sh"], cwd=root, env=env, capture_output=True, text=True, check=False
+    )
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert "No rust-toolchain.toml, and no Dockerfile pins Rust." in done.stdout
+    pipeline = (root / "azure-pipelines.yml").read_text(encoding="utf-8")
+    assert "gate run build-context\n" in _job(pipeline, "checks")
+    assert [stage["stage"] for stage in yaml.safe_load(pipeline)["stages"]] == ["gates", "image", "publish", "mirror"]
+    assert "git-sources.sh" not in pipeline
+    readme = (root / "README.md").read_text(encoding="utf-8")
+    assert "serves the bundle through" in readme
+    assert "rust-toolchain.toml" not in readme
+    # The Rust render of the allowlist is the one it was before the site's branch.
+    arena = (rendered("microservice-arena") / ".dockerignore").read_text(encoding="utf-8")
+    assert arena.endswith(
+        "!/rust-toolchain.toml\n!/crates\n\n# What a build leaves behind never enters the context.\n**/target\n"
+    )
+
+
+def test_a_site_checks_out_its_data_in_the_checks_job(rendered: Callable[[str], Path]) -> None:
+    """The console's checks job checks itself and test-suites out by name and runs every step in its own checkout."""
+    root = rendered("console.testcabinet.ai")
+    pipeline = (root / "azure-pipelines.yml").read_text(encoding="utf-8")
+    checks = _job(pipeline, "checks")
+    assert (
+        "          - checkout: self\n            path: s/console.testcabinet.ai\n"
+        "            fetchDepth: 1\n            clean: true\n"
+        "          - checkout: test-suites\n            path: s/test-suites\n"
+        "            fetchDepth: 1\n            clean: true\n"
+    ) in checks
+    head = checks[: checks.index("steps:")]
+    assert "          TCAB_DEFINITIONS_ROOT: $(Build.SourcesDirectory)/test-suites\n" in head
+    assert "            - test-suites\n" in head
+    workdir = "            workingDirectory: $(Build.SourcesDirectory)/console.testcabinet.ai\n"
+    assert checks.count(workdir) == checks.count("          - script: ")
+    assert checks.count("gate run web-lint\n") == checks.count("gate run web-browser-test\n") == 1
+    root_results = "$(Build.SourcesDirectory)/console.testcabinet.ai/target/gate-artifacts/"
+    results = re.findall(r"testResultsFiles: (\S+)", checks)
+    assert results and all(path.startswith(root_results) for path in results), results
+    for job in ("image_amd64", "image_arm64", "image_manifest", "packages", "github"):
+        steps = pipeline[pipeline.index(f"      - job: {job}\n") :]
+        steps = steps[: steps.find("\n      - job: ", 1) if "\n      - job: " in steps[1:] else len(steps)]
+        assert "- checkout: test-suites" not in steps, job
+        assert "TCAB_DEFINITIONS_ROOT" not in steps, job
+        assert "workingDirectory:" not in steps, job
+    parsed = yaml.safe_load(pipeline)
+    assert [repo["repository"] for repo in parsed["resources"]["repositories"]] == ["test-suites"]
+    gg_rocks = (rendered("gg.rocks") / "azure-pipelines.yml").read_text(encoding="utf-8")
+    assert "workingDirectory:" not in gg_rocks
+    assert "path: s/" not in gg_rocks
+    assert "repositories:" not in gg_rocks
+    wiring = (root / "ci" / "tests" / "test_wiring.py").read_text(encoding="utf-8")
+    assert 'CHECKS_DIR = "console.testcabinet.ai"' in wiring
+    assert '"test-suites": "TCAB_DEFINITIONS_ROOT",' in wiring
+    assert 'REPOSITORY_PIPELINE_ONLY = "web-lint web-browser-test"' in wiring
+
+
+def test_the_gallery_lints_in_its_checks_job_and_deploys_without_an_image(rendered: Callable[[str], Path]) -> None:
+    """The gallery lints once in its checks job and deploys in a stage before the mirror, building no image."""
+    root = rendered("testcabinet.ai")
+    pipeline = (root / "azure-pipelines.yml").read_text(encoding="utf-8")
+    checks = _job(pipeline, "checks")
+    assert checks.count("gate run web-lint\n") == 1
+    assert "web-browser-test" not in pipeline
+    assert "  - stage: image\n" not in pipeline
+    assert "repositories:" not in pipeline
+    assert "workingDirectory:" not in pipeline
+    assert f"  - template: {render.PROJECT_STAGES}\n" in pipeline
+    mirror = pipeline[pipeline.index("  - stage: mirror\n") :]
+    assert "      - gates\n      - publish\n      - deploy\n    condition:" in mirror
+    for path in ("Dockerfile", ".dockerignore", "ci/gates/build-context.py", "scripts/ci/image.sh"):
+        assert not (root / path).exists(), path
+    wiring = (root / "ci" / "tests" / "test_wiring.py").read_text(encoding="utf-8")
+    assert 'REPOSITORY_PIPELINE_ONLY = "web-lint"' in wiring
+    _passes_its_own_ci_and_shell_tests(root)
+
+
+@pytest.mark.parametrize("name", ["console.testcabinet.ai", "microservice-arena"])
+def test_an_image_repository_passes_its_own_ci_and_shell_tests(name: str, rendered: Callable[[str], Path]) -> None:
+    """The wiring test holds the site's image and checkouts as it holds an application's, and its table tests pass."""
+    _passes_its_own_ci_and_shell_tests(rendered(name))
+
+
+def _passes_its_own_ci_and_shell_tests(root: Path) -> None:
+    """A rendered repository's ci tests, its ruff check and format and its shell table tests pass."""
+    env = {key: value for key, value in os.environ.items() if key not in render.GIT_LOCATING}
+    env["PYTHONPATH"] = str(root / "ci" / "src")
+    done = subprocess.run(
+        [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", "-o", "addopts=", "tests"],
+        cwd=root / "ci",
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert done.returncode == 0, done.stdout[-4000:] + done.stderr[-2000:]
+    for command in (["check", "ci"], ["format", "--check", "ci"]):
+        linted = subprocess.run(
+            [sys.executable, "-m", "ruff", *command], cwd=root, capture_output=True, text=True, check=False
+        )
+        assert linted.returncode == 0, linted.stdout + linted.stderr
+    for test in sorted((root / "scripts" / "ci").glob("*.test.sh")):
+        shell = subprocess.run([str(test)], cwd=root, env=env, capture_output=True, text=True, check=False)
+        assert shell.returncode == 0, f"{test.name}:\n{shell.stdout[-2000:]}{shell.stderr[-1000:]}"
 
 
 def test_a_tool_of_the_library_half_is_rendered_no_image(rendered: Callable[[str], Path]) -> None:
@@ -568,7 +784,7 @@ def test_a_kind_without_a_workspace_names_no_members(monkeypatch: pytest.MonkeyP
     monkeypatch.setattr(render.edge_table(), "KINDS", {**EDGES.KINDS, "content": shape._replace(typescript=False)})
     assert render.npm_workspaces("content") == []
     assert render.typescript_workspace("content") == ""
-    assert render.ci_npm_feed("content") == ""
+    assert render.ci_npm_feed("test-suites", "content") == ""
 
 
 def _job(pipeline: str, job: str) -> str:

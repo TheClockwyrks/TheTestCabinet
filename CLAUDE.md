@@ -50,14 +50,16 @@ lives in, checked out as a submodule at this repository's root.
 Where each responsibility lives, the edges between the repositories and how a
 dependency is named:
 [Repositories](apps/docs/src/content/docs/development/repositories.md#where-each-responsibility-lives).
-Every repository but `client-tauri`, `contracts`, `engines`, `gg`, `gg.rocks`,
-`microservice-arena`,
+Every repository but `client-tauri`, `console.testcabinet.ai`,
+`contracts`, `engines`, `gg`, `gg.rocks`, `microservice-arena`,
 `microservice-artifacts`,
-`microservice-dispatcher`, `microservice-driver`, `microservice-repos`,
+`microservice-dispatcher`, `microservice-driver`, `microservice-publisher`,
+`microservice-repos`,
 `tool-audio-core`, `tool-dc`, `tool-mc`, `tool-model-core`, `tool-music`,
 `tool-paint`, `tool-particle`,
 `tool-sfx-sample`, `tool-sfx-synth`, `tool-sn`, `tool-sprite`, `tool-voxel`,
-`test-suites`, `ui-common` and `cold-storage` is still a directory of this tree
+`test-suites`, `testcabinet.ai`,
+`ui-common` and `cold-storage` is still a directory of this tree
 today (`crates/`, `apps/`, `packages/`), so until it is extracted its code is
 found there.
 
@@ -148,7 +150,8 @@ judges. The superrepo's gates are the template's over its tree plus the
 project's over the set:
 
 ```text
-ci-image-pins            every CI image reference reads ciImageTag
+ci-image-pins            every CI image reference reads ciImageTag, and
+                         Playwright's pins agree
 ci-tests                 pytest over ci/ and scripts/repos/
 cspell                   the prose's spelling, .cspell/project-words.txt
 dependency-graph         the repositories against their edges, the patch
@@ -172,8 +175,10 @@ runner, rendered by the kit, and its own gates run from its checkout with the
 same command: a Rust workspace's `rust-*` gates, an npm workspace's
 `typescript` gate, `build-context` in a kind that builds an image, and the
 gates a repository adds (`contract-drift` in `contracts`, `seeded-contract` in
-`engines`, `web-lint` in `ui-common`, `frozen-paths`, `spec-prose`,
-`spec-vocabulary`, `audio-packs` and `validators-typecheck` in `test-suites`).
+`engines`, `web-lint` in `ui-common`, `web-lint` and `web-browser-test` in
+`console.testcabinet.ai`, `web-lint` in `testcabinet.ai`, `frozen-paths`,
+`spec-prose`, `spec-vocabulary`, `audio-packs` and `validators-typecheck` in
+`test-suites`).
 gg's suite runs in the `gg` repository.
 
 ```sh

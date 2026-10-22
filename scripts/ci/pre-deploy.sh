@@ -9,13 +9,20 @@
 # backend alone and waits on it alone; this does the rest a Test Cabinet deployment
 # needs first, in order:
 #
-#   1. Pins the overlay (scripts/ci/pin-images.sh, in place): the other two images
-#      this repository builds and the dispatcher's publisher image, all at
-#      <commit>, the arena's, the artifacts service's, the dispatcher's and the
-#      repos service's images at the commits <commit>'s microservice-arena,
-#      microservice-artifacts, microservice-dispatcher and microservice-repos
-#      submodule pointers name, and the dispatcher's driver image and run-container tag at the commit
-#      its microservice-driver pointer names, which the run images are built at.
+#   0. Checks that the catalog the new backend's ingest sidecar will fetch can be
+#      fetched (scripts/ci/catalog-ingest.sh preflight): the overlay's catalog branch
+#      tip on the GitHub mirror and the cold-storage commit it pins, and that the
+#      backend's state volume has room for the fetch and is not resized in a way
+#      the cluster would refuse. It fails here, before anything in the cluster is
+#      changed, when it cannot.
+#   1. Pins the overlay (scripts/ci/pin-images.sh, in place): the arena's, the
+#      artifacts service's, the dispatcher's, the repos service's, the console's
+#      and the publisher's images at the commits <commit>'s microservice-arena,
+#      microservice-artifacts, microservice-dispatcher, microservice-repos,
+#      console.testcabinet.ai and microservice-publisher submodule pointers name
+#      (the dispatcher's publisher image with the last), and the dispatcher's
+#      driver image and run-container tag at the commit its microservice-driver
+#      pointer names, which the run images are built at.
 #      deploy.sh lays its own layer over the overlay, so the render it applies
 #      carries them.
 #   2. Refuses an overlay that binds a workload to a workload identity annotated
@@ -28,9 +35,11 @@
 #      from), which the job's after-failure step reads to print the recovery.
 #   4. Sets THE_TEST_CABINET_ROLLOUT_TIMEOUT to 600s for the steps after it, the time
 #      every rollout has always been given here, rather than the template's 300s.
-#   5. Retires the legacy workloads (scripts/ci/retire-legacy-backend.sh): the
-#      `tcab-backend` Deployment, which holds the backend's disk, and the artifacts
-#      service's `tcab-artifacts` StatefulSet, which the Deployment replaces.
+#   5. Retires the objects of an earlier shape (scripts/ci/retire-legacy-backend.sh):
+#      the `tcab-backend` Deployment, which holds the backend's disk, the artifacts
+#      service's `tcab-artifacts` StatefulSet, which the Deployment replaces, and the
+#      internal ingress's Ingresses, its network policies and the `tcab-auth`
+#      workload, which the edge replaced.
 #
 # `--dry-run` pins a temporary copy instead, prints its render and the commands it
 # would run in the cluster, and runs none of them.
@@ -113,6 +122,8 @@ if [[ -n "$dry_run" ]]; then
 	echo "Would read the commit the backend runs, under its name or else its old one:"
 	echo "    $(read_command the-test-cabinet-backend)"
 	echo "    $(read_command tcab-backend)"
+	echo "Would check that the ${OVERLAY} catalog branch and its cold storage can be fetched:"
+	echo "    scripts/ci/catalog-ingest.sh preflight ${OVERLAY} ${COMMIT}"
 	echo "Would set THE_TEST_CABINET_ROLLOUT_TIMEOUT=${ROLLOUT_TIMEOUT}, TCAB_PREVIOUS_COMMIT and TCAB_PREVIOUS_BACKEND."
 	"${CI_DIR}/retire-legacy-backend.sh" --dry-run
 	exit 0
@@ -125,6 +136,11 @@ for tool in az jq kubectl; do
 	fi
 done
 
+if ! "${CI_DIR}/catalog-ingest.sh" preflight "$OVERLAY" "$COMMIT"; then
+	echo "pre-deploy.sh: the ${OVERLAY} deploy preflight failed, above; nothing was applied." >&2
+	exit 1
+fi
+
 "${CI_DIR}/pin-images.sh" "$OVERLAY" "$COMMIT"
 
 # A workload bound to an identity that does not exist yet would never become ready,
@@ -132,7 +148,8 @@ done
 if ! kubectl kustomize "deployments/k8s/overlays/${OVERLAY}" | ci_assert_identities_provisioned; then
 	echo "pre-deploy.sh: overlays/${OVERLAY} binds a workload to an unprovisioned identity, above; nothing was retired or applied." >&2
 	remediation "Provision it, put its clientId in deployments/k8s/overlays/${OVERLAY}/patch-artifacts-identity.yaml or patch-repos-identity.yaml" \
-		"and copy the trees on the claim artifacts-tcab-artifacts-0 in ${NAMESPACE} into the container, then deploy again."
+		"and copy the trees on the claim artifacts-tcab-artifacts-0 in ${NAMESPACE} into the container" \
+		"(scripts/ci/copy-artifact-trees.sh ${OVERLAY}), then deploy again."
 	exit 1
 fi
 

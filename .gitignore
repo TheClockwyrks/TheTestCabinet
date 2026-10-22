@@ -256,11 +256,6 @@ __pycache__/
 /ci/.pytest_cache/
 .ruff_cache/
 
-# What a failing browser test leaves behind: the screenshot Vitest takes of the
-# page the assertion failed on, written beside the app it rendered. It describes
-# one run on one machine and is read from the failure report.
-/apps/web/.vitest/
-
 # Editor and operating system droppings.
 .DS_Store
 *~
@@ -287,8 +282,6 @@ tmp/
 # prebuild (scripts/copy-contract-schemas.mjs).
 /apps/docs/public/schema/
 !/crates/backend/src/coverage/
-!/apps/web/.env.development
-!/apps/web/.env.example
 **/*.rs.bk
 /runs/
 .claude/workflows/

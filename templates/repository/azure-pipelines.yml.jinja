@@ -49,6 +49,16 @@
 #
 {% endif %}
 {% endif %}
+{% if ci_checks_workdir %}
+# This repository's tests read another repository's files across a data edge
+# of the kit's edge table, which no manifest names, so the checks job checks
+# each out beside this one, every checkout at its name under the sources
+# directory, declares each under resources and names it as one it uses, which
+# scopes the job's access token to read it, and runs each step in this
+# repository's checkout. A variable of the job names each data checkout to the
+# tests.
+#
+{% endif %}
 {% if ci_npm_feed %}
 # This repository's kind carries the `typescript` gate, so its workspace may
 # name a package of the project, which installs from the project's private
@@ -65,16 +75,24 @@
 # pushes each as `<name>:<commit>-<arch>`; its last job fuses the two with
 # scripts/ci/manifest.sh into the multi-arch tag the driver's run images copy
 # the binaries from:
-{% else %}
+{% elif rust_crate %}
 # An application builds its image once the gates passed, on a push to
 # master or staging alone. The image stage builds the Dockerfile at the root
 # natively on an amd64 and an arm64 agent, and scripts/ci/image.sh pushes
 # each as `<name>:<commit>-<arch>`; its last job fuses the two with
 # scripts/ci/manifest.sh into the multi-arch tag a deployment pins:
+{% else %}
+# This site is served by a deployment, so it builds its image once the gates
+# passed, on a push to master or staging alone. The image stage builds the
+# Dockerfile at the root natively on an amd64 and an arm64 agent, and
+# scripts/ci/image.sh pushes each as `<name>:<commit>-<arch>`; its last job
+# fuses the two with scripts/ci/manifest.sh into the multi-arch tag a
+# deployment pins:
 {% endif %}
 #
 #   {{image_registry}}/{{name}}:<commit>
 #
+{% if rust_crate %}
 # A build fetches the repositories its manifests reach as the Rust job does,
 # through the git configuration scripts/ci/git-sources.sh writes, which the
 # build is handed as a secret that never enters a layer.{% if typescript_workspace %} The job's token is
@@ -86,6 +104,15 @@
 # registry. The `build-context` gate holds the Dockerfile's COPY sources to
 # .dockerignore and its Rust pin to rust-toolchain.toml before any of it
 # runs.
+{% else %}
+# A build fetches no repository: the job's token is written as npm's
+# credential for the feed by scripts/ci/npm-feed.sh, and that configuration
+# is handed to the build as the secret `npmrc`, so the Dockerfile's install
+# of the workspace mounts it for that RUN alone and it never enters a layer.
+# Both jobs push through the {{ci_image_endpoint}} service connection, which
+# holds AcrPush on the registry. The `build-context` gate holds the
+# Dockerfile's COPY sources to .dockerignore before any of it runs.
+{% endif %}
 #
 {% endif %}
 # A push of a tag `{{release_tags}}` runs the gates too, and such a run then
@@ -297,91 +324,170 @@ stages:
         displayName: Checks
         timeoutInMinutes: 30
         container: web
+{% if ci_checks_head %}
+{{ci_checks_head}}
+{% endif %}
         steps:
-          - checkout: self
-            fetchDepth: 1
-            clean: true
+{{ci_checks_checkout}}
 {% if ci_npm_feed %}
 {{ci_npm_feed}}
 {% endif %}
           - script: npm ci
             displayName: Install the npm workspace
+{% if ci_checks_workdir %}
+            workingDirectory: {{ci_checks_workdir}}
+{% endif %}
           - script: pre-commit install-hooks
             displayName: Install the hook environments
+{% if ci_checks_workdir %}
+            workingDirectory: {{ci_checks_workdir}}
+{% endif %}
           - script: echo "##vso[task.setvariable variable=checksReady]true"
             displayName: Ready to run the checks
+{% if ci_checks_workdir %}
+            workingDirectory: {{ci_checks_workdir}}
+{% endif %}
 {% if not rust_crate %}
           - script: uv run --quiet --project ci gate run dependency-edges
             displayName: dependency edges
+{% if ci_checks_workdir %}
+            workingDirectory: {{ci_checks_workdir}}
+{% endif %}
             condition: eq(variables['checksReady'], 'true')
 {% endif %}
           - script: pre-commit run check-added-large-files --all-files --show-diff-on-failure
             displayName: Check for added large files
+{% if ci_checks_workdir %}
+            workingDirectory: {{ci_checks_workdir}}
+{% endif %}
             condition: eq(variables['checksReady'], 'true')
           - script: pre-commit run check-case-conflict --all-files --show-diff-on-failure
             displayName: Check for case conflicts
+{% if ci_checks_workdir %}
+            workingDirectory: {{ci_checks_workdir}}
+{% endif %}
             condition: eq(variables['checksReady'], 'true')
           - script: pre-commit run check-executables-have-shebangs --all-files --show-diff-on-failure
             displayName: Check that executables have shebangs
+{% if ci_checks_workdir %}
+            workingDirectory: {{ci_checks_workdir}}
+{% endif %}
             condition: eq(variables['checksReady'], 'true')
           - script: pre-commit run check-illegal-windows-names --all-files --show-diff-on-failure
             displayName: Check for illegal Windows names
+{% if ci_checks_workdir %}
+            workingDirectory: {{ci_checks_workdir}}
+{% endif %}
             condition: eq(variables['checksReady'], 'true')
           - script: pre-commit run check-json --all-files --show-diff-on-failure
             displayName: Check JSON
+{% if ci_checks_workdir %}
+            workingDirectory: {{ci_checks_workdir}}
+{% endif %}
             condition: eq(variables['checksReady'], 'true')
           - script: pre-commit run check-merge-conflict --all-files --show-diff-on-failure
             displayName: Check for merge conflicts
+{% if ci_checks_workdir %}
+            workingDirectory: {{ci_checks_workdir}}
+{% endif %}
             condition: eq(variables['checksReady'], 'true')
           - script: pre-commit run end-of-file-fixer --all-files --show-diff-on-failure
             displayName: Newline at end of file
+{% if ci_checks_workdir %}
+            workingDirectory: {{ci_checks_workdir}}
+{% endif %}
             condition: eq(variables['checksReady'], 'true')
           - script: pre-commit run check-shebang-scripts-are-executable --all-files --show-diff-on-failure
             displayName: Check that shebang scripts are executable
+{% if ci_checks_workdir %}
+            workingDirectory: {{ci_checks_workdir}}
+{% endif %}
             condition: eq(variables['checksReady'], 'true')
           - script: pre-commit run check-symlinks --all-files --show-diff-on-failure
             displayName: Check for broken symlinks
+{% if ci_checks_workdir %}
+            workingDirectory: {{ci_checks_workdir}}
+{% endif %}
             condition: eq(variables['checksReady'], 'true')
           - script: pre-commit run check-toml --all-files --show-diff-on-failure
             displayName: Check TOML
+{% if ci_checks_workdir %}
+            workingDirectory: {{ci_checks_workdir}}
+{% endif %}
             condition: eq(variables['checksReady'], 'true')
           - script: pre-commit run check-vcs-permalinks --all-files --show-diff-on-failure
             displayName: Check VCS permalinks
+{% if ci_checks_workdir %}
+            workingDirectory: {{ci_checks_workdir}}
+{% endif %}
             condition: eq(variables['checksReady'], 'true')
           - script: pre-commit run check-xml --all-files --show-diff-on-failure
             displayName: Check XML
+{% if ci_checks_workdir %}
+            workingDirectory: {{ci_checks_workdir}}
+{% endif %}
             condition: eq(variables['checksReady'], 'true')
           - script: pre-commit run check-yaml --all-files --show-diff-on-failure
             displayName: Check YAML
+{% if ci_checks_workdir %}
+            workingDirectory: {{ci_checks_workdir}}
+{% endif %}
             condition: eq(variables['checksReady'], 'true')
           - script: pre-commit run shellcheck --all-files --show-diff-on-failure
             displayName: shellcheck
+{% if ci_checks_workdir %}
+            workingDirectory: {{ci_checks_workdir}}
+{% endif %}
             condition: eq(variables['checksReady'], 'true')
           - script: uv run --quiet --project ci gate run no-nul-bytes
             displayName: NUL bytes in text files
+{% if ci_checks_workdir %}
+            workingDirectory: {{ci_checks_workdir}}
+{% endif %}
             condition: eq(variables['checksReady'], 'true')
           - script: uv run --quiet --project ci gate run shell-tests
             displayName: shell tests
+{% if ci_checks_workdir %}
+            workingDirectory: {{ci_checks_workdir}}
+{% endif %}
             condition: eq(variables['checksReady'], 'true')
           - script: uv run --quiet --project ci gate run markdownlint
             displayName: markdownlint
+{% if ci_checks_workdir %}
+            workingDirectory: {{ci_checks_workdir}}
+{% endif %}
             condition: eq(variables['checksReady'], 'true')
           - script: uv run --quiet --project ci gate run cspell
             displayName: cspell
+{% if ci_checks_workdir %}
+            workingDirectory: {{ci_checks_workdir}}
+{% endif %}
             condition: eq(variables['checksReady'], 'true')
           - script: uv run --quiet --project ci gate run format
             displayName: prettier (--check)
+{% if ci_checks_workdir %}
+            workingDirectory: {{ci_checks_workdir}}
+{% endif %}
             condition: eq(variables['checksReady'], 'true')
           - script: uv run --quiet --project ci gate run python-lint
             displayName: ruff (check, format)
+{% if ci_checks_workdir %}
+            workingDirectory: {{ci_checks_workdir}}
+{% endif %}
             condition: eq(variables['checksReady'], 'true')
 {% if ci_image %}
           - script: uv run --quiet --project ci gate run build-context
             displayName: Dockerfile build context
+{% if ci_checks_workdir %}
+            workingDirectory: {{ci_checks_workdir}}
+{% endif %}
             condition: eq(variables['checksReady'], 'true')
 {% endif %}
           - script: uv run --quiet --project ci gate run ci-tests
             displayName: ci tests (pytest)
+{% if ci_checks_workdir %}
+            workingDirectory: {{ci_checks_workdir}}
+{% endif %}
             condition: eq(variables['checksReady'], 'true')
             env:
               CI_GATE_ARTIFACTS: target/gate-artifacts/ci-tests

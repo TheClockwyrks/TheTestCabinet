@@ -665,6 +665,189 @@ async fn a_finished_hand_launch_of_a_plans_cell_feeds_the_filling_plan() {
     assert!(cell(&matrix(&state, &id).await, "carom").filled);
 }
 
+/// Cap Claude, the harness every plan here runs on, at `max` runs at once, straight in
+/// the store: the setup a test starts from, with no pass of its own racing the test's.
+async fn cap_claude(state: &AppState, max: Option<i32>) {
+    state
+        .db
+        .set_harness_max_parallelism("claude", max, "2026-10-01T00:00:00Z")
+        .await
+        .unwrap();
+}
+
+/// Change Claude's cap through the endpoint, as an operator does from the console, which
+/// runs a pass of every filling plan.
+async fn change_claude_cap(state: &AppState, max: Option<i32>) {
+    let _ = crate::api::harness_config::set(
+        State(state.clone()),
+        owner(),
+        Path("claude".to_string()),
+        Json(crate::api::harness_config::HarnessConfigInput {
+            max_parallelism: max,
+        }),
+    )
+    .await
+    .unwrap();
+}
+
+#[tokio::test]
+async fn a_plan_on_a_capped_harness_queues_only_its_free_slots() {
+    let (_dir, state) = test_state().await;
+    cap_claude(&state, Some(2)).await;
+    let id = plan_id(
+        &state,
+        plan_input(&["pong"], 5, InFlightLimit::Bounded { runs: 10 }),
+    )
+    .await;
+    // Five missing and a limit of ten, but only two can start: the other three wait for
+    // a slot rather than sitting `pending` under the plan's limit.
+    assert_eq!(fill(&state, &id).await.enqueued, 2);
+    assert_eq!(in_flight(&state, "pong").await.len(), 2);
+
+    // One finishes and frees a slot, and the plan takes it.
+    let first = in_flight(&state, "pong").await[0].id.clone();
+    finish_and_feed(&state, &first, "pong", GREAT).await;
+    settled_pass(&state, &id).await;
+    assert_eq!(in_flight(&state, "pong").await.len(), 2);
+}
+
+#[tokio::test]
+async fn a_slot_freed_by_another_launch_feeds_a_plan_waiting_on_the_harness() {
+    let (_dir, state) = test_state().await;
+    cap_claude(&state, Some(1)).await;
+    // A hand launch of another case holds Claude's one slot.
+    enqueue_other(&state, "elsewhere", "volley", None).await;
+    let id = plan_id(
+        &state,
+        plan_input(&["pong"], 1, InFlightLimit::Bounded { runs: 10 }),
+    )
+    .await;
+    assert_eq!(fill(&state, &id).await.enqueued, 0);
+    assert!(in_flight(&state, "pong").await.is_empty());
+
+    // The hand launch is not one of the plan's cells, but its end frees the slot the plan
+    // is waiting on, so it feeds the plan.
+    let job = finish(&state, "elsewhere", run_of("run-v", "volley", GREAT)).await;
+    feed(&state, &job).await;
+    assert_eq!(in_flight(&state, "pong").await.len(), 1);
+}
+
+#[tokio::test]
+async fn a_plan_waiting_on_a_harness_queues_nothing_while_its_backlog_fills_it() {
+    let (_dir, state) = test_state().await;
+    cap_claude(&state, Some(1)).await;
+    // Two hand launches of another case: one holds the slot, one is queued behind it.
+    enqueue_other(&state, "first", "volley", None).await;
+    enqueue_other(&state, "second", "volley", None).await;
+    let id = plan_id(
+        &state,
+        plan_input(&["pong"], 1, InFlightLimit::Bounded { runs: 10 }),
+    )
+    .await;
+    assert_eq!(fill(&state, &id).await.enqueued, 0);
+
+    // The first ends, but the queued one takes its slot: nothing is free to hand on, so
+    // the plan queues nothing behind it.
+    let job = finish(&state, "first", run_of("run-1", "volley", GREAT)).await;
+    feed(&state, &job).await;
+    assert!(in_flight(&state, "pong").await.is_empty());
+
+    // The second ends with nothing behind it, and the plan gets the slot.
+    let job = finish(&state, "second", run_of("run-2", "volley", GREAT)).await;
+    feed(&state, &job).await;
+    assert_eq!(in_flight(&state, "pong").await.len(), 1);
+}
+
+#[tokio::test]
+async fn plans_waiting_on_one_harness_take_turns_at_its_freed_slots() {
+    let (_dir, state) = test_state().await;
+    cap_claude(&state, Some(1)).await;
+    // The first plan takes the one slot; the second, filled after it, finds none.
+    let first = plan_id(
+        &state,
+        plan_input(&["pong"], 2, InFlightLimit::Bounded { runs: 10 }),
+    )
+    .await;
+    assert_eq!(fill(&state, &first).await.enqueued, 1);
+    let second = plan_id(
+        &state,
+        plan_input(&["carom"], 1, InFlightLimit::Bounded { runs: 10 }),
+    )
+    .await;
+    assert_eq!(fill(&state, &second).await.enqueued, 0);
+
+    // The first plan's run ends. The first plan is fed for its own cell and still wants
+    // the slot, but the second has not had a turn yet, so it goes first and takes it.
+    let pong = in_flight(&state, "pong").await[0].id.clone();
+    let job = finish(&state, &pong, run_of("run-p", "pong", GREAT)).await;
+    feed(&state, &job).await;
+    assert_eq!(in_flight(&state, "carom").await.len(), 1);
+    assert!(in_flight(&state, "pong").await.is_empty());
+}
+
+#[tokio::test]
+async fn a_jam_run_held_behind_the_same_model_holds_no_slot() {
+    let (_dir, state) = test_state().await;
+    // Three entries of one jam by one model: the queue drives one at a time, so only the
+    // first can occupy a slot until it ends.
+    for id in ["jam-1", "jam-2", "jam-3"] {
+        state
+            .db
+            .enqueue_job(crate::db::NewJob {
+                test_case_slug: "jam".to_string(),
+                test_type: test_cabinet_contracts::test_case::TestType::GameJam
+                    .as_str()
+                    .to_string(),
+                model_id: SONNET.to_string(),
+                ..crate::db::tests::new_job(id, "2026-10-01T00:00:00Z")
+            })
+            .await
+            .unwrap();
+    }
+    enqueue_other(&state, "other", "volley", None).await;
+    let active = state.db.active_jobs().await.unwrap();
+    assert_eq!(harness_occupancy(&active).get("claude"), Some(&2));
+
+    // Once the first entry is driven, it is the one that counts, not the next in line.
+    set_state(&state, "jam-2", "running").await;
+    let active = state.db.active_jobs().await.unwrap();
+    assert_eq!(harness_occupancy(&active).get("claude"), Some(&2));
+}
+
+#[tokio::test]
+async fn a_slot_freed_by_a_cancel_elsewhere_feeds_a_plan_waiting_on_the_harness() {
+    let (_dir, state) = test_state().await;
+    cap_claude(&state, Some(1)).await;
+    enqueue_other(&state, "elsewhere", "volley", None).await;
+    let id = plan_id(
+        &state,
+        plan_input(&["pong"], 1, InFlightLimit::Bounded { runs: 10 }),
+    )
+    .await;
+    assert_eq!(fill(&state, &id).await.enqueued, 0);
+
+    let _ = crate::api::jobs::cancel(State(state.clone()), owner(), Path("elsewhere".to_string()))
+        .await
+        .unwrap();
+    wait_for_in_flight(&state, "pong", 1).await;
+}
+
+#[tokio::test]
+async fn raising_a_harness_cap_feeds_a_plan_waiting_on_it() {
+    let (_dir, state) = test_state().await;
+    cap_claude(&state, Some(1)).await;
+    let id = plan_id(
+        &state,
+        plan_input(&["pong"], 3, InFlightLimit::Bounded { runs: 10 }),
+    )
+    .await;
+    assert_eq!(fill(&state, &id).await.enqueued, 1);
+
+    // Nothing finishes, but the raised cap is room the plan fills at once.
+    change_claude_cap(&state, Some(3)).await;
+    wait_for_in_flight(&state, "pong", 3).await;
+}
+
 #[tokio::test]
 async fn cancelling_a_filling_plans_run_by_hand_feeds_the_plan() {
     let (_dir, state) = test_state().await;

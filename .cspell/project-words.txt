@@ -159,6 +159,7 @@ Relatedly
 Reliquary
 Rolloff
 SIGABRT
+SIGPIPE
 SKRS
 SPDY
 STATN
@@ -968,6 +969,7 @@ targ
 targetable
 tauri
 tcab
+tcabprodstore
 tchip
 teavm
 teleporter
@@ -1108,6 +1110,7 @@ upserting
 upserts
 userbyid
 userns
+vantaloc
 varargs
 varint
 verdicted

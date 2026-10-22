@@ -97,8 +97,6 @@ table "the submodule init helper's test reaches nothing" "rust=false submodules=
 	scripts/ci/submodules.test.sh
 table "the submodule init helper, which every Rust job runs, reaches the Rust jobs" "rust=true submodules=false" \
 	scripts/ci/submodules.sh
-table "the web app reaches nothing" "rust=false submodules=false" \
-	apps/web/src/main.tsx apps/site/src/index.ts
 table "the board, manifests and dotfiles reach nothing" "rust=false submodules=false" \
 	tasks/ci/foo.md deployments/k8s/overlays/staging/kustomization.yaml .github/README.md \
 	.devcontainer/docker-compose.yml .claude/skills/coding/SKILL.md .vscode/settings.json

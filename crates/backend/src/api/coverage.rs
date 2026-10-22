@@ -555,8 +555,12 @@ pub(super) async fn plan_pass_locked(
     // none is: an unlaunchable cell cannot be filled by waiting, and a blocked one waits on
     // its owner's retry, which a filling plan stays filling for.
     let mut fillable_unfilled = false;
+    let jams = game_jam_cases(state, ordered.iter().map(|(case, _)| *case));
     for (case, member) in &ordered {
-        let demand = ctx.demand(plan.runs_per_cell, case, member);
+        let demand = CellDemand {
+            serialized: jams.contains(&(case.slug.clone(), case.version.clone())),
+            ..ctx.demand(plan.runs_per_cell, case, member)
+        };
         let key = cell_key(case, member);
         if let Some(reason) = &member.unlaunchable {
             // Reported only when the cell actually wanted runs.
@@ -989,7 +993,8 @@ pub async fn halt_plan(
 }
 
 /// `POST /coverage-plans/{id}/halt-all` — end filling and cancel **every** job the plan
-/// launched, including the ones already dispatched, starting, or running.
+/// launched, including the ones already dispatched, starting, running, validating or
+/// storing.
 ///
 /// The rare control: those jobs are partly or wholly paid for, so the console must
 /// confirm before calling this and must never make it the default action. 404 when the
@@ -1460,6 +1465,48 @@ pub(super) fn resolve_member(combo: &ReviewPlanCombo, library: &GgLibrary) -> Pl
         }
         Err(reason) => blocked(read, reason),
     }
+}
+
+/// The [cell identity](MemberCellIdentity) `combo`'s runs carry, or `None` when it names
+/// no cell: a gg member whose configuration the account no longer holds, that leaves a
+/// launch slot unbound, or whose bound set `POST /gg/runs` would refuse.
+///
+/// The identity [`resolve_member`] gives a launchable member, without the
+/// [drift](gg_member_drift) check. Drift decides whether the member may be launched now,
+/// and leaves the runs it already has, and the cell they are counted in, where they are.
+/// A [comparison arm](super::comparisons) reads its runs through this.
+pub(super) fn member_cell_identity(
+    combo: &ReviewPlanCombo,
+    library: &GgLibrary,
+) -> Option<MemberCellIdentity> {
+    let Some(id) = combo.gg_config_ref() else {
+        return Some((
+            combo.harness.as_str().to_string(),
+            crate::model_id::launch_model_id(
+                &combo.model,
+                combo.harness,
+                combo.provider.as_deref(),
+            ),
+            String::new(),
+            String::new(),
+        ));
+    };
+    let config = library.config(id)?;
+    if gg_member_defect(combo, library).is_some() {
+        return None;
+    }
+    let mut bound = config
+        .capability_set
+        .bind_launch_slots(&combo.gg_bindings());
+    bound.preset = Some(config.name.clone());
+    bound.preset_id = Some(config.id.clone());
+    let identity = super::gg::gg_launch_identity(&bound).ok()?;
+    Some((
+        HarnessSlug::Gg.as_str().to_string(),
+        identity.model,
+        config.id.clone(),
+        identity.capability_set.bound_model_key(),
+    ))
 }
 
 /// Resolve referenced combination groups and one-off combinations into the de-duped
@@ -2029,6 +2076,9 @@ impl MatrixCtx {
             counted,
             in_flight: cell_in_flight(&self.in_flight, &key, target, counted),
             harness: harness_lane(member.combo.harness),
+            // Whether the case is a game jam is the launch pass's to say, from the case's
+            // manifest; a count alone never needs it.
+            serialized: false,
         }
     }
 
@@ -2172,11 +2222,9 @@ struct QueueSnapshot {
 /// is the same set the console already fetches whole for its in-progress list.
 async fn queue_snapshot(state: &AppState) -> Result<QueueSnapshot, ApiError> {
     let mut pending = crate::db::CellCounts::new();
-    let mut in_flight_by_harness: HashMap<String, u32> = HashMap::new();
-    for job in state.db.active_jobs().await.map_err(ApiError::from)? {
-        *in_flight_by_harness
-            .entry(job.harness_slug.clone())
-            .or_insert(0) += 1;
+    let active = state.db.active_jobs().await.map_err(ApiError::from)?;
+    let in_flight_by_harness = harness_occupancy(&active);
+    for job in active {
         if job.state != "pending" {
             continue;
         }
@@ -2201,6 +2249,72 @@ async fn queue_snapshot(state: &AppState) -> Result<QueueSnapshot, ApiError> {
         pending,
         in_flight_by_harness,
     })
+}
+
+/// The `(slug, version)` of each of `cases` that is a game jam, whose runs by one model
+/// the queue drives one at a time: the cells a launch pass charges a single slot of their
+/// harness ([`CellDemand::serialized`]). Read from each version's ingested manifest, once
+/// per version. A version that is not ingested reads as no jam, the type an enqueue falls
+/// back to for it as well.
+pub(super) fn game_jam_cases<'a>(
+    state: &AppState,
+    cases: impl Iterator<Item = &'a ReviewPlanCase>,
+) -> HashSet<(String, String)> {
+    let mut seen = HashSet::new();
+    let mut jams = HashSet::new();
+    for case in cases {
+        let version = (case.slug.clone(), case.version.clone());
+        if !seen.insert(version.clone()) {
+            continue;
+        }
+        let jam = state
+            .store
+            .read_manifest(&case.slug, &case.version)
+            .is_ok_and(|manifest| {
+                manifest.test_type == test_cabinet_contracts::test_case::TestType::GameJam
+            });
+        if jam {
+            jams.insert(version);
+        }
+    }
+    jams
+}
+
+/// How many of `active` (the in-flight jobs, in queue order) each harness's cap must
+/// make room for, keyed by harness slug.
+///
+/// Every in-flight job counts, whatever its state, except a game-jam run the queue holds
+/// back behind an entry of the same jam by the same model. The queue drives one run of a
+/// (jam, model) pair at a time, so of a pair's jobs only the one driven, or with none
+/// driven the first waiting, can occupy a slot; the entries behind it occupy none until
+/// it ends. Counting them would read a harness as full while it runs one run of three.
+pub(super) fn harness_occupancy(
+    active: &[test_cabinet_entities::job::Model],
+) -> HashMap<String, u32> {
+    let jam = |job: &test_cabinet_entities::job::Model| {
+        job.test_type == test_cabinet_contracts::test_case::TestType::GameJam.as_str()
+    };
+    let pair = |job: &test_cabinet_entities::job::Model| {
+        (job.test_case_slug.clone(), job.model_id.clone())
+    };
+    let driven = |job: &test_cabinet_entities::job::Model| {
+        crate::db::DRIVEN_STATES.contains(&job.state.as_str())
+    };
+    // The pairs whose turn is already taken: by a driven entry first, then, in queue
+    // order, by the first waiting entry of a pair with none driven.
+    let mut taken: HashSet<(String, String)> = active
+        .iter()
+        .filter(|job| jam(job) && driven(job))
+        .map(pair)
+        .collect();
+    let mut occupancy: HashMap<String, u32> = HashMap::new();
+    for job in active {
+        if jam(job) && !driven(job) && !taken.insert(pair(job)) {
+            continue;
+        }
+        *occupancy.entry(job.harness_slug.clone()).or_insert(0) += 1;
+    }
+    occupancy
 }
 
 /// Cross the configured per-harness parallelism caps with what is already in flight,
@@ -2262,7 +2376,7 @@ pub(super) struct LaunchCell<'a> {
     pub case: &'a ReviewPlanCase,
     /// The resolved member to run it on.
     pub member: &'a PlanMember,
-    /// How many runs to enqueue — the cell's whole shortfall.
+    /// How many runs to enqueue, as the launch scheduler decided them.
     pub runs: u32,
     /// How many automatic retries each of those runs gets: the plan's or the dispatch's
     /// retry limit.

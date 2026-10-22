@@ -276,6 +276,30 @@ fn a_configuration_whose_imported_agent_moved_on_is_not_launched_until_it_is_re_
 }
 
 #[test]
+fn a_configuration_behind_its_library_keeps_the_cell_its_runs_are_counted_in() {
+    // Drift decides whether a member may be launched now. The runs it already has stay in
+    // the cell they were counted in, so a comparison arm reading that cell keeps them.
+    let fresh = GgLibrary::from_parts(
+        vec![importing_config()],
+        vec![saved_agent("a-1", "Reviewer", "2026-08-01T00:00:00Z")],
+    );
+    let stale = GgLibrary::from_parts(
+        vec![importing_config()],
+        vec![saved_agent("a-1", "Reviewer", "2026-08-20T00:00:00Z")],
+    );
+    let combo = gg_combo("opus", "haiku");
+    let identity = member_cell_identity(&combo, &stale).expect("a drifted member keeps its cell");
+    assert_eq!(Some(identity.clone()), member_cell_identity(&combo, &fresh));
+    assert_eq!(identity, resolve_member(&combo, &fresh).cell_identity());
+
+    // A configuration that is gone, or a launch slot left unbound, names no cell at all.
+    assert!(member_cell_identity(&combo, &GgLibrary::default()).is_none());
+    let mut unbound = combo.clone();
+    unbound.gg_slot_models.remove("reviewer.critic");
+    assert!(member_cell_identity(&unbound, &fresh).is_none());
+}
+
+#[test]
 fn two_configurations_sharing_a_name_are_two_cells() {
     // Nothing makes a configuration's name unique within an account, so two of them may
     // carry one. They are still two configurations: two capability sets, two sets of runs,

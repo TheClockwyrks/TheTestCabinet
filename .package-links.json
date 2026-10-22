@@ -4,6 +4,9 @@
     "client-tauri": {
       "@clockwyrks/client-tauri-shell": "packages/shell"
     },
+    "console.testcabinet.ai": {
+      "@clockwyrks/web": "apps/web"
+    },
     "contracts": {
       "@clockwyrks/asset-contract": "packages/asset-contract",
       "@clockwyrks/backend-api": "packages/backend-api",
@@ -28,6 +31,9 @@
     },
     "test-suites": {
       "@clockwyrks/lattice-designer": "tools/lattice-designer"
+    },
+    "testcabinet.ai": {
+      "@clockwyrks/site": "apps/site"
     },
     "ui-common": {
       "@clockwyrks/run-stats": "packages/run-stats",

@@ -73,13 +73,16 @@ The kind decides a repository's shape.
 | `client-tauri` | shell | The operator client for Windows, Linux, macOS and Android |
 | `test-suites` | content | The test cases and game jams, and the lattice factory designer |
 
-Every repository but `contracts`, `engines`, `gg`, `gg.rocks`, `microservice-arena`,
+Every repository but `console.testcabinet.ai`,
+`contracts`, `engines`, `gg`, `gg.rocks`, `microservice-arena`,
 `microservice-artifacts`,
-`microservice-dispatcher`, `microservice-driver`, `microservice-repos`,
+`microservice-dispatcher`, `microservice-driver`, `microservice-publisher`,
+`microservice-repos`,
 `tool-audio-core`, `tool-dc`, `tool-mc`, `tool-model-core`, `tool-music`,
 `tool-paint`, `tool-particle`,
 `tool-sfx-sample`, `tool-sfx-synth`, `tool-sn`, `tool-sprite`, `tool-voxel`,
-`test-suites`, `ui-common` and `cold-storage` is still a directory of the
+`test-suites`, `testcabinet.ai`,
+`ui-common` and `cold-storage` is still a directory of the
 superrepo's own tree today.
 
 ### Where each responsibility lives
@@ -184,7 +187,8 @@ microservice-publisher  -> contracts
 microservice-arena      -> contracts, engines
 gg                      -> contracts
 the-spec-cabinet        -> contracts, engines, ui-common
-testcabinet.ai          -> contracts (run-record), engines (runtimes), ui-common
+testcabinet.ai          -> contracts (run-record, backend-api), engines (runtimes),
+                           ui-common
 console.testcabinet.ai  -> contracts (run-record, backend-api), engines, ui-common
 client-tauri            -> nothing of this project (it loads the console by URL)
 test-suites             -> engines (packages alone; the validators and the
@@ -239,11 +243,11 @@ repository has none:
 ```toml
 [workspace.dependencies.test-cabinet-contracts]
 git = "https://github.com/TheClockwyrks/contracts"
-tag = "v0.2.2"
+tag = "v0.2.4"
 ```
 
 The render writes the tag `TAGS` in `scripts/repos/render.py` records for the
-repository, `v0.2.2` for `contracts`, and `branch = "master"` for one it records
+repository, `v0.2.4` for `contracts`, and `branch = "master"` for one it records
 none for. A new tag is recorded there, and reaches a dependent with its next
 `render.py --update`.
 
@@ -351,13 +355,17 @@ and the kit's `edges.py` hold:
 - the checkout, beside the repository's own, of each repository its Rust
   suite reads across a data edge, and the variable naming it to the suite
   (`RUST_CHECKOUTS`: `microservice-backend` checks `test-suites` out as
-  `TCAB_DEFINITIONS_ROOT`);
+  `TCAB_DEFINITIONS_ROOT`), and the same in the checks job of a kind carrying
+  no crate, whose tests run there (`CHECKS_CHECKOUTS`:
+  `console.testcabinet.ai` checks `test-suites` out as `TCAB_DEFINITIONS_ROOT`);
 - the steps of the gates a repository writes itself, which `EXTRA_GATES` names
   by the job each runs in;
 - for an `application`, the `Dockerfile` scaffold and its `.dockerignore`
   allowlist, the `build-context` gate, and the image stage that builds the
   image natively on an amd64 and an arm64 agent and fuses the two into
-  `<name>:<commit>` (`IMAGE_KINDS` in `render.py`);
+  `<name>:<commit>` (`IMAGE_KINDS` in `render.py`), and the same for the one
+  `site` a deployment serves, `console.testcabinet.ai` (`IMAGE_SITES`), whose
+  scaffold builds the npm workspace and serves the bundle through nginx;
 - the includes of the jobs, stages and Rust setup steps a repository writes
   itself, which `PROJECT_PIPELINE` names with the stages the mirror waits on,
   and the Rust job's time limit (`RUST_TIMEOUTS`);
@@ -433,9 +441,10 @@ The kit renders the gate runner into every repository, with these gates:
 | `python-lint`, `ci-tests`, `shell-tests`, `no-nul-bytes` | The gate runner and the scripts |
 
 A repository may add gates of its own, such as `contracts`' `contract-drift`,
-`engines`' `seeded-contract`, `ui-common`'s `web-lint` or `test-suites`'
-`frozen-paths`, `spec-prose`, `spec-vocabulary`, `audio-packs` and
-`validators-typecheck`. The gate is a file
+`engines`' `seeded-contract`, `ui-common`'s `web-lint`,
+`console.testcabinet.ai`'s `web-lint` and `web-browser-test`, `testcabinet.ai`'s
+`web-lint`, or `test-suites`' `frozen-paths`, `spec-prose`, `spec-vocabulary`,
+`audio-packs` and `validators-typecheck`. The gate is a file
 the repository writes under `ci/gates/`, and the kit leaves it to the
 repository; `EXTRA_GATES` in `render.py` names it and the job it runs in, and
 the render gives it one step there. Every gate a repository adds is hookless,
@@ -443,9 +452,10 @@ and the rendered `ci/tests/test_wiring.py` holds each to its one step.
 
 A repository whose pipeline runs work beyond the kit's, such as `gg`, which
 releases its binaries, its reference and its toolchains image on a tag, or
-`gg.rocks`, whose `deploy` stage uploads the site to its Pages project, writes
-it as the superrepo writes its own: its jobs in `.azure/project/jobs.yml`,
-which the gates stage includes after the kit's jobs, and its stages in
+`gg.rocks` and `testcabinet.ai`, whose `deploy` stages upload each site to its
+Pages project, writes it as the superrepo writes its own: its jobs in
+`.azure/project/jobs.yml`, which the gates stage includes after the kit's
+jobs, and its stages in
 `.azure/project/stages.yml`, which the pipeline includes after the publish
 stage. `PROJECT_PIPELINE` in `render.py` names the repository and its stages,
 and the kit leaves both files to it. Each is handed the image of the Rust
@@ -464,11 +474,11 @@ A repository's `azure-pipelines.yml` runs on every push to `master`, `staging`
 and `nightly` and to a `v*` tag. The gates stage runs the Rust gates in the
 Rust job and every other check in the checks job, inside the web image. On
 `master` and `staging` an application's run then builds its image and pushes
-it to the registry as `<name>:<commit>`, and a tool's run builds the image
-carrying its binaries the same way. A tag's run publishes each public package
-of the workspace to the feed, at the version its manifest carries, which is
-the tag's, and an application's or shell's tag publishes its binaries or
-bundles as pipeline artifacts of that run; see
+it to the registry as `<name>:<commit>`, as `console.testcabinet.ai`'s does,
+and a tool's run builds the image carrying its binaries the same way. A tag's
+run publishes each public package of the workspace to the feed, at the version
+its manifest carries, which is the tag's, and an application's or shell's tag
+publishes its binaries or bundles as pipeline artifacts of that run; see
 [Releasing](/development/releasing/).
 
 A repository's pipeline names each CI image it runs in by commit,
@@ -481,9 +491,10 @@ by a relative URL, every image the `azure-pipelines.yml` of that repository's
 `master`, `staging` and `nightly` names. Reading every branch's `.gitmodules`
 is what keeps a repository added on `nightly` safe from a run on `master`,
 where it is not yet a submodule. A repository it cannot read stops the purge,
-so the image pipeline declares every such repository under `resources` and
-each of its jobs names it under `uses:`, which puts it in the job token's
-scope, and a new submodule is added in both places with it.
+and the job's access token reads every repository of the project, so a new
+submodule is reached as soon as a `.gitmodules` names it. It also keeps every
+tag pushed within the last day, so the image of a run still in flight on
+another branch, and an image whose pin has not landed yet, survive it.
 Two rules follow:
 
 - **The merge-up rule.** A repository's image pin moves

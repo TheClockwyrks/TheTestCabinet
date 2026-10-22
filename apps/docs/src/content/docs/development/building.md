@@ -67,7 +67,7 @@ directory empty. The superrepo's own gates and the docs site read
 repositories still held in the superrepo's own tree build against,
 `microservice-arena/`, `microservice-artifacts/`, `microservice-dispatcher/`,
 `microservice-driver/`,
-`microservice-repos/`,
+`microservice-publisher/`, `microservice-repos/`,
 `tool-model-core/`, `tool-paint/`, `tool-particle/`, `tool-sprite/`,
 `tool-voxel/`, `tool-mc/`, `tool-sn/`, `tool-dc/`, `tool-audio-core/`,
 `tool-sfx-synth/`, `tool-sfx-sample/`, `tool-music/`, `ui-common/` and `gg/`,
@@ -82,10 +82,12 @@ it:
 git clone <superrepo-url>
 git submodule update --init contracts engines gg microservice-arena \
   microservice-artifacts microservice-dispatcher \
-  microservice-driver microservice-repos tool-model-core tool-paint \
+  microservice-driver microservice-publisher microservice-repos \
+  tool-model-core tool-paint \
   tool-particle tool-sprite tool-voxel tool-mc tool-sn tool-dc \
   tool-audio-core tool-sfx-synth tool-sfx-sample tool-music ui-common
-git submodule update --init gg.rocks   # what the task touches
+git submodule update --init gg.rocks console.testcabinet.ai \
+  testcabinet.ai   # what the task touches
 git submodule update --init --depth 1 cold-storage
 git submodule update --init test-suites
 ```
@@ -93,12 +95,14 @@ git submodule update --init test-suites
 The devcontainer populates `contracts/`, `engines/`, `gg/`,
 `microservice-arena/`, `microservice-artifacts/`, `microservice-dispatcher/`,
 `microservice-driver/`,
-`microservice-repos/`,
+`microservice-publisher/`, `microservice-repos/`,
 `tool-model-core/`, `tool-paint/`, `tool-particle/`, `tool-sprite/`,
 `tool-voxel/`, `tool-mc/`, `tool-sn/`, `tool-dc/`, `tool-audio-core/`,
-`tool-sfx-synth/`, `tool-sfx-sample/`, `tool-music/`, `test-suites/` and
-`ui-common/` when it creates a container, `test-suites/` because a local
-backend ingests its suites from that checkout.
+`tool-sfx-synth/`, `tool-sfx-sample/`, `tool-music/`, `test-suites/`,
+`ui-common/` and `console.testcabinet.ai/` when it creates a container,
+`test-suites/` because a local backend ingests its suites from that checkout
+and `console.testcabinet.ai/` because the console's development server runs
+from it.
 `.gitmodules` gives every repository but `cold-storage` the branch `.`, the
 branch of the superrepo's own name. `git submodule update --remote <name>` on
 the superrepo's `nightly` therefore moves that checkout to the tip of its
@@ -172,22 +176,18 @@ checkout, for the schemas the docs site publishes and the `dependency-graph`
 gate's check of the one checkout. The jobs that read nothing of a submodule
 (the mirror and the deploys) initialize none.
 
-The project scopes the job's access token to the repositories a job names.
-The pipeline declares `contracts` under `resources.repositories`, and every
-job that initializes it names it under the job's `uses: repositories:`, which
-puts the repository in the token's scope without checking it out. The script
-sends the token in `SYSTEM_ACCESSTOKEN` to `dev.azure.com` alone. A repository
-is authorized for the `the-test-cabinet` pipeline definition once, in the
+The job's access token reads every repository of the project. The project
+setting "Protect access to repositories in YAML pipelines" is off, as Azure
+DevOps caps a token scoped to the repositories a job names at twenty and the
+set has more, so a job names no repository for the token's sake and no job's
+`uses:` or `resources.repositories` entry exists for one. The script sends the
+token in `SYSTEM_ACCESSTOKEN` to `dev.azure.com` alone. A repository is
+authorized for the `the-test-cabinet` pipeline definition once, in the
 project's pipeline permissions.
 
-`submodule_pins` checks every submodule's repository out instead:
-`.azure/project/jobs.yml` lists them in its `submodules` parameter, with each
-one's path and repository, and the job checks each repository out beside this
-one before it runs `scripts/ci/submodule-pins.sh` with the token in
-`SYSTEM_ACCESSTOKEN`. `scripts/ci/submodules.sh check` holds that list to
-`.gitmodules`, and `scripts/ci/submodules.test.sh` runs the check against the
-repository, so the `shell-tests` gate fails on a submodule added to one and not
-the other.
+`submodule_pins` reads every submodule's repository through that token:
+`scripts/ci/submodule-pins.sh` resolves each one's URL from `.gitmodules` and
+fetches it, so the job checks out the superrepo alone.
 
 ## Layout
 
@@ -1202,9 +1202,13 @@ of its runs the image pipeline purges the registry of every CI image tag that
 `azure-pipelines.yml` of a submodule repository's `master`, `staging` or
 `nightly` names. That reaches the repositories of every submodule the
 `.gitmodules` of the checkout or of any of those branches names by a relative
-URL, which the image pipeline declares under `resources` and each of its jobs
-names under `uses:`; see
+URL, read through the job's access token; see
 [Repositories](/development/repositories/#a-repositorys-gates-and-pipeline).
+It keeps every tag pushed within the last day too, pinned or not: a run on
+another branch pushes its Rust image a job before its rust-browser job builds
+on it, and the image of step 1 above waits unpinned until step 2 lands. An
+image whose pin lands later than that is rebuilt by queuing the image pipeline
+on the pinned commit.
 
 A job pulls its CI image from the registry before its first step runs, so a
 registry answer that times out would fail the job before it has checked
@@ -1227,7 +1231,7 @@ variables:
 | `tcab-deploy` | Azure Resource Manager | The registry purge after each deployment (`AcrDelete`) and the cluster deploys: the custom "Test Cabinet AKS Command Invoke" role on each cluster, "Azure Kubernetes Service RBAC Admin" on its application namespace |
 | `tcab-gg-publish` | Azure Resource Manager | Storage Blob Data Contributor on `testcabinetartifacts`, for gg's pipeline |
 | `github-mirror-key`, `github-mirror-key-<name>` | Secure files | The GitHub mirrors' write deploy keys, one per mirror |
-| `contracts` and every other repository | Repository | The submodules a job initializes through its job token |
+| `contracts` and every other repository | Repository | The submodules a job initializes and the purge reads through its job token, which reads every repository of the project |
 | `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID` | Secret pipeline variables | The docs deploy here, and the gallery and Worker deploys on `testcabinet.ai`'s pipeline |
 | `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_AUDIO_R2_BUCKET`, `CLOUDFLARE_AUDIO_R2_PRESIGN_ACCESS_KEY_ID`, `CLOUDFLARE_AUDIO_R2_PRESIGN_SECRET_ACCESS_KEY` | Secret pipeline variables | Staging the audio store out of the audio object store (read-only), on `microservice-driver`'s pipeline |
 

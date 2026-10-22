@@ -15,12 +15,12 @@
 # overlays/<env> with scripts/ci/pin-images.sh: every Test Cabinet image at
 # `testcabinet.azurecr.io/<image>:<commit>` (the backend's repository is
 # `the-test-cabinet-backend`; `microservice-arena`, `microservice-artifacts`,
-# `microservice-dispatcher` and `microservice-repos` are at
-# the commits their submodule pointers name), the dispatcher's publisher image at the
-# same registry and commit, and its driver image and run-container tag at the commit
-# the microservice-driver pointer names, whose pipeline pushed the driver and the run
-# images together. The checkout is
-# left as it was. `--render` prints that render and touches no cluster;
+# `microservice-dispatcher`, `microservice-repos`, `console.testcabinet.ai` and
+# `microservice-publisher` are at the commits their submodule pointers name), the
+# dispatcher's publisher image at microservice-publisher's, and its driver image and
+# run-container tag at the commit the microservice-driver pointer names, whose
+# pipeline pushed the driver and the run images together. The checkout is left as it
+# was. `--render` prints that render and touches no cluster;
 # scripts/ci/k8s-deploy-sets.sh gates on the same bytes. TCAB_K8S_ROOT names another
 # deployments/k8s tree to copy, which is how the gate's test feeds it broken ones.
 #
@@ -41,12 +41,28 @@
 # workload identity annotated `unprovisioned` (tcab-lib.sh's
 # ci_assert_identities_provisioned): prod's artifacts identity until it exists.
 #
+# Before it changes anything in the cluster it checks that the catalog the new
+# backend's ingest sidecar will fetch can be fetched (scripts/ci/catalog-ingest.sh
+# preflight): the environment's catalog branch tip on the GitHub mirror and the
+# cold-storage commit it pins. It fails there, with nothing applied, when it cannot.
+# The same preflight reads the backend's state volume and the render's size for it:
+# it fails when the volume is too full for the sidecar's fetch, the growth this
+# deployment applies counted, and when the render asks for a resize of the volume
+# the cluster would refuse.
+#
 # Before the apply it retires the workloads of an earlier shape
 # (scripts/ci/retire-legacy-backend.sh): the backend Deployment of its old name,
-# which holds the backend's disk, and the artifacts service's StatefulSet. After it,
+# which holds the backend's disk, the artifacts service's StatefulSet, and the
+# objects the edge replaced, which an apply never prunes. After it,
 # scripts/ci/settle-workloads.sh --include-backend waits concurrently on every
 # Deployment and StatefulSet in the namespace; each that does not become ready is
 # described, its logs are printed, and it is undone before the script fails.
+#
+# Once every workload is ready it reads the result the backend's ingest sidecar
+# recorded (scripts/ci/catalog-ingest.sh verify) and fails, printing the sidecar's
+# failing step and message, unless the sidecar ingested the catalog. Nothing is
+# undone for that: a sidecar that failed ingested nothing, so the backend serves the
+# catalog and the baselines it had.
 set -euo pipefail
 
 caller_dir="$PWD"
@@ -123,7 +139,14 @@ if ! ci_assert_identities_provisioned <"$manifest"; then
 	remediation "Provision it, put its clientId in the overlay's patch and move the run trees, then deploy again:" \
 		"    the storage account, private container run-trees, the identity with Storage Blob Data Contributor on it and its federated credential (deployments/k8s/overlays/${ENVIRONMENT}/patch-artifacts-identity.yaml)" \
 		"    the private container bundles, the repos identity with Storage Blob Data Contributor on it and its federated credential (deployments/k8s/overlays/${ENVIRONMENT}/patch-repos-identity.yaml)" \
-		"    copy the trees on the claim artifacts-tcab-artifacts-0 in ${NAMESPACE} into the container"
+		"    copy the trees on the claim artifacts-tcab-artifacts-0 in ${NAMESPACE} into the container: scripts/ci/copy-artifact-trees.sh ${ENVIRONMENT}"
+	exit 1
+fi
+
+# The preflight is given the file about to be applied, whose size for the backend's
+# state volume it compares with the claim in the cluster.
+if ! TCAB_INGEST_MANIFEST="$manifest" "${CI_DIR}/catalog-ingest.sh" preflight "$ENVIRONMENT" "$COMMIT"; then
+	echo "deploy-environment.sh: the ${ENVIRONMENT} deploy preflight failed, above; nothing was applied." >&2
 	exit 1
 fi
 
@@ -147,3 +170,9 @@ if ! "${CI_DIR}/settle-workloads.sh" --include-backend "$COMMIT"; then
 	exit 1
 fi
 log "${ENVIRONMENT} is at ${COMMIT}"
+
+if ! "${CI_DIR}/catalog-ingest.sh" verify "$ENVIRONMENT"; then
+	echo "deploy-environment.sh: ${ENVIRONMENT} runs ${COMMIT}, but its backend did not ingest the catalog, above." >&2
+	exit 1
+fi
+log "${ENVIRONMENT} serves the catalog of its branch tip"

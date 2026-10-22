@@ -3,7 +3,6 @@
 #
 #   scripts/ci/submodules.sh init [--build-context] [<path>...]
 #   scripts/ci/submodules.sh list [--build-context] [<path>...]
-#   scripts/ci/submodules.sh check
 #
 # WHY A JOB NAMES ITS SUBMODULES. Every checkout in the pipeline is made with
 # `submodules: false`, and nothing clones recursively: cold-storage alone is
@@ -22,27 +21,17 @@
 # initialize, one per line, and touches nothing.
 #
 # On an Azure Pipelines agent the job passes its access token in
-# SYSTEM_ACCESSTOKEN, and it is sent to dev.azure.com alone. The project scopes
-# the job token to the repositories a job names, so a job that runs this names
-# each submodule's repository under the job's `uses: repositories:` (or checks
-# it out, as the `submodule_pins` job does), or the fetch is refused.
-#
-# `check` holds the `submodules` parameter of .azure/project/jobs.yml, the list
-# the `submodule_pins` job checks out, to .gitmodules: the same paths, each with
-# the repository its URL names. scripts/ci/submodules.test.sh runs it against
-# the repository, so the shell-tests gate fails on a submodule added to one and
-# not the other.
+# SYSTEM_ACCESSTOKEN, and it is sent to dev.azure.com alone. The token reads
+# every repository of the project, so a job that runs this names no submodule
+# repository for the token's sake.
 set -euo pipefail
 # shellcheck source=/dev/null
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/tcab-lib.sh"
-
-readonly JOBS_FILE=".azure/project/jobs.yml"
 
 usage() {
 	cat >&2 <<'EOF'
 usage: scripts/ci/submodules.sh init [--build-context] [<path>...]
        scripts/ci/submodules.sh list [--build-context] [<path>...]
-       scripts/ci/submodules.sh check
 EOF
 	exit 2
 }
@@ -51,12 +40,6 @@ EOF
 declared_paths() {
 	[[ -f .gitmodules ]] || return 0
 	git config -f .gitmodules --get-regexp '^submodule\..*\.path$' 2>/dev/null | awk '{ print $2 }'
-}
-
-# The name .gitmodules gives the submodule at path `$1`.
-name_of() {
-	git config -f .gitmodules --get-regexp '^submodule\..*\.path$' 2>/dev/null |
-		awk -v p="$1" '$2 == p { sub(/^submodule\./, "", $1); sub(/\.path$/, "", $1); print $1; exit }'
 }
 
 # The paths a `list` or `init` names, deduplicated in the order given.
@@ -82,7 +65,9 @@ select_paths() {
 	mapfile -t declared < <(declared_paths)
 	for path in "${wanted[@]}"; do
 		[[ -n "$path" ]] || continue
-		if ! printf '%s\n' "${declared[@]}" | grep -qxF -- "$path"; then
+		# grep reads a here-string, not a pipe: under pipefail, `grep -q` leaving on
+		# its first match would fail the writer with SIGPIPE, and the lookup with it.
+		if ! grep -qxF -- "$path" <<<"$(printf '%s\n' "${declared[@]}")"; then
 			echo "submodules.sh: .gitmodules declares no submodule at '$path'" >&2
 			exit 1
 		fi
@@ -90,52 +75,6 @@ select_paths() {
 		seen+="$path "
 		selected+=("$path")
 	done
-}
-
-# The repository a submodule URL names: its last path component, without `.git`.
-repository_of() {
-	local url="${1%/}"
-	url="${url%.git}"
-	url="${url##*/}"
-	printf '%s\n' "${url##*:}"
-}
-
-check() {
-	local failed=0 path name url repository
-	[[ -f "$JOBS_FILE" ]] || {
-		echo "FAIL $JOBS_FILE does not exist" >&2
-		return 1
-	}
-	# The parameter's default, as "<path> <repository>" lines: the block from
-	# `- name: submodules` to the next parameter or the end of the list.
-	local -a listed
-	mapfile -t listed < <(awk '
-		/^  - name: / { inside = ($3 == "submodules"); next }
-		/^[^ #]/ { inside = 0 }
-		inside && /^ *- path: / { path = $3 }
-		inside && /^ *repository: / { print path " " $2; path = "" }
-	' "$JOBS_FILE")
-	for path in $(declared_paths); do
-		name="$(name_of "$path")"
-		url="$(git config -f .gitmodules "submodule.${name}.url")"
-		repository="$(repository_of "$url")"
-		if printf '%s\n' "${listed[@]}" | grep -qxF -- "$path $repository"; then
-			echo "ok   ${path}: ${JOBS_FILE} checks out ${repository}"
-		else
-			echo "FAIL ${path}: .gitmodules declares it from ${url}, and the submodules parameter of ${JOBS_FILE} has no entry 'path: ${path}' with 'repository: ${repository}'" >&2
-			failed=1
-		fi
-	done
-	local entry
-	for entry in "${listed[@]}"; do
-		[[ -n "$entry" ]] || continue
-		path="${entry%% *}"
-		if ! declared_paths | grep -qxF -- "$path"; then
-			echo "FAIL ${path}: the submodules parameter of ${JOBS_FILE} lists it, and .gitmodules declares no submodule there" >&2
-			failed=1
-		fi
-	done
-	return "$failed"
 }
 
 init() {
@@ -152,7 +91,7 @@ init() {
 		if ! git "${auth[@]}" -c submodule.recurse=false submodule update --init --depth 1 -- "$path"; then
 			echo "submodules.sh: could not initialize ${path}" >&2
 			if [[ ${#auth[@]} -gt 0 ]]; then
-				echo "     The job token reaches only the repositories the job names; name the submodule's repository under the job's 'uses: repositories:'." >&2
+				echo "     The job token reads every repository of the project only while the project setting \"Protect access to repositories in YAML pipelines\" is off and the repository is authorized for the pipeline." >&2
 			fi
 			return 1
 		fi
@@ -171,10 +110,6 @@ case "$command" in
 	list)
 		select_paths "$@"
 		((${#selected[@]} == 0)) || printf '%s\n' "${selected[@]}"
-		;;
-	check)
-		[[ $# -eq 0 ]] || usage
-		check
 		;;
 	*) usage ;;
 esac

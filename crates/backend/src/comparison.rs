@@ -26,45 +26,10 @@ use test_cabinet_contracts::test_case::ReviewItem;
 use test_cabinet_contracts::validation::DebugScriptResult;
 
 /// Whether a comparison is **complete**: it has arms, and every one holds at least `n`
-/// counted runs that have landed and none still in flight. A comparison whose case
-/// could not be resolved has no arm results and is never complete.
+/// runs. A comparison whose case could not be resolved has no arm results and is never
+/// complete.
 pub fn is_complete(n: u32, arms: &[ComparisonArmResult]) -> bool {
-    !arms.is_empty()
-        && arms
-            .iter()
-            .all(|arm| arm.n_observed >= n as usize && arm.live_run_ids.len() == arm.n_observed)
-}
-
-/// Decide which recorded run ids each arm of an edited comparison keeps, in place on
-/// `incoming` (docs/comparisons/experiments.md, "Editing a comparison").
-///
-/// `stored` is the configuration being replaced and `stored_complete` whether it was
-/// [complete](is_complete). An arm of `incoming` keeps the ids the request carries
-/// when the stored arm of the same id has the
-/// [same launch identity](ComparisonArm::same_launch_identity); an added arm and a
-/// changed arm start empty. A change to the controls empties every arm, and so does
-/// adding, removing or changing an arm of a complete comparison. Changing `n`, the
-/// name or the description is not a change to any arm.
-pub fn carry_run_ids(
-    stored: &ComparisonConfig,
-    stored_complete: bool,
-    incoming: &mut ComparisonConfig,
-) {
-    let unchanged = |arm: &ComparisonArm| {
-        stored
-            .arms
-            .iter()
-            .find(|s| s.id == arm.id)
-            .is_some_and(|s| s.same_launch_identity(arm))
-    };
-    let arms_changed =
-        stored.arms.len() != incoming.arms.len() || incoming.arms.iter().any(|arm| !unchanged(arm));
-    let reset_all = stored.controls != incoming.controls || (stored_complete && arms_changed);
-    for arm in &mut incoming.arms {
-        if reset_all || !unchanged(arm) {
-            arm.run_ids.clear();
-        }
-    }
+    !arms.is_empty() && arms.iter().all(|arm| arm.run_ids.len() >= n as usize)
 }
 
 /// A run's **automated-only** score: `score_checklist` restricted to the checklist
@@ -103,8 +68,11 @@ pub fn automated_only_score(items: &[ReviewItem], debug_scripts: &[DebugScriptRe
 /// The verdict-slice core of [`automated_only_score`], generalized so a review's
 /// [effective checklist](crate::review::effective_verdicts) — the validators'
 /// verdicts overlaid with the reviewer's overrides — scores through the identical
-/// rule (see [`crate::review::validator_review_score`]). Mirrors `coveredScore`
-/// in `ui-common/packages/run-stats/src/scoring.ts`.
+/// rule (see [`crate::review::validator_review_score`], which applies it through
+/// [`crate::review::validator_covered_score`]: a validator-rated checklist that
+/// decides no scored point scores zero over the declared weight instead of the
+/// `0/0` this returns; a comparison of a validator-rated version scores its runs
+/// the same way). Mirrors `coveredScore` in `ui-common/packages/run-stats/src/scoring.ts`.
 pub fn covered_score(items: &[ReviewItem], verdicts: &[ReviewVerdict]) -> Score {
     let covered: BTreeSet<String> = verdicts.iter().map(|v| v.id.clone()).collect();
     let restricted = restrict_items_to_covered(items, &covered);
@@ -204,10 +172,6 @@ fn restrict_items_to_covered(items: &[ReviewItem], covered: &BTreeSet<String>) -
 #[cfg(test)]
 #[path = "comparison.test.rs"]
 mod tests;
-
-#[cfg(test)]
-#[path = "comparison.editing.test.rs"]
-mod editing_tests;
 
 #[cfg(test)]
 #[path = "comparison.vitest.test.rs"]

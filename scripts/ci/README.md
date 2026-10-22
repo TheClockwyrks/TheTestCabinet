@@ -47,13 +47,13 @@ files it includes from [`.azure/project/`](../../.azure/project/), which are the
 project's own, and in the job and step templates under
 [`.azure/tcab/`](../../.azure/tcab/) those files share.
 
-| Stage     | Owner    | Runs on                  | What it runs                                                                                                                                                                                                                                |
-| --------- | -------- | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `gates`   | template | every run                | the template's `rust` and `web` jobs, one step per gate; then the project's jobs from `.azure/project/jobs.yml` (below)                                                                                                                     |
-| `publish` | template | `staging`, gates passed  | `the-test-cabinet-backend`, built from `deployments/images/backend.Dockerfile` (a retag of `tcab-backend:<commit>`) by `build-image.sh`, pushed as `<commit>` and `latest`                                                                  |
-| `deploy`  | template | `staging`, after publish | environment `tcab-staging`: `.azure/project/deploy-steps.yml` before (`pre-deploy.sh`) and after (`settle-workloads.sh --after-failure`, on failure only) the template's `deploy.sh`, which runs `post-deploy.sh` once the backend is ready |
-| `prod`    | project  | `master`, gates passed   | `publish_backend` (the template's `.azure/publish-image.yml`, the same retag), then `deploy_prod` (environment `tcab-prod`) running `deploy-environment.sh prod <commit>`                                                                   |
-| `docs`    | project  | `master` and `staging`   | `deploy-docs.sh <branch>` to the branch's Cloudflare Pages project                                                                                                                                                                          |
+| Stage     | Owner    | Runs on                  | What it runs                                                                                                                                                                                                                                                                                     |
+| --------- | -------- | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `gates`   | template | every run                | the template's `rust` and `web` jobs, one step per gate; then the project's jobs from `.azure/project/jobs.yml` (below)                                                                                                                                                                          |
+| `publish` | template | `staging`, gates passed  | `the-test-cabinet-backend`, built from `deployments/images/backend.Dockerfile` (a retag of `tcab-backend:<commit>`) by `build-image.sh`, pushed as `<commit>` and `latest`                                                                                                                       |
+| `deploy`  | template | `staging`, after publish | environment `tcab-staging`: `.azure/project/deploy-steps.yml` before (`pre-deploy.sh`) and after (`settle-workloads.sh --after-failure`, on failure only) the template's `deploy.sh`, which runs `deploy-preflight.sh` before it applies anything and `post-deploy.sh` once the backend is ready |
+| `prod`    | project  | `master`, gates passed   | `publish_backend` (the template's `.azure/publish-image.yml`, the same retag), then `deploy_prod` (environment `tcab-prod`) running `deploy-environment.sh prod <commit>`                                                                                                                        |
+| `docs`    | project  | `master` and `staging`   | `deploy-docs.sh <branch>` to the branch's Cloudflare Pages project                                                                                                                                                                                                                               |
 
 ### The gates stage
 
@@ -88,7 +88,7 @@ The project's jobs, from `.azure/project/jobs.yml`:
 | `submodule_pins`                       | every push; a PR touching a pin | hosted `ubuntu-24.04`             | `submodule-pins.sh`, with the job token and a checkout of each submodule's repository                                                                                                                                                 |
 | `checks`                               | every run                       | agentless                         | none: it succeeds when `paths` and the template's `rust` and `web` did, and every check job above did or was skipped by `paths`                                                                                                       |
 | `mirror`                               | `master`, `staging`, `nightly`  | hosted `ubuntu-24.04`             | `mirror.sh`, once `checks` passed; a failed push is a warning, not a failed stage                                                                                                                                                     |
-| `services_<arch>`, `services_manifest` | `master`, `staging`             | hosted amd64; arm64 pool, 240 min | `submodules.sh init --build-context`, `free-disk-linux.sh` on amd64, then `service-images.sh`, which runs `service-image.sh` per service on one builder, `report-disk.sh` after it, then `manifest.sh` over the three `tcab-*` images |
+| `services_<arch>`, `services_manifest` | `master`, `staging`             | hosted amd64; arm64 pool, 240 min | `submodules.sh init --build-context`, `free-disk-linux.sh` on amd64, then `service-images.sh`, which runs `service-image.sh` per service on one builder, `report-disk.sh` after it, then `manifest.sh` over the one `tcab-*` image    |
 
 The **check jobs** are the template's `rust` and `web`,
 `rust_build` and `submodule_pins`. A push runs them all; a pull
@@ -112,13 +112,13 @@ and a tarball without `gg-reference/index.json`, and writes `gg` and
 (`TCAB_GG_REFERENCE`). The stage's cache is keyed on the pin file and the two
 scripts alone, so a bump of the pin is what fetches it again.
 
-**One job builds the three service images of an architecture.** `services_<arch>` waits
+**One job builds the service images of an architecture.** `services_<arch>` waits
 on `checks`, and `service-images.sh` runs `service-image.sh` once per service, in the
-order backend, publisher, web, on one
+order backend (the one service today), on one
 `docker-container` builder (`tcab-ci`). The `build` stage of
-`deployments/images/services.Dockerfile` is one `cargo build --release` of both
-Rust service binaries, so it compiles once and the other Rust target takes it from
-the builder's local cache; `web` has its own Dockerfile and goes last. A job per image
+`deployments/images/services.Dockerfile` is one `cargo build --release` of every
+Rust service binary, so it compiles once and any other Rust target takes it from
+the builder's local cache. A job per image
 ran that compile in every one of the Rust jobs (twenty minutes on a hosted amd64
 agent, ten on the arm64 pool, measured on staging run 10763), and the arm64 pool runs
 one job at a time with a VM provision of about three minutes per job, so the eight
@@ -157,10 +157,13 @@ credential) deletes from the track's `ubuntu-the-test-cabinet-<track>-cicd`
 repository every tag that `master`, `staging`, `nightly` and the checkout do not
 pin as `ciImageTag` in `ci/images/tags.yml`, nor the `azure-pipelines.yml` of
 those branches of a submodule repository (each `.gitmodules` entry with a
-relative URL, which the image jobs name under `uses:`) names as
-`ubuntu-the-test-cabinet-<track>-cicd:<commit>`, and from it and its `-cache`
-repository the untagged manifests older than an hour; a branch or a submodule
-repository it cannot read stops it.
+relative URL, read through the job's access token) names as
+`ubuntu-the-test-cabinet-<track>-cicd:<commit>`, nor was pushed within the last
+day (so the image of a run still in flight on another branch, and an image whose
+pin has not landed yet, survive; each tag spared for its age is logged), and
+from it and its `-cache` repository the untagged manifests older than an hour
+that no kept or spared index names; a branch or a submodule repository it
+cannot read stops it.
 
 ### The Rust jobs and their caches
 
@@ -221,7 +224,7 @@ its own tag; gg is released by its own repository.
 | `report-disk.sh [label]`                                                                              | print the room left on `/`, the container store and the agent work folder, and `docker system df`; always exits 0                                                               | `report-disk.test.sh`                 |
 | `install-playwright-chromium.sh`                                                                      | Playwright's Chromium and its system libraries at the `PLAYWRIGHT_IMAGE` tag, started once, for a machine outside the devcontainer; run as root                                 | `install-playwright-chromium.test.sh` |
 | `submodule-pins.sh [--branch <b>]`                                                                    | every submodule pin is an ancestor of that submodule's branch of the same name, or of its `master`, fetched commits-only                                                        | `submodule-pins.test.sh`              |
-| `submodules.sh init\|list [--build-context] [<path>...]`, `submodules.sh check`                       | initialize only the named submodules, and those the root `.dockerignore` admits, one deep and never recursively; `check` holds the `submodule_pins` job's list to `.gitmodules` | `submodules.test.sh`                  |
+| `submodules.sh init\|list [--build-context] [<path>...]`                                              | initialize only the named submodules, and those the root `.dockerignore` admits, one deep and never recursively                                                                 | `submodules.test.sh`                  |
 | `mirror.sh [--url <mirror>] [--allow-rewrite] <key-file> <ref>`                                       | push the built branch with its tags, or the tag, to the declared mirror, refusing a non-ancestor head                                                                           | `mirror.test.sh`                      |
 | `gg-release.sh version\|toolchains-image\|fetch <out-dir>`                                            | the gg release the driver pins: its version, the toolchain image the `-gg` variants copy, or the binary and reference documents, checked                                        | `gg-release.test.sh`                  |
 | `service-image.sh <service> <commit>`                                                                 | one service image, pushed per architecture                                                                                                                                      | `service-image.test.sh`               |
@@ -231,7 +234,13 @@ its own tag; gg is released by its own repository.
 | `manifest.sh <commit> <image>...`                                                                     | fuse each image's two architecture tags into the multi-arch `<commit>` tag                                                                                                      | `manifest.test.sh`                    |
 | `deploy-environment.sh <staging\|prod> <commit>`                                                      | roll an environment's cluster to one commit's images and wait on every workload; `--render` prints the set                                                                      | `deploy-environment.test.sh`          |
 | `pre-deploy.sh`, `post-deploy.sh`, `settle-workloads.sh`, `pin-images.sh`, `retire-legacy-backend.sh` | the staging deploy's project steps around the template's `deploy.sh`; each header says what it does                                                                             | each has its `.test.sh`               |
+| `deploy-preflight.sh <commit>`                                                                        | the hook the template's `deploy.sh` runs before it applies anything: the catalog preflight of the namespace's environment                                                       | `deploy-preflight.test.sh`            |
+| `catalog-ingest.sh <preflight\|verify> <staging\|prod>`                                               | a deployment's two catalog checks: the branch tip and its cold-storage pin can be fetched (before the apply); the ingest sidecar ingested (after the rollout)                   | `catalog-ingest.test.sh`              |
+| the `ingest` sidecar in `deployments/k8s/overlays/<env>/patch-backend-ingest.yaml`                    | records the startup run's outcome for `verify`; a failed refresh ingests nothing, a failed test suites update alone still ingests; its refresh endpoint                         | `catalog-ingest-sidecar.test.sh`      |
 | `deploy-docs.sh <branch>`                                                                             | build `apps/docs` and deploy it to `test-cabinet-docs` (`master`) or `test-cabinet-docs-staging` (`staging`)                                                                    | `deploy-docs.test.sh`                 |
+
+`catalog-fixture.sh` is the local catalog mirror the catalog tests run their real git
+commands against.
 
 Every script in this directory has its table test beside it, `<name>.test.sh`, the
 ones not listed above included: `tcab-lib.sh`, `cargo-lock.sh` and the gate script

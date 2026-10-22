@@ -82,23 +82,31 @@ everywhere else.
   reads the file for that set (`--submodules`), so a re-inclusion lost in a
   merge drops the submodule from the image jobs' init as well as from the
   context.
-- The lint gate's scope and ratchet: the template renders `eslint.config.js`
-  over `apps/web/src` alone, and the project's derives every file set from a
-  `PROJECTS` list (`apps/web/src`, `packages/ui/src`, `apps/site/src`,
-  `apps/lattice-designer/src`), adds those projects' build configurations to
-  `CONFIGS` and a `TOOLS` set for `apps/site/scripts/`, ignores
-  `apps/site/public/`, passes the resolver every project's `tsconfig.json` with
-  `noWarnOnMultipleProjects`, and wraps the config in `escalate`, which raises
-  every `warn` to an error, with `reportUnusedDisableDirectives: "error"`. Keep
-  all of that and fold a template change to a rule set or an exception into it.
-  The ratchet is ESLint's bulk suppressions file, `eslint-suppressions.json`
-  (the project's own), read by the root `package.json`'s `lint` script with
-  `--pass-on-unpruned-suppressions`, beside the project's `lint:baseline` and
-  `lint:prune`; keep those three scripts. `.prettierignore` leaves the file
-  out and `.pre-commit-config.yaml`'s `end-of-file-fixer` excludes it, since
-  ESLint writes it in its own formatting with no final newline (keep both).
-  `ci/gates/web-lint.py`'s docstring and failure message name the baseline;
-  keep both.
+- The lint gate: the project has none. The template renders `eslint.config.js`
+  over `apps/web/src`, the root `package.json`'s `lint` script and the ESLint
+  devDependencies it runs, `ci/gates/web-lint.py`, its `.pre-commit-config.yaml`
+  hook and its `azure-pipelines.yml` step. The only TypeScript the project
+  linted was the gallery's, which is the `testcabinet.ai` repository, checked
+  out as a submodule, which lints it with a `web-lint` gate, a configuration
+  and a ratchet (`eslint-suppressions.json`) of its own; the console lints its
+  own in `console.testcabinet.ai`. An update that changes any of them meets a
+  file or a region the project deleted: delete it again, and carry a template
+  change to the rules into those two repositories.
+- The web app: the project has none. The console the template renders as
+  `apps/web` is the `console.testcabinet.ai` repository, checked out as a
+  submodule, which builds, tests and images it with gates and a pipeline of
+  its own. So the project holds none of `apps/web/`, its
+  `deployments/images/web.Dockerfile` and `deployments/images/web/`, or the
+  `web-typecheck`, `web-test`, `web-browser-test` and `web-build` gates, their
+  `.pre-commit-config.yaml` hooks and their `azure-pipelines.yml` steps (with
+  the web tests' `PublishTestResults@2` and the browser tests' `publish`), and
+  `workspace-test`'s `OWN_GATES` names `apps/docs` alone. An update that
+  changes any of them meets a file the project deleted: delete it again, and
+  carry a template change the console needs into `console.testcabinet.ai`.
+  The Playwright pin agreement the template's `web-browser-test` holds is
+  `ci-image-pins`' here: the compose file's
+  `PLAYWRIGHT_IMAGE` tag against the lock's `playwright`, `contracts`' and the
+  console's; keep it there.
 - The CI image tracks: the template renders two, `rust` and `web`, and the
   project adds a third, `rust-browser` (`ci/images/rust-browser.Dockerfile` and
   its `.dockerignore`, the project's own files): the Rust image of the same

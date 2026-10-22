@@ -423,8 +423,8 @@ pub async fn run(
 }
 
 /// `POST /ladders/{id}/stop` — end the running dispatch and cancel its `queued` and
-/// `pending` jobs, and with `cancelRunning` its `dispatched`, `starting` and `running`
-/// ones too. `409` when no dispatch is running.
+/// `pending` jobs, and with `cancelRunning` its `dispatched`, `starting`, `running`,
+/// `validating` and `storing` ones too. `409` when no dispatch is running.
 ///
 /// The end is a conditional update. The cancel reaches the jobs whose origin names this
 /// dispatch, and the jobs an earlier dispatch of this ladder left in flight, which this
@@ -830,12 +830,14 @@ pub(super) async fn ladder_pass_locked(
     let active = board.active_slots();
     let mut demands: Vec<CellDemand> = Vec::with_capacity(active.len());
     let mut unlaunchable: Vec<BlockedCell> = Vec::new();
+    let jams = super::coverage::game_jam_cases(state, active.iter().map(|slot| &slot.case));
     for slot in &active {
         let demand = CellDemand {
             target: slot.target,
             counted: slot.counted,
             in_flight: slot.in_flight,
             harness: harness_lane(slot.member.combo.harness),
+            serialized: jams.contains(&(slot.case.slug.clone(), slot.case.version.clone())),
         };
         // Only worth reporting on a slot that actually wanted runs.
         if let Some(reason) = &slot.member.unlaunchable
