@@ -6,8 +6,32 @@ zone: CICD
 number: 4
 title: Carry staging's feature work into nightly and promote nightly to staging through the pipelines
 type: generic
-state: open
+state: done
 created: 2026-10-20T22:47:37.760158351Z
+done: 2026-10-22T03:35:43.438503801Z
+outcome: |
+  Landed in PR 4998 into nightly (24a546b59) with REPOS-22: staging's commits are
+  merged into nightly with each moved feature re-applied in its owning repository,
+  contracts v0.2.4 (PR 4906), engines v1.1.3 then v1.1.4 (PRs 4921, 4927, 4929 and
+  the REPOS-22 release), microservice-dispatcher (PR 4920), microservice-driver
+  (PR 4931) and ui-common (PR 4928), all at their masters, with the kit's TAGS
+  naming contracts v0.2.4, engines v1.1.4, tool-model-core v0.1.2 and
+  tool-audio-core v0.1.2. The retirement script also deletes the old Ingress
+  objects, their network policies and the auth workload, and the 16Gi backend
+  claim is in the staging overlay; live staging was read only (the claim is 16Gi,
+  a server dry-run of the render is accepted, the retired objects are present).
+  Eight staging features were superseded by nightly's documented design and not
+  carried: the artifacts capacity route, write check, dispatch hold and storage
+  notice; the publish presence gate; snapshot refresh batching; tree reclaim after
+  publish, confirmation and the run media route; the publish-failing hold; run
+  files in the bucket, manifest and backend store with state hold and reclaim;
+  session record export and reclaim; and scripts/reingest-cluster.sh (tcab ingest
+  --env). Staging's migrations 000058..000064 stay registered. Superrepo gates 28
+  of 28 on the branch and on nightly after the merge, and a clean clone's npm ci
+  resolves. Not done: the promotion pull request of nightly into staging is not
+  opened, because the superrepo pipeline's jobs name every submodule and the
+  scoped job token caps a pipeline at 20 repositories (CICD-1); the staging
+  rollout and the live checks of the extracted services follow that promotion.
 ---
 
 Every change to the `staging` and `master` environments reaches the cluster
