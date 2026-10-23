@@ -6,7 +6,10 @@ zone: EDGE
 number: 5
 title: Retire the internal ingress and VPN path on prod
 type: generic
+priority: 3
 state: open
+depends_on:
+  - rbx3kjw1cve8gps68gmnr16a
 created: 2026-10-20T06:15:26.079574592Z
 ---
 
