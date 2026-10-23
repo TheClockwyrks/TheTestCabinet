@@ -30,8 +30,9 @@ const DEFAULT_STORE: &str = "./tcab-store";
 /// hand-driven batch, and a single publish still reaches the gallery within it.
 const DEFAULT_COALESCE_MS: u64 = 60_000;
 /// The default retention for superseded snapshot generations, in hours, when
-/// `TCAB_SNAPSHOT_RETENTION_HOURS` is unset. Long enough that any site build already
-/// reading a just-superseded generation finishes against a complete dataset.
+/// `TCAB_SNAPSHOT_RETENTION_HOURS` is unset. Long enough that any reader (a gallery
+/// session or a Worker) that already read `index.json` finishes fetching the
+/// generation it points at against a complete dataset.
 const DEFAULT_SNAPSHOT_RETENTION_HOURS: u64 = 24;
 /// The default interval between artifact reclamation sweeps, in hours, when
 /// `TCAB_ARTIFACT_SWEEP_INTERVAL_HOURS` is unset. An orphaned tree costs only disk,
@@ -166,9 +167,13 @@ pub struct Config {
     /// hands its driver Jobs.
     ///
     /// This is what every backend-originated artifact call uses: pruning a deleted
-    /// run's tree, the periodic reclamation sweep (see [`crate::artifacts`]), and the
-    /// snapshot builder's fallback read of a run's proof/asset media. `None` disables
-    /// all three, which is correct for a single-box dev setup with no artifact
+    /// run's tree, the periodic reclamation sweep (see [`crate::artifacts`]), and,
+    /// together with the control-plane service token, writing the public dataset
+    /// (`PUT /public/{key}`, `GET /public`, `DELETE /public/{key}` and a run's
+    /// `POST /runs/{id}/publish-media`) and discovering the published reference
+    /// sheets at ingest. `None` disables all of them: the snapshot is still built
+    /// but nothing is written to the public bucket and the reference-sheet table is
+    /// left as it is, which is correct for a single-box dev setup with no artifact
     /// service.
     pub artifacts_internal_url: Option<String>,
     /// How often the artifact reclamation sweep runs

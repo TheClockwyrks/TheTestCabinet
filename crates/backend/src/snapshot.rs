@@ -163,7 +163,7 @@ type VariantWorkspaceFiles = std::collections::HashMap<
 /// *supersession*, and the only clock a bucket listing offers is the object's
 /// creation time — which for a document written months ago says nothing about when it
 /// fell out of use. Pruning on that clock would delete a just-orphaned document
-/// immediately and 404 any site build still fetching the previous generation, so
+/// immediately and 404 any reader still fetching the previous generation, so
 /// [`stale_generation_keys`]' rule cannot be reused here. The leak this leaves is a
 /// different order from the one that prune exists for: it accrues per *content
 /// change* (a new review, a proof arriving) rather than per refresh, so it is a small
@@ -410,8 +410,8 @@ impl SnapshotBuilder {
     /// asset-generation counterpart of [`Self::with_reference_builds`]: an asset
     /// case's reference is a set of published frames rather than a deployed site, and
     /// each frame's object key is derivable from the triple plus its index (see
-    /// `test_cabinet_contracts::asset_reference`), so only the indices are exported and the
-    /// site builds the URLs by joining them onto its snapshot base. These come from the
+    /// `test_cabinet_contracts::asset_reference`), so only the indices are exported and a
+    /// reader builds the URLs by joining them onto its snapshot base. These come from the
     /// `case_reference_sheet` table (read by the caller from the database), which ingest
     /// reconciles against the bucket. A `(slug, version)` or variant absent from the map
     /// exports `referenceSheet: null`.
@@ -1458,9 +1458,10 @@ pub const SNAPSHOT_PREFIX: &str = "snapshots/";
 ///    live public dataset and is never touched, however old it is — a bucket whose
 ///    live snapshot predates the retention window (nothing published in a while) must
 ///    not have the site deleted out from under it.
-/// 2. It is older than `retention`. A site build that already read `index.json` is
-///    still fetching that generation's files, so a just-superseded generation has to
-///    outlive the build it is serving. The window is the grace period.
+/// 2. It is older than `retention`. A reader (a gallery session or a Worker) that
+///    already read `index.json` may still be fetching that generation's files, so a
+///    just-superseded generation has to outlive the readers it is serving. The
+///    window is the grace period.
 ///
 /// A generation id that does not parse as a timestamp is **kept**: an id shape this
 /// does not recognize is not something to delete on a guess.

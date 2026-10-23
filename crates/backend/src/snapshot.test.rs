@@ -2247,7 +2247,7 @@ fn prune_keeps_the_live_generation_however_old_it_is() {
 
 #[test]
 fn prune_spares_generations_inside_the_retention_window() {
-    // A generation superseded 10 minutes ago may still be feeding a site build
+    // A generation superseded 10 minutes ago may still be feeding a reader
     // that already read the old index.json.
     let now = time::macros::datetime!(2026 - 07 - 31 12:00:00 UTC);
     let keys = vec![
