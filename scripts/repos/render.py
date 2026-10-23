@@ -20,8 +20,10 @@ An update is a three-way merge. Copier renders the template at the commit
 difference, and applies it to the repository, so a line the repository added
 to a rendered file survives and a line the kit changed arrives; a hunk that
 meets a line both sides changed is written with inline conflict markers. Every
-rendered file merges this way; the crate's source files alone are written once
-and then left to the repository (`_skip_if_exists` in copier.yml).
+rendered file merges this way; the crate's source files alone are written by
+the first render only and then left to the repository, so an update writes no
+crate source, not even a file the crate never had (`_exclude` and
+`_skip_if_exists` in copier.yml).
 
 The kit is rendered at the superrepo's committed HEAD, so the record names a
 commit that exists. `--uncommitted` renders the working tree instead, which is
