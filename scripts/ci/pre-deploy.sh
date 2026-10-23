@@ -40,6 +40,12 @@
 #      service's `tcab-artifacts` StatefulSet, which the Deployment replaces, and the
 #      internal ingress's Ingresses, its network policies and the `tcab-auth`
 #      workload, which the edge replaced.
+#   6. Brings the Secrets the Key Vault CSI driver syncs to the keys the pinned
+#      render declares (scripts/ci/sync-secrets.sh): it applies the render's
+#      SecretProviderClass, deletes each synced Secret whose keys differ, and
+#      restarts tcab-keyvault-sync until every declared Secret holds its keys, so a
+#      workload the apply rolls finds the Secrets it reads (tcab-artifacts-secrets
+#      before the artifacts service) and none keeps a key the class dropped.
 #
 # `--dry-run` pins a temporary copy instead, prints its render and the commands it
 # would run in the cluster, and runs none of them.
@@ -117,7 +123,8 @@ if [[ -n "$dry_run" ]]; then
 	cp -R deployments/k8s "${work}/k8s"
 	TCAB_K8S_ROOT="${work}/k8s" "${CI_DIR}/pin-images.sh" "$OVERLAY" "$COMMIT" >&2
 	echo "--- the pinned ${OVERLAY} overlay, as deploy.sh's layer finds it ---"
-	kubectl kustomize "${work}/k8s/overlays/${OVERLAY}"
+	kubectl kustomize "${work}/k8s/overlays/${OVERLAY}" >"${work}/render.yaml"
+	cat "${work}/render.yaml"
 	echo "--- the commands pre-deploy.sh would run on ${CLUSTER} (${RESOURCE_GROUP}) ---"
 	echo "Would read the commit the backend runs, under its name or else its old one:"
 	echo "    $(read_command the-test-cabinet-backend)"
@@ -126,6 +133,7 @@ if [[ -n "$dry_run" ]]; then
 	echo "    scripts/ci/catalog-ingest.sh preflight ${OVERLAY} ${COMMIT}"
 	echo "Would set THE_TEST_CABINET_ROLLOUT_TIMEOUT=${ROLLOUT_TIMEOUT}, TCAB_PREVIOUS_COMMIT and TCAB_PREVIOUS_BACKEND."
 	"${CI_DIR}/retire-legacy-backend.sh" --dry-run
+	"${CI_DIR}/sync-secrets.sh" --dry-run "${work}/render.yaml"
 	exit 0
 fi
 
@@ -142,10 +150,12 @@ if ! "${CI_DIR}/catalog-ingest.sh" preflight "$OVERLAY" "$COMMIT"; then
 fi
 
 "${CI_DIR}/pin-images.sh" "$OVERLAY" "$COMMIT"
+readonly RENDER="${work}/render.yaml"
+kubectl kustomize "deployments/k8s/overlays/${OVERLAY}" >"$RENDER"
 
 # A workload bound to an identity that does not exist yet would never become ready,
 # and step 5 would already have retired what it replaces. Refuse before the cluster.
-if ! kubectl kustomize "deployments/k8s/overlays/${OVERLAY}" | ci_assert_identities_provisioned; then
+if ! ci_assert_identities_provisioned <"$RENDER"; then
 	echo "pre-deploy.sh: overlays/${OVERLAY} binds a workload to an unprovisioned identity, above; nothing was retired or applied." >&2
 	remediation "Provision it, put its clientId in deployments/k8s/overlays/${OVERLAY}/patch-artifacts-identity.yaml or patch-repos-identity.yaml" \
 		"and copy the trees on the claim artifacts-tcab-artifacts-0 in ${NAMESPACE} into the container" \
@@ -176,3 +186,7 @@ echo "##vso[task.setvariable variable=TCAB_PREVIOUS_BACKEND]${previous_backend}"
 echo "##vso[task.setvariable variable=THE_TEST_CABINET_ROLLOUT_TIMEOUT]${ROLLOUT_TIMEOUT}"
 
 "${CI_DIR}/retire-legacy-backend.sh"
+
+# The template's deploy.sh applies the render next, so the synced Secrets must hold
+# the keys it declares before any workload reading them rolls.
+"${CI_DIR}/sync-secrets.sh" "$RENDER"

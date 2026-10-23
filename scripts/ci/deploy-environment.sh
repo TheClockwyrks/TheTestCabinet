@@ -53,7 +53,10 @@
 # Before the apply it retires the workloads of an earlier shape
 # (scripts/ci/retire-legacy-backend.sh): the backend Deployment of its old name,
 # which holds the backend's disk, the artifacts service's StatefulSet, and the
-# objects the edge replaced, which an apply never prunes. After it,
+# objects the edge replaced, which an apply never prunes. Then it brings the Secrets
+# the Key Vault CSI driver syncs to the keys the render declares
+# (scripts/ci/sync-secrets.sh), so a workload the apply rolls finds the Secrets it
+# reads and none keeps a key the class dropped. After the apply,
 # scripts/ci/settle-workloads.sh --include-backend waits concurrently on every
 # Deployment and StatefulSet in the namespace; each that does not become ready is
 # described, its logs are printed, and it is undone before the script fails.
@@ -156,6 +159,7 @@ export THE_TEST_CABINET_NAMESPACE="$NAMESPACE"
 export THE_TEST_CABINET_ROLLOUT_TIMEOUT="$TIMEOUT"
 
 "${CI_DIR}/retire-legacy-backend.sh"
+"${CI_DIR}/sync-secrets.sh" "$manifest"
 
 log "applying overlays/${ENVIRONMENT} at ${COMMIT} to ${CLUSTER}"
 verdict=0

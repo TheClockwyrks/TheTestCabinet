@@ -9,8 +9,9 @@
 # image the case declares.
 #
 # The subject is the order and content of what it does: the pin, the one read, the
-# pipeline variables it sets from that read, and the retirement of the legacy
-# Deployment; and that --dry-run shows all of it and runs none of it.
+# pipeline variables it sets from that read, the retirement of the legacy
+# Deployment and the sync of the Key Vault Secrets; and that --dry-run shows all of
+# it and runs none of it.
 set -uo pipefail
 
 CI_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -92,7 +93,7 @@ fresh_repo() {
 	repo="$(mktemp -d "$tmp/repoXXXXXX")"
 	mkdir -p "$repo/scripts/ci" "$repo/bin" "$repo/sent" "$repo/deployments/k8s/overlays/staging"
 	cp "$CI_DIR/lib.sh" "$CI_DIR/tcab-lib.sh" "$CI_DIR/pin-images.sh" "$CI_DIR/pre-deploy.sh" \
-		"$CI_DIR/retire-legacy-backend.sh" "$repo/scripts/ci/"
+		"$CI_DIR/retire-legacy-backend.sh" "$CI_DIR/sync-secrets.sh" "$repo/scripts/ci/"
 	{
 		printf 'apiVersion: kustomize.config.k8s.io/v1beta1\nkind: Kustomization\nnamespace: tcab-staging\n'
 		printf 'images:\n'
@@ -239,6 +240,35 @@ check_contains "sets the Deployment it came from" \
 check_contains "sets the rollout timeout" "##vso[task.setvariable variable=THE_TEST_CABINET_ROLLOUT_TIMEOUT]600s" "$out"
 check_contains "retires tcab-backend in tcab-staging" "kubectl -n tcab-staging delete deployment/tcab-backend" \
 	"$(cat "$repo/sent/retire-legacy-backend.sh")"
+
+echo "--- an overlay that syncs Secrets from Key Vault ---"
+
+repo="$(fresh_repo)"
+cat >"$repo/deployments/k8s/overlays/staging/identity.yaml" <<'YAML'
+apiVersion: secrets-store.csi.x-k8s.io/v1
+kind: SecretProviderClass
+metadata:
+  name: tcab-keyvault
+  namespace: tcab-staging
+spec:
+  secretObjects:
+  - data:
+    - key: TCAB_R2_BUCKET
+      objectName: tcab-r2-bucket
+    secretName: tcab-artifacts-secrets
+    type: Opaque
+YAML
+out="$(run "$repo" -- staging "$COMMIT")"
+status=$?
+check_equal "passes" 0 "$status"
+check_equal "hands the cluster three commands" 3 "$(wc -l <"$repo/az.log")"
+check_contains "syncs the Secrets last, once the legacy objects are retired" \
+	"--command sh sync-secrets.sh" "$(sed -n 3p "$repo/az.log")"
+check_contains "with the keys the render declares" \
+	"tcab-artifacts-secrets) echo 'TCAB_R2_BUCKET ' ;;" "$(cat "$repo/sent/sync-secrets.sh" 2>/dev/null)"
+out="$(run "$repo" -- --dry-run staging "$COMMIT")"
+check_contains "--dry-run shows the sync" "check tcab-artifacts-secrets" "$out"
+check_equal "and sends it nowhere" 3 "$(wc -l <"$repo/az.log")"
 
 echo "--- the first deployment after the rename ---"
 
