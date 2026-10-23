@@ -6,12 +6,12 @@
 # ci/images/tags.yml pins and lets the agent pull it, so the reference this
 # script pushes is the whole of what ties a gate run to the toolchain it ran
 # in. That leaves three ways to fail quietly: an image tagged with anything but
-# the commit the run is on, which no pin can then name; an image built without
-# the pins the compose file's anchor decides, which is a toolchain nobody
-# reviewed; and a build that did not push, which leaves a pin naming nothing.
-# So `build` is driven with and without BUILD_SOURCEVERSION, with pins that can
-# and cannot be read, and with a builder that is and is not there, and what
-# reached the builder is read back.
+# the commit the run is on, which no pin can then name; an image built on
+# other images than the published ones the compose file's anchor names, which
+# is a toolchain nobody reviewed; and a build that did not push, which leaves a
+# pin naming nothing. So `build` is driven with and without BUILD_SOURCEVERSION,
+# with image references that can and cannot be read, and with a builder that is
+# and is not there, and what reached the builder is read back.
 #
 # Every case runs against a throwaway checkout of its own: a `git init` holding
 # the two scripts, the Dockerfiles and the compose file, committed once so that
@@ -25,7 +25,7 @@ readonly CI_DIR
 REPO_ROOT="$(cd "$CI_DIR/../.." && pwd)"
 readonly REPO_ROOT
 
-readonly TRACKS=(rust web)
+readonly TRACKS=(rust rust-browser web android)
 readonly REGISTRY="testcabinet.azurecr.io"
 readonly BUILDER="the-test-cabinet-ci-images"
 readonly COMPOSE=".devcontainer/docker-compose.yml"
@@ -219,6 +219,11 @@ for track in "${TRACKS[@]}"; do
 	repository="$REGISTRY/ubuntu-the-test-cabinet-${track}-cicd"
 	reference="$repository:$AZURE_COMMIT"
 	build_args="$(build_args_of "$track")"
+	# rust-browser and android are built on the Rust image this run pushed, at
+	# its commit.
+	if [ "$track" = rust-browser ] || [ "$track" = android ]; then
+		build_args+=" --build-arg RUST_CI_IMAGE=$REGISTRY/ubuntu-the-test-cabinet-rust-cicd:$AZURE_COMMIT"
+	fi
 	cache="type=registry,ref=${repository}-cache:latest"
 
 	image build "$track"
@@ -251,6 +256,11 @@ check_contains "it tags the image with the checkout's HEAD" \
 	"--tag $REGISTRY/ubuntu-the-test-cabinet-rust-cicd:$head_commit " "$log"
 check_absent "and not with a commit the run is not on" "$AZURE_COMMIT" "$log"
 
+image build rust-browser
+check_equal "a rust-browser run from a terminal exits 0" 0 "$status"
+check_contains "it builds on the Rust image of the checkout's HEAD" \
+	"--build-arg RUST_CI_IMAGE=$REGISTRY/ubuntu-the-test-cabinet-rust-cicd:$head_commit " "$log"
+
 # Every path the script names is relative to the root: the Dockerfile, the
 # build context and ci/images/build-args.sh.
 RUN_DIR="$CHECKOUT/ci/images"
@@ -281,7 +291,7 @@ for bogus in latest 0123456 "${AZURE_COMMIT^^}"; do
 done
 SOURCE_VERSION="$AZURE_COMMIT"
 
-echo "--- the build arguments are the pins the anchor decides ---"
+echo "--- the build arguments are the images the anchor names ---"
 
 # Read back from the build line rather than from build-args.sh alone, so a pin
 # printed but dropped on the way to the builder fails here.
@@ -291,8 +301,8 @@ while read -r pin; do
 	[ -n "$pin" ] || continue
 	check_contains "the rust build is handed ${pin%%=*}" "--build-arg $pin " "$log"
 done <<<"$out"
-check_contains "the rust build is handed the test runner the anchor pins" \
-	"--build-arg NEXTEST_VERSION=$(sed -n 's/^ *NEXTEST_VERSION: *//p' "$CHECKOUT/$COMPOSE") " "$log"
+check_contains "the rust build is handed the toolchain image the anchor names" \
+	"--build-arg TOOLCHAIN_IMAGE=$(sed -n 's/^ *TOOLCHAIN_IMAGE: *//p' "$CHECKOUT/$COMPOSE") " "$log"
 
 image build web
 pins web
@@ -301,32 +311,63 @@ while read -r pin; do
 	check_contains "the web build is handed ${pin%%=*}" "--build-arg $pin " "$log"
 done <<<"$out"
 
+for track in rust web; do
+	image build "$track"
+	check_absent "the $track build is built on no other track's image" "RUST_CI_IMAGE" "$log"
+done
+
+image build rust-browser
+pins rust-browser
+while read -r pin; do
+	[ -n "$pin" ] || continue
+	check_contains "the rust-browser build is handed ${pin%%=*}" "--build-arg $pin " "$log"
+done <<<"$out"
+check_equal "the rust-browser image takes the playwright image alone from the anchor" \
+	"PLAYWRIGHT_IMAGE=$(sed -n 's/^ *PLAYWRIGHT_IMAGE: *//p' "$CHECKOUT/$COMPOSE")" "$out"
+check_absent "its base image is no pin of the anchor's" "RUST_CI_IMAGE" "$out"
+
+image build android
+pins android
+while read -r pin; do
+	[ -n "$pin" ] || continue
+	check_contains "the android build is handed ${pin%%=*}" "--build-arg $pin " "$log"
+done <<<"$out"
+check_equal "the android image takes the android image alone from the anchor" \
+	"ANDROID_IMAGE=$(sed -n 's/^ *ANDROID_IMAGE: *//p' "$CHECKOUT/$COMPOSE")" "$out"
+check_contains "it is built on the Rust image of the run's commit" \
+	"--build-arg RUST_CI_IMAGE=$REGISTRY/ubuntu-the-test-cabinet-rust-cicd:$AZURE_COMMIT " "$log"
+
 pins rust
-check_contains "the rust image is built with the compiler the anchor pins" \
-	"RUST_VERSION=$(sed -n 's/^ *RUST_VERSION: *//p' "$CHECKOUT/$COMPOSE")" "$out"
-check_contains "the rust image is built with the test runner the anchor pins" \
-	"NEXTEST_VERSION=$(sed -n 's/^ *NEXTEST_VERSION: *//p' "$CHECKOUT/$COMPOSE")" "$out"
-check_contains "the rust image is built with the amd64 archive checksum the anchor pins" \
-	"NEXTEST_SHA256_AMD64=$(sed -n 's/^ *NEXTEST_SHA256_AMD64: *//p' "$CHECKOUT/$COMPOSE")" "$out"
-check_contains "the rust image is built with the arm64 archive checksum the anchor pins" \
-	"NEXTEST_SHA256_ARM64=$(sed -n 's/^ *NEXTEST_SHA256_ARM64: *//p' "$CHECKOUT/$COMPOSE")" "$out"
-check_contains "the rust image is built with the linker the anchor pins" \
-	"MOLD_VERSION=$(sed -n 's/^ *MOLD_VERSION: *//p' "$CHECKOUT/$COMPOSE")" "$out"
-check_contains "the rust image is built with the linker's amd64 archive checksum the anchor pins" \
-	"MOLD_SHA256_AMD64=$(sed -n 's/^ *MOLD_SHA256_AMD64: *//p' "$CHECKOUT/$COMPOSE")" "$out"
-check_contains "the rust image is built with the linker's arm64 archive checksum the anchor pins" \
-	"MOLD_SHA256_ARM64=$(sed -n 's/^ *MOLD_SHA256_ARM64: *//p' "$CHECKOUT/$COMPOSE")" "$out"
+check_equal "the rust image is handed the toolchain image the anchor names, alone" \
+	"TOOLCHAIN_IMAGE=$(sed -n 's/^ *TOOLCHAIN_IMAGE: *//p' "$CHECKOUT/$COMPOSE")" "$out"
 check_absent "an ARG carrying its own default is the Dockerfile's business" \
 	"DEBIAN_FRONTEND=" "$out"
 check_absent "a pin no image installs is not passed to the build" \
 	"CLAUDE_CODE_VERSION=" "$out"
-check_equal "the pins are sorted" "$out" "$(sort <<<"$out")"
+check_absent "the host's CUDA switch is not passed to the build" \
+	"INSTALL_CUDA=" "$out"
 
 pins web
-check_contains "the web image is built with the Node the anchor pins" \
-	"NODE_VERSION=$(sed -n 's/^ *NODE_VERSION: *//p' "$CHECKOUT/$COMPOSE")" "$out"
-check_contains "the web image is built with the Playwright the anchor pins" \
-	"PLAYWRIGHT_VERSION=$(sed -n 's/^ *PLAYWRIGHT_VERSION: *//p' "$CHECKOUT/$COMPOSE")" "$out"
+check_equal "the web image is handed the playwright and toolchain images the anchor names" \
+	"$(printf 'PLAYWRIGHT_IMAGE=%s\nTOOLCHAIN_IMAGE=%s' \
+		"$(sed -n 's/^ *PLAYWRIGHT_IMAGE: *//p' "$CHECKOUT/$COMPOSE")" \
+		"$(sed -n 's/^ *TOOLCHAIN_IMAGE: *//p' "$CHECKOUT/$COMPOSE")")" \
+	"$out"
+check_equal "the pins are sorted" "$out" "$(sort <<<"$out")"
+
+# Each reference names a registry, a repository and a tag, which is what a
+# `FROM` resolves without a default registry of its own.
+for track in "${TRACKS[@]}"; do
+	pins "$track"
+	while read -r pin; do
+		[ -n "$pin" ] || continue
+		if [[ "${pin#*=}" =~ ^[a-z0-9.-]+\.[a-z]+/[a-z0-9._/-]+:[A-Za-z0-9_][A-Za-z0-9_.-]*$ ]]; then
+			ok "the $track image's ${pin%%=*} is a full reference"
+		else
+			bad "the $track image's ${pin%%=*} is a full reference" "got: ${pin#*=}"
+		fi
+	done <<<"$out"
+done
 
 # Pins that cannot be read are no image anybody reviewed, and the failure is
 # found before the builder is created, let alone handed a build.
@@ -419,16 +460,16 @@ check_contains "it is named" "BUN_VERSION" "$err"
 check_contains "and the file to add it to is named" "x-devcontainer-build-args" "$err"
 check_empty "and nothing is printed for the build to consume" "$out"
 
-# A value that interpolates the host is no pin a CI image can consume: the uid
-# pair is a property of a developer's machine. An image that asked for one
+# A value that interpolates the host is no pin a CI image can consume: the CUDA
+# switch is a property of a developer's machine. An image that asked for it
 # therefore gets the missing-pin error, which is the only way to see from the
 # outside that it was skipped.
 fresh_checkout
-printf '\nARG USER_UID\n' >>"$CHECKOUT/ci/images/rust.Dockerfile"
+printf '\nARG INSTALL_CUDA\n' >>"$CHECKOUT/ci/images/rust.Dockerfile"
 pins rust
 status=$?
 check_equal "an interpolated entry is no pin" 1 "$status"
-check_contains "the ARG that asked for it is named" "USER_UID" "$err"
+check_contains "the ARG that asked for it is named" "INSTALL_CUDA" "$err"
 check_absent "and no value with a dollar in it is printed" '$' "$out"
 
 # No pins at all is not an image with few dependencies; it is an unreproducible

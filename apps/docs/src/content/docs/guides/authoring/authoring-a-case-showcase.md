@@ -6,7 +6,7 @@ title: Authoring a Case Showcase
 
 A case showcase is the short media carousel a variant presents on the catalog
 and case pages, so a visitor sees what the case plays like without opening a
-run. The [showcase format](/components/core/showcase/) says how a showcase is
+run. The [showcase format](/components/driver/showcase/) says how a showcase is
 declared, validated, and served; this page says what its media must show and
 how to capture that media from the variant's reference implementation. It
 applies to every variant that declares a showcase, on every test type.
@@ -27,7 +27,7 @@ answering that.
 - Stills follow the play, they never lead it. One or two frames from the same
   session — the field mid-match, the HUD mid-score — round out the carousel.
 
-The [validation baseline](/components/core/validation/) already holds one clip
+The [validation baseline](/components/driver/validation/) already holds one clip
 per scripted review item, each a few seconds of a single mechanic driven to an
 assertion. That material serves the reviewer's side-by-side comparison, and it
 is the wrong shape for a showcase: a visitor shown a two-second paddle block
@@ -84,7 +84,7 @@ visitor selects the case, so its weight is a page cost, not an archive cost.
 
 Declare the showcase on the variant (`showcase = "showcase/<variant>"`), write
 `showcase.md` and `showcase.toml`, and place the media files flat in the
-directory, as the [showcase format](/components/core/showcase/#the-case-showcase)
+directory, as the [showcase format](/components/driver/showcase/#the-case-showcase)
 specifies. Resolution hard-fails on a missing or malformed entry, so
 `tcab capture-baselines <slug> --dry-run` doubles as a cheap validity check. A
 backend that already ingested the version needs a re-ingest and snapshot

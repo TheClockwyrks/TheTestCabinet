@@ -3,8 +3,7 @@
 # of .azure/project/jobs.yml runs it, and every conditional check job reads its
 # answer:
 #
-#   rust        rust_build, binary_linux, binary_windows
-#   gg          the gg_tests_<k>_of_N partitions
+#   rust        rust_build
 #   submodules  submodule_pins
 #
 # Each answer is printed as an output variable of the step,
@@ -18,14 +17,14 @@
 # the source into the target, so its first parent is the target branch and the
 # diff between the two is exactly what merging would change. A push, a manual
 # run and a run on a tag answer `true` for every group, so the mirror, the
-# images, a deployment and a release always follow a full run; so does a pull
+# images and a deployment always follow a full run; so does a pull
 # request whose checkout is not a merge commit, which the job never expects.
 #
 # The classification is by exclusion. A changed path reaches a group unless it
 # is one that group's jobs are known never to read, so a path with no rule here
 # runs everything, and a new directory costs a run until a rule says otherwise.
 # The one allowlist is `submodules`, whose job reads nothing but the pins. The
-# rules are in `reaches_rust`, `reaches_gg` and `reaches_submodules`, and
+# rules are in `reaches_rust` and `reaches_submodules`, and
 # changed-paths.test.sh is their table test.
 #
 #   scripts/ci/changed-paths.sh [--reason <Build.Reason>] [--paths-from <file>]
@@ -38,7 +37,7 @@ set -euo pipefail
 # shellcheck source=scripts/ci/tcab-lib.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/tcab-lib.sh"
 
-readonly GROUPS_IN_ORDER=(rust gg submodules)
+readonly GROUPS_IN_ORDER=(rust submodules)
 
 usage() {
 	echo "usage: scripts/ci/changed-paths.sh [--reason <Build.Reason>] [--paths-from <file>]" >&2
@@ -79,65 +78,50 @@ is_pipeline() { # path
 	return 1
 }
 
-# Whether rust_build, binary_linux and binary_windows read the path. They
-# compile the whole workspace and run the core and CLI suites, which read
-# `engines/`, `harnesses/`, `orchestrators/`, `packages/` and the test cases
-# and game jams at compile time or in a test, so those stay in. What is left
-# out is what no Rust job opens: the sites, the board, the manifests, the
-# run-container definitions, the gates' sources, prose, every shell test, and
-# the scripts only the image, deploy and release jobs run.
+# Whether rust_build reads the path. It compiles the whole workspace. What is
+# left out is what no Rust job opens: the sites, the board, the manifests, the
+# sample packs, the gates' sources, prose, every shell test, and the scripts
+# only the image and deploy jobs run. Of the submodule pins, contracts' and engines' reach them, since the
+# patch table builds their crates from the checkouts and every Rust job
+# initializes both with scripts/ci/submodules.sh, gg's does, since cargo loads the
+# crate the patch table names for it and the lock records its version, and
+# test-suites' does, since the backend suites read the committed catalog from
+# that checkout. ui-common's does as gg's does: cargo loads the
+# crate the patch table names for it, and the lock records its version.
 reaches_rust() { # path
 	is_pipeline "$1" && return 0
 	case "$1" in
-		apps/docs/* | apps/web/* | apps/site/*) return 1 ;;
+		contracts | engines | gg | test-suites | ui-common | scripts/ci/submodules.sh) return 0 ;;
+		apps/docs/*) return 1 ;;
 		tasks/* | .github/* | .devcontainer/* | .claude/* | .vscode/*) return 1 ;;
 		deployments/*) return 1 ;;
-		containers/image-names.sh) return 0 ;;
 		containers/*) return 1 ;;
 		ci/*) return 1 ;;
-		test-cases/* | game-jams/* | crates/*.md) return 0 ;;
+		crates/*.md) return 0 ;;
 		*.md) return 1 ;;
 		.gitmodules | .gitignore | .editorconfig | .copier-answers.yml | Makefile) return 1 ;;
 		.cspell/* | cspell.json | .prettierrc* | .prettierignore | .markdownlint* | \
 			eslint.config.* | .pre-commit-config.yaml | LICENSE*) return 1 ;;
 		scripts/*.test.sh | scripts/*.test.mjs) return 1 ;;
-		scripts/ci/audio-packs-check.mjs | scripts/ci/audio-store-image.sh | \
-			scripts/ci/build-context.sh | scripts/ci/build-image.sh | \
+		scripts/ci/build-context.sh | scripts/ci/build-image.sh | \
 			scripts/ci/ci-image-purge.sh | scripts/ci/ci-image.sh | \
-			scripts/ci/contract-drift.sh | scripts/ci/deploy-docs.sh | \
+			scripts/ci/deploy-docs.sh | \
 			scripts/ci/deploy-environment.sh | scripts/ci/deploy.sh | \
-			scripts/ci/gg-dist.sh | scripts/ci/gg-prebuilt.sh | \
-			scripts/ci/gg-version-gate.sh | scripts/ci/k8s-deploy-sets.sh | \
+			scripts/ci/gg-release.sh | scripts/ci/k8s-deploy-sets.sh | \
 			scripts/ci/manifest.sh | scripts/ci/mirror.sh | scripts/ci/npm-install.sh | \
 			scripts/ci/pin-images.sh | scripts/ci/post-deploy.sh | \
-			scripts/ci/pre-deploy.sh | scripts/ci/publish-gg.sh | \
+			scripts/ci/pre-deploy.sh | \
 			scripts/ci/registry-purge.sh | scripts/ci/report-disk.sh | \
-			scripts/ci/require-gated-commit.sh | scripts/ci/retire-legacy-backend.sh | \
-			scripts/ci/run-image-inputs.sh | scripts/ci/run-images.sh | \
-			scripts/ci/seeded-contract-check.sh | scripts/ci/service-image.sh | \
+			scripts/ci/retire-legacy-backend.sh | \
+			scripts/ci/service-image.sh | \
 			scripts/ci/service-images.sh | scripts/ci/settle-workloads.sh | \
-			scripts/ci/spec-vocabulary-check.mjs | scripts/ci/submodule-pins.sh | \
+			scripts/ci/submodule-pins.sh | \
 			scripts/ci/tcab-image-pin.sh) return 1 ;;
 	esac
 	local pin
 	for pin in $(submodule_paths); do
 		[[ "$1" == "$pin" ]] && return 1
 	done
-	return 0
-}
-
-# Whether the gg test partitions read the path: what reaches the Rust jobs,
-# less what only the core and CLI suites and the release build read.
-reaches_gg() { # path
-	is_pipeline "$1" && return 0
-	reaches_rust "$1" || return 1
-	case "$1" in
-		test-cases/* | game-jams/* | containers/*) return 1 ;;
-		scripts/ci/release-build.sh | scripts/ci/release-test.sh | \
-			scripts/ci/release-doctest.sh | scripts/ci/binary-smoke.sh | \
-			scripts/ci/smoke-binary.sh | scripts/ci/install-nextest.sh | \
-			scripts/ci/rust-build.sh) return 1 ;;
-	esac
 	return 0
 }
 

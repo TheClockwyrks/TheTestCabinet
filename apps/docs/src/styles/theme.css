@@ -3,7 +3,7 @@
  *
  * Starlight ships its own design tokens; this file remaps them onto the
  * synthwave, deep-black palette and Clockwyrks orange accent used by the public
- * gallery (apps/site, see its styles/theme.scss). The two sites are separate
+ * gallery (testcabinet.ai, styled by ui-common's styles/theme.scss). The two sites are separate
  * deployments but share one visual language, so the palette here is a deliberate
  * mirror of the site's `--ttc-*` custom properties.
  *
@@ -14,7 +14,7 @@
  */
 
 :root {
-  /* Brand palette, mirrored from apps/site/src/styles/theme.scss. */
+  /* Brand palette, mirrored from ui-common's packages/ui/src/app/styles/theme.scss. */
   --ttc-bg: #050108;
   --ttc-bg-2: #0a0414;
   --ttc-surface: #120a1c;

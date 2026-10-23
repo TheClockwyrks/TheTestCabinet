@@ -29,8 +29,8 @@ pub struct Model {
     /// The ladder's opaque id (a UUID minted on create). The primary key.
     #[sea_orm(primary_key, auto_increment = false)]
     pub id: String,
-    /// The owning account's id (from the auth service, via the verified bearer
-    /// token).
+    /// The owner's identity: the Access assertion's email. A row made before the
+    /// edge asserted the identity holds the retired auth service's account id.
     pub user_id: String,
     /// The owner-chosen display name (e.g. `E2E difficulty climb`).
     pub name: String,
@@ -47,7 +47,7 @@ pub struct Model {
     /// evidence than the rest.
     pub runs_per_cell: i32,
     /// The gate's quality floor as a `Rating` token (`flawless`, `great`,
-    /// `passable`, `scuffed`, `broken`) — see `test_cabinet_core::review::Rating`.
+    /// `passable`, `scuffed`, `broken`) — see `test_cabinet_contracts::review::Rating`.
     ///
     /// The gate is a single parameterised rule, not a menu of modes: **pass when
     /// `count(runs on this rung rated <gate_floor> or better) >= <threshold>`**.

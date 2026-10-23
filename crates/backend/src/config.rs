@@ -9,6 +9,9 @@
 use std::path::PathBuf;
 use std::time::Duration;
 
+use crate::access::AccessConfig;
+use crate::ingest::IngestRoots;
+
 /// The default address the Axum server binds when `TCAB_BACKEND_BIND` is unset.
 const DEFAULT_BIND: &str = "127.0.0.1:8787";
 /// The default database URL when `TCAB_BACKEND_DATABASE_URL` is unset: a local
@@ -17,50 +20,25 @@ const DEFAULT_BIND: &str = "127.0.0.1:8787";
 const DEFAULT_DATABASE_URL: &str = "sqlite://./tcab-backend.sqlite?mode=rwc";
 /// The default on-disk definition store when `TCAB_BACKEND_STORE` is unset.
 const DEFAULT_STORE: &str = "./tcab-store";
-/// The default auth service URL when `TCAB_BACKEND_AUTH_URL` is unset: the auth
-/// service's own loopback default, so local dev works with both services up and
-/// no extra configuration.
-const DEFAULT_AUTH_URL: &str = "http://127.0.0.1:8789";
-/// The default quiet window, in milliseconds, when `TCAB_SNAPSHOT_COALESCE_MS` is
-/// unset: a pending batch of refresh requests is released once no request has
-/// arrived for this long.
+/// The default coalescing window, in milliseconds, when
+/// `TCAB_SNAPSHOT_COALESCE_MS` is unset.
 ///
-/// Two minutes spans the gap between two publishes of one hand-driven or
-/// dispatcher-driven sequence, so the sequence is one batch, while a single publish
-/// still reaches the gallery within minutes.
-const DEFAULT_COALESCE_MS: u64 = 120_000;
-/// The default batch threshold when `TCAB_SNAPSHOT_BATCH_SIZE` is unset: this many
-/// pending refresh requests release a batch without waiting for the quiet window,
-/// so a long sequence of publishes reaches the gallery as it goes.
-const DEFAULT_SNAPSHOT_BATCH_SIZE: u64 = 20;
-/// The default minimum interval between two batch releases, in milliseconds, when
-/// `TCAB_SNAPSHOT_MIN_INTERVAL_MS` is unset. Each release starts a site build of
-/// about five minutes; ten minutes lets one finish before the next starts.
-const DEFAULT_SNAPSHOT_MIN_INTERVAL_MS: u64 = 600_000;
-/// The default bound on one snapshot refresh, in milliseconds, when
-/// `TCAB_SNAPSHOT_REFRESH_TIMEOUT_MS` is unset. A refresh takes a minute or a few;
-/// thirty is far past any that is still making progress.
-const DEFAULT_SNAPSHOT_REFRESH_TIMEOUT_MS: u64 = 1_800_000;
+/// This is a **sliding** debounce: each publish restarts the window, so a batch is
+/// only regenerated once the operator stops publishing. It was 5s, which is shorter
+/// than the gap between two console publishes — a sweep of N runs therefore minted N
+/// full snapshot generations (and N site rebuilds) instead of one. A minute
+/// comfortably spans a hand-driven batch while staying far below the site build it
+/// triggers, so a single publish still reaches the gallery about as fast as before.
+const DEFAULT_COALESCE_MS: u64 = 60_000;
 /// The default retention for superseded snapshot generations, in hours, when
 /// `TCAB_SNAPSHOT_RETENTION_HOURS` is unset. Long enough that any site build already
 /// reading a just-superseded generation finishes against a complete dataset.
 const DEFAULT_SNAPSHOT_RETENTION_HOURS: u64 = 24;
-/// The default interval between artifact reclamation sweeps, in minutes, when
-/// neither `TCAB_ARTIFACT_SWEEP_INTERVAL_MINUTES` nor
-/// `TCAB_ARTIFACT_SWEEP_INTERVAL_HOURS` is set. The sweep is what returns space to
-/// a volume that holds new runs back when it is full, so a pass follows a publish
-/// or a run's retention running out by minutes. A pass that finds nothing to
-/// delete is one listing and two reads.
-const DEFAULT_ARTIFACT_SWEEP_INTERVAL_MINUTES: u64 = 10;
-/// The default retention of a failed run's tree, in hours, when
-/// `TCAB_ARTIFACT_FAILED_RETENTION_HOURS` is unset: a day in which to look at the
-/// failure, or to publish it.
-const DEFAULT_ARTIFACT_FAILED_RETENTION_HOURS: u64 = 24;
-/// The default retention of a canceled run's tree, in hours, when
-/// `TCAB_ARTIFACT_CANCELED_RETENTION_HOURS` is unset. A canceled run was stopped
-/// on purpose and is never published, so its partial tree is kept only long enough
-/// to be clear of the upload its driver may still be making.
-const DEFAULT_ARTIFACT_CANCELED_RETENTION_HOURS: u64 = 1;
+/// The default interval between artifact reclamation sweeps, in hours, when
+/// `TCAB_ARTIFACT_SWEEP_INTERVAL_HOURS` is unset. An orphaned tree costs only disk,
+/// so a few passes a day reclaim it well within the volume's headroom while keeping
+/// the artifact service's listing load negligible.
+const DEFAULT_ARTIFACT_SWEEP_INTERVAL_HOURS: u64 = 6;
 /// The default grace window before a run-less tree is swept, in hours, when
 /// `TCAB_ARTIFACT_SWEEP_GRACE_HOURS` is unset.
 ///
@@ -73,12 +51,13 @@ const DEFAULT_ARTIFACT_SWEEP_GRACE_HOURS: u64 = 24;
 /// The R2 (S3-compatible) credentials and bucket the public snapshot is uploaded
 /// to.
 ///
-/// Defined in `core` because `tcab publish-reference` writes the same bucket
-/// (an asset-generation reference sheet is regenerated and uploaded rather than
+/// Defined with the R2 client in the artifacts service's crate, the object-store
+/// writer, which `tcab publish-asset-reference` also writes the bucket through (an
+/// asset-generation reference sheet is regenerated and uploaded rather than
 /// committed, so it cannot travel through the backend's git checkout). Re-exported
 /// here so `Config`'s field type reads naturally alongside the rest of the
 /// backend's configuration.
-pub use test_cabinet_core::r2::R2Config;
+pub use crate::r2::R2Config;
 
 /// The fully resolved backend configuration.
 #[derive(Debug, Clone)]
@@ -100,14 +79,30 @@ pub struct Config {
     /// different Cloudflare Pages projects, so the one shared lockfile holds a
     /// URL per environment and each backend takes only its own.
     pub env: String,
-    /// Path to the repo checkout ingested on `POST /ingest` (`TCAB_BACKEND_CHECKOUT`).
+    /// Path to the `test-suites` checkout ingested on `POST /ingest`
+    /// (`TCAB_BACKEND_CHECKOUT`).
+    /// Each tree ingest reads defaults to its place in it; see
+    /// [`ingest_roots`](Self::ingest_roots).
     pub checkout: PathBuf,
+    /// The directory holding `test-cases/`, `game-jams/` and `test-case-groups/`
+    /// (`TCAB_DEFINITIONS_ROOT`), defaulting to the checkout itself. The committed
+    /// reference-builds lockfile is read from its `test-cases/`.
+    pub definitions_root: PathBuf,
+    /// The test suites tree (`TCAB_SUITES_ROOT`), defaulting to the checkout's
+    /// `test-suites/`.
+    pub suites_root: PathBuf,
+    /// The cold-storage tree baseline media is read from
+    /// (`TCAB_COLD_STORAGE_ROOT`), mirroring the definitions root. Defaults to
+    /// `TCAB_COLD_STORAGE_DIR`, the override the `tcab` capture commands read,
+    /// and then to the `cold-storage/` checkout beside the checkout.
+    pub cold_storage_root: PathBuf,
     /// On-disk definition store (`TCAB_BACKEND_STORE`).
     pub store: PathBuf,
-    /// The standalone auth service's base URL (`TCAB_BACKEND_AUTH_URL`). The
-    /// backend verifies each mutating request's bearer token against it. Defaults
-    /// to the auth service's loopback address for local dev.
-    pub auth_url: String,
+    /// The Access application assertions are verified against
+    /// (`TCAB_ACCESS_TEAM_DOMAIN` and `TCAB_ACCESS_AUDIENCE`). `None`, both unset
+    /// (the local overlay's shape), verifies no assertion and takes a person's
+    /// identity from the `Cf-Access-Authenticated-User-Email` header as presented.
+    pub access: Option<AccessConfig>,
     /// The shared service token the **dispatcher** authenticates with to claim
     /// queued jobs (`TCAB_BACKEND_SERVICE_TOKEN`). `None` disables the dispatcher
     /// endpoints (the job queue cannot be drained until it is set) — a deployment
@@ -129,19 +124,8 @@ pub struct Config {
     /// The Cloudflare Pages deploy-hook fired after each upload
     /// (`TCAB_SITE_DEPLOY_HOOK_URL`). `None` disables the hook (dev only).
     pub deploy_hook_url: Option<String>,
-    /// The quiet window a batch of snapshot refresh requests is released after
-    /// (`TCAB_SNAPSHOT_COALESCE_MS`): no request for this long releases what is
-    /// pending.
+    /// The coalescing window for bursts of publishes (`TCAB_SNAPSHOT_COALESCE_MS`).
     pub coalesce: Duration,
-    /// How many pending refresh requests release a batch at once
-    /// (`TCAB_SNAPSHOT_BATCH_SIZE`). A value below one behaves as one.
-    pub snapshot_batch_size: u64,
-    /// The minimum time between two batch releases
-    /// (`TCAB_SNAPSHOT_MIN_INTERVAL_MS`). `Duration::ZERO` removes the hold.
-    pub snapshot_min_interval: Duration,
-    /// How long one snapshot refresh may run before it is abandoned as failed
-    /// (`TCAB_SNAPSHOT_REFRESH_TIMEOUT_MS`). `Duration::ZERO` removes the bound.
-    pub snapshot_refresh_timeout: Duration,
     /// How long a superseded snapshot generation is kept in the bucket before the
     /// refresh prunes it (`TCAB_SNAPSHOT_RETENTION_HOURS`). The generation
     /// `index.json` points at is never pruned regardless of this value; it bounds
@@ -156,6 +140,18 @@ pub struct Config {
     /// sets this truthy; production leaves it unset so experimental cases are never
     /// offered and thus never run or published.
     pub allow_experimental: bool,
+    /// Whether ingest also reads the test suite previews The Spec Cabinet writes to
+    /// the suites checkout's `.previews/` folder (`TCAB_BACKEND_INGEST_PREVIEWS`,
+    /// truthy to enable). Defaults to `false`, and then `.previews/` is never read.
+    /// A preview exists only in the checkout it was written to and is always
+    /// experimental, so the setting belongs to the local development stack alone:
+    /// the local k3d overlay sets it, and no other deployment does.
+    pub ingest_previews: bool,
+    /// The ingest sidecar's localhost endpoint that refreshes the checkout
+    /// (`TCAB_BACKEND_INGEST_REFRESH_URL`), which a `POST /ingest` asking for
+    /// `refresh` calls before the scan (see [`crate::ingest_refresh`]). `None`, a
+    /// backend with no sidecar, ignores `refresh` and scans the checkout as it is.
+    pub ingest_refresh_url: Option<String>,
     /// Optional override for the headless browser used to render references at
     /// ingest (`TCAB_REFERENCE_BROWSER`). Forwarded to the bundled driver as
     /// `TCAB_CHROMIUM_EXECUTABLE`; unset, the driver uses the Chromium baked into
@@ -178,23 +174,12 @@ pub struct Config {
     /// driver, which the backend also ships beside itself and never links.
     ///
     /// The backend image bakes them in and points this at `/opt/gg-reference`. A
-    /// developer running the binary from a checkout gets the default below and fills
-    /// it with `scripts/gg-reference.sh`; until they do, the reference endpoints
-    /// answer `503` naming that script, and nothing else about the backend is
-    /// affected.
+    /// developer running the binary from a checkout writes them with
+    /// `scripts/gg-reference.sh` in the gg checkout and points this at the directory
+    /// it wrote (`gg/target/gg-reference`), or leaves it at the default below and
+    /// writes them there; until they do, the reference endpoints answer `503` naming
+    /// that script, and nothing else about the backend is affected.
     pub gg_reference: PathBuf,
-    /// The **advertised** base URL of the **artifact service**
-    /// (`TCAB_ARTIFACTS_PUBLIC_URL`), reported to the console via `GET /config` so it
-    /// can resolve a pre-publish run's `links.playable_build` (and its proof/asset
-    /// media) against the data plane. `None` when artifacts are not served separately
-    /// (e.g. a single-box dev setup with no artifact service) — the console then
-    /// leaves those links unresolved.
-    ///
-    /// Advertised only: it is whatever a *browser* can resolve, which in a
-    /// port-forwarded development cluster is a loopback address no backend pod can
-    /// reach. Every call the backend makes itself goes through
-    /// [`artifacts_internal_url`](Self::artifacts_internal_url).
-    pub artifacts_public_url: Option<String>,
     /// The base URL of the **artifact service** as the backend itself reaches it
     /// (`TCAB_ARTIFACTS_URL`) — the same in-cluster Service address the dispatcher
     /// hands its driver Jobs.
@@ -203,81 +188,16 @@ pub struct Config {
     /// run's tree, the periodic reclamation sweep (see [`crate::artifacts`]), and the
     /// snapshot builder's fallback read of a run's proof/asset media. `None` disables
     /// all three, which is correct for a single-box dev setup with no artifact
-    /// service and is warned about at startup for a deployment that advertises a
-    /// public URL without supplying this one.
+    /// service.
     pub artifacts_internal_url: Option<String>,
     /// How often the artifact reclamation sweep runs
-    /// (`TCAB_ARTIFACT_SWEEP_INTERVAL_MINUTES`, or `TCAB_ARTIFACT_SWEEP_INTERVAL_HOURS`
-    /// while the minutes setting is unset). `Duration::ZERO` disables the sweep,
+    /// (`TCAB_ARTIFACT_SWEEP_INTERVAL_HOURS`). `Duration::ZERO` disables the sweep,
     /// leaving the delete-time prune as the only reclamation.
     pub artifact_sweep_interval: Duration,
-    /// When the sweep deletes the tree of a run that still exists
-    /// (`TCAB_ARTIFACT_FAILED_RETENTION_HOURS`,
-    /// `TCAB_ARTIFACT_CANCELED_RETENTION_HOURS`, `TCAB_ARTIFACT_RECLAIM_PUBLISHED`).
-    pub artifact_retention: crate::artifacts::RetentionPolicy,
-    /// Whether the [state reclamation sweep](crate::state_reclaim) removes
-    /// anything from the backend's own store (`TCAB_STATE_RECLAIM`). On unless
-    /// turned off.
-    pub state_reclaim: bool,
     /// How old a tree with no run row must be before a sweep deletes it
     /// (`TCAB_ARTIFACT_SWEEP_GRACE_HOURS`). Bounds the window in which a run that has
     /// uploaded its tree but not yet reported terminal is protected from the sweep.
     pub artifact_sweep_grace: Duration,
-    /// The thresholds and timing of the [artifact capacity](crate::capacity) watch
-    /// (`TCAB_ARTIFACT_FREE_WARN_MB`, `TCAB_ARTIFACT_FREE_STOP_MB`,
-    /// `TCAB_ARTIFACT_FREE_RECOVER_MB`, `TCAB_ARTIFACT_CAPACITY_POLL_SECONDS`).
-    pub artifact_capacity: crate::capacity::CapacitySettings,
-    /// How many different runs must fail to publish in a row, with no publish
-    /// succeeding among them, before new runs are put on hold
-    /// (`TCAB_PUBLISH_FAILURE_HOLD_RUNS`). `0` turns the hold off. See
-    /// [`crate::publish_health`].
-    pub publish_failure_hold_runs: u32,
-    /// The public base URL of the **arena service** (`TCAB_ARENA_PUBLIC_URL`),
-    /// reported to the console via `GET /config` so it can POST adversarial
-    /// matches/tournaments and stream live tournament progress against the data
-    /// plane. `None` when no arena service is configured (e.g. a single-box dev
-    /// setup) — the console then degrades the adversarial run UI. Like
-    /// `artifacts_url` this is a data-plane URL the control plane merely advertises;
-    /// the arena talks HTTP back to this backend for its inputs and results.
-    pub arena_url: Option<String>,
-    /// The base URL of the deployment's **Grafana** (`TCAB_GRAFANA_PUBLIC_URL`),
-    /// reported to the console via `GET /config` so a run can link out to the traces
-    /// it emitted. `None` when the deployment runs no observability stack (the local
-    /// setup, and any overlay that omits the observability component) — the console
-    /// then simply hides the link.
-    ///
-    /// Unlike `artifacts_public_url` and `arena_url` this is not a data-plane URL: the
-    /// backend never calls Grafana, and Grafana never calls the backend. It is
-    /// advertised here purely because `GET /config` is already how the console
-    /// learns per-environment URLs, and threading one more through the console
-    /// image's nginx template would duplicate that mechanism for no gain.
-    pub grafana_url: Option<String>,
-    /// The **public read** base URL of the snapshot bucket
-    /// (`TCAB_SNAPSHOT_PUBLIC_URL`) — an `r2.dev` URL or the custom domain in front
-    /// of it — reported to the console via `GET /config`. `None` when the deployment
-    /// serves no public snapshot (a single-box dev setup), in which case a client
-    /// simply cannot resolve snapshot-hosted media.
-    ///
-    /// Do not confuse this with [`R2Config::endpoint`](test_cabinet_core::r2::R2Config)
-    /// (`TCAB_R2_ENDPOINT`): that is the S3-compatible **write** endpoint the backend
-    /// authenticates against with SigV4 to upload a snapshot, and it is a credentialed
-    /// control-plane URL that must never reach a browser. This one is the anonymous
-    /// read side of the same bucket. The two are different hosts even when they front
-    /// identical bytes.
-    ///
-    /// The console needs it because some snapshot objects are addressed by a
-    /// *derivable* key rather than a stored URL — an asset-generation variant's
-    /// published reference frames (see `test_cabinet_core::asset_reference`), whose
-    /// keys the client builds itself from the case triple and a frame index. Joining
-    /// them onto a base is the client's job; the backend only advertises the base,
-    /// exactly as it does for `artifacts_public_url` and `arena_url`.
-    ///
-    /// The static gallery reaches the same base under its own build-time name
-    /// (`TCAB_SNAPSHOT_URL`, see `.env.site.example`); it bakes the value in at build
-    /// rather than fetching `GET /config`, so the two are set to the same URL but
-    /// consumed by different processes. The name here follows the backend's own
-    /// `TCAB_*_PUBLIC_URL` convention for the URLs it advertises.
-    pub snapshot_url: Option<String>,
 }
 
 /// A missing or invalid configuration variable.
@@ -286,13 +206,16 @@ pub enum ConfigError {
     /// A required variable was not set.
     #[error("required environment variable `{0}` is not set")]
     Missing(&'static str),
-    /// A variable was set to a value the backend cannot run with.
-    #[error("environment variable `{name}` is invalid: {reason}")]
-    Invalid {
-        /// The variable at fault.
-        name: &'static str,
-        /// What is wrong with its value.
-        reason: String,
+    /// One of a pair of variables that are set together was set alone.
+    #[error(
+        "`{set}` is set but `{unset}` is not: set both to verify Access assertions, or \
+         neither to take the identity from Cf-Access-Authenticated-User-Email"
+    )]
+    Unpaired {
+        /// The variable that was set.
+        set: &'static str,
+        /// The variable that was not.
+        unset: &'static str,
     },
 }
 
@@ -312,7 +235,10 @@ impl Config {
         let db_azure_ad = truthy("TCAB_BACKEND_DB_AZURE_AD");
         let checkout = PathBuf::from(require("TCAB_BACKEND_CHECKOUT")?);
         let store = PathBuf::from(env_or("TCAB_BACKEND_STORE", DEFAULT_STORE));
-        let auth_url = env_or("TCAB_BACKEND_AUTH_URL", DEFAULT_AUTH_URL);
+        let access = access_config(
+            nonempty("TCAB_ACCESS_TEAM_DOMAIN"),
+            nonempty("TCAB_ACCESS_AUDIENCE"),
+        )?;
         let service_token = nonempty("TCAB_BACKEND_SERVICE_TOKEN");
         let openrouter_api_key = nonempty("TCAB_OPENROUTER_API_KEY");
 
@@ -326,21 +252,6 @@ impl Config {
             .and_then(|v| v.parse::<u64>().ok())
             .unwrap_or(DEFAULT_COALESCE_MS);
 
-        let snapshot_batch_size = std::env::var("TCAB_SNAPSHOT_BATCH_SIZE")
-            .ok()
-            .and_then(|v| v.parse::<u64>().ok())
-            .unwrap_or(DEFAULT_SNAPSHOT_BATCH_SIZE);
-
-        let snapshot_min_interval_ms = std::env::var("TCAB_SNAPSHOT_MIN_INTERVAL_MS")
-            .ok()
-            .and_then(|v| v.parse::<u64>().ok())
-            .unwrap_or(DEFAULT_SNAPSHOT_MIN_INTERVAL_MS);
-
-        let snapshot_refresh_timeout_ms = std::env::var("TCAB_SNAPSHOT_REFRESH_TIMEOUT_MS")
-            .ok()
-            .and_then(|v| v.parse::<u64>().ok())
-            .unwrap_or(DEFAULT_SNAPSHOT_REFRESH_TIMEOUT_MS);
-
         let snapshot_retention_hours = std::env::var("TCAB_SNAPSHOT_RETENTION_HOURS")
             .ok()
             .and_then(|v| v.parse::<u64>().ok())
@@ -351,54 +262,28 @@ impl Config {
             .filter(|v| !v.is_empty());
 
         let gg_reference = gg_reference_dir(nonempty("TCAB_GG_REFERENCE"), &checkout);
+        let roots = ingest_roots(
+            &checkout,
+            nonempty("TCAB_DEFINITIONS_ROOT"),
+            nonempty("TCAB_SUITES_ROOT"),
+            nonempty("TCAB_COLD_STORAGE_ROOT"),
+        );
 
         let allow_experimental = truthy("TCAB_BACKEND_ALLOW_EXPERIMENTAL");
+        let ingest_previews = truthy("TCAB_BACKEND_INGEST_PREVIEWS");
+        let ingest_refresh_url = nonempty("TCAB_BACKEND_INGEST_REFRESH_URL");
 
-        let artifacts_public_url = base_url("TCAB_ARTIFACTS_PUBLIC_URL");
         let artifacts_internal_url = base_url("TCAB_ARTIFACTS_URL");
-        let arena_url = base_url("TCAB_ARENA_PUBLIC_URL");
-        let grafana_url = base_url("TCAB_GRAFANA_PUBLIC_URL");
-        let snapshot_url = base_url("TCAB_SNAPSHOT_PUBLIC_URL");
 
-        // The settings that decide what the sweep deletes are read strictly: a
-        // value that is not a whole number, or not a recognizable switch, fails the
-        // start instead of falling back to a default that deletes.
-        let artifact_sweep_interval = sweep_interval(
-            whole_number("TCAB_ARTIFACT_SWEEP_INTERVAL_MINUTES")?,
-            sweep_interval_hours()?,
-        );
-        let artifact_retention = crate::artifacts::RetentionPolicy {
-            failed: Duration::from_secs(
-                whole_number("TCAB_ARTIFACT_FAILED_RETENTION_HOURS")?
-                    .unwrap_or(DEFAULT_ARTIFACT_FAILED_RETENTION_HOURS)
-                    .saturating_mul(3600),
-            ),
-            canceled: Duration::from_secs(
-                whole_number("TCAB_ARTIFACT_CANCELED_RETENTION_HOURS")?
-                    .unwrap_or(DEFAULT_ARTIFACT_CANCELED_RETENTION_HOURS)
-                    .saturating_mul(3600),
-            ),
-            published: on_unless_off("TCAB_ARTIFACT_RECLAIM_PUBLISHED")?,
-            // Resolved once and kept for the life of the process, which is what
-            // lets the policy stay `Copy`.
-            bucket: r2.as_ref().map(|r2| -> &'static str {
-                Box::leak(
-                    crate::artifacts::media_bucket_identity(&r2.endpoint, &r2.bucket)
-                        .into_boxed_str(),
-                )
-            }),
-        };
+        let artifact_sweep_interval_hours = std::env::var("TCAB_ARTIFACT_SWEEP_INTERVAL_HOURS")
+            .ok()
+            .and_then(|v| v.parse::<u64>().ok())
+            .unwrap_or(DEFAULT_ARTIFACT_SWEEP_INTERVAL_HOURS);
 
-        let state_reclaim = on_unless_off("TCAB_STATE_RECLAIM")?;
-
-        // Read strictly: this window decides which run-less trees and run-less
-        // folders are deleted, on two volumes, so a value that does not read as
-        // hours must not quietly become the default.
-        let artifact_sweep_grace_hours = whole_number("TCAB_ARTIFACT_SWEEP_GRACE_HOURS")?
+        let artifact_sweep_grace_hours = std::env::var("TCAB_ARTIFACT_SWEEP_GRACE_HOURS")
+            .ok()
+            .and_then(|v| v.parse::<u64>().ok())
             .unwrap_or(DEFAULT_ARTIFACT_SWEEP_GRACE_HOURS);
-
-        let artifact_capacity = capacity_settings()?;
-        let publish_failure_hold_runs = publish_failure_hold_runs()?;
 
         Ok(Self {
             bind,
@@ -406,211 +291,89 @@ impl Config {
             database_url,
             db_azure_ad,
             checkout,
+            definitions_root: roots.definitions,
+            suites_root: roots.suites,
+            cold_storage_root: roots.cold_storage,
             store,
-            auth_url,
+            access,
             service_token,
             openrouter_api_key,
             r2,
             deploy_hook_url,
             coalesce: Duration::from_millis(coalesce_ms),
-            snapshot_batch_size,
-            snapshot_min_interval: Duration::from_millis(snapshot_min_interval_ms),
-            snapshot_refresh_timeout: Duration::from_millis(snapshot_refresh_timeout_ms),
             snapshot_retention: Duration::from_secs(snapshot_retention_hours * 3600),
             reference_browser,
             gg_reference,
-            artifacts_public_url,
             artifacts_internal_url,
-            artifact_sweep_interval,
-            artifact_retention,
-            state_reclaim,
+            artifact_sweep_interval: Duration::from_secs(
+                artifact_sweep_interval_hours.saturating_mul(3600),
+            ),
             artifact_sweep_grace: Duration::from_secs(
                 artifact_sweep_grace_hours.saturating_mul(3600),
             ),
-            artifact_capacity,
-            publish_failure_hold_runs,
-            arena_url,
-            grafana_url,
-            snapshot_url,
             allow_experimental,
+            ingest_previews,
+            ingest_refresh_url,
         })
     }
 }
 
 impl Config {
-    /// The publisher's timing, as the snapshot settings resolve it.
-    pub fn publisher_timing(&self) -> crate::publisher::PublisherTiming {
-        crate::publisher::PublisherTiming {
-            batch: crate::publisher::BatchTiming {
-                threshold: self.snapshot_batch_size,
-                quiet_window: self.coalesce,
-                min_interval: self.snapshot_min_interval,
-                refresh_timeout: self.snapshot_refresh_timeout,
-            },
-            snapshot_retention: self.snapshot_retention,
-            // Only a backend whose sweep deletes published runs' trees has a use
-            // for a confirmation.
-            confirm_media: self
-                .artifact_retention
-                .bucket
-                .filter(|_| self.sweep_deletes_published_trees()),
+    /// The roots ingest reads its three trees from.
+    pub fn ingest_roots(&self) -> IngestRoots {
+        IngestRoots {
+            definitions: self.definitions_root.clone(),
+            suites: self.suites_root.clone(),
+            cold_storage: self.cold_storage_root.clone(),
         }
     }
 }
 
-impl Config {
-    /// Whether this backend's reclamation sweep deletes published runs' trees:
-    /// the rule is on, the sweep runs, and there is an artifact service to sweep
-    /// and a token to delete with.
-    fn sweep_deletes_published_trees(&self) -> bool {
-        self.artifact_retention.published
-            && !self.artifact_sweep_interval.is_zero()
-            && self.artifacts_internal_url.is_some()
-            && self.service_token.is_some()
-    }
-}
-
-impl Config {
-    /// How often the [state reclamation sweep](crate::state_reclaim) runs and
-    /// what a pass removes by, or `None` when `TCAB_STATE_RECLAIM` is off and the
-    /// sweep removes nothing.
-    ///
-    /// The interval, the grace window and the two retentions are the artifact
-    /// sweep's own, so a failed run's files leave both volumes by one clock. The
-    /// `published` rule is on only for a backend that records media
-    /// confirmations ([`publisher_timing`](Self::publisher_timing)): a
-    /// confirmation no refresh keeps current is not one to remove a published
-    /// run's files on.
-    pub fn state_sweep_timing(&self) -> Option<crate::artifacts::SweepTiming> {
-        self.state_reclaim.then(|| crate::artifacts::SweepTiming {
-            interval: self.artifact_sweep_interval,
-            rules: crate::artifacts::SweepRules {
-                grace: self.artifact_sweep_grace,
-                retention: crate::artifacts::RetentionPolicy {
-                    published: self.publisher_timing().confirm_media.is_some(),
-                    ..self.artifact_retention
-                },
-            },
-        })
-    }
-}
-
-/// Read `TCAB_ARTIFACT_SWEEP_INTERVAL_HOURS`, the older of the two interval
-/// settings.
+/// Resolve the roots ingest reads from: each named root when an operator set it,
+/// and otherwise its place in the checkout ([`IngestRoots::for_checkout`], whose
+/// cold-storage default honours `TCAB_COLD_STORAGE_DIR`).
 ///
-/// It is read strictly only while it decides the interval, which is while
-/// `TCAB_ARTIFACT_SWEEP_INTERVAL_MINUTES` is unset. With the minutes setting
-/// present its value is not used, so a value that does not read is ignored with
-/// a warning: a deployment that carried a loosely written hours value for years
-/// must not stop starting because a newer setting made it irrelevant.
-fn sweep_interval_hours() -> Result<Option<u64>, ConfigError> {
-    const NAME: &str = "TCAB_ARTIFACT_SWEEP_INTERVAL_HOURS";
-    if nonempty("TCAB_ARTIFACT_SWEEP_INTERVAL_MINUTES").is_none() {
-        return whole_number(NAME);
-    }
-    match whole_number(NAME) {
-        Ok(hours) => Ok(hours),
-        Err(err) => {
-            tracing::warn!(
-                "{err}; ignoring it, because TCAB_ARTIFACT_SWEEP_INTERVAL_MINUTES is set \
-                 and decides the interval"
-            );
-            Ok(None)
-        }
+/// Every default is relative to the checkout rather than to an overridden
+/// definitions root, so setting one variable moves one tree. A relative value is
+/// kept as given and resolves against the working directory, as
+/// `TCAB_BACKEND_CHECKOUT` does.
+fn ingest_roots(
+    checkout: &std::path::Path,
+    definitions: Option<String>,
+    suites: Option<String>,
+    cold_storage: Option<String>,
+) -> IngestRoots {
+    let defaults = IngestRoots::for_checkout(checkout);
+    IngestRoots {
+        definitions: definitions.map_or(defaults.definitions, PathBuf::from),
+        suites: suites.map_or(defaults.suites, PathBuf::from),
+        cold_storage: cold_storage.map_or(defaults.cold_storage, PathBuf::from),
     }
 }
 
-/// Resolve the [artifact capacity](crate::capacity) settings from the environment.
-///
-/// Unlike the older numeric settings, a value that does not parse is refused rather
-/// than replaced by the default: these decide whether runs are dispatched at all,
-/// and a mistyped threshold that silently became 2 GiB would not be noticed until
-/// the volume was full.
-fn capacity_settings() -> Result<crate::capacity::CapacitySettings, ConfigError> {
-    use crate::capacity::{CapacitySettings, MIB};
-
-    let defaults = CapacitySettings::default();
-    let megabytes = |name: &'static str, default: u64| -> Result<u64, ConfigError> {
-        Ok(whole_number(name)?.map_or(default, |mb| mb.saturating_mul(MIB)))
-    };
-    let seconds = |name: &'static str, default: Duration| -> Result<Duration, ConfigError> {
-        Ok(whole_number(name)?.map_or(default, Duration::from_secs))
-    };
-
-    let settings = CapacitySettings {
-        warn_bytes: megabytes("TCAB_ARTIFACT_FREE_WARN_MB", defaults.warn_bytes)?,
-        stop_bytes: megabytes("TCAB_ARTIFACT_FREE_STOP_MB", defaults.stop_bytes)?,
-        recover_bytes: megabytes("TCAB_ARTIFACT_FREE_RECOVER_MB", defaults.recover_bytes)?,
-        poll_interval: seconds(
-            "TCAB_ARTIFACT_CAPACITY_POLL_SECONDS",
-            defaults.poll_interval,
-        )?,
-        state_warn_bytes: megabytes("TCAB_STATE_FREE_WARN_MB", defaults.state_warn_bytes)?,
-        state_stop_bytes: megabytes("TCAB_STATE_FREE_STOP_MB", defaults.state_stop_bytes)?,
-    };
-    // The same rule for the state volume, whose warning `0` turns off.
-    if settings.state_warn_bytes != 0 && settings.state_warn_bytes < settings.state_stop_bytes {
-        return Err(ConfigError::Invalid {
-            name: "TCAB_STATE_FREE_WARN_MB",
-            reason: format!(
-                "the warn threshold ({} MiB) is below the stop threshold \
-                 `TCAB_STATE_FREE_STOP_MB` ({} MiB); `0` turns the warning off",
-                settings.state_warn_bytes / MIB,
-                settings.state_stop_bytes / MIB
-            ),
-        });
+/// Resolve the Access application from the two variables naming it. Both set is a
+/// backend that verifies assertions, both unset one that takes the local identity
+/// header. One without the other is refused, so a deployment that lost one of them
+/// fails to start rather than trusting a header anyone can send.
+fn access_config(
+    team_domain: Option<String>,
+    audience: Option<String>,
+) -> Result<Option<AccessConfig>, ConfigError> {
+    match (team_domain, audience) {
+        (Some(team_domain), Some(audience)) => Ok(Some(AccessConfig {
+            team_domain,
+            audience,
+        })),
+        (None, None) => Ok(None),
+        (Some(_), None) => Err(ConfigError::Unpaired {
+            set: "TCAB_ACCESS_TEAM_DOMAIN",
+            unset: "TCAB_ACCESS_AUDIENCE",
+        }),
+        (None, Some(_)) => Err(ConfigError::Unpaired {
+            set: "TCAB_ACCESS_AUDIENCE",
+            unset: "TCAB_ACCESS_TEAM_DOMAIN",
+        }),
     }
-    // A warning that fires only after the queue has already stopped warns nobody.
-    if settings.warn_bytes < settings.stop_bytes {
-        return Err(ConfigError::Invalid {
-            name: "TCAB_ARTIFACT_FREE_WARN_MB",
-            reason: format!(
-                "the warn threshold ({} MiB) is below the stop threshold \
-                 `TCAB_ARTIFACT_FREE_STOP_MB` ({} MiB)",
-                settings.warn_bytes / MIB,
-                settings.stop_bytes / MIB
-            ),
-        });
-    }
-    // A zero interval would poll the artifact service in a busy loop.
-    if settings.poll_interval.is_zero() {
-        return Err(ConfigError::Invalid {
-            name: "TCAB_ARTIFACT_CAPACITY_POLL_SECONDS",
-            reason: "the poll interval must be at least 1 second".to_string(),
-        });
-    }
-    Ok(settings)
-}
-
-/// Resolve `TCAB_PUBLISH_FAILURE_HOLD_RUNS`: how many different runs must fail to
-/// publish in a row before new runs are held, the default when unset, and `0` for
-/// no hold. Read strictly, like the capacity settings: it decides whether runs are
-/// dispatched, and a mistyped value must not silently become the default.
-fn publish_failure_hold_runs() -> Result<u32, ConfigError> {
-    const NAME: &str = "TCAB_PUBLISH_FAILURE_HOLD_RUNS";
-    let Some(runs) = whole_number(NAME)? else {
-        return Ok(crate::publish_health::DEFAULT_HOLD_RUNS);
-    };
-    u32::try_from(runs).map_err(|_| ConfigError::Invalid {
-        name: NAME,
-        reason: format!("`{runs}` is too large"),
-    })
-}
-
-/// Read a whole-number environment variable: `None` when unset or empty, and an
-/// error naming the variable when it is set to anything else.
-fn whole_number(name: &'static str) -> Result<Option<u64>, ConfigError> {
-    let Some(value) = nonempty(name) else {
-        return Ok(None);
-    };
-    value
-        .trim()
-        .parse::<u64>()
-        .map(Some)
-        .map_err(|_| ConfigError::Invalid {
-            name,
-            reason: format!("`{value}` is not a whole number"),
-        })
 }
 
 /// Read an environment variable, falling back to a default when unset or empty.
@@ -631,8 +394,8 @@ fn env_or(key: &str, default: &str) -> String {
 /// variable ([`Config::from_env`]), rather than from the working directory: a backend
 /// started by systemd or a container has a working directory nobody chose, whereas the
 /// checkout is by definition the tree this backend was pointed at. `target/` under it is
-/// where `scripts/gg-reference.sh` writes, and where every other build output in this
-/// repository already goes.
+/// where every build output already goes, and `scripts/gg-reference.sh` in the gg checkout
+/// writes there when given the path.
 ///
 /// A pure function taking the resolved value rather than reading the environment itself,
 /// so the derivation is testable without mutating process-global state (see
@@ -666,42 +429,6 @@ fn base_url(key: &str) -> Option<String> {
 #[cfg(test)]
 #[path = "config.test.rs"]
 mod tests;
-
-/// The reclamation sweep's interval from its two settings. The minutes setting
-/// decides when it is set. The hours setting, which predates it, is read while the
-/// minutes setting is unset, so a deployment that sets only hours keeps the
-/// interval it asked for. With neither set the interval is
-/// [`DEFAULT_ARTIFACT_SWEEP_INTERVAL_MINUTES`]. A zero in the setting that decides
-/// disables the sweep.
-fn sweep_interval(minutes: Option<u64>, hours: Option<u64>) -> Duration {
-    match (minutes, hours) {
-        (Some(minutes), _) => Duration::from_secs(minutes.saturating_mul(60)),
-        (None, Some(hours)) => Duration::from_secs(hours.saturating_mul(3600)),
-        (None, None) => Duration::from_secs(DEFAULT_ARTIFACT_SWEEP_INTERVAL_MINUTES * 60),
-    }
-}
-
-/// Read a switch that is on by default: `true` when unset or empty, `true` for
-/// `1`, `true`, `yes` and `on`, `false` for `0`, `false`, `no` and `off`
-/// (case-insensitive), and an error naming the variable for anything else.
-///
-/// The counterpart of [`truthy`] for a behavior a deployment has unless it turns
-/// it off. It refuses a value it does not recognize, where `truthy` reads one as
-/// off, because the switches read this way govern deletion: an operator who
-/// misspells "off" must not find the deletion still on.
-fn on_unless_off(name: &'static str) -> Result<bool, ConfigError> {
-    let Some(value) = nonempty(name) else {
-        return Ok(true);
-    };
-    match value.trim().to_ascii_lowercase().as_str() {
-        "1" | "true" | "yes" | "on" => Ok(true),
-        "0" | "false" | "no" | "off" => Ok(false),
-        _ => Err(ConfigError::Invalid {
-            name,
-            reason: format!("`{value}` is neither on (`true`) nor off (`false`)"),
-        }),
-    }
-}
 
 /// Read a boolean flag environment variable, treating a **truthy** value as
 /// `true` and anything else — including unset, empty, or an unrecognized value —

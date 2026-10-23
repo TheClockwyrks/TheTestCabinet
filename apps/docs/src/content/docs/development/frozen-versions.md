@@ -5,7 +5,7 @@ title: Frozen Versions
 A test-case version directory that has runs recorded against it is history. Runs
 stored in the backend reference the case by slug and version, and they do not
 snapshot the prompt, specs, or reference mockups they were produced from; the
-repository is the only record of that. Editing
+`test-suites` repository is the only record of that. Editing
 `test-cases/<type>/<difficulty>/<slug>/vX.Y.Z/` in place therefore invalidates
 every run already scored against it. Those runs stay in the metrics and on the
 leaderboard, produced from inputs that no longer exist, with nothing in the data
@@ -35,20 +35,20 @@ a permission flip all move the digest.
 
 A version's baseline validation media lives in the `cold-storage` submodule
 rather than in the version folder (see [where baselines
-live](/components/core/validation/#where-baselines-live)), so the digest never
+live](/components/driver/validation/#where-baselines-live)), so the digest never
 covers it. A baseline is evidence beside a verdict and backs no point, so
 recapturing a frozen version's baselines changes no recorded score and needs no
 new version.
 
 The marker opens with a comment block saying the directory must not change and
 naming the gate that holds it to that, `frozen-paths`
-(`ci/gates/frozen-paths.py`). That gate recomputes every marker's digest and
-compares it:
+(`ci/gates/frozen-paths.py` in `test-suites`). That gate recomputes every
+marker's digest and compares it:
 
 | Where | Catches |
 | --- | --- |
 | the commit hook, on any commit touching a test-case or game-jam path | the mistake, at the moment you make it |
-| the `web` job of the Azure pipeline, on every run | commits made with `--no-verify` or without hooks installed |
+| the checks job of `test-suites`' pipeline, on every run | commits made with `--no-verify` or without hooks installed |
 
 Both read the git index rather than a diff against a base branch: at commit, the
 index being committed, so a partial commit is digested as it will land. So the
@@ -69,7 +69,7 @@ needs.
 ## Freezing a version
 
 ```sh
-scripts/freeze.sh test-cases/end-to-end/easy/carom/v1.0.0
+scripts/freeze.sh test-cases/end-to-end/easy/carom/v1.0.0   # in test-suites/
 ```
 
 Do this as soon as you trigger the first run against a version. That is the

@@ -10,9 +10,9 @@
 //! shows up without a release. Curated config is layered on by alias; an
 //! uncurated model is shown, derived, under its canonical id.
 //!
-//! Reads are open (the private-network model); the config mutations, the
-//! OpenRouter lookup, the logo fetch, and the list-price refresh require a bearer
-//! token (see [`AuthUser`]) — the lookup and the logo fetch because they reach a
+//! Reads are open to any identity; the config mutations, the OpenRouter lookup,
+//! the logo fetch, and the list-price refresh take a person's assertion (see
+//! [`Person`]) — the lookup and the logo fetch because they reach a
 //! third party. The same
 //! [`compose_catalog`] the read uses also builds the public snapshot's catalog, so
 //! the two never disagree.
@@ -20,309 +20,27 @@
 use axum::Json;
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
 
-use test_cabinet_core::model_id::canonical_model_id;
-use test_cabinet_core::run_record::{HarnessFamily, HarnessSlug};
+use crate::model_id::canonical_model_id;
+use test_cabinet_contracts::run_record::{HarnessFamily, HarnessSlug};
 use test_cabinet_entities::model_price;
 
-use crate::auth::AuthUser;
+use crate::auth::Person;
 use crate::db::{AliasEntry, ModelConfigWrite, StoredModel};
 use crate::error::ApiError;
 
 use super::AppState;
 
+pub use test_cabinet_contracts::backend_api::models::{
+    AliasInput, AliasOut, ListPriceRefreshOut, LogoFetchInput, LogoFetchOut, ModelCatalogResponse,
+    ModelConfigInput, ModelListingOut, ModelOut, ModelPricesOut, ModelSeedOut,
+};
+
 /// The base of a model's OpenRouter page.
 const OPENROUTER_BASE: &str = "https://openrouter.ai/";
-
-/// `GET /models` — the merged model catalog.
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub struct ModelCatalogResponse {
-    pub models: Vec<ModelOut>,
-}
-
-/// One catalog entry: a curated model merged with its runs and its observed
-/// catalog facts, or a model derived from runs with no curated config.
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub struct ModelOut {
-    /// The curated slug, or the canonical model id for a derived model.
-    pub slug: String,
-    /// The display name (a derived model uses its canonical id).
-    pub name: String,
-    /// The provider (guessed from the id for a derived model).
-    pub provider: String,
-    /// Whether this entry has curated config, as opposed to being derived from
-    /// runs alone.
-    pub curated: bool,
-    /// `https://openrouter.ai/<slug>` when the model is on OpenRouter, else null.
-    pub openrouter_url: Option<String>,
-    /// Curated description markdown, or null.
-    pub description: Option<String>,
-    /// The curated, sanitized provider-logo SVG, or null.
-    pub logo_svg: Option<String>,
-    /// The raw `subject.modelId` strings from runs this entry absorbs — what the
-    /// console matches a run against.
-    pub covered_model_ids: Vec<String>,
-    /// The canonical model ids this entry claims, each tagged with the harness
-    /// family it is usable with (so a run form can offer only the slugs the
-    /// selected harness can launch).
-    pub aliases: Vec<AliasOut>,
-    /// The model's list price (per-token USD), the only price a model has and
-    /// what a run's comparable cost is computed from — all-or-nothing: `Some`
-    /// only when all three prices are set. Null for a derived or unpriced model.
-    pub list_price: Option<ModelPricesOut>,
-    /// The date the list-price figures were taken (`YYYY-MM-DD`): the day they
-    /// were last read from OpenRouter, or the date recorded with a set entered
-    /// by hand. Null when the model carries no list price.
-    pub list_price_as_of: Option<String>,
-    /// Where the list price came from: `openrouter` for a set read from
-    /// OpenRouter (by a refresh of every entry, see
-    /// [`crate::bootstrap::refresh_list_prices`], or at enqueue), `hand` for a
-    /// set an operator entered, which stands until the next refresh resolves a
-    /// rate for the model, or null when the model carries none.
-    pub list_price_source: Option<String>,
-    /// The latest observed context window in tokens, or null.
-    pub context_length: Option<u64>,
-    /// The developer provider: the OpenRouter provider name of the model developer's own
-    /// endpoint. The hand-set one when the catalog entry sets it, otherwise the one last observed
-    /// on the endpoints listing. Null means none is known; a gg run's
-    /// [candidate list](https://docs.testcabinet.ai/gg/overview/#the-candidate-list) then takes
-    /// the catalog entry's price ceiling in place of the developer's rates.
-    pub provider_pin: Option<String>,
-    /// Whether [`provider_pin`](Self::provider_pin) is set by hand on the catalog entry rather
-    /// than observed on the listing.
-    pub provider_pin_set_by_hand: bool,
-    /// Whether a gg run's candidate list is filtered to the native quantization. False accepts
-    /// every endpoint at whatever level it declares, `unknown` included, for a model every
-    /// provider serves at one precision nobody discloses. Always true for a derived model.
-    pub quantization_filter: bool,
-    /// The native quantization set by hand (`fp8`, `bf16`, …), or null to take the highest
-    /// level any endpoint declares. Always null for a derived model.
-    pub native_quantization: Option<String>,
-    /// The input half of the price ceiling, USD per million tokens, used when OpenRouter lists no
-    /// developer endpoint. Null when no ceiling is set, and always for a derived model.
-    pub max_input_price: Option<f64>,
-    /// The output half of the price ceiling, USD per million tokens.
-    pub max_output_price: Option<f64>,
-    /// The providers a gg run of the model never uses. Empty for a derived model.
-    pub banned_providers: Vec<String>,
-    /// The providers accepted despite declaring `unknown` quantization. Empty for a derived
-    /// model.
-    pub unknown_quantization_providers: Vec<String>,
-    /// The latest observed release date (RFC 3339), or null.
-    pub released_at: Option<String>,
-    /// The input modalities OpenRouter reports the model accepts (`text`,
-    /// `image`, `file`, …), lowercased. **Empty means unobserved**, not "text
-    /// only" — the catalog has simply not recorded a modality list for this model
-    /// yet, and a consumer deciding whether it may send an image treats that as
-    /// unknown rather than as a refusal.
-    pub input_modalities: Vec<String>,
-}
-
-/// One canonical model id a catalog entry claims, with the harness family it is
-/// usable with. The run form filters the models it offers a harness by matching
-/// the harness's family against these.
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub struct AliasOut {
-    /// The canonical model id (an OpenRouter id like `anthropic/claude-opus-4.8`,
-    /// or a provider-native id like `claude-opus-4-8`).
-    pub slug: String,
-    /// The harness family this slug is usable with.
-    pub harness_family: HarnessFamily,
-}
-
-/// A per-token price triple, in USD: a model's list price.
-#[derive(Debug, Clone, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub struct ModelPricesOut {
-    pub uncached_input: Option<f64>,
-    pub cached_input: Option<f64>,
-    pub output: Option<f64>,
-}
-
-/// One slug ↔ harness-family pairing in a config write. The operator supplies a
-/// slug and picks the harness family it belongs to; a model with slugs across
-/// several families carries one entry per (slug, family).
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub struct AliasInput {
-    /// The canonical model id (the `openrouter/` routing prefix is stripped on
-    /// write so it matches a run's canonical id).
-    pub slug: String,
-    /// The harness family this slug is usable with.
-    pub harness_family: HarnessFamily,
-}
-
-/// The `POST /models` / `PUT /models/{slug}` request body.
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub struct ModelConfigInput {
-    /// The curated slug (used on create; the path wins on update).
-    pub slug: String,
-    pub name: String,
-    pub provider: String,
-    /// The canonical model ids this model covers, each paired with the harness
-    /// family it is usable with (at least one).
-    pub aliases: Vec<AliasInput>,
-    pub openrouter_slug: Option<String>,
-    /// The developer provider: the OpenRouter provider name of the model developer's own
-    /// endpoint, set by hand where the endpoints listing's name does not match the model id's
-    /// author segment. Absent or blank takes the provider the listing names for that segment.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(feature = "contract", ts(optional))]
-    pub provider_pin: Option<String>,
-    /// Whether a gg run's candidate list is filtered to the native quantization. Absent is true.
-    /// False accepts every endpoint at whatever level it declares, `unknown` included, for a
-    /// model every provider serves at one precision nobody discloses; the other filters still
-    /// apply.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(feature = "contract", ts(optional))]
-    pub quantization_filter: Option<bool>,
-    /// The native quantization every provider of a gg run's candidate list must serve the model
-    /// at (`fp8`, `bf16`, …) while the filter is on. Absent or blank takes the highest level any
-    /// endpoint declares; any other value must be a level OpenRouter declares.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(feature = "contract", ts(optional))]
-    pub native_quantization: Option<String>,
-    /// The input half of the price ceiling, USD per million tokens, used when OpenRouter lists no
-    /// developer endpoint. Set together with [`max_output_price`](Self::max_output_price) or not
-    /// at all, and positive.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(feature = "contract", ts(optional))]
-    pub max_input_price: Option<f64>,
-    /// The output half of the price ceiling, USD per million tokens.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(feature = "contract", ts(optional))]
-    pub max_output_price: Option<f64>,
-    /// The providers a gg run of the model never uses. Names are trimmed and blanks dropped.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(feature = "contract", ts(optional))]
-    pub banned_providers: Option<Vec<String>>,
-    /// The providers accepted despite declaring `unknown` quantization. Names are trimmed and
-    /// blanks dropped.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(feature = "contract", ts(optional))]
-    pub unknown_quantization_providers: Option<Vec<String>>,
-    /// The list price per **Mtok** of input, in USD — the unit every pricing
-    /// page publishes; the store carries per token. The list-price write is
-    /// all-or-nothing: all three prices (plus `list_price_as_of`) or none;
-    /// absent on update preserves the stored set. A set written here is sourced
-    /// `hand` and stands until the next refresh resolves a rate for the model
-    /// from OpenRouter.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(feature = "contract", ts(optional))]
-    pub list_price_input_per_mtok: Option<f64>,
-    /// The list price per **Mtok** of cached input, in USD.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(feature = "contract", ts(optional))]
-    pub list_price_cached_input_per_mtok: Option<f64>,
-    /// The list price per **Mtok** of output, in USD.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(feature = "contract", ts(optional))]
-    pub list_price_output_per_mtok: Option<f64>,
-    /// The date the operator took the list-price figures (trimmed; empty means
-    /// none).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(feature = "contract", ts(optional))]
-    pub list_price_as_of: Option<String>,
-    pub description: Option<String>,
-    /// The stored provider-logo SVG (already fetched via `POST /models/logo`).
-    pub logo_svg: Option<String>,
-    /// The svgl.app URL the logo was fetched from, kept for reference.
-    pub provider_logo_url: Option<String>,
-}
-
-/// The `GET /models/seed` response: a blank-form seed derived from a run.
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub struct ModelSeedOut {
-    /// Suggested slug (the canonical id), which the operator may change.
-    pub slug: String,
-    /// Empty — the operator must set a display name explicitly.
-    pub name: String,
-    /// Provider guessed from the model id, possibly empty.
-    pub provider: String,
-    /// Suggested aliases (the canonical and raw forms), deduped, each tagged with
-    /// the family of the harness the seed run used.
-    pub aliases: Vec<AliasOut>,
-    /// The canonical id as an OpenRouter slug, when it looks like one.
-    pub openrouter_slug: Option<String>,
-}
-
-/// The `GET /models/openrouter` response: the descriptive facts OpenRouter
-/// publishes about a model, for the config form to fill itself in with, plus the
-/// model's list price as OpenRouter publishes it, scaled to per Mtok — the seed
-/// figures for the form's list-price fields. The rate is resolved by the same
-/// [flow](test_cabinet_core::ModelLaunchFacts::list_price) every list price read
-/// from OpenRouter is, so the three figures are all present or all null. A model
-/// with no rate is not an error: the fields are null and the form leaves them for
-/// the operator. The context window and the modalities remain deliberately absent:
-/// the backend records those itself from the same catalog (on save, on launch,
-/// and on the 24-hour refresh), so they are never form state to begin with.
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub struct ModelListingOut {
-    /// The display name, with OpenRouter's `Provider: ` prefix stripped.
-    pub name: String,
-    /// The provider's presentational name (`Anthropic`), from that same prefix.
-    pub provider: String,
-    /// OpenRouter's prose description, or null when it publishes none.
-    pub description: Option<String>,
-    /// The list price of input per Mtok in USD, or null.
-    pub input_per_mtok: Option<f64>,
-    /// The list price of cached input per Mtok in USD, or null.
-    pub cached_input_per_mtok: Option<f64>,
-    /// The list price of output per Mtok in USD, or null.
-    pub output_per_mtok: Option<f64>,
-}
-
-/// The `POST /models/list-prices/refresh` response: what the refresh of every
-/// catalog entry's list price did, counted in entries.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub struct ListPriceRefreshOut {
-    /// Every curated catalog entry: the sum of the other three.
-    #[cfg_attr(feature = "contract", ts(type = "number"))]
-    pub total: u64,
-    /// The entries whose rate changed, or that had no list price and now have one.
-    #[cfg_attr(feature = "contract", ts(type = "number"))]
-    pub updated: u64,
-    /// The entries whose stored rate OpenRouter confirmed. Their date was rewritten.
-    #[cfg_attr(feature = "contract", ts(type = "number"))]
-    pub unchanged: u64,
-    /// The entries OpenRouter gave no rate for, which keep what they hold.
-    #[cfg_attr(feature = "contract", ts(type = "number"))]
-    pub unresolved: u64,
-}
-
-/// The `POST /models/logo` request/response.
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub struct LogoFetchInput {
-    pub url: String,
-}
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub struct LogoFetchOut {
-    pub logo_svg: String,
-}
 
 /// `GET /models` — the merged catalog across all runs. Open read.
 #[tracing::instrument(name = "models.list", skip(state), err(Debug))]
@@ -342,11 +60,11 @@ pub async fn list(State(state): State<AppState>) -> Result<Json<ModelCatalogResp
     Ok(Json(ModelCatalogResponse { models }))
 }
 
-/// `POST /models` — create a curated model config. Requires a bearer token.
+/// `POST /models` — create a curated model config. Takes a person's assertion.
 #[tracing::instrument(name = "models.create", skip(state, _user, input), err(Debug))]
 pub async fn create(
     State(state): State<AppState>,
-    _user: AuthUser,
+    _user: Person,
     Json(input): Json<ModelConfigInput>,
 ) -> Result<Json<ModelOut>, ApiError> {
     let slug = input.slug.trim().to_string();
@@ -365,12 +83,12 @@ pub async fn create(
     write_config(&state, slug, input).await
 }
 
-/// `PUT /models/{slug}` — update a curated model config. Requires a bearer token.
+/// `PUT /models/{slug}` — update a curated model config. Takes a person's assertion.
 #[tracing::instrument(name = "models.update", skip(state, _user, input), fields(model.slug = %slug), err(Debug))]
 pub async fn update(
     State(state): State<AppState>,
     Path(slug): Path<String>,
-    _user: AuthUser,
+    _user: Person,
     Json(input): Json<ModelConfigInput>,
 ) -> Result<Json<ModelOut>, ApiError> {
     write_config(&state, slug, input).await
@@ -568,7 +286,7 @@ async fn write_config(
 
     // The catalog changed, so the public snapshot must be regenerated — after the
     // seeding above, so the snapshot carries the facts too.
-    state.publisher.queue_refresh();
+    state.publisher.queue_refresh().await;
 
     // Re-compose just this model for the response.
     let config = state
@@ -624,13 +342,13 @@ fn holds_list_price(
             .all(|(stored, submitted)| same_rate(stored, submitted))
 }
 
-/// `DELETE /models/{slug}` — remove a curated model config. Requires a bearer
-/// token. The model may reappear as a derived entry if it still has runs.
+/// `DELETE /models/{slug}` — remove a curated model config. Takes a person's
+/// assertion. The model may reappear as a derived entry if it still has runs.
 #[tracing::instrument(name = "models.delete", skip(state, _user), fields(model.slug = %slug), err(Debug))]
 pub async fn delete(
     State(state): State<AppState>,
     Path(slug): Path<String>,
-    _user: AuthUser,
+    _user: Person,
 ) -> Result<StatusCode, ApiError> {
     let removed = state
         .db
@@ -640,7 +358,7 @@ pub async fn delete(
     if !removed {
         return Err(ApiError::not_found(format!("model `{slug}` not found")));
     }
-    state.publisher.queue_refresh();
+    state.publisher.queue_refresh().await;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -709,16 +427,16 @@ pub struct OpenRouterLookupQuery {
 
 /// `GET /models/openrouter?slug=&providerPin=` — the descriptive facts OpenRouter
 /// publishes about a model, so the config form can fill itself in instead of the
-/// operator retyping what OpenRouter already knows. Requires a bearer token.
+/// operator retyping what OpenRouter already knows. Takes a person's assertion.
 ///
 /// The list-price figures are resolved by the
-/// [list-price flow](test_cabinet_core::ModelLaunchFacts::list_price) with
+/// [list-price flow](crate::pricing::ModelLaunchFacts::list_price) with
 /// `providerPin` as the hand-set developer provider, so the form is seeded with the
 /// rate a refresh would write for the entry as the form holds it. The flow's last
 /// step, the model's own price in OpenRouter's models listing, is what reads that
 /// listing, and only when the model's endpoints answer neither earlier step.
 ///
-/// Bearer-gated like the logo fetch, and for the same reason: both make the
+/// Person-gated like the logo fetch, and for the same reason: both make the
 /// backend reach out to a third party on the caller's behalf, so both are limited
 /// to signed-in operators rather than open like the catalog read.
 ///
@@ -728,7 +446,7 @@ pub struct OpenRouterLookupQuery {
 #[tracing::instrument(name = "models.openrouter", skip(state, _user), fields(model.openrouter_slug = %query.slug), err(Debug))]
 pub async fn openrouter(
     State(state): State<AppState>,
-    _user: AuthUser,
+    _user: Person,
     Query(query): Query<OpenRouterLookupQuery>,
 ) -> Result<Json<ModelListingOut>, ApiError> {
     let slug = lookup_slug(&query.slug)
@@ -767,20 +485,20 @@ pub async fn openrouter(
 /// `POST /models/list-prices/refresh` — read every catalog entry's list price from
 /// OpenRouter now, as the 24-hour refresh does
 /// ([`crate::bootstrap::refresh_list_prices`]), and answer with what it did.
-/// Requires a bearer token, like every other write to the catalog.
+/// Takes a person's assertion, like every other write to the catalog.
 ///
 /// The public snapshot is regenerated when a rate changed, by a refresh that ended
 /// early too. Runs are untouched: a run keeps the cost it was scored at.
 #[tracing::instrument(name = "models.refresh_list_prices", skip(state, _user), err(Debug))]
 pub async fn refresh_list_prices(
     State(state): State<AppState>,
-    _user: AuthUser,
+    _user: Person,
 ) -> Result<Json<ListPriceRefreshOut>, ApiError> {
     // The refresh queues the snapshot refresh itself, whenever it changed a rate and
     // however it ended: a refresh cut short (a database failure, a caller that went
     // away) leaves the entries it wrote changed.
     let refresh = crate::bootstrap::refresh_list_prices(&state.db, &state.prices, &|| {
-        state.publisher.queue_refresh();
+        state.publisher.queue_refresh_detached();
     })
     .await
     .map_err(ApiError::from)?;
@@ -793,11 +511,11 @@ pub async fn refresh_list_prices(
 }
 
 /// `POST /models/logo` — fetch and sanitize an svgl.app logo for the config form
-/// to preview and store. Requires a bearer token.
+/// to preview and store. Takes a person's assertion.
 #[tracing::instrument(name = "models.logo", skip(state, _user, input), err(Debug))]
 pub async fn logo(
     State(state): State<AppState>,
-    _user: AuthUser,
+    _user: Person,
     Json(input): Json<LogoFetchInput>,
 ) -> Result<Json<LogoFetchOut>, ApiError> {
     let logo_svg = crate::logo::fetch_logo_svg(&state.http, &input.url).await?;
@@ -842,7 +560,7 @@ pub(crate) fn normalize_provider_policy(
         .map(|level| level.trim().to_ascii_lowercase())
         .filter(|level| !level.is_empty());
     if let Some(level) = &native_quantization
-        && test_cabinet_core::pricing::quantization_rank(level).is_none()
+        && crate::pricing::quantization_rank(level).is_none()
     {
         return Err(format!(
             "model.nativeQuantization `{level}` is not a quantization level OpenRouter declares \
@@ -888,7 +606,7 @@ fn normalize_providers(providers: &[String]) -> Vec<String> {
         if !name.is_empty()
             && !out
                 .iter()
-                .any(|kept| test_cabinet_core::pricing::same_provider(kept, name))
+                .any(|kept| crate::pricing::same_provider(kept, name))
         {
             out.push(name.to_string());
         }
@@ -896,12 +614,12 @@ fn normalize_providers(providers: &[String]) -> Vec<String> {
     out
 }
 
-/// The catalog's [launch facts](test_cabinet_core::ModelLaunchFacts) for the model a
+/// The catalog's [launch facts](crate::pricing::ModelLaunchFacts) for the model a
 /// run names — the latest observed context window and input modalities for it — or
 /// empty fields where the catalog has recorded nothing.
 ///
 /// The catalog is the **single store of model facts**, so this is the one place they
-/// are looked up: a run that needs them (a [gg](test_cabinet_core::gg) run, whose
+/// are looked up: a run that needs them (a [gg](test_cabinet_contracts::gg) run, whose
 /// fullness accounting and compaction trigger are measured against the window, and
 /// whose reference-image reads are gated on the modalities) is told the answers at
 /// launch rather than keeping a table of its own.
@@ -918,13 +636,13 @@ pub async fn launch_facts_for(
     db: &crate::db::Db,
     model_id: &str,
     harness: HarnessSlug,
-) -> crate::error::Result<test_cabinet_core::ModelLaunchFacts> {
+) -> crate::error::Result<crate::pricing::ModelLaunchFacts> {
     let canonical = canonical_model_id(model_id, harness);
     if let Some(facts) = latest_launch_facts(db, &canonical).await? {
         return Ok(facts);
     }
     let Some(slug) = db.openrouter_slug_for_alias(&canonical).await? else {
-        return Ok(test_cabinet_core::ModelLaunchFacts::default());
+        return Ok(crate::pricing::ModelLaunchFacts::default());
     };
     Ok(latest_launch_facts(db, &slug).await?.unwrap_or_default())
 }
@@ -935,11 +653,11 @@ pub async fn launch_facts_for(
 async fn latest_launch_facts(
     db: &crate::db::Db,
     key: &str,
-) -> crate::error::Result<Option<test_cabinet_core::ModelLaunchFacts>> {
+) -> crate::error::Result<Option<crate::pricing::ModelLaunchFacts>> {
     Ok(db
         .latest_price(key)
         .await?
-        .map(|row| test_cabinet_core::ModelLaunchFacts {
+        .map(|row| crate::pricing::ModelLaunchFacts {
             context_window: row
                 .context_length
                 .and_then(|length| u64::try_from(length).ok()),

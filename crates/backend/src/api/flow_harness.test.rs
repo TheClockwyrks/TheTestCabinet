@@ -11,14 +11,14 @@ use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::{HeaderMap, StatusCode};
 use sea_orm::EntityTrait;
-use test_cabinet_core::job_api::{DriverState, StatusUpdate};
-use test_cabinet_core::run_record::{HarnessSlug, RunRecord, RunState};
-use test_cabinet_core::test_case::TestType;
+use test_cabinet_contracts::job_api::{DriverState, StatusUpdate};
+use test_cabinet_contracts::run_record::{HarnessSlug, RunRecord, RunState};
 use test_cabinet_entities::job;
+use test_cabinet_suites::test_case::TestType;
 
 use super::AppState;
 use super::coverage::ReviewPlanCombo;
-use crate::auth::AuthUser;
+use crate::auth::Person;
 use crate::db::JobOrigin;
 use crate::db::tests::{links, priced_model_write, validator_manifest, validator_record};
 /// The account every ladder here belongs to.
@@ -49,26 +49,23 @@ pub(crate) async fn test_state() -> (tempfile::TempDir, AppState) {
         None,
         None,
         None,
-        std::sync::Arc::new(test_cabinet_core::AccountsClient::new(
-            config.auth_url.clone(),
-        )),
-        config.publisher_timing(),
+        None,
+        crate::publisher::PublisherTiming {
+            coalesce: config.coalesce,
+            snapshot_retention: config.snapshot_retention,
+        },
     );
     let state = AppState {
         db,
         store,
         ready: crate::readiness::Readiness::new(true),
         publisher,
-        auth: std::sync::Arc::new(test_cabinet_core::AccountsClient::new(
-            config.auth_url.clone(),
-        )),
+        access: None,
         relay: crate::relay::Relay::new(),
-        capacity: crate::capacity::CapacityMonitor::unmonitored(config.artifact_capacity),
         publish_relay: crate::publish_relay::PublishRelay::new(),
         config,
         http: reqwest::Client::new(),
-        prices: test_cabinet_core::OpenRouterPrices::with_endpoint("http://127.0.0.1:0/models"),
-        run_files: None,
+        prices: crate::pricing::OpenRouterPrices::with_endpoint("http://127.0.0.1:0/models"),
         gg_docs: crate::gg_docs::GgDocIndex::new(),
     };
 
@@ -98,22 +95,8 @@ pub(crate) async fn test_state() -> (tempfile::TempDir, AppState) {
     (dir, state)
 }
 
-/// Point `state` at an artifact service at `base`, presenting `token` to it: the
-/// two settings the publish gate needs before it asks about a run's tree.
-pub(crate) fn with_artifact_service(state: &mut AppState, base: &str, token: &str) {
-    let mut config = (*state.config).clone();
-    config.artifacts_internal_url = Some(base.to_string());
-    config.service_token = Some(token.to_string());
-    state.config = std::sync::Arc::new(config);
-}
-
-pub(crate) fn owner() -> AuthUser {
-    AuthUser(test_cabinet_core::Account {
-        id: OWNER.to_string(),
-        username: "owner".to_string(),
-        display_name: "Owner".to_string(),
-        picture_updated_at: None,
-    })
+pub(crate) fn owner() -> Person {
+    Person(OWNER.to_string())
 }
 
 pub(crate) fn harness_combo(model: &str) -> ReviewPlanCombo {
@@ -226,20 +209,8 @@ pub(crate) async fn wait_for_in_flight(state: &AppState, slug: &str, count: usiz
     }
 }
 
-/// Report `job_id` finished through the driver's status endpoint with `record`, as
-/// a driver with no artifact service to upload to does.
+/// Report `job_id` finished through the driver's status endpoint with `record`.
 pub(crate) async fn report(state: &AppState, job_id: &str, record: RunRecord) {
-    report_with_artifacts(state, job_id, record, None).await;
-}
-
-/// Report `job_id` finished with `record`, the report saying `artifacts_stored`
-/// about the run's tree upload.
-pub(crate) async fn report_with_artifacts(
-    state: &AppState,
-    job_id: &str,
-    record: RunRecord,
-    artifacts_stored: Option<bool>,
-) {
     let token = state.db.get_job(job_id).await.unwrap().unwrap().job_token;
     let mut headers = HeaderMap::new();
     headers.insert(
@@ -254,9 +225,8 @@ pub(crate) async fn report_with_artifacts(
             state: DriverState::Succeeded,
             record: Some(record),
             detail: None,
-            artifacts_stored,
+            artifacts_stored: None,
             store_fault: None,
-            run_failure: None,
         }),
     )
     .await
@@ -284,7 +254,6 @@ pub(crate) async fn report_failed(state: &AppState, job_id: &str) -> Option<Stri
             detail: Some("harness unavailable".to_string()),
             artifacts_stored: None,
             store_fault: None,
-            run_failure: None,
         }),
     )
     .await

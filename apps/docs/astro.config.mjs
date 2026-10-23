@@ -96,20 +96,40 @@ function fixExpressiveCodeStylesheet() {
 
 // Developer documentation site for The Test Cabinet. Built as a fully static
 // bundle by `astro build` and deployed to Cloudflare Pages at docs.testcabinet.ai
-// (see scripts/ci/deploy-docs.sh). The public gallery (apps/site) is a
-// separate deployment at testcabinet.ai; these are two sites, not one.
+// (see scripts/ci/deploy-docs.sh). The public gallery (the testcabinet.ai
+// repository) is a separate deployment at testcabinet.ai; these are two sites,
+// not one.
 //
 // `site` is the canonical origin used for generated absolute URLs (sitemap,
 // canonical links). The site serves from the subdomain root, so no `base` is set.
 export default defineConfig({
   site: "https://docs.testcabinet.ai",
+  // These redirects serve the changelogs alone. A changelog is never edited and
+  // its links name former routes, so each former route redirects to the page
+  // that holds its content now. Every other page links to the current path.
+  redirects: {
+    "/components/core/overview/": "/components/architecture/",
+    "/components/core/engines/": "/components/engines/engines/",
+    "/components/core/events/": "/components/driver/events/",
+    "/components/core/execution/": "/components/driver/execution/",
+    "/components/core/harnesses/": "/components/driver/harnesses/",
+    "/components/core/orchestrators/": "/components/driver/orchestrators/",
+    "/components/core/showcase/": "/components/driver/showcase/",
+    "/components/core/validation/": "/components/driver/validation/",
+    "/components/core/metrics/": "/components/contracts/metrics/",
+    "/components/core/run-records/": "/components/contracts/run-records/",
+    "/components/core/results/": "/components/backend/results/",
+    "/components/core/test-case-groups/":
+      "/components/backend/test-case-groups/",
+    "/quickstarts/setup/register-and-login/": "/quickstarts/setup/sign-in/",
+  },
   integrations: [
     fixExpressiveCodeStylesheet(),
     starlight({
       title: "The Test Cabinet",
       description:
         "Developer documentation for The Test Cabinet, a benchmark for AI models and the coding harnesses that drive them.",
-      // Brand the docs to match the public gallery (apps/site): the same arcade
+      // Brand the docs to match the public gallery (testcabinet.ai): the same arcade
       // cabinet mark, favicon, synthwave palette, and monospace type. The palette
       // remap lives in `src/styles/theme.css`; the gallery stays a separate
       // deployment with its own animated backdrop that the docs deliberately omit.
@@ -146,7 +166,7 @@ export default defineConfig({
               collapsed: true,
               items: [
                 "quickstarts/setup/set-up-authentication",
-                "quickstarts/setup/register-and-login",
+                "quickstarts/setup/sign-in",
               ],
             },
             {
@@ -287,27 +307,26 @@ export default defineConfig({
           label: "Components",
           collapsed: true,
           items: [
-            // System-wide overview, replacing the old Architecture section. The
-            // domain concepts that used to live there now sit under the component
-            // that owns them — almost all of them under Core.
+            // System-wide overview. Each domain concept sits under the
+            // component that owns it: the shapes under Contracts, the run
+            // engine's under Driver, review and publish under Backend.
             "components/architecture",
             "components/live-streaming",
             {
-              label: "Core",
+              label: "Contracts",
               collapsed: true,
               items: [
-                "components/core/overview",
-                "components/core/execution",
-                "components/core/harnesses",
-                "components/core/orchestrators",
-                "components/core/engines",
-                "components/core/test-case-groups",
-                "components/core/events",
-                "components/core/metrics",
-                "components/core/validation",
-                "components/core/run-records",
-                "components/core/showcase",
-                "components/core/results",
+                "components/contracts/overview",
+                "components/contracts/run-records",
+                "components/contracts/metrics",
+              ],
+            },
+            {
+              label: "Engines",
+              collapsed: true,
+              items: [
+                "components/engines/overview",
+                "components/engines/engines",
               ],
             },
             {
@@ -323,7 +342,15 @@ export default defineConfig({
             {
               label: "Driver",
               collapsed: true,
-              items: ["components/driver/overview"],
+              items: [
+                "components/driver/overview",
+                "components/driver/execution",
+                "components/driver/harnesses",
+                "components/driver/orchestrators",
+                "components/driver/events",
+                "components/driver/validation",
+                "components/driver/showcase",
+              ],
             },
             {
               label: "Artifacts",
@@ -331,14 +358,24 @@ export default defineConfig({
               items: ["components/artifacts/overview"],
             },
             {
+              label: "Repos",
+              collapsed: true,
+              items: ["components/repos/overview"],
+            },
+            {
               label: "Arena",
               collapsed: true,
               items: ["components/arena/overview"],
             },
             {
-              label: "Web",
+              label: "Console",
               collapsed: true,
               items: ["components/web/overview"],
+            },
+            {
+              label: "Client",
+              collapsed: true,
+              items: ["components/client/overview"],
             },
             {
               label: "Backend",
@@ -348,18 +385,20 @@ export default defineConfig({
                 "components/backend/api",
                 "components/backend/coverage",
                 "components/backend/ladders",
+                "components/backend/results",
+                "components/backend/test-case-groups",
                 "components/backend/snapshot",
               ],
             },
             {
-              label: "Auth",
+              label: "Identity",
               collapsed: true,
               items: ["components/auth/overview"],
             },
             {
               label: "Site",
               collapsed: true,
-              items: ["components/site/overview"],
+              items: ["components/site/overview", "components/site/serving"],
             },
             {
               label: "UI",
@@ -391,13 +430,14 @@ export default defineConfig({
           collapsed: true,
           items: [
             "development/building",
+            "development/repositories",
             "development/running",
             "development/releasing",
             "development/observability",
             "development/frozen-versions",
           ],
         },
-        // Standing up the backend, auth, dispatcher, and artifact services as
+        // Standing up the backend, dispatcher, artifacts and repos services as
         // real, REMOTE environments (runs are per-run Jobs). Releasing (above)
         // covers the static sites + binary, and
         // Running (above) covers the local mirror on one machine; this section is
@@ -408,6 +448,7 @@ export default defineConfig({
           collapsed: true,
           items: [
             "deployment/overview",
+            "deployment/public-gallery",
             "deployment/backups",
             "deployment/telemetry",
             // The cluster itself, split by plane: what always runs, what a run
@@ -420,7 +461,7 @@ export default defineConfig({
                 "deployment/kubernetes/control-plane",
                 "deployment/kubernetes/run-plane",
                 "deployment/kubernetes/postgres",
-                "deployment/kubernetes/internal-ingress",
+                "deployment/kubernetes/edge",
               ],
             },
           ],
@@ -530,7 +571,8 @@ export default defineConfig({
         // The built-in orchestrators — the data-driven strategies that decide how
         // a run's harness sessions are conducted (single-session vs multi-session).
         // The catalogue overview lists every orchestrator; each built-in then has
-        // its own page. The contract they implement lives under Core.
+        // its own page. The contract they implement lives under Driver
+        // (components/driver/orchestrators).
         {
           label: "Orchestrators",
           collapsed: true,
@@ -540,7 +582,8 @@ export default defineConfig({
         // overview lists every engine; each engine then has its own section,
         // split into the APIs it exposes, the concepts behind its internals, how
         // a build uses it, complete example builds, and how a validator drives
-        // it. The contract they all implement lives under Core.
+        // it. The contract they all implement lives under Components > Engines
+        // (components/engines/engines).
         {
           label: "Engines",
           collapsed: true,
@@ -1071,11 +1114,30 @@ export default defineConfig({
             "comparisons/publishing",
           ],
         },
+        // Test suite definitions — the authored projects a test case is drawn
+        // from. The overview covers what a suite is; the siblings cover each
+        // part a suite declares, from the test cases it exposes down to the
+        // specifications, validators, and debug APIs those test cases are
+        // evaluated against.
+        {
+          label: "Test Suites",
+          collapsed: true,
+          items: [
+            "test-suites/overview",
+            "test-suites/suite-manifest",
+            "test-suites/test-case-definition",
+            "test-suites/specifications",
+            "test-suites/validators",
+            "test-suites/debug-apis",
+            "test-suites/demonstrations",
+            "test-suites/assets",
+            "test-suites/reference-implementations",
+            "test-suites/showcase",
+          ],
+        },
         // The test types The Test Cabinet evaluates models and harnesses with.
         // Each type gets an Overview (what it is, how it works), Manifests (its
-        // `test-case.toml` schema), and Evaluation (how a run is scored). The
-        // domain material that used to live under Core's "Test Cases" page now
-        // sits under End to End, the only type implemented today.
+        // `test-case.toml` schema), and Evaluation (how a run is scored).
         {
           label: "Testing",
           collapsed: true,

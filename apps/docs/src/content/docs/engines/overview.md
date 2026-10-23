@@ -14,7 +14,7 @@ limited to that set.
 
 This section is the catalogue of the engines. For the contract they implement,
 covering how an engine is declared, delivered, versioned, and recorded, see
-[Engines](/components/core/engines/).
+[Engines](/components/engines/engines/).
 
 ## The catalogue
 
@@ -77,4 +77,4 @@ A run resolves the engine package's version at seed time and refuses a selection
 whose version falls outside the declared range. A case's validators are written
 against a particular engine API, so the range is what keeps a run from pairing
 them with an engine they cannot check. The manifest grammar for the range is
-part of the [engine contract](/components/core/engines/).
+part of the [engine contract](/components/engines/engines/).

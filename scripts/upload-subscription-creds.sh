@@ -35,8 +35,8 @@
 # Values are never printed: each upload reads a file with `--file` and the trimmed
 # copy is written to a private temp file and removed on exit. The script temporarily
 # opens the vault firewall to this machine's egress IP only if it isn't already
-# permitted, and removes that rule on exit (a no-op when you run it from the VPN,
-# whose subnet is already allowed).
+# permitted, and removes that rule on exit (a no-op when you run it from a network
+# the vault already allows).
 #
 # Prerequisites: `az` logged in with rights to set secrets on the vault; `jq`; the
 # harness CLIs already signed in on this machine; and the keyvault-csi component

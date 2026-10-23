@@ -1,5 +1,5 @@
 use super::*;
-use test_cabinet_core::PublishState;
+use test_cabinet_contracts::publish_job_api::PublishState;
 
 fn progress(message: &str) -> PublishProgress {
     PublishProgress {

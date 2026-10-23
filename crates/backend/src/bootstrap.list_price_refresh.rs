@@ -6,8 +6,8 @@
 
 use futures_util::StreamExt;
 
-use test_cabinet_core::pricing::{ListPriceResolution, ModelsListingPrices};
-use test_cabinet_core::run_record::HarnessFamily;
+use crate::pricing::{ListPriceResolution, ModelsListingPrices};
+use test_cabinet_contracts::run_record::HarnessFamily;
 
 use super::*;
 use crate::db::StoredModel;
@@ -63,7 +63,7 @@ impl Drop for ChangeReport<'_> {
 /// Every entry is read, whether or not it already carries a list price and whoever
 /// entered it, so a price an operator typed stands only until the next refresh
 /// resolves a rate for that model. The rate is resolved by the
-/// [list-price flow](test_cabinet_core::ModelLaunchFacts::list_price) with the entry's
+/// [list-price flow](crate::pricing::ModelLaunchFacts::list_price) with the entry's
 /// hand-set developer provider: that provider's standard rate while it publishes a
 /// complete one, and never another provider's in its place. An entry neither that
 /// provider nor the model id's author segment prices takes the model's own price in
@@ -83,7 +83,7 @@ impl Drop for ChangeReport<'_> {
 /// cannot be read keeps what it holds and is counted
 /// [unresolved](ListPriceRefresh::unresolved): a price entered by hand for a model that
 /// is not on OpenRouter survives every refresh. A listing that has not answered within
-/// the [read timeout](test_cabinet_core::pricing::READ_TIMEOUT) is one that cannot be
+/// the [read timeout](crate::pricing::READ_TIMEOUT) is one that cannot be
 /// read, so a stalled connection costs the refresh that long and no longer. An entry
 /// whose resolved rate equals the stored one is still written, so its date says how
 /// fresh the figure is.

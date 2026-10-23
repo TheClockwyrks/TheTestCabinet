@@ -168,68 +168,6 @@ pub struct Model {
     /// having at least one review — by an explicit publish. Only published runs
     /// enter the public snapshot.
     pub published: bool,
-    /// Whether the artifact service holds the run's tree, which is what a release
-    /// publishes: `Some(true)` when it does, `Some(false)` when it does not, and
-    /// `None` while nothing has reported on the run (every run of a backend with no
-    /// artifact service). Written by the driver's terminal report, the reclamation
-    /// sweep's reconciliation and the publish gate, and never by a push.
-    #[sea_orm(nullable)]
-    pub artifacts_stored: Option<bool>,
-    /// RFC 3339 of the snapshot refresh that found every media file of this
-    /// published run in the bucket [`media_bucket`](Self::media_bucket) names, or
-    /// `NULL` while none has. The artifact reclamation sweep deletes a published
-    /// run's tree only with this set, and only while that bucket is the configured
-    /// one. Storing the run's record again clears it.
-    #[sea_orm(nullable)]
-    pub media_confirmed_at: Option<String>,
-    /// RFC 3339 of the latest snapshot refresh that evaluated this published run's
-    /// media, confirmed or not. `NULL` for a run no refresh has looked at.
-    #[sea_orm(nullable)]
-    pub media_checked_at: Option<String>,
-    /// The bucket the evaluation recorded in the two columns above was made
-    /// against, as `<endpoint>/<bucket>`. `NULL` for a run no refresh has looked
-    /// at.
-    #[sea_orm(nullable)]
-    pub media_bucket: Option<String>,
-    /// The version of the definition of "confirmed" the evaluation recorded in the
-    /// three columns above was made under. `NULL` for a run no refresh has looked
-    /// at, and for one evaluated before the definition covered every file of a run.
-    /// A confirmation counts only under the version the backend implements.
-    #[sea_orm(nullable)]
-    pub media_confirmation_version: Option<i32>,
-    /// The run's file manifest, as JSON: every file of the run that is in the
-    /// bucket, each with the name the backend store knows it by and its object
-    /// key or keys. Written together with
-    /// [`media_confirmed_at`](Self::media_confirmed_at) and cleared with it.
-    #[sea_orm(column_type = "Text", nullable)]
-    pub media_manifest: Option<String>,
-    /// RFC 3339 of when the artifact reclamation sweep deleted this run's tree on
-    /// purpose, or `NULL` for a run whose tree was never reclaimed.
-    #[sea_orm(nullable)]
-    pub artifacts_reclaimed_at: Option<String>,
-    /// Why the tree was reclaimed (`published`, `failed` or `canceled`); set
-    /// together with [`artifacts_reclaimed_at`](Self::artifacts_reclaimed_at).
-    #[sea_orm(nullable)]
-    pub artifacts_reclaimed_reason: Option<String>,
-    /// RFC 3339 of when the backend's state reclamation sweep removed this run's
-    /// files from the backend's own store on purpose, or `NULL` for a run whose
-    /// files were never reclaimed. Cleared when the run's record is stored again
-    /// and when a file is uploaded for the run.
-    #[sea_orm(nullable)]
-    pub state_reclaimed_at: Option<String>,
-    /// Why the files were reclaimed (`published`, `failed` or `canceled`); set
-    /// together with [`state_reclaimed_at`](Self::state_reclaimed_at).
-    #[sea_orm(nullable)]
-    pub state_reclaimed_reason: Option<String>,
-    /// Whether automatic publishing passed this run over because its artifact tree
-    /// could not be confirmed, which hands the run to the backend's periodic retry.
-    /// Cleared once the run is published or has a publish job.
-    pub auto_publish_deferred: bool,
-    /// Whether the record's tool-call tally has been counted. Read only for a Codex
-    /// or gg run, whose tally is counted off its event stream: one stored before
-    /// that counting existed is counted the first time a comparison holds it, and
-    /// this is what tells a run with no tool calls from one never counted.
-    pub tool_calls_counted: bool,
     /// The full `RunRecord` serialized verbatim (links populated).
     #[sea_orm(column_type = "Text")]
     pub record_json: String,
@@ -252,6 +190,18 @@ pub struct Model {
     /// The run's recorded normalized event stream as a JSON array, or `NULL`.
     #[sea_orm(column_type = "Text", nullable)]
     pub events_json: Option<String>,
+    /// Whether the artifacts service holds the run's tree, as the driver's terminal
+    /// report said (`artifactsStored`): `true` when the service acknowledged it,
+    /// `false` when it did not, and `NULL` while no report has said, which is what a
+    /// run of a driver with no artifacts service carries. A report that omits the
+    /// field leaves it as it is.
+    #[sea_orm(nullable)]
+    pub artifacts_stored: Option<bool>,
+    /// Whether the record's tool-call tally has been counted. Read only for a Codex
+    /// or gg run, whose tally is counted off its event stream: one stored before
+    /// that counting existed is counted the first time a comparison holds it, and
+    /// this is what tells a run with no tool calls from one never counted.
+    pub tool_calls_counted: bool,
     /// RFC 3339 of the last write that changed anything observable about this row
     /// — the **mutation timestamp**, distinct from `finished_at` (when the run
     /// stopped executing) and `published_at` (when it went public).

@@ -12,13 +12,14 @@ constraints that govern the task. The matching
 ## Setup
 
 - [First Time Setup](/guides/setup/first-time-setup/) installs the toolchain,
-  stands up a reachable backend, registers an account, and makes a first run.
+  stands up a reachable backend, signs in through Cloudflare Access, and makes a
+  first run.
 
 ## Development
 
 - [Running the Local Service Stack](/guides/development/running-the-local-service-stack/)
-  stands up the backend, auth, dispatcher, driver, artifact, and arena services
-  on local k3d, and drives runs the way a deployment does.
+  stands up the backend, dispatcher, driver, artifacts, repos, publisher and
+  arena services on local k3d, and drives runs the way a deployment does.
 - [Reviewing Test Run Results](/guides/development/reviewing-test-run-results/)
   covers playing a finished run, reading its validation signals, and writing the
   required review.

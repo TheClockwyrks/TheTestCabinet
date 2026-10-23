@@ -34,9 +34,9 @@ fn sample_manifest(slug: &str, version: &str) -> StoredManifest {
         description: None,
         changelog: "Introduced.".to_string(),
         max_runtime_seconds: 1800,
-        test_type: test_cabinet_core::TestType::EndToEnd,
-        engines: vec![test_cabinet_core::EngineSupport::unbounded(
-            test_cabinet_core::engine::NONE_SLUG,
+        test_type: test_cabinet_suites::test_case::TestType::EndToEnd,
+        engines: vec![test_cabinet_suites::test_case::EngineSupport::unbounded(
+            test_cabinet_suites::engine::NONE_SLUG,
         )],
         experimental: false,
         build: Some(StoredBuild {
@@ -53,8 +53,8 @@ fn sample_manifest(slug: &str, version: &str) -> StoredManifest {
         simulation: None,
         r#match: None,
         replay: None,
-        asset_kind: test_cabinet_core::AssetKind::Sprite,
-        asset_dimension: test_cabinet_core::AssetDimension::TwoD,
+        asset_kind: test_cabinet_suites::test_case::AssetKind::Sprite,
+        asset_dimension: test_cabinet_suites::test_case::AssetDimension::TwoD,
         sheet: None,
         voxel: None,
         model: None,
@@ -110,7 +110,7 @@ fn sample_manifest(slug: &str, version: &str) -> StoredManifest {
         }],
         common_references: vec![StoredReference {
             view: "gameplay".to_string(),
-            kind: test_cabinet_core::ReferenceKind::Rendered,
+            kind: test_cabinet_suites::test_case::ReferenceKind::Rendered,
             extension: "png".to_string(),
         }],
         common_proofs: vec![],
@@ -138,7 +138,7 @@ fn sample_manifest(slug: &str, version: &str) -> StoredManifest {
                 outputs: vec![StoredReviewOutput {
                     id: "spin".to_string(),
                     name: "Spin".to_string(),
-                    kind: test_cabinet_core::MediaKind::Image,
+                    kind: test_cabinet_suites::test_case::MediaKind::Image,
                 }],
             }),
         }],
@@ -155,7 +155,7 @@ fn sample_manifest(slug: &str, version: &str) -> StoredManifest {
             id: "cue-clips-rail".to_string(),
             title: "Cue ball clips the rail".to_string(),
             date: Some("2026-07-17".to_string()),
-            severity: test_cabinet_core::test_case::ErratumSeverity::Major,
+            severity: test_cabinet_suites::test_case::ErratumSeverity::Major,
             affects_scoring: true,
             exclude_from_score: false,
             body: "Known tunnelling at high speed.".to_string(),
@@ -163,6 +163,7 @@ fn sample_manifest(slug: &str, version: &str) -> StoredManifest {
             variant: None,
             review: None,
         }],
+        suite: None,
     }
 }
 
@@ -379,8 +380,8 @@ fn a_template_spec_renders_for_the_selected_engine() {
         template: true,
         kind: Default::default(),
     };
-    let simple_2d = test_cabinet_core::EngineCatalog::with_package_store("/nonexistent")
-        .resolve(&test_cabinet_core::engine::EngineSelection::new(
+    let simple_2d = test_cabinet_engines::built_in_catalog_in("/nonexistent")
+        .resolve(&test_cabinet_suites::engine::EngineSelection::new(
             "simple-2d",
         ))
         .unwrap();
@@ -431,7 +432,7 @@ fn validation_baseline_serves_a_pre_engine_layout_as_the_none_engine() {
     let (_dir, store) = temp_store();
     let root = store
         .version_dir("pong", "v1.0.0")
-        .join(test_cabinet_core::VALIDATION_BASELINE_DIR);
+        .join(test_cabinet_contracts::layout::VALIDATION_BASELINE_DIR);
     std::fs::create_dir_all(root.join("base")).unwrap();
     std::fs::write(root.join("base/serve__clip.webm"), b"legacy").unwrap();
 
@@ -480,7 +481,7 @@ fn validation_baseline_reads_committed_case_scoped_media() {
     // back.
     let baseline_dir = store
         .version_dir("pong", "v1.0.0")
-        .join(test_cabinet_core::VALIDATION_BASELINE_DIR)
+        .join(test_cabinet_contracts::layout::VALIDATION_BASELINE_DIR)
         .join("simple-2d")
         .join("base");
     std::fs::create_dir_all(&baseline_dir).unwrap();
@@ -546,7 +547,7 @@ fn case_showcase_serves_only_manifest_listed_media() {
         media: vec![StoredShowcaseMedia {
             file: "title.png".to_string(),
             name: "The title screen".to_string(),
-            kind: test_cabinet_core::MediaKind::Image,
+            kind: test_cabinet_suites::test_case::MediaKind::Image,
             key: "showcase/base/title.png".to_string(),
         }],
     });
@@ -625,7 +626,7 @@ fn validation_files_lists_the_whole_script_directory_recursively() {
     // any shared modules they import, which may be flat siblings or nested.
     let validation_dir = store
         .version_dir("pong", "v1.0.0")
-        .join(test_cabinet_core::VALIDATION_SCRIPT_DIR);
+        .join(test_cabinet_contracts::layout::VALIDATION_SCRIPT_DIR);
     std::fs::create_dir_all(validation_dir.join("lib")).unwrap();
     std::fs::write(validation_dir.join("ball-spin.mjs"), b"driver").unwrap();
     std::fs::write(validation_dir.join("_helpers.mjs"), b"shared").unwrap();
@@ -1092,7 +1093,7 @@ fn the_code_analysis_slot_is_the_generic_artifact_slot_named_code_analysis() {
     );
     // The route segment is the same string, and it is the stem of the run tree's file.
     assert_eq!(
-        test_cabinet_core::CODE_ANALYSIS_TREE_ARTIFACT,
+        test_cabinet_contracts::code_analysis::CODE_ANALYSIS_TREE_ARTIFACT,
         format!("{CODE_ANALYSIS_ARTIFACT}.json.gz"),
     );
 }
@@ -1215,121 +1216,30 @@ fn a_manifest_stored_before_validator_engine_scoping_reads_as_unrestricted() {
     assert!(stored.engines.is_empty());
 }
 
-// --- A run's files by manifest name ---------------------------------------------
-
 #[test]
-fn a_runs_file_is_found_at_the_path_its_writer_used() {
+fn clearing_staging_removes_every_leftover() {
     let (_dir, store) = temp_store();
-    store.write_run_proof("r1", "title.png", b"p").unwrap();
-    store.write_run_validation("r1", "shot.png", b"v").unwrap();
-    store.write_run_asset("r1", "replay-1.json", b"a").unwrap();
-    store.write_run_showcase("r1", "clip.webm", b"s").unwrap();
-    store.write_run_code_analysis("r1", b"c").unwrap();
-    store.write_run_controller("r1", b"w").unwrap();
-    store.write_run_replay("r1", b"r").unwrap();
-
-    for (name, bytes) in [
-        ("proof/title.png", b"p"),
-        ("validation/shot.png", b"v"),
-        ("asset/replay-1.json", b"a"),
-        ("showcase/clip.webm", b"s"),
-        ("code-analysis.json", b"c"),
-        ("controller.wasm", b"w"),
-        ("replay.json", b"r"),
-    ] {
-        let path = store.run_file_path("r1", name).expect(name);
-        assert_eq!(std::fs::read(&path).unwrap(), bytes, "{name}");
-        assert!(!store.run_file_absent("r1", name), "{name}");
-    }
-}
-
-#[test]
-fn a_name_that_leaves_the_runs_folder_has_no_path_and_is_not_called_absent() {
-    let (_dir, store) = temp_store();
-    for (run, name) in [
-        ("r1", "../r2/controller.wasm"),
-        ("r1", "proof/../../x"),
-        ("r1", "/etc/passwd"),
-        ("r1", "proof//title.png"),
-        ("r1", ""),
-        ("..", "controller.wasm"),
-        ("a/b", "controller.wasm"),
-    ] {
-        assert_eq!(store.run_file_path(run, name), None, "{run} {name}");
-        assert!(!store.run_file_absent(run, name), "{run} {name}");
-    }
-}
-
-#[test]
-fn a_file_is_absent_only_when_the_file_system_says_nothing_is_there() {
-    let (_dir, store) = temp_store();
-    // Nothing of the run, then a run folder without the file's own folder, then
-    // the folder without the file.
-    assert!(store.run_file_absent("r1", "proof/title.png"));
-    store.write_run_controller("r1", b"w").unwrap();
-    assert!(store.run_file_absent("r1", "proof/title.png"));
-    store.write_run_proof("r1", "other.png", b"p").unwrap();
-    assert!(store.run_file_absent("r1", "proof/title.png"));
-    assert!(!store.run_file_absent("r1", "proof/other.png"));
-
-    // Something that is there and is not a readable file is not an absence.
-    std::fs::create_dir_all(store.run_proof_dir("r1").join("title.png")).unwrap();
-    assert!(!store.run_file_absent("r1", "proof/title.png"));
-    assert!(store.read_run_proof("r1", "title.png").is_err());
-    // Nor is a lookup that fails because a file stands where a folder should.
-    assert!(!store.run_file_absent("r1", "controller.wasm/inner"));
-}
-
-#[cfg(unix)]
-#[test]
-fn a_dangling_link_at_a_files_path_is_not_an_absence() {
-    let (_dir, store) = temp_store();
-    std::fs::create_dir_all(store.run_proof_dir("r1")).unwrap();
-    std::os::unix::fs::symlink(
-        "/nonexistent/target",
-        store.run_proof_dir("r1").join("title.png"),
-    )
-    .unwrap();
-    assert!(!store.run_file_absent("r1", "proof/title.png"));
-}
-
-// --- What the tournament replays hold --------------------------------------------
-
-#[test]
-fn a_store_with_no_tournament_holds_no_replay_bytes() {
-    let (_dir, store) = temp_store();
-    assert_eq!(
-        store.tournament_replay_usage().unwrap(),
-        StoreUsage::default()
-    );
-}
-
-#[test]
-fn the_tournament_replays_are_measured_across_every_tournament_and_match() {
-    let (_dir, store) = temp_store();
-    store.write_tournament_match("t1", "m1", &[0; 10]).unwrap();
-    store.write_tournament_match("t1", "m2", &[0; 20]).unwrap();
-    store.write_tournament_match("t2", "m1", &[0; 300]).unwrap();
-    // A run's own files are not tournament replays.
     store
-        .write_run_asset("r1", "replay.json", &[0; 4000])
+        .write_manifest(&sample_manifest("pong", "v1.0.0"))
         .unwrap();
 
-    assert_eq!(
-        store.tournament_replay_usage().unwrap(),
-        StoreUsage {
-            bytes: 330,
-            files: 3
-        }
-    );
+    // A half-built version with nested content, an empty one and a stray file.
+    let half_built = store.new_staging_dir("pong", "v2.0.0").unwrap();
+    std::fs::create_dir_all(half_built.join("src/deep")).unwrap();
+    std::fs::write(half_built.join("src/deep/main.js"), "x").unwrap();
+    store.new_staging_dir("snake", "v1.0.0").unwrap();
+    std::fs::write(store.staging_root().join("stray"), "x").unwrap();
 
-    // Overwriting a match counts its new size, not both.
-    store.write_tournament_match("t1", "m1", &[0; 15]).unwrap();
-    assert_eq!(
-        store.tournament_replay_usage().unwrap(),
-        StoreUsage {
-            bytes: 335,
-            files: 3
-        }
-    );
+    assert_eq!(store.clear_staging().unwrap(), 3);
+    assert!(store.staging_root().is_dir(), "the root itself stays");
+    assert_eq!(std::fs::read_dir(store.staging_root()).unwrap().count(), 0);
+    // The served tree is untouched.
+    assert!(store.has_version("pong", "v1.0.0"));
+}
+
+#[test]
+fn clearing_staging_without_a_staging_root_removes_nothing() {
+    let (_dir, store) = temp_store();
+    assert!(!store.staging_root().exists());
+    assert_eq!(store.clear_staging().unwrap(), 0);
 }

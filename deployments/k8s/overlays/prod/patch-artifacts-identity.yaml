@@ -1,0 +1,43 @@
+# The artifacts service's Blob identity in PROD: the user-assigned managed identity
+# holding Storage Blob Data Contributor on the run-tree container, federated to
+# system:serviceaccount:tcab-prod:tcab-artifacts through the testcabinet-prod-westus2-aks
+# OIDC issuer (Run plane, apps/docs/src/content/docs/deployment/kubernetes/run-plane.md
+# "Artifacts service"; the prerequisites in deployment/kubernetes/overview.md).
+#
+#   Storage account tcabprodstore (RG testcabinet-prod-westus2-rg), private container run-trees
+#   Identity        tcab-artifacts-prod
+#   Federated cred  tcab-prod-tcab-artifacts
+#
+# The account has shared-key access disabled, anonymous access off, blob soft delete,
+# container soft delete and versioning on (14 days; deployment/backups.md), and a
+# lifecycle rule expiring noncurrent versions after 14 days. It is the base's
+# TCAB_ARTIFACTS_BLOB_ACCOUNT, so this overlay names no account.
+#
+# The run trees on the claim artifacts-tcab-artifacts-0 the retired StatefulSet held
+# (unpublished runs awaiting review among them) were copied into the container by
+# scripts/ci/copy-artifact-trees.sh, since the Deployment reads the container only;
+# run it once more just before the first deploy that carries this patch, which copies
+# the trees finished since.
+#
+# The `azure.workload.identity/use` pod label is what makes the webhook project the
+# identity's token and variables. The local overlay carries neither, so its pod signs
+# with Shared Key against Azurite.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: tcab-artifacts
+  # the base pins tcab-prod; this overlay's `namespace:` directive retargets it on build
+  namespace: tcab-prod
+  annotations:
+    azure.workload.identity/client-id: "b566beed-c4c1-4306-b2dc-c3fa32af1b80"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tcab-artifacts
+  namespace: tcab-prod
+spec:
+  template:
+    metadata:
+      labels:
+        azure.workload.identity/use: "true"

@@ -1,10 +1,13 @@
 //! The Axum HTTP surface: shared state and router wiring (§1 of
 //! `design/v0.2.0-contracts.md`).
 //!
-//! There is **no app-level auth** — the backend trusts every caller that can
-//! reach it (the private-network model). Handlers are grouped by area into the
-//! submodules below; this module owns the shared [`AppState`] and assembles the
-//! router every endpoint is mounted on.
+//! Every request identifies its caller: [`crate::auth::identify`] runs in front of
+//! every route and answers `401` to a request with no identity, and each handler
+//! that is not an open read gates the identity's kind with one of the extractors in
+//! [`crate::auth`]. Every route is served at the root, where in-cluster callers
+//! reach it, and under `/api`, the prefix the edge routes the backend under.
+//! Handlers are grouped by area into the submodules below; this module owns the
+//! shared [`AppState`] and assembles the router every endpoint is mounted on.
 
 use std::sync::Arc;
 
@@ -31,10 +34,6 @@ mod tests;
 #[path = "api/flow_harness.test.rs"]
 mod flow_harness;
 
-#[cfg(test)]
-#[path = "api/state_reclaim_flow.test.rs"]
-mod state_reclaim_flow;
-
 mod auto_publish;
 mod comparisons;
 mod coverage;
@@ -53,24 +52,22 @@ mod launch;
 mod model_candidates;
 mod model_probes;
 mod models;
-mod publish_gate;
 mod publish_jobs;
 mod publish_retry;
-mod run_files;
 mod runs;
 mod stats;
+mod suite_reference_builds;
 mod test_case_groups;
 mod test_cases;
+mod test_suites;
 mod tournaments;
 
-// Re-export the HTTP response contract types so the `contract-codegen` generator
-// can name them (the handler modules themselves stay private).
+// Re-export the HTTP response contract types, which are the contracts crate's
+// (`test_cabinet_contracts::backend_api`), so the rest of the backend names them
+// here (the handler modules themselves stay private).
 pub use comparisons::ComparisonInput;
 // Reused by the snapshot publisher so a published comparison is folded into the
 // public snapshot with the exact computation the internal `/comparisons` API uses.
-pub use crate::capacity::{
-    ArtifactStorageState, ArtifactStorageStatus, HoldReason, StateVolumeLevel, StateVolumeStatus,
-};
 pub use crate::probe::{ProbeMessage, ProbeRequestOut, ProbeToolCall, ProbeToolFunction};
 pub(crate) use comparisons::assemble_comparison;
 pub use coverage::{
@@ -90,12 +87,11 @@ pub use gg_view::{
 };
 pub use jobs::{
     ActiveJobOut, BulkCancelOut, ClaimedJob, DriverState, JobState, JobStatusOut, LaunchAck,
-    LaunchBatchAck, LaunchBatchBody, LaunchBatchItem, LaunchBody, StatusUpdate, StreamOpened,
-    StreamResync, StreamTopicsBody,
+    LaunchBatchAck, LaunchBatchBody, LaunchBatchItem, LaunchBody, LeaseRenewal, StatusUpdate,
+    StreamOpened, StreamResync, StreamTopicsBody,
 };
 // The backend's boot runs a launch pass of every running ladder dispatch and every filling
 // plan, so a restart never strands one.
-pub(crate) use auto_publish::spawn_auto_publish_retry;
 pub(crate) use coverage::default_retry_count;
 pub use ladders::{
     ClimberBlock, ClimberStatus, DispatchRuns, DispatchStatus, Ladder, LadderAxis, LadderClimber,
@@ -114,12 +110,13 @@ pub use models::{
     ModelConfigInput, ModelListingOut, ModelOut, ModelPricesOut, ModelSeedOut, compose_catalog,
 };
 pub(crate) use publish_retry::spawn_failed_publish_retry;
-pub use run_files::RunFileBucket;
-pub use test_case_groups::{TestCaseGroupOut, TestCaseGroupsResponse};
+pub use suite_reference_builds::ReferenceBuildOut;
+pub use test_case_groups::{TestCaseGroupOut, TestCaseGroupsResponse, test_case_group_out};
 pub use test_cases::{
     CatalogCase, CatalogResponse, CatalogShowcaseOut, ShowcaseMediaOut, VersionResponse,
     VersionsResponse,
 };
+pub use test_suites::{SuiteOut, SuiteVersionResponse, SuitesResponse};
 // The `/stats` response contract lives beside its folds in `crate::stats`
 // (the handlers in `api::stats` own only the corpus); re-exported here so the
 // generator names it the way it names every other response envelope.
@@ -142,15 +139,13 @@ pub struct AppState {
     pub ready: Readiness,
     /// The coalescing snapshot publisher.
     pub publisher: Publisher,
-    /// Verifies bearer tokens against the standalone auth service. The mutating
-    /// run endpoints require a valid token (see [`crate::auth::AuthUser`]).
-    pub auth: Arc<test_cabinet_core::AccountsClient>,
+    /// The Access assertion check, or `None` for a backend with no Access
+    /// application configured, which takes a person's identity from the local
+    /// identity header (see [`crate::auth`]).
+    pub access: crate::auth::AccessMode,
     /// The live event/preview fan-out for in-flight runs (the `/jobs/{id}/live`
     /// and `/notifications` streams), fed by the drivers' progress ingestion.
     pub relay: Relay,
-    /// The watch on the artifact store's free space, which the run claim consults
-    /// before it hands out a run (see [`crate::capacity`]).
-    pub capacity: crate::capacity::CapacityMonitor,
     /// The live progress fan-out for in-flight publish jobs (the
     /// `/publish-jobs/{id}/live` stream), fed by the publisher's progress and
     /// terminal-result ingestion. The publish path's analogue of
@@ -164,11 +159,7 @@ pub struct AppState {
     pub http: reqwest::Client,
     /// The OpenRouter reads: a model's list price, and the catalog facts observed
     /// when a run completes and on the periodic refresh.
-    pub prices: test_cabinet_core::OpenRouterPrices,
-    /// The public bucket the run file routes read a confirmed run's files back
-    /// from when the store no longer holds them (see [`RunFileBucket`]). `None` on a
-    /// backend with no bucket, whose routes answer from the store alone.
-    pub run_files: Option<RunFileBucket>,
+    pub prices: crate::pricing::OpenRouterPrices,
     /// The in-memory gg [document index](crate::gg_docs::GgDocIndex) the analysis
     /// query endpoints run over. Loaded lazily on the first query and reconciled per
     /// id thereafter, so a deployment that never opens Discover never pays for it.
@@ -190,8 +181,62 @@ pub struct AppState {
 /// raises its own (whole-tarball) limit for the same reason.
 const MAX_RUN_UPLOAD_BYTES: usize = 512 * 1024 * 1024;
 
-/// Build the Axum router with every contract endpoint mounted.
+/// Build the Axum router with every contract endpoint mounted, at the root and
+/// under the edge's `/api` prefix, behind the identity check.
 pub fn router(state: AppState) -> Router {
+    let routes = routes();
+    Router::new()
+        .nest(crate::auth::EDGE_PREFIX, routes.clone())
+        .merge(routes)
+        // Innermost, so the telemetry below records a refused request like any
+        // other. Every route needs an identity, except the probes and the two
+        // `verify-token` routes (see `crate::auth::is_exempt`).
+        .layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            crate::auth::identify,
+        ))
+        // Telemetry. Layers wrap from the bottom up, so `TraceLayer` (added last)
+        // is outermost: it creates one server span per request and enters it for
+        // the inner stack. `trace_and_measure` (added first, thus nested inside)
+        // therefore runs *within* that span — it grafts the caller's W3C trace
+        // context onto the span (so server spans join the client's trace) and
+        // records request metrics. Both degrade to no-ops when telemetry is off.
+        .layer(axum::middleware::from_fn(trace_and_measure))
+        .layer(TraceLayer::new_for_http())
+        // Through the edge the console is served from the backend's own origin, so
+        // nothing there is cross-origin. A permissive CORS policy is kept for a
+        // browser on another origin, such as a development server; it widens nothing,
+        // since every request still needs an identity, and it sends no credentials, so
+        // a wildcard origin is valid. `permissive()` sets
+        // `Access-Control-Allow-Headers: *`, but per the Fetch spec `*` does not cover
+        // `Authorization`, so mirror the request's headers instead, which echoes
+        // `Authorization` back explicitly.
+        .layer(CorsLayer::permissive().allow_headers(AllowHeaders::mirror_request()))
+        // Compress responses for callers that advertise `Accept-Encoding: gzip`.
+        // Outermost, so it sees the final response of every route. The listings
+        // are the reason: `GET /runs` hands back whole run records, which reaches
+        // megabytes of JSON on a populated deployment — fast to produce, but slow
+        // to *deliver* to a console sitting at the end of a thin link,
+        // where it dominates the page load. JSON compresses roughly an order of
+        // magnitude, so this is the difference between a snappy console and one
+        // that appears hung.
+        //
+        // `CompressionLayer`'s default predicate is what makes this safe to apply
+        // service-wide rather than per-route: it skips responses under 32 bytes
+        // (where a gzip header costs more than it saves), already-compressed image
+        // payloads, gRPC, and — critically — `text/event-stream`. This service
+        // streams SSE (`/jobs/{id}/live`, `/publish-jobs/{id}/live`,
+        // `/notifications`, `/runs/{id}/events`); compressing those would buffer
+        // events behind the encoder and stall the live views that depend on them.
+        // Keep that predicate intact: narrowing it to "compress everything" would
+        // break streaming in a way that only shows up under a real client.
+        .layer(CompressionLayer::new().gzip(true))
+        .with_state(state)
+}
+
+/// Every contract endpoint, before the identity check and the telemetry, CORS and
+/// compression layers [`router`] wraps them in.
+fn routes() -> Router<AppState> {
     Router::new()
         .route("/healthz", get(health))
         // Readiness, split from liveness above: the process is alive and correct
@@ -199,15 +244,7 @@ pub fn router(state: AppState) -> Router {
         // definition store is populated. Point a readinessProbe here and a
         // livenessProbe at /healthz — never both at one endpoint (see `ready`).
         .route("/readyz", get(ready))
-        // The console's client configuration: today just the data-plane artifact
-        // service base URL, so the console can resolve a pre-publish run's build
-        // and media links against it (the control-plane backend never serves the
-        // bytes). A single read, no auth.
-        .route("/config", get(client_config))
-        // The backend's reading of the artifact store's free space, and whether it
-        // is holding the run queue on it. Ungated like the other reads: it is what
-        // the console shows every visitor of a held queue.
-        .route("/artifacts/capacity", get(artifact_capacity))
+        // Ingest takes the service token.
         .route("/ingest", post(ingest_api::ingest))
         // The model catalog: a merged read (curated config ⋃ models derived from
         // runs, with their observed catalog facts) plus operator-driven config CRUD,
@@ -231,7 +268,7 @@ pub fn router(state: AppState) -> Router {
         )
         // Model probes: RaC-readiness checks of a catalog model (see
         // `crate::probe`). Triggering and the provider enumeration are
-        // bearer-gated (they reach OpenRouter on the caller's behalf, the
+        // person-gated (they reach OpenRouter on the caller's behalf, the
         // trigger spending real credit); the reads are open like the catalog.
         // History lives under the model, one probe under its own id.
         .route(
@@ -243,7 +280,7 @@ pub fn router(state: AppState) -> Router {
             get(model_probes::providers),
         )
         // The provider candidate list the next gg enqueue of the model would build, read from
-        // OpenRouter's endpoints listing now. Bearer-gated like the provider enumeration: it
+        // OpenRouter's endpoints listing now. Person-gated like the provider enumeration: it
         // reaches OpenRouter on the caller's behalf.
         .route(
             "/models/{slug}/candidates",
@@ -258,8 +295,8 @@ pub fn router(state: AppState) -> Router {
         .route("/stats/providers", get(stats::providers))
         .route("/stats/model-accuracy", get(stats::model_accuracy))
         .route("/stats/cabinet", get(stats::cabinet))
-        // Per-harness configuration (today: max parallelism). The list is an open
-        // read; setting a harness's config requires a token.
+        // Per-harness configuration (today: max parallelism). The list is a read;
+        // setting a harness's config takes a person's assertion.
         .route("/harness-config", get(harness_config::list))
         .route("/harness-config/{slug}", post(harness_config::set))
         .route("/test-case-groups", get(test_case_groups::list))
@@ -298,6 +335,10 @@ pub fn router(state: AppState) -> Router {
             "/test-cases/{slug}/versions/{version}/validation-files",
             get(test_cases::validation_files),
         )
+        .route(
+            "/test-cases/{slug}/versions/{version}/suite-files",
+            get(test_cases::suite_files),
+        )
         // One reference build's committed baseline validation media
         // (`<item>__<output>.<ext>`), synthesized once at capture-baselines time from
         // the reference implementation and served case-scoped — the invariant
@@ -315,6 +356,41 @@ pub fn router(state: AppState) -> Router {
         .route(
             "/test-cases/{slug}/versions/{version}/showcase/{variant}/{file}",
             get(test_cases::case_showcase),
+        )
+        // The test suites the backend has ingested: the listing, one version's
+        // resolved record, and the bytes that record points at. They read the
+        // definition store rather than the checkout, so a deployment whose checkout
+        // is absent still serves what it ingested. The test cases a suite defines
+        // are served through the `/test-cases` family above like any other case,
+        // carrying the suite coordinate they were lowered from.
+        .route("/test-suites", get(test_suites::list))
+        .route("/test-suites/{slug}/{version}", get(test_suites::version))
+        .route(
+            "/test-suites/{slug}/{version}/showcase/{*path}",
+            get(test_suites::showcase_file),
+        )
+        .route(
+            "/test-suites/{slug}/{version}/assets/{*path}",
+            get(test_suites::asset_file),
+        )
+        // A suite version's reference builds. The Spec Cabinet uploads each
+        // engine's verified static build (with the authorization `POST /ingest`
+        // carries), and the console plays it from the reads below, which serve it the
+        // way the artifact service serves a run's `build/`. Both the bare and
+        // trailing-slash roots serve the build's `index.html`, since `{*path}` does
+        // not match an empty path. No `DefaultBodyLimit` layer: `upload` takes the
+        // raw `Body` and caps it as it spools.
+        .route(
+            "/suites/{slug}/versions/{version}/reference-builds/{engine}",
+            put(suite_reference_builds::upload).get(suite_reference_builds::build_root),
+        )
+        .route(
+            "/suites/{slug}/versions/{version}/reference-builds/{engine}/",
+            get(suite_reference_builds::build_root),
+        )
+        .route(
+            "/suites/{slug}/versions/{version}/reference-builds/{engine}/{*path}",
+            get(suite_reference_builds::build_path),
         )
         // The gameplay READMEs of earlier runs of a game jam (matched on the same
         // harness + model), oldest first. The driver reads this before seeding a
@@ -338,21 +414,24 @@ pub fn router(state: AppState) -> Router {
         // the static segment outranks the dynamic one under the router's matcher, so
         // this never resolves as a run-id lookup. A read.
         .route("/runs/unreadable", get(runs::unreadable))
-        // Read one run, or delete it (auth-gated; refused for a published run).
+        // Read one run, or delete it (person-gated; refused for a published run).
         .route("/runs/{id}", get(runs::get).delete(runs::delete))
-        // Submit a review for a run (requires auth; attributed to the token's
-        // account). A run may carry many reviews, one per account.
+        // Submit a review for a run, attributed to the caller's email (or an Access
+        // service token's name). A run may carry many reviews, one per identity.
         .route("/runs/{id}/reviews", post(runs::add_review))
-        // The signed-in account's own submitted reviews (auth-gated; keyed to the
-        // token's account), newest-first with a numbered pager. Backs the account
-        // page's Reviews tab. Console-only — the static site carries no token.
+        // The signed-in person's own submitted reviews (takes a person's
+        // assertion; keyed to their email), newest-first with a numbered pager. Backs
+        // the account page's Reviews tab. Console-only.
         .route("/account/reviews", get(runs::my_reviews))
-        // Aggregate breakdowns of the signed-in account's recent reviews (auth-gated;
-        // keyed to the token's account): reviews per test case, per model, and per
+        // Aggregate breakdowns of the signed-in person's recent reviews (takes a
+        // person's assertion; keyed to their email): reviews per test case, per model, and per
         // rating given. Backs the account page's Profile tab. Console-only.
         .route("/account/review-stats", get(runs::review_stats))
         // Publish a run (requires auth; refused with no reviews). Flips it public.
         .route("/runs/{id}/publish", post(runs::publish))
+        // The run media below are written (POST) by the queue components with their
+        // per-job tokens, and read (GET) by any identity.
+        //
         // A published run's proof-of-implementation media (`<proof-id>.<ext>`):
         // uploaded by the publisher (POST) and served as-is for the reviewer UI's
         // submitted-evidence panes (GET).
@@ -445,26 +524,26 @@ pub fn router(state: AppState) -> Router {
                 .post(tournaments::put_match_replay)
                 .layer(DefaultBodyLimit::max(MAX_RUN_UPLOAD_BYTES)),
         )
-        // The run queue. A console enqueues a run (`POST /jobs`, auth-gated) — or a
+        // The run queue. A console enqueues a run (`POST /jobs`, person-gated) — or a
         // whole batch in one request (`POST /jobs/batch`, same gate); the dispatcher
         // claims the oldest (`POST /jobs/next`, service-token); a per-run driver
         // streams progress and the terminal record back
         // (`POST /jobs/{id}/events|preview|status`, per-job token). The console
         // observes it via the live stream, the status, and the active-run list.
-        // `/jobs/batch`, `/jobs/active`, `/jobs/next`, and the three `/jobs/cancel-*`
-        // controls are static, so they outrank the `/jobs/{id}` dynamic route
-        // regardless of registration order.
+        // `/jobs/batch`, `/jobs/active`, `/jobs/next`, `/jobs/leases`, and the three
+        // `/jobs/cancel-*` controls are static, so they outrank the `/jobs/{id}`
+        // dynamic route regardless of registration order.
         .route("/jobs", post(jobs::launch))
         .route("/jobs/batch", post(jobs::launch_batch))
-        // The gg run mode's own enqueue surface (auth-gated, the same gate as
+        // The gg run mode's own enqueue surface (person-gated, the same gate as
         // `POST /jobs`). A gg run is configured by a capability set rather than the
         // flat harness+model+orchestrator tuple, so it gets a gg-native request shape
         // (`POST /gg/runs`); the enqueued job drains through the same
         // dispatcher/driver/relay path, so it is observed through the shared
         // `/jobs/{id}` status and `/jobs/{id}/live` monitor.
         .route("/gg/runs", post(gg::launch_gg))
-        // The operator's saved gg configurations (auth-gated; keyed to the token's
-        // account): named capability sets the new-run form offers once `gg` is
+        // The operator's saved gg configurations (takes a person's assertion; keyed to their
+        // email): named capability sets the new-run form offers once `gg` is
         // picked as the orchestrator. `/gg/configs` is static and `/gg/configs/{id}`
         // is its child, so neither collides with `/gg/runs`.
         .route(
@@ -475,8 +554,8 @@ pub fn router(state: AppState) -> Router {
             "/gg/configs/{id}",
             put(gg_config::update_config).delete(gg_config::delete_config),
         )
-        // The operator's saved gg **agents** (auth-gated; keyed to the token's
-        // account): agent profiles authored on their own, which a configuration
+        // The operator's saved gg **agents** (takes a person's assertion; keyed to their
+        // email): agent profiles authored on their own, which a configuration
         // imports and may override locally. Data only — gg never reads this
         // surface, because the console resolves an import into the configuration's
         // own agent list before anything is stored or launched. `/gg/agents` is
@@ -490,7 +569,7 @@ pub fn router(state: AppState) -> Router {
             "/gg/agents/{id}",
             put(gg_agent::update_agent).delete(gg_agent::delete_agent),
         )
-        // The gg analysis query surface (auth-gated, like the rest of `/gg`, though
+        // The gg analysis query surface (person-gated, like the rest of `/gg`, though
         // the corpus itself is deployment-wide rather than per-account): evaluate one
         // TCQ query, evaluate a dashboard's worth of them against a single index
         // read, or read the field catalog the editor's completer and sidebar are
@@ -500,10 +579,10 @@ pub fn router(state: AppState) -> Router {
         .route("/gg/query", post(gg_query::run_query))
         .route("/gg/query/batch", post(gg_query::run_query_batch))
         .route("/gg/fields", get(gg_query::gg_fields))
-        // The operator's saved **views** over that corpus (auth-gated; keyed to the
-        // token's account): named queries and the dashboards built from them. The
+        // The operator's saved **views** over that corpus (take a person's
+        // assertion; keyed to their email): named queries and the dashboards built from them. The
         // corpus is deployment-wide and the views are personal — that asymmetry is the
-        // whole model, and it is why these filter on the token's account while
+        // whole model, and it is why these filter on the caller's email while
         // `/gg/query` does not. All four paths are static or children of a static
         // segment, so none collides with `/gg/runs`, `/gg/configs` or `/gg/query`.
         .route(
@@ -533,11 +612,10 @@ pub fn router(state: AppState) -> Router {
         // without either privileging one arm or repeating the tools eleven times, and
         // the console's gg Reference section renders them as a picker over the index.
         //
-        // The **one open read under `/gg`**, and deliberately so — the documents are
-        // static, identical for every caller, and carry no account, run or deployment
-        // data, so they are documentation of the harness in the same class as
-        // `/test-cases` and `/config`; a token would buy nothing and would stop a
-        // signed-out console or the docs site from linking to them.
+        // The **one read under `/gg` any identity reaches**, and deliberately so —
+        // the documents are static, identical for every caller, and carry no account,
+        // run or deployment data, so they are documentation of the harness in the same
+        // class as `/test-cases` and `/config`; a person's assertion would buy nothing.
         //
         // Read at run time from the directory `TCAB_GG_REFERENCE` names (the image
         // bakes it), because the backend must not depend on `test-cabinet-gg` (`oxc`,
@@ -551,8 +629,8 @@ pub fn router(state: AppState) -> Router {
             "/gg/reference/{language}",
             get(gg_reference::gg_reference_api),
         )
-        // The operator's saved harness comparisons (auth-gated; keyed to the token's
-        // account): named A/B experiments whose per-arm distributions are computed on
+        // The operator's saved harness comparisons (takes a person's assertion; keyed to their
+        // email): named A/B experiments whose per-arm distributions are computed on
         // read from the arms' runs. `/comparisons` is static and `/comparisons/{id}`
         // its child.
         .route(
@@ -571,6 +649,9 @@ pub fn router(state: AppState) -> Router {
         )
         .route("/jobs/active", get(jobs::active))
         .route("/jobs/next", post(jobs::claim))
+        // The dispatcher's renewal of the claim leases of the jobs whose driver `Job`
+        // is live (service-token), sent each tick before it judges any lease.
+        .route("/jobs/leases", post(jobs::renew_leases))
         // The Runs page's global stop controls, in increasing order of destruction:
         // clear the runs that have not started ("Clear pending"), kill the ones
         // already executing ("Kill active"), or both at once ("Stop all"). Global by
@@ -581,7 +662,7 @@ pub fn router(state: AppState) -> Router {
         .route("/jobs/cancel-all", post(jobs::cancel_all))
         .route("/jobs/{id}", get(jobs::status))
         // Kill one in-flight run: moves it to the terminal `canceled` state and
-        // closes its live stream. Bearer-gated like the other job mutations.
+        // closes its live stream. Person-gated like the other job mutations.
         .route("/jobs/{id}/cancel", post(jobs::cancel))
         .route("/jobs/{id}/live", get(jobs::live))
         .route("/jobs/{id}/events", post(jobs::ingest_events))
@@ -596,18 +677,27 @@ pub fn router(state: AppState) -> Router {
         // other auth.
         .route("/jobs/{id}/verify-token", post(jobs::verify_token))
         // The publish queue. A console enqueues a publish (`POST /runs/{id}/publish`,
-        // auth-gated, in `runs`); the dispatcher claims the oldest
+        // person-gated, in `runs`); the dispatcher claims the oldest
         // (`POST /publish-jobs/next`, service-token); a per-publish `tcab-publisher`
         // pod streams progress and the terminal result back
         // (`POST /publish-jobs/{id}/events|result`, per-job token). The console
         // observes it via the live NDJSON stream, which ends with the result.
-        // `/publish-jobs/next` is static, so it outranks the `/publish-jobs/{id}`
-        // dynamic route regardless of registration order.
+        // `/publish-jobs/next`, `/publish-jobs/active` and `/publish-jobs/leases` are
+        // static, so they outrank the `/publish-jobs/{id}` dynamic route regardless of
+        // registration order.
         .route("/publish-jobs/next", post(publish_jobs::claim))
+        // The dispatcher's renewal of the claim leases of the publish jobs whose
+        // publisher `Job` is live, and its read of the in-flight publish jobs it judges
+        // lapsed leases from (both service-token).
+        .route("/publish-jobs/leases", post(publish_jobs::renew_leases))
+        .route("/publish-jobs/active", get(publish_jobs::active))
         .route("/publish-jobs/{id}", get(publish_jobs::status))
         .route("/publish-jobs/{id}/live", get(publish_jobs::live))
         .route("/publish-jobs/{id}/events", post(publish_jobs::ingest_events))
         .route("/publish-jobs/{id}/result", post(publish_jobs::report_result))
+        // The dispatcher's report of a publish job whose publisher is gone without
+        // reporting (service token): it records the job failed.
+        .route("/publish-jobs/{id}/lost", post(publish_jobs::report_lost))
         // The artifact service's internal publish-job-token verify call: it forwards
         // the publisher's per-job token here (the backend is the token authority)
         // before serving the run's `tree.tar`. The presented token is the secret, so
@@ -626,9 +716,9 @@ pub fn router(state: AppState) -> Router {
             "/notifications/{stream}/topics",
             put(jobs::set_stream_topics),
         )
-        // Coverage tooling (auth-gated; keyed to the token's account): reusable
+        // Coverage tooling (takes a person's assertion; keyed to their email): reusable
         // groups, multiple declarative plans, and the coverage matrix a plan expands
-        // into. Console-only — the public site carries no token and never calls these.
+        // into. Console-only — the public site never calls these.
         .route(
             "/coverage-groups",
             get(coverage::list_groups).post(coverage::create_group),
@@ -698,45 +788,6 @@ pub fn router(state: AppState) -> Router {
         // Reorder the configuration's rungs by their stable ids.
         .route("/ladders/{id}/rungs/order", post(ladders::reorder_rungs))
         .route("/snapshot/refresh", post(runs::refresh))
-        // Telemetry. Layers wrap from the bottom up, so `TraceLayer` (added last)
-        // is outermost: it creates one server span per request and enters it for
-        // the inner stack. `trace_and_measure` (added first, thus nested inside)
-        // therefore runs *within* that span — it grafts the caller's W3C trace
-        // context onto the span (so server spans join the client's trace) and
-        // records request metrics. Both degrade to no-ops when telemetry is off.
-        .layer(axum::middleware::from_fn(trace_and_measure))
-        .layer(TraceLayer::new_for_http())
-        // The browser UIs (the web console and the gallery) are served from a
-        // different origin than this backend, so every request is cross-origin.
-        // The backend already trusts every caller that can reach it (the
-        // private-network, no-auth model in this module's docs); a permissive CORS
-        // policy keeps the browser from blocking those callers without narrowing
-        // that model. No credentials are sent, so a wildcard origin is valid.
-        // `permissive()` sets `Access-Control-Allow-Headers: *`, but per the Fetch
-        // spec `*` does not cover `Authorization`, so a browser rejects a preflight
-        // for a request carrying our bearer token. Mirror the request's headers
-        // instead, which echoes `Authorization` back explicitly.
-        .layer(CorsLayer::permissive().allow_headers(AllowHeaders::mirror_request()))
-        // Compress responses for callers that advertise `Accept-Encoding: gzip`.
-        // Outermost, so it sees the final response of every route. The listings
-        // are the reason: `GET /runs` hands back whole run records, which reaches
-        // megabytes of JSON on a populated deployment — fast to produce, but slow
-        // to *deliver* to a console sitting behind a VPN or any other thin link,
-        // where it dominates the page load. JSON compresses roughly an order of
-        // magnitude, so this is the difference between a snappy console and one
-        // that appears hung.
-        //
-        // `CompressionLayer`'s default predicate is what makes this safe to apply
-        // service-wide rather than per-route: it skips responses under 32 bytes
-        // (where a gzip header costs more than it saves), already-compressed image
-        // payloads, gRPC, and — critically — `text/event-stream`. This service
-        // streams SSE (`/jobs/{id}/live`, `/publish-jobs/{id}/live`,
-        // `/notifications`, `/runs/{id}/events`); compressing those would buffer
-        // events behind the encoder and stall the live views that depend on them.
-        // Keep that predicate intact: narrowing it to "compress everything" would
-        // break streaming in a way that only shows up under a real client.
-        .layer(CompressionLayer::new().gzip(true))
-        .with_state(state)
 }
 
 /// Middleware run inside the per-request server span: graft the caller's inbound
@@ -802,80 +853,4 @@ async fn ready(
             "storeReady": ready,
         })),
     )
-}
-
-/// `GET /config` — the console's client configuration.
-///
-/// The console talks to one backend URL, but a *pre-publish* run's playable build
-/// and proof/asset media live behind the separate **artifact service** (the data
-/// plane — see `crates/artifacts`). Its base URL is reported here so the console
-/// can prefix the root-relative `links.playable_build` (and the `/runs/{id}/proof|asset/…`
-/// paths) a driver sets. `artifactsUrl` carries the **advertised**
-/// `TCAB_ARTIFACTS_PUBLIC_URL`, which is console-facing only; the backend's own
-/// artifact calls go through `TCAB_ARTIFACTS_URL` instead (see
-/// [`crate::artifacts`]). It is `null` when no artifact service is configured — e.g.
-/// a single-box dev setup — in which case the console leaves those links
-/// unresolved. `arenaUrl` likewise
-/// reports the **arena service** (`TCAB_ARENA_PUBLIC_URL`) the console POSTs
-/// adversarial matches/tournaments to and streams live tournament progress from;
-/// `null` degrades the adversarial run UI.
-///
-/// `snapshotUrl` is the **public read** base of the snapshot bucket
-/// (`TCAB_SNAPSHOT_PUBLIC_URL`) — not the credentialed S3 write endpoint the backend
-/// uploads through. The console joins it with keys it derives itself, today an
-/// asset-generation variant's published reference frames; `null` when the deployment
-/// publishes no public snapshot, in which case that media is simply not shown.
-async fn client_config(
-    axum::extract::State(state): axum::extract::State<AppState>,
-) -> axum::Json<ClientConfig> {
-    axum::Json(ClientConfig {
-        artifacts_url: state.config.artifacts_public_url.clone(),
-        arena_url: state.config.arena_url.clone(),
-        grafana_url: state.config.grafana_url.clone(),
-        snapshot_url: state.config.snapshot_url.clone(),
-    })
-}
-
-/// `GET /artifacts/capacity` — the artifact store's [capacity](crate::capacity) as
-/// the backend currently reads it: the state, whether the run queue is on hold,
-/// the latest free and total bytes, and the two thresholds.
-///
-/// The publish-failure hold is derived from the publish job table as the request
-/// is served, so the answer never rests on what an earlier request found. A table
-/// that cannot be read leaves the answer as it last was.
-async fn artifact_capacity(
-    axum::extract::State(state): axum::extract::State<AppState>,
-) -> axum::Json<crate::capacity::ArtifactStorageStatus> {
-    publish_retry::refresh_publish_hold_best_effort(&state).await;
-    axum::Json(state.capacity.status())
-}
-
-/// The body of `GET /config`: the console's client-side configuration.
-#[derive(Debug, serde::Serialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub struct ClientConfig {
-    /// The artifact service's public base URL, or `null` when artifacts are not
-    /// served separately. The console resolves a pre-publish run's build and media
-    /// links against it.
-    #[cfg_attr(feature = "contract", ts(optional))]
-    pub artifacts_url: Option<String>,
-    /// The arena service's public base URL, or `null` when adversarial execution is
-    /// not served separately. The console POSTs matches/tournaments and streams live
-    /// tournament progress against it; the adversarial run UI degrades when absent.
-    #[cfg_attr(feature = "contract", ts(optional))]
-    pub arena_url: Option<String>,
-    /// Grafana's base URL, or `null` when the deployment runs no observability
-    /// stack. The console uses it to link a run to the traces it emitted; absent,
-    /// that link is simply not rendered.
-    #[cfg_attr(feature = "contract", ts(optional))]
-    pub grafana_url: Option<String>,
-    /// The public snapshot bucket's **read** base URL, or `null` when the deployment
-    /// publishes no public snapshot. The client joins it with the deterministic keys
-    /// it derives — today an asset-generation variant's published reference frames,
-    /// `media/references/<slug>/<version>/<variant>/frames/<index>.png`. This is never
-    /// the S3 write endpoint (`TCAB_R2_ENDPOINT`), which is credentialed and stays
-    /// server-side.
-    #[cfg_attr(feature = "contract", ts(optional))]
-    pub snapshot_url: Option<String>,
 }

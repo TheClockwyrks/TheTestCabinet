@@ -16,6 +16,11 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
+use crate::comparison::ComparisonConfig;
+use crate::review::{
+    AestheticRating, DomainAesthetic, DomainRating, Rating, ReviewDiff, ReviewRevision,
+    ReviewVerdict,
+};
 use sea_orm::ActiveValue::{NotSet, Set};
 use sea_orm::sea_query::{CaseStatement, Expr, Func, IntoCondition, OnConflict, SimpleExpr};
 use sea_orm::{
@@ -25,26 +30,22 @@ use sea_orm::{
     RelationTrait, Select, TransactionTrait,
 };
 use serde::{Deserialize, Serialize};
-use test_cabinet_core::comparison::ComparisonConfig;
-use test_cabinet_core::match_play::TournamentRecord;
-use test_cabinet_core::metrics::{Cost, TokenPrices};
-use test_cabinet_core::reference_lock::ReferenceBuildEntry;
-use test_cabinet_core::review::{
-    AestheticRating, DomainAesthetic, DomainRating, Rating, ReviewDiff, ReviewRevision,
-    ReviewVerdict,
-};
-use test_cabinet_core::run_record::{
+use test_cabinet_contracts::event::HarnessEvent;
+use test_cabinet_contracts::match_play::TournamentRecord;
+use test_cabinet_contracts::metrics::{Cost, TokenPrices};
+use test_cabinet_contracts::reference_lock::ReferenceBuildEntry;
+use test_cabinet_contracts::run_record::{
     HarnessFamily, HarnessSlug, PriorGameJamEntry, RunLinks, RunRecord,
 };
-use test_cabinet_core::test_case::{TestType, version_key};
 use test_cabinet_entities::{
     backfill_state, case_reference_build, case_reference_sheet, comparison, coverage_group,
     coverage_plan, coverage_plan_cell_retry, coverage_settings, gg_agent, gg_config, gg_dashboard,
-    gg_saved_query, harness_config, job, ladder, ladder_dispatch, ladder_dispatch_climber,
-    ladder_dispatch_outcome, ladder_rung, model, model_alias, model_price, model_probe,
-    model_probe_item, publish_job, review, review_plan, review_revision, run, run_link,
-    snapshot_state, tournament,
+    gg_saved_query, harness_config, job, job_event, ladder, ladder_dispatch,
+    ladder_dispatch_climber, ladder_dispatch_outcome, ladder_rung, model, model_alias, model_price,
+    model_probe, model_probe_item, publish_job, review, review_plan, review_revision, run,
+    run_link, snapshot_state, tournament,
 };
+use test_cabinet_suites::test_case::{TestType, version_key};
 use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
 
@@ -60,8 +61,8 @@ use crate::store::{CaseNames, StoredManifest};
 /// back because its harness is at its parallelism cap); `dispatched`, `starting`,
 /// `running` and `validating` each have a driver Job coming up or executing (a
 /// `validating` one has ended its harness session and is collecting and validating
-/// the run), and `storing` has one that has finished its run and is waiting on the
-/// artifact store to take the tree.
+/// the run), and a `storing` one has a driver handing its finished run to durable
+/// storage.
 const IN_FLIGHT_STATES: [&str; 7] = [
     "queued",
     "pending",
@@ -72,30 +73,15 @@ const IN_FLIGHT_STATES: [&str; 7] = [
     "storing",
 ];
 
-/// The job state of a run whose driver is waiting to store its artifact tree.
-pub const STORING_STATE: &str = "storing";
-
 /// The job state of a run whose harness session has ended and whose driver is doing
 /// the post-session work: collecting the tree, the post-run analysis, the case's
-/// toolchain, validation and the upload of the tree.
+/// toolchain and validation.
 pub const VALIDATING_STATE: &str = "validating";
 
-/// The job states a driver exists for: claimed, and not yet terminal. A driver's
-/// `storing` report is taken only from one of these, and these are what the
-/// dispatcher may report lost.
-pub const DRIVEN_STATES: [&str; 5] = [
-    "dispatched",
-    "starting",
-    "running",
-    VALIDATING_STATE,
-    STORING_STATE,
-];
-
 /// The driven job states a driver's `validating` report moves a job out of: every
-/// one before `validating` in the lifecycle. A job already `validating` stays put,
-/// a `storing` one is moved only by the [wait's end](Db::set_job_stored),
-/// and nothing terminal is ever moved, so a late report never moves a job
-/// backwards or overwrites a cancellation.
+/// one before `validating` in the lifecycle. A job already `validating` stays put, a
+/// `storing` one holds its record and is past it, and nothing terminal is ever moved,
+/// so a late report never moves a job backwards or overwrites a cancellation.
 const VALIDATING_FROM_STATES: [&str; 3] = ["dispatched", "starting", "running"];
 
 /// The driven job states a driver's `running` report moves a job out of: the ones
@@ -140,12 +126,83 @@ fn in_flight_limit_to_column(limit: InFlightLimit) -> i32 {
 
 /// The job states that occupy a **parallelism slot** for their harness: a driver
 /// Job has been (or is being) created for them. Used to enforce a harness's maximum
-/// parallelism — `queued`/`pending` jobs have no driver yet, so they do not count.
+/// parallelism — `queued`/`pending` jobs have no driver yet, so they do not count. A
+/// `storing` job's driver is still alive, uploading the finished run, so it keeps its
+/// slot until its terminal report lands.
+const ACTIVE_SLOT_STATES: [&str; 5] = [
+    "dispatched",
+    "starting",
+    "running",
+    VALIDATING_STATE,
+    "storing",
+];
+
+/// The job states a driver exists for, or is being created for: what the dispatcher
+/// may report lost, what a `storing` report may move to `storing`, and the states whose
+/// [claim lease](JOB_LEASE) a renewal extends. Same members as `ACTIVE_SLOT_STATES`,
+/// different question: that one asks which jobs hold a parallelism slot, this one
+/// asks which jobs the backend believes a driver is executing.
+pub const DRIVEN_STATES: [&str; 5] = [
+    "dispatched",
+    "starting",
+    "running",
+    VALIDATING_STATE,
+    "storing",
+];
+
+/// How long a job's claim lease runs: the claim sets the expiry this far past the
+/// claim, and each renewal this far past the renewal (the dispatcher overview's
+/// "Claim leases").
+pub const JOB_LEASE: time::Duration = time::Duration::minutes(2);
+
+/// The lease expiry for a claim or renewal made at `now` (RFC 3339): [`JOB_LEASE`]
+/// past it, written at whole-second precision in UTC (`YYYY-MM-DDTHH:MM:SSZ`).
 ///
-/// A `storing` run counts too. Its session is over, but its record and README are
-/// not stored yet, which is what a game jam's next entry waits for, and the whole
-/// queue is on hold while any run is storing in any case.
-const ACTIVE_SLOT_STATES: [&str; 5] = DRIVEN_STATES;
+/// The fixed width is what makes two stored expiries compare chronologically as
+/// strings; `now` itself may carry any subsecond precision, which is truncated.
+/// `BadRequest` when `now` is not RFC 3339.
+pub fn job_lease_expiry(now: &str) -> Result<String> {
+    lease_expiry(now, JOB_LEASE)
+}
+
+/// How long a model probe's lease runs: the trigger sets the expiry this far past the
+/// trigger, a takeover this far past the takeover, and each renewal this far past the
+/// renewal (the backend overview's "Replicas"; the API's "Model probes").
+pub const PROBE_LEASE: time::Duration = time::Duration::minutes(2);
+
+/// The lease expiry for a probe lease taken or renewed at `now` (RFC 3339):
+/// [`PROBE_LEASE`] past it, at whole-second precision in UTC, like
+/// [`job_lease_expiry`]. `BadRequest` when `now` is not RFC 3339.
+pub fn probe_lease_expiry(now: &str) -> Result<String> {
+    lease_expiry(now, PROBE_LEASE)
+}
+
+/// `lease` past `now` (RFC 3339), written at whole-second precision in UTC.
+fn lease_expiry(now: &str, lease: time::Duration) -> Result<String> {
+    let now = parse_instant(now)?;
+    let expiry = (now + lease)
+        .to_offset(time::UtcOffset::UTC)
+        .replace_nanosecond(0)
+        .map_err(|e| BackendError::BadRequest(format!("lease expiry: {e}")))?;
+    expiry
+        .format(&Rfc3339)
+        .map_err(|e| BackendError::BadRequest(format!("formatting a lease expiry: {e}")))
+}
+
+/// Whether a job's claim lease has lapsed at `now`: it holds none, its stored expiry
+/// does not parse, or the expiry is before `now`. Compared as instants, so neither
+/// side's subsecond precision matters.
+fn lease_lapsed(lease_expires_at: Option<&str>, now: OffsetDateTime) -> bool {
+    lease_expires_at
+        .and_then(|at| OffsetDateTime::parse(at, &Rfc3339).ok())
+        .is_none_or(|expiry| expiry < now)
+}
+
+/// Parse an RFC 3339 instant a caller passed as `now`; `BadRequest` when it is not one.
+fn parse_instant(now: &str) -> Result<OffsetDateTime> {
+    OffsetDateTime::parse(now, &Rfc3339)
+        .map_err(|e| BackendError::BadRequest(format!("`{now}` is not an RFC 3339 instant: {e}")))
+}
 
 /// The in-flight job states that have **cost nothing yet**: the job is waiting to be
 /// claimed (`queued`) or deliberately held back behind a cap or a same-model game jam
@@ -157,15 +214,20 @@ const ACTIVE_SLOT_STATES: [&str; 5] = DRIVEN_STATES;
 pub const CANCELABLE_WAITING_STATES: [&str; 2] = ["queued", "pending"];
 
 /// The in-flight job states that are **already spending**: a driver Job exists and is
-/// being created, starting up, executing, validating, or waiting on the artifact
-/// store, so the tokens for that run are partly or
-/// wholly paid for.
+/// being created, starting up, executing, validating, or storing the finished run,
+/// so the tokens for that run are partly or wholly paid for.
 ///
 /// Cancelling these discards work in progress, which is why the controls that reach
 /// them — `halt all`, the Runs page's "Kill active" — are the rare ones and confirm
 /// first. Same members as `ACTIVE_SLOT_STATES`, different question: that one asks
 /// which jobs hold a parallelism slot, this one asks which are expensive to cancel.
-pub const CANCELABLE_ACTIVE_STATES: [&str; 5] = DRIVEN_STATES;
+pub const CANCELABLE_ACTIVE_STATES: [&str; 5] = [
+    "dispatched",
+    "starting",
+    "running",
+    VALIDATING_STATE,
+    "storing",
+];
 
 /// How long a launch-pass claim on a coverage plan or ladder stays valid before another
 /// caller may take it over.
@@ -191,19 +253,23 @@ pub const REAPED_DETAIL: &str = "interrupted: the backend restarted while this r
 /// every invocation), so a duplicate job leaves an orphaned public build behind.
 /// The `gh` side hides the problem by reusing an existing repo, which is why the
 /// duplication only ever shows up as extra Pages deployments.
+///
+/// A `dispatched` job leaves these states when its publisher reports, when the
+/// dispatcher reports it lost ([`Db::mark_publish_job_lost`]), or when it has been
+/// `dispatched` for [`PUBLISH_JOB_ABANDONED_AFTER`] and the sweep records it failed
+/// ([`Db::fail_abandoned_publish_jobs`]), so none stays here forever.
 const ACTIVE_PUBLISH_STATES: [&str; 2] = ["queued", "dispatched"];
 
-/// How long a `dispatched` publish job may go without an update before it stops
-/// blocking a fresh publish.
-///
-/// Nothing reaps a publish job whose publisher pod died before reporting — the run
-/// queue relies on the dispatcher's death detection, which the publish queue has no
-/// equivalent of — so such a job sits in `dispatched` forever. Without this
-/// cutoff the enqueue-time dedup would wedge that run's publishing permanently,
-/// which is a worse failure than the duplicate deploy it prevents. A real publish
-/// takes minutes, so an hour only ever releases a job whose publisher is genuinely
-/// gone.
-const PUBLISH_JOB_STALE_AFTER: time::Duration = time::Duration::hours(1);
+/// How long a publish job may stay `dispatched` with no result before the backend
+/// records it failed as abandoned (the backend results page's "A publisher that
+/// stops"). It outlasts the publisher Job's 45-minute `activeDeadlineSeconds`, so the
+/// sweep never fails a job whose publisher is still running.
+pub const PUBLISH_JOB_ABANDONED_AFTER: time::Duration = time::Duration::hours(1);
+
+/// The failure reason the sweep records on a publish job abandoned for
+/// [`PUBLISH_JOB_ABANDONED_AFTER`]: its publisher never reported.
+pub const PUBLISHER_NEVER_REPORTED: &str =
+    "the publisher did not report a result within an hour of being dispatched";
 
 /// The generation of the run-record contract this build reads.
 ///
@@ -314,21 +380,12 @@ pub struct StoredRun {
     pub links: RunLinks,
     /// Whether the run is published (and thus eligible for the public snapshot).
     pub published: bool,
-    /// The `run.artifacts_stored` column: whether the artifact service holds the
-    /// run's tree. `None` while unknown, which is not the same as not stored.
-    #[serde(default)]
-    pub artifacts_stored: Option<bool>,
-    /// The record that the artifact reclamation sweep deleted the run's tree on
-    /// purpose, or `None` for a run whose tree was never reclaimed. A reclaimed
-    /// run carries `artifacts_stored: Some(false)` as well, and this is what tells
-    /// it from a run whose tree was lost.
-    #[serde(default)]
-    pub artifacts_reclaimed: Option<ArtifactsReclaimed>,
     /// RFC 3339 of when this run was first published, or `None` while it is only
     /// pushed. Not part of the run record itself.
     pub published_at: Option<String>,
     /// The run's recorded normalized event stream, stored verbatim as a JSON
-    /// array string (the `run.events_json` column). `None` for a run that
+    /// array string (the `run.events_json` column): its job's stored events in
+    /// sequence order when the record was persisted. `None` for a run that
     /// recorded none. Re-emitted into the snapshot and served by
     /// `GET /runs/{id}/events`.
     pub events_json: Option<String>,
@@ -361,11 +418,14 @@ pub struct StoredTournament {
     pub published_at: String,
 }
 
-/// A run's review as stored, attributed to the account that wrote it.
+/// A run's review as stored, attributed to the identity that wrote it.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct StoredReview {
-    /// The account that wrote the review.
-    pub reviewer: Reviewer,
+    /// The identity that wrote the review: the Access assertion's email (or a
+    /// service token's common name), recorded at submission. A review written
+    /// before the edge carried the identity holds the display name its account
+    /// had then.
+    pub reviewer: String,
     /// The reviewer's per-domain functional ratings. This review's overall rating
     /// is the worst across them; the run's is the worst across all its reviews.
     /// Empty on a review of a validator-rated run, whose functional rating is not
@@ -426,19 +486,6 @@ pub struct RecentReviewSubject {
     pub aesthetic: Option<AestheticRating>,
 }
 
-/// The reviewing account a [`StoredReview`] is attributed to, denormalized from
-/// the verified bearer token at submission so the snapshot is self-contained
-/// (accounts live in the auth service's separate database).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Reviewer {
-    /// The account id (from the auth service).
-    pub user_id: String,
-    /// The account's login handle.
-    pub username: String,
-    /// The account's human-facing display name.
-    pub display_name: String,
-}
-
 /// The outcome of publishing a tournament into the store.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PublishOutcome {
@@ -472,6 +519,10 @@ pub struct SnapshotState {
     pub last_uploaded: Option<String>,
     /// Runs in the last uploaded snapshot, or `None` if never uploaded.
     pub last_run_count: Option<i64>,
+    /// Incremented by every mark of the snapshot as dirty. A refresh passes the
+    /// generation it read at its start to [`Db::mark_uploaded`], which clears
+    /// `dirty` only when no mark landed since.
+    pub generation: i64,
 }
 
 /// The fixed primary key of the single-row `snapshot_state` table.
@@ -621,9 +672,6 @@ impl Db {
             .as_ref()
             .map(|model| model.published)
             .unwrap_or(false);
-        let was_reclaimed = existing
-            .as_ref()
-            .is_some_and(|model| model.artifacts_reclaimed_at.is_some());
         let existing_published_at = existing.and_then(|model| model.published_at);
 
         // The record-derived sort columns (test type, run time, tokens, cost) are
@@ -717,28 +765,15 @@ impl Db {
             review_count: Set(0),
             loaded: Set(record.validation.loaded),
             published: Set(was_published),
-            // Not the record's to say: a push leaves the column at its `NULL` on an
-            // insert and at whatever was recorded on a re-push. See `db.artifacts.rs`.
-            artifacts_stored: NotSet,
-            // The reclamation sweep's and the snapshot refresh's own records. An
-            // insert leaves them at `NULL`; a re-push clears them below, in this
-            // transaction. See `clear_retention_records`.
-            media_confirmed_at: NotSet,
-            media_checked_at: NotSet,
-            media_bucket: NotSet,
-            media_confirmation_version: NotSet,
-            media_manifest: NotSet,
-            artifacts_reclaimed_at: NotSet,
-            artifacts_reclaimed_reason: NotSet,
-            state_reclaimed_at: NotSet,
-            state_reclaimed_reason: NotSet,
-            // Automatic publishing's own mark, which a push likewise leaves alone.
-            auto_publish_deferred: NotSet,
-            tool_calls_counted: Set(tool_calls_counted(&record)),
             record_json: Set(record_json),
             record_readable: Set(true),
             record_format: Set(RUN_RECORD_FORMAT as i32),
             events_json: Set(events_json.map(|s| s.to_string())),
+            // Written only by the terminal report that says it
+            // (`set_run_artifacts_stored`): a first push leaves it `NULL`, and a re-push
+            // leaves what an earlier report recorded.
+            artifacts_stored: NotSet,
+            tool_calls_counted: Set(tool_calls_counted(&record)),
             // `NotSet` on both paths: the mutation timestamp is stamped by
             // `touch_run` below, inside this same transaction, so that exactly one
             // place in the store decides its value. The insert therefore lands on
@@ -776,10 +811,6 @@ impl Db {
         .exec(&txn)
         .await?;
 
-        if !newly_pushed {
-            retention::clear_retention_records(&txn, &record.id, was_reclaimed).await?;
-        }
-
         touch_run(&txn, &record.id).await?;
 
         // Re-pushing an already-published run changes its public record, so mark
@@ -800,7 +831,7 @@ impl Db {
     /// `edit_note` (a non-empty explanation of what changed — otherwise
     /// [`Unprocessable`](crate::error::BackendError::Unprocessable)), preserves the
     /// original `reviewed_at`, stamps `edited_at`, and records the prior→new
-    /// [diff](test_cabinet_core::review::diff_reviews) as a `review_revision`. A
+    /// [diff](crate::review::diff_reviews) as a `review_revision`. A
     /// re-submission that changes nothing is a no-op (no note needed, no revision). A
     /// first submission needs no note.
     ///
@@ -844,7 +875,7 @@ impl Db {
         // leaves `edited_at` null.
         let existing = review::Entity::find()
             .filter(review::Column::RunId.eq(run_id))
-            .filter(review::Column::ReviewerUserId.eq(&review.reviewer.user_id))
+            .filter(review::Column::Reviewer.eq(&review.reviewer))
             .one(&txn)
             .await?;
         let (id, reviewed_at, edited_at) = match &existing {
@@ -853,14 +884,14 @@ impl Db {
                 // pre-migration row's legacy per-domain tiers are already collapsed
                 // to the one run-wide tier the diff compares.
                 let prior_review = stored_review(prior.clone())?;
-                let diff = test_cabinet_core::review::diff_reviews(
-                    test_cabinet_core::review::ReviewContent {
+                let diff = crate::review::diff_reviews(
+                    crate::review::ReviewContent {
                         ratings: &prior_review.ratings,
                         aesthetic: prior_review.aesthetic,
                         writeup: &prior_review.writeup,
                         checklist: &prior_review.checklist,
                     },
-                    test_cabinet_core::review::ReviewContent {
+                    crate::review::ReviewContent {
                         ratings: &review.ratings,
                         aesthetic: review.aesthetic,
                         writeup: &review.writeup,
@@ -904,9 +935,7 @@ impl Db {
         review::Entity::insert(review::ActiveModel {
             id: Set(id),
             run_id: Set(run_id.to_string()),
-            reviewer_user_id: Set(review.reviewer.user_id.clone()),
-            reviewer_username: Set(review.reviewer.username.clone()),
-            reviewer_display_name: Set(review.reviewer.display_name.clone()),
+            reviewer: Set(review.reviewer.clone()),
             ratings: Set(ratings_json),
             aesthetics: Set(aesthetics_json),
             aesthetic: Set(aesthetic_token),
@@ -920,8 +949,6 @@ impl Db {
                 // `reviewed_at` is deliberately NOT updated — it stays the first
                 // submission time; an edit stamps `edited_at` instead.
                 .update_columns([
-                    review::Column::ReviewerUsername,
-                    review::Column::ReviewerDisplayName,
                     review::Column::Ratings,
                     review::Column::Aesthetics,
                     review::Column::Aesthetic,
@@ -962,7 +989,7 @@ impl Db {
         } else {
             match serde_json::from_str::<RunRecord>(&run.record_json).ok() {
                 Some(record) => lifted_rating(None, &record, &reviews),
-                None => test_cabinet_core::review::aggregate_rating(
+                None => crate::review::aggregate_rating(
                     reviews.iter().map(|review| review.ratings.as_slice()),
                 )
                 .map(|rating| rating.as_str().to_string()),
@@ -1070,6 +1097,9 @@ impl Db {
         // run by a plain column (`job.record_id` / `publish_job.run_id`, no foreign
         // key back to the run), so they would otherwise be orphaned — delete them in
         // the same transaction so a deleted run leaves nothing behind.
+        //
+        // A deleted job's stored events (`job_event`) go with it through their
+        // `ON DELETE CASCADE` foreign key.
         run::Entity::delete_by_id(run_id.to_string())
             .exec(&txn)
             .await?;
@@ -1393,7 +1423,7 @@ impl Db {
         // cannot read is neither counted nor returned.
         let reviewed = || {
             review::Entity::find()
-                .filter(review::Column::ReviewerUserId.eq(user_id))
+                .filter(review::Column::Reviewer.eq(user_id))
                 .join(JoinType::InnerJoin, review::Relation::Run.def())
                 .filter(run::Column::RecordReadable.eq(true))
         };
@@ -1452,7 +1482,7 @@ impl Db {
         window: usize,
     ) -> Result<(Vec<RecentReviewSubject>, usize)> {
         let total = review::Entity::find()
-            .filter(review::Column::ReviewerUserId.eq(user_id))
+            .filter(review::Column::Reviewer.eq(user_id))
             .count(&self.conn())
             .await? as usize;
 
@@ -1465,7 +1495,7 @@ impl Db {
             .column(review::Column::Ratings)
             .column(review::Column::Aesthetics)
             .column(review::Column::Aesthetic)
-            .filter(review::Column::ReviewerUserId.eq(user_id))
+            .filter(review::Column::Reviewer.eq(user_id))
             .join(JoinType::InnerJoin, review::Relation::Run.def())
             .order_by_desc(review::Column::ReviewedAt)
             .order_by_desc(review::Column::Id)
@@ -1831,11 +1861,6 @@ impl Db {
                     playable_build: link.and_then(|l| l.playable_build.clone()),
                 },
                 published: run.published,
-                artifacts_stored: run.artifacts_stored,
-                artifacts_reclaimed: ArtifactsReclaimed::from_columns(
-                    run.artifacts_reclaimed_at,
-                    run.artifacts_reclaimed_reason.as_deref(),
-                ),
                 published_at: run.published_at,
                 events_json: run.events_json,
             });
@@ -2079,57 +2104,88 @@ impl Db {
                 dirty: model.dirty,
                 last_uploaded: model.last_uploaded,
                 last_run_count: model.last_run_count,
+                generation: model.dirty_generation,
             })
             .unwrap_or(SnapshotState {
                 dirty: false,
                 last_uploaded: None,
                 last_run_count: None,
+                generation: 0,
             });
         Ok(state)
     }
 
-    /// Mark the snapshot dirty (a publish has landed). Coalescing reads this to
-    /// decide whether a refresh is needed.
+    /// Mark the snapshot dirty (a refresh has been requested): set the flag and
+    /// increment its generation. Coalescing reads this to decide whether a refresh
+    /// is needed, and a backend that starts with the flag set runs the refresh.
     pub async fn mark_dirty(&self) -> Result<()> {
         set_dirty(&self.conn()).await
     }
 
-    /// Record a successful upload: clear the dirty flag and stamp the upload time
-    /// and run count.
-    pub async fn mark_uploaded(&self, uploaded_at: &str, run_count: i64) -> Result<()> {
+    /// Record a refresh that has written the dataset: stamp the upload time and run
+    /// count, and clear the dirty flag **only** when its generation is still
+    /// `generation`, the one the refresh read before it regenerated. A mark that
+    /// landed while the refresh ran bumped the generation, so the flag stays set and
+    /// the next refresh (or the next start) covers it.
+    pub async fn mark_uploaded(
+        &self,
+        uploaded_at: &str,
+        run_count: i64,
+        generation: i64,
+    ) -> Result<()> {
+        let txn = self.conn().begin().await?;
         snapshot_state::Entity::insert(snapshot_state::ActiveModel {
             id: Set(SNAPSHOT_STATE_ID),
             dirty: Set(false),
             last_uploaded: Set(Some(uploaded_at.to_string())),
             last_run_count: Set(Some(run_count)),
+            dirty_generation: Set(0),
         })
         .on_conflict(
             OnConflict::column(snapshot_state::Column::Id)
                 .update_columns([
-                    snapshot_state::Column::Dirty,
                     snapshot_state::Column::LastUploaded,
                     snapshot_state::Column::LastRunCount,
                 ])
                 .to_owned(),
         )
-        .exec(&self.conn())
+        .exec(&txn)
         .await?;
+        // A single conditional `UPDATE`, so the database re-evaluates the generation
+        // against a concurrent mark rather than trusting a value read earlier.
+        snapshot_state::Entity::update_many()
+            .col_expr(snapshot_state::Column::Dirty, Expr::value(false))
+            .filter(snapshot_state::Column::Id.eq(SNAPSHOT_STATE_ID))
+            .filter(snapshot_state::Column::DirtyGeneration.eq(generation))
+            .exec(&txn)
+            .await?;
+        txn.commit().await?;
         Ok(())
     }
 }
 
-/// Set the single-row snapshot state's `dirty` flag, inserting the row on first
-/// use. Shared by [`Db::publish`] (within its transaction) and [`Db::mark_dirty`].
+/// Set the single-row snapshot state's `dirty` flag and increment its generation,
+/// inserting the row on first use. Shared by [`Db::publish`] (within its
+/// transaction) and [`Db::mark_dirty`].
 async fn set_dirty<C: ConnectionTrait>(conn: &C) -> Result<()> {
     snapshot_state::Entity::insert(snapshot_state::ActiveModel {
         id: Set(SNAPSHOT_STATE_ID),
         dirty: Set(true),
         last_uploaded: NotSet,
         last_run_count: NotSet,
+        dirty_generation: Set(1),
     })
     .on_conflict(
         OnConflict::column(snapshot_state::Column::Id)
             .update_column(snapshot_state::Column::Dirty)
+            .value(
+                snapshot_state::Column::DirtyGeneration,
+                Expr::col((
+                    snapshot_state::Entity,
+                    snapshot_state::Column::DirtyGeneration,
+                ))
+                .add(1),
+            )
             .to_owned(),
     )
     .exec(conn)
@@ -2233,19 +2289,7 @@ async fn gate_publishable<C: ConnectionTrait>(
 /// unranked still qualifies: its checklist verdicts are the machine's either way.
 pub(crate) fn auto_publishes(run_state: &str, validator_rated: bool) -> bool {
     validator_rated
-        && run_state == run_state_str(test_cabinet_core::run_record::RunState::Completed)
-}
-
-/// One run automatic publishing may publish, from [`Db::auto_publish_candidates`].
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct AutoPublishCandidate {
-    /// The run's id.
-    pub run_id: String,
-    /// The run's recorded [artifact presence](Db::run_artifacts_stored).
-    pub artifacts_stored: Option<bool>,
-    /// Whether automatic publishing has already passed the run over and left it to
-    /// the periodic retry.
-    pub deferred: bool,
+        && run_state == run_state_str(test_cabinet_contracts::run_record::RunState::Completed)
 }
 
 /// What [`Db::enqueue_publish_job_once`] did for a run.
@@ -2288,26 +2332,15 @@ async fn run_has_auto_verdicts<C: ConnectionTrait>(conn: &C, run_id: &str) -> Re
         .any(|script| !script.verdicts.is_empty()))
 }
 
-/// Whether a publish job has gone quiet long enough to be treated as **abandoned**
-/// — its publisher died without ever reporting a terminal result, so it must stop
-/// blocking new publishes for its run (see [`PUBLISH_JOB_STALE_AFTER`]).
-///
-/// Only a `dispatched` job can be abandoned: a `queued` one has no publisher yet and
-/// the dispatcher will claim it, however long it has waited. A timestamp that does
-/// not parse is treated as *not* abandoned, so a malformed row fails closed —
-/// blocking a duplicate publish rather than silently permitting one.
-fn is_abandoned_publish_job(job: &publish_job::Model, now: &str) -> bool {
-    if job.state != "dispatched" {
-        return false;
-    }
-    use time::format_description::well_known::Rfc3339;
-    let (Ok(updated), Ok(now)) = (
-        time::OffsetDateTime::parse(&job.updated_at, &Rfc3339),
-        time::OffsetDateTime::parse(now, &Rfc3339),
-    ) else {
-        return false;
-    };
-    now - updated > PUBLISH_JOB_STALE_AFTER
+/// The instant a `dispatched` publish job counts as abandoned: its dispatch instant
+/// (`updated_at`, which a claim sets and a lease renewal leaves alone) plus
+/// [`PUBLISH_JOB_ABANDONED_AFTER`]. `None` when the stored instant does not parse; such
+/// a row is never swept, failing closed rather than recording a failure at an
+/// instant nobody can state.
+fn publish_job_abandoned_at(job: &publish_job::Model) -> Option<OffsetDateTime> {
+    OffsetDateTime::parse(&job.updated_at, &Rfc3339)
+        .ok()
+        .map(|dispatched| dispatched + PUBLISH_JOB_ABANDONED_AFTER)
 }
 
 /// Decode a `review` row into the in-memory [`StoredReview`], parsing its
@@ -2333,11 +2366,7 @@ fn stored_review_with_revisions(
         &aesthetics,
     );
     Ok(StoredReview {
-        reviewer: Reviewer {
-            user_id: model.reviewer_user_id,
-            username: model.reviewer_username,
-            display_name: model.reviewer_display_name,
-        },
+        reviewer: model.reviewer,
         ratings,
         aesthetics,
         aesthetic,
@@ -2396,7 +2425,7 @@ struct LiftedRunMetrics {
 }
 
 /// Lift the record-derived sort columns out of a run's record. Reuses the core
-/// [`TokenCounts::total`](test_cabinet_core::metrics::TokenCounts::total) so the
+/// [`TokenCounts::total`](test_cabinet_contracts::metrics::TokenCounts::total) so the
 /// lifted `total_tokens` matches the UI's headline figure exactly.
 fn lifted_run_metrics(record: &RunRecord) -> LiftedRunMetrics {
     LiftedRunMetrics {
@@ -2415,7 +2444,7 @@ fn lifted_run_metrics(record: &RunRecord) -> LiftedRunMetrics {
 /// analyzer produced the run's code figures, or `None`.
 ///
 /// Read straight off the record rather than from this build's
-/// [`CODE_ANALYZER_VERSION`](test_cabinet_core::CODE_ANALYZER_VERSION) constant, and the
+/// [`CODE_ANALYZER_VERSION`](test_cabinet_contracts::code_analysis::CODE_ANALYZER_VERSION) constant, and the
 /// distinction is the whole point: a backend redeployed with a newer analyzer must not
 /// restamp an older run's figures with a generation that did not compute them. The column
 /// describes the *stored result*, not the server.
@@ -2437,7 +2466,7 @@ fn lifted_code_analyzer_version(record: &RunRecord) -> Option<i32> {
 /// consumer may therefore fall back to `model_id` with a bare `COALESCE` instead of
 /// re-deriving the harness test. (The console applies the same guard when it
 /// resolves the cell — see `useEnrichedRuns` in
-/// `packages/ui/src/app/components/runColumns.tsx`.)
+/// `ui-common/packages/ui/src/app/components/runColumns.tsx`.)
 fn lifted_gg_preset(record: &RunRecord) -> Option<String> {
     if record.subject.harness_slug != HarnessSlug::Gg {
         return None;
@@ -2481,7 +2510,7 @@ fn lifted_gg_config_id(record: &RunRecord) -> Option<String> {
 /// configuration, so it has an id and a name of `None` while still binding models.)
 ///
 /// The string is asked of the contract
-/// ([`bound_model_key`](test_cabinet_core::gg::GgCapabilitySet::bound_model_key)) rather
+/// ([`bound_model_key`](test_cabinet_contracts::gg::GgCapabilitySet::bound_model_key)) rather
 /// than assembled here, because the enqueue lift writes the same value onto the job and
 /// a cell only counts while a queued run and the run it becomes agree to the byte.
 fn lifted_gg_models(record: &RunRecord) -> Option<String> {
@@ -2497,25 +2526,23 @@ fn lifted_gg_models(record: &RunRecord) -> Option<String> {
 
 /// A **legacy** run's functional rating: the aggregate review rating — the worst
 /// rating any reviewer gave any domain — or `None` when the run carries no reviews.
-/// Wraps the core [`aggregate_rating`](test_cabinet_core::review::aggregate_rating);
+/// Wraps the core [`aggregate_rating`](crate::review::aggregate_rating);
 /// [`functional_rating`] is the seam that picks between this and the
 /// validator-decided rating.
 ///
 /// The record is taken as well as the reviews because a run can be rated `broken`
 /// *without* any reviewer saying so: a case's gating `typecheck` that ran and failed
 /// disqualifies the run (see
-/// [`RunRecord::gated_broken`](test_cabinet_core::RunRecord::gated_broken)). The gate
+/// [`RunRecord::gated_broken`](test_cabinet_contracts::run_record::RunRecord::gated_broken)). The gate
 /// is composed over the reviews here, at the single seam that derives a run's one
 /// overall rating, rather than written into any reviewer's stored marks.
 pub(crate) fn aggregate_review_rating(
     record: &RunRecord,
     reviews: &[StoredReview],
-) -> Option<test_cabinet_core::review::Rating> {
-    test_cabinet_core::review::gated_rating(
+) -> Option<crate::review::Rating> {
+    crate::review::gated_rating(
         record.gated_broken(),
-        test_cabinet_core::review::aggregate_rating(
-            reviews.iter().map(|review| review.ratings.as_slice()),
-        ),
+        crate::review::aggregate_rating(reviews.iter().map(|review| review.ratings.as_slice())),
     )
 }
 
@@ -2536,10 +2563,10 @@ pub(crate) fn row_aesthetic(
 /// reviews — or `None` when no review rated the aesthetic channel (a legacy run,
 /// or a validator-rated run nobody has reviewed yet). The single source of truth
 /// for the lifted `run.aesthetic` column and the summary cards; wraps the core
-/// [`aggregate_aesthetic`](test_cabinet_core::review::aggregate_aesthetic).
+/// [`aggregate_aesthetic`](crate::review::aggregate_aesthetic).
 /// No gate composes over it: the toolchain gate is a functional verdict.
 pub(crate) fn aggregate_review_aesthetic(reviews: &[StoredReview]) -> Option<AestheticRating> {
-    test_cabinet_core::review::aggregate_aesthetic(reviews.iter().map(|review| review.aesthetic))
+    crate::review::aggregate_aesthetic(reviews.iter().map(|review| review.aesthetic))
 }
 
 /// **The run's functional rating** — the single seam every consumer derives it
@@ -2552,19 +2579,19 @@ pub(crate) fn aggregate_review_aesthetic(reviews: &[StoredReview]) -> Option<Aes
 /// capping its declared domains at its failure cap) **as overridden by the run's
 /// reviews**: each review's checklist overlays the validators' verdicts and the
 /// run takes the worst across the reviews' effective ratings
-/// ([`validator_aggregate_rating`](test_cabinet_core::review::validator_aggregate_rating));
+/// ([`validator_aggregate_rating`](crate::review::validator_aggregate_rating));
 /// with zero reviews the validators' own figure stands, so it is `Some` from the
 /// moment the run completes. Otherwise it is the legacy review aggregate
 /// ([`aggregate_review_rating`]), `None` while the run has no reviews. Both are
 /// composed with the toolchain gate.
 ///
 /// A run whose terminal state is not
-/// [scored](test_cabinet_core::run_record::RunState::is_scored) — a catastrophic
+/// [scored](test_cabinet_contracts::run_record::RunState::is_scored) — a catastrophic
 /// failure, a timeout, or any tier that released nothing — has no rating at all
 /// (`None`), whatever its case version. Its build never loaded, so no validator
 /// ran against it, and the run is unscored rather than rated. A completed run whose
 /// validators decided no scored point is rated broken instead
-/// ([`verdict_domain_ratings`](test_cabinet_core::review::verdict_domain_ratings)).
+/// ([`verdict_domain_ratings`](crate::review::verdict_domain_ratings)).
 pub(crate) fn functional_rating(
     manifest: Option<&StoredManifest>,
     record: &RunRecord,
@@ -2582,9 +2609,8 @@ pub(crate) fn functional_rating(
                 &record.subject.engine_slug,
             );
             let domains = crate::snapshot::domains_for(manifest, variant);
-            let auto =
-                test_cabinet_core::comparison::automated_verdicts(&record.validation.debug_scripts);
-            test_cabinet_core::review::validator_aggregate_rating(
+            let auto = crate::comparison::automated_verdicts(&record.validation.debug_scripts);
+            crate::review::validator_aggregate_rating(
                 record.gated_broken(),
                 &domains,
                 &items,
@@ -2605,7 +2631,7 @@ pub(crate) fn functional_rating(
 /// The toolchain gate is composed on top, exactly as it is for the run's rating. `None`
 /// on a legacy version, when `manifest` is `None` (the store does not hold the version),
 /// and for a run whose terminal state is not
-/// [scored](test_cabinet_core::run_record::RunState::is_scored).
+/// [scored](test_cabinet_contracts::run_record::RunState::is_scored).
 pub(crate) fn validator_only_rating(
     manifest: Option<&StoredManifest>,
     record: &RunRecord,
@@ -2617,7 +2643,7 @@ pub(crate) fn validator_only_rating(
 }
 
 /// Reviewer coverage plans and the run/job counts the coverage matrix is built
-/// from. A plan is per-account (keyed by the auth-service user id); the counts are
+/// from. A plan is per-account (keyed by the owner's identity); the counts are
 /// **global** — they tally every run/job for a cell regardless of who launched it,
 /// so two reviewers dividing the model space never redo each other's runs.
 impl Db {
@@ -3280,27 +3306,61 @@ impl Db {
         Ok(())
     }
 
-    /// Release every coverage plan's and every ladder's launch-pass claim. Run once at
-    /// startup, before anything is served: the backend is a single coordinator, so no
-    /// launch pass can be running anywhere at that moment, and a claim still held was
-    /// held by a process that died with it. Left in place, the claim would turn the
-    /// startup pass away as busy until its lease ran out, with nobody left to serve the
-    /// request it leaves. A pending request is kept, for the startup pass to take.
-    pub async fn release_all_launch_claims(&self) -> Result<u64> {
-        let plans = coverage_plan::Entity::update_many()
-            .col_expr(
-                coverage_plan::Column::LaunchClaimedAt,
-                Expr::value(None::<String>),
-            )
+    /// Release every coverage plan's and every ladder's launch-pass claim whose
+    /// two-minute lease has lapsed at `now`, returning how many were released. Run
+    /// once after a start, once the definition store is servable and before the startup
+    /// passes: a lapsed claim was held by a pass that died, on this replica or another,
+    /// and a claim still within its lease belongs to a pass another replica is running,
+    /// so it is left to that replica. A pending request is kept, for the startup pass to
+    /// take.
+    ///
+    /// Lapse is judged on parsed instants, as a claim's takeover judges it, never by
+    /// comparing the stored strings, and each release is a compare-and-swap on the value
+    /// read: a claim another pass renewed or took in between is not released.
+    pub async fn release_lapsed_launch_claims(&self, now: &str) -> Result<u64> {
+        let mut released = 0;
+        let plans = coverage_plan::Entity::find()
             .filter(coverage_plan::Column::LaunchClaimedAt.is_not_null())
-            .exec(&self.conn())
+            .all(&self.conn())
             .await?;
-        let ladders = ladder::Entity::update_many()
-            .col_expr(ladder::Column::LaunchClaimedAt, Expr::value(None::<String>))
+        for plan in plans {
+            let Some(held) = plan.launch_claimed_at else {
+                continue;
+            };
+            if !launch_claim_is_available(Some(&held), now) {
+                continue;
+            }
+            released += coverage_plan::Entity::update_many()
+                .col_expr(
+                    coverage_plan::Column::LaunchClaimedAt,
+                    Expr::value(None::<String>),
+                )
+                .filter(coverage_plan::Column::Id.eq(plan.id))
+                .filter(coverage_plan::Column::LaunchClaimedAt.eq(held))
+                .exec(&self.conn())
+                .await?
+                .rows_affected;
+        }
+        let ladders = ladder::Entity::find()
             .filter(ladder::Column::LaunchClaimedAt.is_not_null())
-            .exec(&self.conn())
+            .all(&self.conn())
             .await?;
-        Ok(plans.rows_affected + ladders.rows_affected)
+        for row in ladders {
+            let Some(held) = row.launch_claimed_at else {
+                continue;
+            };
+            if !launch_claim_is_available(Some(&held), now) {
+                continue;
+            }
+            released += ladder::Entity::update_many()
+                .col_expr(ladder::Column::LaunchClaimedAt, Expr::value(None::<String>))
+                .filter(ladder::Column::Id.eq(row.id))
+                .filter(ladder::Column::LaunchClaimedAt.eq(held))
+                .exec(&self.conn())
+                .await?
+                .rows_affected;
+        }
+        Ok(released)
     }
 
     /// Every saved gg query the account owns, ordered by display name.
@@ -3664,7 +3724,7 @@ impl Db {
     ///
     /// A run counts when it ended `completed`, `catastrophic`, `timed_out`,
     /// `harness_error`, `limit_exceeded` or `hung`
-    /// ([`RunState::counts_as_model_result`](test_cabinet_core::run_record::RunState::counts_as_model_result)):
+    /// ([`RunState::counts_as_model_result`](test_cabinet_contracts::run_record::RunState::counts_as_model_result)):
     /// each is the model's result and uses one of the cell's runs. An `infrastructure`
     /// failure or a cancel says nothing about the model and never counts. Nor does the run of a job that was automatically retried
     /// ([`job::Model::retried_by`]): its retry takes its place, so one launch counts once.
@@ -3720,7 +3780,7 @@ impl Db {
             Some(reviewer) => review::Entity::find()
                 .select_only()
                 .column(review::Column::RunId)
-                .filter(review::Column::ReviewerUserId.eq(reviewer))
+                .filter(review::Column::Reviewer.eq(reviewer))
                 .into_tuple::<String>()
                 .all(&self.conn())
                 .await?
@@ -3796,8 +3856,8 @@ impl Db {
     }
 
     /// Count the **in-flight** jobs — queued, pending, dispatched, starting,
-    /// running, validating or storing — for every coverage cell whose case slug is in `slugs`, in a single
-    /// grouped query (the companion to [`Self::count_counted_runs_by_cell`], keyed the
+    /// running, validating or storing — for every coverage cell whose case slug is
+    /// in `slugs`, in a single grouped query (the companion to [`Self::count_counted_runs_by_cell`], keyed the
     /// same way). In-flight jobs count toward a cell's target alongside counted runs, so
     /// a launch pass never launches a cell twice while its runs are still executing (or
     /// waiting to).
@@ -4252,7 +4312,7 @@ type CellCountRow = (
 /// A nullable engine column as its [`CellKey`] segment: an absent engine is the `none`
 /// engine, because a launch that omits the key asks for the engineless run.
 fn cell_engine(engine: Option<String>) -> String {
-    engine.unwrap_or_else(|| test_cabinet_core::engine::NONE_SLUG.to_string())
+    engine.unwrap_or_else(|| test_cabinet_suites::engine::NONE_SLUG.to_string())
 }
 
 /// One of the nullable gg identity columns as its [`CellKey`] segment:
@@ -4271,7 +4331,7 @@ fn cell_gg_segment(column: impl ColumnTrait) -> SimpleExpr {
 fn cell_engine_segment(column: impl ColumnTrait) -> SimpleExpr {
     Func::coalesce([
         column.into_expr().into(),
-        Expr::val(test_cabinet_core::engine::NONE_SLUG).into(),
+        Expr::val(test_cabinet_suites::engine::NONE_SLUG).into(),
     ])
     .into()
 }
@@ -4410,7 +4470,7 @@ fn gg_dashboard_from_row(row: gg_dashboard::Model) -> Result<crate::api::GgDashb
     })
 }
 
-/// A saved [comparison](test_cabinet_core::comparison) as stored: the row fields
+/// A saved [comparison](crate::comparison) as stored: the row fields
 /// with `config_json` parsed back into its [`ComparisonConfig`]. The per-arm
 /// statistics are **not** stored — they are computed on read by the comparisons API
 /// from the arms' runs — so this is exactly the persisted configuration plus its
@@ -4705,7 +4765,7 @@ pub struct DispatchEvidence {
 
 /// Ladders: the ordered, gated sibling of a coverage plan, and their dispatches.
 ///
-/// A ladder itself is per-account (keyed by the auth-service `user_id`) and every
+/// A ladder itself is per-account (keyed by the owner's identity in `user_id`) and every
 /// read/write of one is scoped by it. Its child tables — rungs, the dispatch, its
 /// climbers and outcomes — are keyed by the ladder or dispatch id alone and **inherit**
 /// that scoping: a caller reaches them only after resolving the ladder through
@@ -5405,7 +5465,7 @@ impl Db {
                 run::Relation::Review.def().on_condition({
                     let reviewer = reviewer_user_id.to_string();
                     move |_run, review| {
-                        Expr::col((review, review::Column::ReviewerUserId))
+                        Expr::col((review, review::Column::Reviewer))
                             .eq(reviewer.clone())
                             .into_condition()
                     }
@@ -5602,14 +5662,14 @@ fn lifted_aesthetic(reviews: &[StoredReview]) -> Option<String> {
 }
 
 /// The test types graded automatically, which therefore never await a human
-/// review. A [`performance`](test_cabinet_core::TestType::Performance) run is
+/// review. A [`performance`](test_cabinet_suites::test_case::TestType::Performance) run is
 /// scored by its validator — correctness against a reference oracle, then the fuel
 /// a correct engine burned — and carries no reviewer checklist at all, so it would
 /// otherwise sit in the unreviewed worklist forever: `review_count` stays 0 because
 /// there is no review anyone can write. The unreviewed slices exclude these types
 /// for the same reason they exclude the failure tiers.
 ///
-/// Stored as the wire strings ([`TestType::as_str`](test_cabinet_core::TestType::as_str))
+/// Stored as the wire strings ([`TestType::as_str`](test_cabinet_suites::test_case::TestType::as_str))
 /// the lifted `test_type` column holds.
 const AUTO_GRADED_TEST_TYPES: [&str; 1] = ["performance"];
 
@@ -5667,7 +5727,7 @@ pub struct SummaryFilter {
     pub test_case: Option<String>,
     /// Restrict to a list of test-case slugs (`test_case_slug` ∈ the list) — the
     /// home page's group-leaderboard slice: one query covers a [test-case
-    /// group](test_cabinet_core::TestCaseGroup)'s member cases. Like every other
+    /// group](test_cabinet_suites::test_case_group::TestCaseGroup)'s member cases. Like every other
     /// filter it ANDs, [`Self::test_case`] included, so naming both narrows to
     /// their intersection (the semantic `api.md` documents and the console's
     /// `runQuery.ts` `matches` mirrors), and [`Self::latest_versions`] composes
@@ -5824,18 +5884,9 @@ fn state_slice(state: SummaryState) -> Select<run::Entity> {
         // unpublishable has to be refused by the first half or a reviewed one would
         // be listed and then refused by the gate. Kept in step with the gate by
         // `publishable_slice_matches_the_publish_gate`.
-        //
-        // A run recorded as having no stored artifact tree is left out as well: the
-        // publish endpoint refuses it (see `crate::api::publish_gate`), and this
-        // slice lists only what that endpoint accepts. An unknown presence stays in.
         SummaryState::Publishable => query
             .filter(run::Column::Published.eq(false))
             .filter(run::Column::RunState.is_not_in(never_publishable_states()))
-            .filter(
-                Condition::any()
-                    .add(run::Column::ArtifactsStored.is_null())
-                    .add(run::Column::ArtifactsStored.eq(true)),
-            )
             .filter(
                 Condition::any()
                     .add(run::Column::RunState.is_in(publishable_failure_states()))
@@ -6071,12 +6122,12 @@ fn model_identity_expr() -> SimpleExpr {
 }
 
 /// A SQL `CASE` mapping the `run.rating` text token to its tier ordinal (`0` best,
-/// larger worse), drawn from [`Rating::rank`](test_cabinet_core::review::Rating) so
+/// larger worse), drawn from [`Rating::rank`](crate::review::Rating) so
 /// the DB order matches the in-memory "worst wins" aggregate. Any unexpected/legacy
 /// non-null token ranks beyond the worst tier; genuine NULLs are separated out by
 /// the caller's null-group key before this is consulted.
 fn rating_rank_expr() -> SimpleExpr {
-    use test_cabinet_core::review::Rating;
+    use crate::review::Rating;
     let mut case = CaseStatement::new();
     for rating in Rating::ALL {
         case = case.case(
@@ -6091,11 +6142,11 @@ fn rating_rank_expr() -> SimpleExpr {
 /// timed-out, harness-error, limit-exceeded and hung — the slice every failures-only
 /// query and publish gate filters on.
 ///
-/// Derived from [`RunState::is_publishable_failure`](test_cabinet_core::run_record::RunState::is_publishable_failure) rather than written out, so a
+/// Derived from [`RunState::is_publishable_failure`](test_cabinet_contracts::run_record::RunState::is_publishable_failure) rather than written out, so a
 /// new failure tier cannot be added to the contract and silently missed here.
 /// `publishable_failure_states_match_the_contract` pins the two together.
 fn publishable_failure_states() -> Vec<&'static str> {
-    test_cabinet_core::run_record::RunState::ALL
+    test_cabinet_contracts::run_record::RunState::ALL
         .into_iter()
         .filter(|state| state.is_publishable_failure())
         .map(run_state_str)
@@ -6108,10 +6159,10 @@ fn publishable_failure_states() -> Vec<&'static str> {
 /// count toward their targets and a rung's gate reads as evidence.
 ///
 /// Derived from
-/// [`RunState::counts_as_model_result`](test_cabinet_core::run_record::RunState::counts_as_model_result)
+/// [`RunState::counts_as_model_result`](test_cabinet_contracts::run_record::RunState::counts_as_model_result)
 /// rather than written out, so the counting rule has one definition.
 pub(crate) fn counted_run_states() -> Vec<&'static str> {
-    test_cabinet_core::run_record::RunState::ALL
+    test_cabinet_contracts::run_record::RunState::ALL
         .into_iter()
         .filter(|state| state.counts_as_model_result())
         .map(run_state_str)
@@ -6134,8 +6185,8 @@ fn not_a_retried_attempt() -> SimpleExpr {
 }
 
 /// The wire string for a run state (matching the serde representation).
-fn run_state_str(state: test_cabinet_core::run_record::RunState) -> &'static str {
-    use test_cabinet_core::run_record::RunState;
+fn run_state_str(state: test_cabinet_contracts::run_record::RunState) -> &'static str {
+    use test_cabinet_contracts::run_record::RunState;
     match state {
         RunState::Completed => "completed",
         RunState::Catastrophic => "catastrophic",
@@ -6152,11 +6203,11 @@ fn run_state_str(state: test_cabinet_core::run_record::RunState) -> &'static str
 /// infrastructure failure (our fault, not a model result) and an operator-canceled
 /// run (a deliberate stop, not an outcome). Both are retained for inspection only.
 ///
-/// Derived from [`RunState::is_publishable`](test_cabinet_core::run_record::RunState::is_publishable) rather than written out, for the same
+/// Derived from [`RunState::is_publishable`](test_cabinet_contracts::run_record::RunState::is_publishable) rather than written out, for the same
 /// reason [`publishable_failure_states`] is: a new never-publishable state cannot be
 /// added to the contract and silently slip through the publish gate.
 fn never_publishable_states() -> Vec<&'static str> {
-    test_cabinet_core::run_record::RunState::ALL
+    test_cabinet_contracts::run_record::RunState::ALL
         .into_iter()
         .filter(|state| !state.is_publishable())
         .map(run_state_str)
@@ -6369,20 +6420,6 @@ pub struct ClaimOutcome {
     pub reconciled: Vec<job::Model>,
 }
 
-/// Whether a claim pass may hand out a run at all.
-///
-/// The per-job rules (a harness at its cap, a jam entry waiting its turn) hold one
-/// job back and let the pass move on to the next. This holds the whole queue, for a
-/// reason that is not about any one run: today, an artifact store that could not
-/// take another run's tree (see [`crate::capacity`]).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ClaimGate {
-    /// Claim the first claimable job.
-    Open,
-    /// Claim nothing, and hold every waiting job in `pending`.
-    Hold,
-}
-
 /// Which jobs a bulk cancel reaches: the in-flight states to sweep, optionally narrowed
 /// to one plan/ladder and/or one account.
 ///
@@ -6536,8 +6573,33 @@ fn new_job_model(new: NewJob, queue_seq: i64) -> job::ActiveModel {
         // `starting`, not by joining the queue.
         started_at: Set(None),
         retried_by: Set(None),
-        held_report_json: Set(None),
+        held_record: Set(None),
+        held_detail: Set(None),
+        lost_at: Set(None),
+        // A job holds no lease until it is claimed.
+        lease_expires_at: Set(None),
     }
+}
+
+/// Clear `parent`'s [`retried_by`](job::Model::retried_by) stamp inside `txn`.
+async fn clear_retried_by(txn: &DatabaseTransaction, parent: &str) -> Result<()> {
+    job::Entity::update_many()
+        .col_expr(job::Column::RetriedBy, Expr::value(Option::<String>::None))
+        .filter(job::Column::Id.eq(parent))
+        .exec(txn)
+        .await?;
+    Ok(())
+}
+
+/// What [`Db::withdraw_retry`] did with the retry a lost outcome enqueued.
+#[derive(Debug, Clone)]
+pub enum WithdrawnRetry {
+    /// The retry was still waiting, and its row was deleted.
+    Deleted(job::Model),
+    /// The retry had been claimed, and was canceled; the canceled row.
+    Canceled(job::Model),
+    /// The retry had already finished, and was left standing.
+    Finished(job::Model),
 }
 
 /// A publish job to enqueue: the minted id and token, and the run it releases. The
@@ -6653,8 +6715,9 @@ impl Db {
     /// runs started (and so finished) before the next case's. Enforces each harness's
     /// configured maximum parallelism: a job is claimable only when its harness has
     /// fewer than its limit of runs already occupying a parallelism slot
-    /// (`ACTIVE_SLOT_STATES` — `dispatched`/`starting`/`running`/`validating`/`storing`). A harness with
-    /// no configured limit is always claimable.
+    /// (`ACTIVE_SLOT_STATES` —
+    /// `dispatched`/`starting`/`running`/`validating`/`storing`). A harness with no
+    /// configured limit is always claimable.
     ///
     /// It additionally **serializes a game jam per model**: a `game-jam` job is not
     /// claimable while another run of the same jam and model occupies a slot, no
@@ -6680,21 +6743,44 @@ impl Db {
     /// reconciliation moves any number of others between `queued` and `pending`.
     /// Returning only the claim would leave every held-back run's row stale until
     /// something else re-read the queue.
-    pub async fn claim_next(&self, now: &str) -> Result<ClaimOutcome> {
-        self.claim_next_gated(now, ClaimGate::Open).await
-    }
-
-    /// [`claim_next`](Self::claim_next) behind a queue-wide gate.
     ///
-    /// Under [`ClaimGate::Hold`] the pass claims nothing and treats every waiting
-    /// job as held back, so each one reads `pending`. Nothing else about a held job
-    /// changes: it keeps its queue position, and the first pass under
-    /// [`ClaimGate::Open`] releases the claimable ones to `queued` and claims the
-    /// oldest, exactly as if the hold had never been.
-    pub async fn claim_next_gated(&self, now: &str, gate: ClaimGate) -> Result<ClaimOutcome> {
+    /// The claimed job's **lease** is set [`JOB_LEASE`] past `now`. Before anything is
+    /// counted, the pass returns every `dispatched` job whose lease has lapsed (or that
+    /// holds none) to `queued`: its claim was never followed by a driver, whether the
+    /// driver `Job`'s creation failed or the dispatcher died before creating it. Such a
+    /// job keeps its `queue_seq`, so it is taken again at its original position, and
+    /// its `attempt`, since nothing ran; it is given a fresh per-job token, so the
+    /// backend refuses the old one from then on, and its lease is cleared. No retry is
+    /// enqueued. Returning it first frees the parallelism slot it held, and each such
+    /// job is reported among [`ClaimOutcome::reconciled`] with the state it ends the
+    /// pass in, unless this same pass claims it again.
+    ///
+    /// `now` is an RFC 3339 instant; `BadRequest` when it is not one.
+    pub async fn claim_next(&self, now: &str) -> Result<ClaimOutcome> {
         use std::collections::{HashMap, HashSet};
 
+        let now_instant = parse_instant(now)?;
+        let lease = job_lease_expiry(now)?;
         let txn = self.conn().begin().await?;
+
+        // Return every lapsed claim to the queue before the slots are counted, so the
+        // slot it held is free for this very pass.
+        let mut reconciled: Vec<job::Model> = Vec::new();
+        for job in job::Entity::find()
+            .filter(job::Column::State.eq("dispatched"))
+            .all(&txn)
+            .await?
+        {
+            if !lease_lapsed(job.lease_expires_at.as_deref(), now_instant) {
+                continue;
+            }
+            let mut active_model = job.into_active_model();
+            active_model.state = Set("queued".to_string());
+            active_model.job_token = Set(cuid2::create_id());
+            active_model.lease_expires_at = Set(None);
+            active_model.updated_at = Set(now.to_string());
+            reconciled.push(active_model.update(&txn).await?);
+        }
 
         // The per-harness parallelism limits (harnesses with no configured limit are
         // absent → unlimited).
@@ -6739,7 +6825,6 @@ impl Db {
             .await?;
 
         let mut claimed: Option<job::Model> = None;
-        let mut reconciled: Vec<job::Model> = Vec::new();
         for job in waiting {
             let active = active_by_harness
                 .get(&job.harness_slug)
@@ -6751,8 +6836,7 @@ impl Db {
             // single sweep never dispatches two entries of the same pair.
             let jam_turn =
                 job.test_type != TestType::GameJam.as_str() || !jams_in_flight.contains(&jam_key);
-            let has_room =
-                gate == ClaimGate::Open && under_cap(&job.harness_slug, active) && jam_turn;
+            let has_room = under_cap(&job.harness_slug, active) && jam_turn;
 
             if claimed.is_none() && has_room {
                 // Claim this one: it now occupies a slot for its harness, so bump the
@@ -6764,8 +6848,12 @@ impl Db {
                 if job.test_type == TestType::GameJam.as_str() {
                     jams_in_flight.insert(jam_key);
                 }
+                // A job this pass returned to the queue and now claims again is
+                // announced by the claim alone.
+                reconciled.retain(|requeued| requeued.id != job.id);
                 let mut active_model = job.into_active_model();
                 active_model.state = Set("dispatched".to_string());
+                active_model.lease_expires_at = Set(Some(lease.clone()));
                 active_model.updated_at = Set(now.to_string());
                 claimed = Some(active_model.update(&txn).await?);
                 continue;
@@ -6777,6 +6865,9 @@ impl Db {
             // claim pass would be pure noise on the console stream.
             let target = if has_room { "queued" } else { "pending" };
             if job.state != target {
+                // A job this pass returned to the queue is reported once, in the state
+                // it ends the pass in.
+                reconciled.retain(|requeued| requeued.id != job.id);
                 let mut active_model = job.into_active_model();
                 active_model.state = Set(target.to_string());
                 active_model.updated_at = Set(now.to_string());
@@ -6796,6 +6887,32 @@ impl Db {
     /// the display states the same pass reconciled around it.
     pub async fn claim_next_job(&self, now: &str) -> Result<Option<job::Model>> {
         Ok(self.claim_next(now).await?.claimed)
+    }
+
+    /// Extend the claim lease of each listed job still driven ([`DRIVEN_STATES`]) to
+    /// [`JOB_LEASE`] past `now`, the dispatcher's renewal for every job whose driver
+    /// `Job` is live. Ids of unknown jobs and of jobs in any other state are ignored:
+    /// a job that finished or returned to the queue between the dispatcher's read of
+    /// the cluster and this call holds no lease to extend. Returns how many jobs were
+    /// renewed. `BadRequest` when `now` is not an RFC 3339 instant.
+    pub async fn renew_job_leases(&self, ids: &[String], now: &str) -> Result<u64> {
+        let lease = job_lease_expiry(now)?;
+        if ids.is_empty() {
+            return Ok(0);
+        }
+        let mut renewed = 0;
+        // Chunked so a large cluster's renewal stays under the per-statement bound
+        // parameter limits.
+        for chunk in ids.chunks(1000) {
+            renewed += job::Entity::update_many()
+                .col_expr(job::Column::LeaseExpiresAt, Expr::value(lease.clone()))
+                .filter(job::Column::Id.is_in(chunk.iter().cloned()))
+                .filter(job::Column::State.is_in(DRIVEN_STATES))
+                .exec(&self.conn())
+                .await?
+                .rows_affected;
+        }
+        Ok(renewed)
     }
 
     /// Every stored per-harness config row (harnesses with no overrides are absent).
@@ -6857,6 +6974,10 @@ impl Db {
         active.state = Set("canceled".to_string());
         active.updated_at = Set(now.to_string());
         active.detail = Set(Some(detail.to_string()));
+        // `canceled` is terminal, so it ends the hold like any other terminal state: a
+        // canceled job is never finished from a held record.
+        active.held_record = Set(None);
+        active.held_detail = Set(None);
         let updated = active.update(&txn).await?;
         txn.commit().await?;
         Ok(Some(updated))
@@ -6898,6 +7019,8 @@ impl Db {
         let mut active = model.into_active_model();
         active.record_id = Set(Some(record_id.to_string()));
         active.updated_at = Set(now.to_string());
+        active.held_record = Set(None);
+        active.held_detail = Set(None);
         let updated = active.update(&txn).await?;
         txn.commit().await?;
         Ok(Some(updated))
@@ -6944,6 +7067,8 @@ impl Db {
             .col_expr(job::Column::State, Expr::value("canceled"))
             .col_expr(job::Column::UpdatedAt, Expr::value(now))
             .col_expr(job::Column::Detail, Expr::value(detail))
+            .col_expr(job::Column::HeldRecord, Expr::value(Option::<String>::None))
+            .col_expr(job::Column::HeldDetail, Expr::value(Option::<String>::None))
             .filter(job::Column::State.is_in(states));
         if let Some(origin) = filter.origin {
             update = update.filter(origin.condition());
@@ -6987,7 +7112,7 @@ impl Db {
     /// the driver posts that as its very first act and *then* takes the `started_at`
     /// its produced record's `startedAt` is measured from, so the stamp and the record
     /// name the same moment. What a duration ticked from it does and does not carry is
-    /// on [`test_cabinet_core::job_api::JobSummary::started_at`], which reports it to
+    /// on [`test_cabinet_contracts::job_api::JobSummary::started_at`], which reports it to
     /// the console. `dispatched` would wrongly bill the run for pod scheduling and the
     /// image pull; `running` would wrongly omit setup, which is inside
     /// `run_time_seconds`. `running` is nonetheless a fallback anchor for a driver that
@@ -7013,7 +7138,6 @@ impl Db {
             return Ok(None);
         };
         let unstarted = model.started_at.is_none();
-        let was_storing = model.state == STORING_STATE;
         let mut active = model.into_active_model();
         active.state = Set(state.to_string());
         active.updated_at = Set(now.to_string());
@@ -7022,94 +7146,52 @@ impl Db {
         }
         if let Some(detail) = detail {
             active.detail = Set(Some(detail.to_string()));
-        } else if was_storing {
-            // The detail of a `storing` job is why its driver was waiting, which is
-            // no part of the state it is leaving for.
-            active.detail = Set(None);
         }
         if let Some(record_id) = record_id {
             active.record_id = Set(Some(record_id.to_string()));
         }
+        // A terminal state ends the hold: the run is recorded from here on, so the copy
+        // of its record kept against a lost driver is no longer needed.
         if matches!(state, "succeeded" | "failed") {
-            // The report the driver handed over for safekeeping has been made.
-            active.held_report_json = Set(None);
+            active.held_record = Set(None);
+            active.held_detail = Set(None);
         }
         Ok(Some(active.update(&self.conn()).await?))
     }
 
-    /// Move a driven job to `storing`: its driver has finished the run and is
-    /// waiting on the artifact store to take the tree, for `reason`. Stamps
-    /// `updated_at` and records the reason as the job's `detail`, and keeps
-    /// `held_report` as the job's [held report](job::Model::held_report_json) when
-    /// one is given.
+    /// Hold a finished run's record against job `id`: move the job to `storing` and
+    /// store `record_json` and `detail` on its row, replacing whatever an earlier
+    /// `storing` report held. Returns the updated row, or `None` when the job is unknown
+    /// or no longer in one of the `from` states (it was canceled, or already finished).
     ///
-    /// Only a job in one of [`DRIVEN_STATES`] moves, a job already `storing`
-    /// included, since the driver repeats the report with its latest reason.
-    /// Returns the updated row, or `None` when the job is unknown, still waiting
-    /// for a driver, or terminal: a report that outlived its job (one canceled, or
-    /// failed as lost) must not bring it back into flight, where it would hold the
-    /// run queue with no driver left to release it.
-    ///
-    /// The move is one conditional `UPDATE`, so a cancellation that commits beside
-    /// it either precedes it, and the update matches nothing, or follows it and
-    /// cancels a `storing` job. A read followed by a write by id would let the
-    /// write put a canceled job back in flight.
-    pub async fn set_job_storing(
+    /// This is the write behind the driver's held report: the record is in the database
+    /// before the report is answered, so a driver lost from then on leaves a run the
+    /// backend can still finish ([`Self::mark_job_lost`]).
+    pub async fn hold_job_record(
         &self,
         id: &str,
+        from: &[&str],
+        record_json: &str,
+        detail: Option<&str>,
         now: &str,
-        reason: Option<&str>,
-        held_report: Option<&str>,
     ) -> Result<Option<job::Model>> {
-        let mut update = job::Entity::update_many()
-            .col_expr(job::Column::State, Expr::value(STORING_STATE))
-            .col_expr(job::Column::UpdatedAt, Expr::value(now))
-            .col_expr(job::Column::Detail, Expr::value(reason.map(str::to_string)))
-            // A run that finished has started, whatever reports were missed.
-            .col_expr(
-                job::Column::StartedAt,
-                Func::coalesce([
-                    Expr::col(job::Column::StartedAt).into(),
-                    Expr::value(now),
-                ])
-                .into(),
-            )
-            .filter(job::Column::Id.eq(id))
-            .filter(job::Column::State.is_in(DRIVEN_STATES));
-        if let Some(held_report) = held_report {
-            update = update.col_expr(job::Column::HeldReportJson, Expr::value(held_report));
-        }
-        if update.exec(&self.conn()).await?.rows_affected == 0 {
+        let txn = self.conn().begin().await?;
+        let candidate = job::Entity::find_by_id(id.to_string())
+            .filter(job::Column::State.is_in(from.iter().copied()))
+            .one(&txn)
+            .await?;
+        let Some(model) = candidate else {
+            txn.commit().await?;
             return Ok(None);
-        }
-        self.get_job(id).await
-    }
-
-    /// Return a `storing` job to `validating`, the state it left for the wait: its
-    /// driver's wait on the artifact store is over. Clears the reason the wait recorded as the job's `detail`,
-    /// and replaces the job's [held report](job::Model::held_report_json) when
-    /// `held_report` is given. Returns the updated row, or `None` when the job is
-    /// not `storing`. One conditional `UPDATE`, for the reason
-    /// [`set_job_storing`](Self::set_job_storing) is.
-    pub async fn set_job_stored(
-        &self,
-        id: &str,
-        now: &str,
-        held_report: Option<&str>,
-    ) -> Result<Option<job::Model>> {
-        let mut update = job::Entity::update_many()
-            .col_expr(job::Column::State, Expr::value(VALIDATING_STATE))
-            .col_expr(job::Column::UpdatedAt, Expr::value(now))
-            .col_expr(job::Column::Detail, Expr::value(Option::<String>::None))
-            .filter(job::Column::Id.eq(id))
-            .filter(job::Column::State.eq(STORING_STATE));
-        if let Some(held_report) = held_report {
-            update = update.col_expr(job::Column::HeldReportJson, Expr::value(held_report));
-        }
-        if update.exec(&self.conn()).await?.rows_affected == 0 {
-            return Ok(None);
-        }
-        self.get_job(id).await
+        };
+        let mut active = model.into_active_model();
+        active.state = Set("storing".to_string());
+        active.updated_at = Set(now.to_string());
+        active.held_record = Set(Some(record_json.to_string()));
+        active.held_detail = Set(detail.map(str::to_string));
+        let updated = active.update(&txn).await?;
+        txn.commit().await?;
+        Ok(Some(updated))
     }
 
     /// Move a job to `validating`: its driver's harness session has ended and the
@@ -7120,9 +7202,9 @@ impl Db {
     /// Only a `dispatched`, `starting` or `running` job moves. Returns the updated
     /// row, or `None` when nothing moved: the job is unknown, still waiting for a
     /// driver, already `validating` or `storing`, or terminal. The move is one
-    /// conditional `UPDATE`, for the reason [`set_job_storing`](Self::set_job_storing)
-    /// is: a cancellation or a terminal report that commits beside it is never
-    /// overwritten, and a job is never moved backwards.
+    /// conditional `UPDATE`, so a cancellation, the held report or a terminal report
+    /// that commits beside it is never overwritten, and a job is never moved
+    /// backwards.
     pub async fn set_job_validating(&self, id: &str, now: &str) -> Result<Option<job::Model>> {
         let update = job::Entity::update_many()
             .col_expr(job::Column::State, Expr::value(VALIDATING_STATE))
@@ -7165,67 +7247,195 @@ impl Db {
         self.get_job(id).await
     }
 
-    /// How many jobs a driver exists for: the jobs in [`DRIVEN_STATES`]. What the
-    /// run claim reads while the artifact store is being
-    /// [proved](crate::capacity::ClaimGate::Trial), when it hands out a run only
-    /// if none is in flight.
-    pub async fn driven_job_count(&self) -> Result<u64> {
-        Ok(job::Entity::find()
-            .filter(job::Column::State.is_in(DRIVEN_STATES))
-            .count(&self.conn())
-            .await?)
+    /// Record that the dispatcher reported job `id` lost, at `now`. A terminal report
+    /// reaching the backend while the mark is set supersedes the lost outcome rather
+    /// than repeating it; [`Self::clear_job_lost`] removes the mark once it has.
+    pub async fn mark_job_lost(&self, id: &str, now: &str) -> Result<()> {
+        job::Entity::update_many()
+            .col_expr(job::Column::LostAt, Expr::value(now))
+            .filter(job::Column::Id.eq(id))
+            .exec(&self.conn())
+            .await?;
+        Ok(())
     }
 
-    /// Whether the tree of the most recently finished run was stored: the recorded
-    /// [artifact presence](Self::run_artifacts_stored) of the run of the latest
-    /// `succeeded` or `failed` job that has one. `None` when no finished job's run
-    /// has a recorded presence, which is every backend with no artifact service. A
-    /// run whose tree the reclamation sweep reclaimed is passed over.
-    ///
-    /// The backend reads this once as it starts, to decide whether the artifact
-    /// store had failed an upload when the previous process stopped. Only the
-    /// most recent jobs are looked at: older ones say nothing about the store now.
-    pub async fn latest_finished_tree_stored(&self) -> Result<Option<bool>> {
-        let recent: Vec<Option<String>> = job::Entity::find()
-            .select_only()
-            .column(job::Column::RecordId)
-            .filter(job::Column::State.is_in(["succeeded", "failed"]))
-            .filter(job::Column::RecordId.is_not_null())
-            .order_by_desc(job::Column::UpdatedAt)
-            .limit(16)
-            .into_tuple()
-            .all(&self.conn())
+    /// Remove job `id`'s lost mark: a terminal report has superseded the lost outcome,
+    /// so a repeat of that report is a repeat and nothing more.
+    pub async fn clear_job_lost(&self, id: &str) -> Result<()> {
+        job::Entity::update_many()
+            .col_expr(job::Column::LostAt, Expr::value(Option::<String>::None))
+            .filter(job::Column::Id.eq(id))
+            .exec(&self.conn())
             .await?;
-        for record_id in recent.into_iter().flatten() {
-            // A tree the sweep reclaimed is recorded as not stored, on purpose. It
-            // says nothing about whether the store took the upload.
-            if self.run_artifacts_reclaimed(&record_id).await?.is_some() {
-                continue;
-            }
-            if let Some(stored) = self.run_artifacts_stored(&record_id).await? {
-                return Ok(Some(stored));
+        Ok(())
+    }
+
+    /// Withdraw the automatic retry job `parent` enqueued: delete it while it is still
+    /// waiting (`queued` or `pending`), cancel it with `detail` once it has been claimed,
+    /// and clear `parent`'s [`retried_by`](job::Model::retried_by) either way, in one
+    /// transaction.
+    ///
+    /// A retry that already reached a terminal state is left standing, and so is the
+    /// stamp that points at it: it is a finished run, and withdrawing it now would count
+    /// one launch twice. `None` when `parent` is unknown or enqueued no retry.
+    pub async fn withdraw_retry(
+        &self,
+        parent: &str,
+        now: &str,
+        detail: &str,
+    ) -> Result<Option<WithdrawnRetry>> {
+        let txn = self.conn().begin().await?;
+        let Some(retry_id) = job::Entity::find_by_id(parent.to_string())
+            .one(&txn)
+            .await?
+            .and_then(|job| job.retried_by)
+        else {
+            txn.commit().await?;
+            return Ok(None);
+        };
+        let Some(retry) = job::Entity::find_by_id(retry_id.clone()).one(&txn).await? else {
+            // The retry row is gone (its run was deleted): only the stamp is left.
+            clear_retried_by(&txn, parent).await?;
+            txn.commit().await?;
+            return Ok(None);
+        };
+        let withdrawn = if CANCELABLE_WAITING_STATES.contains(&retry.state.as_str()) {
+            // Any events it stored cascade with it (`job_event`).
+            job::Entity::delete_by_id(retry_id).exec(&txn).await?;
+            WithdrawnRetry::Deleted(retry)
+        } else if IN_FLIGHT_STATES.contains(&retry.state.as_str()) {
+            let mut active = retry.into_active_model();
+            active.state = Set("canceled".to_string());
+            active.updated_at = Set(now.to_string());
+            active.detail = Set(Some(detail.to_string()));
+            active.held_record = Set(None);
+            active.held_detail = Set(None);
+            WithdrawnRetry::Canceled(active.update(&txn).await?)
+        } else {
+            txn.commit().await?;
+            return Ok(Some(WithdrawnRetry::Finished(retry)));
+        };
+        clear_retried_by(&txn, parent).await?;
+        txn.commit().await?;
+        Ok(Some(withdrawn))
+    }
+
+    /// Record on run `run_id` whether the artifacts service holds its tree, as the
+    /// driver's terminal report said. A no-op for an unknown run.
+    pub async fn set_run_artifacts_stored(&self, run_id: &str, stored: bool) -> Result<()> {
+        let txn = self.conn().begin().await?;
+        let updated = run::Entity::update_many()
+            .col_expr(run::Column::ArtifactsStored, Expr::value(stored))
+            .filter(run::Column::Id.eq(run_id))
+            .exec(&txn)
+            .await?;
+        if updated.rows_affected > 0 {
+            touch_run(&txn, run_id).await?;
+        }
+        txn.commit().await?;
+        Ok(())
+    }
+
+    /// Store a batch of job `job_id`'s events, the first at sequence `first_sequence`
+    /// and each following one a sequence higher, in one transaction (the driver's
+    /// events page, "Delivery to the backend").
+    ///
+    /// An event whose `(job, sequence)` key is already stored is skipped, so a resent
+    /// batch, or one overlapping a batch already stored, stores only what is new. Returns
+    /// the events this call stored, with their sequences, in sequence order: the ones to
+    /// fan out to the job's live subscribers. Each insert is skipped on conflict rather
+    /// than checked beforehand, so two deliveries of one batch racing on PostgreSQL each
+    /// report only the events they actually wrote.
+    ///
+    /// The job's row must exist (the key's foreign key); a sequence past `i64::MAX` is
+    /// refused with [`BackendError::BadRequest`] before anything is written.
+    pub async fn store_job_events(
+        &self,
+        job_id: &str,
+        first_sequence: u64,
+        events: &[HarnessEvent],
+    ) -> Result<Vec<(u64, HarnessEvent)>> {
+        let mut rows = Vec::with_capacity(events.len());
+        for (offset, event) in (0u64..).zip(events) {
+            let out_of_range = || {
+                BackendError::BadRequest(format!(
+                    "event sequence {first_sequence} + {offset} is out of range"
+                ))
+            };
+            let sequence = first_sequence
+                .checked_add(offset)
+                .ok_or_else(out_of_range)?;
+            let key = i64::try_from(sequence).map_err(|_| out_of_range())?;
+            rows.push((sequence, key, serde_json::to_string(event)?, event));
+        }
+
+        let txn = self.conn().begin().await?;
+        let mut stored = Vec::new();
+        for (sequence, key, event_json, event) in rows {
+            let inserted = job_event::Entity::insert(job_event::ActiveModel {
+                job_id: Set(job_id.to_string()),
+                sequence: Set(key),
+                event_json: Set(event_json),
+            })
+            .on_conflict(
+                OnConflict::columns([job_event::Column::JobId, job_event::Column::Sequence])
+                    .do_nothing()
+                    .to_owned(),
+            )
+            .exec_without_returning(&txn)
+            .await?;
+            if inserted > 0 {
+                stored.push((sequence, event.clone()));
             }
         }
-        Ok(None)
+        txn.commit().await?;
+        Ok(stored)
     }
 
-    /// The runs whose drivers are waiting to store their artifact trees: how many
-    /// jobs are `storing`, and the reason the most recently updated one reported.
-    ///
-    /// This is what the [artifact capacity](crate::capacity) hold counts. It reads
-    /// the live job state, so a waiting run stops counting the moment its job
-    /// leaves `storing` by any route: a report from its driver, a cancellation, or
-    /// the dispatcher failing it as lost.
-    pub async fn storing_jobs(&self) -> Result<crate::capacity::WaitingRuns> {
-        let jobs = job::Entity::find()
-            .filter(job::Column::State.eq(STORING_STATE))
-            .order_by_desc(job::Column::UpdatedAt)
+    /// Job `job_id`'s stored events in sequence order: its recorded stream. Empty for a
+    /// job with none stored, or an unknown job.
+    pub async fn job_events(&self, job_id: &str) -> Result<Vec<HarnessEvent>> {
+        Ok(self
+            .job_events_after(job_id, None)
+            .await?
+            .into_iter()
+            .map(|(_, event)| event)
+            .collect())
+    }
+
+    /// Job `job_id`'s stored events with their sequences, in sequence order, keeping
+    /// only those after `after` when it is given. The live stream replays these as its
+    /// backlog and reads the ones after the last it delivered when its subscriber falls
+    /// behind the fan-out.
+    pub async fn job_events_after(
+        &self,
+        job_id: &str,
+        after: Option<u64>,
+    ) -> Result<Vec<(u64, HarnessEvent)>> {
+        let mut query = job_event::Entity::find().filter(job_event::Column::JobId.eq(job_id));
+        if let Some(after) = after {
+            // A sequence past the signed range was never stored (the store refuses one),
+            // so nothing follows it.
+            let Ok(after) = i64::try_from(after) else {
+                return Ok(Vec::new());
+            };
+            query = query.filter(job_event::Column::Sequence.gt(after));
+        }
+        query
+            .order_by_asc(job_event::Column::Sequence)
             .all(&self.conn())
-            .await?;
-        Ok(crate::capacity::WaitingRuns {
-            count: u32::try_from(jobs.len()).unwrap_or(u32::MAX),
-            reason: jobs.into_iter().find_map(|job| job.detail),
-        })
+            .await?
+            .into_iter()
+            .map(|row| {
+                let sequence = u64::try_from(row.sequence).map_err(|_| {
+                    BackendError::Internal(format!(
+                        "job `{job_id}` holds the negative event sequence {}",
+                        row.sequence
+                    ))
+                })?;
+                Ok((sequence, serde_json::from_str(&row.event_json)?))
+            })
+            .collect()
     }
 
     /// Fetch one job by id.
@@ -7235,8 +7445,17 @@ impl Db {
             .await?)
     }
 
-    /// Every job still in flight (`queued`, `pending`, `dispatched`, `starting`,
-    /// `running`, `validating` or `storing`), in queue order. This is the console's active-run list: a run it is
+    /// Fetch the job whose per-job token is `token`, the lookup that resolves a
+    /// driver's bearer token to the job it was minted for.
+    pub async fn job_by_token(&self, token: &str) -> Result<Option<job::Model>> {
+        Ok(job::Entity::find()
+            .filter(job::Column::JobToken.eq(token))
+            .one(&self.conn())
+            .await?)
+    }
+
+    /// Every job still in flight (`queued`, `pending`, `dispatched`, `starting`, or
+    /// `running`), in queue order. This is the console's active-run list: a run it is
     /// watching survives a page reload because the backend remembers it — including
     /// one held back (`pending`) or spinning up (`starting`). Ordering it by queue
     /// position rather than enqueue time means the list reads in the order the runs
@@ -7304,9 +7523,8 @@ impl Db {
         .await
     }
 
-    /// The publish job already releasing `run_id` — one that is `queued`, or
-    /// `dispatched` recently enough that its publisher may still be running — or
-    /// `None` when the run has no release under way.
+    /// The publish job already releasing `run_id` — one that is `queued` or
+    /// `dispatched` — or `None` when the run has no release under way.
     ///
     /// This is the enqueue-time idempotency check: `POST /runs/{id}/publish` answers
     /// with the job this finds instead of inserting a second one, so a double-click,
@@ -7315,28 +7533,23 @@ impl Db {
     /// because each publish job deploys a *new* Cloudflare Pages deployment, so a
     /// duplicate leaves an orphaned public build behind.
     ///
-    /// Terminal (`succeeded`/`failed`) jobs never block — a failed publish must stay
-    /// retryable — and neither does a `dispatched` job gone quiet long enough to be
-    /// treated as abandoned, since nothing reaps one whose publisher died before
-    /// reporting. `now` is the RFC 3339 instant that staleness is measured against.
-    /// The oldest still-live job wins, so the caller re-attaches to the publish that
-    /// started first.
+    /// Terminal (`succeeded`/`failed`) jobs never block, so a failed publish stays
+    /// retryable. A `dispatched` job whose publisher died blocks until it is reported
+    /// lost or swept as abandoned ([`Self::fail_abandoned_publish_jobs_for_run`],
+    /// which [`Self::enqueue_publish_job_once`] runs first), so a run never has two
+    /// jobs in flight. The oldest live job wins, so the caller re-attaches to the
+    /// publish that started first.
     pub async fn active_publish_job_for_run(
         &self,
         run_id: &str,
-        now: &str,
     ) -> Result<Option<publish_job::Model>> {
-        let candidates = publish_job::Entity::find()
+        Ok(publish_job::Entity::find()
             .filter(publish_job::Column::RunId.eq(run_id))
             .filter(publish_job::Column::State.is_in(ACTIVE_PUBLISH_STATES))
             .order_by_asc(publish_job::Column::CreatedAt)
             .order_by_asc(publish_job::Column::Id)
-            .all(&self.conn())
-            .await?;
-
-        Ok(candidates
-            .into_iter()
-            .find(|job| !is_abandoned_publish_job(job, now)))
+            .one(&self.conn())
+            .await?)
     }
 
     /// Enqueue a publish job: insert it in the `queued` state for the dispatcher to
@@ -7357,6 +7570,7 @@ impl Db {
             detail: Set(None),
             created_at: Set(new.created_at.clone()),
             updated_at: Set(new.created_at),
+            lease_expires_at: Set(None),
         })
         .exec(&self.conn())
         .await?;
@@ -7374,15 +7588,22 @@ impl Db {
     /// with one job. An insert that fails with no live job to attach to is a real
     /// error and is returned.
     ///
+    /// Before looking, it records the run's publish job abandoned at `now`, if any,
+    /// failed ([`Self::fail_abandoned_publish_jobs_for_run`]), so a publisher that
+    /// died never wedges the run's publishing. A caller that raises the
+    /// publish-failed notification for a swept job runs that sweep itself first; this
+    /// one then finds nothing left to sweep.
+    ///
     /// The caller applies its own gate first; this checks only for a live job.
-    /// `now` is the RFC 3339 enqueue instant, also what staleness is measured
-    /// against.
+    /// `now` is the RFC 3339 enqueue instant. `BadRequest` when it is not one.
     pub async fn enqueue_publish_job_once(
         &self,
         run_id: &str,
         now: &str,
     ) -> Result<PublishEnqueue> {
-        if let Some(existing) = self.active_publish_job_for_run(run_id, now).await? {
+        self.fail_abandoned_publish_jobs_for_run(run_id, now)
+            .await?;
+        if let Some(existing) = self.active_publish_job_for_run(run_id).await? {
             return Ok(PublishEnqueue::Attached(existing.id));
         }
         let id = cuid2::create_id();
@@ -7396,7 +7617,7 @@ impl Db {
             .await;
         match inserted {
             Ok(()) => Ok(PublishEnqueue::Enqueued(id)),
-            Err(error) => match self.active_publish_job_for_run(run_id, now).await? {
+            Err(error) => match self.active_publish_job_for_run(run_id).await? {
                 Some(existing) => Ok(PublishEnqueue::Attached(existing.id)),
                 None => Err(error),
             },
@@ -7414,58 +7635,35 @@ impl Db {
         Ok(published.unwrap_or(false))
     }
 
-    /// The runs among `run_ids` that publish themselves: each is
-    /// unpublished, is the attempt that stands, and has never had a publish job.
-    /// They come back in the order asked for, each named once, with the two facts
-    /// that decide what automatic publishing does with one next.
+    /// The runs among `run_ids` that publish themselves now, in the order given.
     ///
-    /// A run recorded as not stored is a candidate like the rest. Whether it is
-    /// asked about is the caller's to decide, since the record may be older than
-    /// the tree.
-    ///
-    /// "Never had a publish job" means in any state, and is what bounds the
-    /// callers of this to a run's first publish job: a release that is queued or
-    /// running is left alone, and one that failed is left to the retry of failed
-    /// publishes ([`Self::publish_facts`]), which spaces its attempts. A caller
-    /// that asks on every pass therefore never loops on a run whose publish keeps
-    /// failing.
-    pub async fn auto_publish_candidates(
-        &self,
-        run_ids: &[String],
-    ) -> Result<Vec<AutoPublishCandidate>> {
+    /// A run qualifies when `auto_publishes` holds for it, it is unpublished, it
+    /// is the attempt that stands rather than one a retry replaced, and **no
+    /// publish job has ever been enqueued for it**, in any state. The last clause
+    /// is what bounds automatic publishing to one attempt per run: a release that
+    /// is queued or running is left alone, and one that failed is left to the
+    /// [retry of failed publishes](crate::publish_retry), which waits between its
+    /// attempts and ends them, so a caller that asks on every pass never loops on
+    /// a run whose publish keeps failing.
+    pub async fn auto_publishable_among(&self, run_ids: &[String]) -> Result<Vec<String>> {
         if run_ids.is_empty() {
             return Ok(Vec::new());
         }
-        let rows: Vec<(String, String, bool, Option<bool>, bool)> = run::Entity::find()
+        let rows: Vec<(String, String, bool)> = run::Entity::find()
             .select_only()
             .column(run::Column::Id)
             .column(run::Column::RunState)
             .column(run::Column::ValidatorRated)
-            .column(run::Column::ArtifactsStored)
-            .column(run::Column::AutoPublishDeferred)
             .filter(run::Column::Id.is_in(run_ids.iter().cloned()))
             .filter(run::Column::Published.eq(false))
-            // A reclaimed tree is gone for good, so the run has nothing to release.
-            .filter(run::Column::ArtifactsReclaimedAt.is_null())
             .filter(not_a_retried_attempt())
             .into_tuple()
             .all(&self.conn())
             .await?;
-        let mut candidates: std::collections::HashMap<String, AutoPublishCandidate> = rows
+        let mut candidates: std::collections::HashSet<String> = rows
             .into_iter()
-            .filter(|(_, run_state, validator_rated, _, _)| {
-                auto_publishes(run_state, *validator_rated)
-            })
-            .map(|(run_id, _, _, artifacts_stored, deferred)| {
-                (
-                    run_id.clone(),
-                    AutoPublishCandidate {
-                        run_id,
-                        artifacts_stored,
-                        deferred,
-                    },
-                )
-            })
+            .filter(|(_, run_state, validator_rated)| auto_publishes(run_state, *validator_rated))
+            .map(|(id, _, _)| id)
             .collect();
         if candidates.is_empty() {
             return Ok(Vec::new());
@@ -7473,16 +7671,18 @@ impl Db {
         let attempted: Vec<String> = publish_job::Entity::find()
             .select_only()
             .column(publish_job::Column::RunId)
-            .filter(publish_job::Column::RunId.is_in(candidates.keys().cloned()))
+            .filter(publish_job::Column::RunId.is_in(candidates.iter().cloned()))
             .into_tuple()
             .all(&self.conn())
             .await?;
         for run_id in attempted {
             candidates.remove(&run_id);
         }
+        let mut seen = std::collections::HashSet::new();
         Ok(run_ids
             .iter()
-            .filter_map(|id| candidates.remove(id))
+            .filter(|id| candidates.contains(*id) && seen.insert(id.as_str()))
+            .cloned()
             .collect())
     }
 
@@ -7490,7 +7690,13 @@ impl Db {
     /// `dispatched`, and return it (or `None` when the queue is empty). The
     /// select-then-update runs in one transaction, exactly like
     /// [`Db::claim_next_job`], so two dispatchers cannot claim the same publish job.
+    ///
+    /// The claimed job's **lease** is set [`JOB_LEASE`] past `now`, like a claimed
+    /// run's; the dispatcher renews it while the publisher `Job` is live
+    /// ([`Db::renew_publish_leases`]). `now` is also the dispatch instant the
+    /// abandonment sweep measures from. `BadRequest` when `now` is not RFC 3339.
     pub async fn claim_next_publish_job(&self, now: &str) -> Result<Option<publish_job::Model>> {
+        let lease = job_lease_expiry(now)?;
         let txn = self.conn().begin().await?;
         let candidate = publish_job::Entity::find()
             .filter(publish_job::Column::State.eq("queued"))
@@ -7505,14 +7711,185 @@ impl Db {
         let mut active = model.into_active_model();
         active.state = Set("dispatched".to_string());
         active.updated_at = Set(now.to_string());
+        active.lease_expires_at = Set(Some(lease));
         let updated = active.update(&txn).await?;
         txn.commit().await?;
         Ok(Some(updated))
     }
 
+    /// Extend the claim lease of each listed publish job still `dispatched` to
+    /// [`JOB_LEASE`] past `now`: the dispatcher's renewal for every publish job whose
+    /// publisher `Job` is live. Unknown ids and jobs in any other state are ignored,
+    /// as [`Db::renew_job_leases`] ignores them. A renewal is not a state transition
+    /// and leaves `updated_at`, the dispatch instant, alone. Returns how many were
+    /// renewed. `BadRequest` when `now` is not an RFC 3339 instant.
+    pub async fn renew_publish_leases(&self, ids: &[String], now: &str) -> Result<u64> {
+        let lease = job_lease_expiry(now)?;
+        if ids.is_empty() {
+            return Ok(0);
+        }
+        let mut renewed = 0;
+        for chunk in ids.chunks(1000) {
+            renewed += publish_job::Entity::update_many()
+                .col_expr(
+                    publish_job::Column::LeaseExpiresAt,
+                    Expr::value(lease.clone()),
+                )
+                .filter(publish_job::Column::Id.is_in(chunk.iter().cloned()))
+                .filter(publish_job::Column::State.eq("dispatched"))
+                .exec(&self.conn())
+                .await?
+                .rows_affected;
+        }
+        Ok(renewed)
+    }
+
+    /// Every publish job in flight (`queued` or `dispatched`), oldest first: what the
+    /// dispatcher reads to judge which `dispatched` jobs' leases have lapsed.
+    pub async fn active_publish_jobs(&self) -> Result<Vec<publish_job::Model>> {
+        Ok(publish_job::Entity::find()
+            .filter(publish_job::Column::State.is_in(ACTIVE_PUBLISH_STATES))
+            .order_by_asc(publish_job::Column::CreatedAt)
+            .order_by_asc(publish_job::Column::Id)
+            .all(&self.conn())
+            .await?)
+    }
+
+    /// Record a publish job the dispatcher reported **lost** as `failed` with
+    /// `detail`, at `now`, and clear its lease. Only a `dispatched` job is failed: a
+    /// job in any other state (one whose result landed meanwhile, or one never
+    /// claimed) is left as it is and `None` is returned, as it is for an unknown id.
+    /// The state check is part of the update, so a result that lands concurrently is
+    /// never overwritten.
+    pub async fn mark_publish_job_lost(
+        &self,
+        id: &str,
+        now: &str,
+        detail: &str,
+    ) -> Result<Option<publish_job::Model>> {
+        let failed = publish_job::Entity::update_many()
+            .col_expr(publish_job::Column::State, Expr::value("failed"))
+            .col_expr(publish_job::Column::UpdatedAt, Expr::value(now))
+            .col_expr(publish_job::Column::Detail, Expr::value(detail))
+            .col_expr(
+                publish_job::Column::LeaseExpiresAt,
+                Expr::value(Option::<String>::None),
+            )
+            .filter(publish_job::Column::Id.eq(id))
+            .filter(publish_job::Column::State.eq("dispatched"))
+            .exec(&self.conn())
+            .await?
+            .rows_affected;
+        if failed == 0 {
+            return Ok(None);
+        }
+        self.get_publish_job(id).await
+    }
+
+    /// Record every publish job `dispatched` for [`PUBLISH_JOB_ABANDONED_AFTER`] or
+    /// more at `now` with no result as `failed`, with [`PUBLISHER_NEVER_REPORTED`]
+    /// (the backend results page's "A publisher that stops"). Each is recorded as
+    /// having failed at its dispatch instant plus that hour, not at `now`, so a job
+    /// abandoned long ago takes its place in the order of events. Returns the swept
+    /// jobs, oldest first, for the caller to raise their notifications.
+    /// `BadRequest` when `now` is not an RFC 3339 instant.
+    pub async fn fail_abandoned_publish_jobs(&self, now: &str) -> Result<Vec<publish_job::Model>> {
+        self.sweep_abandoned_publish_jobs(None, now).await
+    }
+
+    /// [`Self::fail_abandoned_publish_jobs`] for `run_id`'s publish jobs only.
+    pub async fn fail_abandoned_publish_jobs_for_run(
+        &self,
+        run_id: &str,
+        now: &str,
+    ) -> Result<Vec<publish_job::Model>> {
+        self.sweep_abandoned_publish_jobs(Some(run_id), now).await
+    }
+
+    /// The sweep behind [`Self::fail_abandoned_publish_jobs`], over one run's jobs or
+    /// every run's.
+    async fn sweep_abandoned_publish_jobs(
+        &self,
+        run_id: Option<&str>,
+        now: &str,
+    ) -> Result<Vec<publish_job::Model>> {
+        let now = parse_instant(now)?;
+        let mut query = publish_job::Entity::find()
+            .filter(publish_job::Column::State.eq("dispatched"))
+            .order_by_asc(publish_job::Column::CreatedAt)
+            .order_by_asc(publish_job::Column::Id);
+        if let Some(run_id) = run_id {
+            query = query.filter(publish_job::Column::RunId.eq(run_id));
+        }
+        let mut swept = Vec::new();
+        for job in query.all(&self.conn()).await? {
+            let Some(abandoned_at) = publish_job_abandoned_at(&job) else {
+                continue;
+            };
+            if abandoned_at > now {
+                continue;
+            }
+            let failed_at = abandoned_at.format(&Rfc3339).map_err(|e| {
+                BackendError::BadRequest(format!("formatting an abandonment instant: {e}"))
+            })?;
+            // Conditional on the row still being the dispatch the sweep read, so a
+            // result or a lost report landing meanwhile is never overwritten.
+            let failed = publish_job::Entity::update_many()
+                .col_expr(publish_job::Column::State, Expr::value("failed"))
+                .col_expr(publish_job::Column::UpdatedAt, Expr::value(failed_at))
+                .col_expr(
+                    publish_job::Column::Detail,
+                    Expr::value(PUBLISHER_NEVER_REPORTED),
+                )
+                .col_expr(
+                    publish_job::Column::LeaseExpiresAt,
+                    Expr::value(Option::<String>::None),
+                )
+                .filter(publish_job::Column::Id.eq(job.id.as_str()))
+                .filter(publish_job::Column::State.eq("dispatched"))
+                .filter(publish_job::Column::UpdatedAt.eq(job.updated_at.as_str()))
+                .exec(&self.conn())
+                .await?
+                .rows_affected;
+            if failed == 0 {
+                continue;
+            }
+            if let Some(row) = self.get_publish_job(&job.id).await? {
+                swept.push(row);
+            }
+        }
+        Ok(swept)
+    }
+
+    /// Every publish job of every run the retry of failed publishes may take up, in
+    /// no particular order: the unpublished runs that are not attempts an automatic
+    /// retry replaced. Which of those runs are due a retry is
+    /// [`crate::publish_retry::failed_runs`]'s to say, from these rows.
+    pub async fn publish_jobs_of_retryable_runs(&self) -> Result<Vec<publish_job::Model>> {
+        let retryable = sea_orm::sea_query::Query::select()
+            .column(run::Column::Id)
+            .from(run::Entity)
+            .and_where(run::Column::Published.eq(false))
+            .and_where(not_a_retried_attempt())
+            .to_owned();
+        Ok(publish_job::Entity::find()
+            .filter(publish_job::Column::RunId.in_subquery(retryable))
+            .all(&self.conn())
+            .await?)
+    }
+
     /// Fetch one publish job by id.
     pub async fn get_publish_job(&self, id: &str) -> Result<Option<publish_job::Model>> {
         Ok(publish_job::Entity::find_by_id(id.to_string())
+            .one(&self.conn())
+            .await?)
+    }
+
+    /// Fetch the publish job whose per-publish-job token is `token`, the lookup that
+    /// resolves a publisher's bearer token to the publish job it was minted for.
+    pub async fn publish_job_by_token(&self, token: &str) -> Result<Option<publish_job::Model>> {
+        Ok(publish_job::Entity::find()
+            .filter(publish_job::Column::JobToken.eq(token))
             .one(&self.conn())
             .await?)
     }
@@ -8034,7 +8411,7 @@ impl Db {
         model_id: &str,
         harness: HarnessSlug,
     ) -> Result<std::result::Result<TokenPrices, String>> {
-        let canonical = test_cabinet_core::model_id::canonical_model_id(model_id, harness);
+        let canonical = crate::model_id::canonical_model_id(model_id, harness);
         let Some(alias) = model_alias::Entity::find()
             .filter(model_alias::Column::Alias.eq(&canonical))
             .one(&self.conn())
@@ -8542,7 +8919,7 @@ impl Db {
     /// tens of kilobytes of `record_json` apiece, on every boot, before the router is
     /// built — an unbounded startup cost in a service whose availability incidents have
     /// been single-replica ones. `codeAnalysis` is
-    /// [omitted from the blob when absent](test_cabinet_core::run_record::RunRecord::code_analysis),
+    /// [omitted from the blob when absent](test_cabinet_contracts::run_record::RunRecord::code_analysis),
     /// so the substring is a sound over-approximation of "has an analysis": it can only
     /// fail toward including a row, never toward skipping one that needed the lift. A
     /// spurious match — the string occurring somewhere else in the record — parses, finds
@@ -8727,7 +9104,7 @@ impl Db {
             let Some(json) = row.gg_config_json.as_deref() else {
                 continue;
             };
-            let Ok(set) = serde_json::from_str::<test_cabinet_core::gg::GgCapabilitySet>(json)
+            let Ok(set) = serde_json::from_str::<test_cabinet_contracts::gg::GgCapabilitySet>(json)
             else {
                 continue;
             };
@@ -8763,8 +9140,9 @@ impl Db {
             .await?;
         let mut backfilled = 0usize;
         for row in rows {
-            let Ok(body) = serde_json::from_str::<test_cabinet_core::LaunchBody>(&row.request_json)
-            else {
+            let Ok(body) = serde_json::from_str::<test_cabinet_contracts::job_api::LaunchBody>(
+                &row.request_json,
+            ) else {
                 continue;
             };
             let Some(engine) = body.engine.filter(|slug| !slug.trim().is_empty()) else {
@@ -8789,7 +9167,7 @@ impl Db {
     /// account's configurations are then matched by name.
     ///
     /// A resolved row is written in **both** places the id lives: the record's
-    /// [`preset_id`](test_cabinet_core::gg::GgCapabilitySet::preset_id) and the column
+    /// [`preset_id`](test_cabinet_contracts::gg::GgCapabilitySet::preset_id) and the column
     /// lifted from it. The column is what the grouped counts read and the record is what a
     /// cell's review queue matches a run against, so filling one alone would produce a run
     /// that counts toward a cell and can never be offered for review in it — a run no
@@ -9051,7 +9429,7 @@ impl Db {
         let mut backfilled = 0usize;
         for row in rows {
             let set = row.gg_config_json.as_deref().and_then(|json| {
-                serde_json::from_str::<test_cabinet_core::gg::GgCapabilitySet>(json).ok()
+                serde_json::from_str::<test_cabinet_contracts::gg::GgCapabilitySet>(json).ok()
             });
             let Some(mut set) = set else {
                 continue;
@@ -9253,7 +9631,7 @@ impl Db {
 /// committed reference-builds lockfile. There is no lockfile here — a published
 /// asset reference is discovered by listing the snapshot bucket (see the `/ingest`
 /// handler's `reconcile_reference_sheets`) — so the entry type is defined with the
-/// store that consumes it rather than in `core`'s lockfile module.
+/// store that consumes it rather than in the driver's lockfile module.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ReferenceSheetEntry {
     /// The test-case slug.
@@ -9310,7 +9688,7 @@ fn decode_frames(encoded: &str) -> Vec<u32> {
 /// The asset-generation analogue of the reference-build store above. Rows are
 /// written **out-of-band**: `tcab publish-reference` runs a variant's `draw.sh` and
 /// uploads the frames it produced under the deterministic keys
-/// [`test_cabinet_core::asset_reference`] defines, and the backend reconciles this
+/// [`test_cabinet_contracts::asset_reference`] defines, and the backend reconciles this
 /// table to what it finds in the bucket at ingest. Nothing here is resolved from a
 /// manifest and nothing is seeded into a run. Reads feed
 /// `GET /test-cases/{slug}/versions/{version}` and the public snapshot, which fold
@@ -9466,6 +9844,62 @@ pub(crate) mod tests;
 #[path = "db.readability.test.rs"]
 mod readability_tests;
 
+#[cfg(test)]
+#[path = "db.reviewer.test.rs"]
+mod reviewer_tests;
+
+/// What became of a probe call a runner recorded ([`Db::record_model_probe_item`]).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ProbeItemRecorded {
+    /// The item was stored and the runner's lease renewed.
+    Stored,
+    /// The runner still holds the lease, but the probe already held an item for the
+    /// same call, which is kept.
+    AlreadyStored,
+    /// The probe is no longer `running` or another runner holds its lease; nothing was
+    /// stored.
+    LeaseLost,
+}
+
+/// A probe item as an insertable active model.
+fn probe_item_active_model(row: model_probe_item::Model) -> model_probe_item::ActiveModel {
+    model_probe_item::ActiveModel {
+        id: Set(row.id),
+        probe_id: Set(row.probe_id),
+        language: Set(row.language),
+        scenario: Set(row.scenario),
+        prompt: Set(row.prompt),
+        sample: Set(row.sample),
+        provider: Set(row.provider),
+        finish_reason: Set(row.finish_reason),
+        native_finish_reason: Set(row.native_finish_reason),
+        label: Set(row.label),
+        pass: Set(row.pass),
+        program_text: Set(row.program_text),
+        response_text: Set(row.response_text),
+        reasoning_text: Set(row.reasoning_text),
+        prompt_tokens: Set(row.prompt_tokens),
+        completion_tokens: Set(row.completion_tokens),
+        cost: Set(row.cost),
+        duration_ms: Set(row.duration_ms),
+        error: Set(row.error),
+        created_at: Set(row.created_at),
+    }
+}
+
+/// Keep the stored item when a probe already holds one for the same call.
+fn probe_item_coordinate_conflict() -> OnConflict {
+    OnConflict::columns([
+        model_probe_item::Column::ProbeId,
+        model_probe_item::Column::Language,
+        model_probe_item::Column::Scenario,
+        model_probe_item::Column::Prompt,
+        model_probe_item::Column::Sample,
+    ])
+    .do_nothing()
+    .to_owned()
+}
+
 /// The model-probe store: responses-as-code readiness probes of catalog models
 /// (see [`crate::probe`]).
 ///
@@ -9495,6 +9929,8 @@ impl Db {
             spend: Set(row.spend),
             created_at: Set(row.created_at),
             finished_at: Set(row.finished_at),
+            lease_expires_at: Set(row.lease_expires_at),
+            lease_holder: Set(row.lease_holder),
         }
         .insert(&self.conn())
         .await?;
@@ -9529,33 +9965,55 @@ impl Db {
             .is_some())
     }
 
-    /// Append one completed (or errored) probe call.
-    pub async fn insert_model_probe_item(&self, row: model_probe_item::Model) -> Result<()> {
-        model_probe_item::ActiveModel {
-            id: Set(row.id),
-            probe_id: Set(row.probe_id),
-            language: Set(row.language),
-            scenario: Set(row.scenario),
-            prompt: Set(row.prompt),
-            sample: Set(row.sample),
-            provider: Set(row.provider),
-            finish_reason: Set(row.finish_reason),
-            native_finish_reason: Set(row.native_finish_reason),
-            label: Set(row.label),
-            pass: Set(row.pass),
-            program_text: Set(row.program_text),
-            response_text: Set(row.response_text),
-            reasoning_text: Set(row.reasoning_text),
-            prompt_tokens: Set(row.prompt_tokens),
-            completion_tokens: Set(row.completion_tokens),
-            cost: Set(row.cost),
-            duration_ms: Set(row.duration_ms),
-            error: Set(row.error),
-            created_at: Set(row.created_at),
+    /// Append one completed (or errored) probe call. Returns whether it was stored:
+    /// `false` when the probe already holds an item for the same call (language,
+    /// scenario, prompt and sample), which is kept, so a runner that lost its lease
+    /// can never record a call twice beside the runner that took it over.
+    pub async fn insert_model_probe_item(&self, row: model_probe_item::Model) -> Result<bool> {
+        let inserted = model_probe_item::Entity::insert(probe_item_active_model(row))
+            .on_conflict(probe_item_coordinate_conflict())
+            .exec_without_returning(&self.conn())
+            .await?;
+        Ok(inserted > 0)
+    }
+
+    /// Record one probe call on behalf of the runner `holder`, in one transaction that
+    /// first renews the probe's lease to [`PROBE_LEASE`] past `now` and then appends
+    /// the item as [`insert_model_probe_item`](Self::insert_model_probe_item) does.
+    /// Renewing first fences a runner that lost its lease: on PostgreSQL the renewal
+    /// holds the probe's row until the item is committed, so a takeover either lands
+    /// before it (and the call is not recorded) or after the item is stored (and the
+    /// runner taking over sees it). `BadRequest` when `now` is not an RFC 3339 instant.
+    pub async fn record_model_probe_item(
+        &self,
+        row: model_probe_item::Model,
+        holder: &str,
+        now: &str,
+    ) -> Result<ProbeItemRecorded> {
+        let lease = probe_lease_expiry(now)?;
+        let txn = self.conn().begin().await?;
+        let renewed = model_probe::Entity::update_many()
+            .col_expr(model_probe::Column::LeaseExpiresAt, Expr::value(lease))
+            .filter(model_probe::Column::Id.eq(row.probe_id.as_str()))
+            .filter(model_probe::Column::Status.eq("running"))
+            .filter(model_probe::Column::LeaseHolder.eq(holder))
+            .exec(&txn)
+            .await?
+            .rows_affected;
+        if renewed == 0 {
+            txn.rollback().await?;
+            return Ok(ProbeItemRecorded::LeaseLost);
         }
-        .insert(&self.conn())
-        .await?;
-        Ok(())
+        let inserted = model_probe_item::Entity::insert(probe_item_active_model(row))
+            .on_conflict(probe_item_coordinate_conflict())
+            .exec_without_returning(&txn)
+            .await?;
+        txn.commit().await?;
+        Ok(if inserted > 0 {
+            ProbeItemRecorded::Stored
+        } else {
+            ProbeItemRecorded::AlreadyStored
+        })
     }
 
     /// One probe's calls, in case order (items are ordered by creation, which
@@ -9599,13 +10057,17 @@ impl Db {
             .collect())
     }
 
-    /// Finish a probe: stamp its terminal status (`complete`/`failed`), the
-    /// verdict and clean rate when it completed, the failure message when it did
-    /// not, and the summed spend. Returns whether a row matched.
+    /// Finish a probe on behalf of the runner holding its lease: stamp its terminal
+    /// status (`complete`/`failed`), the verdict and clean rate when it completed, the
+    /// failure message when it did not, and the summed spend, and clear the lease.
+    /// Only a `running` probe whose lease `holder` holds is finished, so a runner that
+    /// lost its lease leaves the probe to the runner that took it over. Returns
+    /// whether a row matched.
     #[allow(clippy::too_many_arguments)]
     pub async fn finish_model_probe(
         &self,
         id: &str,
+        holder: &str,
         status: &str,
         error: Option<String>,
         verdict: Option<String>,
@@ -9620,57 +10082,119 @@ impl Db {
             .col_expr(model_probe::Column::PassRate, Expr::value(pass_rate))
             .col_expr(model_probe::Column::Spend, Expr::value(spend))
             .col_expr(model_probe::Column::FinishedAt, Expr::value(finished_at))
+            .col_expr(
+                model_probe::Column::LeaseExpiresAt,
+                Expr::value(Option::<String>::None),
+            )
+            .col_expr(
+                model_probe::Column::LeaseHolder,
+                Expr::value(Option::<String>::None),
+            )
             .filter(model_probe::Column::Id.eq(id))
+            .filter(model_probe::Column::Status.eq("running"))
+            .filter(model_probe::Column::LeaseHolder.eq(holder))
             .exec(&self.conn())
             .await?;
         Ok(res.rows_affected > 0)
     }
 
-    /// Fail every probe still marked `running` — the startup reap. A probe runs
-    /// inside the backend process, so a backend restart always killed it; unlike
-    /// the job-queue reap this is correct on every deployment shape.
-    pub async fn fail_running_model_probes(&self, now: &str) -> Result<u64> {
+    /// Renew a running probe's lease to [`PROBE_LEASE`] past `now` on behalf of the
+    /// runner `holder`. Returns whether it was renewed: `false` when the probe is no
+    /// longer `running` or another runner has taken its lease over, which tells the
+    /// runner it has lost the probe and must stop. `BadRequest` when `now` is not an
+    /// RFC 3339 instant.
+    pub async fn renew_model_probe_lease(&self, id: &str, holder: &str, now: &str) -> Result<bool> {
+        let lease = probe_lease_expiry(now)?;
         let res = model_probe::Entity::update_many()
-            .col_expr(model_probe::Column::Status, Expr::value("failed"))
-            .col_expr(
-                model_probe::Column::Error,
-                Expr::value("the backend restarted while the probe was running"),
-            )
-            .col_expr(model_probe::Column::FinishedAt, Expr::value(now))
+            .col_expr(model_probe::Column::LeaseExpiresAt, Expr::value(lease))
+            .filter(model_probe::Column::Id.eq(id))
             .filter(model_probe::Column::Status.eq("running"))
+            .filter(model_probe::Column::LeaseHolder.eq(holder))
             .exec(&self.conn())
             .await?;
-        Ok(res.rows_affected)
+        Ok(res.rows_affected > 0)
+    }
+
+    /// Take a running probe's lease for the runner `holder`, [`PROBE_LEASE`] past
+    /// `now`, when the lease has lapsed: it holds none, its expiry does not parse, or
+    /// the expiry is before `now` (compared as instants). A compare-and-swap on the
+    /// lease as read, so of two backends taking the same lapsed lease exactly one
+    /// succeeds. Returns the probe as taken, or `None` when it is unknown, no longer
+    /// `running`, its lease is still held, or another backend took it first.
+    /// `BadRequest` when `now` is not an RFC 3339 instant.
+    pub async fn take_model_probe_lease(
+        &self,
+        id: &str,
+        holder: &str,
+        now: &str,
+    ) -> Result<Option<model_probe::Model>> {
+        let lease = probe_lease_expiry(now)?;
+        let instant = parse_instant(now)?;
+        let Some(probe) = self.get_model_probe(id).await? else {
+            return Ok(None);
+        };
+        if probe.status != "running" || !lease_lapsed(probe.lease_expires_at.as_deref(), instant) {
+            return Ok(None);
+        }
+        let mut update = model_probe::Entity::update_many()
+            .col_expr(
+                model_probe::Column::LeaseExpiresAt,
+                Expr::value(lease.clone()),
+            )
+            .col_expr(model_probe::Column::LeaseHolder, Expr::value(holder))
+            .filter(model_probe::Column::Id.eq(id))
+            .filter(model_probe::Column::Status.eq("running"));
+        update = match &probe.lease_expires_at {
+            Some(held) => update.filter(model_probe::Column::LeaseExpiresAt.eq(held.as_str())),
+            None => update.filter(model_probe::Column::LeaseExpiresAt.is_null()),
+        };
+        update = match &probe.lease_holder {
+            Some(held) => update.filter(model_probe::Column::LeaseHolder.eq(held.as_str())),
+            None => update.filter(model_probe::Column::LeaseHolder.is_null()),
+        };
+        if update.exec(&self.conn()).await?.rows_affected == 0 {
+            return Ok(None);
+        }
+        Ok(Some(model_probe::Model {
+            lease_expires_at: Some(lease),
+            lease_holder: Some(holder.to_string()),
+            ..probe
+        }))
+    }
+
+    /// Every `running` probe whose lease has lapsed at `now` (none held, an
+    /// unparseable expiry, or an expiry before `now`, compared as instants): the
+    /// probes whose runner is gone and which a running backend takes over, oldest
+    /// first. `BadRequest` when `now` is not an RFC 3339 instant.
+    pub async fn lapsed_running_model_probes(&self, now: &str) -> Result<Vec<model_probe::Model>> {
+        let instant = parse_instant(now)?;
+        Ok(model_probe::Entity::find()
+            .filter(model_probe::Column::Status.eq("running"))
+            .order_by_asc(model_probe::Column::CreatedAt)
+            .order_by_asc(model_probe::Column::Id)
+            .all(&self.conn())
+            .await?
+            .into_iter()
+            .filter(|probe| lease_lapsed(probe.lease_expires_at.as_deref(), instant))
+            .collect())
     }
 }
 
-#[path = "db.artifacts.rs"]
-mod artifacts;
-pub use artifacts::ArtifactReconciliation;
-
-#[path = "db.retention.rs"]
-mod retention;
+#[cfg(test)]
+#[path = "db.lease.test.rs"]
+mod lease_tests;
 
 #[cfg(test)]
-#[path = "db.retention.test.rs"]
-pub(crate) mod retention_tests;
+#[path = "db.probe_lease.test.rs"]
+mod probe_lease_tests;
 
 #[cfg(test)]
-#[path = "db.manifest.test.rs"]
-mod manifest_tests;
-pub use retention::{
-    ArtifactsReclaimed, ConfirmedMedia, MEDIA_CONFIRMATION_VERSION, MediaConfirmation,
-    MediaFileKind, MediaManifest, MediaManifestFile, PublishedMediaState, ReclaimReason,
-    RetentionRun, confirmation_holds, past_instant,
-};
-
-#[path = "db.state_reclaim.rs"]
-mod state_reclaim;
-pub use state_reclaim::UploadedOver;
+#[path = "db.publish_lease.test.rs"]
+mod publish_lease_tests;
 
 #[cfg(test)]
-#[path = "db.state_reclaim.test.rs"]
-mod state_reclaim_tests;
+#[path = "db.job_events.test.rs"]
+mod job_events_tests;
 
 #[path = "db.tool_calls.rs"]
 mod tool_calls;
@@ -9679,11 +10203,3 @@ use tool_calls::tool_calls_counted;
 #[cfg(test)]
 #[path = "db.tool_calls.test.rs"]
 mod tool_calls_tests;
-
-#[path = "db.publish_retry.rs"]
-mod publish_retry;
-pub use publish_retry::PUBLISHER_NEVER_REPORTED;
-
-#[cfg(test)]
-#[path = "db.publish_retry.test.rs"]
-mod publish_retry_tests;

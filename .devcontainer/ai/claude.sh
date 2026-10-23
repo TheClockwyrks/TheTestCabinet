@@ -15,7 +15,20 @@ set -euo pipefail
 # by, with no shell to add anything to its PATH.
 readonly BIN_PATH="$HOME/.local/bin/claude"
 
-curl -fsSL https://claude.ai/install.sh | bash -s -- "$CLAUDE_CODE_VERSION"
+# The installer gives its download a fixed deadline, which a slow link can
+# exceed although nothing is wrong with the release, so a failed attempt is
+# made again, a bounded number of times, before the build fails.
+readonly ATTEMPTS=3
+attempt=1
+until curl -fsSL https://claude.ai/install.sh | bash -s -- "$CLAUDE_CODE_VERSION"; do
+	if ((attempt >= ATTEMPTS)); then
+		echo "claude.sh: installing Claude Code ${CLAUDE_CODE_VERSION} failed ${ATTEMPTS} times" >&2
+		exit 1
+	fi
+	attempt=$((attempt + 1))
+	echo "claude.sh: the install failed; attempt ${attempt} of ${ATTEMPTS}" >&2
+	sleep 10
+done
 
 # Run it once, from where a session finds it, so an installer that put the
 # command anywhere else fails the build rather than the first session.

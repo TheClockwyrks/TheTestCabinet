@@ -2,93 +2,106 @@
 title: Overview
 ---
 
-The auth service is a standalone Rust server that holds The Test Cabinet's user
-accounts. It handles registration and login and mints the bearer tokens the
-[backend](/components/backend/overview/) verifies on every mutating run request,
-so every [review](/components/core/results/#reviews) a run carries is attributed
-to a named person. Accounts live in their own service, so the backend stores no
-credentials.
+Identity in The Test Cabinet is Cloudflare Access in front of every
+environment, with Microsoft Entra ID as the identity provider. A person signs
+in once at the Microsoft login page, Cloudflare attaches a signed assertion to
+every request that crosses the edge, and the services verify that assertion
+themselves. The services hold no login of their own, and what a
+[review](/components/backend/results/#reviews) records is the identity the
+assertion carries.
 
-The Test Cabinet's services sit on a private network, so reachability is the
-first line of access control and identity is the layer on top of it that says
-who inside the network is acting. Self-registration is open, because reaching
-the service already requires being on the private network.
+The edge itself, the tunnel, the Access applications, the hostnames and the
+DNS, is built in [Edge](/deployment/kubernetes/edge/). This page is the contract
+between the edge and the services, and between the services and their clients.
 
-## Responsibilities
+## The assertion
 
-The auth service owns user identity end to end:
+Every request that passes an Access application carries the header
+`Cf-Access-Jwt-Assertion`, a JWT signed by the team's Access instance. The
+[backend](/components/backend/overview/), the
+[artifacts service](/components/artifacts/overview/) and the
+[arena](/components/arena/overview/) verify it on every request that arrives
+through the edge:
 
-- Registration. Anyone who can reach the service creates an account with a
-  username, a password, and a display name. Passwords are hashed with Argon2id.
-  Registration returns a token, so a new account is signed in immediately.
-- Login. A username and password are exchanged for an opaque bearer token and
-  the account it identifies. That token is what the CLI and the web console present
-  on mutating calls.
-- Verification. The backend hands each request's bearer token to the auth
-  service, which resolves it to an account or rejects it. This is how the
-  backend learns who is acting.
-- Logout. A token is revoked.
-- Profile pictures. An account sets, replaces, or clears its own avatar, and the
-  picture is served publicly by account id.
+- the signature, against the keys published at
+  `https://shrill-term-5c16.cloudflareaccess.com/cdn-cgi/access/certs`, which
+  a service caches and refreshes when a token names a key the cached set lacks;
+- the `aud` claim, which must contain the audience tag of the Access
+  application the service sits behind;
+- the expiry.
 
-Its only state is its own accounts database.
+A request that carries no valid assertion and none of the in-cluster tokens
+below is refused with `401`. The check is the same for a read and a write, so
+every route a browser or the CLI can reach is behind a verified identity.
 
-## HTTP API
+The assertion names one of two kinds of caller:
 
-The auth service speaks JSON over HTTP. Bodies are camelCase, matching the rest
-of the system's contracts. Tokens are presented as
-`Authorization: Bearer <token>`.
-
-- `GET /healthz` — liveness probe.
-- `POST /auth/register` — open self-registration. Body
-  `{ username, password, displayName }`. Answers `201` with the new account and
-  a freshly minted token. `409` when the username is taken, `400` when a field
-  is empty or the password is shorter than the minimum length.
-- `POST /auth/login` — body `{ username, password }`. Returns
-  `{ token, account: { id, username, displayName, pictureUpdatedAt } }`. An
-  unknown username and a wrong password produce the identical `401`, so the
-  endpoint never reveals which usernames exist.
-- `POST /auth/verify` — resolves the presented bearer token to its account, or
-  answers `401`. The backend calls this to authenticate each mutating run
-  request.
-- `POST /auth/logout` — revokes the presented bearer token. Idempotent.
-- `PUT /auth/profile/picture` — sets or replaces the signed-in account's avatar.
-  The body is the raw image bytes and `Content-Type` names an `image/*` type.
-  `415` for another type, `413` past 512 KiB. Requires the account's token.
-- `DELETE /auth/profile/picture` — clears the signed-in account's avatar.
-  Requires the account's token.
-- `GET /auth/users/{id}/picture` — an account's avatar bytes, served with their
-  stored content type. An open read. `404` when the account has no picture. An
-  account's `pictureUpdatedAt` is the cache-busting version.
-
-The account and token shapes are specified in
-[`auth.schema.json`](https://docs.testcabinet.ai/schema/backend-api/auth.schema.json).
-
-## Who talks to it
-
-- The [CLI](/components/cli/overview/) (`tcab register`, `login`, `logout`) and
-  the [web console](/components/web/overview/) register and log in against it,
-  then send the resulting bearer token to the backend on review and publish. The
-  CLI is pointed at it with `TCAB_AUTH_URL`; the web console takes it
-  from the deployment's injected runtime config, falling back to the build-time
-  `VITE_AUTH_URL` and then to the backend URL. The CLI stores its token at
-  `~/.config/tcab/credentials.json`, overridable with `$TCAB_CONFIG_DIR`.
-- The [backend](/components/backend/overview/) verifies tokens against it
-  (`TCAB_BACKEND_AUTH_URL`) and fetches reviewer avatars from it when it bakes
-  the [public snapshot](/components/backend/snapshot/#reviewer-pictures).
+- A person. The `email` claim is the identity: it is what a review is
+  attributed to and what the console shows beside it.
+- A service token. The assertion carries the token's `common_name` and no
+  `email`. The mutating routes automation drives (ingest, a snapshot refresh,
+  tournaments, the reference-build writes and the CLI's public object writes)
+  take a service token, and a review submitted under one is attributed to the
+  token's name.
 
 ## Configuration
 
-The service is the `tcab-auth-service` binary (`crates/auth-service`): an Axum
-server over its own account store, with Argon2id password hashing and opaque
-bearer tokens. It is configured entirely through environment variables, all of
-which have defaults.
+Each service that sits behind the edge reads two variables:
 
-| Variable                 | Purpose                                                                                        | Default                                |
-| ------------------------ | ---------------------------------------------------------------------------------------------- | -------------------------------------- |
-| `TCAB_AUTH_BIND`         | Bind address.                                                                                  | `127.0.0.1:8789`                       |
-| `TCAB_AUTH_DATABASE_URL` | Its own accounts database, separate from the backend's; the scheme picks SQLite or PostgreSQL. | `sqlite://./tcab-auth.sqlite?mode=rwc` |
-| `TCAB_AUTH_DB_AZURE_AD`  | Authenticate to PostgreSQL with a Microsoft Entra managed-identity token.                      | `false`                                |
+| Variable                  | Purpose                                                                                                |
+| ------------------------- | ------------------------------------------------------------------------------------------------------ |
+| `TCAB_ACCESS_TEAM_DOMAIN` | The Access team domain, `shrill-term-5c16.cloudflareaccess.com`, whose certificates sign the assertion |
+| `TCAB_ACCESS_AUDIENCE`    | The audience tag of the Access application that protects the service's hostname                        |
 
-It stores Argon2id password hashes, which the [backups](/deployment/backups/)
-page covers alongside the backend's database.
+The backend, the artifacts service and the arena share one hostname per
+environment, so they carry the same audience tag. The
+[repos service](/components/repos/overview/) sits behind no edge path: the
+backend serves a bundle download on its behalf. With
+`TCAB_ACCESS_AUDIENCE` unset, the `local` overlay's shape, a service performs no
+verification and takes the identity from the `Cf-Access-Authenticated-User-Email`
+header as presented, which is what the local console and a local `tcab` send,
+`dev@local` by default.
+
+## In-cluster callers
+
+A caller inside the cluster never crosses the edge and presents a token the
+backend minted or shares:
+
+- The [dispatcher](/components/dispatcher/overview/) presents the shared
+  service token, `TCAB_BACKEND_SERVICE_TOKEN`, to claim queued runs and publish
+  jobs. The backend presents the same token to the artifacts and repos services
+  for the writes only it may make and for the bundle reads it serves.
+- A [driver](/components/driver/overview/) `Job` presents the per-job token
+  the dispatcher passed in, on every report to the backend and on its uploads to
+  the artifacts and repos services, which forward it to the backend to verify.
+- A publisher `Job` presents its per-publish-job token the same way.
+- The backend pod's ingest sidecar calls `POST /ingest` on the backend's
+  in-cluster `Service` and presents the shared service token.
+
+## Clients
+
+- The [console](/components/web/overview/) runs in a browser that holds the
+  Access cookie for its origin. The edge turns the cookie into the assertion on
+  every request to `/api/`, `/artifacts/` and `/arena/`, so the console stores
+  no token and presents no login form. Signing out is the edge's
+  `/cdn-cgi/access/logout` on the origin.
+- The [operator client](/components/client/overview/) is a WebView on the same
+  origin, and holds the same cookie.
+- The [CLI](/components/cli/overview/) presents an Access credential on every
+  request to a deployed environment. A service token is the pair
+  `TCAB_ACCESS_CLIENT_ID` and `TCAB_ACCESS_CLIENT_SECRET`, sent as the
+  `CF-Access-Client-Id` and `CF-Access-Client-Secret` headers, and is what
+  automation and CI use. A person's own identity is a user token from
+  `cloudflared access login` on the environment's origin, placed in
+  `TCAB_ACCESS_TOKEN` and sent as the `cf-access-token` header. The CLI reaches
+  the backend at the origin's `/api` path, so `TCAB_BACKEND_URL` is
+  `https://console.testcabinet.ai/api` for prod.
+
+## Policy
+
+An Access application admits a person by their email address, listed in the
+application's policy, and by the Entra ID login method alone. Multi-factor
+authentication, lockout and conditional access are Entra's, and Cloudflare's
+WAF and rate limiting sit in front of the origin. Granting or revoking access is
+an edit of the policy, with nothing to deploy. See
+[Access applications](/deployment/kubernetes/edge/#access-applications).

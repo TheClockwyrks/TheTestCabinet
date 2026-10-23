@@ -1,6 +1,6 @@
 //! The `coverage_plan` table: an account's named declarative coverage plan.
 //!
-//! Many rows per account (keyed by the auth-service `user_id`), each with an opaque
+//! Many rows per account (keyed by the owner's identity in `user_id`), each with an opaque
 //! `id`, a display name, and its own `runs_per_cell` target. A plan is **hybrid**:
 //! it references reusable `coverage_group`s by id (`combo_group_ids_json` /
 //! `case_group_ids_json`) and may also pin one-off members directly
@@ -23,8 +23,8 @@ pub struct Model {
     /// The plan's opaque id (a UUID minted on create). The primary key.
     #[sea_orm(primary_key, auto_increment = false)]
     pub id: String,
-    /// The owning account's id (from the auth service, via the verified bearer
-    /// token).
+    /// The owner's identity: the Access assertion's email. A row made before the
+    /// edge asserted the identity holds the retired auth service's account id.
     pub user_id: String,
     /// The owner-chosen display name (e.g. `Anthropic/E2E`).
     pub name: String,

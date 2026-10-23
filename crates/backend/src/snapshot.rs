@@ -20,36 +20,45 @@
 //!
 //! This module is split in two: [`SnapshotBuilder`] turns the published runs +
 //! case metadata into the set of `(key, bytes, content_type)` objects, and
-//! [`upload_snapshot`] PUTs them to R2 in dependency order, after which
-//! [`fire_deploy_hook`] fires the deploy hook. The split lets the generation be
-//! unit-tested without R2.
+//! [`upload_snapshot`] PUTs them to R2 in dependency order and fires the deploy
+//! hook. The split lets the generation be unit-tested without R2.
 //!
 //! A run's proof/asset media lives under the content-stable `MEDIA_PREFIX`
 //! (`media/runs/<id>/…`), outside any single snapshot's prefix, and is written once:
 //! a refresh that finds an object already there references it without touching the
 //! source bytes (see [`SnapshotBuilder::with_existing_media`]). Only media not yet in
 //! the bucket is read from the local store (where the driver mirrors it at run time),
-//! falling back to the artifact service for anything missing — the store is a staging
-//! area whose files the [state sweep](crate::state_reclaim) removes, and a volume that
-//! can lose them, so this fallback lets a refresh export new media to durable R2 from
-//! the run's tree (see [`SnapshotBuilder::with_artifacts`]).
+//! falling back to the artifact service for anything missing — the store is an
+//! ephemeral volume in production, so this fallback lets a refresh export new media to
+//! durable R2 even after a restart wiped it (see [`SnapshotBuilder::with_artifacts`]).
 
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use sha2::{Digest, Sha256};
 use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
 use time::macros::format_description;
 
-use test_cabinet_core::content_labels::{self, ContentLabels};
-use test_cabinet_core::redact::SecretScrubber;
-use test_cabinet_core::run_record::RunRecord;
-use test_cabinet_core::test_case::version_key;
+use test_cabinet_contracts::run_record::RunRecord;
+use test_cabinet_contracts::test_case::version_key;
+use test_cabinet_redact::SecretScrubber;
+use test_cabinet_suites::content_labels::{self, ContentLabels};
 
 use crate::api::ModelOut;
 use crate::db::StoredRun;
 use crate::error::{BackendError, Result};
+use crate::r2::R2Client;
 use crate::store::{DefinitionStore, StoredManifest};
-use test_cabinet_core::r2::R2Client;
+
+pub use test_cabinet_contracts::backend_api::snapshot::{
+    CaseCheckOut, CaseDomainOut, CaseErratumOut, CaseMetadata, CasePackageOut, CaseReferenceOut,
+    CaseReferenceSheetOut, CaseReviewItemOut, CaseReviewValidationOut, CaseSeededInputOut,
+    CaseShowcaseMediaOut, CaseShowcaseOut, CaseShowcasesFile, CaseSubReviewItemOut,
+    CaseValidationBaselineOut, CaseVariantOut, CaseVariantRenderingOut, CaseVariantShowcase,
+    CaseVersionShowcases, CaseWorkspaceFileOut, CodeSummaryOut, ComparisonFile, ComparisonsIndex,
+    GgRunsFile, LinksOut, ModelCatalogFile, PerRun, PerformanceSummaryOut, Review, RunAssetOut,
+    RunProofOut, RunScoreOut, RunShowcaseOut, RunSummary, RunValidationMediaOut, RunsIndex,
+    SnapshotIndex, SubjectOut, TestCaseGroupsFile,
+};
 
 /// The schema version stamped into every snapshot document.
 ///
@@ -77,7 +86,7 @@ const UPLOAD_CONCURRENCY: usize = 16;
 /// even when the ephemeral store and the artifact service have both lost the bytes
 /// (as after a cluster recreate): if the object already exists here, the builder
 /// references it without needing the source bytes at all.
-pub(crate) const MEDIA_PREFIX: &str = "media/runs";
+const MEDIA_PREFIX: &str = "media/runs";
 
 /// The bucket prefix a **case version's** media — its rendered reference baselines
 /// and its committed validation baselines — is stored under, likewise **outside**
@@ -114,7 +123,7 @@ const CASE_MEDIA_PREFIX: &str = "media/cases";
 const CASE_FILES_PREFIX: &str = "files/cases";
 
 /// A version's exported starter-workspace sets, keyed by variant slug and then by
-/// [engine](test_cabinet_core::engine) slug — what
+/// [engine](test_cabinet_suites::engine) slug — what
 /// [`SnapshotBuilder::case_workspace_files`] collects and [`case_metadata`] folds
 /// onto each variant.
 type VariantWorkspaceFiles = std::collections::HashMap<
@@ -161,14 +170,6 @@ type VariantWorkspaceFiles = std::collections::HashMap<
 /// same future cleanup orphaned run media is already waiting on.
 pub const RUN_DOCUMENT_PREFIX: &str = "documents/runs";
 
-/// The bucket prefix a reviewer's profile picture is stored under, keyed by the
-/// reviewer's account id (`pfp/<reviewer-id>`) and — like [`MEDIA_PREFIX`] — kept
-/// **outside** any single snapshot's prefix so it is shared across snapshots and
-/// referenced by a stable key from every per-run document. Unlike run media a
-/// picture is mutable (a reviewer can replace theirs), so each refresh re-fetches
-/// and re-uploads the current bytes rather than skipping an existing object.
-const PFP_PREFIX: &str = "pfp";
-
 /// One object to upload: its R2 key, bytes, and the labels it is served under.
 #[derive(Debug, Clone, PartialEq)]
 pub struct SnapshotObject {
@@ -181,7 +182,7 @@ pub struct SnapshotObject {
     /// The codec the stored bytes are framed in, `None` when they are already the
     /// resource. A `.json.gz` recording is published as JSON framed in gzip, so the
     /// gallery's player is handed inflated JSON (see
-    /// [`test_cabinet_core::content_labels`]).
+    /// [`test_cabinet_suites::content_labels`]).
     pub content_encoding: Option<String>,
 }
 
@@ -197,177 +198,11 @@ pub struct Snapshot {
     pub index: SnapshotObject,
     /// Number of published runs in this snapshot.
     pub run_count: usize,
-    /// The ids of the runs this snapshot was built from.
-    pub run_ids: std::collections::HashSet<String>,
     /// Every [`RUN_DOCUMENT_PREFIX`] key this snapshot references — the ones it just
     /// uploaded *and* the ones it reused untouched. Together with `objects` this says
     /// which run documents the refresh actually paid for, and it is the live set any
     /// future reclamation of superseded revisions has to measure against.
     pub run_document_keys: std::collections::HashSet<String>,
-    /// The runs this build could not account for the whole media of, each with the
-    /// files in question as `<kind>/<file>`. A run is here when a media file it
-    /// lists could not be published, because its bytes could not be read from the
-    /// store or the artifact service, or was published in a form the next build has
-    /// to read the source bytes again to replace (a video whose transcode failed).
-    /// A build that [confirms media](SnapshotBuilder::with_media_confirmation) also
-    /// puts a run here when it could not learn which files the run's tree holds,
-    /// under the name [`TREE_LISTING_UNAVAILABLE`]; and it leaves out, without
-    /// counting it, a file the record lists that the bucket, the store and the
-    /// artifact service each answered they do not hold, which it records in the
-    /// run's [manifest](Self::media_manifests) as unrecoverable.
-    ///
-    /// Every run of the snapshot that is absent from this map has each of its
-    /// files in the bucket once the snapshot's objects are uploaded: already
-    /// there, or among `objects`. That is
-    /// what the publisher records as the run's media confirmation, and what the
-    /// artifact reclamation sweep waits for before it deletes a published run's
-    /// tree.
-    pub unconfirmed_media: std::collections::BTreeMap<String, Vec<String>>,
-    /// Every run's [file manifest](crate::db::MediaManifest): each file of the run
-    /// this build accounted for, with the object it is in once the snapshot's
-    /// objects are uploaded, or the finding that its bytes exist nowhere. The
-    /// publisher records the manifest of each run it confirms. The manifest of a
-    /// run in [`unconfirmed_media`](Self::unconfirmed_media) is incomplete and is
-    /// recorded nowhere.
-    pub media_manifests: std::collections::BTreeMap<String, crate::db::MediaManifest>,
-    /// What the build uploaded as it went, which is therefore not among
-    /// `objects`. See [`SnapshotBuilder::with_object_sink`].
-    pub streamed: StreamedObjects,
-}
-
-/// The objects a build uploaded to its [sink](SnapshotBuilder::with_object_sink)
-/// as it made them.
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
-pub struct StreamedObjects {
-    /// How many objects.
-    pub objects: usize,
-    /// The bytes they held.
-    pub bytes: u64,
-}
-
-/// The prefix of the entry [`Snapshot::unconfirmed_media`] carries for a run two
-/// of whose files would be published under one object key.
-pub const CONTESTED_OBJECT: &str = "object/contested";
-
-/// The entry [`Snapshot::unconfirmed_media`] carries for a run whose tree the
-/// artifact service could not list, so the build cannot know it saw every file.
-pub const TREE_LISTING_UNAVAILABLE: &str = "tree/listing-unavailable";
-
-/// The entry [`Snapshot::unconfirmed_media`] carries for a run whose media
-/// directories in the backend store could not be listed.
-pub const STORE_LISTING_UNAVAILABLE: &str = "store/listing-unavailable";
-
-/// Why a file could not be read.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Missing {
-    /// The file's bytes exist nowhere. The backend store answered that it holds
-    /// no such file, and the artifact service answered for the run's tree: it
-    /// holds the tree and not the file, or it holds no tree and the backend's own
-    /// record says so too. The caller has already found the bucket without it.
-    ///
-    /// The file was never produced (a description that references an image the
-    /// model did not write, a frame whose preview was not rendered) or the volume
-    /// that held it was lost. Either way no source can supply it, so it does not
-    /// keep its run from being confirmed.
-    Unrecoverable,
-    /// The run is settled, so nothing was asked beyond the store. Every file of
-    /// such a run that exists was in the bucket when the run was confirmed.
-    Settled,
-    /// Some source did not answer, so the file may exist: the store read failed
-    /// for another reason than the file not being there, there is no artifact
-    /// service to ask, the request failed, the tree could not be listed, or the
-    /// service holds no tree while the backend records one as stored. The run is
-    /// left unconfirmed.
-    Unavailable,
-}
-
-/// Why the artifact service did not return a file.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum FetchFailure {
-    /// The service answered `404`.
-    NotFound,
-    /// Nothing answered for the file: there is no artifact service to ask, or the
-    /// request failed.
-    Failed,
-}
-
-/// What a build knows about the files in one run's tree on the artifact service.
-#[derive(Debug, Clone, PartialEq, Eq)]
-enum TreeMedia {
-    /// The build did not ask, because it records no confirmation.
-    NotAsked,
-    /// The run is confirmed and the bucket's listing holds every object its
-    /// [manifest](crate::db::MediaManifest) names. The manifest answers for
-    /// every file of the run: which exist, under which names, and in which
-    /// object. Nothing is asked of the artifact service, and the run's folder in
-    /// the backend store is neither read nor listed, so the run's document is
-    /// the same whether or not the store still holds its files. See
-    /// [`SnapshotBuilder::with_recorded_manifests`].
-    Recorded(crate::db::MediaManifest),
-    /// The run is settled: confirmed in the configured bucket, with its tree
-    /// reclaimed. The tree is gone on purpose, so nothing is asked of the artifact
-    /// service about the run, neither a listing nor a file.
-    Settled,
-    /// The build asked and got no listing. The run is left unconfirmed.
-    Unknown,
-    /// The service holds no tree for the run.
-    Absent {
-        /// Whether the backend's own record agrees: the run's tree was reclaimed,
-        /// or its presence is recorded as not stored. Only then is the service's
-        /// answer taken as one about the run's files. A service that lost sight of
-        /// its volume answers the same way for every run, and a file must not be
-        /// written off on that.
-        recorded: bool,
-    },
-    /// The service holds the run's tree, with these files.
-    Stored {
-        /// The tree's validation media, the shared image store included.
-        validation: Vec<String>,
-        /// The tree's showcase files.
-        showcase: Vec<String>,
-        /// Which of the files at the tree's root
-        /// ([`TREE_ROOT_FILES`](test_cabinet_core::TREE_ROOT_FILES)) the tree
-        /// holds. `None` from a service too old to say, which is no answer about
-        /// any of them.
-        root: Option<Vec<String>>,
-    },
-}
-
-impl TreeMedia {
-    /// The manifest that answers for every file of the run, for a run built
-    /// from its record of what the bucket holds ([`TreeMedia::Recorded`]).
-    fn recorded(&self) -> Option<&crate::db::MediaManifest> {
-        match self {
-            TreeMedia::Recorded(manifest) => Some(manifest),
-            _ => None,
-        }
-    }
-
-    /// Whether a `404` from the artifact service for one of the run's media files
-    /// is an answer that the tree does not hold it.
-    fn answers_for_missing_media(&self) -> bool {
-        matches!(
-            self,
-            TreeMedia::Stored { .. } | TreeMedia::Absent { recorded: true }
-        )
-    }
-}
-
-/// The artifact service's `GET /runs/{id}/media` body.
-#[derive(Debug, Deserialize)]
-struct TreeListing {
-    /// Whether the service holds a tree for the run.
-    stored: bool,
-    /// The tree's validation media file names.
-    #[serde(default)]
-    validation: Vec<String>,
-    /// The tree's showcase file names.
-    #[serde(default)]
-    showcase: Vec<String>,
-    /// The names of the tree's root files. Absent from a service older than the
-    /// field.
-    #[serde(default)]
-    root: Option<Vec<String>>,
 }
 
 /// Builds a [`Snapshot`] from the published set and the case metadata.
@@ -380,29 +215,11 @@ pub struct SnapshotBuilder {
     /// fallback (store-only) — the dev/single-box default, and what the unit tests
     /// use.
     artifacts_url: Option<String>,
+    /// The shared service token the fallback presents to the artifact service, whose
+    /// reads all need an identity. `None` presents none, which the service refuses.
+    artifacts_service_token: Option<String>,
     /// The HTTP client for that fallback. Unused when `artifacts_url` is `None`.
     http: reqwest::Client,
-    /// `Some` when this build's findings are recorded as media confirmations: the
-    /// runs that are already settled, which the build asks the artifact service
-    /// nothing about. `None` builds as a backend that records none does. See
-    /// [`Self::with_media_confirmation`].
-    settled_media: Option<std::collections::HashSet<String>>,
-    /// The runs the backend's own record says the artifact service holds no tree
-    /// for. See [`Self::with_recorded_tree_absence`].
-    trees_recorded_absent: std::collections::HashSet<String>,
-    /// The file manifest of each confirmed run. See
-    /// [`Self::with_recorded_manifests`].
-    recorded_manifests: std::collections::HashMap<String, crate::db::MediaManifest>,
-    /// The runs a manifest has recorded a session record for, whether or not
-    /// the confirmation it was recorded with still holds. See
-    /// [`Self::with_recorded_session_records`].
-    recorded_session_records: std::collections::HashSet<String>,
-    /// Where each run's content-stable objects are uploaded as the build makes
-    /// them. See [`Self::with_object_sink`].
-    object_sink: Option<R2Client>,
-    /// Whether the backend store holds any run's folder, read once per build. See
-    /// [`Self::store_answers`].
-    store_holds_runs: std::sync::OnceLock<bool>,
     /// The composed model catalog exported alongside the runs, so the public site
     /// renders the Models section from the snapshot. Empty by default.
     models: Vec<ModelOut>,
@@ -440,24 +257,17 @@ pub struct SnapshotBuilder {
     /// default, which uploads every run's document — correct for the dev/single-box
     /// path (no R2) and the unit tests, and the one-time cost of a first refresh.
     existing_documents: std::collections::HashSet<String>,
-    /// The reviewers' profile pictures to export, keyed by reviewer account id.
-    /// Fetched from the auth service before a refresh (see [`Self::with_reviewer_pictures`]),
-    /// each becomes a `pfp/<id>` object and lets the matching reviews carry a
-    /// `pictureKey`. Empty by default (the dev/single-box path and the unit tests),
-    /// which simply omits every review's `pictureKey`.
-    reviewer_pictures:
-        std::collections::HashMap<String, test_cabinet_core::accounts::ReviewerPicture>,
     /// The published harness comparisons to fold into the snapshot, each already
     /// computed to its full read model (arms + distributions + diagnostics) by the
     /// caller — which has the whole-experiment run set — so the builder only
     /// serializes them. Empty by default (the dev/single-box path and the unit
     /// tests), which emits an empty comparisons index.
-    comparisons: Vec<test_cabinet_core::comparison::Comparison>,
-    /// The gg [documents](test_cabinet_core::gg_query::GgRunDoc) to export, already
+    comparisons: Vec<crate::comparison::Comparison>,
+    /// The gg [documents](crate::gg_query::GgRunDoc) to export, already
     /// filtered and redacted by the caller (see
     /// [`crate::gg_docs::public_documents`]). Empty by default, which emits an empty
     /// corpus file — the dev/single-box path and the unit tests.
-    gg_documents: Vec<test_cabinet_core::gg_query::GgRunDoc>,
+    gg_documents: Vec<crate::gg_query::GgRunDoc>,
     /// The ingested test-case groups to export as this snapshot's
     /// `test-case-groups.json`, already in display order and already mapped to the
     /// wire shape `GET /test-case-groups` serves (the publisher reads the set from
@@ -480,19 +290,13 @@ impl SnapshotBuilder {
             cases,
             store,
             artifacts_url: None,
+            artifacts_service_token: None,
             http: reqwest::Client::new(),
-            settled_media: None,
-            trees_recorded_absent: std::collections::HashSet::new(),
-            recorded_manifests: std::collections::HashMap::new(),
-            recorded_session_records: std::collections::HashSet::new(),
-            object_sink: None,
-            store_holds_runs: std::sync::OnceLock::new(),
             models: Vec::new(),
             reference_builds: std::collections::HashMap::new(),
             reference_sheets: std::collections::HashMap::new(),
             existing_media: std::collections::HashSet::new(),
             existing_documents: std::collections::HashSet::new(),
-            reviewer_pictures: std::collections::HashMap::new(),
             comparisons: Vec::new(),
             gg_documents: Vec::new(),
             test_case_groups: Vec::new(),
@@ -521,13 +325,10 @@ impl SnapshotBuilder {
     ///
     /// Empty (the default) emits an empty corpus, which the site renders as a Discover
     /// surface with nothing in it rather than as an error.
-    pub fn with_gg_documents(
-        mut self,
-        gg_documents: Vec<test_cabinet_core::gg_query::GgRunDoc>,
-    ) -> Self {
+    pub fn with_gg_documents(mut self, gg_documents: Vec<crate::gg_query::GgRunDoc>) -> Self {
         self.gg_documents = gg_documents
             .iter()
-            .map(test_cabinet_core::gg_query::redacted_for_public)
+            .map(crate::gg_query::redacted_for_public)
             .collect();
         self
     }
@@ -535,10 +336,7 @@ impl SnapshotBuilder {
     /// Supply the published comparisons to fold into this snapshot, each already
     /// assembled to its full read model. Empty (the default) emits an empty
     /// comparisons index.
-    pub fn with_comparisons(
-        mut self,
-        comparisons: Vec<test_cabinet_core::comparison::Comparison>,
-    ) -> Self {
+    pub fn with_comparisons(mut self, comparisons: Vec<crate::comparison::Comparison>) -> Self {
         self.comparisons = comparisons;
         self
     }
@@ -555,24 +353,8 @@ impl SnapshotBuilder {
         self
     }
 
-    /// Supply the reviewers' profile pictures to export in this snapshot, keyed by
-    /// reviewer account id. Each entry is exported as a `pfp/<id>` object and gives
-    /// the matching reviews a `pictureKey`; an id absent from the map exports no
-    /// avatar (the reviewer has no picture). Fetched from the auth service by the
-    /// caller (see the publisher's `run_refresh`).
-    pub fn with_reviewer_pictures(
-        mut self,
-        reviewer_pictures: std::collections::HashMap<
-            String,
-            test_cabinet_core::accounts::ReviewerPicture,
-        >,
-    ) -> Self {
-        self.reviewer_pictures = reviewer_pictures;
-        self
-    }
-
     /// Supply the set of media object keys already present in the bucket (from
-    /// [`R2Client::list_keys`](test_cabinet_core::r2::R2Client::list_keys) over the
+    /// [`R2Client::list_keys`](crate::r2::R2Client::list_keys) over the
     /// `media/` and `files/` prefixes).
     /// For any run-media object whose stable key is in this set, the builder emits the
     /// snapshot metadata pointing at it but does **not** read the source bytes or
@@ -587,7 +369,7 @@ impl SnapshotBuilder {
     }
 
     /// Supply the set of run-document keys already present in the bucket (from
-    /// [`R2Client::list_keys`](test_cabinet_core::r2::R2Client::list_keys) over
+    /// [`R2Client::list_keys`](crate::r2::R2Client::list_keys) over
     /// [`RUN_DOCUMENT_PREFIX`]). A run whose freshly built document hashes to a key in
     /// this set is referenced from `runs.json` without being uploaded again, which is
     /// what makes the steady-state cost of a refresh proportional to the runs that
@@ -632,7 +414,7 @@ impl SnapshotBuilder {
     /// asset-generation counterpart of [`Self::with_reference_builds`]: an asset
     /// case's reference is a set of published frames rather than a deployed site, and
     /// each frame's object key is derivable from the triple plus its index (see
-    /// `test_cabinet_core::asset_reference`), so only the indices are exported and the
+    /// `test_cabinet_contracts::asset_reference`), so only the indices are exported and the
     /// site builds the URLs by joining them onto its snapshot base. These come from the
     /// `case_reference_sheet` table (read by the caller from the database), which ingest
     /// reconciles against the bucket. A `(slug, version)` or variant absent from the map
@@ -651,182 +433,25 @@ impl SnapshotBuilder {
     /// Enable the artifact-service fallback: when a run's proof/asset media is not in
     /// the local store, the builder fetches it from `artifacts_url` (the artifact
     /// service's in-cluster base URL, the one the backend itself can reach) using
-    /// `http`.
+    /// `http`, presenting `service_token` (`TCAB_BACKEND_SERVICE_TOKEN`), since every
+    /// read of the artifact service needs an identity.
     ///
-    /// The backend store that media is normally mirrored into can have lost a
-    /// file between a run finishing and a later snapshot refresh. The artifact service holds the run tree durably, so this
+    /// The backend store that media is normally mirrored into is an ephemeral
+    /// emptyDir in production, so it can be wiped between a run finishing and a later
+    /// snapshot refresh. The artifact service holds the run tree durably, so this
     /// fallback lets a refresh re-export the media (to durable R2) even after the
     /// store loses it — without it a backend restart would silently drop media from
     /// the published site. A `None` URL leaves behavior store-only.
-    pub fn with_artifacts(mut self, artifacts_url: Option<String>, http: reqwest::Client) -> Self {
+    pub fn with_artifacts(
+        mut self,
+        artifacts_url: Option<String>,
+        service_token: Option<String>,
+        http: reqwest::Client,
+    ) -> Self {
         self.artifacts_url = artifacts_url;
+        self.artifacts_service_token = service_token;
         self.http = http;
         self
-    }
-
-    /// Have this build account for every media file of each published run, so its
-    /// [`Snapshot::unconfirmed_media`] can be recorded as media confirmations, the
-    /// thing the artifact reclamation sweep deletes a published run's tree on.
-    ///
-    /// A run's record does not name all of its files: the image store its
-    /// recordings share, and showcase files neither the carousel nor the
-    /// description mentions, are named only by the directories that hold them. The
-    /// backend store's copy of those directories can be gone. So for each run not
-    /// in `settled`, the build asks the artifact service which validation and
-    /// showcase files the run's tree holds, publishes them, and
-    /// reports the run unconfirmed when the service could not say.
-    ///
-    /// `settled` holds the runs nothing is left to decide about: confirmed in the
-    /// configured bucket with their tree reclaimed. Their trees are gone on
-    /// purpose, so the artifact service is asked nothing about them, and a file
-    /// their record lists that the bucket lacks is left out as it was when they
-    /// were confirmed.
-    ///
-    /// Without this call the build asks for no listing and treats every file it
-    /// cannot read as unconfirmed, which is right for a backend that records no
-    /// confirmation.
-    pub fn with_media_confirmation(mut self, settled: std::collections::HashSet<String>) -> Self {
-        self.settled_media = Some(settled);
-        self
-    }
-
-    /// Supply the runs the backend's own record says the artifact service holds
-    /// no tree for: the ones whose tree was reclaimed, and the ones whose presence
-    /// is recorded as not stored.
-    ///
-    /// When the service answers that it holds no tree for a run, a file of the run
-    /// that is in neither the bucket nor the backend store exists nowhere, and the
-    /// build records it as [unrecoverable](crate::db::MediaManifestFile::unrecoverable)
-    /// so the run can still be confirmed. It does that only for a run named here.
-    /// For any other run the answer contradicts what the backend recorded, which
-    /// is what a service that lost sight of its volume looks like, and the run is
-    /// left unconfirmed until the two agree.
-    pub fn with_recorded_tree_absence(
-        mut self,
-        recorded_absent: std::collections::HashSet<String>,
-    ) -> Self {
-        self.trees_recorded_absent = recorded_absent;
-        self
-    }
-
-    /// Supply the [file manifest](crate::db::MediaManifest) of each run whose
-    /// media confirmation holds in the configured bucket, by run id.
-    ///
-    /// A run named here is built from its manifest for as long as the bucket's
-    /// listing ([`Self::with_existing_media`]) holds every object the manifest
-    /// names. Every file name and key in the run's document then comes from the
-    /// manifest: the files its record lists resolve to the objects recorded for
-    /// them, and the two sets only a directory can name, the recordings' image
-    /// store and the showcase files nothing mentions, are the ones the manifest
-    /// recorded. The run's folder in the backend store is neither read nor
-    /// listed and the artifact service is asked nothing, so deleting that folder
-    /// changes nothing the build produces for the run.
-    ///
-    /// A run with an object missing from the listing is built from its sources
-    /// like any other, which is what finds its confirmation no longer true.
-    pub fn with_recorded_manifests(
-        mut self,
-        manifests: std::collections::HashMap<String, crate::db::MediaManifest>,
-    ) -> Self {
-        self.recorded_manifests = manifests;
-        self
-    }
-
-    /// The runs a manifest has recorded a session record for
-    /// ([`Db::runs_with_recorded_session_record`](crate::db::Db::runs_with_recorded_session_record)),
-    /// whether or not the confirmation it was recorded with still holds.
-    ///
-    /// The backend store alone says whether a run has a session record, so a
-    /// run whose stored record the state sweep removed and whose object was
-    /// then deleted from the bucket looks like a run that never had one. For a
-    /// run named here the build records the record as unrecoverable instead of
-    /// confirming the run as one without a record.
-    pub fn with_recorded_session_records(
-        mut self,
-        runs: std::collections::HashSet<String>,
-    ) -> Self {
-        self.recorded_session_records = runs;
-        self
-    }
-
-    /// Upload each run's content-stable objects to `sink` as the build makes
-    /// them, instead of returning them in [`Snapshot::objects`] for the caller to
-    /// upload at the end.
-    ///
-    /// Those are a run's media under `media/runs/` and its document under
-    /// [`RUN_DOCUMENT_PREFIX`]. Each has a key that belongs to its run or to its
-    /// own bytes and that nothing reads until a later `index.json` names it, so
-    /// writing one early changes nothing a reader sees. What it changes is what a
-    /// build holds: the bytes of one run at a time, where a build that returned
-    /// them held every new file of every run at once. A refresh that has a whole
-    /// cabinet's recordings and replays to publish would otherwise need all of
-    /// them in memory before the first was uploaded.
-    ///
-    /// It also makes a refresh that fails part-way keep what it did: the objects
-    /// it uploaded are in the bucket's listing for the next one, which reads and
-    /// uploads only the rest.
-    ///
-    /// An upload that fails fails the build.
-    pub fn with_object_sink(mut self, sink: Option<R2Client>) -> Self {
-        self.object_sink = sink;
-        self
-    }
-
-    /// Whether the backend store's silence about a file means the file is not
-    /// there: the store holds at least one run's folder.
-    ///
-    /// A store with no run folder at all is what a volume that failed to mount,
-    /// a new volume, or a wrong store path looks like, and every file of every
-    /// run is missing from it. A refresh must not take that for each of those
-    /// files having been lost, record them as existing nowhere, and confirm
-    /// their runs without them.
-    fn store_answers(&self) -> bool {
-        *self
-            .store_holds_runs
-            .get_or_init(|| self.store.holds_run_folders())
-    }
-
-    /// Upload `objects`, the content-stable objects of run `run_id`, to the
-    /// [sink](Self::with_object_sink), and return the ones that are not its to
-    /// take. Without a sink every object is returned.
-    async fn sink_run_objects(
-        &self,
-        run_id: &str,
-        objects: Vec<SnapshotObject>,
-        streamed: &mut StreamedObjects,
-    ) -> Result<Vec<SnapshotObject>> {
-        use futures_util::TryStreamExt;
-
-        let Some(sink) = self.object_sink.as_ref() else {
-            return Ok(objects);
-        };
-        let (stable, rest): (Vec<_>, Vec<_>) = objects.into_iter().partition(|object| {
-            object.key.starts_with(&format!("{MEDIA_PREFIX}/"))
-                || object.key.starts_with(&format!("{RUN_DOCUMENT_PREFIX}/"))
-        });
-        streamed.objects += stable.len();
-        streamed.bytes += stable
-            .iter()
-            .map(|object| object.bytes.len() as u64)
-            .sum::<u64>();
-        futures_util::stream::iter(stable.into_iter().map(Ok::<_, BackendError>))
-            .try_for_each_concurrent(UPLOAD_CONCURRENCY, |object| async move {
-                sink.put_object(
-                    &object.key,
-                    object.bytes,
-                    &object.content_type,
-                    object.content_encoding.as_deref(),
-                )
-                .await
-                .map_err(|err| {
-                    BackendError::Snapshot(format!(
-                        "uploading `{}` of run {run_id} failed: {err}",
-                        object.key
-                    ))
-                })
-            })
-            .await?;
-        Ok(rest)
     }
 
     /// Generate the snapshot. The id is `<rfc3339-compact>-<short-hash>`, where
@@ -861,23 +486,7 @@ impl SnapshotBuilder {
         // before `runs.json` because each summary carries its run's document key.
         let mut document_keys: Vec<String> = Vec::with_capacity(self.runs.len());
         let mut reused_documents = 0usize;
-        let mut unconfirmed_media = std::collections::BTreeMap::new();
-        let mut media_manifests = std::collections::BTreeMap::new();
-        let bucket_images = self.bucket_validation_images();
-        let bucket_showcases = self.bucket_showcase_files();
-        let mut streamed = StreamedObjects::default();
         for run in &self.runs {
-            // What this build finds about each of the run's files; see
-            // [`Snapshot::unconfirmed_media`] and [`Snapshot::media_manifests`].
-            let mut account = run_files::RunAccount::default();
-            let tree = self.tree_media(&run.record.id).await;
-            if matches!(tree, TreeMedia::Unknown) {
-                account
-                    .unconfirmed
-                    .push(TREE_LISTING_UNAVAILABLE.to_string());
-            }
-            let no_images = Vec::new();
-            let run_bucket_images = bucket_images.get(&run.record.id).unwrap_or(&no_images);
             let events = run
                 .events_json
                 .as_deref()
@@ -889,81 +498,24 @@ impl SnapshotBuilder {
                         run.record.id
                     ))
                 })?;
-            let (proof_media, proof_objects) =
-                self.run_proofs(&run.record, &tree, &mut account).await;
-            let (validation_media, validation_objects) = self
-                .run_validation_media(&run.record, &tree, run_bucket_images, &mut account)
-                .await;
-            let (asset_media, asset_objects) = self.run_assets(run, &tree, &mut account).await;
-            let no_files = Vec::new();
-            let run_bucket_showcase = bucket_showcases.get(&run.record.id).unwrap_or(&no_files);
-            let (showcase_media, showcase_objects) = self
-                .run_showcase(&run.record, &tree, run_bucket_showcase, &mut account)
-                .await;
+            let (proof_media, proof_objects) = self.run_proofs(&run.record).await;
+            let (validation_media, validation_objects) =
+                self.run_validation_media(&run.record).await;
+            let (asset_media, asset_objects) = self.run_assets(run).await;
+            let (showcase_media, showcase_objects) = self.run_showcase(&run.record).await;
             // The unbounded code-analysis document is the one per-run object whose
             // bytes are not media: it is published beside the run rather than inside
             // it, so it is scrubbed *here*, on its own, before it becomes an object
             // (see [`Self::run_code_analysis`]).
-            let (code_analysis_key, code_analysis_object) = self
-                .run_code_analysis(&run.record, &scrubber, &tree, &mut account)
-                .await;
-            // The two files of a run that no document names: the controller module
-            // the arena loads and a gg run's session record, published so that
-            // the bucket holds them too. The record is scrubbed on its own, as
-            // the code-analysis document is (see [`Self::run_session_record`]).
-            let controller_object = self.run_controller(&run.record, &tree, &mut account).await;
-            let session_record_object = self
-                .run_session_record(&run.record.id, &scrubber, &tree, &mut account)
-                .await;
-            // One object per key. Two files of a run that would be published
-            // under one key (a showcase holding both `x.webm` and the `x.mp4` its
-            // transcode is named) cannot both be in the bucket, so the run is
-            // left unconfirmed and the first of them is the one uploaded.
-            let mut run_objects: Vec<SnapshotObject> = Vec::new();
-            for object in proof_objects
-                .into_iter()
-                .chain(validation_objects)
-                .chain(asset_objects)
-                .chain(showcase_objects)
-                .chain(code_analysis_object)
-                .chain(controller_object)
-                .chain(session_record_object)
-            {
-                if !run_objects.iter().any(|seen| seen.key == object.key) {
-                    run_objects.push(object);
-                }
-            }
-            for key in run_files::contested_keys(&account.files) {
-                tracing::warn!(
-                    run.id = %run.record.id,
-                    r2.key = %key,
-                    "two files of a published run are published under one object key; \
-                     the run is left unconfirmed"
-                );
-                account
-                    .unconfirmed
-                    .push(format!("{CONTESTED_OBJECT}: {key}"));
-            }
-            if !account.unconfirmed.is_empty() {
-                unconfirmed_media.insert(run.record.id.clone(), account.unconfirmed);
-            }
-            media_manifests.insert(
-                run.record.id.clone(),
-                crate::db::MediaManifest {
-                    files: account.files,
-                },
-            );
+            let (code_analysis_key, code_analysis_object) =
+                self.run_code_analysis(&run.record, &scrubber);
             // Serialize the public document, then redact any leaked secret from
             // it (across the record, its events, and any other captured text)
             // before it becomes a snapshot object bound for R2.
             let mut document = serde_json::to_value(PerRun {
                 schema_version: SCHEMA_VERSION,
                 record: run.record.clone(),
-                reviews: run
-                    .reviews
-                    .iter()
-                    .map(|review| review_out(review, &self.reviewer_pictures))
-                    .collect(),
+                reviews: run.reviews.iter().map(review_out).collect(),
                 links: links_out(&run.links),
                 events,
                 proof_media,
@@ -998,7 +550,7 @@ impl SnapshotBuilder {
             if self.existing_documents.contains(&key) {
                 reused_documents += 1;
             } else {
-                run_objects.push(SnapshotObject {
+                objects.push(SnapshotObject {
                     key: key.clone(),
                     bytes,
                     content_type: "application/json".to_string(),
@@ -1006,12 +558,11 @@ impl SnapshotBuilder {
                 });
             }
             document_keys.push(key);
-            // With a sink the run's objects go to the bucket now and their bytes
-            // are dropped, so the build never holds more than one run's.
-            objects.extend(
-                self.sink_run_objects(&run.record.id, run_objects, &mut streamed)
-                    .await?,
-            );
+            objects.extend(proof_objects);
+            objects.extend(validation_objects);
+            objects.extend(asset_objects);
+            objects.extend(showcase_objects);
+            objects.extend(code_analysis_object);
         }
         tracing::debug!(
             runs = self.runs.len(),
@@ -1045,20 +596,6 @@ impl SnapshotBuilder {
                 runs: summaries,
             },
         )?);
-
-        // pfp/<reviewer-id> — each reviewer's profile picture, exported once under
-        // the content-stable top-level prefix (NOT this snapshot's prefix) so the
-        // per-run documents' `pictureKey`s resolve against the snapshot base. Only
-        // reviewers whose picture was fetched for this refresh appear; the bytes are
-        // served with their own content type (no extension needed).
-        for (reviewer_id, picture) in &self.reviewer_pictures {
-            objects.push(SnapshotObject {
-                key: format!("{PFP_PREFIX}/{reviewer_id}"),
-                bytes: picture.bytes.clone(),
-                content_type: picture.content_type.clone(),
-                content_encoding: None,
-            });
-        }
 
         // cases/<slug>/<version>.json — case metadata, plus the version's rendered
         // reference baselines (PNGs) exported under the case prefix and named by
@@ -1236,14 +773,12 @@ impl SnapshotBuilder {
         //
         // Two boundaries meet here and both are load-bearing.
         //
-        // **The corpus holds no session record.** A document carries configuration ids
+        // **A session record is never exported.** A document carries configuration ids
         // and outcome numbers; a session record carries the complete model conversation
-        // verbatim. The corpus covers gg runs that are not published, which is why it
-        // is publishable only without records. A record reaches the bucket as the
-        // object of a published run alone ([`Self::run_session_record`]). The
-        // distinction is enforced upstream (nothing assembles a record into a
-        // document) and asserted in this module's tests, because it is exactly the
-        // kind of rule that erodes when someone reaches for "the run's other gg
+        // verbatim, which is why the corpus is publishable at all and the record is not.
+        // The distinction is enforced upstream (nothing assembles a record into a
+        // snapshot object) and asserted in this module's tests, because it is exactly
+        // the kind of rule that erodes when someone reaches for "the run's other gg
         // artifact".
         //
         // **The scrubber runs here too.** `build` scrubs the per-run document by walking
@@ -1288,11 +823,7 @@ impl SnapshotBuilder {
             objects,
             index,
             run_count: self.runs.len(),
-            run_ids: self.runs.iter().map(|run| run.record.id.clone()).collect(),
             run_document_keys: document_keys.into_iter().collect(),
-            unconfirmed_media,
-            media_manifests,
-            streamed,
         })
     }
 
@@ -1422,21 +953,12 @@ impl SnapshotBuilder {
     /// `.webm` a run captures natively (see [`transcode_webm_to_mp4`]) so the public
     /// gallery plays on every browser — webm/VP8 does not on iOS/Safari. An **image**
     /// proof is published under its recorded extension unchanged. Either way the
-    /// published name matches [`proof_published_extension`](test_cabinet_core::playable::proof_published_extension), which the gallery keys
+    /// published name matches [`proof_published_extension`](test_cabinet_contracts::layout::proof_published_extension), which the gallery keys
     /// its snapshot lookup off. If the clip is already `.mp4` in the store (a legacy
     /// capture, or a re-run snapshot) it is used as-is; only a raw `.webm` is
     /// transcoded, and a transcode that fails falls back to serving the webm so the
     /// proof still appears rather than vanishing.
-    ///
-    /// `unconfirmed` collects each proof that could not be published as intended;
-    /// see [`Snapshot::unconfirmed_media`]. The other `run_*` collectors report
-    /// into it the same way.
-    async fn run_proofs(
-        &self,
-        record: &RunRecord,
-        tree: &TreeMedia,
-        account: &mut run_files::RunAccount,
-    ) -> (Vec<RunProofOut>, Vec<SnapshotObject>) {
+    async fn run_proofs(&self, record: &RunRecord) -> (Vec<RunProofOut>, Vec<SnapshotObject>) {
         let mut metas = Vec::new();
         let mut objects = Vec::new();
         let run_id = &record.id;
@@ -1445,62 +967,66 @@ impl SnapshotBuilder {
                 continue;
             }
             let published_ext =
-                test_cabinet_core::proof_published_extension(proof.kind, &proof.dest);
+                test_cabinet_contracts::layout::proof_published_extension(proof.kind, &proof.dest);
             let published_file = format!("{}.{}", proof.id, published_ext);
-            let served_ext = test_cabinet_core::proof_served_extension(&proof.dest);
-            let served_file = format!("{}.{}", proof.id, served_ext);
-            // A clip recorded under another extension than the one it is published
-            // under is transcoded, and its recording published beside it. Anything
-            // else publishes as it is stored, under the stable key
-            // `media/runs/<id>/proof/<file>`. Either way an object already in the
-            // bucket is referenced without touching the source bytes.
-            let is_video = proof.kind == test_cabinet_core::MediaKind::Video;
-            let key = if is_video && served_file != published_file {
-                self.publish_video(
-                    run_id,
-                    run_files::Published {
-                        kind: crate::db::MediaFileKind::Proof,
-                        file: &served_file,
-                        listed: false,
-                    },
-                    &published_file,
-                    true,
-                    tree,
-                    account,
-                    &mut objects,
-                )
-                .await
-            } else {
-                // A video publishes under a name the transcode decided, so that
-                // name is what describes it; anything else publishes under its
-                // recorded `dest`'s extension, and only the dest carries a compound
-                // `.json.gz` suffix whole.
-                let labelled = if is_video {
-                    published_file.as_str()
-                } else {
-                    test_cabinet_core::proof_labelled_name(&proof.dest, &published_file)
-                };
-                self.publish_plain(
-                    run_id,
-                    run_files::Published {
-                        kind: crate::db::MediaFileKind::Proof,
-                        file: &published_file,
-                        listed: false,
-                    },
-                    labelled,
-                    tree,
-                    account,
-                    &mut objects,
-                )
-                .await
-            };
-            if let Some(key) = key {
+            // The stable, snapshot-independent key this proof is published under. When
+            // it is already in the bucket, reference it without touching the source
+            // bytes — no store/artifact read, and (for a video) no re-transcode.
+            let published_key = format!("{MEDIA_PREFIX}/{run_id}/proof/{published_file}");
+            if self.existing_media.contains(&published_key) {
                 metas.push(RunProofOut {
                     id: proof.id.clone(),
                     kind: proof.kind,
-                    key,
+                    key: published_key,
                 });
+                continue;
             }
+
+            // Prefer a copy already at the published extension (an image, or a clip
+            // that is already mp4); otherwise pull the raw webm and transcode it.
+            let (file, bytes) = if let Some(bytes) =
+                self.read_media(run_id, "proof", &published_file).await
+            {
+                (published_file, bytes)
+            } else if proof.kind == test_cabinet_suites::test_case::MediaKind::Video {
+                let served_ext =
+                    test_cabinet_contracts::layout::proof_served_extension(&proof.dest);
+                let served_file = format!("{}.{}", proof.id, served_ext);
+                let Some(raw) = self.read_media(run_id, "proof", &served_file).await else {
+                    continue;
+                };
+                match transcode_webm_to_mp4(&raw).await {
+                    Some(mp4) => (published_file, mp4),
+                    None => {
+                        tracing::warn!(
+                            run_id = %run_id,
+                            proof = %proof.id,
+                            "webm→mp4 transcode unavailable; publishing raw webm (not iOS-playable)"
+                        );
+                        (served_file, raw)
+                    }
+                }
+            } else {
+                continue;
+            };
+
+            // Key by the produced file name (the transcode-fallback path can publish
+            // the raw webm under its served name rather than the mp4 published name).
+            let key = format!("{MEDIA_PREFIX}/{run_id}/proof/{file}");
+            // A video publishes under a name the transcode decided, so that name is
+            // what describes it; anything else publishes under its recorded `dest`'s
+            // extension, and only the dest carries a compound `.json.gz` suffix whole.
+            let labelled = if proof.kind == test_cabinet_suites::test_case::MediaKind::Video {
+                file.as_str()
+            } else {
+                test_cabinet_contracts::layout::proof_labelled_name(&proof.dest, &file)
+            };
+            objects.push(SnapshotObject::media(key.clone(), bytes, labelled));
+            metas.push(RunProofOut {
+                id: proof.id.clone(),
+                kind: proof.kind,
+                key,
+            });
         }
         (metas, objects)
     }
@@ -1516,7 +1042,7 @@ impl SnapshotBuilder {
     /// `kind = "validation"`), and one whose bytes are in neither place contributes
     /// nothing. The recordings' **shared image store**
     /// (`img.<id>.png`/`img.<id>.bin`, see
-    /// [`VALIDATION_IMAGE_PREFIX`](test_cabinet_core::VALIDATION_IMAGE_PREFIX)) cannot
+    /// [`VALIDATION_IMAGE_PREFIX`](test_cabinet_contracts::layout::VALIDATION_IMAGE_PREFIX)) cannot
     /// come from the record at all — a store file backs no verdict and is named by its
     /// own bytes — so it is enumerated off
     /// [`list_run_validation`](crate::store::DefinitionStore::list_run_validation),
@@ -1535,9 +1061,6 @@ impl SnapshotBuilder {
     async fn run_validation_media(
         &self,
         record: &RunRecord,
-        tree: &TreeMedia,
-        bucket_images: &[String],
-        account: &mut run_files::RunAccount,
     ) -> (Vec<RunValidationMediaOut>, Vec<SnapshotObject>) {
         let mut metas = Vec::new();
         let mut objects = Vec::new();
@@ -1546,9 +1069,10 @@ impl SnapshotBuilder {
             // The verdict id keys this script's media — the item's own id, or the
             // composite `<item>.<sub>` for a per-sub-item driver.
             let verdict_id = match &script.sub_item_id {
-                Some(sub) => {
-                    test_cabinet_core::ReviewItem::sub_item_verdict_id(&script.item_id, sub)
-                }
+                Some(sub) => test_cabinet_suites::test_case::ReviewItem::sub_item_verdict_id(
+                    &script.item_id,
+                    sub,
+                ),
                 None => script.item_id.clone(),
             };
             for output in &script.outputs {
@@ -1557,126 +1081,99 @@ impl SnapshotBuilder {
                 }
                 // The flat name the gallery requests (`.png`/`.webm`) — the on-disk name
                 // the driver mirrored and the artifact service serves.
-                let requested_file =
-                    test_cabinet_core::validation_media_name(&verdict_id, &output.id, output.kind);
-                let published_ext = test_cabinet_core::validation_published_extension(output.kind);
+                let requested_file = test_cabinet_contracts::layout::validation_media_name(
+                    &verdict_id,
+                    &output.id,
+                    output.kind,
+                );
+                let published_ext =
+                    test_cabinet_contracts::layout::validation_published_extension(output.kind);
                 let published_file = format!("{verdict_id}__{}.{published_ext}", output.id);
-                // A video is transcoded and its recording published beside it;
-                // anything else publishes as stored. An object already in the
-                // bucket is referenced without touching the source bytes (no store
-                // read, and for a video no second transcode).
-                let published = run_files::Published {
-                    kind: crate::db::MediaFileKind::Validation,
-                    file: &requested_file,
-                    listed: false,
-                };
-                let is_video = output.kind == test_cabinet_core::MediaKind::Video;
-                let key = if is_video && requested_file != published_file {
-                    self.publish_video(
-                        run_id,
-                        published,
-                        &published_file,
-                        true,
-                        tree,
-                        account,
-                        &mut objects,
-                    )
-                    .await
-                } else {
-                    self.publish_plain(
-                        run_id,
-                        run_files::Published {
-                            file: &published_file,
-                            ..published
-                        },
-                        &published_file,
-                        tree,
-                        account,
-                        &mut objects,
-                    )
-                    .await
-                };
-                if let Some(key) = key {
+                // The stable, snapshot-independent key. When it is already in the
+                // bucket, reference it without touching the source bytes (no store read,
+                // and — for a video — no re-transcode).
+                let published_key = format!("{MEDIA_PREFIX}/{run_id}/validation/{published_file}");
+                if self.existing_media.contains(&published_key) {
                     metas.push(RunValidationMediaOut {
                         file: requested_file,
-                        key,
+                        key: published_key,
                     });
+                    continue;
                 }
+
+                // Prefer a copy already at the published extension (an image, or a clip
+                // already mp4); otherwise pull the raw webm and transcode it.
+                let (file, bytes) = if let Some(bytes) =
+                    self.read_media(run_id, "validation", &published_file).await
+                {
+                    (published_file, bytes)
+                } else if output.kind == test_cabinet_suites::test_case::MediaKind::Video {
+                    let Some(raw) = self.read_media(run_id, "validation", &requested_file).await
+                    else {
+                        continue;
+                    };
+                    match transcode_webm_to_mp4(&raw).await {
+                        Some(mp4) => (published_file, mp4),
+                        None => {
+                            tracing::warn!(
+                                run_id = %run_id,
+                                item = %script.item_id,
+                                output = %output.id,
+                                "webm→mp4 transcode unavailable; publishing raw webm (not iOS-playable)"
+                            );
+                            (requested_file.clone(), raw)
+                        }
+                    }
+                } else {
+                    continue;
+                };
+
+                let key = format!("{MEDIA_PREFIX}/{run_id}/validation/{file}");
+                objects.push(SnapshotObject::media(key.clone(), bytes, &file));
+                metas.push(RunValidationMediaOut {
+                    file: requested_file,
+                    key,
+                });
             }
         }
 
         // Then the recordings' shared image store, which the record cannot name: a
         // store file backs no verdict and is named by its own bytes, so it is
-        // enumerated from the places that hold it. Three of them, united:
-        //
-        // - the backend store's listing, the fast path, which is ephemeral and so
-        //   may list nothing for a run mirrored before a restart;
-        // - the run's tree on the artifact service, when this build asked for its
-        //   listing ([`Self::with_media_confirmation`]), which is the durable copy
-        //   and the one the reclamation sweep deletes;
-        // - the bucket, which is where the files of a run whose tree was reclaimed
-        //   are, and the only place that still names them once the store has lost
-        //   its copy.
-        //
-        // A store that cannot be listed leaves the run unconfirmed: the build then
-        // cannot know it has seen every file.
+        // enumerated off the store's own listing instead. Published entries are the
+        // union of the declared outputs and the listed store files — the same shape
+        // (and the same precedent) as [`Self::run_showcase`], including its stance on
+        // the artifact-service fallback: the listing comes from the store only, so a
+        // run whose media exists *only* in the artifact service publishes its store
+        // files once the driver's mirror has run. That is already true of showcase
+        // media and is not a new hole.
         //
         // No transcode branch and no published-extension branch: a store file is
         // never a video, and it publishes under the very name it is served under —
         // which is what lets a recording's entry resolve it through the resolver the
         // recording itself came from.
-        //
-        // A run built from its manifest takes the names from there instead: the
-        // refresh that confirmed it united the three and recorded every file.
-        let mut images: std::collections::BTreeSet<String> = if let Some(manifest) = tree.recorded()
-        {
-            run_files::recorded_names(manifest, crate::db::MediaFileKind::Validation)
-                .into_iter()
-                .collect()
-        } else {
-            match self.store.list_run_validation(run_id) {
-                Ok(files) => files.into_iter().collect(),
-                Err(err) => {
-                    tracing::warn!(
-                        run.id = %run_id,
-                        "listing the run's stored validation media failed ({err})"
-                    );
-                    account
-                        .unconfirmed
-                        .push(STORE_LISTING_UNAVAILABLE.to_string());
-                    std::collections::BTreeSet::new()
-                }
-            }
-        };
-        if let TreeMedia::Stored { validation, .. } = tree {
-            images.extend(validation.iter().cloned());
-        }
-        if tree.recorded().is_none() {
-            images.extend(bucket_images.iter().cloned());
-        }
-        for file in images
+        for file in self
+            .store
+            .list_run_validation(run_id)
+            .unwrap_or_default()
             .into_iter()
-            .filter(|file| test_cabinet_core::is_validation_image_name(file))
+            .filter(|file| test_cabinet_contracts::layout::is_validation_image_name(file))
         {
-            // Unlike a file the record lists, one a listing named exists, so a
-            // read that finds nothing is a file that could not be published.
-            let key = self
-                .publish_plain(
-                    run_id,
-                    run_files::Published {
-                        kind: crate::db::MediaFileKind::Validation,
-                        file: &file,
-                        listed: true,
-                    },
-                    &file,
-                    tree,
-                    account,
-                    &mut objects,
-                )
-                .await;
-            if let Some(key) = key {
-                metas.push(RunValidationMediaOut { file, key });
+            let published_key = format!("{MEDIA_PREFIX}/{run_id}/validation/{file}");
+            if self.existing_media.contains(&published_key) {
+                metas.push(RunValidationMediaOut {
+                    file,
+                    key: published_key,
+                });
+                continue;
             }
+            let Some(bytes) = self.read_media(run_id, "validation", &file).await else {
+                continue;
+            };
+            objects.push(SnapshotObject::media(published_key.clone(), bytes, &file));
+            metas.push(RunValidationMediaOut {
+                file,
+                key: published_key,
+            });
         }
         (metas, objects)
     }
@@ -1699,7 +1196,7 @@ impl SnapshotBuilder {
     /// The enumeration is deliberately of the *whole* committed directory rather than
     /// of the outputs some record declares, and that is what carries the recordings'
     /// **shared image store** (`img.<id>.png`/`img.<id>.bin`, see
-    /// [`VALIDATION_IMAGE_PREFIX`](test_cabinet_core::VALIDATION_IMAGE_PREFIX)) along
+    /// [`VALIDATION_IMAGE_PREFIX`](test_cabinet_contracts::layout::VALIDATION_IMAGE_PREFIX)) along
     /// with the baselines that name it: a store file backs no verdict and is on no
     /// declaration, so a record-driven loop would leave the published baseline replays
     /// resolving nothing. Do not "tidy" this into one.
@@ -1762,7 +1259,8 @@ impl SnapshotBuilder {
                     // reference's store runs to a file per unique image, and the
                     // static site inlines its lookup tables into the chunk every
                     // visitor downloads.
-                    let stored_image = test_cabinet_core::is_validation_image_name(&requested_file);
+                    let stored_image =
+                        test_cabinet_contracts::layout::is_validation_image_name(&requested_file);
                     let keyed = |name: &str| {
                         if stored_image {
                             format!("{prefix}/{name}")
@@ -1871,15 +1369,16 @@ impl SnapshotBuilder {
                 // as [`Self::run_proofs`] does — while an authored `.mp4` already
                 // carries that name and needs no transcode.
                 let digest = content_digest(&raw);
-                let published_name = if media.kind == test_cabinet_core::MediaKind::Video {
-                    let stem = media
-                        .file
-                        .rsplit_once('.')
-                        .map_or(media.file.as_str(), |(stem, _)| stem);
-                    format!("{stem}.mp4")
-                } else {
-                    media.file.clone()
-                };
+                let published_name =
+                    if media.kind == test_cabinet_suites::test_case::MediaKind::Video {
+                        let stem = media
+                            .file
+                            .rsplit_once('.')
+                            .map_or(media.file.as_str(), |(stem, _)| stem);
+                        format!("{stem}.mp4")
+                    } else {
+                        media.file.clone()
+                    };
                 let key = format!("{prefix}/{digest}-{published_name}");
                 // Already published from byte-identical source: reference it without
                 // re-uploading, and — the expensive half — without re-transcoding.
@@ -1943,7 +1442,7 @@ impl SnapshotBuilder {
 
     /// Collect a version's starter-workspace files: the exported
     /// [`CaseWorkspaceFileOut`] sets keyed by variant slug and then by
-    /// [engine](test_cabinet_core::engine) slug, plus the file objects to upload.
+    /// [engine](test_cabinet_suites::engine) slug, plus the file objects to upload.
     ///
     /// Each variant's effective workspace is its own override when it declares one,
     /// else the case's common workspace — the same fallback a run's seed applies.
@@ -2040,12 +1539,7 @@ impl SnapshotBuilder {
     /// Each named file is resolved through the store-then-artifact-service fallback
     /// ([`Self::read_media`]) and skipped if it is in neither. A run that is neither
     /// type contributes nothing.
-    async fn run_assets(
-        &self,
-        run: &StoredRun,
-        tree: &TreeMedia,
-        account: &mut run_files::RunAccount,
-    ) -> (Vec<RunAssetOut>, Vec<SnapshotObject>) {
+    async fn run_assets(&self, run: &StoredRun) -> (Vec<RunAssetOut>, Vec<SnapshotObject>) {
         let mut metas = Vec::new();
         let mut objects = Vec::new();
         let files: Vec<String> = if let Some(asset) = run.record.validation.asset.as_ref() {
@@ -2138,56 +1632,37 @@ impl SnapshotBuilder {
                 files.push("preview.png".to_string());
             }
             files
-        } else if let Some(adversarial) = run.record.validation.adversarial.as_ref() {
-            // Every opponent's replay, under the name the record gives it, which
-            // is the name a console requests it by. The canonical replay leads the
-            // list, and stands alone for a record that carries no list (a forfeit
-            // before any match, or a record older than the list).
-            run_files::flat_names(
-                std::iter::once(adversarial.replay_json.as_str())
-                    .chain(adversarial.replays.iter().map(|r| r.replay_json.as_str())),
-            )
-        } else if let Some(performance) = run.record.validation.performance.as_ref() {
-            // Each scored case's scenario and the run's own engine module, under
-            // the names the record gives them. Browser playback loads the module
-            // and steps it over each scenario. A case the engine got wrong records
-            // no scenario, and a build that emitted no module records none.
-            run_files::flat_names(
-                performance
-                    .cases
-                    .iter()
-                    .filter_map(|case| case.scenario_json.as_deref())
-                    .chain(performance.module_wasm.as_deref()),
-            )
+        } else if run.record.validation.adversarial.is_some() {
+            vec!["replay.json".to_string()]
         } else {
             return (metas, objects);
         };
         let run_id = &run.record.id;
-        for file in files {
-            // Already uploaded (immutable per run): referenced without reading the
+        for file in &files {
+            let file = file.as_str();
+            let key = format!("{MEDIA_PREFIX}/{run_id}/asset/{file}");
+            // Already uploaded (immutable per run): reference it without reading the
             // source bytes or re-uploading.
-            let key = self
-                .publish_plain(
-                    run_id,
-                    run_files::Published {
-                        kind: crate::db::MediaFileKind::Asset,
-                        file: &file,
-                        listed: false,
-                    },
-                    &file,
-                    tree,
-                    account,
-                    &mut objects,
-                )
-                .await;
-            if let Some(key) = key {
-                metas.push(RunAssetOut { file, key });
+            if self.existing_media.contains(&key) {
+                metas.push(RunAssetOut {
+                    file: file.to_string(),
+                    key,
+                });
+                continue;
             }
+            let Some(bytes) = self.read_media(run_id, "asset", file).await else {
+                continue;
+            };
+            objects.push(SnapshotObject::media(key.clone(), bytes, file));
+            metas.push(RunAssetOut {
+                file: file.to_string(),
+                key,
+            });
         }
         (metas, objects)
     }
 
-    /// Collect a run's [showcase](test_cabinet_core::RunShowcase) files: the
+    /// Collect a run's [showcase](test_cabinet_contracts::run_record::RunShowcase) files: the
     /// `showcaseMedia[]` metadata entries (recorded file name + snapshot-relative
     /// key) and the media objects to upload.
     ///
@@ -2198,10 +1673,11 @@ impl SnapshotBuilder {
     /// published even when the carousel does not list it, which is why the driver
     /// mirrors the whole directory (see `upload_showcase_to_backend`). Any name
     /// the store listing misses — a carousel entry, or an image reference
-    /// extracted from the record's description ([`description_image_references`])
+    /// extracted from the record's description
+    /// ([`description_image_references`](test_cabinet_contracts::showcase::description_image_references))
     /// — is still tried through the store-then-artifact-service fallback
-    /// ([`Self::read_media`]): the backend store can have lost the run's files, so a
-    /// run's folder may list nothing at publish time, and a
+    /// ([`Self::read_media`]): the backend store is an ephemeral emptyDir, so a
+    /// run mirrored before a restart may list nothing at publish time, and a
     /// description-only image is named nowhere else on the record. A file whose
     /// bytes are in neither place contributes nothing.
     ///
@@ -2213,13 +1689,7 @@ impl SnapshotBuilder {
     /// convention ([`Self::run_validation_media`]). A transcode that fails falls
     /// back to publishing the raw webm so the media still appears. An
     /// already-present media key is referenced without re-reading or re-transcoding.
-    async fn run_showcase(
-        &self,
-        record: &RunRecord,
-        tree: &TreeMedia,
-        bucket_files: &[String],
-        account: &mut run_files::RunAccount,
-    ) -> (Vec<RunShowcaseOut>, Vec<SnapshotObject>) {
+    async fn run_showcase(&self, record: &RunRecord) -> (Vec<RunShowcaseOut>, Vec<SnapshotObject>) {
         let mut metas = Vec::new();
         let mut objects = Vec::new();
         let Some(showcase) = record.showcase.as_ref() else {
@@ -2231,76 +1701,26 @@ impl SnapshotBuilder {
         // several of them know about publishes once. `showcase.toml` is never
         // stored (nor uploaded), but a stray copy is filtered rather than
         // published: the manifest is capture-side input, already on the record.
-        //
-        // A run built from its manifest publishes exactly the files recorded
-        // there, in the order they were recorded: the refresh that confirmed it
-        // gathered this same list and entered every file that exists. Nothing
-        // below adds to it, since a name absent from the manifest is a file the
-        // run does not have.
-        let recorded = tree.recorded().map(|manifest| {
-            run_files::recorded_names(manifest, crate::db::MediaFileKind::Showcase)
-        });
-        let from_manifest = recorded.is_some();
-        let mut files: Vec<String> = match recorded {
-            Some(files) => files,
-            None => match self.store.list_run_showcase(run_id) {
-                Ok(files) => files,
-                Err(err) => {
-                    tracing::warn!(
-                        run.id = %run_id,
-                        "listing the run's stored showcase files failed ({err})"
-                    );
-                    account
-                        .unconfirmed
-                        .push(STORE_LISTING_UNAVAILABLE.to_string());
-                    Vec::new()
-                }
-            },
-        }
-        .into_iter()
-        .filter(|file| file != "showcase.toml")
-        .collect();
-        // The files a listing named exist; the carousel entries and description
-        // references added below may name a file that was never written.
-        let mut listed = files.len();
-        // The run's tree holds the durable copy of the same directory, and names
-        // the files the store lost with its ephemeral volume.
-        if let TreeMedia::Stored { showcase, .. } = tree {
-            for file in showcase {
-                if file != "showcase.toml" && !files.contains(file) {
-                    files.push(file.clone());
-                }
-            }
-            listed = files.len();
-        }
-        if !from_manifest {
-            for media in &showcase.media {
-                if !files.contains(&media.file) {
-                    files.push(media.file.clone());
-                }
-            }
-            for file in description_image_references(&showcase.description) {
-                if !files.contains(&file) {
-                    files.push(file);
-                }
-            }
-            // The bucket is the only place that still names a file nothing
-            // mentions, for a run whose folder and tree are both gone: without
-            // its names such a file would drop out of the run's document and
-            // manifest the first time the run is built from its sources again.
-            // The mp4 of a recording already in the list is that recording's
-            // transcode and no file of its own.
-            for file in bucket_files {
-                let transcode_of = file.strip_suffix(".mp4").map(|stem| format!("{stem}.webm"));
-                let is_transcode = transcode_of.is_some_and(|recording| {
-                    files.contains(&recording) || bucket_files.contains(&recording)
-                });
-                if file != "showcase.toml" && !is_transcode && !files.contains(file) {
-                    files.push(file.clone());
-                }
+        let mut files: Vec<String> = self
+            .store
+            .list_run_showcase(run_id)
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|file| file != "showcase.toml")
+            .collect();
+        for media in &showcase.media {
+            if !files.contains(&media.file) {
+                files.push(media.file.clone());
             }
         }
-        for (index, file) in files.iter().enumerate() {
+        for file in
+            test_cabinet_contracts::showcase::description_image_references(&showcase.description)
+        {
+            if !files.contains(&file) {
+                files.push(file);
+            }
+        }
+        for file in &files {
             let file = file.as_str();
             let is_video = file.to_ascii_lowercase().ends_with(".webm");
             let published_file = if is_video {
@@ -2308,37 +1728,41 @@ impl SnapshotBuilder {
             } else {
                 file.to_string()
             };
-            // A file a listing named exists, so a read that finds nothing is a
-            // file that could not be published. A name only the carousel or the
-            // description gave may be one that was never written.
-            let published = run_files::Published {
-                kind: crate::db::MediaFileKind::Showcase,
-                file,
-                listed: index < listed,
-            };
-            // An object already in the bucket is referenced without touching the
-            // source bytes (no store read, and for a video no second transcode).
-            let key = if is_video {
-                self.publish_video(
-                    run_id,
-                    published,
-                    &published_file,
-                    false,
-                    tree,
-                    account,
-                    &mut objects,
-                )
-                .await
-            } else {
-                self.publish_plain(run_id, published, file, tree, account, &mut objects)
-                    .await
-            };
-            if let Some(key) = key {
+            // The stable, snapshot-independent key. When it is already in the bucket,
+            // reference it without touching the source bytes (no store read, and — for
+            // a video — no re-transcode).
+            let published_key = format!("{MEDIA_PREFIX}/{run_id}/showcase/{published_file}");
+            if self.existing_media.contains(&published_key) {
                 metas.push(RunShowcaseOut {
                     file: file.to_string(),
-                    key,
+                    key: published_key,
                 });
+                continue;
             }
+            let Some(raw) = self.read_media(run_id, "showcase", file).await else {
+                continue;
+            };
+            let (published_file, bytes) = if is_video {
+                match transcode_webm_to_mp4(&raw).await {
+                    Some(mp4) => (published_file, mp4),
+                    None => {
+                        tracing::warn!(
+                            run_id = %run_id,
+                            file = %file,
+                            "webm→mp4 transcode unavailable; publishing raw showcase webm (not iOS-playable)"
+                        );
+                        (file.to_string(), raw)
+                    }
+                }
+            } else {
+                (published_file, raw)
+            };
+            let key = format!("{MEDIA_PREFIX}/{run_id}/showcase/{published_file}");
+            objects.push(SnapshotObject::media(key.clone(), bytes, &published_file));
+            metas.push(RunShowcaseOut {
+                file: file.to_string(),
+                key,
+            });
         }
         (metas, objects)
     }
@@ -2355,7 +1779,7 @@ impl SnapshotBuilder {
     ///
     /// **The generation is in the key.** `media/runs/<id>/code-analysis/v<gen>.json`,
     /// keyed by the generation *the document was computed under* (off the record, not
-    /// off [`CODE_ANALYZER_VERSION`](test_cabinet_core::code_analysis::CODE_ANALYZER_VERSION)
+    /// off [`CODE_ANALYZER_VERSION`](test_cabinet_contracts::code_analysis::CODE_ANALYZER_VERSION)
     /// — a later binary must not relabel an older result). That is what makes the object
     /// content-stable: [`with_existing_media`](Self::with_existing_media) skips it on
     /// every refresh after the first, so two refreshes upload it **once**, while a genuine
@@ -2375,97 +1799,70 @@ impl SnapshotBuilder {
     /// the gzip magic, exactly as the serving route does. Anything unreadable or
     /// unparseable yields `None` and a warning rather than failing the refresh: the
     /// bounded summary still reaches the card and the record, so the surface degrades to
-    /// the figures instead of offering a link that 404s. A document the store has
-    /// lost is read from the root of the run's tree ([`Self::read_root`]), and one
-    /// that is in neither place is recorded as unrecoverable.
-    async fn run_code_analysis(
+    /// the figures instead of offering a link that 404s. There is no artifact-service
+    /// fallback for this document (the service exposes no route for a tree-root file), so
+    /// a run whose ephemeral store copy is lost before its first publish keeps its summary
+    /// and loses its explorer.
+    fn run_code_analysis(
         &self,
         record: &RunRecord,
         scrubber: &SecretScrubber,
-        tree: &TreeMedia,
-        account: &mut run_files::RunAccount,
     ) -> (Option<String>, Option<SnapshotObject>) {
         let Some(summary) = record.code_analysis.as_ref() else {
             return (None, None);
         };
         let run_id = &record.id;
-        let kind = crate::db::MediaFileKind::CodeAnalysis;
-        let name = test_cabinet_core::TREE_ROOT_CODE_ANALYSIS;
         let key = format!(
             "{MEDIA_PREFIX}/{run_id}/code-analysis/v{}.json",
             summary.analyzer_version
         );
-        // A run built from its manifest links the object recorded for the
-        // document, or nothing when the manifest records none.
-        if let Some(manifest) = tree.recorded() {
-            let Some(entry) = manifest.file(name) else {
-                return (None, None);
-            };
-            account.files.push(entry.clone());
-            return (entry.key.clone(), None);
-        }
         // Already in the bucket under this exact generation: reference it without
         // reading the source bytes, re-scrubbing or re-uploading. This is the whole
         // point of putting the generation in the key.
         if self.existing_media.contains(&key) {
-            account.files.push(crate::db::MediaManifestFile::stored(
-                kind,
-                name,
-                key.clone(),
-            ));
             return (Some(key), None);
         }
 
-        // The name a document that could not be published is reported under.
-        let unpublished = || format!("code-analysis/v{}.json", summary.analyzer_version);
-        let stored = match self.read_root(run_id, name, tree).await {
-            Ok(stored) => stored,
-            Err(missing) => {
+        let Ok(stored) = self.store.read_run_code_analysis(run_id) else {
+            tracing::warn!(
+                run.id = %run_id,
+                "run record carries a code analysis but its document is not stored; \
+                 publishing the summary without the explorer"
+            );
+            return (None, None);
+        };
+        let plain = match decode_maybe_gzip(&stored) {
+            Some(plain) => plain,
+            None => {
                 tracing::warn!(
                     run.id = %run_id,
-                    "run record carries a code analysis but its document could not be \
-                     read; publishing the summary without the explorer"
+                    "decoding the stored code-analysis document failed; publishing the \
+                     summary without the explorer"
                 );
-                match missing {
-                    Missing::Unrecoverable => {
-                        account
-                            .files
-                            .push(crate::db::MediaManifestFile::unrecoverable(
-                                kind, name, None,
-                            ))
-                    }
-                    Missing::Settled => {}
-                    Missing::Unavailable => account.unconfirmed.push(unpublished()),
-                }
                 return (None, None);
             }
         };
-        let bytes = match run_files::scrubbed_json(&stored, scrubber) {
-            Ok((bytes, redacted)) => {
-                if redacted {
-                    tracing::warn!(
-                        run.id = %run_id,
-                        "redacted leaked API key(s) from a published code-analysis document"
-                    );
-                }
-                bytes
-            }
-            Err(reason) => {
+        let mut document: serde_json::Value = match serde_json::from_slice(&plain) {
+            Ok(document) => document,
+            Err(err) => {
                 tracing::warn!(
                     run.id = %run_id,
-                    reason,
-                    "the stored code-analysis document could not be published; \
-                     publishing the summary without the explorer"
+                    error = %err,
+                    "the stored code-analysis document is not JSON; publishing the \
+                     summary without the explorer"
                 );
-                account.unconfirmed.push(unpublished());
                 return (None, None);
             }
         };
-        account.files.push(crate::db::MediaManifestFile::stored(
-            kind,
-            name,
-            key.clone(),
-        ));
+        if scrubber.scrub_json(&mut document) {
+            tracing::warn!(
+                run.id = %run_id,
+                "redacted leaked API key(s) from a published code-analysis document"
+            );
+        }
+        let Ok(bytes) = serde_json::to_vec(&document) else {
+            return (None, None);
+        };
         (
             Some(key.clone()),
             Some(SnapshotObject {
@@ -2482,358 +1879,56 @@ impl SnapshotBuilder {
     /// artifact service.
     ///
     /// The store is the fast path — the driver mirrors a run's media there at run
-    /// time — but it is a staging area that can have lost a file, so it may be empty
-    /// for a run by the time the run is published. The artifact service holds the run
+    /// time — but it is an ephemeral emptyDir in production, so it may be empty for a
+    /// run published before a backend restart. The artifact service holds the run
     /// tree durably and serves it under the same `<kind>/<file>` names, so it backs
-    /// the miss. An `Err` says why the file could not be read ([`Missing`]) — the
-    /// caller then omits that media from the snapshot, and decides from the reason
-    /// whether the run can still be confirmed.
-    ///
-    /// A settled run (`tree`) has no tree to fall back to, so the artifact service
-    /// is not asked and a store miss is [`Missing::Settled`].
-    ///
-    /// [`Missing::Unrecoverable`] takes three answers. The caller reads a file
-    /// only after finding the bucket without it. The store must report that no
-    /// such file is there, which a read that failed some other way does not. And
-    /// the artifact service must answer `404` for a run whose tree it holds, or
-    /// whose tree the backend itself recorded as gone
-    /// ([`TreeMedia::answers_for_missing_media`]).
-    async fn read_media(
-        &self,
-        run_id: &str,
-        kind: &str,
-        file: &str,
-        tree: &TreeMedia,
-    ) -> std::result::Result<Vec<u8>, Missing> {
+    /// the miss. `None` only when the file is in neither place (or the fallback is
+    /// disabled) — the caller then omits that media from the snapshot.
+    async fn read_media(&self, run_id: &str, kind: &str, file: &str) -> Option<Vec<u8>> {
         let from_store = match kind {
             "proof" => self.store.read_run_proof(run_id, file),
             "validation" => self.store.read_run_validation(run_id, file),
             "showcase" => self.store.read_run_showcase(run_id, file),
             _ => self.store.read_run_asset(run_id, file),
         };
-        let name = format!("{kind}/{file}");
-        // An empty file is a copy of nothing: see `run_file_absent`.
-        if let Ok(bytes) = from_store
-            && !bytes.is_empty()
-        {
-            return self.checked_against_tree(run_id, &name, bytes, tree).await;
+        if let Ok(bytes) = from_store {
+            return Some(bytes);
         }
-        if matches!(tree, TreeMedia::Settled) {
-            return Err(Missing::Settled);
-        }
-        let store_answered = self.store_answers() && self.store.run_file_absent(run_id, &name);
-        match self.fetch_artifact(run_id, &name).await {
-            Ok(bytes) => Ok(bytes),
-            Err(FetchFailure::NotFound) if store_answered && tree.answers_for_missing_media() => {
-                Err(Missing::Unrecoverable)
-            }
-            Err(_) => Err(Missing::Unavailable),
-        }
+        self.fetch_artifact(run_id, kind, file).await
     }
 
-    /// Hold `stored`, the bytes the backend store has for the file of run
-    /// `run_id` the tree's routes name `path`, against the copy in the run's tree,
-    /// and return the bytes to publish.
-    ///
-    /// The tree is the original: the driver mirrored the file into the store from
-    /// it. The store's copy can be shorter, cut off by a write to a full volume
-    /// before writes were atomic, and once a run is confirmed both the tree and
-    /// the store's copy are deleted, leaving what was published as the only one.
-    /// So while a build knows the service holds the run's tree, it asks the
-    /// service how long its copy is, and where the two differ it publishes the
-    /// tree's.
-    ///
-    /// The store's bytes stand when there is no tree to ask, when the service
-    /// does not hold the file or does not give a length, and when the lengths
-    /// agree. A tree's copy that differs and then cannot be read is
-    /// [`Missing::Unavailable`]: the store's copy is in doubt and is not
-    /// published.
-    async fn checked_against_tree(
-        &self,
-        run_id: &str,
-        path: &str,
-        stored: Vec<u8>,
-        tree: &TreeMedia,
-    ) -> std::result::Result<Vec<u8>, Missing> {
-        if !matches!(tree, TreeMedia::Stored { .. }) {
-            return Ok(stored);
-        }
-        match self.artifact_length(run_id, path).await {
-            Some(length) if length != stored.len() as u64 => {
-                tracing::warn!(
-                    run.id = run_id,
-                    file = path,
-                    store_bytes = stored.len(),
-                    tree_bytes = length,
-                    "the backend store's copy of a run's file is not the size of the \
-                     copy in the run's tree; publishing the tree's"
-                );
-                self.fetch_artifact(run_id, path)
-                    .await
-                    .map_err(|_| Missing::Unavailable)
-            }
-            _ => Ok(stored),
-        }
-    }
-
-    /// The length of the file the artifact service serves at `path` of run
-    /// `run_id`'s tree, from a `HEAD` request. `None` when there is no service,
-    /// the request failed, the service does not hold the file, or it gave no
-    /// length.
-    async fn artifact_length(&self, run_id: &str, path: &str) -> Option<u64> {
+    /// Fetch one run media file from the artifact service over the backend's
+    /// in-cluster URL (`GET {artifacts_url}/runs/{run_id}/{kind}/{file}`, a media read
+    /// presenting the service token), or `None` when the
+    /// fallback is disabled (`artifacts_url` unset), the file is absent (404), or the
+    /// request fails. A non-404 failure is logged — it means the durable copy could
+    /// not be read, so the media will be missing from the snapshot until the next
+    /// refresh.
+    async fn fetch_artifact(&self, run_id: &str, kind: &str, file: &str) -> Option<Vec<u8>> {
         let base = self.artifacts_url.as_deref()?;
-        let url = format!("{base}/runs/{run_id}/{path}");
-        let response = self
-            .http
-            .head(&url)
-            // The length asked for is the file's own, not a compressed body's.
-            .header(reqwest::header::ACCEPT_ENCODING, "identity")
-            .timeout(std::time::Duration::from_secs(30))
-            .send()
-            .await
-            .ok()?;
-        if !response.status().is_success()
-            || response
-                .headers()
-                .contains_key(reqwest::header::CONTENT_ENCODING)
-        {
-            return None;
+        let url = format!("{base}/runs/{run_id}/{kind}/{file}");
+        let mut request = self.http.get(&url);
+        if let Some(token) = &self.artifacts_service_token {
+            request = request.bearer_auth(token);
         }
-        response
-            .headers()
-            .get(reqwest::header::CONTENT_LENGTH)?
-            .to_str()
-            .ok()?
-            .parse()
-            .ok()
-    }
-
-    /// Resolve one of the files at the root of a run
-    /// ([`TREE_ROOT_FILES`](test_cabinet_core::TREE_ROOT_FILES): the controller
-    /// module and the code-analysis document) to its stored bytes, preferring the local store and falling back to the artifact service.
-    ///
-    /// No media route reaches these files, so the service names the ones a tree
-    /// holds in its listing and serves them from `GET /runs/{id}/root/{name}`.
-    /// The listing is what answers for a file here, never a `404`: a service too
-    /// old to have the route answers `404` for every name, and its listing carries
-    /// no `root` to mistake that for an answer. So:
-    ///
-    /// - a file the listing names is fetched, and a failure to fetch it is
-    ///   [`Missing::Unavailable`];
-    /// - a file the listing does not name, of a tree the service holds or of one
-    ///   the backend recorded as gone, is [`Missing::Unrecoverable`] when the
-    ///   store also answered that it holds no such file;
-    /// - anything else is [`Missing::Unavailable`].
-    async fn read_root(
-        &self,
-        run_id: &str,
-        name: &str,
-        tree: &TreeMedia,
-    ) -> std::result::Result<Vec<u8>, Missing> {
-        let from_store = match name {
-            test_cabinet_core::TREE_ROOT_CONTROLLER => self.store.read_run_controller(run_id),
-            _ => self.store.read_run_code_analysis(run_id),
-        };
-        if let Ok(bytes) = from_store
-            && !bytes.is_empty()
-        {
-            let in_tree = matches!(
-                tree,
-                TreeMedia::Stored { root: Some(names), .. } if names.iter().any(|held| held == name)
-            );
-            return if in_tree {
-                self.checked_against_tree(run_id, &format!("root/{name}"), bytes, tree)
-                    .await
-            } else {
-                Ok(bytes)
-            };
-        }
-        let store_answered = self.store_answers() && self.store.run_file_absent(run_id, name);
-        match tree {
-            TreeMedia::Settled => Err(Missing::Settled),
-            TreeMedia::Stored {
-                root: Some(names), ..
-            } if names.iter().any(|held| held == name) => self
-                .fetch_artifact(run_id, &format!("root/{name}"))
-                .await
-                .map_err(|_| Missing::Unavailable),
-            TreeMedia::Stored { root: Some(_), .. } | TreeMedia::Absent { recorded: true }
-                if store_answered =>
-            {
-                Err(Missing::Unrecoverable)
-            }
-            _ => Err(Missing::Unavailable),
-        }
-    }
-
-    /// Fetch one file of a run's tree from the artifact service over the backend's
-    /// in-cluster URL (`GET {artifacts_url}/runs/{run_id}/{path}`, an ungated
-    /// read). `path` is `<kind>/<file>` for media and `root/<name>` for a root
-    /// file.
-    ///
-    /// [`FetchFailure::NotFound`] only when the service answered `404`. Everything
-    /// else is [`FetchFailure::Failed`] — the fallback is disabled (`artifacts_url`
-    /// unset) or the request failed. A non-404 failure is logged — it means the
-    /// durable copy could not be read, so the file will be missing from the
-    /// snapshot until the next refresh.
-    async fn fetch_artifact(
-        &self,
-        run_id: &str,
-        path: &str,
-    ) -> std::result::Result<Vec<u8>, FetchFailure> {
-        let Some(base) = self.artifacts_url.as_deref() else {
-            return Err(FetchFailure::Failed);
-        };
-        let url = format!("{base}/runs/{run_id}/{path}");
-        match self.http.get(&url).send().await {
+        match request.send().await {
             Ok(resp) if resp.status().is_success() => match resp.bytes().await {
-                Ok(bytes) => Ok(bytes.to_vec()),
+                Ok(bytes) => Some(bytes.to_vec()),
                 Err(err) => {
                     tracing::warn!(run.id = run_id, %url, error = %err, "reading artifact media body failed");
-                    Err(FetchFailure::Failed)
+                    None
                 }
             },
-            Ok(resp) if resp.status() == reqwest::StatusCode::NOT_FOUND => {
-                Err(FetchFailure::NotFound)
-            }
+            Ok(resp) if resp.status() == reqwest::StatusCode::NOT_FOUND => None,
             Ok(resp) => {
                 tracing::warn!(run.id = run_id, %url, status = %resp.status(), "artifact media fetch failed");
-                Err(FetchFailure::Failed)
+                None
             }
             Err(err) => {
                 tracing::warn!(run.id = run_id, %url, error = %err, "artifact media request failed");
-                Err(FetchFailure::Failed)
+                None
             }
         }
-    }
-
-    /// What the artifact service says run `run_id`'s tree holds, for a build that
-    /// [confirms media](Self::with_media_confirmation) and a run it has yet to
-    /// settle. [`TreeMedia::NotAsked`] otherwise, and [`TreeMedia::Recorded`]
-    /// before any of that for a run built from its manifest
-    /// ([`Self::with_recorded_manifests`]).
-    ///
-    /// `GET {artifacts_url}/runs/{run_id}/media`. Anything but a listing the
-    /// service produced is [`TreeMedia::Unknown`]: no service to ask, a request
-    /// that failed, a status that is not a success (an artifact service older than
-    /// the route answers `404`), or a body that does not parse.
-    async fn tree_media(&self, run_id: &str) -> TreeMedia {
-        // A confirmed run whose every object the listing still holds is built
-        // from its manifest, whatever else is known about it.
-        if let Some(manifest) = self.recorded_manifests.get(run_id)
-            && manifest.keys().all(|key| self.existing_media.contains(key))
-        {
-            return TreeMedia::Recorded(manifest.clone());
-        }
-        match &self.settled_media {
-            None => return TreeMedia::NotAsked,
-            Some(settled) if settled.contains(run_id) => return TreeMedia::Settled,
-            Some(_) => {}
-        }
-        let Some(base) = self.artifacts_url.as_deref() else {
-            return TreeMedia::Unknown;
-        };
-        let url = format!("{base}/runs/{run_id}/media");
-        let asked = self
-            .http
-            .get(&url)
-            // The answer is a few directory listings on the service's side, so a
-            // slow one is a service that is not answering.
-            .timeout(std::time::Duration::from_secs(30))
-            .send()
-            .await;
-        let listing = match asked {
-            Ok(resp) if resp.status().is_success() => resp.json::<TreeListing>().await,
-            Ok(resp) => {
-                tracing::warn!(run.id = run_id, %url, status = %resp.status(), "listing the run tree's media failed");
-                return TreeMedia::Unknown;
-            }
-            Err(err) => {
-                tracing::warn!(run.id = run_id, %url, error = %err, "the run tree's media listing request failed");
-                return TreeMedia::Unknown;
-            }
-        };
-        match listing {
-            Ok(listing) if listing.stored => TreeMedia::Stored {
-                validation: listing.validation,
-                showcase: listing.showcase,
-                root: listing.root,
-            },
-            Ok(_) => TreeMedia::Absent {
-                recorded: self.trees_recorded_absent.contains(run_id),
-            },
-            Err(err) => {
-                tracing::warn!(run.id = run_id, %url, error = %err, "the run tree's media listing did not parse");
-                TreeMedia::Unknown
-            }
-        }
-    }
-
-    /// The image-store files each run already has in the bucket, by run id: every
-    /// `media/runs/<id>/validation/img.*` key of
-    /// [`existing_media`](Self::with_existing_media). The bucket is the only place
-    /// that still names these files for a run whose tree was reclaimed and whose
-    /// store copy is gone, so the build reads the names back from it.
-    fn bucket_validation_images(&self) -> std::collections::HashMap<String, Vec<String>> {
-        let mut images: std::collections::HashMap<String, Vec<String>> =
-            std::collections::HashMap::new();
-        for key in &self.existing_media {
-            let Some(rest) = key
-                .strip_prefix(MEDIA_PREFIX)
-                .and_then(|rest| rest.strip_prefix('/'))
-            else {
-                continue;
-            };
-            let mut parts = rest.splitn(3, '/');
-            if let (Some(run_id), Some("validation"), Some(file)) =
-                (parts.next(), parts.next(), parts.next())
-                && test_cabinet_core::is_validation_image_name(file)
-            {
-                images
-                    .entry(run_id.to_string())
-                    .or_default()
-                    .push(file.to_string());
-            }
-        }
-        images
-    }
-
-    /// The showcase files each run already has in the bucket, by run id and under
-    /// the names the store held them by: every `media/runs/<id>/showcase/<file>`
-    /// key of [`existing_media`](Self::with_existing_media), and the recording of
-    /// every `media/runs/<id>/original/showcase/<file>`. As for the image store
-    /// ([`Self::bucket_validation_images`]), the bucket is the only place that
-    /// still names a showcase file neither the carousel nor the description
-    /// mentions, once the run's folder and tree are gone.
-    fn bucket_showcase_files(&self) -> std::collections::HashMap<String, Vec<String>> {
-        let mut files: std::collections::HashMap<String, Vec<String>> =
-            std::collections::HashMap::new();
-        let mut keys: Vec<&String> = self.existing_media.iter().collect();
-        keys.sort();
-        for key in keys {
-            let Some(rest) = key
-                .strip_prefix(MEDIA_PREFIX)
-                .and_then(|rest| rest.strip_prefix('/'))
-            else {
-                continue;
-            };
-            let Some((run_id, rest)) = rest.split_once('/') else {
-                continue;
-            };
-            let file = rest
-                .strip_prefix("showcase/")
-                .or_else(|| rest.strip_prefix(&format!("{}/showcase/", run_files::ORIGINAL_DIR)));
-            if let Some(file) = file
-                && !file.is_empty()
-                && !file.contains('/')
-            {
-                let names = files.entry(run_id.to_string()).or_default();
-                if !names.iter().any(|seen| seen == file) {
-                    names.push(file.to_string());
-                }
-            }
-        }
-        files
     }
 
     /// Compute the snapshot id: a compact RFC-3339 timestamp plus a short hash of
@@ -2902,93 +1997,6 @@ async fn transcode_webm_to_mp4(webm: &[u8]) -> Option<Vec<u8>> {
     result
 }
 
-/// The showcase file names a description references as inline Markdown images
-/// (`![alt](file)`), deduplicated in reference order.
-///
-/// A description may embed an image by bare relative path without listing it in
-/// the carousel, and such a name lives nowhere else on the record — so this
-/// extraction is what lets [`run_showcase`](SnapshotBuilder::run_showcase) try
-/// the artifact-service fallback for it after the ephemeral store has been
-/// wiped, instead of publishing a description whose image is permanently broken
-/// (the write-once media convention means a later snapshot never heals it).
-///
-/// Only a name the store and serve routes would accept is returned: the same
-/// relative-reference rule the console's Markdown renderer applies before it
-/// resolves an image against the published showcase (no scheme, not
-/// document-anchored), then the flat-namespace rule of the showcase dir itself
-/// (no separators, no `..`, not `showcase.toml`). A percent-escaped destination
-/// is decoded to the plain file name the author wrote, exactly as the renderer
-/// decodes it before resolving.
-fn description_image_references(description: &str) -> Vec<String> {
-    let mut files = Vec::new();
-    // Inline-image syntax only (`![alt](dest)` / `![alt](<dest>)`, optionally
-    // with a title after the destination) — the convention the specs instruct.
-    let mut rest = description;
-    while let Some(start) = rest.find("![") {
-        rest = &rest[start + 2..];
-        // The destination opens at the first `](` after the alt text.
-        let Some(open) = rest.find("](") else { break };
-        let after = &rest[open + 2..];
-        let dest = if let Some(bracketed) = after.strip_prefix('<') {
-            // An angle-bracketed destination runs to the closing `>` (the form
-            // that permits spaces in the name).
-            let Some(end) = bracketed.find('>') else {
-                rest = after;
-                continue;
-            };
-            &bracketed[..end]
-        } else {
-            // A plain destination ends at the first whitespace (a title may
-            // follow) or the closing parenthesis.
-            match after.find(|c: char| c.is_whitespace() || c == ')') {
-                Some(end) => &after[..end],
-                None => after,
-            }
-        };
-        rest = after;
-        // Only a relative reference resolves against the showcase — the same rule
-        // the renderer applies (no scheme, not `/`-, `#`- or `?`-anchored).
-        if dest.is_empty() || dest.starts_with(['/', '#', '?']) || has_url_scheme(dest) {
-            continue;
-        }
-        // The parser hands the renderer a percent-encoded destination and the
-        // resolver decodes it; decode here too so the extracted name is the plain
-        // file name the store and the published key use.
-        let file = match percent_encoding::percent_decode_str(dest).decode_utf8() {
-            Ok(decoded) => decoded.into_owned(),
-            // Malformed escapes: take the reference as written.
-            Err(_) => dest.to_string(),
-        };
-        // The flat-namespace rule every showcase route enforces.
-        if file.contains(['/', '\\']) || file.contains("..") || file == "showcase.toml" {
-            continue;
-        }
-        if !files.contains(&file) {
-            files.push(file);
-        }
-    }
-    files
-}
-
-/// Whether a Markdown URL reference opens with a scheme (`letter` then
-/// letters/digits/`+`/`.`/`-` up to a `:`), mirroring the renderer's
-/// relative-reference test.
-fn has_url_scheme(url: &str) -> bool {
-    let mut chars = url.chars();
-    if !chars.next().is_some_and(|c| c.is_ascii_alphabetic()) {
-        return false;
-    }
-    for c in chars {
-        if c == ':' {
-            return true;
-        }
-        if !c.is_ascii_alphanumeric() && !matches!(c, '+' | '.' | '-') {
-            return false;
-        }
-    }
-    false
-}
-
 /// The top-level prefix every snapshot generation is written under.
 pub const SNAPSHOT_PREFIX: &str = "snapshots/";
 
@@ -3013,7 +2021,7 @@ pub const SNAPSHOT_PREFIX: &str = "snapshots/";
 ///
 /// The returned keys are exactly the input keys that belong to a pruned generation,
 /// so a caller can hand them straight to
-/// [`R2Client::delete_objects`](test_cabinet_core::r2::R2Client::delete_objects).
+/// [`R2Client::delete_objects`](crate::r2::R2Client::delete_objects).
 /// Keys outside [`SNAPSHOT_PREFIX`] are ignored entirely — run media, case media and
 /// `index.json` are never candidates.
 pub fn stale_generation_keys(
@@ -3101,7 +2109,6 @@ fn media_labels(file: &str) -> ContentLabels {
         "md" => ContentLabels::plain("text/markdown; charset=utf-8"),
         "glb" => ContentLabels::plain("model/gltf-binary"),
         "wav" => ContentLabels::plain("audio/wav"),
-        "wasm" => ContentLabels::plain("application/wasm"),
         "mid" | "midi" => ContentLabels::plain("audio/midi"),
         _ => ContentLabels::plain("application/octet-stream"),
     }
@@ -3166,50 +2173,6 @@ fn decode_maybe_gzip(stored: &[u8]) -> Option<Vec<u8>> {
     Some(plain)
 }
 
-/// The bytes a stored code-analysis document is published as: its scrubbed,
-/// uncompressed JSON. `None` for bytes that are not a document.
-///
-/// The state sweep publishes a stored document again with this, in memory, to
-/// learn whether the object under the document's name holds this document.
-pub(crate) fn published_scrubbed_document(stored: &[u8]) -> Option<Vec<u8>> {
-    run_files::scrubbed_json(stored, &SecretScrubber::new())
-        .ok()
-        .map(|(bytes, _)| bytes)
-}
-
-/// The size and the MD5 of what the file a run's folder holds as `name`, a
-/// [scrubbed document](crate::store::is_scrubbed_document) read from `stored`,
-/// is published as now. `None` for a file with no published form, and for one
-/// that could not be read.
-///
-/// The state sweep holds this against the object the run's manifest names for
-/// the file. A session record is hashed as it is scrubbed and never held (see
-/// [`session_record::record_digest`]); a code-analysis document is small, and is
-/// published as [`published_scrubbed_document`] publishes it.
-pub(crate) fn published_document_digest(
-    name: &str,
-    stored: &mut std::fs::File,
-) -> Option<(u64, [u8; 16])> {
-    use md5::Digest as _;
-
-    if name == crate::store::SESSION_RECORD_FILE {
-        return session_record::record_digest(stored);
-    }
-    let mut bytes = Vec::new();
-    std::io::Read::read_to_end(stored, &mut bytes).ok()?;
-    let published = published_scrubbed_document(&bytes)?;
-    Some((published.len() as u64, md5::Md5::digest(&published).into()))
-}
-
-/// The bytes the session record `stored` is published as. `None` for bytes
-/// that are not a record.
-#[cfg(test)]
-pub(crate) fn published_session_record(stored: &[u8]) -> Option<Vec<u8>> {
-    session_record::export_record(stored, &SecretScrubber::new(), usize::MAX)
-        .ok()
-        .map(|(bytes, _)| bytes)
-}
-
 /// Serialize a value to a pretty JSON [`SnapshotObject`].
 fn json_object<T: Serialize>(key: String, value: &T) -> Result<SnapshotObject> {
     Ok(SnapshotObject {
@@ -3220,16 +2183,12 @@ fn json_object<T: Serialize>(key: String, value: &T) -> Result<SnapshotObject> {
     })
 }
 
-/// How long the site deploy hook may take to answer. The hook only queues a
-/// build, so a slow answer is a host that is not answering.
-const DEPLOY_HOOK_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
-
-/// Upload a generated snapshot to R2.
+/// Upload a generated snapshot to R2 and fire the site deploy hook.
 ///
 /// Objects are uploaded first, `UPLOAD_CONCURRENCY` at a time; the top-level
 /// `index.json` pointer is written **last** so the cut-over is atomic — a site
-/// build reading `index.json` always follows it to a complete prefix. The caller
-/// fires the [deploy hook](fire_deploy_hook) only after this returns `Ok`.
+/// build reading `index.json` always follows it to a complete prefix. The deploy
+/// hook fires only after a successful upload. Returns whether the hook fired.
 ///
 /// The objects have no ordering constraint among themselves (nothing reaches any of
 /// them until `index.json` names their generation), only the barrier before the
@@ -3237,7 +2196,12 @@ const DEPLOY_HOOK_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(
 /// refresh's wall clock on bucket round trips, which is what made a large snapshot
 /// slow even once it had little new to say. As soon as any upload fails the error
 /// propagates and `index.json` is never written, leaving the previous generation live.
-pub async fn upload_snapshot(snapshot: &Snapshot, r2: &R2Client) -> Result<()> {
+pub async fn upload_snapshot(
+    snapshot: &Snapshot,
+    r2: &R2Client,
+    deploy_hook_url: Option<&str>,
+    http: &reqwest::Client,
+) -> Result<bool> {
     use futures_util::TryStreamExt;
 
     futures_util::stream::iter(snapshot.objects.iter().map(Ok::<_, BackendError>))
@@ -3260,392 +2224,32 @@ pub async fn upload_snapshot(snapshot: &Snapshot, r2: &R2Client) -> Result<()> {
         snapshot.index.content_encoding.as_deref(),
     )
     .await?;
-    Ok(())
-}
 
-/// Fire the site deploy hook, which queues a gallery build from the snapshot
-/// `index.json` now points at. Any answer but a success, and no answer within
-/// `DEPLOY_HOOK_TIMEOUT`, is an error: the gallery was not told to rebuild.
-pub async fn fire_deploy_hook(url: &str, http: &reqwest::Client) -> Result<()> {
-    let response = http
-        .post(url)
-        .timeout(DEPLOY_HOOK_TIMEOUT)
-        .send()
-        .await
-        .map_err(|e| BackendError::Snapshot(format!("firing deploy hook: {e}")))?;
-    if !response.status().is_success() {
-        let status = response.status();
-        return Err(BackendError::Snapshot(format!(
-            "deploy hook returned {status}"
-        )));
-    }
-    Ok(())
-}
-
-// --- Wire shapes (§3) -------------------------------------------------------
-
-/// The top-level snapshot pointer (`index.json`): where the runs index, per-run
-/// documents, and case documents live under this snapshot's prefix.
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub struct SnapshotIndex {
-    pub schema_version: u32,
-    pub snapshot_id: String,
-    pub generated_at: String,
-    pub run_count: usize,
-    pub runs_key: String,
-    /// The shared prefix the per-run documents live under
-    /// (`documents/runs/`) — snapshot-independent, so it is the same string in every
-    /// generation. Informational: a reader resolves a run's document through the
-    /// `documentKey` on its summary, because the key carries a content digest and so
-    /// cannot be composed from the run id. Operators and
-    /// `scripts/recover-run-media-from-snapshot.sh` use it to scope a listing.
-    pub run_documents_prefix: String,
-    pub cases_prefix: String,
-    /// Where this snapshot's model catalog lives (`<prefix>/models.json`).
-    pub models_key: String,
-    /// Where this snapshot's comparisons index lives (`<prefix>/comparisons.json`).
-    pub comparisons_key: String,
-    /// The prefix each published comparison's own document lives under
-    /// (`<prefix>/comparisons/<id>.json`).
-    pub comparisons_prefix: String,
-    /// Where this snapshot's gg document corpus lives (`<prefix>/gg-runs.json`) — the
-    /// payload the public Discover surface evaluates in the browser.
-    pub gg_runs_key: String,
-    /// Where this snapshot's test-case-group set lives
-    /// (`<prefix>/test-case-groups.json`). Optional on the wire because it
-    /// postdates the other keys: a snapshot written before groups existed carries
-    /// none, and a reader treats the absent key as an empty group set.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(feature = "contract", ts(optional))]
-    pub test_case_groups_key: Option<String>,
-    /// Where this snapshot's case showcases live (`<prefix>/case-showcases.json`):
-    /// the showcases of every non-experimental version of each case with a
-    /// published run, whichever version that run built.
-    /// Optional on the wire because it postdates the other keys: a reader of a
-    /// snapshot written before it previews a case from its case documents instead.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(feature = "contract", ts(optional))]
-    pub case_showcases_key: Option<String>,
-}
-
-/// The case showcase file (`case-showcases.json`): the authored showcases of every
-/// non-experimental version of each case with a published run.
-///
-/// Gated on the **case** having a published run, not on the version: the gallery
-/// lists a case once any run of it is published, and a showcase is the case's own
-/// presentation, captured from its reference implementation, rather than anything
-/// a run produced. So a listed case previews its newest showcase even while its
-/// runs are on older versions, and a case with no published run uploads nothing
-/// the gallery would not show.
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub struct CaseShowcasesFile {
-    pub schema_version: u32,
-    /// One entry per version declaring at least one showcase, ordered by slug and
-    /// then by version.
-    pub showcases: Vec<CaseVersionShowcases>,
-}
-
-/// One case version's showcases, as [`CaseShowcasesFile`] lists them.
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub struct CaseVersionShowcases {
-    pub slug: String,
-    pub version: String,
-    /// Every variant of the version that declares a showcase, in manifest order —
-    /// the order a preview picks its first from.
-    pub variants: Vec<CaseVariantShowcase>,
-}
-
-/// One variant's showcase within [`CaseVersionShowcases`].
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub struct CaseVariantShowcase {
-    /// The variant's slug.
-    pub variant: String,
-    /// The description and the carousel, each entry naming its published key.
-    pub showcase: CaseShowcaseOut,
-}
-
-/// The gg document corpus file (`gg-runs.json`): every exported gg run as one flat map
-/// of dotted fields, plus the instant the export was taken.
-///
-/// This is the **whole** public analysis payload. The site's Discover surface runs the
-/// mirrored TypeScript evaluator over these documents and makes no backend call at all,
-/// which is only affordable because a document is an order of magnitude smaller than the
-/// record it derives from — no source, no prompts, no model output.
-///
-/// It carries its own `generated_at` even though [`SnapshotIndex`] has one, because the
-/// public corpus legitimately lags the console's: every figure the site renders has to be
-/// labelled with the instant it was true, and a figure and its as-of time should travel
-/// in the same object rather than be joined at read time.
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub struct GgRunsFile {
-    pub schema_version: u32,
-    /// When this corpus was exported (RFC 3339), rendered beside every public figure.
-    pub generated_at: String,
-    /// The exported documents, already filtered and redacted (see
-    /// [`SnapshotBuilder::with_gg_documents`]).
-    pub documents: Vec<test_cabinet_core::gg_query::GgRunDoc>,
-}
-
-/// The comparisons index file (`comparisons.json`): every published harness
-/// comparison as its full read model. The public site lists and renders them from
-/// here (each also has its own `<prefix>/comparisons/<id>.json` for a direct fetch).
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub struct ComparisonsIndex {
-    pub schema_version: u32,
-    pub comparisons: Vec<test_cabinet_core::comparison::Comparison>,
-}
-
-/// One published comparison's own document (`comparisons/<id>.json`).
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub struct ComparisonFile {
-    pub schema_version: u32,
-    pub comparison: test_cabinet_core::comparison::Comparison,
-}
-
-/// The model catalog file (`models.json`): the composed catalog the public site
-/// renders the Models section from.
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub struct ModelCatalogFile {
-    pub schema_version: u32,
-    pub models: Vec<ModelOut>,
-}
-
-/// The test-case-group set file (`test-case-groups.json`): the ingested groups
-/// in the order `GET /test-case-groups` serves them, from which the public site
-/// renders the home page's per-group leaderboards. Repo-authored catalog data,
-/// uploaded as built (no scrubbing — see the builder's emission site).
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub struct TestCaseGroupsFile {
-    pub schema_version: u32,
-    /// The groups, in display order — the same wire shape the live API serves.
-    pub groups: Vec<crate::api::TestCaseGroupOut>,
-}
-
-/// The flat index of run summary cards (`runs.json`), newest first.
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub struct RunsIndex {
-    pub schema_version: u32,
-    pub runs: Vec<RunSummary>,
-}
-
-/// The denormalized summary card for one published run.
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub struct RunSummary {
-    pub id: String,
-    pub published_at: String,
-    pub started_at: String,
-    pub finished_at: String,
-    pub subject: SubjectOut,
-    pub case_name: String,
-    pub metrics: test_cabinet_core::metrics::RunMetrics,
-    pub validation_loaded: bool,
-    pub state: test_cabinet_core::run_record::RunState,
-    /// The run's **functional** rating. On a legacy run the worst rating any
-    /// reviewer gave any domain, `None` while the run carries no reviews (an
-    /// unrated console run). On a [validator-rated](Self::validator_rated) run the
-    /// validators' decision as overridden by its reviews — each failing scored
-    /// point caps its domains at its declared failure cap, each review's overrides
-    /// overlay the validators' verdicts, the run gets the worst across the
-    /// reviews' effective ratings (the validators' own figure while unreviewed),
-    /// composed with the toolchain gate — which is `Some` from the moment the run
-    /// completes, with or without a review. A published run always has one.
-    pub rating: Option<test_cabinet_core::review::Rating>,
-    /// The run's aggregate **aesthetic** rating: the worst run-wide tier across
-    /// its reviews, or `None` when no review has rated the aesthetic channel — a
-    /// validator-rated run nobody has reviewed yet, and every legacy run (its
-    /// reviews carry no aesthetic ratings, so it never shows the badge).
-    #[cfg_attr(feature = "contract", ts(optional = nullable))]
-    pub aesthetic: Option<test_cabinet_core::review::AestheticRating>,
-    /// Whether the run is **validator-rated**: its case version is on the engine
-    /// manifest format and not a game jam, so [`rating`](Self::rating) and
-    /// [`score`](Self::score) are decided by the validators (present without any
-    /// review, with each review's overrides folded in), its reviewers supply the
-    /// [`aesthetic`](Self::aesthetic) channel and any verdict overrides, and it
-    /// publishes with zero reviews. `false` for every legacy run, whose card reads
-    /// exactly as it always has. Lifted here so every consumer can branch on it
-    /// without a catalog.
-    pub validator_rated: bool,
-    /// How many reviews the run carries. The site averages their scores on a
-    /// legacy run; the aggregate sits between the harshest and most generous
-    /// review. On a validator-rated run it counts the aesthetic reviews.
-    pub review_count: usize,
-    /// The run's aggregate reviewer score: the mean earned checklist weight across
-    /// its reviews. `None` when the run has no reviews (or its case's checklist
-    /// weights can't be resolved). Like `case_name`, this is enriched by the
-    /// callers that hold the case catalog (the console listing and the snapshot
-    /// builder); [`RunSummary::from_stored`] leaves it `None` as it is
-    /// catalog-free.
-    pub score: Option<RunScoreOut>,
-    /// The correctness-and-fuel result of a performance run, lifted onto the
-    /// summary card so a fuel leaderboard and a run's percentile can be computed
-    /// from the bounded case-scoped summary set without loading each full record.
-    /// `None` for every non-performance run (which carries no
-    /// `validation.performance`). Unlike [`Self::score`] this is catalog-free —
-    /// fuel needs no checklist weights — so [`RunSummary::from_stored`] fills it.
-    #[cfg_attr(feature = "contract", ts(optional = nullable))]
-    pub performance: Option<PerformanceSummaryOut>,
-    /// The ranking-relevant slice of the run's [code
-    /// analysis](test_cabinet_core::code_analysis), lifted onto the card so a
-    /// "which model writes the tightest code?" ordering can be computed from the
-    /// bounded summary set without loading every run's full record. See
-    /// [`CodeSummaryOut`], which also explains why the provenance rides along with
-    /// the figures.
-    ///
-    /// `None` means the run was **never analysed** — not that it wrote no code. The
-    /// corpus is [not backfilled], so every run that finished before the analyzer
-    /// shipped carries `None` forever, and any view that renders this must say
-    /// "not measured" rather than draw a zero.
-    ///
-    /// Catalog-free (the figures are already on the record), so
-    /// [`RunSummary::from_stored`] fills it.
-    ///
-    /// [not backfilled]: https://docs.testcabinet.ai/gg/analysis/code-analysis/#publishing-and-the-analyzer-version
-    #[cfg_attr(feature = "contract", ts(optional = nullable))]
-    pub code: Option<CodeSummaryOut>,
-    /// Where this run's full document lives: its content-addressed
-    /// `documents/runs/<id>/<digest>.json` key. The digest is over the document's own
-    /// bytes, so the key cannot be composed from the run id — the summary index is how
-    /// a reader learns it, and following it is the only supported way to reach a run's
-    /// record from the snapshot.
-    ///
-    /// `None` on a console card, which has no published document at all;
-    /// [`RunSummary::from_stored`] leaves it unset and the snapshot builder fills it.
-    /// Always `Some` in `runs.json`.
-    #[cfg_attr(feature = "contract", ts(optional = nullable))]
-    pub document_key: Option<String>,
-    pub links: LinksOut,
-}
-
-/// The performance result as a summary card carries it: the correctness gate and
-/// the comparable total fuel. Enough to rank a fuel leaderboard and place one run
-/// against the field without the full `PerformanceResult` breakdown. Mirrors the
-/// two ranking-relevant fields of
-/// [`test_cabinet_core::validation::PerformanceResult`].
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub struct PerformanceSummaryOut {
-    /// Whether every scored input case produced the oracle's exact answer — the
-    /// gate a run must pass before its fuel means anything.
-    pub correct: bool,
-    /// The total fuel a correct engine consumed across every scored case (lower is
-    /// better). `None` for an incorrect run, where the fuel is meaningless and the
-    /// run earns no leaderboard placement.
-    pub total_fuel: Option<u64>,
-}
-
-/// The code analysis as a summary card carries it: three ranking-relevant figures,
-/// plus the provenance a reader needs before comparing two of them.
-///
-/// The full [`CodeAnalysisSummary`](test_cabinet_core::code_analysis::CodeAnalysisSummary)
-/// is ninety-odd leaves and already rides on the record inside the per-run document;
-/// this is the part a *list* sorts on, so it stays small — the same bargain
-/// [`PerformanceSummaryOut`] strikes for fuel, and catalog-free for the same reason.
-///
-/// **The provenance fields are not decoration.** Two things make a bare figure
-/// dishonest here. Analysis is [never backfilled], so an absent `code` on a card means
-/// *not measured*, and among the cards that do carry one an
-/// [`allFiles`](test_cabinet_core::code_analysis::CodeAuthoredBasis::AllFiles) authored
-/// basis or a [`postValidation`](test_cabinet_core::code_analysis::CodeTreeBasis::PostValidation)
-/// tree basis measured a different population than the exact one — the silent-degradation
-/// risk the basis fields exist for. And a
-/// [truncated](test_cabinet_core::code_analysis::CodeAnalysisNotes::truncated) analysis is
-/// excluded from aggregation by default, so a view that ranks it beside complete ones
-/// ranks a partial figure that looks complete. Carrying all four alongside the numbers is
-/// what lets a card say so without fetching the record.
-///
-/// [never backfilled]: https://docs.testcabinet.ai/gg/analysis/code-analysis/#publishing-and-the-analyzer-version
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub struct CodeSummaryOut {
-    /// The [analyzer generation](test_cabinet_core::code_analysis::CODE_ANALYZER_VERSION)
-    /// that produced these figures, so a corpus spanning two generations is visible
-    /// rather than reading as a step change in the models.
-    pub analyzer_version: u32,
-    /// How the authored set was resolved — how much of this tree is actually the
-    /// model's work.
-    pub authored_basis: test_cabinet_core::code_analysis::CodeAuthoredBasis,
-    /// Which state of the tree was measured.
-    pub tree_basis: test_cabinet_core::code_analysis::CodeTreeBasis,
-    /// Whether a tree-wide cap stopped the analysis short. A truncated result is
-    /// excluded from aggregation by default.
-    pub truncated: bool,
-    /// How much code the model wrote: non-blank, non-comment lines across the
-    /// authored set.
-    pub code_lines: u32,
-    /// The Gini coefficient of code lines across files — zero when every file is the
-    /// same size, approaching one when a single file holds everything. The one number
-    /// that answers "did the model split the work?".
-    pub gini_code_lines: f64,
-    /// Mean Sonar cognitive complexity per function. Cognitive rather than cyclomatic
-    /// because cyclomatic is blind to nesting, and nesting is what makes generated code
-    /// unreadable.
-    pub mean_cognitive: f64,
-}
-
-impl CodeSummaryOut {
-    /// Lift the card's slice off the bounded summary the run record carries.
-    fn from_summary(code: &test_cabinet_core::code_analysis::CodeAnalysisSummary) -> Self {
-        Self {
-            analyzer_version: code.analyzer_version,
-            authored_basis: code.authored_basis,
-            tree_basis: code.tree_basis,
-            truncated: code.notes.truncated,
-            code_lines: code.size.code_lines,
-            gini_code_lines: code.size.gini_code_lines,
-            mean_cognitive: code.complexity.mean_cognitive,
+    let mut fired = false;
+    if let Some(url) = deploy_hook_url {
+        let response = http
+            .post(url)
+            .send()
+            .await
+            .map_err(|e| BackendError::Snapshot(format!("firing deploy hook: {e}")))?;
+        if !response.status().is_success() {
+            let status = response.status();
+            return Err(BackendError::Snapshot(format!(
+                "deploy hook returned {status}"
+            )));
         }
+        fired = true;
     }
+    Ok(fired)
 }
 
-/// A run's aggregate reviewer score: mean earned checklist weight across its
-/// reviews, over the shared total available. `None` when the run has no reviews
-/// (or its case's checklist weights can't be resolved). The item weights live
-/// only in the case catalog, so this is computed by callers that hold both the
-/// reviews and the catalog (see `run_summary_score`).
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub struct RunScoreOut {
-    /// The mean weight earned across the run's reviews.
-    pub earned: f64,
-    /// The total weight available — identical across the run's reviews.
-    pub total: u32,
-    /// How many reviews the average is taken over.
-    pub reviews: u32,
-    /// A [game jam](test_cabinet_core::test_case::TestType::GameJam) run's overall
-    /// game grade — the worst overall grade any reviewer gave (see
-    /// [`test_cabinet_core::review::aggregate_overall_grade`]). This is the jam's
-    /// rating badge, standing in for the per-domain `rating` a jam does not carry.
-    /// `None` for every non-jam run.
-    #[cfg_attr(feature = "contract", ts(optional = nullable))]
-    pub overall_grade: Option<test_cabinet_core::review::VerdictStatus>,
+/// The summary card of a stored run, built by the backend.
+pub trait RunSummaryExt {
+    /// Build a bounded summary card from a stored run; see the implementation.
+    fn from_stored(run: &StoredRun) -> Self;
 }
 
-impl RunSummary {
+impl RunSummaryExt for RunSummary {
     /// Build a bounded summary card from a stored run, WITHOUT needing the case
     /// catalog. This is the single source of truth for the card fields shared by
     /// the public snapshot (`SnapshotBuilder::summary`) and the console's
@@ -3660,7 +2264,7 @@ impl RunSummary {
     /// falls back to the test-case slug; both callers substitute the real catalog
     /// name (the listing via `case_display_name`, the snapshot in
     /// `SnapshotBuilder::summary`).
-    pub fn from_stored(run: &StoredRun) -> Self {
+    fn from_stored(run: &StoredRun) -> Self {
         let record = &run.record;
         Self {
             id: record.id.clone(),
@@ -3710,390 +2314,11 @@ impl RunSummary {
     }
 }
 
-/// The run subject as a summary card carries it (the slug enum, not a string).
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub struct SubjectOut {
-    pub test_case_slug: String,
-    pub test_case_version: String,
-    /// The test type this run's case belongs to. The UI run-log branches on this
-    /// to render the category column.
-    pub test_type: test_cabinet_core::test_case::TestType,
-    pub variant: String,
-    pub harness_slug: test_cabinet_core::run_record::HarnessSlug,
-    pub harness_version: Option<String>,
-    /// The slug of the [engine](test_cabinet_core::engine) the produced build was
-    /// written against (`none` when it supplied its own runtime). Lifted onto the
-    /// card because the engine is a *run dimension* selected alongside the variant,
-    /// and a result is only comparable with another result on the same engine — so
-    /// every listing that shows the variant has to be able to show this beside it.
-    pub engine_slug: String,
-    /// The version of the engine runtime vendored into the run repository. `None`
-    /// for an engine that vendors no runtime (`none` has no package), and for runs
-    /// recorded before engine selection existed.
-    #[cfg_attr(feature = "contract", ts(optional = nullable))]
-    pub engine_version: Option<String>,
-    pub model_id: String,
-    /// The name of the gg **configuration** this run was launched from — the
-    /// [`preset`](test_cabinet_core::gg::GgCapabilitySet::preset) recorded on the run's
-    /// capability set. Lifted onto the card because a gg run has no single harness
-    /// model to identify it by ([`model_id`](Self::model_id) is only its
-    /// representative primary-slot model, one of several per-agent bindings), so the
-    /// run log shows the configuration in that cell instead. `None` for every
-    /// third-party-harness run (which carries no capability set) and for a gg run
-    /// assembled by hand rather than from a named configuration.
-    #[cfg_attr(feature = "contract", ts(optional = nullable))]
-    pub gg_preset: Option<String>,
-    /// The **id** of the gg configuration this run was launched from — the
-    /// [`preset_id`](test_cabinet_core::gg::GgCapabilitySet::preset_id) recorded on the
-    /// run's capability set. Lifted onto the card beside the
-    /// [name](Self::gg_preset) because it is what identifies the run's [coverage
-    /// cell](https://docs.testcabinet.ai/components/backend/coverage/), and so what a
-    /// listing narrowed to one configuration's runs matches on: a name is display text
-    /// that is rewritten freely and is unique to nothing. `None` for every
-    /// third-party-harness run and for a gg run assembled by hand.
-    #[cfg_attr(feature = "contract", ts(optional = nullable))]
-    pub gg_config_id: Option<String>,
-    /// A gg run's agents as the run log lists them beneath its row: one line per agent
-    /// profile the configuration declares, in the configuration's order (its primary,
-    /// root agent first), each with the tokens and cost the run spent on it.
-    ///
-    /// Built from the record's [session summary](test_cabinet_core::gg::GgSessionSummary)
-    /// and the capability set it ran whenever the card is built, so every recorded gg run
-    /// carries it with nothing stored beyond its record. `None` for every
-    /// third-party-harness run and for a gg run whose session wrote no summary.
-    #[cfg_attr(feature = "contract", ts(optional = nullable))]
-    pub gg_agents: Option<Vec<GgAgentOut>>,
-}
-
-/// One agent profile of a gg run, as its [card](SubjectOut::gg_agents) lists it.
-///
-/// Per profile rather than per running instance: how many instances of a profile a run
-/// starts is decided at run time and differs between runs of one configuration, so the
-/// line carries only whether the profile ran at all.
-#[derive(Debug, Clone, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub struct GgAgentOut {
-    /// The profile's [slug](test_cabinet_core::gg::GgAgentConfig::slug), unique within the
-    /// configuration.
-    pub profile: String,
-    /// The profile's display name at launch.
-    pub name: String,
-    /// The models the profile's requests ran on, in first-seen order: normally one, more
-    /// when its binding was re-pointed during the run. The model the configuration bound
-    /// for a profile that never ran.
-    pub model_ids: Vec<String>,
-    /// Whether this is the configuration's primary (root) agent.
-    pub primary: bool,
-    /// Whether the run started the profile at all.
-    pub ran: bool,
-    /// The tokens the profile's requests spent, summed over its models.
-    pub tokens: test_cabinet_core::metrics::TokenCounts,
-    /// The cost of the profile's requests, summed over its models and priced at each
-    /// model's own price. A gg run's comparable cost prices the whole run at its primary
-    /// model, so the agents' costs need not sum to it.
-    pub cost: test_cabinet_core::metrics::Cost,
-}
-
-/// The [agent lines](SubjectOut::gg_agents) of a gg run that ran `set` and recorded
-/// `slot_costs`: one per profile `set` declares, in its order, then one per profile the
-/// costs name that `set` does not, so no spend goes unlisted.
-pub(crate) fn gg_agent_lines(
-    set: &test_cabinet_core::gg::GgCapabilitySet,
-    slot_costs: &[test_cabinet_core::gg::GgSlotCost],
-) -> Vec<GgAgentOut> {
-    use test_cabinet_core::metrics::{Cost, TokenCounts};
-
-    fn add(a: Option<f64>, b: Option<f64>) -> Option<f64> {
-        match (a, b) {
-            (None, None) => None,
-            (a, b) => Some(a.unwrap_or(0.0) + b.unwrap_or(0.0)),
-        }
-    }
-
-    let root = set.agents.first().map(|agent| agent.slug.as_str());
-    let line = |profile: &str, name: &str, declared_model: Option<&str>| {
-        let costs: Vec<_> = slot_costs
-            .iter()
-            .filter(|slot| slot.profile_id == profile)
-            .collect();
-        let mut model_ids: Vec<String> = Vec::new();
-        let mut tokens = TokenCounts::default();
-        let mut cost = Cost::default();
-        for slot in &costs {
-            if !model_ids.contains(&slot.model_id) {
-                model_ids.push(slot.model_id.clone());
-            }
-            tokens = tokens.plus(slot.tokens);
-            if let Some(slot_cost) = slot.cost {
-                cost = Cost {
-                    comparable: add(cost.comparable, slot_cost.comparable),
-                    actual: add(cost.actual, slot_cost.actual),
-                };
-            }
-        }
-        if model_ids.is_empty()
-            && let Some(model) = declared_model
-        {
-            model_ids.push(model.to_string());
-        }
-        GgAgentOut {
-            profile: profile.to_string(),
-            name: name.to_string(),
-            model_ids,
-            primary: Some(profile) == root,
-            ran: !costs.is_empty(),
-            tokens,
-            cost,
-        }
-    };
-
-    let mut lines: Vec<GgAgentOut> = set
-        .agents
-        .iter()
-        .map(|agent| line(&agent.slug, &agent.name, Some(&agent.model_id)))
-        .collect();
-    for slot in slot_costs {
-        if !lines.iter().any(|known| known.profile == slot.profile_id) {
-            lines.push(line(&slot.profile_id, &slot.profile_id, None));
-        }
-    }
-    lines
-}
-
-impl SubjectOut {
-    fn from(record: &RunRecord) -> Self {
-        Self {
-            test_case_slug: record.subject.test_case_slug.clone(),
-            test_case_version: record.subject.test_case_version.clone(),
-            test_type: record.subject.test_type,
-            variant: record.subject.variant.clone(),
-            harness_slug: record.subject.harness_slug,
-            harness_version: record.subject.harness_version.clone(),
-            engine_slug: record.subject.engine_slug.clone(),
-            engine_version: record.subject.engine_version.clone(),
-            model_id: record.subject.model_id.clone(),
-            gg_preset: record
-                .subject
-                .gg_capability_set
-                .as_ref()
-                .and_then(|set| set.preset.clone()),
-            gg_config_id: record
-                .subject
-                .gg_capability_set
-                .as_ref()
-                .and_then(|set| set.preset_id.clone()),
-            // Gated on the harness like the configuration's name, so a set that somehow
-            // rode on another harness's record never lists agents for it.
-            gg_agents: match (
-                record.subject.harness_slug,
-                &record.subject.gg_capability_set,
-                &record.subject.gg_summary,
-            ) {
-                (test_cabinet_core::run_record::HarnessSlug::Gg, Some(set), Some(summary)) => {
-                    Some(gg_agent_lines(set, &summary.slot_costs))
-                }
-                _ => None,
-            },
-        }
-    }
-}
-
-/// A per-run document (`runs/<id>.json`): the run record, its reviews and links,
-/// the recorded event stream, and the snapshot-relative keys of its media.
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub struct PerRun {
-    pub schema_version: u32,
-    pub record: RunRecord,
-    /// The run's reviews, oldest first. The site averages their scores and takes
-    /// the worst rating across them; each entry names its reviewer.
-    pub reviews: Vec<Review>,
-    pub links: LinksOut,
-    /// The run's recorded normalized event stream (a JSON array), omitted when the
-    /// run captured none. The site emits this as a per-run static asset its Events
-    /// tab fetches; raw harness output is never included.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(feature = "contract", ts(optional, type = "unknown"))]
-    pub events: Option<serde_json::Value>,
-    /// The run's uploaded proof-of-implementation media, named by snapshot-relative
-    /// key. Empty when the run produced none.
-    pub proof_media: Vec<RunProofOut>,
-    /// The run's synthesized *actual* automated-validation media (the model build's
-    /// per-review-item debug-script outputs), named by snapshot-relative key. Empty
-    /// when the run declares no debug scripts (or none produced media). The case-scoped
-    /// *baseline* counterpart rides on [`CaseMetadata::validation_baselines`]. Always
-    /// emitted (possibly empty); the static gallery treats it as optional so a snapshot
-    /// written before this field existed still loads.
-    pub validation_media: Vec<RunValidationMediaOut>,
-    /// An asset-generation run's media (regenerated/preview image + action log),
-    /// named by snapshot-relative key. Empty for a non-asset-generation run.
-    pub asset_media: Vec<RunAssetOut>,
-    /// The run's [showcase](test_cabinet_core::RunShowcase) files — the carousel
-    /// media plus any image the description references — named by snapshot-relative
-    /// key. Empty for a run whose record carries no showcase (every record written
-    /// before the field existed), and possibly a subset of the carousel when a
-    /// file's bytes could not be read. Always emitted (possibly empty); the static
-    /// gallery treats it as optional so a snapshot written before this field
-    /// existed still loads.
-    pub showcase_media: Vec<RunShowcaseOut>,
-    /// The snapshot-relative key of the run's **unbounded**
-    /// [code-analysis document](test_cabinet_core::code_analysis::CodeAnalysisDocument) —
-    /// every authored file, every scored function, every import edge, cycle and clone
-    /// group — published as its own object so the public Code tab can fetch it on demand
-    /// rather than inflating this document (and therefore every run's page load) with a
-    /// tier only one tab reads.
-    ///
-    /// Content-stable and **generation-keyed**
-    /// (`media/runs/<id>/code-analysis/v<analyzerVersion>.json`), so a refresh that finds
-    /// the object already in the bucket references it without re-reading or re-uploading
-    /// the bytes — and a *re-analysis under a newer generation* mints a different key
-    /// rather than silently overwriting figures a published snapshot still points at.
-    ///
-    /// `None` when the run was never analysed, and also when it was but the document's
-    /// bytes are no longer readable (the backend store is ephemeral) — the bounded summary
-    /// on the record survives either way, so the tab degrades to the figures instead of
-    /// offering a link that 404s.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(feature = "contract", ts(optional))]
-    pub code_analysis_key: Option<String>,
-}
-
-/// A proof media file exposed in a per-run document. `id` matches the proof's
-/// declared id (and its `validation.proofs[].id`); `kind` is image or video;
-/// `key` is the snapshot-relative object key of the media.
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub struct RunProofOut {
-    pub id: String,
-    pub kind: test_cabinet_core::MediaKind,
-    pub key: String,
-}
-
-/// An asset-generation media file exposed in a per-run document. `file` is the
-/// stable served name the result view requests — a single sprite's
-/// `regenerated.png`/`preview.png`/`actions.json` or a sprite sheet's per-frame
-/// `regenerated-<index>.png` (etc.); `key` is its snapshot-relative object key.
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub struct RunAssetOut {
-    pub file: String,
-    pub key: String,
-}
-
-/// A [showcase](test_cabinet_core::RunShowcase) file exposed in a per-run document —
-/// a carousel media file, or an image the description references. `file` is the
-/// recorded name the gallery requests (the plain file name in the produced tree's
-/// `showcase/`); `key` is its snapshot-relative object key, whose bytes are the
-/// media as published — a video transcoded to `.mp4`, so `key` and `file` differ in
-/// extension for a clip while the name the UI requests still resolves through the
-/// static gallery's map (the validation-media convention).
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub struct RunShowcaseOut {
-    pub file: String,
-    pub key: String,
-}
-
-/// A synthesized *actual* validation media file exposed in a per-run document — one
-/// debug-script output captured from the model's build. `file` is the flat
-/// `<item>__<output>.<ext>` name the gallery requests (`.png`/`.webm`, keyed off the
-/// output's kind exactly as the reviewer UI's `validationMediaFor` computes it); `key`
-/// is its snapshot-relative object key, whose bytes are the media as published — a
-/// video transcoded to `.mp4`, so `key` and `file` differ in extension for a clip while
-/// the flat name the UI requests still resolves through the static gallery's map.
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub struct RunValidationMediaOut {
-    pub file: String,
-    pub key: String,
-}
-
-/// One published review on a run: the reviewer's public identity, their per-domain
-/// ratings, the writeup, and their checklist verdicts. This is the canonical
-/// review wire shape (`backend-api/review.schema.json`), referenced by the per-run
-/// snapshot document.
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(
-    feature = "contract",
-    derive(ts_rs::TS, schemars::JsonSchema),
-    ts(rename = "Review"),
-    schemars(rename = "Review")
-)]
-pub struct Review {
-    /// The reviewing account's id (stable across their reviews).
-    pub reviewer_id: String,
-    /// The reviewer's display name, shown beside their review.
-    pub reviewer: String,
-    /// The reviewer's functional rating for each scoring domain. This review's
-    /// overall rating is the worst across them. Empty on a review of a
-    /// validator-rated run, whose functional rating the validators decide.
-    pub ratings: Vec<test_cabinet_core::review::DomainRating>,
-    /// **Legacy:** the reviewer's per-domain aesthetic ratings, from when the
-    /// channel was rated per scoring domain. No longer emitted — a stored
-    /// legacy row's tiers are collapsed into [`aesthetic`](Self::aesthetic)
-    /// instead — but kept in the contract so a freshly deployed site can still
-    /// read a not-yet-regenerated snapshot (resolve a review's tier as
-    /// `aesthetic ?? worst(aesthetics)`).
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub aesthetics: Vec<test_cabinet_core::review::DomainAesthetic>,
-    /// The reviewer's **run-wide** aesthetic tier, on a review of a
-    /// validator-rated run (a legacy per-domain row is already collapsed to its
-    /// worst tier); the run's aesthetic rating is the worst across its reviews'
-    /// tiers. Absent on a legacy run's review, which has no aesthetic channel.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(feature = "contract", ts(optional = nullable))]
-    pub aesthetic: Option<test_cabinet_core::review::AestheticRating>,
-    pub writeup: String,
-    pub checklist: Vec<test_cabinet_core::review::ReviewVerdict>,
-    /// RFC 3339 of when the review was **first** submitted (unchanged by later
-    /// edits — see [`Self::edited_at`]).
-    pub reviewed_at: String,
-    /// RFC 3339 of when the review was last edited, or `None` if it has never been
-    /// edited since it was first submitted. The newest [`Self::revisions`] entry
-    /// carries the same timestamp.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(feature = "contract", ts(optional = nullable))]
-    pub edited_at: Option<String>,
-    /// The review's edit history, oldest first: one entry per edit, each with the
-    /// reviewer's note and the autogenerated diff of what changed. Empty for a
-    /// review that has never been edited. Public, so a reader can see how a review
-    /// evolved.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub revisions: Vec<test_cabinet_core::review::ReviewRevision>,
-    /// The snapshot-relative object key of the reviewer's profile picture
-    /// (`pfp/<reviewer-id>`), or `None` when the reviewer has no picture. The
-    /// bytes are exported once per reviewer under the content-stable top-level
-    /// `pfp/` prefix (like run media under `MEDIA_PREFIX`); the site resolves the
-    /// key against the snapshot base into an absolute avatar URL.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(feature = "contract", ts(optional = nullable))]
-    pub picture_key: Option<String>,
-}
-
-/// Map a stored review to its snapshot wire shape, exposing the reviewer's
-/// public identity (id + display name) but never any account internals. A
-/// reviewer whose id is in `pictures` (i.e. their profile picture was fetched for
-/// this snapshot) gets a `picture_key` pointing at their exported avatar object.
-fn review_out(
-    review: &crate::db::StoredReview,
-    pictures: &std::collections::HashMap<String, test_cabinet_core::accounts::ReviewerPicture>,
-) -> Review {
-    let reviewer_id = review.reviewer.user_id.clone();
-    let picture_key = pictures
-        .contains_key(&reviewer_id)
-        .then(|| format!("{PFP_PREFIX}/{reviewer_id}"));
+/// Map a stored review to its snapshot wire shape: the reviewer recorded with it
+/// and what they wrote.
+fn review_out(review: &crate::db::StoredReview) -> Review {
     Review {
-        reviewer_id,
-        reviewer: review.reviewer.display_name.clone(),
+        reviewer: review.reviewer.clone(),
         ratings: review.ratings.clone(),
         // Legacy shape, never emitted: a stored legacy row's per-domain tiers are
         // already collapsed into the run-wide `aesthetic` at decode.
@@ -4104,448 +2329,7 @@ fn review_out(
         reviewed_at: review.reviewed_at.clone(),
         edited_at: review.edited_at.clone(),
         revisions: review.revisions.clone(),
-        picture_key,
     }
-}
-
-/// A run's outbound links as the snapshot carries them.
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub struct LinksOut {
-    pub source_repo: Option<String>,
-    pub playable_build: Option<String>,
-}
-
-/// A case-metadata document (`cases/<slug>/<version>.json`): the site-facing slice
-/// of one ingested version — its identity, variants (with rendered prompts),
-/// checks, reference baselines, reviewer checklist, and scoring domains.
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub struct CaseMetadata {
-    pub schema_version: u32,
-    pub slug: String,
-    pub version: String,
-    pub name: String,
-    /// The case's test type, so the static gallery can scope its catalog tabs to
-    /// a single type (E2E / asset-generation / Adversarial / Performance) exactly
-    /// as the backend-connected consoles do. Without it the site cannot tell a
-    /// case's type and treats every case as end-to-end.
-    pub test_type: test_cabinet_core::TestType,
-    /// Whether the version is on the **engine manifest format**, which (with the
-    /// test type) makes it **validator-rated**: its runs' functional rating and
-    /// score are decided by the validators — each review item's `failureCap` and
-    /// `domains` below — and reviewers rate only the aesthetic channel. `false` on
-    /// every legacy version, whose runs the site scores exactly as before.
-    pub engine_format: bool,
-    /// The asset shape an asset-generation case produces, so the gallery can
-    /// partition asset cases across its 2D (sprite/paint), 3D (voxel/mesh/skinned),
-    /// Particle, and Audio tabs. Defaults to `sprite` for every non-asset case
-    /// (harmless — the split is only consulted for asset cases).
-    pub asset_kind: test_cabinet_core::AssetKind,
-    /// A sprite-sheet case's declared frames and named animation sequences, or
-    /// `None` for every other kind (only `sprite-sheet` declares a `[sheet]`).
-    ///
-    /// Exported because the site renders a published **reference sheet** by playing
-    /// these sequences — and the motion is most of what such a case is judged on, so
-    /// a site with the frames but not the sequences would be showing the least
-    /// interesting half. The live console reads the same spec from the resolved
-    /// version response; this is the static mirror of it.
-    pub sheet: Option<test_cabinet_core::test_case::SheetSpec>,
-    pub difficulty: String,
-    pub tags: Vec<String>,
-    pub summary: Option<String>,
-    pub description: Option<String>,
-    /// This version's own changelog entry (its `changelog.md` body), inlined.
-    /// Always present — a changelog is required on every version. The site collects
-    /// every published version's entry into one newest-first changelog on the
-    /// case's detail page.
-    pub changelog: String,
-    pub variants: Vec<CaseVariantOut>,
-    /// The Test Cabinet runtime packages this case ships into every run, each with
-    /// its UI-only description, so the static gallery's Inputs tab can show them.
-    /// Empty for a case that declares none.
-    pub packages: Vec<CasePackageOut>,
-    pub checks: Vec<CaseCheckOut>,
-    /// Rendered reference baselines, named by snapshot-relative key. The site
-    /// resolves these to absolute URLs to show baselines on the References tab.
-    pub references: Vec<CaseReferenceOut>,
-    /// The case's committed **baseline** automated-validation media (a debug script's
-    /// outputs driven once against the reference implementation), per variant, named by
-    /// snapshot-relative key. Case-scoped (a fixed property of the version), so the
-    /// static gallery resolves the reviewer's baseline side-by-side from these keyed by
-    /// slug/version/variant. Always emitted (possibly empty); the static gallery treats
-    /// it as optional so a snapshot written before this field existed still loads.
-    pub validation_baselines: Vec<CaseValidationBaselineOut>,
-    /// Reviewer checklist items shared by every variant, carrying their point
-    /// weights so the site can compute run scores. A variant's own items ride on
-    /// [`CaseVariantOut::review_items`].
-    pub common_review_items: Vec<CaseReviewItemOut>,
-    /// The case's scoring domains, rated independently; the overall rating is the
-    /// worst across them.
-    pub domains: Vec<CaseDomainOut>,
-    /// Known-issue errata recorded for this version after it shipped, so the static
-    /// gallery can show the case's Errata tab and flag known issues to reviewers.
-    /// Always emitted (possibly empty); the static gallery treats it as optional so a
-    /// snapshot written before this field existed still loads.
-    #[serde(default)]
-    pub errata: Vec<CaseErratumOut>,
-}
-
-/// A reference baseline exposed in case metadata. `variant` is `null` for a
-/// common reference (shown on every variant) or the variant slug for one scoped
-/// to a single variant; `kind` is how it is produced (rendered/image/video); `key`
-/// is the snapshot-relative object key of the media.
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub struct CaseReferenceOut {
-    pub variant: Option<String>,
-    pub view: String,
-    pub kind: test_cabinet_core::ReferenceKind,
-    pub key: String,
-}
-
-/// A committed **baseline** validation media file exposed in case metadata — one
-/// declared output captured once against the case's reference implementation.
-/// `engine` and `variant` name the reference build it was captured from (a variant
-/// has one reference implementation per engine, and their captures are not
-/// interchangeable); `file` is the flat `<item>__<output>.<ext>` name the gallery
-/// requests (`.png`/`.webm`/`.json.gz`); `key` is its snapshot-relative object key,
-/// whose bytes are the media as published (a video transcoded to `.mp4`). The static
-/// gallery keys its baseline lookup off `engine` + `variant` + `file`.
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub struct CaseValidationBaselineOut {
-    pub engine: String,
-    pub variant: String,
-    pub file: String,
-    pub key: String,
-}
-
-/// One variant of a case as the gallery shows it.
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub struct CaseVariantOut {
-    pub slug: String,
-    pub name: String,
-    pub description: Option<String>,
-    /// The variant's prompt, rendered as a real run receives it, so the public
-    /// gallery's Specifications tab shows the instruction the model was handed.
-    pub prompt: String,
-    /// This variant's complete seeded spec set, in seed order (the common specs
-    /// first, then the variant's own), each body rendered for this variant and
-    /// inlined so the static gallery shows the exact specs a run of this variant is
-    /// seeded with, without a live backend. Because a template spec renders to
-    /// different text per variant, every variant carries its own fully-rendered set
-    /// here — the spec analogue of [`Self::prompt`] — rather than the case sharing
-    /// one common list.
-    pub seeded_inputs: Vec<CaseSeededInputOut>,
-    /// This variant's prompt and seeded specs re-rendered for each
-    /// [engine](test_cabinet_core::engine) the version declares that vendors a
-    /// runtime, keyed by engine slug.
-    ///
-    /// A case's `prompt.hbs` and its `.hbs` specs branch on the selected engine, so
-    /// the text a run was handed depends on which runtime its build was written
-    /// against. [`Self::prompt`] and [`Self::seeded_inputs`] are the engineless
-    /// rendering — what a reader browsing the *case* sees, and exactly what a run on
-    /// the `none` engine was handed — and this map carries the rest, so a run's
-    /// Inputs surface shows the text that run actually received.
-    ///
-    /// The engineless engine is deliberately absent: it is already the pair above,
-    /// and duplicating every spec body for it would double the document for the many
-    /// cases that support nothing else.
-    #[serde(default)]
-    pub engine_renderings: std::collections::BTreeMap<String, CaseVariantRenderingOut>,
-    /// Reviewer checklist items additive to the common ones, with their point
-    /// weights, surfaced only when this variant is selected.
-    pub review_items: Vec<CaseReviewItemOut>,
-    /// Scoring domains additive to the case's common ones, rated only when this
-    /// variant is selected. The site rates and scores a run against the common
-    /// domains plus its variant's own.
-    pub domains: Vec<CaseDomainOut>,
-    /// The absolute URLs of this variant's authored **reference implementations** —
-    /// the correct, deployed static builds (the case-variant analogue of a run's
-    /// `playableBuild`), keyed by the [engine](test_cabinet_core::engine) each was
-    /// built for and shown on the static gallery's "Reference" tab, which lets a
-    /// reader switch between them. Empty when the variant declares no
-    /// `reference_implementation`, or has one that has not been deployed yet. Written
-    /// out-of-band by `tcab publish-reference` into the `case_reference_build` table
-    /// and folded in here at export — never resolved from the manifest and never
-    /// seeded into a run.
-    #[serde(default)]
-    pub reference_builds: std::collections::BTreeMap<String, String>,
-    /// This variant's published **reference sheet** — the asset-generation analogue of
-    /// [`Self::reference_builds`], shown on the static gallery's "Reference" tab.
-    /// `null` when the variant declares no `reference_implementation`, or has one that
-    /// has not been published yet.
-    ///
-    /// An asset case's reference is a `draw.sh` script whose output is a set of
-    /// rendered frames, so what is exported is which frames the snapshot bucket holds.
-    /// Only the indices travel: every frame's object key is derivable from the case
-    /// triple plus its index (`media/references/<slug>/<version>/<variant>/frames/<index>.png`,
-    /// see `test_cabinet_core::asset_reference`), so the site joins them onto its own
-    /// snapshot base URL rather than being handed absolute URLs it would have to trust.
-    /// Written out-of-band by `tcab publish-reference` into the bucket, reconciled into
-    /// the `case_reference_sheet` table at ingest, and folded in here at export — never
-    /// resolved from the manifest and never seeded into a run.
-    pub reference_sheet: Option<CaseReferenceSheetOut>,
-    /// The variant's authored **showcase**, when it declares one: the description
-    /// plus the media carousel captured from the reference implementation, shown
-    /// on the static gallery's catalog preview and Play tab. `null` when the
-    /// variant declares none — and treated as optional by the site, so a snapshot
-    /// written before the field existed still loads.
-    pub showcase: Option<CaseShowcaseOut>,
-    /// The variant's effective starter-workspace files for the **engineless**
-    /// rendering (what a run on the `none` engine is seeded with), each naming the
-    /// published object its bytes live at, so the static gallery's Inputs tab can
-    /// fetch a starter file lazily — the static mirror of the live artifact route.
-    /// The per-engine sets ride on [`CaseVariantRenderingOut::workspace_files`].
-    /// Empty for a case that seeds no engineless workspace.
-    #[serde(default)]
-    pub workspace_files: Vec<CaseWorkspaceFileOut>,
-}
-
-/// A variant's authored showcase as case metadata exports it — the case-side
-/// counterpart of a run's `showcaseMedia[]`, but authored and committed with the
-/// version rather than produced by a run.
-#[derive(Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub struct CaseShowcaseOut {
-    /// The showcase description — the authored `showcase.md`, verbatim markdown.
-    pub description: String,
-    /// The media carousel, in declared order.
-    pub media: Vec<CaseShowcaseMediaOut>,
-}
-
-/// One entry of an exported case showcase: `file` is the authored file name the
-/// UI keys the entry by (kept as authored even when the published bytes are a
-/// transcode); `key` is the snapshot-relative object key holding the media as
-/// published (a `.webm` clip transcoded to `.mp4`, everything else verbatim).
-#[derive(Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub struct CaseShowcaseMediaOut {
-    /// The media file's authored name in the showcase directory.
-    pub file: String,
-    /// The short caption for the entry.
-    pub name: String,
-    /// Whether the file is a still image, a video clip, or a replay recording.
-    pub kind: test_cabinet_core::MediaKind,
-    /// The snapshot-relative object key of the published bytes.
-    pub key: String,
-}
-
-/// One starter-workspace file as case metadata exports it: the run-root-relative
-/// destination the file is seeded at, and the published object key its bytes
-/// live under. Only the addressing is inlined — the bytes are fetched lazily,
-/// because a starter project can be large and most readers never open it.
-#[derive(Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub struct CaseWorkspaceFileOut {
-    /// The run-root-relative destination path the file is seeded at.
-    pub dest: String,
-    /// The snapshot-relative object key of the file's bytes.
-    pub key: String,
-}
-
-/// One variant's prompt and seeded specs rendered for one engine that vendors a
-/// runtime — the per-engine half of [`CaseVariantOut`].
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub struct CaseVariantRenderingOut {
-    /// The variant's prompt as a run on this engine receives it.
-    pub prompt: String,
-    /// The variant's complete seeded spec set in seed order, each body rendered for
-    /// this variant on this engine.
-    pub seeded_inputs: Vec<CaseSeededInputOut>,
-    /// The variant's effective starter-workspace files for this engine, each
-    /// naming the published object its bytes live at — the per-engine half of
-    /// [`CaseVariantOut::workspace_files`].
-    #[serde(default)]
-    pub workspace_files: Vec<CaseWorkspaceFileOut>,
-}
-
-/// One variant's published reference frames, as exported in case metadata.
-///
-/// A named object rather than a bare array so the sheet can gain fields (a canvas
-/// size, a published-at stamp) without changing the shape the site already reads,
-/// matching the wire type `GET /test-cases/{slug}/versions/{version}` returns.
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub struct CaseReferenceSheetOut {
-    /// The published frame indices, ascending. A single sprite (a case with no
-    /// `[sheet]`) publishes exactly one frame, index `0`.
-    pub frames: Vec<u32>,
-}
-
-/// A seeded spec file exposed in case metadata: the run-workspace path it lands at
-/// and its inlined text body. This is the same set the console's Specifications tab
-/// fetches per file — the common specs then the variant's own, in seed order — but
-/// inlined here so the fully static site needs no backend to show them. Only text
-/// specs are carried; a spec whose bytes are missing or not valid UTF-8 is omitted.
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub struct CaseSeededInputOut {
-    /// The run-workspace-relative path the spec is seeded to (its `dest`).
-    pub path: String,
-    /// The spec's inlined text body.
-    pub text: String,
-    /// The seeded file's role (`spec`/`script`), so the static gallery's Inputs
-    /// tab can tag it. Presentation only.
-    pub kind: test_cabinet_core::SpecKind,
-}
-
-/// A runtime package a case ships into its runs, exposed in case metadata for the
-/// static gallery's Inputs tab: its npm name and the UI-only description of what it
-/// provides. The description is never seeded into a run — it exists only to
-/// explain, on the site, what a declared package is for.
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub struct CasePackageOut {
-    /// The npm package name the case declares in `packages`.
-    pub name: String,
-    /// The UI-only description of what the package provides.
-    pub description: String,
-}
-
-/// A reviewer checklist item exposed in case metadata, carrying its point weight
-/// and optional scoring domain so the site can compute and break down run scores.
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub struct CaseReviewItemOut {
-    pub id: String,
-    pub title: String,
-    pub text: String,
-    pub reference: Option<String>,
-    pub proof: Option<String>,
-    pub sequences: Vec<String>,
-    pub frames: Vec<u32>,
-    pub weight: u32,
-    /// Whether the item is graded on the five-level scale (a game-jam category)
-    /// rather than pass/fail. The reviewer and verdict UIs render the graded
-    /// control and score `weight × 10` points for it when true.
-    pub graded: bool,
-    pub domain: Option<String>,
-    /// Name-only sub-items this item is graded by, each an independently scored
-    /// pass/fail point. Empty for an item graded as a whole.
-    pub sub_items: Vec<CaseSubReviewItemOut>,
-    /// On a validator-rated version, a whole-item point's **failure cap**: the
-    /// highest functional rating its `domains` may reach while its validator
-    /// fails. Absent on a legacy version and on a sub-divided item (whose caps sit
-    /// on its sub-items).
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(feature = "contract", ts(optional))]
-    pub failure_cap: Option<test_cabinet_core::review::FailureCap>,
-    /// On a validator-rated version, the scoring domains (by id) a failure of this
-    /// whole-item point lowers. Empty on a legacy version and on a sub-divided item.
-    pub domains: Vec<String>,
-    /// The point's automated-validation driver, when it declares one. Absent for a
-    /// human-judged point. Carried so a run-scoped surface can drop a point the
-    /// run's engine does not carry (see [`CaseReviewValidationOut::engines`]).
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(feature = "contract", ts(optional))]
-    pub validation: Option<CaseReviewValidationOut>,
-}
-
-/// The part of a checklist point's automated-validation driver the case metadata
-/// exposes: which engines the validator decides the point on. The script itself and
-/// its media outputs are the driver's business and are not published here.
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub struct CaseReviewValidationOut {
-    /// The engines this validator decides its point on, by slug, in declared order.
-    /// Empty leaves the point on every engine the case supports; a non-empty list is
-    /// the subset that carries it, and a run on any other engine has no such point.
-    pub engines: Vec<String>,
-}
-
-/// A sub-item of a [`CaseReviewItemOut`] exposed in case metadata: one
-/// independently graded point within the item. Legacy sub-items carry only id and
-/// title; a categories-grammar review item also carries its own prose, weight, and
-/// paired reference/proof.
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub struct CaseSubReviewItemOut {
-    pub id: String,
-    pub title: String,
-    /// Optional prose for this point (categories grammar); `null` for a legacy
-    /// name-only sub-item.
-    pub description: Option<String>,
-    /// How many points this point is worth. A category's weight is the sum of its
-    /// items' weights.
-    pub weight: u32,
-    /// Optional reference view paired with this point as the expected target.
-    pub reference: Option<String>,
-    /// Optional proof id paired with this point as the submitted media.
-    pub proof: Option<String>,
-    /// On a validator-rated version, this point's **failure cap**: the highest
-    /// functional rating its `domains` may reach while its validator fails. Absent
-    /// on a legacy version.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(feature = "contract", ts(optional))]
-    pub failure_cap: Option<test_cabinet_core::review::FailureCap>,
-    /// On a validator-rated version, the scoring domains (by id) a failure of this
-    /// point lowers. Empty on a legacy version.
-    pub domains: Vec<String>,
-    /// The point's automated-validation driver, when it declares one (see
-    /// [`CaseReviewItemOut::validation`]).
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(feature = "contract", ts(optional))]
-    pub validation: Option<CaseReviewValidationOut>,
-}
-
-/// A scoring domain exposed in case metadata.
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub struct CaseDomainOut {
-    pub id: String,
-    pub name: String,
-    pub description: String,
-}
-
-/// A known-issue erratum exposed in case metadata (see
-/// [`test_cabinet_core::test_case::Erratum`]).
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub struct CaseErratumOut {
-    pub id: String,
-    pub title: String,
-    pub date: Option<String>,
-    pub severity: test_cabinet_core::test_case::ErratumSeverity,
-    pub affects_scoring: bool,
-    /// Whether the linked review point is excluded from scoring for the version.
-    pub exclude_from_score: bool,
-    pub body: String,
-    pub resolved_in: Option<String>,
-    /// The variant slug the erratum is scoped to, or `null` for all variants.
-    pub variant: Option<String>,
-    /// The review verdict id the erratum concerns, or `null` when untied to a point.
-    pub review: Option<String>,
-}
-
-/// A declared validation check exposed in case metadata.
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub struct CaseCheckOut {
-    pub view: String,
-    pub name: String,
-    pub reference_view: String,
 }
 
 /// Read a set of seeded specs' inlined bodies from the store, in order. Each spec's
@@ -4557,7 +2341,7 @@ fn seeded_inputs(
     store: &DefinitionStore,
     manifest: &StoredManifest,
     variant: &crate::store::StoredVariant,
-    engine: Option<&test_cabinet_core::engine::ResolvedEngine>,
+    engine: Option<&test_cabinet_suites::engine::ResolvedEngine>,
 ) -> Vec<CaseSeededInputOut> {
     // The variant's own volume overrides the case's, so a template spec renders at
     // this variant's actual dimensions — matching how the prompt and a run's seed
@@ -4608,39 +2392,16 @@ fn seeded_inputs(
 }
 
 /// Render one variant's prompt for `engine` off the stored manifest, exactly as a
-/// run on that engine receives it. `None` renders the engineless form.
+/// run on that engine receives it (see [`crate::prompt::render_stored_prompt`]).
+/// `None` renders the engineless form, and `suite` is the record of the suite
+/// version a suite-defined manifest was lowered from.
 fn render_case_prompt(
     manifest: &StoredManifest,
     variant: &crate::store::StoredVariant,
-    engine: Option<&test_cabinet_core::engine::ResolvedEngine>,
+    suite: Option<&crate::suite_store::StoredSuite>,
+    engine: Option<&test_cabinet_suites::engine::ResolvedEngine>,
 ) -> Result<String, BackendError> {
-    let spec_dests: Vec<String> = manifest
-        .common_specs
-        .iter()
-        .chain(variant.specs.iter())
-        .map(|spec| spec.dest.clone())
-        .collect();
-    test_cabinet_core::render_prompt_from_template(
-        &manifest.slug,
-        &manifest.version,
-        &manifest.prompt_template,
-        &variant.slug,
-        &variant.name,
-        variant.description.as_deref(),
-        &spec_dests,
-        manifest.test_type,
-        // The dimension decides which asset-generation binaries the standing
-        // full-stack directive names, so the baked prompt reads as the run's own.
-        manifest.asset_dimension,
-        manifest.max_runtime_seconds,
-        // The variant's own volume overrides the case's for its prompt.
-        variant.voxel.as_ref().or(manifest.voxel.as_ref()),
-        // A snapshot bakes the standing prompt only — prior game-jam entries are a
-        // property of the run, so no distinctness section.
-        0,
-        engine,
-    )
-    .map_err(|e| {
+    crate::prompt::render_stored_prompt(manifest, variant, suite, engine).map_err(|e| {
         BackendError::Snapshot(format!(
             "rendering prompt for `{}@{}` variant `{}`: {e}",
             manifest.slug, manifest.version, variant.slug
@@ -4670,13 +2431,16 @@ fn case_metadata(
     showcases: &std::collections::HashMap<String, CaseShowcaseOut>,
     workspace_files: &VariantWorkspaceFiles,
 ) -> Result<CaseMetadata, BackendError> {
+    // A suite-defined version's prompt renders against the specifications its suite
+    // version declares, so its record is read once for every rendering below.
+    let suite = store.read_suite_of(manifest)?;
     let variants = manifest
         .variants
         .iter()
         .map(|v| {
             // The engineless rendering: what a reader browsing the case sees, and
             // exactly what a run on the `none` engine was handed.
-            let prompt = render_case_prompt(manifest, v, None)?;
+            let prompt = render_case_prompt(manifest, v, suite.as_ref(), None)?;
             // Every engine this version declares that vendors a runtime, rendered
             // under its own branch of the templates so a run's Inputs surface can
             // show the text that run actually received. An engine slug this build
@@ -4684,11 +2448,11 @@ fn case_metadata(
             // snapshot, mirroring how a missing reference baseline is skipped.
             let mut engine_renderings = std::collections::BTreeMap::new();
             for support in &manifest.engines {
-                if support.slug == test_cabinet_core::engine::NONE_SLUG {
+                if support.slug == test_cabinet_suites::engine::NONE_SLUG {
                     continue;
                 }
-                let resolved = match test_cabinet_core::EngineCatalog::new().resolve(
-                    &test_cabinet_core::engine::EngineSelection::new(support.slug.clone()),
+                let resolved = match test_cabinet_engines::built_in_catalog().resolve(
+                    &test_cabinet_suites::engine::EngineSelection::new(support.slug.clone()),
                 ) {
                     Ok(resolved) => resolved,
                     Err(err) => {
@@ -4705,7 +2469,7 @@ fn case_metadata(
                 engine_renderings.insert(
                     support.slug.clone(),
                     CaseVariantRenderingOut {
-                        prompt: render_case_prompt(manifest, v, Some(&resolved))?,
+                        prompt: render_case_prompt(manifest, v, suite.as_ref(), Some(&resolved))?,
                         seeded_inputs: seeded_inputs(store, manifest, v, Some(&resolved)),
                         workspace_files: workspace_files
                             .get(&v.slug)
@@ -4738,7 +2502,7 @@ fn case_metadata(
                 // seeded with, matching the engineless prompt/spec rendering above.
                 workspace_files: workspace_files
                     .get(&v.slug)
-                    .and_then(|by_engine| by_engine.get(test_cabinet_core::engine::NONE_SLUG))
+                    .and_then(|by_engine| by_engine.get(test_cabinet_suites::engine::NONE_SLUG))
                     .cloned()
                     .unwrap_or_default(),
             })
@@ -4765,7 +2529,7 @@ fn case_metadata(
             .iter()
             .map(|name| CasePackageOut {
                 name: name.clone(),
-                description: test_cabinet_core::shippable_package_description(name)
+                description: test_cabinet_suites::test_case::shippable_package_description(name)
                     .unwrap_or_default()
                     .to_string(),
             })
@@ -4864,7 +2628,7 @@ fn case_review_validation_out(
 }
 
 /// A run's outbound links in the snapshot wire shape (owned).
-fn links_out(links: &test_cabinet_core::RunLinks) -> LinksOut {
+fn links_out(links: &test_cabinet_contracts::run_record::RunLinks) -> LinksOut {
     LinksOut {
         source_repo: links.source_repo.clone(),
         playable_build: links.playable_build.clone(),
@@ -4875,9 +2639,9 @@ fn links_out(links: &test_cabinet_core::RunLinks) -> LinksOut {
 /// [`crate::db::aggregate_review_rating`] — the single source of truth shared with
 /// the lifted `run.rating` column.
 fn aggregate_rating_inner(
-    record: &test_cabinet_core::RunRecord,
+    record: &test_cabinet_contracts::run_record::RunRecord,
     reviews: &[crate::db::StoredReview],
-) -> Option<test_cabinet_core::review::Rating> {
+) -> Option<crate::review::Rating> {
     crate::db::aggregate_review_rating(record, reviews)
 }
 
@@ -4886,21 +2650,21 @@ fn aggregate_rating_inner(
 /// source of truth shared with the lifted `run.aesthetic` column.
 fn aggregate_aesthetic_inner(
     reviews: &[crate::db::StoredReview],
-) -> Option<test_cabinet_core::review::AestheticRating> {
+) -> Option<crate::review::AestheticRating> {
     crate::db::aggregate_review_aesthetic(reviews)
 }
 
 /// The score for a run of `manifest`'s `variant`. On a **validator-rated** version
 /// the validators' score as overridden by the run's reviews
-/// ([`test_cabinet_core::review::validator_aggregate_score`]: each review's
+/// ([`crate::review::validator_aggregate_score`]: each review's
 /// checklist overlays the validators' verdicts and the run averages the reviews'
 /// effective scores; with zero reviews the validators' own figure stands), always
 /// `Some`; an effective checklist that decides no scored point scores zero over the
 /// declared weight. Otherwise the aggregate reviewer score: the case's declared checklist
 /// weights scored against each of the run's `reviews`, then averaged (see
-/// [`test_cabinet_core::review::aggregate_score`]), `None` when the run carries no
+/// [`crate::review::aggregate_score`]), `None` when the run carries no
 /// reviews. Either way `None` for a run whose terminal state is not
-/// [scored](test_cabinet_core::run_record::RunState::is_scored) — a failure tier
+/// [scored](test_cabinet_contracts::run_record::RunState::is_scored) — a failure tier
 /// has no checklist to score, and a validator-rated one ran no validator to score
 /// it with.
 ///
@@ -4912,7 +2676,7 @@ fn aggregate_aesthetic_inner(
 /// [`RunSummary::from_stored`] enriching `case_name`.
 pub(crate) fn run_summary_score(
     manifest: &StoredManifest,
-    record: &test_cabinet_core::RunRecord,
+    record: &test_cabinet_contracts::run_record::RunRecord,
     reviews: &[crate::db::StoredReview],
 ) -> Option<RunScoreOut> {
     if !record.status.state.is_scored() {
@@ -4929,9 +2693,8 @@ pub(crate) fn run_summary_score(
     // validators' verdicts, the run averaging the reviews' effective scores. A jam
     // is never validator-rated, so it has no overall grade here.
     if manifest.validator_rated() {
-        let auto =
-            test_cabinet_core::comparison::automated_verdicts(&record.validation.debug_scripts);
-        let score = test_cabinet_core::review::validator_aggregate_score(
+        let auto = crate::comparison::automated_verdicts(&record.validation.debug_scripts);
+        let score = crate::review::validator_aggregate_score(
             record.gated_broken(),
             &items,
             &auto,
@@ -4946,33 +2709,31 @@ pub(crate) fn run_summary_score(
     }
     let scores: Vec<_> = reviews
         .iter()
-        .map(|review| test_cabinet_core::review::score_checklist(&items, &review.checklist))
+        .map(|review| crate::review::score_checklist(&items, &review.checklist))
         .collect();
     // A run disqualified by its case's gating typecheck scores zero and, for a jam,
     // grades `broken` — over the top of whatever its reviewers concluded, and without
-    // touching what they wrote. See `test_cabinet_core::review::gated_score`.
+    // touching what they wrote. See `crate::review::gated_score`.
     let gated = record.gated_broken();
-    let overall_grade = test_cabinet_core::review::gated_overall_grade(
+    let overall_grade = crate::review::gated_overall_grade(
         gated,
-        test_cabinet_core::review::aggregate_overall_grade(
+        crate::review::aggregate_overall_grade(
             reviews.iter().map(|review| review.checklist.as_slice()),
         ),
     );
-    test_cabinet_core::review::gated_score(
-        gated,
-        test_cabinet_core::review::aggregate_score(&scores),
-    )
-    .map(|score| RunScoreOut {
-        earned: score.earned,
-        total: score.total,
-        reviews: score.reviews,
-        overall_grade,
+    crate::review::gated_score(gated, crate::review::aggregate_score(&scores)).map(|score| {
+        RunScoreOut {
+            earned: score.earned,
+            total: score.total,
+            reviews: score.reviews,
+            overall_grade,
+        }
     })
 }
 
 /// The effective weighted checklist items for a run of `variant`: the case's
 /// common items merged with the selected variant's own by id (mirrors
-/// [`test_cabinet_core::test_case::TestCaseVersion::review_items_for`], resolving
+/// [`test_cabinet_suites::test_case::TestCaseVersion::review_items_for`], resolving
 /// from the stored manifest — a variant that reuses a common category's id folds
 /// its items into that category). An unrecognized variant contributes only the
 /// common items.
@@ -4982,7 +2743,7 @@ pub(crate) fn run_summary_score(
 pub(crate) fn review_items_for(
     manifest: &StoredManifest,
     variant: &str,
-) -> Vec<test_cabinet_core::ReviewItem> {
+) -> Vec<test_cabinet_suites::test_case::ReviewItem> {
     let common: Vec<_> = manifest
         .common_review_items
         .iter()
@@ -4996,7 +2757,7 @@ pub(crate) fn review_items_for(
         .flat_map(|candidate| candidate.review_items.iter())
         .map(core_review_item)
         .collect();
-    let mut items = test_cabinet_core::test_case::merge_review_items(&common, &own);
+    let mut items = test_cabinet_suites::test_case::merge_review_items(&common, &own);
     // Mirror `TestCaseVersion::review_items_for`: drop the version's scoring-excluded
     // points (an erratum with `exclude_from_score`, in scope for this variant) from the
     // score by clearing their `scored` flag. Keeps this backend score in step with the
@@ -5013,13 +2774,13 @@ pub(crate) fn review_items_for(
         })
         .filter_map(|erratum| erratum.review.clone())
         .collect();
-    test_cabinet_core::test_case::apply_score_exclusions(&mut items, &excluded);
+    test_cabinet_suites::test_case::apply_score_exclusions(&mut items, &excluded);
     items
 }
 
 /// The effective weighted checklist items for a run of `variant` built on `engine`:
 /// [`review_items_for`] with the points that engine does not carry removed (mirrors
-/// [`test_cabinet_core::test_case::TestCaseVersion::review_items_for_engine`]).
+/// [`test_cabinet_suites::test_case::TestCaseVersion::review_items_for_engine`]).
 ///
 /// A validator scoped to a set of engines decides its point only on those, so a run
 /// on any other engine does not carry the point at all: no verdict is recorded
@@ -5034,7 +2795,7 @@ pub(crate) fn review_items_for_engine(
     manifest: &StoredManifest,
     variant: &str,
     engine: &str,
-) -> Vec<test_cabinet_core::ReviewItem> {
+) -> Vec<test_cabinet_suites::test_case::ReviewItem> {
     let mut items = review_items_for(manifest, variant);
     items.retain_mut(|item| {
         if item
@@ -5057,15 +2818,15 @@ pub(crate) fn review_items_for_engine(
 
 /// The effective scoring domains for a run of `variant`: the case's common domains
 /// followed by the selected variant's own (mirrors
-/// [`test_cabinet_core::test_case::TestCaseVersion::domains_for`], resolving from
+/// [`test_cabinet_suites::test_case::TestCaseVersion::domains_for`], resolving from
 /// the stored manifest). An unrecognized variant contributes only the common
 /// domains. These are the domains a validator-rated run's functional rating is
-/// decided per ([`test_cabinet_core::review::validator_domain_ratings`]) and the
+/// decided per ([`crate::review::validator_domain_ratings`]) and the
 /// ones its review must rate on the aesthetic scale.
 pub(crate) fn domains_for(
     manifest: &StoredManifest,
     variant: &str,
-) -> Vec<test_cabinet_core::test_case::Domain> {
+) -> Vec<test_cabinet_suites::test_case::Domain> {
     manifest
         .domains
         .iter()
@@ -5077,7 +2838,7 @@ pub(crate) fn domains_for(
                 .into_iter()
                 .flat_map(|candidate| candidate.domains.iter()),
         )
-        .map(|domain| test_cabinet_core::test_case::Domain {
+        .map(|domain| test_cabinet_suites::test_case::Domain {
             id: domain.id.clone(),
             name: domain.name.clone(),
             description: domain.description.clone(),
@@ -5085,12 +2846,14 @@ pub(crate) fn domains_for(
         .collect()
 }
 
-/// Reconstruct the core [`test_cabinet_core::ReviewItem`] a stored item was
+/// Reconstruct the core [`test_cabinet_suites::test_case::ReviewItem`] a stored item was
 /// ingested from — the inverse of `ingest::stored_review_item`. Scoring reads
 /// `id`, `weight`, and `sub_items` (a sub-itemed item is scored per sub-item), and
 /// the round trip keeps the rest of the item whole so it stays honest.
-fn core_review_item(item: &crate::store::StoredReviewItem) -> test_cabinet_core::ReviewItem {
-    test_cabinet_core::ReviewItem {
+fn core_review_item(
+    item: &crate::store::StoredReviewItem,
+) -> test_cabinet_suites::test_case::ReviewItem {
+    test_cabinet_suites::test_case::ReviewItem {
         id: item.id.clone(),
         title: item.title.clone(),
         text: item.text.clone(),
@@ -5104,7 +2867,7 @@ fn core_review_item(item: &crate::store::StoredReviewItem) -> test_cabinet_core:
         sub_items: item
             .sub_items
             .iter()
-            .map(|sub| test_cabinet_core::SubReviewItem {
+            .map(|sub| test_cabinet_suites::test_case::SubReviewItem {
                 id: sub.id.clone(),
                 title: sub.title.clone(),
                 description: sub.description.clone(),
@@ -5129,22 +2892,22 @@ fn core_review_item(item: &crate::store::StoredReviewItem) -> test_cabinet_core:
     }
 }
 
-/// Reconstruct a core [`test_cabinet_core::ReviewValidation`] from its stored shape.
+/// Reconstruct a core [`test_cabinet_suites::test_case::ReviewValidation`] from its stored shape.
 /// A snapshot-sourced driver is used only for scoring (which reads `weight`/`sub_items`),
 /// never to run the script, so its `script` is the stored version-folder-relative key
 /// rather than a host path — it is never materialized or executed on this path. Shared
 /// by the item-level and per-sub-item drivers.
 fn core_review_validation(
     validation: &crate::store::StoredReviewValidation,
-) -> test_cabinet_core::ReviewValidation {
-    test_cabinet_core::ReviewValidation {
+) -> test_cabinet_suites::test_case::ReviewValidation {
+    test_cabinet_suites::test_case::ReviewValidation {
         script: (!validation.per_engine).then(|| std::path::PathBuf::from(&validation.script)),
         script_rel: validation.script.clone(),
         engines: validation.engines.clone(),
         outputs: validation
             .outputs
             .iter()
-            .map(|output| test_cabinet_core::ReviewOutput {
+            .map(|output| test_cabinet_suites::test_case::ReviewOutput {
                 id: output.id.clone(),
                 name: output.name.clone(),
                 kind: output.kind,
@@ -5153,32 +2916,6 @@ fn core_review_validation(
     }
 }
 
-#[path = "snapshot.files.rs"]
-mod run_files;
-
-#[path = "snapshot.record.rs"]
-mod session_record;
-
 #[cfg(test)]
 #[path = "snapshot.test.rs"]
 mod tests;
-
-#[cfg(test)]
-#[path = "snapshot.files.test.rs"]
-mod files_tests;
-
-#[cfg(test)]
-#[path = "snapshot.hook.test.rs"]
-mod hook_tests;
-
-#[cfg(test)]
-#[path = "snapshot.confirm.test.rs"]
-mod confirm_tests;
-
-#[cfg(test)]
-#[path = "snapshot.manifest.test.rs"]
-mod manifest_tests;
-
-#[cfg(test)]
-#[path = "snapshot.sources.test.rs"]
-mod sources_tests;

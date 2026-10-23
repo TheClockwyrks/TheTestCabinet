@@ -9,64 +9,49 @@ PostgreSQL.
 
 ## Data at risk
 
-The backend keeps several things on disk, and only one of them is
-irreplaceable. The rest are regenerated from a source you still have, or already
-stored durably elsewhere.
+The deployment keeps several things, and only one of them is irreplaceable. The
+rest are regenerated from a source you still have, or already stored durably
+elsewhere.
 
-| Data                                                            | Where it lives                                                                           | Recoverable without a backup?        |
-| --------------------------------------------------------------- | ---------------------------------------------------------------------------------------- | ------------------------------------ |
-| Published run records, reviews, links                           | The backend's database (`TCAB_BACKEND_DATABASE_URL`)                                     | No. This is the system of record     |
-| User accounts (usernames, password hashes, display names)       | The [auth service](/components/auth/overview/)'s own database (`TCAB_AUTH_DATABASE_URL`) | No. Accounts cannot be reconstructed |
-| Test-case definition store (`TCAB_BACKEND_STORE`)               | On disk                                                                                  | Yes, re-ingested from the repository |
-| Ingest checkout (`TCAB_BACKEND_CHECKOUT`)                       | On disk                                                                                  | Yes, it is a git checkout            |
-| The [public snapshot](/components/backend/snapshot/)            | Cloudflare R2                                                                            | Yes, regenerated from the database   |
-| Run outputs (produced code, playable builds)                    | Per-run GitHub repos and Cloudflare Pages                                                | Yes, already hosted there            |
-| Run media (proof images/videos, produced asset images and logs) | The artifact service volume, and once published the R2 snapshot under `media/runs/`      | Yes, from the published copy in R2   |
+| Data                                                   | Where it lives                                                                                                       | Recoverable without a backup?                       |
+| ------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------- |
+| Run records, reviews, links, short codes               | The backend's database (`TCAB_BACKEND_DATABASE_URL`)                                                                 | No. This is the system of record                    |
+| Relayed event streams, controllers, tournaments        | The backend's database                                                                                               | No. This is the system of record                    |
+| Test-case definition store (`TCAB_BACKEND_STORE`)      | Each backend pod's own volume                                                                                        | Yes, re-ingested from the repository                |
+| Ingest checkout (`TCAB_BACKEND_CHECKOUT`)              | Each backend pod's own volume                                                                                        | Yes, it is a git checkout                           |
+| The [public dataset](/components/backend/snapshot/)    | Cloudflare R2                                                                                                        | Yes, regenerated from the database                  |
+| Run outputs (produced code, playable builds)           | Per-run GitHub repos and Cloudflare Pages                                                                            | Yes, already hosted there                           |
+| Run trees (proof media, produced assets, builds, logs) | The [artifacts service](/components/artifacts/overview/)'s Blob container, and once published R2 under `media/runs/` | Yes for a published run, from the copy in R2        |
+| Tournament match replays                               | The artifacts service's Blob container                                                                               | No                                                  |
+| Run bundles (the implementation as a git repository)   | The [repos service](/components/repos/overview/)'s Blob container                                                    | Yes for a published run, from its GitHub repository |
 
-Backing up the runs therefore reduces to continuously backing up two small
-databases: the backend's records and the auth service's accounts. Both take the
-same approach below. The accounts database is smaller and changes rarely, and
-losing it leaves every review pointing at reviewer ids with no identity behind
-them.
+Backing up the runs therefore reduces to continuously backing up one database,
+the backend's records. The two Blob containers hold what an unpublished run
+produced and every tournament match replay, and are protected by the storage
+account rather than by this page: enable soft delete and blob versioning on
+both containers, so a deleted or overwritten object can be restored for the
+retention window.
 
-### The snapshot as defense in depth
+### The dataset as defense in depth
 
 The backend stores each run record as verbatim JSON and re-emits it into the
-[public snapshot](/components/backend/snapshot/) without reserialization drift,
-so the snapshot in R2 is a secondary copy of the records and reviews. It is the
-public view and only as fresh as the last upload, so the worst case from losing
-the database is losing what changed since then. Treat it as defense in depth
-rather than as the backup.
+public dataset without reserialization drift, so the documents in R2 are a
+secondary copy of the records and reviews. They are the public view and only
+as fresh as the last publish, so the worst case from losing the database is
+losing what changed since then. Treat them as defense in depth rather than as
+the backup.
 
 ### Recreating a cluster
 
 If the whole cluster is deleted and recreated while the database survives, an
-external managed PostgreSQL or a restored SQLite file, the on-cluster volumes do
-not come back with it. The backend's definition store and the
-[artifact service](/components/artifacts/overview/)'s media both sit on
-per-cluster `PersistentVolumeClaim`s that a full delete destroys. A claim
-survives an ordinary pod reschedule, which is what it is for, and it ends with
-the cluster its disk belongs to. The database still holds every published run, so
-recovery is about refilling those volumes before the next publish regenerates the
-snapshot from them.
+external managed PostgreSQL or a restored SQLite file, nothing of record is
+lost. The definition store and the ingest checkout are caches on each backend
+pod's own volume, and the run trees, bundles and match replays live in the Blob
+containers and the public dataset in R2, none of which belong to the cluster.
 
-1. Definition store. Re-ingested by the in-pod ingest sidecar on backend start,
-   or on demand with `scripts/reingest-cluster.sh --env <env>`. This restores
-   case metadata, reference baselines, validation baselines and seeded specs
-   (see [Restoring baselines](/deployment/kubernetes/control-plane/#restoring-baselines)).
-2. Run media. The proof and asset bytes are gone from both wiped volumes, and
-   the previous snapshot still holds them in R2. Re-seed them with
-   `scripts/recover-run-media-from-snapshot.sh`, passing `--env <env>`,
-   `--source-prefix <prefix>`, and `--apply`; it copies each run's media from
-   that prior snapshot back into the store and triggers one refresh. Without
-   `--apply` it reports what it would copy and changes nothing. Once the media
-   lands under the content-stable `media/runs/` prefix, later publishes
-   reference it without the wiped volumes.
-
-Do this before relying on any publish. A refresh that runs against empty volumes
-re-exports every run with empty media and cuts the live gallery over to it. The
-media bytes still exist in the prior R2 prefix, and the live snapshot stops
-pointing at them until you recover.
+Recovery is one step: the in-pod ingest sidecar re-ingests the definition store
+on backend start, or on demand with `tcab ingest --env <env>`, restoring case
+metadata, reference baselines, and seeded specs.
 
 ## Backup strategy per store
 
@@ -93,8 +78,7 @@ object storage by streaming its write-ahead log, giving point-in-time restore fo
 the cost of one extra process. The backend's database is single-writer, low
 volume, and already in WAL mode, which Litestream requires.
 
-- It replicates to any S3-compatible bucket, including the Cloudflare R2 the
-  snapshot already uses.
+- It replicates to any S3-compatible bucket, including a Cloudflare R2 bucket.
 - Litestream needs the database on local disk rather than a network share. A
   `ReadWriteOnce` `PersistentVolumeClaim` backed by a block volume mounts as a
   real device in the pod and satisfies this; avoid an NFS or SMB-backed claim for

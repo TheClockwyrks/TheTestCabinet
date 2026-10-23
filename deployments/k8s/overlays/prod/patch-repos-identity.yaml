@@ -1,0 +1,36 @@
+# The repos service's Blob identity in PROD: the user-assigned managed identity
+# holding Storage Blob Data Contributor on the bundle container, federated to
+# system:serviceaccount:tcab-prod:tcab-repos through the testcabinet-prod-westus2-aks
+# OIDC issuer (Run plane, apps/docs/src/content/docs/deployment/kubernetes/run-plane.md
+# "Repos service"; the repos service's page, components/repos/overview.md "Storage").
+#
+#   Storage account tcabprodstore (RG testcabinet-prod-westus2-rg), private container bundles
+#   Identity        tcab-repos-prod
+#   Federated cred  tcab-prod-tcab-repos
+#
+# The container is provisioned with the account, so the service only lists it at
+# start-up (an identity not provisioned or not federated keeps the pod unready). The
+# account is the base's TCAB_REPOS_BLOB_ACCOUNT, so this overlay names no account.
+#
+# The `azure.workload.identity/use` pod label is what makes the webhook project the
+# identity's token and variables. The local overlay carries neither, so its pod signs
+# with Shared Key against Azurite.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: tcab-repos
+  # the base pins tcab-prod; this overlay's `namespace:` directive retargets it on build
+  namespace: tcab-prod
+  annotations:
+    azure.workload.identity/client-id: "48ec3a3e-69b8-466a-8c0c-20f5fd71a393"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tcab-repos
+  namespace: tcab-prod
+spec:
+  template:
+    metadata:
+      labels:
+        azure.workload.identity/use: "true"

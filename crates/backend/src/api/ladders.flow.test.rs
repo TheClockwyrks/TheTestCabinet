@@ -9,14 +9,17 @@
 //! test is the wiring between the gate, the board, the scheduler and the queue rather
 //! than any one of them alone.
 
-use test_cabinet_core::review::Rating;
-use test_cabinet_core::run_record::{RunRecord, RunState};
+use crate::review::Rating;
+use test_cabinet_contracts::run_record::{RunRecord, RunState};
 use test_cabinet_entities::job;
 
 use super::*;
+use std::collections::BTreeMap;
+
 use crate::api::flow_harness::*;
 use crate::db::tests::links;
 use sea_orm::EntityTrait;
+use test_cabinet_contracts::run_record::HarnessSlug;
 
 fn rung(slug: &str) -> LadderRungInput {
     LadderRungInput {
@@ -2004,20 +2007,23 @@ async fn the_backend_passes_every_running_dispatch_at_startup_and_no_ended_one()
     run_ladder(&state, &running).await.unwrap();
     let stopped = ladder_id(&state, ladder_input(&["carom"], 1, &[SONNET])).await;
     run_ladder(&state, &stopped).await.unwrap();
-    // Both lose their run; one is stopped too. A claim the dead process held is
-    // released at boot.
+    // Both lose their run; one is stopped too. A claim a dead pass held, its lease
+    // lapsed, is released before the startup passes run.
     for job in jobs(&state).await {
         set_state(&state, &job.id, "canceled").await;
     }
     stop_ladder(&state, &stopped, false).await.unwrap();
+    let lapsed = time::OffsetDateTime::now_utc() - time::Duration::minutes(3);
+    let lapsed = lapsed
+        .format(&time::format_description::well_known::Rfc3339)
+        .unwrap();
     assert!(
         state
             .db
-            .claim_ladder_launch(OWNER, &running, &now().unwrap())
+            .claim_ladder_launch(OWNER, &running, &lapsed)
             .await
             .unwrap()
     );
-    assert!(state.db.release_all_launch_claims().await.unwrap() >= 1);
 
     crate::api::spawn_startup_passes(state.clone());
     wait_for_in_flight(&state, "pong", 1).await;
@@ -2152,8 +2158,8 @@ fn pinned_gg_combo() -> ReviewPlanCombo {
 }
 
 /// A one-agent set running `model` at its root.
-fn root_set(model: &str) -> test_cabinet_core::gg::GgCapabilitySet {
-    let mut set = test_cabinet_core::gg::GgCapabilitySet::minimal(model);
+fn root_set(model: &str) -> test_cabinet_contracts::gg::GgCapabilitySet {
+    let mut set = test_cabinet_contracts::gg::GgCapabilitySet::minimal(model);
     set.agents[0].id = Some("k-root".to_string());
     set
 }

@@ -246,6 +246,26 @@ fn spawn_pending(state: &AppState, target: LaunchTarget, user_id: &str, id: &str
     tokio::spawn(task);
 }
 
+/// Release every launch-pass claim whose lease has lapsed, logging rather than failing:
+/// a claim left in place still expires out under the lease, so a pass that finds it is
+/// only delayed.
+async fn release_lapsed_claims(state: &AppState) {
+    let released = match now() {
+        Ok(now) => state.db.release_lapsed_launch_claims(&now).await,
+        Err(err) => {
+            tracing::warn!(error = ?err, "could not read the clock to release lapsed launch-pass claims");
+            return;
+        }
+    };
+    match released {
+        Ok(0) => {}
+        Ok(released) => tracing::info!(released, "released lapsed launch-pass claims"),
+        Err(err) => {
+            tracing::warn!(error = %err, "could not release the lapsed launch-pass claims at startup")
+        }
+    }
+}
+
 /// Log one launch pass's outcome. `cause` names what prompted it.
 fn log_pass(
     target: LaunchTarget,
@@ -563,11 +583,17 @@ pub(super) fn spawn_launch(state: &AppState, target: LaunchTarget, user_id: &str
 /// process. A pass at boot puts each back to where its runs say it should be, and costs
 /// nothing for one that is already fed: a pass only launches what is missing. It waits for
 /// the store, because a pass reads manifests and an empty store would misjudge them.
+///
+/// Before the passes it releases every launch-pass claim whose lease has lapsed: such a
+/// claim was held by a pass that died, and left in place it would turn a startup pass away
+/// as busy with no holder left to serve the request that leaves behind. A claim still
+/// within its lease belongs to a pass another replica is running and is left to it.
 pub(crate) fn spawn_startup_passes(state: AppState) {
     tokio::spawn(async move {
         while !state.ready.is_ready() {
             tokio::time::sleep(std::time::Duration::from_secs(2)).await;
         }
+        release_lapsed_claims(&state).await;
         launch_every_running(&state, "startup").await;
     });
 }

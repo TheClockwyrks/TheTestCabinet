@@ -38,31 +38,32 @@ fn parse_comma_list_yields_none_for_absent_or_empty_input() {
 
 // --- The validator-rated review gate ---------------------------------------------
 
+use crate::review::VerdictStatus;
 use axum::http::StatusCode;
-use test_cabinet_core::review::VerdictStatus;
-use test_cabinet_core::test_case::SubReviewItem;
+use test_cabinet_suites::test_case::SubReviewItem;
 
 /// The run's effective checklist for the gate tests: `serve` graded as a whole
 /// and a `combat` category with two sub-points (`hit`, `block`), so both plain
 /// and composite verdict ids are declared.
-fn declared_items() -> Vec<test_cabinet_core::ReviewItem> {
-    let item = |id: &str, sub_items: Vec<SubReviewItem>| test_cabinet_core::ReviewItem {
-        id: id.to_string(),
-        title: id.to_string(),
-        text: format!("The build satisfies {id}."),
-        reference: None,
-        proof: None,
-        sequences: vec![],
-        frames: vec![],
-        weight: 1,
-        graded: false,
-        domain: None,
-        sub_items,
-        scored: true,
-        validation: None,
-        failure_cap: None,
-        domains: vec![],
-    };
+fn declared_items() -> Vec<test_cabinet_suites::test_case::ReviewItem> {
+    let item =
+        |id: &str, sub_items: Vec<SubReviewItem>| test_cabinet_suites::test_case::ReviewItem {
+            id: id.to_string(),
+            title: id.to_string(),
+            text: format!("The build satisfies {id}."),
+            reference: None,
+            proof: None,
+            sequences: vec![],
+            frames: vec![],
+            weight: 1,
+            graded: false,
+            domain: None,
+            sub_items,
+            scored: true,
+            validation: None,
+            failure_cap: None,
+            domains: vec![],
+        };
     let sub = |id: &str| SubReviewItem {
         id: id.to_string(),
         title: id.to_string(),
@@ -166,7 +167,7 @@ fn a_validator_rated_review_accepts_a_partial_checklist_of_binary_overrides() {
 /// A minimal completed `pong@v1.0.0` record on the `base` variant, with one decided
 /// validator verdict per `(point, pass)` pair.
 fn detail_record(verdicts: &[(&str, bool)]) -> RunRecord {
-    use test_cabinet_core::validation::{AutoVerdict, DebugScriptResult};
+    use test_cabinet_contracts::validation::{AutoVerdict, DebugScriptResult};
     let mut record: RunRecord = serde_json::from_value(serde_json::json!({
         "id": "r1",
         "startedAt": "2026-06-17T20:40:00Z",
@@ -282,8 +283,6 @@ fn detail_run(record: RunRecord, validator_rated: bool) -> StoredRun {
         validator_rated,
         links: Default::default(),
         published: false,
-        artifacts_stored: None,
-        artifacts_reclaimed: None,
         published_at: None,
         events_json: None,
     }
@@ -311,11 +310,7 @@ fn a_validator_rated_run_detail_folds_a_reviews_overrides_into_its_figures() {
     // run-wide aesthetic surfaces on both the run and its review.
     let mut run = detail_run(detail_record(&[("serve", true), ("hud", false)]), true);
     run.reviews.push(StoredReview {
-        reviewer: Reviewer {
-            user_id: "u1".to_string(),
-            username: "ada".to_string(),
-            display_name: "Ada L.".to_string(),
-        },
+        reviewer: "ada@clockwyrks.com".to_string(),
         ratings: vec![],
         aesthetics: vec![],
         aesthetic: Some(AestheticRating::Amazing),
@@ -395,89 +390,4 @@ fn an_unreadable_run_carries_its_lifted_identity_and_its_error_onto_the_wire() {
     assert_eq!(json["published"], false);
     assert_eq!(json["reviewCount"], 2);
     assert_eq!(json["error"], "missing field `interp`");
-}
-
-#[test]
-fn a_run_detail_states_its_artifact_presence_in_all_three_readings() {
-    // Always present, `null` rather than omitted while unknown: a console reads
-    // `false` as "cannot be published" and must not read an absent field that way.
-    for (stored, expected) in [
-        (None, serde_json::Value::Null),
-        (Some(true), serde_json::Value::Bool(true)),
-        (Some(false), serde_json::Value::Bool(false)),
-    ] {
-        let mut run = detail_run(detail_record(&[("serve", true)]), true);
-        run.artifacts_stored = stored;
-        let json = serde_json::to_value(stored_run_out(&run, None)).unwrap();
-        assert_eq!(json["artifactsStored"], expected);
-    }
-}
-
-#[test]
-fn a_summary_page_names_only_the_runs_recorded_as_not_stored() {
-    let page: Vec<StoredRun> = [
-        ("unknown", None),
-        ("lost", Some(false)),
-        ("kept", Some(true)),
-    ]
-    .into_iter()
-    .map(|(id, stored)| {
-        let mut record = detail_record(&[("serve", true)]);
-        record.id = id.to_string();
-        let mut run = detail_run(record, true);
-        run.artifacts_stored = stored;
-        run
-    })
-    .collect();
-
-    assert_eq!(artifacts_not_stored(&page), ["lost"]);
-    assert!(artifacts_reclaimed(&page).is_empty());
-
-    // The card itself, which is the shape the public snapshot ships, says nothing
-    // about it.
-    let card = serde_json::to_value(RunSummary::from_stored(&page[1])).unwrap();
-    assert!(card.get("artifactsStored").is_none());
-    assert!(card.get("artifactsNotStored").is_none());
-}
-
-/// A run whose tree the sweep reclaimed has no stored tree either, and is named
-/// in its own list: removed on purpose is not lost.
-#[test]
-fn a_summary_page_names_a_reclaimed_run_as_reclaimed_and_not_as_lost() {
-    let reclaimed = crate::db::ArtifactsReclaimed {
-        at: "2026-10-12T00:00:00Z".to_string(),
-        reason: crate::db::ReclaimReason::Failed,
-    };
-    let page: Vec<StoredRun> = [
-        ("lost", Some(false), None),
-        ("reclaimed", Some(false), Some(reclaimed.clone())),
-        ("kept", Some(true), None),
-    ]
-    .into_iter()
-    .map(|(id, stored, reclaimed)| {
-        let mut record = detail_record(&[("serve", true)]);
-        record.id = id.to_string();
-        let mut run = detail_run(record, true);
-        run.artifacts_stored = stored;
-        run.artifacts_reclaimed = reclaimed;
-        run
-    })
-    .collect();
-
-    assert_eq!(artifacts_not_stored(&page), ["lost"]);
-    assert_eq!(artifacts_reclaimed(&page), ["reclaimed"]);
-
-    // The run's own response says when and why, and `null` for every other run.
-    let json = serde_json::to_value(stored_run_out(&page[1], None)).unwrap();
-    assert_eq!(
-        json["artifactsReclaimed"],
-        serde_json::json!({ "at": "2026-10-12T00:00:00Z", "reason": "failed" })
-    );
-    assert_eq!(json["artifactsStored"], false);
-    let json = serde_json::to_value(stored_run_out(&page[0], None)).unwrap();
-    assert_eq!(json["artifactsReclaimed"], serde_json::Value::Null);
-
-    // The public card says nothing about it.
-    let card = serde_json::to_value(RunSummary::from_stored(&page[1])).unwrap();
-    assert!(card.get("artifactsReclaimed").is_none());
 }

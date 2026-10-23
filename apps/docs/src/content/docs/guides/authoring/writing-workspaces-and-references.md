@@ -27,17 +27,18 @@ finished build. Under an engine it also carries the entry stub the engine's
 module contract requires and the `src/constants.ts` the specification's figures
 are seeded in.
 
-| File               | Holds                                                                                         |
-| ------------------ | --------------------------------------------------------------------------------------------- |
-| `package.json`     | The build interface, the toolchain scripts, and the project's dependencies                    |
-| `tsconfig.json`    | The TypeScript options the produced code compiles under                                       |
-| `vite.config.ts`   | The bundler configuration, with `base: './'` so the built site loads from a page-relative URL |
-| `vitest.config.ts` | The reporter and coverage settings a run reads its results from                               |
-| `eslint.config.js` | The lint rules the `lint` command applies                                                     |
-| `.prettierrc.json` | The formatting options the `format` command checks against                                    |
-| `.prettierignore`  | What the `format` command leaves alone                                                        |
-| `.gitignore`       | The build artifacts kept out of the published per-run repository                              |
-| `index.html`       | The document the built site loads                                                             |
+| File                | Holds                                                                                         |
+| ------------------- | --------------------------------------------------------------------------------------------- |
+| `package.json`      | The build interface, the toolchain scripts, and the project's dependencies                    |
+| `package-lock.json` | The lockfile pinning those dependencies, which the case's `init` installs with `npm ci`       |
+| `tsconfig.json`     | The TypeScript options the produced code compiles under                                       |
+| `vite.config.ts`    | The bundler configuration, with `base: './'` so the built site loads from a page-relative URL |
+| `vitest.config.ts`  | The reporter and coverage settings a run reads its results from                               |
+| `eslint.config.js`  | The lint rules the `lint` command applies                                                     |
+| `.prettierrc.json`  | The formatting options the `format` command checks against                                    |
+| `.prettierignore`   | What the `format` command leaves alone                                                        |
+| `.gitignore`        | The build artifacts kept out of the published per-run repository                              |
+| `index.html`        | The document the built site loads                                                             |
 
 Hidden entries are skipped at seed time apart from an allowlist, so the two
 prettier files and `.gitignore` reach a run while a hidden lint configuration

@@ -107,7 +107,7 @@ calls="$(cat "$tmp/calls.log")"
 check_equal "measures, probes sudo, removes, prunes, measures" \
 	"df -h /
 sudo -n true
-sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/.ghcup /opt/hostedtoolcache/CodeQL /usr/local/share/powershell /usr/local/share/chromium /usr/local/share/boost
+sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/.ghcup /opt/hostedtoolcache /usr/local/share/powershell /usr/local/share/chromium /usr/local/share/boost /usr/share/swift /usr/lib/google-cloud-sdk /usr/local/share/vcpkg /opt/microsoft /opt/google /usr/local/aws-cli /usr/local/aws-sam-cli
 sudo docker image prune --all --force
 df -h /" "$calls"
 

@@ -17,9 +17,12 @@ and the guidance on what to put in one is
 
 ## Prerequisites
 
-- The version already exists under `test-cases/…/<slug>/<version>/`.
-- Cluster access for `scripts/reingest-cluster.sh --env <prod|staging>`, or a
-  running local stack for `scripts/reingest.sh`.
+- The version already exists under `test-cases/…/<slug>/<version>/` in the
+  `test-suites` repository.
+- The environment's Access service token and `TCAB_BACKEND_URL` for
+  `tcab ingest --env <prod|staging>` (see
+  [Sign In](/quickstarts/setup/sign-in/#automation)), or a running local
+  stack for `tcab ingest`.
 
 ## Publish
 
@@ -53,16 +56,17 @@ point is mis-scoring runs, such as a buggy automated check or an ambiguous
 requirement: the point keeps being checked and shown, stops contributing to any
 run's score, and stops gating the run when it is auto-validated.
 
-Then commit, push, and re-ingest. Re-ingest forces an overwrite of a version
-already in the store, which the reingest scripts always request:
+Then commit, push to the branch the environment ingests, and re-ingest.
+`tcab ingest --changed` re-ingests the version because its content changed, in
+a deployed environment with `--env` and in a local stack without it:
 
 ```sh
-git add test-cases/<type>/<difficulty>/<slug>/<version>/errata.toml
-git commit -m "docs(errata): note <slug> cue-ball rail clipping"
-git push
+git -C test-suites add test-cases/<type>/<difficulty>/<slug>/<version>/errata.toml
+git -C test-suites commit -m "docs(errata): note <slug> cue-ball rail clipping"
+git -C test-suites push
 
-scripts/reingest-cluster.sh --env prod <slug>   # production or staging
-scripts/reingest.sh                             # a local stack instead
+tcab ingest --env prod --changed <slug>   # production or staging
+tcab ingest --changed                     # a local stack instead
 ```
 
 ## Verify
@@ -71,8 +75,8 @@ scripts/reingest.sh                             # a local stack instead
   tab appears once a version records at least one erratum.
 - A run of that version shows a known-errata callout on its detail view, scoped
   to the run's variant, so a reviewer sees the issue before scoring.
-- The live console reflects the entry as soon as the re-ingest completes; the
-  static gallery picks it up on the snapshot refresh the re-ingest queues.
+- The live console reflects the entry as soon as the re-ingest completes, and
+  the re-ingest republishes the case so the gallery shows it too.
 
 ## When it is resolved
 

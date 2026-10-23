@@ -12,14 +12,14 @@ reports the same per-tool tally a third-party harness does.
 
 Every run stores three things the diagnostics build on.
 
-Run-level [metrics](/components/core/metrics/): total run time, the four
+Run-level [metrics](/components/contracts/metrics/): total run time, the four
 normalized token classes (`uncached_input`, `cached_input`, `output`,
 `reasoning`), and cost as both `comparable` and `actual`.
 
-A normalized [event stream](/components/core/events/),
+A normalized [event stream](/components/driver/events/),
 `HarnessOutcome.translated_events`, persisted as the `run.events_json` column
 and served at `GET /runs/{id}/events`. Every harness's raw output is parsed into
-semantic [`EventKind`](/components/core/events/) events.
+semantic [`EventKind`](/components/driver/events/) events.
 
 A per-tool invocation tally, `RunRecord.tool_calls`, keyed by lowercased raw
 tool name, and whether that tally has been counted.
@@ -28,7 +28,7 @@ tool name, and whether that tally has been counted.
 
 The tool-call diagnostics are only as trustworthy as the classification behind
 them, so every tool a supported harness emits maps to a semantic event or is
-deliberately consumed (`crates/core/src/event.rs`). Nothing falls through to
+deliberately consumed (`event.rs` in `microservice-driver`). Nothing falls through to
 `unknown`.
 
 A new harness, or a new tool on an existing one, is validated the same way: pull
@@ -86,27 +86,27 @@ counted has its stream read.
 
 Run-level totals answer how much was spent; per-turn usage answers what it was
 spent on. Harnesses that report usage incrementally emit an
-[`EventKind::Usage`](/components/core/events/) event per turn, carrying that
+[`EventKind::Usage`](/components/driver/events/) event per turn, carrying that
 turn's token counts and, when the harness reports one, that turn's cost.
 
 The per-turn counts are mapped onto the four normalized classes by the same
-`crates/core/src/harness_registry` mapping that produces the session total, so a
-turn slice and the run total never diverge. The registry names the events that
+`harness_registry` mapping in `microservice-driver` that produces the session
+total, so a turn slice and the run total never diverge. The registry names the events that
 carry usage per harness: `step_finish` for Kilo Code and OpenCode, `message_end`
 for Pi. A harness that reports only a cumulative running total emits none, since
 a cumulative snapshot is not a per-turn figure.
 
 ## Arm diagnostics
 
-`ArmDiagnostics` (`crates/core/src/comparison.rs`) carries the four token
-classes and the tool-call counts, each summed across the arm's runs. Ratios such
+`ArmDiagnostics` (`comparison.rs` in `microservice-backend`) carries the four
+token classes and the tool-call counts, each summed across the arm's runs. Ratios such
 as the cache-hit ratio and the reasoning share are derived by the view from
 those raw classes.
 
 The comparison detail page presents, per arm and alongside the
 [statistics](/comparisons/statistics/):
 
-- the [comparable cost](/components/core/metrics/) and total-token
+- the [comparable cost](/components/contracts/metrics/) and total-token
   distributions;
 - the automated-only score and pass rate;
 - tool-call counts by kind of work, stacked per arm, consumed tools included.

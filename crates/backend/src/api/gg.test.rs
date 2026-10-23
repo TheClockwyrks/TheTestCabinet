@@ -8,16 +8,8 @@ use crate::db::Db;
 /// the handler). The minting tests below are about the capability set the job
 /// carries, so they all mint under this one.
 fn launch_attribution() -> JobAttribution {
-    attribution(
-        &AuthUser(test_cabinet_core::Account {
-            id: "acct-gg".to_string(),
-            username: "reviewer".to_string(),
-            display_name: "Reviewer".to_string(),
-            picture_updated_at: None,
-        }),
-        &LaunchQuery::default(),
-    )
-    .expect("no origin is not an error")
+    attribution(&Person("acct-gg".to_string()), &LaunchQuery::default())
+        .expect("no origin is not an error")
 }
 
 /// The internal id an authored fixture mints for the profile whose slug is `slug`.
@@ -115,17 +107,17 @@ fn into_launch_body_rejects_a_set_with_an_agent_left_unbound() {
     // still deferred means the launch was incomplete — reject it here, naming the
     // agent, rather than burning a container on a run gg would refuse to start.
     let mut set = GgCapabilitySet::minimal("mock/echo");
-    set.agents.push(test_cabinet_core::gg::GgAgentConfig {
+    set.agents.push(test_cabinet_contracts::gg::GgAgentConfig {
         slug: "reviewer".to_string(),
         name: "reviewer".to_string(),
         model_id: String::new(),
         model_slot: Some("critic".to_string()),
-        model_slots: vec![test_cabinet_core::gg::GgModelSlot {
+        model_slots: vec![test_cabinet_contracts::gg::GgModelSlot {
             name: "critic".to_string(),
             default_model_id: None,
             passthrough: true,
         }],
-        ..test_cabinet_core::gg::GgAgentConfig::root()
+        ..test_cabinet_contracts::gg::GgAgentConfig::root()
     });
     let err = GgRunRequest {
         capability_set: authored(set),
@@ -157,22 +149,22 @@ fn into_launch_body_lifts_a_machine_roots_entry_model_and_names_a_missing_one() 
     // to be rewritten to `explorer` for the dispatch to find it at all.
     let machine_root = |entry: &str, workers: &[&str]| {
         let mut set = GgCapabilitySet::minimal("mock/shell-leftover");
-        set.agents[0].capabilities = vec![test_cabinet_core::gg::GgCapabilityConfig {
+        set.agents[0].capabilities = vec![test_cabinet_contracts::gg::GgCapabilityConfig {
             params: serde_json::json!({
-                test_cabinet_core::gg::FSM_PARAM_STATES: [
+                test_cabinet_contracts::gg::FSM_PARAM_STATES: [
                     { "name": "explore", "agentId": key_of(entry) },
                 ],
             }),
-            ..test_cabinet_core::gg::GgCapabilityConfig::enabled(
-                test_cabinet_core::gg::CAPABILITY_FSM,
+            ..test_cabinet_contracts::gg::GgCapabilityConfig::enabled(
+                test_cabinet_contracts::gg::CAPABILITY_FSM,
             )
         }];
         for worker in workers {
-            set.agents.push(test_cabinet_core::gg::GgAgentConfig {
+            set.agents.push(test_cabinet_contracts::gg::GgAgentConfig {
                 slug: worker.to_string(),
                 name: worker.to_string(),
                 model_id: "mock/worker".to_string(),
-                ..test_cabinet_core::gg::GgAgentConfig::root()
+                ..test_cabinet_contracts::gg::GgAgentConfig::root()
             });
         }
         authored(set)
@@ -209,7 +201,7 @@ fn build_new_job_persists_the_capability_set_for_a_gg_run() {
     let launch = sample_request().into_launch_body().unwrap();
     let new = build_new_job(
         &launch,
-        test_cabinet_core::TestType::EndToEnd,
+        test_cabinet_suites::test_case::TestType::EndToEnd,
         "2026-07-23T00:00:00Z",
         &launch_attribution(),
     )
@@ -246,7 +238,7 @@ fn build_new_job_leaves_gg_config_null_for_a_conventional_run() {
     };
     let new = build_new_job(
         &launch,
-        test_cabinet_core::TestType::EndToEnd,
+        test_cabinet_suites::test_case::TestType::EndToEnd,
         "2026-07-23T00:00:00Z",
         &launch_attribution(),
     )
@@ -263,7 +255,7 @@ async fn enqueue_persists_and_retrieves_the_gg_capability_set() {
     let launch = sample_request().into_launch_body().unwrap();
     let new = build_new_job(
         &launch,
-        test_cabinet_core::TestType::EndToEnd,
+        test_cabinet_suites::test_case::TestType::EndToEnd,
         "2026-07-23T00:00:00Z",
         &launch_attribution(),
     )
@@ -315,14 +307,14 @@ fn window_observation(model_id: &str, context_length: i64) -> crate::db::PriceWr
 
 /// The offline price source used by these tests: an endpoint that cannot be reached, so a
 /// model the catalog does not know resolves to a launch rejection without any network.
-fn unreachable_prices() -> test_cabinet_core::OpenRouterPrices {
+fn unreachable_prices() -> crate::pricing::OpenRouterPrices {
     // Port 0 is never connectable, so the fetch fails fast and deterministically.
-    test_cabinet_core::OpenRouterPrices::with_endpoint("http://127.0.0.1:0/models")
+    crate::pricing::OpenRouterPrices::with_endpoint("http://127.0.0.1:0/models")
 }
 
 /// Serve `endpoints` as every model's OpenRouter `/models/{id}/endpoints` body on a loopback
 /// port, and return a price source pointed at it.
-async fn endpoints_listing(endpoints: serde_json::Value) -> test_cabinet_core::OpenRouterPrices {
+async fn endpoints_listing(endpoints: serde_json::Value) -> crate::pricing::OpenRouterPrices {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     let body = serde_json::json!({ "data": { "name": "Some: Model", "endpoints": endpoints } });
@@ -333,7 +325,7 @@ async fn endpoints_listing(endpoints: serde_json::Value) -> test_cabinet_core::O
     tokio::spawn(async move {
         axum::serve(listener, app).await.unwrap();
     });
-    test_cabinet_core::OpenRouterPrices::with_endpoint(format!("http://{addr}/models"))
+    crate::pricing::OpenRouterPrices::with_endpoint(format!("http://{addr}/models"))
 }
 
 /// One endpoint of the listing: `provider` at `quantization`, priced per million tokens, with a
@@ -354,7 +346,7 @@ fn endpoint(provider: &str, quantization: &str, input: f64, output: f64) -> serd
 
 /// A listing every model of these tests resolves a list from: one fp8 endpoint per developer
 /// they bind, all at one price, so each model's developer passes and heads its list.
-async fn every_developer_listing() -> test_cabinet_core::OpenRouterPrices {
+async fn every_developer_listing() -> crate::pricing::OpenRouterPrices {
     endpoints_listing(serde_json::json!([
         endpoint("Anthropic", "fp8", 1.0, 2.0),
         endpoint("OpenAI", "fp8", 1.0, 2.0),
@@ -417,7 +409,7 @@ fn priced_write(model_id: &str) -> crate::db::ModelConfigWrite {
         list_price_source: Some("hand".to_string()),
         aliases: vec![crate::db::AliasEntry {
             alias: model_id.to_string(),
-            family: test_cabinet_core::run_record::HarnessFamily::Openrouter,
+            family: test_cabinet_contracts::run_record::HarnessFamily::Openrouter,
         }],
         now: "2026-01-01T00:00:00Z".to_string(),
         ..Default::default()
@@ -497,11 +489,11 @@ async fn a_refused_launch_still_reports_the_list_price_it_filled() {
         .unwrap();
     curate_unpriced(&db, "anthropic/claude-opus-4.8").await;
     let mut set = GgCapabilitySet::minimal("anthropic/claude-opus-4.8");
-    set.agents.push(test_cabinet_core::gg::GgAgentConfig {
+    set.agents.push(test_cabinet_contracts::gg::GgAgentConfig {
         slug: "subagent".to_string(),
         name: "subagent".to_string(),
         model_id: "unlisted/model".to_string(),
-        ..test_cabinet_core::gg::GgAgentConfig::root()
+        ..test_cabinet_contracts::gg::GgAgentConfig::root()
     });
     let mut launch = launch_of(set);
     let fills = std::sync::atomic::AtomicUsize::new(0);
@@ -547,11 +539,11 @@ async fn launch_resolves_the_bound_models_context_windows() {
     curate_priced(&db, "openai/gpt-5.4-mini").await;
 
     let mut set = GgCapabilitySet::minimal("anthropic/claude-opus-4.8");
-    set.agents.push(test_cabinet_core::gg::GgAgentConfig {
+    set.agents.push(test_cabinet_contracts::gg::GgAgentConfig {
         slug: "subagent".to_string(),
         name: "subagent".to_string(),
         model_id: "openai/gpt-5.4-mini".to_string(),
-        ..test_cabinet_core::gg::GgAgentConfig::root()
+        ..test_cabinet_contracts::gg::GgAgentConfig::root()
     });
     let mut launch = launch_of(set);
 
@@ -602,17 +594,17 @@ async fn launch_resolves_the_bound_models_input_modalities() {
         .unwrap();
 
     let mut set = GgCapabilitySet::minimal("anthropic/claude-opus-4.8");
-    set.agents.push(test_cabinet_core::gg::GgAgentConfig {
+    set.agents.push(test_cabinet_contracts::gg::GgAgentConfig {
         slug: "subagent".to_string(),
         name: "subagent".to_string(),
         model_id: "z-ai/glm-5.2".to_string(),
-        ..test_cabinet_core::gg::GgAgentConfig::root()
+        ..test_cabinet_contracts::gg::GgAgentConfig::root()
     });
-    set.agents.push(test_cabinet_core::gg::GgAgentConfig {
+    set.agents.push(test_cabinet_contracts::gg::GgAgentConfig {
         slug: "reviewer".to_string(),
         name: "reviewer".to_string(),
         model_id: "mystery/model".to_string(),
-        ..test_cabinet_core::gg::GgAgentConfig::root()
+        ..test_cabinet_contracts::gg::GgAgentConfig::root()
     });
     let mut launch = launch_of(set);
 
@@ -719,9 +711,9 @@ async fn launch_builds_the_candidate_list_developer_first() {
     assert_eq!(
         launch.gg_model_providers.get("z-ai/glm-5.2"),
         Some(&vec![
-            test_cabinet_core::gg::GgProviderCandidate::new("Z.AI", "fp8"),
-            test_cabinet_core::gg::GgProviderCandidate::new("DeepInfra", "fp8"),
-            test_cabinet_core::gg::GgProviderCandidate::new("Baidu", "fp8"),
+            test_cabinet_contracts::gg::GgProviderCandidate::new("Z.AI", "fp8"),
+            test_cabinet_contracts::gg::GgProviderCandidate::new("DeepInfra", "fp8"),
+            test_cabinet_contracts::gg::GgProviderCandidate::new("Baidu", "fp8"),
         ])
     );
 }
@@ -747,7 +739,7 @@ async fn launch_orders_candidates_by_recorded_fault_rate() {
         execution_mode: "tool_calling".to_string(),
         errors: Default::default(),
         tool_calls: 0,
-        provider_stats: vec![test_cabinet_core::gg::GgProviderStat {
+        provider_stats: vec![test_cabinet_contracts::gg::GgProviderStat {
             provider: Some("Cheap".to_string()),
             model_id: Some("z-ai/glm-5.2".to_string()),
             calls: 10,
@@ -791,8 +783,8 @@ async fn a_reasoning_agent_needs_candidates_that_support_reasoning() {
     assert_eq!(providers_of(&launch, "z-ai/glm-5.2"), ["Z.AI", "Plain"]);
 
     let mut set = GgCapabilitySet::minimal("z-ai/glm-5.2");
-    set.agents[0].reasoning = Some(test_cabinet_core::gg::GgReasoning {
-        effort: Some(test_cabinet_core::gg::GgReasoningEffort::High),
+    set.agents[0].reasoning = Some(test_cabinet_contracts::gg::GgReasoning {
+        effort: Some(test_cabinet_contracts::gg::GgReasoningEffort::High),
         ..Default::default()
     });
     let mut launch = launch_of(set);
@@ -818,9 +810,7 @@ async fn launch_refuses_a_model_with_no_candidate_with_the_reason() {
         .expect_err("no developer endpoint and no ceiling");
     assert!(
         err.contains("moonshotai/kimi-k2")
-            && err.contains(
-                &test_cabinet_core::pricing::CandidateRefusal::NoPriceCeiling.to_string()
-            ),
+            && err.contains(&crate::pricing::CandidateRefusal::NoPriceCeiling.to_string()),
         "unexpected reason: {err}"
     );
 }
@@ -851,7 +841,7 @@ async fn the_catalog_entry_shapes_the_candidate_list() {
         list_price_source: Some("hand".to_string()),
         aliases: vec![crate::db::AliasEntry {
             alias: "qwen/qwen3-coder".to_string(),
-            family: test_cabinet_core::run_record::HarnessFamily::Openrouter,
+            family: test_cabinet_contracts::run_record::HarnessFamily::Openrouter,
         }],
         now: "2026-01-01T00:00:00Z".to_string(),
         ..Default::default()
@@ -919,7 +909,7 @@ async fn the_quantization_filter_off_admits_a_model_no_endpoint_declares_a_level
         list_price_source: Some("hand".to_string()),
         aliases: vec![crate::db::AliasEntry {
             alias: "openai/gpt-6.1-sol".to_string(),
-            family: test_cabinet_core::run_record::HarnessFamily::Openrouter,
+            family: test_cabinet_contracts::run_record::HarnessFamily::Openrouter,
         }],
         now: "2026-01-01T00:00:00Z".to_string(),
         ..Default::default()
@@ -1051,14 +1041,14 @@ async fn launch_resolves_nothing_for_a_conventional_run() {
 #[test]
 fn into_launch_body_rejects_two_profiles_at_one_slug() {
     let mut set = GgCapabilitySet::minimal("mock/echo");
-    set.agents.push(test_cabinet_core::gg::GgAgentConfig {
+    set.agents.push(test_cabinet_contracts::gg::GgAgentConfig {
         // A distinct internal id, which is exactly how the collision arrives: two separate
         // profiles that came to spell one slug, not one profile written down twice.
         id: Some("k-imported".to_string()),
-        slug: test_cabinet_core::gg::ROOT_PROFILE_ID.to_string(),
+        slug: test_cabinet_contracts::gg::ROOT_PROFILE_ID.to_string(),
         name: "a second root".to_string(),
         model_id: "mock/echo".to_string(),
-        ..test_cabinet_core::gg::GgAgentConfig::root()
+        ..test_cabinet_contracts::gg::GgAgentConfig::root()
     });
     let err = GgRunRequest {
         capability_set: authored(set),
@@ -1068,7 +1058,7 @@ fn into_launch_body_rejects_two_profiles_at_one_slug() {
     .unwrap_err();
     assert!(err.contains("carry the slug"), "unexpected reason: {err}");
     assert!(
-        err.contains(test_cabinet_core::gg::ROOT_PROFILE_ID),
+        err.contains(test_cabinet_contracts::gg::ROOT_PROFILE_ID),
         "unexpected reason: {err}"
     );
 }
@@ -1085,17 +1075,17 @@ fn into_launch_body_rejects_two_profiles_at_one_slug() {
 #[test]
 fn into_launch_body_resolves_the_internal_ids_away_before_the_set_is_stored() {
     let mut set = GgCapabilitySet::minimal("mock/echo");
-    set.agents.push(test_cabinet_core::gg::GgAgentConfig {
+    set.agents.push(test_cabinet_contracts::gg::GgAgentConfig {
         slug: "careful-reviewer".to_string(),
         name: "Careful Reviewer".to_string(),
         model_id: "mock/echo".to_string(),
-        ..test_cabinet_core::gg::GgAgentConfig::root()
+        ..test_cabinet_contracts::gg::GgAgentConfig::root()
     });
     // The roster points at the reviewer the way an authored document does: by its internal id,
     // which is a different string from the slug the model will be offered.
-    set.agents[0].subagents = vec![test_cabinet_core::gg::GgSubagentRef::new(
+    set.agents[0].subagents = vec![test_cabinet_contracts::gg::GgSubagentRef::new(
         key_of("careful-reviewer"),
-        &[test_cabinet_core::gg::GgSubagentScope::Subagent],
+        &[test_cabinet_contracts::gg::GgSubagentScope::Subagent],
     )];
 
     let launch = GgRunRequest {
@@ -1143,7 +1133,7 @@ fn into_launch_body_rejects_a_malformed_slug() {
 #[test]
 fn into_launch_body_rejects_an_agent_slot_that_reaches_no_launch_input() {
     let mut set = GgCapabilitySet::minimal("mock/echo");
-    set.agents[0].model_slots = vec![test_cabinet_core::gg::GgModelSlot {
+    set.agents[0].model_slots = vec![test_cabinet_contracts::gg::GgModelSlot {
         name: "brain".to_string(),
         default_model_id: None,
         passthrough: false,

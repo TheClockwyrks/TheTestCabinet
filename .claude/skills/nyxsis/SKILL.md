@@ -85,7 +85,7 @@ reclaim, a malformed one with the reason.
 
 A positive whole number of seconds bounding the devcontainer's build and start
 together, on a workspace's creation and on every rebuild. Where none is
-declared, or the value is malformed, the bound is 7200 seconds, and a malformed
+declared, or the value is malformed, the bound is 21600 seconds, and a malformed
 value is reported in the bring-up's output. A bring-up reaching its deadline
 fails at the stage it was in. Raise it when the image grows slower to build.
 
@@ -169,6 +169,12 @@ TOML, one holding a key other than `mirror` and `url`, one naming more than 16
 mirrors, an empty `url`, a `url` carrying a credential or one repository named
 twice is malformed and declares no mirrors, its reason naming the rule broken.
 
+This repository's pipeline pushes to the mirror declared here too:
+`scripts/ci/mirror.sh` refuses a target the file does not declare, so moving the
+mirror means changing its `url` here and the `url` that `.azure/project/jobs.yml`
+passes to `.azure/tcab/mirror-job.yml` together
+(see the GitHub mirror section of `development/building.md`).
+
 ## `.copier-answers.yml`
 
 Copier writes this file on every render and update; edit it only to resolve an
@@ -195,9 +201,7 @@ repository.
 
   | Variable | What it carries |
   | --- | --- |
-  | `DEVCONTAINER_UID` | The user id of the account the container user is created with |
-  | `DEVCONTAINER_GID` | That account's group id |
-  | `DEVCONTAINER_USERNS` | The user namespace mapping the container runs under, `host` by default, `keep-id:uid=<uid>,gid=<gid>` under rootless Podman |
+  | `DEVCONTAINER_USERNS` | The user namespace mapping the container runs under, `host` by default, `keep-id:uid=1000,gid=1000` under rootless Podman, which maps the host's account onto the image's |
   | `DEVCONTAINER_RUNTIME_SOCKET` | The host's container runtime socket, bound in |
   | `DEVCONTAINER_RUNTIME_TCP` | The runtime's TCP endpoint where no socket can be bound in, as on a Mac |
   | `DEVCONTAINER_RUNTIME_CREDENTIAL` | The credential the container presents to that endpoint |
@@ -217,6 +221,10 @@ repository.
   names. Keep every one of them read when editing the compose file.
 - The compose file states `x-podman.in_pod: false`, so podman-compose creates
   no pod beside the `keep-id` mapping, which Podman refuses. Keep it.
+- The image's account is `dev` at uid and gid 1000 on every machine, created
+  by the published image the devcontainer is built on, so the image takes no
+  build argument naming a host's ids. The user namespace maps a host's account
+  onto it.
 - The runtime socket's group is resolved when the container starts, and the
   container user joined to it then, so the image carries no group id of any one
   host.
@@ -240,8 +248,8 @@ repository.
   their logins in the workspace. Keep each installed into a directory every
   process's `PATH` holds, such as `~/.local/bin`, not one a login shell adds.
 - `cargo` on the container's `PATH` is a wrapper,
-  `~/.local/bin/cargo`, which `.devcontainer/languages/rust/permit-wrapper.sh`
-  installs ahead of the toolchain's own. It runs `build`, `check`, `clippy`,
+  `~/.local/bin/cargo`, which the published toolchain image the devcontainer
+  is built on installs ahead of the toolchain's own. It runs `build`, `check`, `clippy`,
   `doc`, `test` and `nextest` under a permit from the fleet's agent, so the
   workspaces on one machine take turns building. It does so only where the
   agent has placed its executable at

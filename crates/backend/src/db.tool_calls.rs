@@ -10,9 +10,9 @@ use std::collections::{BTreeMap, HashMap};
 
 use sea_orm::sea_query::Expr;
 use sea_orm::{ColumnTrait, EntityTrait, Iterable, QueryFilter, QuerySelect, TransactionTrait};
-use test_cabinet_core::event::HarnessEvent;
-use test_cabinet_core::run_record::{HarnessSlug, RunRecord};
-use test_cabinet_core::tool_tally;
+use test_cabinet_contracts::event::HarnessEvent;
+use test_cabinet_contracts::run_record::{HarnessSlug, RunRecord};
+use test_cabinet_contracts::tool_tally;
 use test_cabinet_entities::run;
 
 use super::{Db, StoredRun, readable_runs, set_dirty, touch_run};

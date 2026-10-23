@@ -3,17 +3,19 @@ title: Overview
 ---
 
 These pages build a staging and a production environment for the backend, the
-auth service, the dispatcher, the artifact service, and the arena on a Kubernetes
-cluster. Read the [Deployment overview](/deployment/overview/) first for the
-shape of the system: a console enqueues a run at the backend, the dispatcher
-claims it and creates a per-run `Job` running the driver, and that driver creates
-one ephemeral sandbox pod for the run.
+dispatcher, the artifacts and repos services, the arena, the console and the
+edge on a Kubernetes cluster. Read the
+[Deployment overview](/deployment/overview/) first for the shape of the system:
+a console enqueues a run at the backend, the dispatcher claims it and creates a
+per-run `Job` running the driver, and that driver creates one ephemeral sandbox
+pod for the run.
 
-The design is provider-agnostic. The backend, auth, and artifact services are
-each a single-replica `StatefulSet` with a volume, the dispatcher is a stateless
-one-replica `Deployment` with RBAC to manage `Job`s, and a run is a short-lived
-`Job` whose driver creates one sandbox pod. Any conformant cluster, managed or
-self-hosted, works the same way.
+The design is provider-agnostic apart from its object stores. The backend is a
+two-replica `Deployment` on a managed PostgreSQL instance, the dispatcher is a
+stateless one-replica `Deployment` with RBAC to manage `Job`s, the artifacts and
+repos services are stateless `Deployment`s over Azure Blob containers, and a
+run is a short-lived `Job` whose driver creates one sandbox pod. Any conformant
+cluster, managed or self-hosted, works the same way.
 
 The manifests are a kustomize base under `deployments/k8s/base/`, reusable
 components under `deployments/k8s/components/`, one overlay per environment under
@@ -23,46 +25,33 @@ to adapt.
 
 ## Topology
 
-```
-          OpenVPN client (operator machine)  ──▶  resolves *.tcab.testcabinet.ai
-                 │                                via private DNS → internal LB IP
-                 ▼
-   ingress-nginx (internal LB, private VNet IP, VPN-only)   TLS: cert-manager (LE)
-   ┌──────────────────────────────────────────────────────────────────────────┐
-   │  console.* → tcab-web         api.* → tcab-backend:8787                  │
-   │  auth.* → tcab-auth:8789      artifacts.* → tcab-artifacts:8790          │
-   │  arena.* → tcab-arena:8791    grafana.* → tcab-lgtm:3000 (auth-locked)   │
-   └──────────────────────────────────────┬───────────────────────────────────┘
-                                          │ (NetworkPolicy admits ingress-nginx ns)
+```text
+   browser / operator client / tcab
+        │  https://console.testcabinet.ai  (+ grafana.testcabinet.ai)
+        ▼
+   Cloudflare edge: TLS, WAF, Access (Entra ID sign-in, Cf-Access-Jwt-Assertion)
+        │  Cloudflare Tunnel, held open from inside the namespace
    Kubernetes namespace: tcab-prod
-   ┌──────────────────────────────────────▼─────────────────────────────────────┐
-   │                                                                            │
-   │   tcab-web (Deployment, 1)              tcab-dispatcher (Deployment, 1)    │
-   │   ┌────────────────────┐  ClusterIP     ┌──────────────────────┐  no Svc   │
-   │   │ static console SPA │                │ claims a queued run, │           │
-   │   │ (runtime cfg → API)│                │ creates ONE Job/run  │           │
-   │   └────────────────────┘                └──────────┬───────────┘           │
-   │                                                    │ creates Job (K8s API) │
-   │   tcab-backend (StatefulSet, 1)                    ▼                       │
-   │   ┌────────────────────┐  ClusterIP     ┌──────────────────────┐           │
-   │   │ tcab-backend       │◀── enqueue ────│ tcab-driver Job      │ one per   │
-   │   │ + PVC (state)      │── claim ──────▶│ (per-run, then GC'd) │  run      │
-   │   │ + run queue        │                │ creates / exec /     │           │
-   │   │ + headless browser │                │ deletes ▼ (K8s API)  │           │
-   │   └─────────┬──────────┘                │  ┌────────────────┐  │           │
-   │   tcab-auth (StatefulSet, 1)            │  │  sandbox pod   │  │ untrusted │
-   │   ┌────────────────────┐  ClusterIP     │  │  (ephemeral)   │  │           │
-   │   │ tcab-auth + PVC    │◀───────────────│  └────────────────┘  │           │
-   │   └────────────────────┘                └──────────────────────┘           │
-   │   tcab-artifacts (StatefulSet, 1)        tcab-arena (Deployment, 1)        │
-   │   ┌────────────────────┐  ClusterIP      ┌────────────────────┐  ClusterIP │
-   │   │ tcab-artifacts     │◀── upload ──────│ tcab-arena (wasm)  │            │
-   │   │ + PVC (artifacts)  │                 └────────────────────┘            │
-   │   └─────────┬──────────┘                                                   │
-   └─────────────┼──────────────────────────────────────────────────────────────┘
-                 │ outbound only (backend)
-                 ▼
-        Cloudflare R2 (snapshot) + Pages deploy hook  ──▶  public gallery
+   ┌────┼─────────────────────────────────────────────────────────────────────────┐
+   │    ▼                                                                         │
+   │  tcab-cloudflared (Deployment, 2)   routes by path:                          │
+   │    /            → tcab-web:8080         /api/   → tcab-backend:8787          │
+   │    /artifacts/  → tcab-artifacts:8790   /arena/ → tcab-arena:8791            │
+   │    grafana.*    → tcab-lgtm:3000                                             │
+   │                                                                              │
+   │  tcab-backend (Deployment, 2)  ◀── claim ──  tcab-dispatcher (Deployment, 1) │
+   │   queue, records, scoring,                    creates one Job per run        │
+   │   ingest sidecar, + PostgreSQL                and one per publish (K8s API)  │
+   │      │ public writes                              │                          │
+   │      ▼                                            ▼                          │
+   │  tcab-artifacts (Deployment, 2) ◀─ run tree ─  tcab-driver Job               │
+   │   run trees → Blob, public → R2                   │ bundle   │ exec          │
+   │  tcab-repos (Deployment, 2)   ◀───────────────────┘          ▼               │
+   │   bundles → Blob, publish → GitHub  ◀── publish ──     sandbox pod           │
+   │                                     tcab-publisher Job  (ephemeral,          │
+   │  tcab-arena (Deployment, 1)         (Pages deploy)       untrusted)          │
+   └──────────────────────────────────────────────────────────────────────────────┘
+          outbound only: Azure Blob, Cloudflare R2, GitHub, Cloudflare Pages
 ```
 
 One environment is one namespace, `tcab-staging` or `tcab-prod`, so the two are
@@ -70,81 +59,94 @@ isolated and tearing one down is `kubectl delete namespace`. Build staging first
 confirm the flow, then repeat for prod with prod's own secrets and a
 `TCAB_ENV=prod` tag.
 
-The backend's only outbound traffic is the snapshot upload to Cloudflare R2 and
-the deploy-hook call that rebuilds the
-[public gallery](/components/site/overview/). Because the sandbox pod's disk is
-ephemeral, the driver uploads the produced run tree to the artifact service
-before reporting terminal status, and the console reads those artifacts from
-there.
+Nothing in the namespace accepts an inbound connection from outside the
+cluster. The tunnel is outbound, the artifacts service's writes to Blob and R2
+are outbound, the repos service's pushes to GitHub are outbound, and the
+publisher's Pages deploys are outbound. Because the sandbox pod's disk is
+ephemeral, the driver uploads the produced run tree and the implementation's
+bundle before reporting terminal status. The console reads the tree from the
+artifacts service through the edge, and the bundle through the backend, which
+fetches it from the repos service.
 
 ## Prerequisites
 
 - A Kubernetes cluster and `kubectl` configured to reach it. The run model needs
   no privileged pods, no Docker socket, and no special node pool.
 - A container registry the cluster can pull the service images and the
-  run-container images from. The Azure pipeline builds every one of them for
-  `linux/amd64` and `linux/arm64` on each push to `master` and `staging` and
-  pushes them to `testcabinet.azurecr.io` tagged by the commit sha. Each
+  run-container images from. Each `microservice-*` repository's pipeline builds
+  its image for `linux/amd64` and `linux/arm64` on each gated push to `master`
+  and `staging` and pushes it to `testcabinet.azurecr.io` as `<name>:<commit>`,
+  and `microservice-driver`'s builds the run-container images beside it. Each
   cluster's kubelet identity holds `AcrPull` on that registry, so the `staging`
   and `prod` overlays need no pull secret. A deployment pulling from a private registry
   without such a grant creates an `imagePullSecret` and names it in
   `TCAB_K8S_IMAGE_PULL_SECRETS`.
-- A `StorageClass` for the backend, auth, and artifact `PersistentVolumeClaim`s.
-  `ReadWriteOnce` is sufficient; none of the volumes is shared.
-- The publisher's credentials, if the deployment will publish runs: a GitHub
-  token and a Cloudflare API token, plus the backend's R2 credentials and site
-  deploy-hook URL.
+- A `StorageClass` for the observability stack's volumes, and in the SQLite
+  shape for the backend's `PersistentVolumeClaim`. `ReadWriteOnce` is
+  sufficient.
+- An Azure storage account with the environment's two private Blob containers,
+  one for the artifacts service's run trees and one for the repos service's
+  bundles, and a user-assigned managed identity per service holding Storage
+  Blob Data Contributor on its container, federated to the service's
+  `ServiceAccount` as [PostgreSQL](/deployment/kubernetes/postgres/) federates
+  the backend's.
+- The Cloudflare side of the [edge](/deployment/kubernetes/edge/): the tunnel,
+  the hostnames, the Access applications and the service token.
+- The publisher's Cloudflare API token and the repos service's GitHub token,
+  if the deployment will publish runs, plus the artifacts service's R2
+  credentials for the public dataset.
 
 ### Pinning images
 
-Every image a deployment runs is pinned to one commit sha. The service images
-are Kubernetes `image:` fields. The driver and publisher images are the
+Every image a deployment runs is pinned to one commit of its repository: the
+commit the superrepo's submodule pointer for that repository names, which the
+repository's pipeline pushed as `<name>:<commit>`. The service images are
+Kubernetes `image:` fields. The driver and publisher images are the
 dispatcher's `TCAB_DRIVER_IMAGE` and `TCAB_PUBLISHER_IMAGE`, and the
 run-container images are resolved by the driver at run time from
 `TCAB_CONTAINER_REGISTRY` and `TCAB_CONTAINER_TAG`, which the dispatcher forwards
-into every driver `Job`.
+into every driver `Job`; `microservice-driver`'s pipeline builds the run images
+beside the driver's, so their tag is the driver's commit. The `cloudflared`
+image is third-party and pinned to its own version in the edge component.
 
 The `staging` and `prod` overlays name every Test Cabinet image at
 `testcabinet.azurecr.io/<image>:unpinned`, a tag nothing pushes, so an overlay
 applied as it stands fails to pull rather than running whatever a moving tag
-last named. The backend's repository there is `the-test-cabinet-backend`, the
-image the pipeline's publish retags from `tcab-backend`. Before anything applies
-an overlay, `scripts/ci/pin-images.sh <overlay> <sha>` rewrites every tag to the
-commit being deployed and adds the dispatcher's `TCAB_DRIVER_IMAGE`,
+last named. Before anything applies an overlay, `scripts/ci/pin-images.sh
+<overlay>` rewrites every tag to the commit the submodule pointer for its
+repository names and adds the dispatcher's `TCAB_DRIVER_IMAGE`,
 `TCAB_PUBLISHER_IMAGE`, `TCAB_CONTAINER_REGISTRY=testcabinet.azurecr.io` and
-`TCAB_CONTAINER_TAG=<sha>` (see [Deploying](#deploying)), so the service images,
-the driver, and the run images it stages
-[audio packs](/components/core/execution/#staged-audio) into always come from
-the same build. It fails when an `unpinned` image survives the pin. The run
-images need no registry setting, because the driver's default registry is
-`testcabinet.azurecr.io`.
+`TCAB_CONTAINER_TAG=<driver commit>` (see [Deploying](#deploying)), so the
+driver and the run images it stages
+[audio packs](/components/driver/execution/#staged-audio) into always come from
+one `microservice-driver` commit. It fails when an `unpinned` image survives
+the pin. The run images need no registry setting, because the driver's default
+registry is `testcabinet.azurecr.io`.
 
 ## Cluster prerequisites
 
 The deploy identity may write only the environment's namespace, so the objects
 outside it are a one-time cluster bootstrap that a cluster administrator applies
 by hand. `deployments/k8s/cluster/azure-staging` and
-`deployments/k8s/cluster/azure-prod` hold them: the
-environment's `Namespace`, the observability stack's `ClusterRole` and
-`ClusterRoleBinding` `tcab-lgtm-node-metrics`, and the cert-manager
-`ClusterIssuer` `letsencrypt-internal`. Before the pipeline's first deploy to an
-environment:
+`deployments/k8s/cluster/azure-prod` hold them: the environment's `Namespace`
+and the observability stack's `ClusterRole` and `ClusterRoleBinding`
+`tcab-lgtm-node-metrics`. Before the pipeline's first deploy to an environment:
 
-1. Install ingress-nginx and cert-manager with its CRDs through Helm, with
-   cert-manager's `clusterResourceNamespace` set to the environment's namespace.
-   [Internal ingress](/deployment/kubernetes/internal-ingress/#prerequisites)
-   has the values, the private DNS zone, and the order.
-2. Create the environment's secrets in its Key Vault: every secret the
-   `components/keyvault-csi` `SecretProviderClass` lists, including the
-   Cloudflare DNS-01 token and the Grafana admin credentials.
-3. Apply the cluster-scoped objects:
+1. Create the environment's secrets in its Key Vault: every secret the
+   `components/keyvault-csi` `SecretProviderClass` lists, including the tunnel
+   credentials and the Grafana admin credentials. The vault has an IP firewall,
+   so run `az keyvault secret set` from an allow-listed host or add your IP
+   with `az keyvault network-rule add`. With a listed secret missing the
+   mounter fails the whole mount and the workloads that read it stay in
+   `CreateContainerConfigError`, which is deliberately fail-closed.
+2. Apply the cluster-scoped objects:
 
    ```sh
    kubectl apply -k deployments/k8s/cluster/azure-prod   # or cluster/azure-staging
    ```
 
-   The API servers are private, so run this over the VPN, or inside the cluster
-   through `az aks command invoke` from `deployments/k8s`:
+   The API servers are private, so run this inside the cluster through
+   `az aks command invoke` from `deployments/k8s`:
 
    ```sh
    cd deployments/k8s
@@ -153,7 +155,7 @@ environment:
      --command "kubectl apply -k cluster/azure-prod"
    ```
 
-4. Grant the pipeline's deploy identity its two roles, scoped as described in
+3. Grant the pipeline's deploy identity its two roles, scoped as described in
    [The deploy identity](#the-deploy-identity). The custom role is defined once
    for both clusters:
 
@@ -168,7 +170,7 @@ environment:
      --role "Azure Kubernetes Service RBAC Admin" --scope "$AKS_ID/namespaces/tcab-prod"
    ```
 
-5. Grant the same identity its two roles on the registry. `<deploy-principal-id>`
+4. Grant the same identity its two roles on the registry. `<deploy-principal-id>`
    is again the service principal's object id or application id, which
    `--assignee` resolves; see [The deploy identity](#the-deploy-identity) for
    why `--assignee-object-id` must never be given the application id:
@@ -181,70 +183,180 @@ environment:
      --role AcrDelete --scope "$ACR_ID"
    ```
 
-Re-apply step 3 whenever anything under `deployments/k8s/cluster/` changes. The
+5. Apply the node pools' upgrade settings, which hold a drain until the run
+   pods on a node have finished (see
+   [Node drains](/deployment/kubernetes/run-plane/#node-drains)):
+
+   ```sh
+   scripts/configure-node-pools.sh --env prod   # or --env staging
+   ```
+
+   The script sets `drainTimeoutInMinutes`, `undrainableNodeBehavior`,
+   `maxSurge` and `maxUnavailable` on every user node pool with
+   `az aks nodepool update`, and is safe to re-run. A node pool added later is
+   configured by running it again. It configures a System node pool as well
+   when that pool carries no `NoSchedule` or `NoExecute` taint, since run pods
+   tolerate no taint and can land on it; a System pool tainted
+   `CriticalAddonsOnly` is left alone.
+
+Re-apply step 2 whenever anything under `deployments/k8s/cluster/` changes. The
 pipeline refuses to deploy an overlay that renders a cluster-scoped object, so a
 change that needs one lands in `deployments/k8s/cluster/` and is applied here.
+
+Secret auto-rotation on the AKS `azure-keyvault-secrets-provider` add-on makes
+the driver poll Key Vault and reconcile a changed value into the synced Secrets
+on its own, so a refreshed credential reaches the cluster without a restart.
+Enable it once per cluster with
+`scripts/enable-secret-rotation.sh --env <prod|staging>`, which is add-on
+configuration rather than a Kubernetes object. Adding a brand-new key to a
+Secret still needs
+`kubectl delete secret <name> && kubectl rollout restart deploy/tcab-keyvault-sync`.
+
+Keep each cluster on a supported Kubernetes version. An upgrade AKS initiates
+for an unsupported version overrides every `PodDisruptionBudget`, the run pod
+budget included.
 
 ## Deploying
 
 The [Azure pipeline](/development/building/#continuous-integration) deploys the
-`staging` and `prod` overlays, once the gates have passed and the commit's
-images are in the registry. A push to `staging` rolls `tcab-staging` on
+`staging` and `prod` overlays once the gates have passed, onto the deploy set
+the commit's submodule pointers name. A push to `staging` rolls `tcab-staging` on
 `testcabinet-staging-westus2-aks`, and a push to `master` rolls `tcab-prod` on
 `testcabinet-prod-westus2-aks`. The pipeline environments `tcab-staging` and
 `tcab-prod` have no approval check. The two take different routes.
 
-**Staging** is the workspace template's own deploy stage, which rolls one
-overlay onto one published commit, and the project's `before` and `after` steps
+**Staging** is the workspace template's own `deploy` stage, which rolls one
+overlay onto one commit's set, and the project's `before` and `after` steps
 around it (`.azure/project/deploy-steps.yml`):
 
-1. before: `scripts/ci/pre-deploy.sh staging <sha>` runs the catalog preflight
-   (see below), pins the overlay with `pin-images.sh`,
-   records the commit the backend runs now as
-   `TCAB_PREVIOUS_COMMIT`, sets a 600-second rollout timeout, and retires the
-   legacy `tcab-backend` Deployment (see below);
-2. the template's `scripts/ci/deploy.sh <sha>` runs the project's
-   `scripts/ci/deploy-preflight.sh <sha>`, the same catalog preflight for a roll
-   made with `deploy.sh` alone, renders the overlay with the backend's image set
-   to `the-test-cabinet-backend:<sha>`, applies it inside the cluster, and waits
-   on `deployment/the-test-cabinet-backend`, undoing it if it does not become
+1. before: `scripts/ci/pre-deploy.sh staging <sha>` runs the catalog
+   preflight first (see [The catalog checks](#the-catalog-checks)), so a deploy
+   it refuses has retired nothing, pins the overlay with
+   `pin-images.sh` from the commit's submodule pointers, records the commit the
+   backend runs now as `TCAB_PREVIOUS_COMMIT`, sets a 600-second rollout
+   timeout, and retires the objects of an earlier shape (see
+   [Retiring an earlier shape](#retiring-an-earlier-shape));
+2. the template's `scripts/ci/deploy.sh <sha>` renders the pinned overlay, runs
+   the project's `scripts/ci/deploy-preflight.sh` (the catalog preflight, see
+   [The catalog checks](#the-catalog-checks)) before it changes anything,
+   applies it inside the cluster, and waits on
+   `deployment/the-test-cabinet-backend`, undoing it if it does not become
    ready;
 3. it then runs the project's `scripts/ci/post-deploy.sh <sha>`, which runs
    `scripts/ci/settle-workloads.sh`: one wait, concurrently, on every other
    `Deployment` and `StatefulSet` in the namespace, each bounded by the rollout
    timeout, undoing each that does not become ready, describing its pods and
-   printing recent events, and failing if any did. It then runs the catalog
-   verify, whatever became of the wait, and fails if either did;
+   printing recent events, and failing if any did, and then the catalog
+   `verify`;
 4. after, on failure only: `scripts/ci/settle-workloads.sh --after-failure <sha>`
    settles and diagnoses whatever the failed apply rolled, and prints the
-   recovery for the failure it finds. A backend whose image is at `<sha>` is
-   rolled out, so a check after the rollout failed: it prints the commands that
-   read and repeat the catalog ingest and that roll the environment again. Any
-   other backend was rolled back: it prints
+   backend's recovery command,
    `scripts/ci/deploy-environment.sh staging <previous sha>`, or "fix forward"
    when there is no previous commit.
 
-The deployment job runs for at most 45 minutes, which holds the backend's
-rollout (10), the settling of the other workloads (14) and the wait on the
-ingest sidecar (10) each at their bound.
-
-**Prod** is the project's `prod` stage on `master`. It publishes the same
-backend retag through the template's `.azure/publish-image.yml`, then runs
+**Prod** is the project's `prod` stage on `master`. It runs
 `scripts/ci/deploy-environment.sh prod <sha>`, which:
 
 1. copies `deployments/k8s` to a temporary directory and pins the `prod` overlay
-   there with `pin-images.sh`;
+   there with `pin-images.sh` from the commit's submodule pointers;
 2. renders it with `kubectl kustomize` on the agent into one manifest file, and
-   refuses the file if it holds anything outside the environment's namespace;
-3. runs the catalog preflight;
-4. retires the legacy `tcab-backend` Deployment;
+   refuses the file if it holds anything outside the environment's namespace, or
+   binds a workload to a workload identity whose client id is still
+   `unprovisioned` (a pod that cannot reach its store never becomes ready);
+3. runs the catalog preflight against that file;
+4. retires the objects of an earlier shape;
 5. runs `kubectl apply -f` on the file inside the cluster through
    `az aks command invoke`, which uploads the file with the command;
 6. waits up to 600 seconds, concurrently, on every `Deployment` and
    `StatefulSet` rollout, the backend's included. A rollout that does not become
    ready is described, its logs are printed, and it is undone, and the deploy
    fails;
-7. runs the catalog verify.
+7. runs the catalog `verify`.
+
+### Retiring an earlier shape
+
+An apply creates and changes objects and never deletes one the render no
+longer names. `scripts/ci/retire-legacy-backend.sh` deletes, before every
+apply, the objects of an earlier shape that would otherwise stay in a namespace
+deployed before:
+
+- the backend's `Deployment` of its old name, `tcab-backend`, whose pod holds
+  the `ReadWriteOnce` claim `tcab-backend-state` the renamed one mounts;
+- the artifacts service's `StatefulSet`, `tcab-artifacts`, replaced by a
+  stateless `Deployment` of the same name. Its claim,
+  `artifacts-tcab-artifacts-0`, is never deleted;
+- what [the edge](/deployment/kubernetes/edge/) replaced: the internal
+  ingress's `Ingress` objects (`tcab-api`, `tcab-arena`, `tcab-artifacts`,
+  `tcab-auth`, `tcab-console` and `tcab-grafana`), the network policies that
+  admitted the ingress controller (`tcab-allow-services-from-ingress`,
+  `tcab-allow-web-from-ingress`, `tcab-allow-lgtm-from-ingress` and
+  `tcab-allow-arena-from-console`), and the `tcab-auth` sign-in workload with
+  its `Service`, `ServiceAccount` and `Secret` `tcab-auth-secrets`.
+
+It waits for the deleted workloads' pods to be gone, and it is idempotent, so
+every deploy runs it.
+
+### The catalog checks
+
+Every deploy starts a new backend pod, whose `ingest` sidecar refreshes the
+checkout to the tip of the environment's catalog branch on the GitHub mirror,
+with the `cold-storage` submodule at the commit that tip pins, and asks the
+backend for one forced ingest. `scripts/ci/catalog-ingest.sh` checks that on
+both sides of the rollout:
+
+- `preflight`, before anything is applied, checks that the branch tip and its
+  `cold-storage` commit can be fetched, that the backend's state volume has
+  room for the fetch, and that the render's size for the `tcab-backend-state`
+  claim (16Gi) is one the cluster can apply: never smaller than the claim, and
+  larger only on a storage class that allows expansion. It fails with nothing
+  applied.
+- `verify`, once the rollout is ready, reads the result the sidecar recorded in
+  `/tmp/ingest-result` and fails the deploy unless the sidecar ingested. A
+  sidecar whose refresh failed ingests nothing, so the backend keeps the
+  catalog and the baselines it had; `tcab ingest --env <env>` ingests again once
+  the cause is fixed.
+
+`verify` spends its wait, at most `TCAB_INGEST_WAIT_SECONDS` (600), in calls of
+at most `TCAB_INGEST_CALL_SECONDS` (240) each, because AKS ends a command after
+ten minutes and keeps none of its output. A wait that ends with no outcome
+prints what the last read answered together with the sidecar's log. The script
+a deploy step runs inside the cluster runs in the image AKS provides for a
+command, so it uses only what that image carries: `bash`, `kubectl`, `jq` and
+the common text tools `awk`, `grep`, `head`, `tail`, `cut` and `tr`. The image
+has no `sed`.
+
+#### Growing the backend's claim
+
+The overlays mount the backend's definition store and ingest checkout on the
+`tcab-backend-state` claim, declared once in
+`deployments/k8s/components/postgres/deployment-backend.yaml` at 16Gi. No
+overlay patches it, so staging and prod declare the same size and a change of
+it reaches each with that environment's next deploy, through the pipeline:
+
+1. `preflight` counts the growth as free space, so a full volume does not stop
+   the deploy that enlarges it, and refuses a size the cluster would not apply.
+2. The apply resizes the claim. The cluster grows the disk and then the
+   filesystem on it, which rests on the claim's storage class allowing
+   expansion (`allowVolumeExpansion: true`, which the classes AKS ships have).
+3. `verify` fails the deploy if the ingest sidecar did not ingest.
+
+A claim cannot shrink, and `preflight` refuses a deploy that asks for it. Once
+an environment has grown, that covers every checkout that still declares the
+smaller size: re-running an earlier pipeline run, or deploying a branch cut
+before the change, is refused with nothing applied. Put an earlier commit back
+from a checkout that carries the current size
+(`scripts/ci/deploy-environment.sh <env> <sha>`), which changes the images and
+leaves the claim alone. Deploy a change of the size to staging first: it shares
+the manifest, so it takes the same path.
+
+A namespace deployed before the artifacts service ran over Blob still holds its
+run trees on the claim `artifacts-tcab-artifacts-0`, which the deploy leaves in
+place when it retires the old `StatefulSet`. The `Deployment` reads the container
+only, so `scripts/ci/copy-artifact-trees.sh <staging|prod>` copies every tree on
+the claim into the container, in the layout the service reads, before the first
+deploy that binds the artifacts identity. It skips a run already in the
+container, so it runs once more just before that deploy, to copy the trees
+finished since.
 
 The clusters' API servers are private, which is why every `kubectl` command runs
 inside the cluster. `az aks command invoke` runs it under the caller's Microsoft
@@ -255,49 +367,32 @@ manifest file without touching a cluster or the checkout, and the
 that touches `deployments/k8s/` or the deploy scripts.
 
 The backend's Deployment is `the-test-cabinet-backend`, the name the template's
-deploy waits on; it was `tcab-backend`. Its Service, ServiceAccount, Secret and
-PersistentVolumeClaim keep their `tcab-backend` names, so every other workload
-reaches it unchanged. The old Deployment holds the `ReadWriteOnce` claim
-`tcab-backend-state`, so every deploy first deletes it if it still exists
-(`scripts/ci/retire-legacy-backend.sh`, a no-op once it is gone). The first
-deploy of each environment after the rename therefore has a brief backend outage
-while the claim re-attaches, and no earlier backend revision to undo to.
+deploy waits on. Its Service, ServiceAccount and Secret keep their
+`tcab-backend` names, so every other workload reaches it unchanged.
 
-Every deploy changes the backend's image tag, so every deploy restarts
-the backend pod, and its ingest sidecar force-ingests the branch tip it shipped
-with. Both routes hold the deploy to that with `scripts/ci/catalog-ingest.sh`.
-The catalog preflight fails the deploy before anything in the cluster changes
-when the branch tip or the cold-storage commit it pins cannot be fetched, or
-when the backend's `state` volume is too full for the sidecar to fetch onto, the
-growth a deploy applies to the volume counted, or when the deploy asks for a
-resize of the volume the cluster would refuse. The
-catalog verify fails it after the rollout when the sidecar did not ingest,
-printing the sidecar's failing step and message, and leaves the rollout in
-place, since the backend then serves the catalog it had. See
-[Deploys and the catalog](/deployment/kubernetes/control-plane/#deploys-and-the-catalog)
-and [Growing the state volume](/deployment/kubernetes/control-plane/#growing-the-state-volume).
+A deploy that moves the backend's pin restarts the backend pod, and its ingest
+sidecar force-ingests the branch tip (see
+[Ingesting definitions](/deployment/kubernetes/control-plane/#ingesting-definitions));
+`tcab ingest --env <env>` refreshes the catalog otherwise.
 
 Run by hand, signed in to Azure with the same roles,
-`scripts/ci/deploy-environment.sh <staging|prod> <sha>` rolls an environment to
-any sha whose images the registry holds. That is how an earlier commit is put
-back; reverting the change on the branch and letting the pipeline deploy the
-revert is the other route. The backend image is `the-test-cabinet-backend:<sha>`,
-which the pipeline has pushed only since the move onto the project template. A
-sha from before it has no such image, so its backend cannot be pulled
-(`ImagePullBackOff`) and the deploy undoes the rollout; put such a commit back
-by reverting on the branch instead.
+`scripts/ci/deploy-environment.sh <staging|prod> <sha>` rolls an environment
+onto the set of any superrepo commit whose images the registry holds. That is
+how an earlier set is put back; reverting the pointer bump on the branch and
+letting the pipeline deploy the revert is the other route.
 
-Which shas the registry holds is a short list, by design. The registry's tier
-has no retention policy, so each deployment ends by running
+Which images the registry holds is a short list, by design. The registry's
+tier has no retention policy, so each deployment ends by running
 `scripts/ci/registry-purge.sh`, which reads what the staging and prod
-namespaces run and keeps those commits' images, the commit just deployed and
-the newest commit in the registry, and deletes every other commit's service and
-run images (a cluster it cannot read stops it with nothing deleted). So the
-commit an environment runs and the one before it, which the other environment
-or a failed deploy's undo still runs, can be put back by hand; anything older is
-put back by reverting on the branch, which rebuilds only the images whose
-inputs changed (see
-[Reusing unchanged run images](/development/building/#reusing-unchanged-run-images)).
+namespaces run and keeps those images, the set just deployed and each
+repository's newest, and deletes every other service and run image (a cluster
+it cannot read stops it with nothing deleted). So the set an environment runs
+and the one before it, which the other environment or a failed deploy's undo
+still runs, can be put back by hand; an older image is put back by reverting
+the change in its own repository, whose pipeline pushes the revert's image
+(rebuilding only the run images whose inputs changed; see
+[Reusing unchanged run images](/development/building/#reusing-unchanged-run-images)),
+and pointing the superrepo at it.
 
 ### The deploy identity
 
@@ -330,10 +425,11 @@ hold every commit to the same check. A compromised pipeline can at worst rewrite
 its own environment's namespace and delete images from the registry, which a
 rebuild puts back.
 
-On the registry, AcrPush is the publish stage's sign-in and AcrDelete is what
-lets `scripts/ci/registry-purge.sh` delete. The registry never refuses a token
-request for an action the identity has no right to: it issues the token without
-that action, and each request made with it answers 401. The purge therefore
+On the registry, AcrPush is what every repository's image pipeline pushes
+with and AcrDelete is what lets `scripts/ci/registry-purge.sh` delete. The
+registry never refuses a token request for an action the identity has no right
+to: it issues the token without that action, and each request made with it
+answers 401. The purge therefore
 reads the actions its token was granted and stops before deleting anything when
 `delete` is not among them, naming this role.
 
@@ -358,27 +454,28 @@ scripts/ci/deploy-environment.sh --render prod <sha>   # preview, no cluster nee
 scripts/ci/deploy-environment.sh prod <sha>            # pin, apply, and wait
 ```
 
-The base lists the RBAC, backend, auth, dispatcher, artifacts, arena, ingest
-`CronJob`, and `NetworkPolicy` resources, all namespaced. An overlay sets the
-namespace and `TCAB_ENV`, patches in the environment's secret references, and
-layers on the components it needs. The `local` overlay also includes
-`deployments/k8s/cluster/namespace` and `deployments/k8s/cluster/observability`,
-so one apply creates its `Namespace` and node-metrics grant; the remote
-overlays render only namespaced objects, and their cluster-scoped objects are
-the bootstrap above.
+The base lists the RBAC, backend, dispatcher, artifacts, repos, arena, ingest
+`CronJob`, `NetworkPolicy` and `PodDisruptionBudget` resources, all namespaced.
+An overlay sets the namespace and `TCAB_ENV`, patches in the environment's
+secret references and its Access audience tag, and layers on the components it
+needs. The `local`
+overlay also includes `deployments/k8s/cluster/namespace` and
+`deployments/k8s/cluster/observability`, so one apply creates its `Namespace`
+and node-metrics grant; the remote overlays render only namespaced objects, and
+their cluster-scoped objects are the bootstrap above.
 
-| Component                      | What it adds                                                             |
-| ------------------------------ | ------------------------------------------------------------------------ |
-| `components/postgres`          | Backend and auth as stateless `Deployment`s on managed PostgreSQL        |
-| `components/postgres-azure-ad` | Passwordless Microsoft Entra database auth for those two `Deployment`s   |
-| `components/observability`     | The in-cluster Grafana LGTM stack                                        |
-| `components/keyvault-csi`      | Materializes the environment's Kubernetes `Secret`s from Azure Key Vault |
-| `components/web`               | The in-cluster `tcab-web` console workload                               |
-| `components/internal-ingress`  | The console plus the service hostnames over a VPN-only ingress           |
+| Component                      | What it adds                                                              |
+| ------------------------------ | ------------------------------------------------------------------------- |
+| `components/postgres`          | The backend as a stateless `Deployment` on managed PostgreSQL             |
+| `components/postgres-azure-ad` | Passwordless Microsoft Entra database auth for that `Deployment`          |
+| `components/observability`     | The in-cluster Grafana LGTM stack                                         |
+| `components/keyvault-csi`      | Materializes the environment's Kubernetes `Secret`s from Azure Key Vault  |
+| `components/web`               | The in-cluster `tcab-web` console workload                                |
+| `components/edge`              | The `cloudflared` tunnel routing the environment's origin to the services |
 
 The base alone runs the SQLite shape, as the `local` overlay does. The `staging`
 and `prod` overlays run the same base with the PostgreSQL, Key Vault,
-observability, and internal-ingress components layered on.
+observability, web and edge components layered on.
 
 ## NetworkPolicy
 
@@ -390,23 +487,28 @@ Calico or Cilium. Pods carry selectable labels: driver `Job` pods are labelled
 
 The allowed flows are:
 
-- dispatcher and driver pods to the backend and auth service, for claiming runs
-  and reporting status;
-- the backend to the auth service, for verifying every bearer token;
-- driver pods to the artifact service, for uploading the produced run tree;
-- the backend to the artifact service, for pruning a deleted run's tree and
-  sweeping the trees no run row references;
-- sandbox pods to their driver pod, for streaming live preview frames;
-- the artifact service to the backend, for verifying a driver's upload token;
+- dispatcher, driver and publisher pods to the backend, for claiming runs and
+  publish jobs and reporting status;
+- driver pods to the artifacts service, for uploading the produced run tree,
+  and to the repos service, for uploading the bundle;
+- publisher pods to the artifacts service, for fetching the build output, and
+  to the repos service, for the public push;
+- the backend to the artifacts service, for pruning a deleted run's tree,
+  sweeping the trees no run row references, and writing the public snapshot,
+  and to the repos service, for serving a bundle download and pruning a
+  deleted run's bundle;
+- sandbox pods to their driver pod, for streaming live preview frames and
+  collecting the tree;
+- the artifacts and repos services to the backend, for verifying a driver's or
+  a publisher's token;
 - the arena to the backend, for fetching controller inputs and persisting
-  tournaments;
-- the console to the arena, for running matches and tournaments.
+  tournaments.
 
-The `components/internal-ingress` component adds three further exceptions,
-selecting the controller by its namespace's `kubernetes.io/metadata.name:
-ingress-nginx` label: ingress-nginx to the backend, auth, artifacts, and arena on
-their service ports, ingress-nginx to `tcab-web` on `8080`, and ingress-nginx to
-`tcab-lgtm` on `3000`. These are additive; the base policies stay intact.
+The `components/edge` component adds the flows from the `tcab-cloudflared` pods
+to `tcab-web` on `8080`, to the backend, artifacts and arena on their service
+ports, and to `tcab-lgtm` on `3000`. These are additive; the base policies stay
+intact. The console reaches the arena, the artifacts service and the backend
+through the edge, so no console-to-service flow exists in the cluster.
 
 Sandbox pods need no inbound access beyond the driver's `exec` and preview
 connections, which Kubernetes routes over the API server and the pod network.
@@ -432,15 +534,16 @@ what crowds a run pod off its node: the sum of the services' limits on a node is
 knowable, so a run pod that grows past its request is contending only with
 headroom the scheduler left, never with another tenant's unbounded growth.
 
-| Container                       | Ceiling  | Why                                                                                                                              |
-| ------------------------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| `backend`                       | `2Gi`    | around 2.4x the anonymous memory plus slab a snapshot refresh reaches, which materializes every run record at once               |
-| `lgtm`                          | `4Gi`    | a collector, three TSDBs and Grafana under bursty load, since validating a test case drives far more telemetry than a quiet week |
-| `artifacts`                     | `1536Mi` | its resident set, since a whole-tree download is written to the response as it is built rather than assembled in memory          |
-| `ingest` sidecar                | `256Mi`  | around 3x its peak, and it runs a git checkout whose cost grows with the catalog                                                 |
-| `arena`                         | `512Mi`  | sized for concurrent wasm matches rather than for an idle week                                                                   |
-| `auth`, `dispatcher`, `web`     | `256Mi`  | around 32x their peaks, and the headroom costs a node almost nothing                                                             |
-| `publisher` (per publish `Job`) | `1Gi`    | several times the largest run tree it pulls from the artifact service                                                            |
+| Container                          | Ceiling  | Why                                                                                                                              |
+| ---------------------------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| `backend`                          | `2Gi`    | around 2.4x the anonymous memory plus slab a snapshot refresh reaches, which materializes every run record at once               |
+| `lgtm`                             | `4Gi`    | a collector, three TSDBs and Grafana under bursty load, since validating a test case drives far more telemetry than a quiet week |
+| `artifacts`                        | `1536Mi` | concurrent uploads and downloads streamed through to and from Blob, since no tree is assembled in memory                         |
+| `repos`                            | `1Gi`    | unpacking and pushing the largest bundle at publish, with `git`'s own working set                                                |
+| `ingest` sidecar                   | `256Mi`  | around 3x its peak, and it runs a git checkout whose cost grows with the catalog                                                 |
+| `arena`                            | `512Mi`  | sized for concurrent wasm matches rather than for an idle week                                                                   |
+| `dispatcher`, `web`, `cloudflared` | `256Mi`  | around 32x their peaks, and the headroom costs a node almost nothing                                                             |
+| `publisher` (per publish `Job`)    | `1Gi`    | several times the largest build output it pulls from the artifacts service                                                       |
 
 CPU is treated differently. A container over its CPU limit is throttled rather
 than killed, so the failure mode is latency instead of a lost pod, and CPU limits
@@ -462,28 +565,30 @@ kubectl -n <ns> exec <pod> -c <container> -- \
 Staging and prod apply the same base manifests, so staging rehearses prod. Only
 these differ:
 
-|               | Staging                           | Prod                           |
-| ------------- | --------------------------------- | ------------------------------ |
-| Deployed from | the `staging` branch              | the `master` branch            |
-| Cluster       | `testcabinet-staging-westus2-aks` | `testcabinet-prod-westus2-aks` |
-| Namespace     | `tcab-staging`                    | `tcab-prod`                    |
-| `TCAB_ENV`    | `staging`                         | `prod`                         |
-| Secrets       | staging keys and tokens           | prod keys and tokens           |
-| Hostnames     | `*.staging.tcab.testcabinet.ai`   | `*.tcab.testcabinet.ai`        |
+|               | Staging                                   | Prod                                   |
+| ------------- | ----------------------------------------- | -------------------------------------- |
+| Deployed from | the `staging` branch                      | the `master` branch                    |
+| Cluster       | `testcabinet-staging-westus2-aks`         | `testcabinet-prod-westus2-aks`         |
+| Namespace     | `tcab-staging`                            | `tcab-prod`                            |
+| `TCAB_ENV`    | `staging`                                 | `prod`                                 |
+| Secrets       | staging keys and tokens                   | prod keys and tokens                   |
+| Origin        | `console.staging.testcabinet.ai`          | `console.testcabinet.ai`               |
+| Tunnel        | `tcab-staging`                            | `tcab-prod`                            |
+| Object stores | the staging Blob containers and R2 bucket | the prod Blob containers and R2 bucket |
 
-Use separate Cloudflare R2 buckets and deploy hooks per environment to keep
-staging publishes out of the prod gallery dataset; point each backend's
-`TCAB_R2_*` and `TCAB_SITE_DEPLOY_HOOK_URL` at the right one.
+Give each environment its own [public plane](/deployment/public-gallery/) so
+staging publishes stay out of the prod gallery dataset; point each artifacts
+service's `TCAB_R2_*` at the right bucket.
 
 ## Next steps
 
-- [Control plane](/deployment/kubernetes/control-plane/): the backend, its
-  catalog ingest, and the auth service.
+- [Control plane](/deployment/kubernetes/control-plane/): the backend and its
+  catalog ingest.
 - [Run plane](/deployment/kubernetes/run-plane/): RBAC, the dispatcher, per-run
-  driver `Job`s, publish `Job`s, and the artifact and arena services.
+  driver `Job`s, publish `Job`s, and the artifacts, repos and arena services.
 - [PostgreSQL](/deployment/kubernetes/postgres/): the managed-database shape and
   passwordless Entra auth.
-- [Internal ingress](/deployment/kubernetes/internal-ingress/): the VPN-only
-  console and service hostnames.
+- [Edge](/deployment/kubernetes/edge/): the tunnel, the Access applications and
+  the hostnames.
 - [Backups](/deployment/backups/) and [Telemetry](/deployment/telemetry/): the
   two cross-cutting operational concerns.

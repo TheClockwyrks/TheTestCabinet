@@ -88,6 +88,14 @@ mod m20261012_000061_add_run_artifact_retention;
 mod m20261012_000062_add_run_media_manifest;
 mod m20261012_000063_add_run_state_reclaim;
 mod m20261017_000064_add_run_tool_calls_counted;
+mod m20261018_000058_collapse_review_reviewer;
+mod m20261019_000059_add_job_held_record;
+mod m20261019_000060_add_run_artifacts_stored;
+mod m20261019_000061_add_job_lease;
+mod m20261019_000062_create_job_event;
+mod m20261019_000063_add_snapshot_dirty_generation;
+mod m20261019_000064_add_model_probe_lease;
+mod m20261019_000065_add_publish_job_lease;
 
 pub struct Migrator;
 
@@ -163,6 +171,14 @@ impl MigratorTrait for Migrator {
             Box::new(m20261012_000062_add_run_media_manifest::Migration),
             Box::new(m20261012_000063_add_run_state_reclaim::Migration),
             Box::new(m20261017_000064_add_run_tool_calls_counted::Migration),
+            Box::new(m20261018_000058_collapse_review_reviewer::Migration),
+            Box::new(m20261019_000059_add_job_held_record::Migration),
+            Box::new(m20261019_000060_add_run_artifacts_stored::Migration),
+            Box::new(m20261019_000061_add_job_lease::Migration),
+            Box::new(m20261019_000062_create_job_event::Migration),
+            Box::new(m20261019_000063_add_snapshot_dirty_generation::Migration),
+            Box::new(m20261019_000064_add_model_probe_lease::Migration),
+            Box::new(m20261019_000065_add_publish_job_lease::Migration),
         ]
     }
 }

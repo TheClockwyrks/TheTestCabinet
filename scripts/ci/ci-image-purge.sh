@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Deletes every manifest in a CI image's repository that no live branch pins.
 #
-#   scripts/ci/ci-image-purge.sh [--dry-run] <rust|web>
+#   scripts/ci/ci-image-purge.sh [--dry-run] <rust|rust-browser|web|android>
 #
 # The registry's tier has no retention policy, so without this every CI image
 # ever built stays for ever, and each build leaves untagged manifests behind
@@ -21,19 +21,43 @@
 #
 # What is kept is what `master`, `staging` and `nightly` pin in
 # ci/images/tags.yml as `ciImageTag`, the commit whose image pipeline run built
-# both tracks' images, plus what this checkout's copy of the file pins, plus
+# every track's image, plus what this checkout's copy of the file pins, plus
 # the commit this run is on: the image the job pushed a step ago is tagged with
 # it, and nothing pins it until the next commit writes it into the file.
 # Usually that is one or two tags; it is more while a change sits on `nightly`
-# or `staging` and has not reached `master`. Nothing older is kept. This project
-# runs no CI on an old commit, so an image that no live branch names is an
-# image nothing will ever pull, and a count or an age would only decide how
-# long to pay for it.
+# or `staging` and has not reached `master`.
+#
+# Every tag pushed within the last day is kept as well, pinned or not. Runs of
+# the image pipeline on other branches go on at the same time as this one, and
+# each pushes its Rust image a job before the rust-browser job builds on it:
+# deleting that tag in between fails the other run's rust-browser job with the
+# Rust image "not found". And the documented loop pins a run's commit only in
+# the commit after the run, so its image waits unpinned until that lands. Each
+# tag spared this way is printed. Nothing older is kept. This project runs no
+# CI on an old commit, so an image that no live branch names once that day is
+# over is an image nothing will ever pull, and a longer age would only decide
+# how long to pay for it.
 #
 # Keeping every live branch is what stops this breaking the branches it is not
 # run from: each pins the tag it was merged with until a change reaches it, and
 # deleting that tag would fail its gates at job initialization rather than in
 # a check.
+#
+# The project's other repositories pull the same images. A repository rendered
+# from the kit (scripts/repos/render.py) names each image it runs in by commit,
+# `ubuntu-the-test-cabinet-<track>-cicd:<40 hex>`, in its own
+# azure-pipelines.yml, and its branches move to a newer pin only as the merge-up
+# that bumped `ciImageTag` here reaches them. So what the live branches of each
+# repository .gitmodules names by a relative URL pin there is kept too, where
+# the .gitmodules is the checkout's and every live branch's together: a
+# repository added on `nightly` is a submodule there before it is one on
+# `master`, and a run on `master` that read only its own file would delete what
+# that repository's branches pin. A
+# repository whose pipeline names no CI image, or that has no pipeline at all,
+# keeps nothing, and one that cannot be read stops the purge. A tag of such a
+# repository is not kept: its run is a one-off, and a re-run after its image is
+# gone is replaced by a patch tag (the Repositories page of the documentation
+# site).
 #
 # The credential is the one `Docker@2` wrote for the `the-test-cabinet-acr`
 # service connection, read back out of the docker configuration. That
@@ -54,6 +78,14 @@ readonly PINS_FILE="ci/images/tags.yml"
 # underneath it would leave a tag that resolves to nothing.
 readonly UNTAGGED_MIN_AGE_SECONDS=3600
 
+# A tag no live branch pins is left until it is this old. Another branch's run
+# in flight has pushed its Rust image and not yet built its rust-browser image
+# on it, and a run's own image is unpinned until the commit after the run
+# writes it into ci/images/tags.yml. A day covers the jobs' 60-minute ceilings
+# and that pin commit; an image whose pin lands later is rebuilt by queuing the
+# image pipeline on the pinned commit.
+readonly TAGGED_MIN_AGE_SECONDS=86400
+
 # The branches whose pins are kept. A branch this cannot resolve stops the
 # purge, because a fetch that failed must not read as "no branch names this
 # tag": every tag that branch pins would look unkept and be deleted. So does a
@@ -65,7 +97,7 @@ readonly LIVE_BRANCHES=("master" "staging" "nightly")
 
 usage() {
 	cat >&2 <<'USAGE'
-usage: scripts/ci/ci-image-purge.sh [--dry-run] <rust|web>
+usage: scripts/ci/ci-image-purge.sh [--dry-run] <rust|rust-browser|web|android>
 USAGE
 	exit 1
 }
@@ -78,7 +110,7 @@ fi
 
 track="${1:-}"
 case "$track" in
-rust | web) ;;
+rust | rust-browser | web | android) ;;
 *) usage ;;
 esac
 
@@ -88,8 +120,10 @@ readonly REPOSITORY="ubuntu-the-test-cabinet-${track}-cicd"
 # overwrite orphans.
 readonly CACHE_REPOSITORY="${REPOSITORY}-cache"
 
-here="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-cd "$here"
+# The project's helpers, ci_resolve_url among them; sourcing it changes into the
+# repository root.
+# shellcheck source=/dev/null
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/tcab-lib.sh"
 
 # An Authorization header for one repository, built from whatever the docker
 # configuration holds. The two logins that write it write different things, and
@@ -160,7 +194,8 @@ pins_in() {
 		sed -E 's/^.*:[[:space:]]*//' || true
 }
 
-# Every tag a live branch pins, plus the one this checkout pins.
+# Every tag a live branch pins, plus the one this checkout pins, plus what the
+# live branches of the submodule repositories pin (submodule_pins).
 #
 # Only the one file on each branch is wanted, so the fetch asks for as little
 # history as it can get away with. `--depth 1` is how the pipeline's own
@@ -194,10 +229,31 @@ kept_tags() {
 		printf '%s\n' "$own"
 	fi
 	local pins
+	# Every .gitmodules there is to read, the checkout's first, for
+	# submodule_pins.
+	GITMODULES_TEXTS=()
+	if [ -f .gitmodules ]; then
+		GITMODULES_TEXTS+=("$(cat .gitmodules)")
+	fi
 	for branch in "${LIVE_BRANCHES[@]}"; do
 		if ! git "${auth[@]}" fetch --quiet "${depth[@]}" origin "$branch"; then
 			echo "ci-image-purge.sh: cannot fetch origin/$branch; refusing to purge" >&2
 			return 1
+		fi
+		# Read before the pins, since a branch that predates ci/images/ can
+		# still name a submodule. A branch without the file names none; one
+		# whose file is there and cannot be read stops the purge, since what it
+		# names would otherwise go unkept.
+		if ! text="$(git ls-tree FETCH_HEAD .gitmodules)"; then
+			echo "ci-image-purge.sh: cannot list origin/$branch's tree; refusing to purge" >&2
+			return 1
+		fi
+		if [ -n "$text" ]; then
+			if ! text="$(git show FETCH_HEAD:.gitmodules)"; then
+				echo "ci-image-purge.sh: cannot read origin/$branch's .gitmodules; refusing to purge" >&2
+				return 1
+			fi
+			GITMODULES_TEXTS+=("$text")
 		fi
 		if ! text="$(git show "FETCH_HEAD:${PINS_FILE}" 2>/dev/null)"; then
 			if [ -z "$(git ls-tree FETCH_HEAD "$(dirname "$PINS_FILE")/" 2>/dev/null)" ]; then
@@ -213,6 +269,87 @@ kept_tags() {
 			return 1
 		fi
 		printf '%s\n' "$pins"
+	done
+	submodule_pins
+}
+
+# Every image of this track a live branch of a submodule repository pins: each
+# entry of the `.gitmodules` texts kept_tags gathered (GITMODULES_TEXTS) whose
+# URL is relative names a repository of this project, resolved against
+# `origin` the way git resolves it, and read once however many of the texts
+# name it. Its branches are listed,
+# and each live one it has is fetched one commit deep and without blobs into a
+# scratch repository, whose azure-pipelines.yml alone is then read, so a
+# repository of media costs what its trees do. Anything that cannot be listed,
+# fetched or read stops the purge, for the reason a superrepo branch does.
+#
+# On an agent the job's access token reads every repository of the project, so
+# a submodule a branch adds is reached as soon as its .gitmodules names it.
+submodule_pins() {
+	[ "${#GITMODULES_TEXTS[@]}" -gt 0 ] || return 0
+	local base entry key url name remote heads branch repo text pins count=0
+	local -a entries=() auth
+	local -A seen=()
+	local scratch
+	scratch="$(mktemp -d)"
+	# shellcheck disable=SC2064 # the directory is known now, and is what goes.
+	trap "rm -rf '$scratch'; trap - RETURN" RETURN
+	for text in "${GITMODULES_TEXTS[@]}"; do
+		count=$((count + 1))
+		printf '%s\n' "$text" >"${scratch}/gitmodules-${count}"
+		mapfile -t -O "${#entries[@]}" entries < <(git config -f "${scratch}/gitmodules-${count}" --get-regexp '^submodule\..*\.url$' 2>/dev/null || true)
+	done
+	[ "${#entries[@]}" -gt 0 ] || return 0
+	if ! base="$(git remote get-url origin 2>/dev/null)"; then
+		echo "ci-image-purge.sh: this checkout has no origin to resolve the submodules' URLs against; refusing to purge" >&2
+		return 1
+	fi
+	count=0
+	for entry in "${entries[@]}"; do
+		key="${entry%% *}"
+		url="${entry#* }"
+		[[ "$url" == ../* || "$url" == ./* ]] || continue
+		name="${key#submodule.}"
+		name="${name%.url}"
+		if ! remote="$(ci_resolve_url "$base" "$url")"; then
+			echo "ci-image-purge.sh: cannot resolve ${name}'s URL ${url}; refusing to purge" >&2
+			return 1
+		fi
+		[ -z "${seen[$remote]:-}" ] || continue
+		seen[$remote]=1
+		count=$((count + 1))
+		auth=()
+		if [ -n "${SYSTEM_ACCESSTOKEN:-}" ] && [[ "$remote" == https://*dev.azure.com/* ]]; then
+			auth=(-c "http.extraheader=AUTHORIZATION: bearer ${SYSTEM_ACCESSTOKEN}")
+		fi
+		if ! heads="$(git "${auth[@]}" ls-remote --heads "$remote")"; then
+			echo "ci-image-purge.sh: cannot list the branches of ${name} (${remote}); refusing to purge" >&2
+			return 1
+		fi
+		repo="${scratch}/repository-${count}"
+		git init --quiet --bare "$repo"
+		git -C "$repo" remote add origin "$remote"
+		for branch in "${LIVE_BRANCHES[@]}"; do
+			awk -v ref="refs/heads/${branch}" '$2 == ref { found = 1 } END { exit !found }' <<<"$heads" || continue
+			if ! git "${auth[@]}" -C "$repo" fetch --quiet --no-tags --depth 1 --filter=blob:none origin \
+				"+refs/heads/${branch}:refs/heads/${branch}"; then
+				echo "ci-image-purge.sh: cannot fetch ${name}/${branch}; refusing to purge" >&2
+				return 1
+			fi
+			if [ -z "$(git -C "$repo" ls-tree "refs/heads/${branch}" azure-pipelines.yml)" ]; then
+				continue
+			fi
+			# The blob was left behind, so this fetches it, with the token above.
+			if ! text="$(git "${auth[@]}" -C "$repo" show "refs/heads/${branch}:azure-pipelines.yml")"; then
+				echo "ci-image-purge.sh: cannot read ${name}/${branch}'s azure-pipelines.yml; refusing to purge" >&2
+				return 1
+			fi
+			pins="$(grep -oE "ubuntu-the-test-cabinet-${track}-cicd:[0-9a-f]{40}" <<<"$text" | sed 's/^.*://' || true)"
+			if [ -n "$pins" ]; then
+				echo "ci-image-purge.sh: ${name}/${branch} pins $(sort -u <<<"$pins" | tr '\n' ' ')" >&2
+				printf '%s\n' "$pins"
+			fi
+		done
 	done
 	return 0
 }
@@ -256,21 +393,39 @@ delete_manifest() {
 	esac
 }
 
-# Reads the catalogue on stdin and prints the digest of every manifest a kept
-# tag names, one per line. `all` as the kept tags names every tagged manifest,
-# which is the cache repository's rule.
+# Reads the catalogue on stdin and prints the digest of every tagged manifest
+# that stays, one per line: one a kept tag names, and one last written at or
+# after the tagged cutoff, which is spared for its age. `all` as the kept tags
+# names every tagged manifest, which is the cache repository's rule.
 kept_manifests() {
-	local kept="$1"
+	local kept="$1" tagged_cutoff="$2"
 	local kept_json="$kept"
 	[ "$kept" != all ] || kept_json='null'
-	jq -r --argjson kept "$kept_json" '
+	jq -r --argjson kept "$kept_json" --arg tagged_cutoff "$tagged_cutoff" '
 		.manifests[]
 		| select(
 			((.tags // []) | length > 0)
 			and ($kept == null
-				or ([.tags[] | select(. as $t | $kept | index($t))] | length) > 0)
+				or ([.tags[] | select(. as $t | $kept | index($t))] | length) > 0
+				or .lastUpdateTime >= $tagged_cutoff)
 		)
 		| .digest
+	'
+}
+
+# Reads the catalogue on stdin and prints one line for every tagged manifest
+# that only its age keeps: no kept tag names it and it was last written at or
+# after the tagged cutoff.
+spared_manifests() {
+	local kept="$1" tagged_cutoff="$2"
+	jq -r --argjson kept "$kept" --arg tagged_cutoff "$tagged_cutoff" '
+		.manifests[]
+		| select(
+			((.tags // []) | length > 0)
+			and ([.tags[] | select(. as $t | $kept | index($t))] | length) == 0
+			and .lastUpdateTime >= $tagged_cutoff
+		)
+		| "  sparing \(.tags | join(" ")) (pushed \(.lastUpdateTime)), younger than a day"
 	'
 }
 
@@ -290,12 +445,13 @@ children_of() {
 }
 
 # Every digest a purge of one repository must leave alone, as a JSON array:
-# the manifest each kept tag names, read off the catalogue on stdin, and
-# whatever each of those names in turn. Fails, printing nothing, when one of
-# them cannot be read back from the registry, because a kept index whose
-# children are unknown is a kept index whose children would be deleted.
+# the manifest each kept tag names and each tagged one its age spares, read off
+# the catalogue, and whatever each of those names in turn. Fails, printing
+# nothing, when one of them cannot be read back from the registry, because a
+# kept index whose children are unknown is a kept index whose children would be
+# deleted, an hour after they were pushed, while the index lives a day.
 protected_manifests() {
-	local repository="$1" authorization="$2" kept="$3" catalogue="$4"
+	local repository="$1" authorization="$2" kept="$3" tagged_cutoff="$4" catalogue="$5"
 	local digest children
 	local digests=()
 	while read -r digest; do
@@ -309,28 +465,32 @@ protected_manifests() {
 			[ -n "$digest" ] || continue
 			digests+=("$digest")
 		done <<<"$children"
-	done < <(kept_manifests "$kept" <<<"$catalogue")
+	done < <(kept_manifests "$kept" "$tagged_cutoff" <<<"$catalogue")
 	printf '%s\n' "${digests[@]}" | jq -R -s 'split("\n") | map(select(. != ""))'
 }
 
 # Reads the catalogue on stdin and prints the digest of every manifest to
-# delete: one whose tags are all unkept, and one with no tag at all that is
-# older than the grace period above and that no kept manifest names. `all` as
-# the kept tags keeps every tagged manifest, which is the cache repository's
-# rule. The age is for a build in flight, whose image is pushed before the
-# index that will name it; the protected list is for the children of what is
-# already kept, which no age would save.
+# delete: one whose tags are all unkept and that is older than the tagged
+# cutoff, and one with no tag at all that is older than the untagged cutoff and
+# that no kept manifest names. `all` as the kept tags keeps every tagged
+# manifest, which is the cache repository's rule. The untagged age is for a
+# build in flight, whose image is pushed before the index that will name it;
+# the tagged age for a run in flight on another branch, and for an image whose
+# pin has not landed yet (TAGGED_MIN_AGE_SECONDS); the protected list is for
+# the children of what is already kept, which no age would save.
 select_manifests() {
-	local kept="$1" cutoff="$2" protected="$3"
+	local kept="$1" cutoff="$2" tagged_cutoff="$3" protected="$4"
 	local kept_json="$kept"
 	[ "$kept" != all ] || kept_json='null'
-	jq -r --argjson kept "$kept_json" --arg cutoff "$cutoff" --argjson protected "$protected" '
+	jq -r --argjson kept "$kept_json" --arg cutoff "$cutoff" --arg tagged_cutoff "$tagged_cutoff" \
+		--argjson protected "$protected" '
 		.manifests[]
 		| select(.digest as $digest | ($protected | index($digest)) == null)
 		| select(
 			if (.tags // []) | length > 0
 			then $kept != null
 				and ([.tags[] | select(. as $t | $kept | index($t))] | length) == 0
+				and (.lastUpdateTime < $tagged_cutoff)
 			else (.lastUpdateTime < $cutoff)
 			end
 		)
@@ -339,7 +499,7 @@ select_manifests() {
 }
 
 main() {
-	local authorization cache_authorization kept kept_json cutoff catalogue protected digest failed=0
+	local authorization cache_authorization kept kept_json cutoff tagged_cutoff catalogue protected digest failed=0
 
 	if ! authorization="$(authorization_for "$REPOSITORY")"; then
 		exit 1
@@ -359,29 +519,31 @@ main() {
 	echo "${REPOSITORY}: keeping $(tr '\n' ' ' <<<"$kept")"
 
 	cutoff="$(date -u -d "-${UNTAGGED_MIN_AGE_SECONDS} seconds" +%Y-%m-%dT%H:%M:%S.0000000Z)"
+	tagged_cutoff="$(date -u -d "-${TAGGED_MIN_AGE_SECONDS} seconds" +%Y-%m-%dT%H:%M:%S.0000000Z)"
 
 	if ! catalogue="$(manifests_in "$REPOSITORY" "$authorization")"; then
 		echo "ci-image-purge.sh: cannot list ${REPOSITORY}" >&2
 		exit 1
 	fi
-	if ! protected="$(protected_manifests "$REPOSITORY" "$authorization" "$kept_json" "$catalogue")"; then
+	if ! protected="$(protected_manifests "$REPOSITORY" "$authorization" "$kept_json" "$tagged_cutoff" "$catalogue")"; then
 		exit 1
 	fi
+	spared_manifests "$kept_json" "$tagged_cutoff" <<<"$catalogue"
 	while read -r digest; do
 		[ -n "$digest" ] || continue
 		delete_manifest "$REPOSITORY" "$digest" "$authorization" || failed=1
-	done < <(select_manifests "$kept_json" "$cutoff" "$protected" <<<"$catalogue")
+	done < <(select_manifests "$kept_json" "$cutoff" "$tagged_cutoff" "$protected" <<<"$catalogue")
 
 	# The cache repository holds one tag, which buildx overwrites. Everything
 	# untagged in it is an overwrite's leavings; at most 200 go per run, which
 	# is far more than one build orphans and keeps a first run bounded.
 	if cache_authorization="$(authorization_for "$CACHE_REPOSITORY" 2>/dev/null)" &&
 		catalogue="$(manifests_in "$CACHE_REPOSITORY" "$cache_authorization" 2>/dev/null)" &&
-		protected="$(protected_manifests "$CACHE_REPOSITORY" "$cache_authorization" all "$catalogue")"; then
+		protected="$(protected_manifests "$CACHE_REPOSITORY" "$cache_authorization" all "$tagged_cutoff" "$catalogue")"; then
 		while read -r digest; do
 			[ -n "$digest" ] || continue
 			delete_manifest "$CACHE_REPOSITORY" "$digest" "$cache_authorization" || failed=1
-		done < <(select_manifests all "$cutoff" "$protected" <<<"$catalogue" | head -n 200)
+		done < <(select_manifests all "$cutoff" "$tagged_cutoff" "$protected" <<<"$catalogue" | head -n 200)
 	fi
 
 	exit "$failed"

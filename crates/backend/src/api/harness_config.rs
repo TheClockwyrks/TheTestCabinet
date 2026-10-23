@@ -14,8 +14,8 @@
 //! its runs occupy the queue exactly as a third-party harness's do — today they are most of
 //! it — so leaving it off this surface would leave the majority of the queue untunable.
 //!
-//! Reads are open (the private-network model, like the model catalog); the mutation
-//! requires a bearer token (see [`AuthUser`]).
+//! Reads are open to any identity, like the model catalog; the mutation
+//! takes a person's assertion (see [`Person`]).
 
 use axum::Json;
 use axum::extract::{Path, State};
@@ -23,10 +23,9 @@ use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
 
-use test_cabinet_core::run_record::HarnessSlug;
-use test_cabinet_core::{DefaultHarnessRegistry, HarnessRegistry};
+use test_cabinet_contracts::run_record::HarnessSlug;
 
-use crate::auth::AuthUser;
+use crate::auth::Person;
 use crate::error::ApiError;
 
 use super::AppState;
@@ -66,16 +65,12 @@ pub async fn list(State(state): State<AppState>) -> Result<Json<Vec<HarnessConfi
         .list_harness_configs()
         .await
         .map_err(ApiError::from)?;
-    let registry = DefaultHarnessRegistry::new();
     let out = HarnessSlug::RUNNABLE
         .into_iter()
         .map(|slug| {
-            // The registry is the CLI catalog, so it answers for the eight harnesses that
-            // ship a manifest and not for gg, whose slug is its own name.
-            let name = registry
-                .get(slug)
-                .map(|harness| harness.name().to_string())
-                .unwrap_or_else(|| slug.as_str().to_string());
+            // The display name every harness listing shows, the name each checked-in
+            // `harnesses/<slug>/harness.toml` declares (gg's is its own slug).
+            let name = slug.display_name().to_string();
             let max_parallelism = stored
                 .iter()
                 .find(|row| row.harness_slug == slug.as_str())
@@ -90,13 +85,13 @@ pub async fn list(State(state): State<AppState>) -> Result<Json<Vec<HarnessConfi
     Ok(Json(out))
 }
 
-/// `POST /harness-config/{slug}` — set a harness's configuration. Requires a bearer
-/// token. `404` for an unknown harness slug, `422` for a non-positive limit; returns
+/// `POST /harness-config/{slug}` — set a harness's configuration. Takes a person's
+/// assertion. `404` for an unknown harness slug, `422` for a non-positive limit; returns
 /// the refreshed full list so the console adopts one authoritative view.
 #[tracing::instrument(name = "harness_config.set", skip(state, _user, input), fields(harness.slug = %slug), err(Debug))]
 pub async fn set(
     State(state): State<AppState>,
-    _user: AuthUser,
+    _user: Person,
     Path(slug): Path<String>,
     Json(input): Json<HarnessConfigInput>,
 ) -> Result<Json<Vec<HarnessConfigOut>>, ApiError> {

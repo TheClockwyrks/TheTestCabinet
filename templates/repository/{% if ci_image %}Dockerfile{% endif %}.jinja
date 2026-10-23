@@ -1,0 +1,120 @@
+# syntax=docker/dockerfile:1
+{% if image_carries_binaries %}
+# The image carrying the binaries of {{name}}. Its pipeline builds it on
+# every gated push to master and staging, natively once per architecture
+# (scripts/ci/image.sh), and fuses the two into the multi-arch
+# `{{image_registry}}/{{name}}:<commit>` (scripts/ci/manifest.sh).
+# The driver's run-container images copy the binaries from {{tool_binaries}}/
+# of it, at the commit the driver pins; the image runs nothing itself.
+{% else %}
+# The image of {{name}}. Its pipeline builds it on every gated push to master
+# and staging, natively once per architecture (scripts/ci/image.sh), and fuses
+# the two into the multi-arch `{{image_registry}}/{{name}}:<commit>` a
+# deployment pins (scripts/ci/manifest.sh).
+{% endif %}
+{% if rust_crate %}
+#
+# The build context is the repository root, held to what .dockerignore admits,
+# and the `build-context` gate holds every COPY below to that allowlist and the
+# Rust pin to rust-toolchain.toml's channel. The kit writes this file once, as
+# a scaffold, and it then belongs to the repository: an update never merges
+# into it.
+#
+# A manifest names a dependency on another repository by its public source,
+# which a build cannot reach while the mirrors are private. The pipeline hands
+# the build the git configuration scripts/ci/git-sources.sh wrote, which
+# rewrites each public source to Azure and carries the job's token, as the
+# secret `gitconfig`; it is mounted for the one RUN that fetches and never
+# enters a layer. A build without it fetches from the public sources as named.
+FROM docker.io/library/rust:{{rust_channel}}-bookworm AS build
+WORKDIR /src
+COPY . .
+# The commit the image is built from, which the build context, carrying no
+# `.git`, cannot tell; the pipeline passes it.
+ARG TCAB_BUILD_COMMIT
+# The cargo registry, the git checkouts and target/ are cache mounts, so a
+# source change compiles only what changed. BuildKit replays the mtimes a file
+# had in the context when the COPY is served from cache, so the sources are
+# touched first and cargo never takes an artifact of another build as fresh.
+{% if image_carries_binaries %}
+#
+# A tool commits no lock file, so the build resolves its dependencies as
+# cargo finds them, as the tool's pipeline does. Every binary target of the
+# crate is built (`--bins`), and the binaries carried are the executables
+# cargo reports building, so a binary the crate adds is carried without an
+# edit here, and one it drops is not left behind by the cached target/. A
+# crate building no binary has nothing for a run image to copy, and the build
+# fails saying so.
+RUN --mount=type=secret,id=gitconfig,target=/root/.gitconfig,required=false \
+    --mount=type=cache,target=/usr/local/cargo/registry \
+    --mount=type=cache,target=/usr/local/cargo/git \
+    --mount=type=cache,target=/src/target \
+    find /src -path /src/target -prune -o -type f -exec touch {} + \
+    && TCAB_BUILD_COMMIT="${TCAB_BUILD_COMMIT}" cargo build --release --bins -p {{crate}} \
+        --message-format=json-render-diagnostics >/tmp/build.json \
+    && mkdir -p /out/bin \
+    && grep -o '"executable":"[^"]*"' /tmp/build.json | sed 's/^"executable":"//; s/"$//' >/tmp/binaries \
+    && if [ ! -s /tmp/binaries ]; then echo "{{crate}} builds no binary, so the image would carry none" >&2; exit 1; fi \
+    && xargs -r cp -t /out/bin/ </tmp/binaries \
+    && ls -l /out/bin/
+
+FROM docker.io/library/debian:bookworm-slim
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends ca-certificates \
+  && rm -rf /var/lib/apt/lists/*
+COPY --from=build /out/bin/ {{tool_binaries}}/
+{% else %}
+RUN --mount=type=secret,id=gitconfig,target=/root/.gitconfig,required=false \
+    --mount=type=cache,target=/usr/local/cargo/registry \
+    --mount=type=cache,target=/usr/local/cargo/git \
+    --mount=type=cache,target=/src/target \
+    find /src -path /src/target -prune -o -type f -exec touch {} + \
+    && TCAB_BUILD_COMMIT="${TCAB_BUILD_COMMIT}" cargo build --release --locked -p {{crate}} \
+    && mkdir -p /out \
+    && cp target/release/{{crate}} /out/
+
+FROM docker.io/library/debian:bookworm-slim
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends ca-certificates \
+  && rm -rf /var/lib/apt/lists/*
+COPY --from=build /out/{{crate}} /usr/local/bin/{{crate}}
+ENTRYPOINT ["{{crate}}"]
+{% endif %}
+{% else %}
+#
+# The build context is the repository root, held to what .dockerignore admits,
+# and the `build-context` gate holds every COPY below to that allowlist. The
+# kit writes this file once, as a scaffold, and it then belongs to the
+# repository: an update never merges into it.
+#
+# The build installs the npm workspace from its lock and builds it, then
+# serves the static bundle the build emits through nginx. A package of the
+# project installs from the project's private feed, which `.npmrc` names: the
+# pipeline hands the build npm's configuration scripts/ci/npm-feed.sh wrote,
+# carrying the job's token, as the secret `npmrc`, mounted for the one RUN
+# that installs and never entering a layer. A build handed none reaches the
+# public registry alone, so its install of a package of the project fails.
+FROM docker.io/library/node:24-bookworm-slim AS build
+WORKDIR /src
+COPY . .
+# The commit the image is built from, which the build context, carrying no
+# `.git`, cannot tell; the pipeline passes it.
+ARG TCAB_BUILD_COMMIT
+# The npm cache is a cache mount, so a build reuses the tarballs an earlier one
+# downloaded.
+RUN --mount=type=secret,id=npmrc,target=/root/.npmrc,required=false \
+    --mount=type=cache,target=/root/.npm \
+    npm ci \
+    && TCAB_BUILD_COMMIT="${TCAB_BUILD_COMMIT}" npm run build
+
+# nginx-unprivileged runs as a non-root user (uid 101) and listens on 8080,
+# with no Linux capability and no privileged port; its default server serves
+# /usr/share/nginx/html. A single-page app replaces that server with one
+# falling back to index.html, so a deep link loads.
+FROM docker.io/nginxinc/nginx-unprivileged:1-bookworm
+# The bundle the build emits. The scaffold names the root's `dist/`; a site
+# whose bundle is a workspace member's names that member's here.
+COPY --from=build /src/dist /usr/share/nginx/html
+USER 101
+EXPOSE 8080
+{% endif %}

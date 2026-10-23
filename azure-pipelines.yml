@@ -148,7 +148,9 @@ stages:
     displayName: Gates
     jobs:
       # The Rust track: every check that compiles the workspace, and nothing
-      # else. The image carries no Node, so nothing here may reach for one.
+      # else. It runs in the rust-browser image, the Rust image with the
+      # playwright image's engines copied on top, so the Rust tests that drive a browser
+      # run here rather than skip.
       - job: rust
         displayName: Rust
         # Every step of this job runs inside the Rust CI image, at the commit
@@ -160,7 +162,7 @@ stages:
         # says so with `target: host`, and the disk cleanup below is the one
         # that does.
         container:
-          image: testcabinet.azurecr.io/ubuntu-the-test-cabinet-rust-cicd:${{ variables.ciImageTag }}
+          image: testcabinet.azurecr.io/ubuntu-the-test-cabinet-rust-browser-cicd:${{ variables.ciImageTag }}
           endpoint: the-test-cabinet-acr
         # A warm run takes about 45 minutes and a cold one, after the
         # branch's build-output cache expired, about 65: Azure scopes a
@@ -175,8 +177,8 @@ stages:
           # task saves, which is the whole reason CARGO_HOME moves at all.
           #
           # The toolchain is deliberately NOT under here. It lives at
-          # RUSTUP_HOME and CARGO_HOME inside the image, under /usr/local, and
-          # /usr/local/cargo/bin is on the image's PATH — so repointing
+          # RUSTUP_HOME and CARGO_HOME inside the image, under /home/dev, and
+          # /home/dev/.cargo/bin is on the image's PATH — so repointing
           # CARGO_HOME leaves cargo, rustup and cargo-nextest exactly where
           # they are, and `cargo nextest` still resolves, because cargo looks
           # for a `cargo-<name>` subcommand on PATH. That is a contract with
@@ -186,10 +188,28 @@ stages:
           # it. Cargo.toml's dev profile already keeps the debug information to
           # line tables, so a failed test's backtrace still names its lines.
           CARGO_INCREMENTAL: 0
+          # The image carries the browser toolchain, so a Rust test that would
+          # skip for want of it fails instead (contracts/crates/suites/src/test_browser.rs).
+          TCAB_REQUIRE_BROWSER: 1
         steps:
           - checkout: self
             fetchDepth: 1
             clean: true
+
+          # The client-tauri, contracts, engines, gg, microservice-arena, microservice-artifacts, microservice-dispatcher, microservice-driver, microservice-publisher, microservice-repos,
+          # tool-model-core, tool-paint, tool-particle, tool-sprite, tool-voxel,
+          # tool-mc, tool-sn, tool-dc, tool-audio-core, tool-sfx-synth,
+          # tool-sfx-sample, tool-music, test-suites and ui-common submodules, at
+          # the pinned commits, fetched through the job's access token, which
+          # reads every repository of the project. Every build reads the first
+          # twenty-two, because the patch table names their crates and cargo
+          # loads every patch path; the tests over the committed catalog read
+          # test-suites, the documentation site reads gg's pages, and the npm
+          # workspace lists ui-common's packages.
+          - script: scripts/ci/submodules.sh init client-tauri contracts engines gg microservice-arena microservice-artifacts microservice-dispatcher microservice-driver microservice-publisher microservice-repos tool-model-core tool-paint tool-particle tool-sprite tool-voxel tool-mc tool-sn tool-dc tool-audio-core tool-sfx-synth tool-sfx-sample tool-music test-suites ui-common
+            displayName: Initialize the client-tauri, contracts, engines, gg, microservice-arena, microservice-artifacts, microservice-dispatcher, microservice-driver, microservice-publisher, microservice-repos, tool-model-core, tool-paint, tool-particle, tool-sprite, tool-voxel, tool-mc, tool-sn, tool-dc, tool-audio-core, tool-sfx-synth, tool-sfx-sample, tool-music, test-suites and ui-common submodules
+            env:
+              SYSTEM_ACCESSTOKEN: $(System.AccessToken)
 
           # On the agent, not in the container, which is what `target: host`
           # says. The SDKs it removes are the hosted image's own and are in no
@@ -202,9 +222,10 @@ stages:
           # Two caches rather than one, because they are saved under different
           # keys and restored at different rates: the registry changes only
           # with the lockfile, while the build output changes with every
-          # commit. Each restore key is a shorter prefix of the one above it,
-          # so a miss restores the nearest earlier entry and warms the compile
-          # rather than starting from nothing.
+          # commit. The registry's restore key is a shorter prefix of its key,
+          # so a miss restores the nearest earlier entry rather than fetching
+          # every crate again; the build output's restores from the same lock
+          # only, as its comment below says.
           - task: Cache@2
             displayName: Restore the cargo registry
             inputs:
@@ -213,12 +234,33 @@ stages:
                 cargo-home | v1 | "$(Agent.OS)" | rust-toolchain.toml
               path: $(ciCache)
 
+          # The version moves when the restored output stops matching what the
+          # build produces under the same names, so that a restore from an
+          # earlier lock would leave two builds side by side. v2: the contracts
+          # crates moved under contracts/, which gave them and every crate above
+          # them new artifact names; the v1 output plus the rebuild outgrew the
+          # disk the cache save needs. v3: restores come from the same
+          # Cargo.lock only, which leaves the v2 entries, grown across locks,
+          # behind.
+          #
+          # The build output restores only from an entry for this Cargo.lock:
+          # this job's own, or the seed rust_build saved for it (its key is
+          # this one plus a suffix, so the prefix below matches it). This
+          # project drops the toolchain-only and OS-only fallbacks; the OS-only
+          # one is template v0.34.1's, and a template update merges this edit
+          # back over it. A fallback across locks restored the output of every
+          # crate an earlier lock had built, nothing ever removed it, and each
+          # save archived it again with this run's output beside it: by run
+          # 18373 the restored archive was 21 GB, while this workspace builds
+          # in minutes cold, and restoring it ran the agent out of disk. A new
+          # lock or toolchain therefore starts cold here, and rust_build's seed
+          # for it warms the next run.
           - task: Cache@2
             displayName: Restore the build output
             inputs:
-              key: 'cargo-target | v1 | "$(Agent.OS)" | rust-toolchain.toml | Cargo.lock'
+              key: 'cargo-target | v3 | "$(Agent.OS)" | rust-toolchain.toml | Cargo.lock'
               restoreKeys: |
-                cargo-target | v1 | "$(Agent.OS)" | rust-toolchain.toml
+                cargo-target | v3 | "$(Agent.OS)" | rust-toolchain.toml | Cargo.lock
               path: target
 
           # The build output cache restores `target/` whole, the reports the
@@ -263,11 +305,19 @@ stages:
           # nextest's `ci` profile and leave its JUnit report there. The path
           # is relative to the checkout, which the gate finds for itself:
           # every gate enters the workspace root before it does anything else.
+          #
+          # The test binaries compile one crate at a time. The hosted agent's
+          # memory holds one test binary's compile but not two, and a cold run
+          # that compiled two crates' test binaries at once had rustc killed. The
+          # tests still run in parallel, because nextest's test threads are not
+          # cargo's build jobs, and a warm run recompiles few crates, so it
+          # loses little to the limit.
           - script: uv run --quiet --project ci gate run rust-test
             displayName: cargo nextest (workspace)
             condition: eq(variables['checksReady'], 'true')
             env:
               CI_GATE_ARTIFACTS: target/gate-artifacts/rust-test
+              CARGO_BUILD_JOBS: 1
 
           - task: PublishTestResults@2
             displayName: Publish the Rust test results
@@ -283,12 +333,6 @@ stages:
           # Stable cargo writes no report for them, so there is none to publish.
           - script: uv run --quiet --project ci gate run rust-doctest
             displayName: cargo doctests
-            condition: eq(variables['checksReady'], 'true')
-
-          # This project's own gates on this track, one step each like every
-          # gate above.
-          - script: uv run --quiet --project ci gate run contract-drift
-            displayName: "generated contract drift"
             condition: eq(variables['checksReady'], 'true')
 
           # The project's own steps for this job, after its last check and
@@ -333,12 +377,27 @@ stages:
             fetchDepth: 1
             clean: true
 
+          # The client-tauri, contracts, engines, gg, microservice-arena, microservice-artifacts, microservice-dispatcher, microservice-driver, microservice-publisher, microservice-repos,
+          # tool-model-core, tool-paint, tool-particle, tool-sprite, tool-voxel,
+          # tool-mc, tool-sn, tool-dc, tool-audio-core, tool-sfx-synth,
+          # tool-sfx-sample, tool-music, test-suites and ui-common submodules, at
+          # the pinned commits, fetched through the job's access token, which
+          # reads every repository of the project. Every build reads the first
+          # twenty-two, because the patch table names their crates and cargo
+          # loads every patch path; the tests over the committed catalog read
+          # test-suites, the documentation site reads gg's pages, and the npm
+          # workspace lists ui-common's packages.
+          - script: scripts/ci/submodules.sh init client-tauri contracts engines gg microservice-arena microservice-artifacts microservice-dispatcher microservice-driver microservice-publisher microservice-repos tool-model-core tool-paint tool-particle tool-sprite tool-voxel tool-mc tool-sn tool-dc tool-audio-core tool-sfx-synth tool-sfx-sample tool-music test-suites ui-common
+            displayName: Initialize the client-tauri, contracts, engines, gg, microservice-arena, microservice-artifacts, microservice-dispatcher, microservice-driver, microservice-publisher, microservice-repos, tool-model-core, tool-paint, tool-particle, tool-sprite, tool-voxel, tool-mc, tool-sn, tool-dc, tool-audio-core, tool-sfx-synth, tool-sfx-sample, tool-music, test-suites and ui-common submodules
+            env:
+              SYSTEM_ACCESSTOKEN: $(System.AccessToken)
+
           - script: scripts/ci/free-disk.sh
             displayName: Free disk space on the agent
             target: host
 
-          # The web track's checks *are* the npm workspace — eslint, tsc,
-          # vitest, prettier, markdownlint, cspell and astro all run out of
+          # The web track's checks *are* the npm workspace — tsc, vitest,
+          # prettier, markdownlint, cspell and astro all run out of
           # node_modules — so it installs it. The script refuses a Node other
           # than the one .devcontainer/docker-compose.yml pins, which is the
           # same pin the image was built from.
@@ -420,67 +479,6 @@ stages:
             displayName: shell tests
             condition: eq(variables['checksReady'], 'true')
 
-          - script: uv run --quiet --project ci gate run web-lint
-            displayName: web lint (eslint)
-            condition: eq(variables['checksReady'], 'true')
-
-          - script: uv run --quiet --project ci gate run web-typecheck
-            displayName: web typecheck (tsc -b)
-            condition: eq(variables['checksReady'], 'true')
-
-          # As the Rust job's test step does, the web tests name an artifact
-          # directory, which has the gate leave vitest's JUnit report there.
-          - script: uv run --quiet --project ci gate run web-test
-            displayName: web tests (vitest)
-            condition: eq(variables['checksReady'], 'true')
-            env:
-              CI_GATE_ARTIFACTS: target/gate-artifacts/web-test
-
-          - task: PublishTestResults@2
-            displayName: Publish the web test results
-            condition: and(succeededOrFailed(), eq(variables['checksReady'], 'true'))
-            inputs:
-              testResultsFormat: JUnit
-              # Where the web tests step told its gate to leave the report.
-              testResultsFiles: $(Build.SourcesDirectory)/target/gate-artifacts/web-test/junit.xml
-              testRunTitle: Web tests
-              failTaskOnMissingResultsFile: false
-
-          # As the Rust job's test step does, the browser tests name an
-          # artifact directory, which has the gate leave its JUnit report there
-          # and has the suite give each browser instance a directory of its own
-          # beneath it for what a test attached: among it the screenshot an
-          # engine takes of a test that failed, which is otherwise lost with
-          # the rest of the working directory.
-          - script: uv run --quiet --project ci gate run web-browser-test
-            displayName: web browser tests (vitest, playwright)
-            condition: eq(variables['checksReady'], 'true')
-            env:
-              CI_GATE_ARTIFACTS: target/gate-artifacts/web-browser-test
-
-          # Both whether the suite passed or failed, since a failure is when
-          # they are read. The artifact's name carries the job attempt, so a
-          # rerun of the job publishes beside its first attempt rather than
-          # colliding with it.
-          - publish: $(Build.SourcesDirectory)/target/gate-artifacts/web-browser-test
-            displayName: Publish the web browser tests' report and screenshots
-            artifact: web-browser-test-$(System.JobAttempt)
-            condition: and(succeededOrFailed(), eq(variables['checksReady'], 'true'))
-
-          - task: PublishTestResults@2
-            displayName: Publish the web browser test results
-            condition: and(succeededOrFailed(), eq(variables['checksReady'], 'true'))
-            inputs:
-              testResultsFormat: JUnit
-              # Where the browser tests step told its gate to leave the report.
-              testResultsFiles: $(Build.SourcesDirectory)/target/gate-artifacts/web-browser-test/junit.xml
-              testRunTitle: Web browser tests
-              failTaskOnMissingResultsFile: false
-
-          - script: uv run --quiet --project ci gate run web-build
-            displayName: web build (vite build)
-            condition: eq(variables['checksReady'], 'true')
-
           # Rendered only for a project that deploys to Kubernetes, because
           # the gate it runs is rendered only then. A step for a gate that is
           # not there would fail every run of this track.
@@ -532,26 +530,6 @@ stages:
 
           # This project's own gates on this track, one step each like every
           # gate above.
-          - script: uv run --quiet --project ci gate run frozen-paths
-            displayName: "frozen test-case versions"
-            condition: eq(variables['checksReady'], 'true')
-
-          - script: uv run --quiet --project ci gate run seeded-contract
-            displayName: "seeded contract vocabulary"
-            condition: eq(variables['checksReady'], 'true')
-
-          - script: uv run --quiet --project ci gate run spec-vocabulary
-            displayName: "seeded spec vocabulary"
-            condition: eq(variables['checksReady'], 'true')
-
-          - script: uv run --quiet --project ci gate run spec-prose
-            displayName: "spec prose (markdownlint, cspell)"
-            condition: eq(variables['checksReady'], 'true')
-
-          - script: uv run --quiet --project ci gate run audio-packs
-            displayName: "audio pack declarations"
-            condition: eq(variables['checksReady'], 'true')
-
           - script: uv run --quiet --project ci gate run build-context
             displayName: "Dockerfile build contexts"
             condition: eq(variables['checksReady'], 'true')
@@ -562,6 +540,10 @@ stages:
 
           - script: uv run --quiet --project ci gate run ci-image-pins
             displayName: "project jobs pin the Rust CI image"
+            condition: eq(variables['checksReady'], 'true')
+
+          - script: uv run --quiet --project ci gate run dependency-graph
+            displayName: "dependency graph (edges, patch table, package links)"
             condition: eq(variables['checksReady'], 'true')
 
           # As the web tests do, the two test gates below name an artifact
@@ -578,14 +560,6 @@ stages:
             condition: eq(variables['checksReady'], 'true')
             env:
               CI_GATE_ARTIFACTS: target/gate-artifacts/workspace-test
-
-          - script: uv run --quiet --project ci gate run validators-typecheck
-            displayName: "validator projects typecheck (tsc)"
-            condition: eq(variables['checksReady'], 'true')
-
-          - script: uv run --quiet --project ci gate run site-build
-            displayName: "gallery build (vite build)"
-            condition: eq(variables['checksReady'], 'true')
 
           # The project's own steps for this job, after its last check and
           # before the job's test results.

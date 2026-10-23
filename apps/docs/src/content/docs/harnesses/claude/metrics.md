@@ -10,7 +10,7 @@ carries the run's cumulative totals rather than a per-turn delta.
 ## Token classes
 
 Usage is read from the Anthropic-native field names and folded into the
-normalized [token classes](/components/core/metrics/#tokens):
+normalized [token classes](/components/contracts/metrics/#tokens):
 
 | Normalized class | Claude Code field                                 |
 | ---------------- | ------------------------------------------------- |
@@ -25,14 +25,14 @@ as input rather than as cache reads, so they fold into the uncached-input class.
 
 Reasoning tokens are counted within `output_tokens` and are not broken out, so
 the reasoning class is `null` (not determinable) rather than zero. A Claude Code
-run's [token total](/components/core/metrics/#tokens) still reflects them, so
+run's [token total](/components/contracts/metrics/#tokens) still reflects them, so
 the run participates in token comparisons.
 
 ## Cost
 
 Claude Code reports the exact charge for a run as `total_cost_usd` on its
 terminal `result` event. That figure is recorded as the run's [actual
-cost](/components/core/metrics/#harness-reported-cost). The comparable cost is
+cost](/components/contracts/metrics/#harness-reported-cost). The comparable cost is
 computed from the model's list price as for every harness; the provider
 native model id a Claude Code run reports is mapped to its catalog entry through
 the model's aliases.

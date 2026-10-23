@@ -4,13 +4,38 @@
 use std::collections::BTreeMap;
 
 use serde_json::json;
-use test_cabinet_core::event::{EventKind, HarnessEvent};
-use test_cabinet_core::gg::{GgTelemetryEvent, GgTelemetryKind};
-use test_cabinet_core::run_record::HarnessSlug;
+use test_cabinet_contracts::event::{EventKind, HarnessEvent};
+use test_cabinet_contracts::gg::{GgTelemetryEvent, GgTelemetryKind};
+use test_cabinet_contracts::run_record::HarnessSlug;
 
-use super::retention_tests::run_row;
+use sea_orm::sea_query::Expr;
+use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
+
 use super::tests::{links, record};
 use super::*;
+
+/// The stored `run` row of `id`.
+async fn run_row(db: &Db, id: &str) -> run::Model {
+    run::Entity::find_by_id(id.to_string())
+        .one(&db.conn())
+        .await
+        .unwrap()
+        .expect("the run exists")
+}
+
+/// Flip run `id` to published without the publish gate.
+async fn force_published(db: &Db, id: &str) {
+    run::Entity::update_many()
+        .col_expr(run::Column::Published, Expr::value(true))
+        .col_expr(
+            run::Column::PublishedAt,
+            Expr::value("2026-06-18T00:00:00Z"),
+        )
+        .filter(run::Column::Id.eq(id))
+        .exec(&db.conn())
+        .await
+        .unwrap();
+}
 
 /// A gg stream with two tool calls and one program function call, stored as a
 /// push stores it.
@@ -149,8 +174,11 @@ async fn a_counted_published_run_marks_the_snapshot_dirty() {
     )
     .await
     .unwrap();
-    super::retention_tests::force_published(&db, "gg").await;
-    db.mark_uploaded("2026-10-17T00:00:00Z", 1).await.unwrap();
+    force_published(&db, "gg").await;
+    let generation = db.snapshot_state().await.unwrap().generation;
+    db.mark_uploaded("2026-10-17T00:00:00Z", 1, generation)
+        .await
+        .unwrap();
     assert!(!db.snapshot_state().await.unwrap().dirty);
 
     counted(&db, &["gg"]).await;

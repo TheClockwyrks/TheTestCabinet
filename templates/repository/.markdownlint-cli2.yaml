@@ -1,0 +1,32 @@
+# markdownlint-cli2 configuration.
+#
+# Scoped to every Markdown file in the workspace. Naming the whole tree and
+# listing the exceptions is the smaller list and the safe one: a page added
+# anywhere is checked from the moment it is written, where a list of
+# directories leaves a page outside it as prose nothing checks.
+
+config:
+  fenced-code-language: false
+  ul-style:
+    style: dash
+  line-length:
+    line_length: 90
+    tables: false
+  no-duplicate-heading:
+    siblings_only: true
+  descriptive-link-text: false
+  first-line-heading: false
+  no-inline-html:
+    allowed_elements: []
+
+gitignore: true
+
+globs:
+  - "**/*.md"
+  - "**/*.mdx"
+
+# `gitignore: true` above keeps the build outputs and the installed packages
+# out. It does not cover `.git` itself, because git does not ignore its own
+# directory, and a repository is not prose.
+ignores:
+  - ".git/**"

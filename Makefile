@@ -30,13 +30,11 @@ docs:
 # Every workspace's own `node_modules` goes with the root one. npm hoists the
 # packages a workspace depends on to the root, so a nested `node_modules` holds
 # the tooling's caches and nothing else: Astro writes its content store and Vite
-# its bundled dependencies into `apps/docs/node_modules` and `apps/web/node_modules`,
-# both of which grow with what they serve. The globs are the `workspaces`
-# package.json declares, so a workspace added there is cleaned without touching
-# this target.
+# its bundled dependencies into `apps/docs/node_modules`, which grows with what
+# it serves. The globs are the `workspaces` package.json declares, so a
+# workspace added there is cleaned without touching this target.
 #
-# `apps/web/dist` is the web app's bundle, which `vite build` writes and the
-# web gate runs, and `apps/docs/dist` the documentation site's.
+# `apps/docs/dist` is the documentation site's build.
 #
 # The `ci` project's own leavings go with them: the environment uv builds for it
 # the first time a gate runs, and what the tools inside that environment
@@ -44,7 +42,7 @@ docs:
 # `uv.lock`, and the bytecode caches are found rather than named because Python
 # writes one beside every package it imports.
 clean:
-	@rm -rf target node_modules apps/*/node_modules packages/*/node_modules \
-		apps/docs/.astro apps/docs/dist apps/web/dist .cspellcache \
+	@rm -rf target node_modules apps/*/node_modules packages/*/node_modules contracts/packages/*/node_modules \
+		apps/docs/.astro apps/docs/dist .cspellcache \
 		ci/.venv ci/.pytest_cache ci/.ruff_cache .ruff_cache
 	@find ci -type d -name __pycache__ -prune -exec rm -rf {} +

@@ -12,9 +12,10 @@ variables, the local stack, and deployed environments.
 ## Opt-in export
 
 Telemetry is wired through the shared `test-cabinet-telemetry` crate
-(`crates/telemetry`). Every long-lived binary calls its `init()` once at startup;
-the browser [web console](/components/web/overview/) calls the equivalent
-`initTelemetry()` before its first fetch. The switch is
+(`crates/telemetry` in [`contracts`](/components/contracts/overview/)). Every
+long-lived binary calls its `init()` once at startup; the browser
+[console](/components/web/overview/) calls the equivalent `initTelemetry()`
+before its first fetch. The switch is
 `OTEL_EXPORTER_OTLP_ENDPOINT`, or `VITE_OTEL_EXPORTER_OTLP_ENDPOINT` in the
 browser:
 
@@ -32,30 +33,27 @@ observability requires no code change and no rebuild.
 
 ## Instrumented processes
 
-| Process                                                         | Service name          | Instrumentation                                                                                                                                                                                                            |
-| --------------------------------------------------------------- | --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [Core](/components/core/overview/) (in-process in every runner) | —                     | Orchestration spans for the run lifecycle (seeding, container execution, harness invocation, validation, publish), outbound context propagation on its HTTP calls, and `TRACEPARENT` on the subprocesses it shells out to. |
-| [Dispatcher](/components/dispatcher/overview/)                  | `tcab-dispatcher`     | Control-loop spans for claiming queued runs and creating per-run driver `Job`s.                                                                                                                                            |
-| [Driver](/components/driver/overview/)                          | `tcab-driver`         | Run-execution spans, inbound trace-context extraction from the enqueued request, outbound context propagation to the backend, and publisher spans.                                                                         |
-| [Backend](/components/backend/overview/)                        | `tcab-backend`        | Axum server spans, inbound trace-context extraction, and request metrics.                                                                                                                                                  |
-| [Auth service](/components/auth/overview/)                      | `tcab-auth-service`   | Axum server spans and inbound trace-context extraction.                                                                                                                                                                    |
-| [Artifact service](/components/artifacts/overview/)             | `tcab-artifacts`      | Axum server spans and inbound trace-context extraction.                                                                                                                                                                    |
-| [Arena service](/components/arena/overview/)                    | `tcab-arena`          | Axum server spans and inbound trace-context extraction.                                                                                                                                                                    |
-| [CLI](/components/cli/overview/) (`tcab`)                       | `tcab-cli`            | Init plus a span per command, driving the core's run spans.                                                                                                                                                                |
-| [Agent harness](/harnesses/overview/) (in the run container)    | `tcab-harness-<slug>` | Per harness, where the vendor supports it; see [harness telemetry](#harness-telemetry).                                                                                                                                    |
-| [Web console](/components/web/overview/)                        | `tcab-web`            | Browser traces only: a span per `fetch`, with a `traceparent` header injected on every outbound request.                                                                                                                   |
-
-The core has no service name of its own. It is a library that runs in-process
-inside whichever runner launched it, so its spans are emitted under that host's
-service name: the CLI or the driver.
+| Process | Service name | Instrumentation |
+| --- | --- | --- |
+| [Dispatcher](/components/dispatcher/overview/) | `tcab-dispatcher` | Control-loop spans for claiming queued runs and creating per-run driver and publisher `Job`s. |
+| [Driver](/components/driver/overview/) | `tcab-driver` | The run engine's spans for the run lifecycle (seeding, container execution, harness invocation, validation, the post-run stages, the uploads), inbound trace-context extraction from the enqueued request, outbound context propagation to the backend, the artifacts and the repos services, and `TRACEPARENT` on the subprocesses it shells out to. |
+| [Backend](/components/backend/overview/) | `tcab-backend` | Axum server spans, inbound trace-context extraction, request metrics, and outbound propagation to the artifacts service when it writes the snapshot. |
+| [Artifacts service](/components/artifacts/overview/) | `tcab-artifacts` | Axum server spans, inbound trace-context extraction, and spans for each object-store write and read. |
+| [Repos service](/components/repos/overview/) | `tcab-repos` | Axum server spans, inbound trace-context extraction, and spans for the bundle store and the public push. |
+| Publisher | `tcab-publisher` | Publish-job spans, inbound trace-context extraction from the publish job, and `TRACEPARENT` on `wrangler`. |
+| [Arena service](/components/arena/overview/) | `tcab-arena` | Axum server spans and inbound trace-context extraction. |
+| [CLI](/components/cli/overview/) (`tcab`) | `tcab-cli` | Init plus a span per command, with outbound propagation on its backend calls. |
+| [Agent harness](/harnesses/overview/) (in the run container) | `tcab-harness-<slug>` | Per harness, where the vendor supports it; see [harness telemetry](#harness-telemetry). |
+| [Console](/components/web/overview/) | `tcab-web` | Browser traces only: a span per `fetch`, with a `traceparent` header injected on every outbound request. |
 
 ## Cluster resource metrics
 
-Everything in the table above is telemetry our own processes _push_. It says
-nothing about what a container actually consumed — and that is the data needed to
-size a run pod's memory request to its real peak (run pods carry no memory limit;
-see [memory ceilings](/deployment/kubernetes/overview/#memory-ceilings)) and to
-check that a service's limit is a safe ceiling rather than a scheduled OOM kill.
+Everything in the table above is telemetry our own processes push. It says
+nothing about what a container actually consumed, and that is the data needed
+to size a run pod's memory request to its real peak (run pods carry no memory
+limit; see [memory ceilings](/deployment/kubernetes/overview/#memory-ceilings))
+and to check that a service's limit is a safe ceiling rather than a scheduled
+OOM kill.
 
 So in a Kubernetes deployment the LGTM stack's Prometheus also **scrapes** each
 node's kubelet cAdvisor endpoint. This is configured in
@@ -130,45 +128,46 @@ need `kube-state-metrics` deployed to join `kube_pod_labels` against the run's
 
 A single user action produces one distributed trace threading through every
 process it touches. Spans nest from the surface that initiated the work down into
-the core and out to the backend.
+the driver and out to the backend.
 
-### CLI runs
+### CLI commands
 
-The command span, under `tcab-cli`, is the root. The core's
-orchestration spans nest beneath it: seeding the repository, executing the
-container, invoking the harness, validation, and the publisher spans for a
-published run. The core's outbound HTTP calls to the
-[backend](/components/backend/overview/) carry the trace context, so the
-backend's request spans join the same trace as children.
+The command span, under `tcab-cli`, is the root. An ingest's or a reference
+publish's outbound HTTP calls to the [backend](/components/backend/overview/)
+carry the trace context, so the backend's request spans join the same trace as
+children.
 
-### Web console runs
+### Console runs
 
 The browser's `fetch` span is the root. It injects a `traceparent` header on the
 enqueue request to the backend, which carries the context into the
 [driver](/components/driver/overview/) the dispatcher creates for the run, so
-the driver's run span becomes a descendant of the browser span.
-The core then runs inside the driver as above, and the driver's own outbound
-calls continue the trace into `tcab-backend`. The end-to-end path is browser →
-backend → driver → backend, with the core's run spans nested inside the driver
-leg.
+the driver's run span becomes a descendant of the browser span. The run
+engine's spans nest beneath it: seeding the repository, executing the
+container, invoking the harness, validation and the uploads, and the driver's
+own outbound calls continue the trace into `tcab-backend`, `tcab-artifacts` and
+`tcab-repos`. The end-to-end path is browser → backend → driver → backend,
+with the run spans nested inside the driver leg. A publish Job continues the
+same way from the backend's publish request into `tcab-publisher` and from
+there into the artifacts and repos services.
 
-Both driver-to-backend and runner-to-backend propagation use the standard W3C
-`traceparent` header. The propagation helpers need the global propagator that
-`init()` installs, so in stdout-only mode they add no headers.
+Every service-to-service propagation uses the standard W3C `traceparent`
+header. The propagation helpers need the global propagator that `init()`
+installs, so in stdout-only mode they add no headers.
 
 ### Subprocess trace gaps
 
-The core shells out to several external processes: the container runtime, `gh`
-and `wrangler` during a publish, and the Playwright
-[browser driver](/components/core/validation/) during validation. For these the
-core sets the W3C `TRACEPARENT` environment variable on the child, so the trace
-context crosses the process boundary. Whether the child emits a span depends on
-that tool, and none of these is OpenTelemetry-instrumented, so each appears as a
-gap: the parent span records the time spent in the subprocess with no spans from
-inside it. `TRACEPARENT` is set regardless, so an instrumented child slots into
-the trace with no further work.
+The driver shells out to the container runtime and to the Playwright
+[browser driver](/components/driver/validation/) during validation, the
+publisher to `wrangler`, and the repos service to `git` and `gh`. For these the
+parent sets the W3C `TRACEPARENT` environment variable on the child, so the
+trace context crosses the process boundary. Whether the child emits a span
+depends on that tool, and none of these is OpenTelemetry-instrumented, so each
+appears as a gap: the parent span records the time spent in the subprocess with
+no spans from inside it. `TRACEPARENT` is set regardless, so an instrumented
+child slots into the trace with no further work.
 
-The agent [harness](/components/core/harnesses/) runs inside the run container
+The agent [harness](/components/driver/harnesses/) runs inside the run container
 rather than as a child process on the host. Setting `TRACEPARENT` on the
 `docker exec` client would not reach it, because the runtime does not forward the
 client's environment across the daemon and the Kubernetes exec API carries no
@@ -233,11 +232,11 @@ the collector's `:4318` port.
 | `TCAB_ENV`                                        | Sets the `deployment.environment.name` resource attribute.            | Custom to this project. Default `local`; set to `dev`, `staging`, or `prod`.           |
 | `RUST_LOG`                                        | Stdout log filter.                                                    | Falls back to each binary's default when unset.                                        |
 
-The web console uses the same names with a `VITE_` prefix
+The console uses the same names with a `VITE_` prefix
 (`VITE_OTEL_EXPORTER_OTLP_ENDPOINT`, `VITE_OTEL_SERVICE_NAME`, `VITE_TCAB_ENV`);
-see `apps/web/.env.example`. The browser exports traces only, over the HTTP
-`:4318` port. Its `service.version` is taken from the package version at build
-time.
+see `.env.example` at the `console.testcabinet.ai` root. The browser exports
+traces only, over the HTTP `:4318` port. Its `service.version` is taken from
+the package version at build time.
 
 ### Endpoint duality: in-cluster vs. out-of-cluster
 
@@ -247,18 +246,19 @@ cluster:
 
 | Process                                                          | Runs                | Local endpoint                                                                                                    |
 | ---------------------------------------------------------------- | ------------------- | ----------------------------------------------------------------------------------------------------------------- |
-| Backend, auth, dispatcher, driver, artifacts, arena              | in the cluster      | `http://tcab-lgtm:4318` (in-cluster Service DNS), set by the [observability component](#local-stack-grafana-lgtm) |
+| Backend, dispatcher, driver, artifacts, repos, publisher, arena  | in the cluster      | `http://tcab-lgtm:4318` (in-cluster Service DNS), set by the [observability component](#local-stack-grafana-lgtm) |
 | `cargo run` binary in the devcontainer, host `tcab` CLI, browser | outside the cluster | `http://localhost:4318`, via `make -C deployments/local local-grafana`                                            |
 
 The in-cluster services need no env-file change: the local overlay points each at
 `tcab-lgtm`. For a binary run outside the cluster, run
 `make -C deployments/local local-grafana`, which forwards the in-cluster
-collector to `localhost:4318`, and point the process there. Each per-process
-example env file at the repo root (`.env.backend.example`, `.env.auth.example`,
-`.env.dispatcher.example`, `.env.runner.example` for the CLI, and
-`apps/web/.env.example`) ships that `http://localhost:4318` default commented
-out. Copy the relevant file to its real `.env.*` and uncomment the endpoint to
-enable export.
+collector to `localhost:4318`, and point the process there. Each service's
+example env file at its repository's root (`.env.backend.example`,
+`.env.dispatcher.example`, `.env.artifacts.example`, `.env.repos.example`,
+`.env.publisher.example`, `.env.runner.example` for the CLI in
+`microservice-driver`, and the console's `.env.example`) ships that
+`http://localhost:4318` default commented out. Copy the relevant file to its
+real `.env.*` and uncomment the endpoint to enable export.
 
 ## Local stack (Grafana LGTM)
 
@@ -279,8 +279,8 @@ Telemetry stays opt-in per process, through each one's
    session you keep running anyway. `make -C deployments/local local-grafana` is
    the superset that also forwards the OTLP collector to `localhost:4318` and
    `:4317`, for observing a binary run outside the cluster. To do that, copy the
-   relevant `.env.*.example` to its real `.env.*` (and `apps/web/.env.example` to
-   `apps/web/.env.local`), uncomment
+   relevant `.env.*.example` to its real `.env.*` (and the console's
+   `.env.example` to `.env.local`), uncomment
    `OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318`, and restart the process.
 3. Open Grafana at <http://localhost:3000> (anonymous admin, no login). Use
    Explore with the Tempo data source to find traces, searching by service name
@@ -339,7 +339,7 @@ production configuration.
 The run detail page in the console links to the traces a run emitted, through
 the "View run traces" control beside the tabs. It opens Grafana Explore on a
 TraceQL search rather than on a single trace, because a run is several traces:
-the driver, the artifact service, and the harness each emit their own, tied
+the driver, the artifacts service, and the harness each emit their own, tied
 together by the shared `run.id` attribute rather than by a common trace ID. The
 query is:
 
@@ -352,8 +352,10 @@ a few minutes of padding on either side, because the run being investigated is
 frequently not a recent one. Retention still applies, so the link opens on an
 empty result for a run older than the environment's window.
 
-The console learns Grafana's address from the backend's `GET /config`, which
-reports `grafanaUrl` from `TCAB_GRAFANA_PUBLIC_URL`. Nothing fetches from that
-URL; it is only opened in the reader's browser. Where it is unset the control
-does not render, which is the correct behavior for the public gallery site, whose
-readers have no route to a VPN-only Grafana.
+The console derives Grafana's address from its own hostname, its leading
+`console.` label replaced by `grafana.`: `grafana.testcabinet.ai` for
+`console.testcabinet.ai` and `grafana.staging.testcabinet.ai` for the staging
+console, served through the same [tunnel and Access policy](/deployment/kubernetes/edge/)
+as the console. Nothing fetches from that URL; it is only opened in the reader's
+browser. The control renders only on a hostname behind the edge, so the public
+gallery, whose readers have no route to a Grafana behind Access, shows none.

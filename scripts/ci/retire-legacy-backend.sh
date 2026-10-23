@@ -1,5 +1,9 @@
 #!/usr/bin/env bash
-# Deletes the backend Deployment of its old name, `tcab-backend`, from one namespace.
+# Deletes the objects of an earlier shape from one namespace, before an apply: the
+# backend Deployment of its old name, `tcab-backend`, the artifacts service's
+# StatefulSet, `tcab-artifacts`, and what the edge replaced (the internal ingress's
+# Ingresses and the network policies that admitted it, and the `tcab-auth` sign-in
+# workload).
 #
 #   scripts/ci/retire-legacy-backend.sh [--dry-run]
 #
@@ -7,9 +11,33 @@
 # template's deploy script waits on. A namespace deployed before the rename still
 # runs `tcab-backend`, whose pod holds the ReadWriteOnce claim `tcab-backend-state`
 # that the renamed Deployment mounts, so the new pod would wait on the disk until
-# the rollout timed out. This deletes the old Deployment, and waits for its pods to
-# be gone, before anything is applied. It is idempotent: once the Deployment is
-# gone, the delete finds nothing and succeeds, so every deployment runs it.
+# the rollout timed out.
+#
+# The artifacts service is now a stateless Deployment of the same name over Blob. A
+# namespace deployed before still runs the StatefulSet, a different kind the apply
+# leaves in place, whose pod carries the label the `tcab-artifacts` Service selects,
+# so the Service would route part of the traffic to the old pod and its volume. Its
+# claim, `artifacts-tcab-artifacts-0`, is left in place: deleting the StatefulSet
+# never deletes a claim its template made, and the trees on it are an operator's
+# to move (scripts/ci/copy-artifact-trees.sh) or drop.
+#
+# The edge (Cloudflare Access over a Cloudflare Tunnel) replaced the internal
+# ingress and the sign-in service in front of it. A namespace deployed before still
+# holds their objects, which no render names any more and an apply never prunes:
+#
+#   - the Ingresses `tcab-api`, `tcab-arena`, `tcab-artifacts`, `tcab-auth`,
+#     `tcab-console` and `tcab-grafana`, which still publish the services through the
+#     ingress controller, around Access;
+#   - the network policies `tcab-allow-services-from-ingress`,
+#     `tcab-allow-web-from-ingress`, `tcab-allow-lgtm-from-ingress` and
+#     `tcab-allow-arena-from-console`, which still admit the ingress controller's
+#     traffic to the services;
+#   - the `tcab-auth` Deployment, its Service, its ServiceAccount and its Secret
+#     `tcab-auth-secrets`, a workload nothing routes to any more.
+#
+# This deletes them all, and waits for the workloads' pods to be gone, before
+# anything is applied. It is idempotent: once an object is gone, its delete finds
+# nothing and succeeds, so every deployment runs it.
 #
 # The cluster's API server is private, so the delete runs inside the cluster
 # through `az aks command invoke` (lib.sh's aks_invoke), under the caller's Azure
@@ -31,7 +59,12 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
 readonly RESOURCE_GROUP="${THE_TEST_CABINET_RESOURCE_GROUP:-testcabinet-staging-westus2-rg}"
 readonly CLUSTER="${THE_TEST_CABINET_CLUSTER:-testcabinet-staging-westus2-aks}"
 readonly NAMESPACE="${THE_TEST_CABINET_NAMESPACE:-tcab-staging}"
-readonly LEGACY="tcab-backend"
+readonly LEGACY="deployment/tcab-backend statefulset/tcab-artifacts \
+ingress/tcab-api ingress/tcab-arena ingress/tcab-artifacts ingress/tcab-auth \
+ingress/tcab-console ingress/tcab-grafana \
+networkpolicy/tcab-allow-services-from-ingress networkpolicy/tcab-allow-web-from-ingress \
+networkpolicy/tcab-allow-lgtm-from-ingress networkpolicy/tcab-allow-arena-from-console \
+deployment/tcab-auth service/tcab-auth serviceaccount/tcab-auth secret/tcab-auth-secrets"
 
 dry_run=""
 if [[ "${1:-}" == --dry-run ]]; then
@@ -44,8 +77,9 @@ if [[ $# -ne 0 ]]; then
 fi
 
 # The command, sent as the one file aks_invoke uploads. A foreground cascade makes
-# the wait last until the Deployment's pods are gone, which is what frees the disk.
-readonly COMMAND="kubectl -n ${NAMESPACE} delete deployment ${LEGACY} --ignore-not-found --cascade=foreground --wait=true --timeout=300s"
+# the wait last until the workloads' pods are gone, which is what frees the disk
+# and empties the Service of the old pod.
+readonly COMMAND="kubectl -n ${NAMESPACE} delete ${LEGACY} --ignore-not-found --cascade=foreground --wait=true --timeout=300s"
 
 if [[ -n "$dry_run" ]]; then
 	echo "Would run on ${CLUSTER} (${RESOURCE_GROUP}):"
@@ -64,13 +98,13 @@ work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 printf 'set -eu\n%s\n' "$COMMAND" >"${work}/retire-legacy-backend.sh"
 
-echo "Retiring the legacy Deployment ${LEGACY} from ${NAMESPACE} on ${CLUSTER}."
+echo "Retiring the legacy objects ${LEGACY} from ${NAMESPACE} on ${CLUSTER}."
 verdict=0
 aks_invoke "$RESOURCE_GROUP" "$CLUSTER" "${work}/retire-legacy-backend.sh" "sh retire-legacy-backend.sh" || verdict=$?
 if [[ "$verdict" -ne 0 ]]; then
-	echo "retire-legacy-backend.sh: the legacy Deployment ${LEGACY} was not retired from ${NAMESPACE}, above." >&2
-	remediation "Nothing was applied. Delete it by hand, then deploy again:" \
+	echo "retire-legacy-backend.sh: the legacy objects ${LEGACY} were not retired from ${NAMESPACE}, above." >&2
+	remediation "Nothing was applied. Delete them by hand, then deploy again:" \
 		"    az aks command invoke --resource-group ${RESOURCE_GROUP} --name ${CLUSTER} --command \"${COMMAND}\""
 	exit 1
 fi
-echo "The legacy Deployment ${LEGACY} is not in ${NAMESPACE}."
+echo "The legacy objects ${LEGACY} are not in ${NAMESPACE}."

@@ -55,7 +55,7 @@ binary  = "dc"               # the meshing binary: mc | sn | dc
 preview = "model.png"
 
 [output]
-actions = "actions.json"     # the extracted .glb geometry is emitted automatically by core
+actions = "actions.json"     # the extracted .glb geometry is emitted by the driver
 ```
 
 ## An animated case
@@ -112,7 +112,7 @@ The binary a case names fixes the character of the output, a cube volume against
 an `mc` low-poly, `sn` smooth, or `dc` sharp-edged surface.
 
 Every voxel case's `[output]` names its `actions` operation log. For a meshed
-case core also emits the extracted geometry to a path it provides, `mesh.glb` for
+case the driver also emits the extracted geometry to a path it provides, `mesh.glb` for
 a static kind and `meshes/{part}.glb` per part for an animated one, so the
 geometry is not manifest-declared. An animated kind's `preview` and `actions`
 must carry `{part}`; a static kind's must not.

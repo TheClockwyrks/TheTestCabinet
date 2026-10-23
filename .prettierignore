@@ -55,24 +55,53 @@ deployments/k8s/
 
 # --- The project's own -----------------------------------------------------
 
-# The project's own ignored paths, which .markdownlint-cli2.yaml, cspell.json and
-# eslint.config.js leave out too, so the gates never disagree about a path.
+# The project's own ignored paths, which .markdownlint-cli2.yaml and cspell.json
+# leave out too, so the gates never disagree about a path.
 /cold-storage/**
+# The client-tauri, contracts, engines, gg, gg.rocks, microservice-arena, microservice-artifacts, microservice-dispatcher, microservice-driver, microservice-publisher, microservice-repos,
+# tool-model-core, tool-paint, tool-particle, tool-sprite, tool-voxel, tool-mc,
+# tool-sn, tool-dc, tool-audio-core, tool-sfx-synth, tool-sfx-sample,
+# tool-music, test-suites, ui-common, console.testcabinet.ai and testcabinet.ai
+# repositories, submodules whose own gates format them, and the docs tree's
+# gg/ entry, which points into the gg checkout.
+/client-tauri/**
+/contracts/**
+/engines/**
+/gg/**
+/gg.rocks/**
+/microservice-arena/**
+/microservice-artifacts/**
+/microservice-dispatcher/**
+/microservice-driver/**
+/microservice-publisher/**
+/microservice-repos/**
+/tool-model-core/**
+/tool-paint/**
+/tool-particle/**
+/tool-sprite/**
+/tool-voxel/**
+/tool-mc/**
+/tool-sn/**
+/tool-dc/**
+/tool-audio-core/**
+/tool-sfx-synth/**
+/tool-sfx-sample/**
+/tool-music/**
+/apps/docs/src/content/docs/gg/**
+/test-suites/**
+/ui-common/**
+/console.testcabinet.ai/**
+/testcabinet.ai/**
 /tasks/**/done/**
 /.claude/workflows/**
 /.claude/worktrees/**
-/crates/gg/src/probe_fixtures/**
-/crates/gg/src/sandbox/guests/**
-/crates/foray-core/schemas/*.json
-/crates/lattice-core/schemas/*.json
-/test-cases/performance/hard/lattice/*/cases/*.json
+/crates/*/testdata/definitions/**
 /**/*.hbs
 /**/.build/**
 /**/.spago/**
 /**/.vendor/**
 /**/vendor/**
 /**/.gg/**
-/packages/gg-sandbox-purescript/output/**
 /runs/**
 /tcab-store/**
 /tcab-artifacts/**

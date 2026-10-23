@@ -9,18 +9,18 @@ published result is coordinated through one service.
 
 Two interfaces are the backend's cross-component contracts: its [HTTP
 API](/components/backend/api/) and the [public
-snapshot](/components/backend/snapshot/) it exports. Everything else, including
+dataset](/components/backend/snapshot/) it writes. Everything else, including
 how it stores what it serves, is internal.
 
 ## Responsibilities
 
-The backend serves two kinds of client, described in [Runners and
-Reporters](/components/architecture/#runners-and-reporters):
+The backend serves two kinds of client, described in
+[Architecture](/components/architecture/#the-services):
 
-- Runners (the CLI and driver) resolve test case definitions from the
-  backend. The driver reports each [run record](/components/core/run-records/)
-  back to it when the run finishes.
-- Reporters (the web console, and the public site through the snapshot) read
+- Runners (the driver, and the CLI for the commands that resolve a definition)
+  resolve test case definitions from the backend. The driver reports each [run
+  record](/components/contracts/run-records/) back to it when the run finishes.
+- Reporters (the console, and the public site through the public dataset) read
   definitions and published results to display them.
 
 Each runner resolves its run-container image from its own registry
@@ -30,22 +30,76 @@ The backend holds two bodies of data.
 
 ### Test case definitions
 
-Cases are authored in the repository's `test-cases/` and `game-jams/` folders,
-in the formats the [testing](/testing/overview/) pages specify. An ingest scan
-copies each new or changed version out of the repository checkout into the
-backend's on-disk definition store, rendering the version's reference mockups to
-screenshots as it goes. The repository is the editing source and the store is
-the distribution source a runner resolves at run time. Ingest caches a version
-rather than transforming it.
+Cases are authored in the `test-suites` repository's `test-cases/` and
+`game-jams/` folders, in the formats the [testing](/testing/overview/) pages
+specify. An ingest scan copies each new or changed version out of the
+repository checkout into the backend's on-disk definition store, rendering the
+version's reference mockups to screenshots as it goes. The repository is the
+editing source and the store is the distribution source a runner resolves at
+run time. Ingest caches a version rather than transforming it.
 
-A version's baseline validation media lives in the checkout's `cold-storage`
-submodule rather than in its folder. Ingest copies it into the stored version's
-`validation-baseline/`, where the API serves it and the snapshot publishes it
-(see [where baselines live](/components/core/validation/#where-baselines-live)).
-The deployed ingest sidecar fetches the submodule shallowly on every refresh of
-its checkout, and asks for no ingest when the checkout or the submodule could
-not be brought to the branch tip (see [the ingest
-sidecar](/deployment/kubernetes/control-plane/#the-ingest-sidecar)).
+Ingest builds each version in a staging area inside the store and swaps the
+finished version into place, so a reader sees a version whole or not at all. A
+pass that stops part way leaves its staging behind, and the backend empties the
+staging area when it starts, before it serves or ingests anything.
+
+The scan also reads the [test suites](/test-suites/overview/) tree. Every
+definition a suite version offers is lowered into the same store as an ordinary
+test case version, recording the suite coordinate it came from, so a runner
+resolves a suite-defined case through the routes it resolves an authored one
+through. The suite's own entities are stored beside them and served by the suite
+read endpoints, which is what lets a console present a suite and the cases it
+defines.
+
+The scan reads each suite's exported versions and skips its drafts. A backend
+with `TCAB_BACKEND_INGEST_PREVIEWS` set also reads the
+[previews](/test-suites/overview/#previews) The Spec Cabinet writes to
+the suites tree's `.previews/` folder. Previews are experimental and exist only
+in the checkout they were written to, so the setting is enabled for the local
+development stack alone.
+
+A version's baseline validation media lives in the `cold-storage` repository
+rather than in the version's folder, at the version's own path. Ingest copies it
+into the stored version's `validation-baseline/`, where the API serves it and
+the snapshot publishes it (see [where baselines
+live](/components/driver/validation/#where-baselines-live)). The deployed
+ingest sidecar clones `cold-storage` shallowly beside its `test-suites`
+checkout and refreshes both together.
+
+Ingest reads three trees, each from its own root. The definitions root holds
+`test-cases/`, `game-jams/`, `test-case-groups/` and
+`test-cases/reference-builds.lock.json`. The suites root is the test suites tree
+itself, and the cold-storage root holds the baseline media, laid out like the
+definitions root it mirrors. The definitions root and the suites root default
+to their place in the repository checkout, and the cold-storage root to the
+`cold-storage` directory beside it, which is the superrepo's layout, so a
+backend given only `TCAB_BACKEND_CHECKOUT` reads the checkout's own trees and
+the clone beside it. Each can be pointed at a separate checkout (see
+[Configuration](#configuration)).
+
+A whole-catalog scan prunes what its trees no longer declare, and it refuses a
+prune that an empty tree would cause. When the scan finds no version under
+`test-cases/`, it keeps every stored authored test-case version, and when it
+finds none under `game-jams/`, every stored game jam. Each tree answers for its
+own kind, although one catalog reads both, so a jam that came through does not
+vouch for an emptied case tree. When it finds no suite version while the store
+holds suites, it keeps every stored suite version and the case versions they
+defined. When it accepts no test-case group while the store holds groups, it
+keeps the stored set. The scan still ingests everything it did find, logs each
+refusal, and reports it to the caller (see
+[`POST /ingest`](/components/backend/api/#post-ingest)). It does not record its
+catalog token, so the next scan carrying the same token rewrites every version
+rather than skipping the ones the store kept. An empty suites tree on a store
+that holds no suites is an ordinary state, since a checkout may leave the test
+suites tree uninitialized.
+
+The guard is the reason ingest never applies a catalog that retires every
+version of a kind, or every group: no request lifts it, `force` included. Such
+a retirement is applied to the definition store by hand, by removing the
+retired `test-cases/<slug>/` directories under `TCAB_BACKEND_STORE`, or its
+`test-case-groups/test-case-groups.json` for the groups. A scan against a store
+written in another record format is exempt, since this build can read nothing
+it would keep.
 
 Ingest writes each version as a resolved record whose shape the backend build
 defines, so a store is readable only by a build that agrees on that shape. The
@@ -57,15 +111,13 @@ catalog so the store returns to a format it can serve.
 
 ### Run results
 
-The stored [run records](/components/core/run-records/) with their reviews and
-links, persisted in a relational database (embedded SQLite by default, or
-PostgreSQL). This is the system of record for every run, published or not.
-
-A run's files are written beside the definitions in the on-disk store, under
-`runs/<id>/`: its proof, validation, asset and showcase media, its controller
-module, its code-analysis document and a gg run's session record. The store is
-where a driver's uploads land and where a snapshot refresh reads them from. The
-[state volume](#state-volume) section describes how long each file stays there.
+The stored [run records](/components/contracts/run-records/) with their reviews
+and links, persisted in a relational database (embedded SQLite by default, or
+PostgreSQL). A run's bytes, its build, media, logs and bundle, live on the
+[artifacts](/components/artifacts/overview/) and
+[repos](/components/repos/overview/) services rather than in that database or
+beside the definitions. This is the system of record for every run, published or
+not.
 
 A stored record can predate a change to the run record contract, leaving it
 unreadable by the running build. The backend records, per run, whether the build
@@ -82,44 +134,44 @@ each generation was decided against, and a change to that shape fails the
 build's tests until it is either recorded under the current generation, which
 asserts that stored records survive it, or given a new generation.
 
-A run's files are read from the store while it holds them and from the public
-bucket afterwards. Once a refresh has
-[confirmed](#confirmation) a published run, the run's [file
-manifest](/components/backend/snapshot/#the-file-manifest) names the object
-holding each of its files, and every [run file
-route](/components/backend/api/#run-files) answers from that object when the
-store has no copy. The run keeps that manifest when its confirmation is later
-withdrawn, so the routes go on answering. The consoles and the arena keep
-requesting the same routes wherever the bytes are. The pushed-controller listing
-(`GET /adversarial/controllers`) offers a run whose controller module is in the
-store or named with an object by its manifest.
-
 A run the build cannot read stays reachable on its own terms. `GET
 /runs/unreadable` lists each such run's lifted identity together with the error
 its stored record produces, paged like every other listing, and `DELETE
 /runs/{id}` deletes it. Both act on the stored row rather than on the record, so
-a published run is deletable here, being already absent from the snapshot and
-the gallery.
+a published run is deletable here, being already absent from the public dataset
+and the gallery.
 
-## Authentication
+## Identity
 
-The backend stays on a private network. In a [cluster
-deployment](/deployment/kubernetes/overview/) it is a `ClusterIP` service with
-no public `Ingress`, so reachability is the first line of access control.
+Nothing in a cluster is reachable from outside it except through the
+[edge](/deployment/kubernetes/edge/): a Cloudflare Tunnel that routes the
+environment's one hostname to the in-cluster services by path, with a
+Cloudflare Access application in front of it. The backend answers under
+`/api/`. Who is acting is decided by one of two credentials on every request,
+and a request carrying neither is a `401`.
 
-On top of that boundary, bearer tokens identify who is acting:
+- An Access assertion. Every request through the edge carries
+  `Cf-Access-Jwt-Assertion`, which the backend verifies against the Access
+  application's certificates and audience tag, refusing a request without a
+  valid one. A person's assertion carries their Entra ID `email`, which is the
+  reviewer identity a [review](/components/backend/results/#reviews), a
+  [coverage plan](/components/backend/coverage/) and a launch are recorded
+  under. An Access service token's assertion carries a `common_name` instead,
+  which is how automation acts: the CLI's ingest and reference publishing, and
+  CI.
+- A backend-minted token. The dispatcher claims queued jobs with the shared
+  service token (`TCAB_BACKEND_SERVICE_TOKEN`), each driver and publisher Job
+  presents the per-job token minted when its job was enqueued, and the ingest
+  sidecar presents the service token. These callers reach the backend over its
+  in-cluster `Service` and never cross the edge.
 
-- Reads are open. Resolving definitions and reading runs require only that the
-  caller can reach the backend.
-- Mutations require a token. The mutating run endpoints answer `401` without an
-  `Authorization: Bearer <token>` header. Each token is resolved to an account
-  by the standalone [auth service](/components/auth/overview/), and the
-  resulting [review](/components/core/results/#reviews) is attributed to that
-  account.
-
-The dispatcher authenticates with a shared service token
-(`TCAB_BACKEND_SERVICE_TOKEN`) to claim queued jobs, and each driver
-authenticates with the per-job token minted when its job was enqueued.
+Identity is held entirely by Access: the backend stores no credential and keeps
+no session. The mutating routes that automation drives, ingest, the public
+dataset's refresh, tournaments and reference-build writes, take the service
+token or a service token's assertion.
+See [Identity](/components/auth/overview/) for the Access design and
+[the API's conventions](/components/backend/api/#conventions) for how each
+route is gated.
 
 ## Review and publish
 
@@ -127,968 +179,84 @@ A produced run reaches the gallery through steps the backend mediates.
 
 A run's record is stored privately the moment the run finishes: the driver
 reports it when it posts the job's terminal status, and the produced build and
-media land on the [artifact service](/components/artifacts/overview/). The build
-is playable, so the run can be reviewed. Review attaches one review per account
-to the run.
+media are already on the artifacts service, its bundle on the repos service. The
+build is playable, so the run can be reviewed. Review attaches one review per
+reviewer identity to the run.
 
-Publish releases the run: its generated source to its own public repository and
-its build to Cloudflare Pages. The endpoint gates the run, refusing a legacy run
-with no review, and enqueues a per-publish `tcab-publisher` Job that the
-[dispatcher](/components/dispatcher/overview/) claims. A run with a publish
-already under way is attached to that job, so a run never has two releases in
-flight.
+Publish releases the run: its implementation to its own public repository and
+its build to Cloudflare Pages. A completed validator-rated run is published by
+the backend itself, with no operator action, as described under [automatic
+publishing](/components/backend/results/#automatic-publishing); every other
+publishable run is published through the endpoint, which gates it, refusing a
+legacy run with no review. Either way the backend enqueues a per-publish
+`tcab-publisher` Job that the [dispatcher](/components/dispatcher/overview/)
+claims in its publish lane. A run with a publish already under way is attached
+to that job, so a run never has two releases in flight.
 
-A completed validator-rated run is published by the backend itself, with no
-operator action, as described under
-[automatic publishing](/components/core/results/#automatic-publishing). A
-publish job that fails is
-[retried by the backend](/components/core/results/#retrying-a-failed-publish),
-and failures across several runs
-[put new runs on hold](#publish-failures).
-When that Job reports a
-terminal success the backend marks the run published, regenerates the public
-snapshot from the full set of published runs, uploads it, and triggers a site
-rebuild.
+The publisher fetches the build output from artifacts, deploys it to the per-run
+Pages project, asks the repos service to publish the run's repository, and
+reports both links. When the Job reports a terminal success the backend:
 
-The backend serializes refreshes so two of them cannot race on shared state,
-and it batches the requests for one. Regenerating the whole published set on
-each refresh keeps the operation idempotent.
+1. marks the run published and records the links;
+2. mints the run's [short code](#short-codes) and writes `codes/<code>`;
+3. has artifacts copy the run's publishable media to the public bucket;
+4. writes the run's document and the updated index objects, which carry the
+   code, through artifacts, swapping the `index.json` pointer last.
 
-### Refresh batching
+A publish is an upload. No site rebuild and no deploy hook follow it; the
+gallery reads the index objects at runtime. The backend serializes publishes so
+two cannot race on the index objects, and a burst of publishes is coalesced into
+one rewrite of them.
 
-Each refresh ends in a full site rebuild, so the backend releases refreshes in
-batches. A request is one change to what the public snapshot shows: a run's
-publish, a review on a published run, a published comparison, an ingest that
-changed the definition store, or a change to the model catalog or a list price.
-Two more kinds change no document and exist to get a run's files into the
-bucket: the first [upload of a file](#uploads-after-a-confirmation) to a
-published run a refresh had already evaluated, and the [periodic
-check](#runs-waiting-on-a-confirmation) that finds published runs waiting on a
-confirmation. Each request counts as one, whatever its kind.
+### Short codes
 
-A batch is released by whichever of two conditions comes first:
-
-- Threshold: the number of pending requests reaches
-  `TCAB_SNAPSHOT_BATCH_SIZE`.
-- Quiet: no request has arrived for `TCAB_SNAPSHOT_COALESCE_MS`.
-
-A long sequence of publishes therefore reaches the gallery at least every
-`TCAB_SNAPSHOT_BATCH_SIZE` runs, sooner when requests of the other kinds arrive
-among them. A sequence that stops short of the threshold is released one quiet
-window after its last request.
-
-Two releases are at least `TCAB_SNAPSHOT_MIN_INTERVAL_MS` apart, measured from
-the end of one refresh to the start of the next. A batch that becomes due inside
-the interval is held until the interval ends and then carries every request that
-arrived in the meantime. A burst of 100 publishes with the default settings is
-one rebuild at once and a second one ten minutes later.
-
-A request that arrives while a refresh is running counts toward the next batch.
-Pending requests are recorded in the database, so a backend that restarts with
-requests pending refreshes once at startup. That refresh waits out what the last
-upload before the restart left of the minimum interval, so a backend restarting
-in a loop rebuilds the gallery no more often than one that stays up. A backend
-that cannot read the record at startup refreshes as though requests were
-pending.
-
-A refresh that fails keeps its requests, which are released again after the
-minimum interval or one minute, whichever is longer. The wait doubles with each
-consecutive failure, up to six hours, and returns to the minimum interval with
-the first refresh that succeeds. A refresh still running after
-`TCAB_SNAPSHOT_REFRESH_TIMEOUT_MS` is abandoned and counts as failed, so a
-stalled bucket call cannot hold up every later refresh.
-
-The deploy hook is the last step of a refresh, after the upload has cut over
-and the superseded generations have been pruned. A hook that fails, or gives no
-answer within 30 seconds, fails the refresh, and each retry uploads a new
-generation, which is what the growing wait bounds.
-
-[`POST /snapshot/refresh`](/components/backend/api/#post-snapshotrefresh) is the
-one immediate path. It waits for a refresh already running, refreshes, carries
-every pending request, and starts the minimum interval. It is exempt from the
-wait that follows a failed refresh.
-
-Each release logs one `info` line, `releasing a snapshot refresh batch`, with
-the `reason` (`threshold`, `quiet`, `recovery` or `forced`) and the number of
-`requests` it carried.
+A run gets a code the first time it publishes: the shortest prefix of the run
+id, at least eight characters, that no published run already holds. The code is
+stored on the run record and as the public object `codes/<code>`, naming the run
+id, and is never reassigned. The `tcab.ai` share links resolve it; see [the
+public gallery](/components/site/serving/).
 
 ## Artifact reclamation
 
-The backend owns the lifetime of a run's tree on the [artifact
-service](/components/artifacts/overview/), reaching the service over
-`TCAB_ARTIFACTS_URL` with the shared service token.
+The backend owns the lifetime of a run's tree on the artifacts service and its
+bundle on the repos service, reaching both over `TCAB_ARTIFACTS_URL` and
+`TCAB_REPOS_URL` with the shared service token. The repos service sits behind
+no edge path, so the backend also serves a run's bundle to the console, as
+`GET /runs/{id}/bundle`.
 
-Deleting a run removes its row and then prunes its tree. The prune is
-best-effort, so the delete succeeds regardless of the data plane's health.
+Deleting a run removes its row and then prunes its tree and its bundle. Each
+prune is best-effort, so the delete succeeds regardless of the data plane's
+health.
 
-A periodic sweep reclaims every other tree the volume has no further use for.
-Each pass lists the service's stored trees and deletes a tree for exactly one
-of four reasons:
+A periodic sweep reclaims what a failed prune left, and anything else the
+private container holds with no run behind it. Each pass lists the artifacts
+service's stored trees, keeps every tree whose id still has a run row, and
+deletes the rest once they are older than a grace window. The grace window
+covers the interval between a driver uploading a run's tree and reporting the
+run terminal.
 
-| Reason      | The tree's run                                                       | Deleted                                                          |
-| ----------- | -------------------------------------------------------------------- | ---------------------------------------------------------------- |
-| `orphan`    | Has no run row                                                       | Once the tree is older than the grace window, when there is one  |
-| `published` | Is published                                                         | Once a snapshot refresh has [confirmed its media](#confirmation) |
-| `failed`    | Is unpublished and ended in any state but `completed` and `canceled` | `TCAB_ARTIFACT_FAILED_RETENTION_HOURS` after the run ended       |
-| `canceled`  | Is unpublished and ended `canceled`                                  | `TCAB_ARTIFACT_CANCELED_RETENTION_HOURS` after the run ended     |
+`TCAB_ARTIFACT_SWEEP_INTERVAL_HOURS` sets the pass interval and `0` disables the
+sweep. `TCAB_ARTIFACT_SWEEP_GRACE_HOURS` sets the grace window.
 
-Every other tree is kept. The tree of a completed run that is not published is
-the only copy of what a release publishes, so it is kept whatever its age. A
-tree is also kept while a job of its run is queued, running or storing, and
-while a publish job for its run is queued or dispatched.
-
-A published run is governed by the `published` rule alone, whatever state it
-ended in. A failed run whose tree has been reclaimed can no longer be published,
-so a failure worth releasing is published inside the retention period.
-
-The two retentions run from the later of the run's end and the moment its tree
-was stored, which the service's listing reports. A run that waited in `storing`
-through an outage of the store longer than its retention therefore still keeps
-its tree for the whole period once the tree lands, instead of losing it to the
-next pass.
-
-The grace window covers the interval between a driver uploading a run's tree and
-reporting the run terminal. A canceled run's driver may still be uploading its
-partial tree for ten minutes after the cancel, so the canceled retention is at
-least fifteen minutes whatever the setting says. A tree that lands for a run
-already reclaimed is kept for the retention from when it landed and then deleted
-by the pass that follows, and the run's record of its first reclaim is left as
-it was written. A grace window of `0` turns the `orphan` rule off, here and in
-the [state sweep](#state-volume): with no window, the tree of every run that is
-still finishing would be an orphan's.
-
-### Confirmation
-
-A published run's tree is the snapshot refresh's fallback source for media that
-is not yet in the bucket, so it is deleted only once nothing can need it. A
-refresh confirms a run when it uploaded successfully and every file of the run
-is in the bucket: the object was listed there before the refresh, or the refresh
-uploaded it. The confirmation is recorded on the run with the refresh's time,
-the bucket it was made against, the version of this definition it was made
-under, and the run's [file
-manifest](/components/backend/snapshot/#the-file-manifest).
-
-Every file means the media the run's document references, the recorded webm of
-each transcoded video, an adversarial run's replays and controller module, a
-performance run's scenarios and engine module, the code-analysis document, and
-a gg run's session record. The
-[snapshot page](/components/backend/snapshot/#run-media) gives the key of each.
-
-The files of a run are the ones its record lists and the ones only its tree can
-name. Two file sets are on no record: the image store a run's recordings share,
-and showcase files that neither the carousel nor the description mentions. For
-each run it has yet to confirm, the refresh asks the artifact service which
-validation and showcase files the run's tree holds
-([`GET /runs/{id}/media`](/components/artifacts/overview/#routes)), publishes
-those files from the tree when the backend store does not hold them, and
-requires each one in the bucket. A run whose tree the service could not list is
-left unconfirmed, as is one whose files in the backend store could not be
-listed: the refresh then cannot know that it has seen every file.
-
-A run is left unconfirmed, and its tree kept, when any of its files could not be
-published because its bytes could not be read from the backend store or the
-artifact service. A video that could not be transcoded is published as recorded
-and leaves its run unconfirmed as well, since the next refresh reads the source
-again to transcode it. The same holds for a code-analysis document that is
-stored and does not read as JSON. A refresh that finds a confirmed run
-unconfirmed withdraws the confirmation. The manifest stays on the run as the
-record of [where its files are](/components/backend/snapshot/#the-file-manifest),
-and nothing deletes on the strength of it until a refresh confirms the run
-again.
-
-Two files of one run can be bound for one object: a recording whose transcode
-is published as `clip.mp4`, beside a file the run itself wrote as `clip.mp4`.
-One object cannot hold both, so the first is the one uploaded and the run is
-left unconfirmed, reported as `object/contested` with the key. Neither the tree
-nor the folder of such a run is reclaimed.
-
-The backend store's copy of a file is not taken on its name alone. While the
-artifact service holds the run's tree, the refresh asks the service how long
-the tree's copy is, and where the two lengths differ it publishes the tree's
-copy: the store's is what an upload that was cut off left. An empty file in the
-store is a copy of nothing and is read past, to the tree. A store copy stands
-when there is no tree to ask or the tree does not hold the file.
-
-The controller module and the code-analysis document sit outside a tree's media
-directories, where no media route reaches them. The refresh reads which of them
-the tree holds from the same listing, and reads one the backend store lacks from
-[`GET /runs/{id}/root/{name}`](/components/artifacts/overview/#routes). A
-listing from an artifact service too old to name them says nothing about them,
-and a run that needs one is left unconfirmed until the service can answer.
-
-One case does not count against a run: a file the record lists that is
-[unrecoverable](/components/backend/snapshot/#unrecoverable-files), which the
-bucket, the backend store and the artifact service each answered that they do
-not hold. A description can reference an image the model did not write, a frame's
-preview may never have been rendered, and a volume can be lost. Keeping the tree
-could never supply such a file, so it is left out of the run's document, the
-manifest records it as unrecoverable, and the run can still be confirmed. A file
-the service could not be asked about, an answer other than `404`, a backend
-store read that failed for another reason than the file not being there, and a
-missing tree the backend still records as stored all leave the run unconfirmed.
-
-A backend store that holds no run folder at all answers for nothing. That is
-what a state volume that did not mount, a new volume and a wrong store path look
-like, and every file of every run is missing from each. A refresh that finds the
-store so records no file as unrecoverable; the runs that need the store are
-left unconfirmed until it holds runs again.
-
-A confirmation holds for the bucket it was made against, for the record it
-was made from, and for the definition it was made under:
-
-- The sweep deletes a published run's tree only when the run's confirmation
-  names the bucket this backend is configured with, by its endpoint and bucket
-  name. A database restored into another environment, or a backend pointed at
-  another bucket, therefore deletes nothing on the strength of a confirmation
-  made elsewhere, and its first refresh evaluates every run against its own
-  bucket.
-- Storing a run's record again clears its confirmation, so a run pushed again
-  must be confirmed again before its tree qualifies. It also clears a reclaim
-  record, since the push follows a driver that has uploaded the run's tree
-  again.
-- A refresh confirms a run only if the run has not changed since the refresh
-  read it. A run that changed in between is left as it was, and the refresh
-  requests another to evaluate it.
-- A confirmation counts only when it was made under the current version of the
-  definition above, which is `2`. A confirmation recorded before the definition
-  covered the files with no other copy carries no version. It confirms nothing:
-  the sweep deletes no tree on the strength of it, the run has no manifest, and
-  the next refresh evaluates the run again. A tree already reclaimed stays
-  reclaimed.
-
-A refresh builds a confirmed run's document from the run's manifest. While the
-bucket's listing holds every object the manifest names, each file name and key
-in the document comes from the manifest, the image store and the unmentioned
-showcase files included. The refresh reads and lists nothing under the run's
-folder in the backend store and asks the artifact service nothing about the
-run, so the document is the same whether or not the store still holds the run's
-files. A file the manifest records as unrecoverable stays left out. A refresh
-that cannot read the confirmed runs' manifests fails, and the batching retries
-it.
-
-A confirmed run with an object missing from the bucket's listing is evaluated
-from its sources like an unconfirmed one. Once such a run's tree is reclaimed,
-nothing about it is left to decide. Later refreshes ask the artifact service
-nothing about it, leave out a file its record lists that the bucket lacks, as
-the refresh that confirmed it did, and do not change its confirmation.
-
-A run confirmed under an earlier version whose tree was reclaimed is evaluated
-like any other. The artifact service answers that it holds no tree, the backend's
-reclaim record agrees, and the refresh publishes the newly covered files from
-the backend store, which still holds them. A file of such a run that the store
-has lost is unrecoverable.
-
-A refresh learns what the bucket holds by listing its `media/` prefix. A refresh
-that cannot list it fails, and the batching retries it. It does not fall back to
-building every run's media from its source, because the source of a confirmed
-run's media is the tree this sweep deleted: a snapshot built that way would
-publish those runs with their media left out.
-
-Each refresh logs one `warn` line per unconfirmed run, `published run media
-not confirmed in the bucket`, with the run id and the files, and one per run it
-newly confirmed with unrecoverable files. Its completion line carries the counts
-`runs_confirmed` and `runs_unconfirmed`. The number of
-unconfirmed runs of the latest refresh is the
-`tcab.artifacts.unconfirmed_runs` gauge. A run whose tree was reclaimed, which
-is not confirmed in the configured bucket and whose media that bucket lacks, has
-no source left. A refresh that finds any logs one `error` line with their
-number, which is what a backend pointed at another bucket than the one its runs
-were confirmed in looks like.
-
-Confirmations are recorded only by a backend whose sweep deletes published
-trees: one with a bucket, an artifact service and a service token, the sweep on
-and `TCAB_ARTIFACT_RECLAIM_PUBLISHED` on. Any other backend records none and
-asks the artifact service for no listing.
-
-### Runs waiting on a confirmation
-
-Every refresh evaluates every published run it has yet to settle, so a publish
-confirms the runs before it as well. A backend that records confirmations does
-not wait for a publish to bring a refresh about. At startup, and every ten
-minutes after, it counts the published runs that wait on a confirmation in its
-bucket and requests one refresh when there are any, which goes through the
-[batching](#refresh-batching) like any other request. Two kinds of run wait:
-
-- A run **no refresh has evaluated** against the bucket under the current
-  version: one published before the backend recorded confirmations, one
-  confirmed under an earlier version, one that changed while a refresh was
-  reading it, and one an upload or the state sweep made unevaluated again. A
-  refresh is requested at every check while any is left, since one refresh
-  evaluates them all.
-- A run a refresh **evaluated and left unconfirmed**. The artifact service may
-  have been restarting, or the run's video may never transcode, and nothing
-  tells the two apart. The request is repeated on a delay that starts at ten
-  minutes and doubles to one day, and starts over once no run is left
-  unconfirmed or the backend restarts.
-
-A refresh records every run it evaluated, confirmed or not, with the version it
-evaluated under, so a backend whose published runs are all confirmed requests
-nothing, at startup or after. Without the check a deployment whose queue is
-[held for lack of space](#low-space) would have no refresh coming: its runs
-would never be confirmed, their files never reclaimed and the hold never
-lifted.
-
-### Tournament replays
-
-A tournament's match replays live in the backend store and are not exported. Each
-refresh measures what they hold, as the gauges
-`tcab.store.tournament_replay_bytes` and `tcab.store.tournament_replay_files` and
-as the fields `tournament_replay_bytes` and `tournament_replay_files` of its
-completion line. A store that could not be measured reports neither.
-
-### Guards
-
-A pass acts only on a run set the backend read and found at least one run in. A
-query that fails and one that comes back empty both abandon the pass, which is
+A pass acts only on a run-id set the backend read and found at least one run in.
+A query that fails and one that comes back empty both abandon the pass, which is
 retried at the next interval, so a database fault or a backend brought up
-against a fresh database beside a populated volume leaves the volume intact. A
-failing tree listing abandons the pass the same way.
-
-A run's end time, its tree's storing time and its confirmation time qualify it
-only when they parse and lie in the past. The backend compares them itself, so
-SQLite and PostgreSQL decide alike. Immediately before each delete the backend
-reads the run again, with its jobs and publish jobs, and skips the tree if the
-run no longer qualifies. It reads the run's jobs once more after it has recorded
-the reclaim, and takes the record back if a publish job appeared in between, so
-a publish enqueued in that instant keeps its tree.
-
-### What a reclaim records
-
-The backend records on the run that its tree was reclaimed, when, and for which
-of the three run reasons, before it asks the service to delete the tree. The
-record is distinct from a tree that was [not stored](#artifact-presence): a
-reclaimed run is one whose tree the backend removed on purpose.
-
-A delete the service refuses with an error status left the tree in place, so the
-record is taken back and the next pass tries again. A delete that gets no
-answer is different: the service carries a delete through once it has started
-one, so the tree may be gone although the backend never heard so. The record is
-kept. If the tree is still listed at the next pass, the pass deletes it again
-and leaves the record as it was; if it is not, the record already says what
-happened. Either way the run never reads as one whose tree was lost. The sweep
-gives a delete two minutes to answer.
-
-### Settings and logging
-
-| Variable                                 | Meaning                                                                    | Default |
-| ---------------------------------------- | -------------------------------------------------------------------------- | ------- |
-| `TCAB_ARTIFACT_SWEEP_INTERVAL_MINUTES`   | Time between passes; `0` disables the sweep                                | `10`    |
-| `TCAB_ARTIFACT_SWEEP_INTERVAL_HOURS`     | The same in hours, used only while the minutes setting is unset            | —       |
-| `TCAB_ARTIFACT_SWEEP_GRACE_HOURS`        | The grace window of the `orphan` rule; `0` turns the rule off              | `24`    |
-| `TCAB_ARTIFACT_FAILED_RETENTION_HOURS`   | The `failed` rule's retention; `0` keeps every failed run's tree           | `24`    |
-| `TCAB_ARTIFACT_CANCELED_RETENTION_HOURS` | The `canceled` rule's retention; `0` keeps every canceled run's tree       | `1`     |
-| `TCAB_ARTIFACT_RECLAIM_PUBLISHED`        | Whether the `published` rule applies; `false` keeps every published tree   | `true`  |
-
-The interval runs from the end of one pass to the start of the next, and one
-task runs every pass, so two passes never overlap. The first pass runs one
-minute after the backend starts.
-
-The interval, grace and retention settings and the switch are read strictly: a value
-that is not a whole number, or a switch that is neither on (`1`, `true`, `yes`,
-`on`) nor off (`0`, `false`, `no`, `off`), stops the backend at startup with an
-error naming the variable. A misspelled "off" therefore never leaves a deletion
-on. The hours setting is the older one, and is held to that only while it
-decides the interval: with the minutes setting present its value is not used,
-and a value there that does not read is ignored with a warning instead of
-stopping the start.
-
-`TCAB_ARTIFACT_RECLAIM_PUBLISHED=false` is also the setting for a deployment
-that publishes a published run again, to repair its Pages deployment or its
-source repository: a release is built from the tree, so a published run can be
-published again only while its tree is stored.
-
-Each deleted tree logs one `info` line, `reclaimed a run tree from the artifact
-service`, with the run id and the reason. The artifact service does not report a
-tree's size, so the space is reported for the pass: the backend reads the
-volume's free space before and after a pass that deleted anything and logs the
-difference as `freed_bytes`.
-
-Every pass that lists the service's trees logs one `info` line, `artifact sweep
-pass complete`, with the trees `listed`, the trees `reclaimed` and the deletes
-that `failed`, the `orphans` the pass selected, the reclaimed trees of runs by
-reason (`reclaimed_published`, `reclaimed_failed`, `reclaimed_canceled`), the
-trees a re-read `skipped`, the published runs with a stored tree still
-`unconfirmed`, `freed_bytes`, and the runs whose
-[artifact presence](#artifact-presence) the pass changed, `marked_stored` and
-`marked_not_stored`. A pass that changes nothing logs the same line with zero
-counts. Reclaimed trees are also counted by the
-`tcab.artifacts.reclaimed_trees` counter, by reason.
-
-An abandoned pass logs one `warn` line in place of the `info` one, `artifact
-sweep pass abandoned`, with the `reason` (`no_runs`, `runs_unreadable` or
-`listing_failed`). Every pass therefore logs exactly one of the two lines.
-
-## State volume
-
-The backend's store is on the backend's own volume, the state volume, mounted at
-`/state` in a deployment. A run's folder there, `runs/<id>/`, is a staging area:
-a driver uploads the run's files into it, a snapshot refresh publishes them to
-the bucket and records the object that holds each in the run's
-[file manifest](/components/backend/snapshot/#the-file-manifest), and from then
-on [every route reads the bucket](/components/backend/api/#run-files) for a file
-the store no longer holds. A periodic sweep removes the files nothing reads from
-the store any more.
-
-An upload is written beside the folders, under `run-uploads.tmp/` at the store's
-root, and moved into place once it is whole. A reader and the sweep therefore
-never see part of a file under a run's name, and an upload that a full volume
-or a restart cut off leaves nothing in the run's folder. The backend empties
-`run-uploads.tmp/` when it starts.
-
-Each pass lists the folders under `runs/` and removes files from a folder for
-exactly one of four reasons:
-
-| Reason      | The folder's run                                                     | Files removed                                                                                                       |
-| ----------- | -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| `published` | Is published                                                         | Once the run is [confirmed](#confirmation), each file once the bucket holds its bytes                               |
-| `failed`    | Is unpublished and ended in any state but `completed` and `canceled` | `TCAB_ARTIFACT_FAILED_RETENTION_HOURS` after the run ended, once the artifact service holds no tree for the run     |
-| `canceled`  | Is unpublished and ended `canceled`                                  | `TCAB_ARTIFACT_CANCELED_RETENTION_HOURS` after the run ended, once the artifact service holds no tree for the run   |
-| `orphan`    | Has no run row                                                       | Once the folder's newest file is older than `TCAB_ARTIFACT_SWEEP_GRACE_HOURS`, unless that is `0`                   |
-
-Every other folder is kept. The files of a completed run that is not published
-are kept whatever their age. A folder is also kept while a job of its run is
-queued, running or storing, and while a publish job for its run is queued or
-dispatched.
-
-The session record of a gg run, `runs/<id>/replay.json`, is removed under the
-`published` reason alone. A refresh publishes the record of a published run and
-of no other, so under the `failed`, `canceled` and `orphan` reasons the store's
-copy is the only one once the run's tree is reclaimed, and it is kept. Deleting
-the run is what removes it. The code-analysis document and the controller module
-of a `failed` or `canceled` run are kept the same way: the console reads the one
-and the arena the other from the backend alone, and no bucket holds a copy of an
-unpublished run's.
-
-Orphans are removed only while there are few of them. A pass that finds more
-than twenty folders with no run row, making up more than a quarter of the
-folders it listed, removes none of them and logs one `error` line with their
-number. A backend started against a database older than its volume, restored
-from a backup or simply the wrong one, sees every run made since as an orphan,
-and among those are unpublished runs whose files have no other copy. The pass
-holds them at every interval until the database and the volume agree again or
-an operator deletes the folders.
-
-### What a published run's folder must satisfy
-
-Nothing of a published run's folder is removed unless all of these hold at the
-moment of the removal:
-
-- The run's confirmation holds for the configured bucket under the current
-  version of the [confirmation](#confirmation), and its manifest reads.
-- The bucket's listing of the run's prefix contains every object the manifest
-  names. A listing that fails, or that has not answered within two minutes,
-  removes nothing, and the next pass asks again.
-
-Each file is then decided on its own. A file is removed when the manifest
-records an object for it and that object holds the file's bytes: the object is
-the file's size, and its MD5 is the file's wherever the bucket reports one. An
-object written by one `PUT`, which is every object the backend writes, reports
-one. The code-analysis document and the session record are published scrubbed
-and uncompressed, so each is compared as it would be published now: the stored
-file is scrubbed again in memory, and the result must have the object's size and
-MD5. The comparison that decides the removal reads the same open file the
-removal then removes, so a document written again in between is never removed
-on the strength of the one before it. Every other file stays, and the files
-beside it are removed regardless:
-
-- A file the manifest does not name. No refresh published it, and it stays
-  until the run is deleted or an operator removes it from the volume. The
-  session record is the exception, described below.
-- A file whose object is another size or holds other bytes, or whose size the
-  bucket did not report. The folder's copy is the only one of what it holds.
-  The backend never overwrites an object to settle this. To publish the
-  folder's copy, delete the object from the bucket and request a refresh with
-  [`POST /snapshot/refresh`](/components/backend/api/#post-snapshotrefresh): it
-  finds the object missing, evaluates the run from its sources, uploads the file
-  from the store and confirms the run again.
-- An entry that is neither a file nor a directory, which keeps the whole folder.
-
-An empty file the manifest names is removed whatever the bucket holds. It is
-what an upload cut off by a full volume left before uploads were [written
-whole](#state-volume), and a copy of nothing.
-
-A session record the manifest does not name is kept, and is not left at that.
-The run was confirmed while its folder held no record: the record arrived
-without its upload being recorded, the volume was not mounted when the refresh
-looked, or the confirmation is older than the publishing of session records.
-The pass removes nothing from the folder and withdraws the run's confirmation,
-so that the next refresh publishes the record, enters it in the manifest and
-confirms the run again. An empty `replay.json` the manifest does not name is a
-copy of nothing: it is left where it is and changes nothing.
-
-A folder that holds a file the manifest records as
-[unrecoverable](/components/backend/snapshot/#unrecoverable-files) has a file to
-publish after all: the volume it is on was not mounted when the refresh looked,
-or the file was restored since. The pass removes nothing from the folder and
-withdraws the run's confirmation, so that the next refresh publishes the file
-and confirms the run with a manifest that names its object.
-
-A backend records confirmations only where its [artifact
-sweep](#confirmation) deletes published trees, so a backend with no bucket, with
-no artifact service, or with `TCAB_ARTIFACT_RECLAIM_PUBLISHED` off removes no
-published run's files from the store.
-
-A `failed` or `canceled` run's retention runs from the later of the run's end
-and the moment the folder's newest file was written. Its files are removed only
-once the backend's record says the artifact service holds no tree for the run:
-the tree was [reclaimed](#what-a-reclaim-records) or was recorded as [not
-stored](#artifact-presence). A run whose tree nothing has reported on keeps its
-files.
-
-### How a removal is made
-
-The pass follows the [guards](#guards) of the artifact sweep. It acts only on a
-run set the backend read and found at least one run in, and a `runs/` directory
-it could list; any of the three failing abandons the pass until the next
-interval. Times are compared by the backend, so SQLite and PostgreSQL decide
-alike.
-
-Immediately before a folder's files are removed the backend reads the run, its
-jobs, its manifest, the folder and the bucket again and decides again from what
-it read. It then records on the run that its files were removed from the store,
-when and for which reason, reads the run's jobs once more, and takes the record
-back if a job or a publish job appeared in between. Only then does it remove the
-files it listed, one at a time and by name, and afterwards the directories that
-emptied. Each removal is made while no upload can write, and only if the file
-is still the one that was listed, by its size, its modification time and its
-identity on the volume, and still holds its object's bytes. A file written into
-the folder after the listing is therefore left in place, under a new name or
-over an old one. A removal in which no file could be removed takes the record
-back, and the next pass tries again.
-
-### Uploads after a confirmation
-
-An upload of a file for a run writes the file and then withdraws what the upload
-made untrue. A confirmed run loses its confirmation, and the record that its
-files were removed is cleared. The run then reads as one no refresh has
-evaluated: the sweep removes nothing of it, and the next refresh publishes
-whatever the bucket lacks and confirms the run again with a manifest that names
-the new file. An upload for a published run with no confirmation stamps the run
-as changed, so a refresh already evaluating it records no confirmation without
-the file. A session record is uploaded under the same rule as every other file.
-
-The run keeps its manifest through all of it. The manifest is the only record
-of where the files the sweep removed are, and the [run file
-routes](/components/backend/api/#run-files) go on answering from it, so every
-file of the run is served between the upload and the refresh that follows.
-
-A driver mirrors a run file by file. The first upload that makes a run
-unevaluated requests one snapshot refresh, and the uploads after it find the
-run already waiting and request nothing, so a mirror of a hundred files is one
-request and not a batch released on its own.
-
-A file whose name the bucket already holds an object for is not published
-again, so the bucket's copy is the one that is served once the store's is
-removed. Where the two differ the sweep [keeps the store's
-copy](#what-a-published-runs-folder-must-satisfy) and says so.
-
-Pushing a run again clears its confirmation and both reclaim records with the
-rest of its retention facts, and keeps its manifest for the same reason an
-upload does. Deleting a run removes its whole folder, the session record
-included. It removes nothing from the bucket: the objects of a deleted run,
-its published [session
-record](/components/backend/snapshot/#the-session-record) among them, stay
-there until an operator deletes them.
-
-### Runs stored before the sweep
-
-A run needs no migration to be reclaimed. At startup the backend counts the
-published runs no refresh has evaluated against the configured bucket under the
-current confirmation version and requests one snapshot refresh when there is at
-least one; a start with every published run evaluated requests none. That
-refresh publishes each file the bucket lacks from the store or from the run's
-tree, records a file whose bytes are in none of the three as unrecoverable, and
-confirms the run. The passes after it remove the files the manifest accounts
-for.
-
-### Low space
-
-The backend reads the free space of the state volume at every [capacity
-poll](#artifact-capacity) and derives a level from the latest reading:
-
-| Level        | Condition                                                               | Runs       |
-| ------------ | ----------------------------------------------------------------------- | ---------- |
-| `ok`         | Free space is at or above `TCAB_STATE_FREE_WARN_MB`                     | Dispatched |
-| `low`        | Free space is under `TCAB_STATE_FREE_WARN_MB` (default 3 GiB)           | Dispatched |
-| `blocked`    | Free space is under `TCAB_STATE_FREE_STOP_MB` (default 1.5 GiB)         | On hold    |
-| `unreadable` | The latest reading failed                                               | Dispatched |
-
-A `blocked` state volume [holds new runs](#the-hold) for the reason
-`state-low-space`: a full volume takes neither a finishing run's uploads nor a
-write to an embedded database. A reading that fails holds nothing, because the
-backend then has no evidence that the volume is full; the failure is logged and
-reported, and the level the volume last read as is kept for the reading that
-follows. Setting either threshold to `0` turns it off, and with both off the
-volume is not read.
-
-The levels move with the [hysteresis](#thresholds) of the artifact store's and
-share its recovery margin, `TCAB_ARTIFACT_FREE_RECOVER_MB`. The volume is read
-by the capacity poll, so a backend with no artifact service configured reads
-neither volume.
-
-### State volume settings and logging
-
-| Variable                  | Meaning                                                                         | Default |
-| ------------------------- | ------------------------------------------------------------------------------- | ------- |
-| `TCAB_STATE_RECLAIM`      | Whether the sweep removes anything from the store; `false` keeps every file     | `true`  |
-| `TCAB_STATE_FREE_WARN_MB` | Free space on the state volume, in MiB, under which it is `low`; `0` for never  | `3072`  |
-| `TCAB_STATE_FREE_STOP_MB` | Free space, in MiB, under which new runs are put on hold; `0` for never         | `1536`  |
-
-The sweep runs at the artifact sweep's interval, `TCAB_ARTIFACT_SWEEP_INTERVAL_MINUTES`,
-and an interval of `0` disables both. One task runs every pass, so two passes
-never overlap, and the first pass runs ninety seconds after the backend starts.
-All three settings are read strictly, as the artifact sweep's are: a value that
-does not read stops the backend at startup with an error naming the variable. A
-warn threshold below the stop threshold is refused the same way.
-
-Each folder files were removed from logs one `info` line, `reclaimed a run's
-files from the backend store`, with the run id, the reason, the number of
-`files` and the `freed_bytes`. Every pass logs one `info` line, `state sweep
-pass complete`, with the `folders` listed, the folders `reclaimed` and those by
-reason (`reclaimed_published`, `reclaimed_failed`, `reclaimed_canceled`,
-`reclaimed_orphans`), the folders a re-read `skipped`, the removals that
-`failed`, the published folders that keep a file nothing accounts for
-(`kept_unaccounted`), the files among those whose object holds other bytes
-(`differing_files`), the folders kept for an object the bucket does not list
-(`kept_unlisted`), the runs whose confirmation the pass withdrew (`withdrawn`),
-the orphans it held back (`orphans_held`), the published runs still
-`unconfirmed`, `removed_files`, `freed_bytes`, and the number and size of the
-session records the store held when the pass listed it (`session_records`,
-`session_record_bytes`). A
-file kept as unaccounted or differing logs one `warn` line naming the run, the
-file and why, the first time a backend process finds it so, and `debug` lines
-after. An abandoned pass logs one `warn` line, `state sweep pass abandoned`,
-with its `reason`.
-
-Removed folders are counted by `tcab.state.reclaimed_runs` and their bytes by
-`tcab.state.reclaimed_bytes`, each by reason. `tcab.state.kept_unaccounted_runs`
-is the number of folders the last pass kept as unaccounted, and
-`tcab.state.free_bytes` and `tcab.state.total_bytes` are the volume's latest
-reading.
-
-## Artifact presence
-
-A run can be released only from its stored tree, so the backend records for each
-run whether the [artifact service](/components/artifacts/overview/) holds one.
-The record has three values: stored, not stored, and unknown. Unknown is a run
-nothing has reported on yet, which is every run of a backend with no artifact
-service configured.
-
-Three sources write it:
-
-- The driver's terminal status report, whose `artifactsStored` says whether its
-  upload was acknowledged.
-- The reclamation sweep. Each pass that lists the service's trees marks every
-  run in the listing stored and every other run not stored, which is how a run
-  whose tree was lost before the backend recorded presence is found. The run ids
-  are read before the trees are listed, so a run that lands during the pass is
-  left for the next one. A listing that comes back empty marks nothing, for the
-  reason an empty run-id set sweeps nothing.
-- The publish gate below, which records the answer it was given.
-
-A run whose tree the backend [reclaimed](#what-a-reclaim-records) is recorded as
-not stored together with the reclaim, and none of the three sources writes its
-presence again. Everything that reads "not stored" as a lost tree reads the
-reclaim first: the lists and counts of runs with no stored tree leave a
-reclaimed run out, the reconciliation leaves it as it is, and the
-[capacity hold](#evidence-from-uploads) takes no evidence from it.
-
-Every publish passes one gate before a publish job is enqueued, whichever of the
-three paths asked for it: [automatic
-publishing](/components/core/results/#automatic-publishing), an operator's
-[`POST /runs/{id}/publish`](/components/backend/api/#post-runsidpublish), and a
-[comparison publish](/comparisons/publishing/). The gate asks the artifact
-service directly whether the run's tree is stored, over `TCAB_ARTIFACTS_URL`
-with the service token, and acts on the answer:
-
-| Answer                         | Automatic publishing                          | An operator's publish | A comparison publish           |
-| ------------------------------ | --------------------------------------------- | --------------------- | ------------------------------ |
-| The tree is stored             | Enqueues                                      | Enqueues              | Enqueues                       |
-| The run has no tree            | Passes over the run, recording no publish job | Refuses with `409`    | Skips the run, with the reason |
-| The service gave no answer     | Passes over the run, which is retried         | Refuses with `503`    | Skips the run, with the reason |
-| No artifact service configured | Enqueues                                      | Enqueues              | Enqueues                       |
-
-A run whose release is already under way keeps its job and is not asked about.
-A run whose tree was reclaimed is not asked about either: automatic publishing
-passes it over for good, an operator's publish is refused with `409`, and a
-comparison publish skips it. The reason given says which reclaim it was: a
-failed or canceled run's artifacts were removed after the retention period, and
-a published run's tree was removed once its release was confirmed in the
-bucket. The reclaim record is read again as the publish job is written, so a
-publish that raced the sweep is answered the same way and records no job.
-Automatic publishing logs each run it passes over, at `warn`, with the run id
-and which of the two answers it got. A status report whose driver could not
-store the run's tree is logged at `warn` as it is accepted.
-
-Automatic publishing marks each run it passes over and
-[retries the marked runs](/components/core/results/#automatic-publishing) every
-five minutes, so a run that finished while the artifact service gave no answer
-publishes once it does. A service that answers any status but success gives no
-answer in this sense, which includes an artifact service image that predates
-the presence route: runs that finish while a rollout has the backend ahead of
-the artifact service are published by the retry once the service has rolled.
-
-Reconciliation leaves a run's mutation timestamp alone when it moves the run
-from unknown to stored, since nothing a console shows has changed, and stamps
-every other change. The first pass over an existing cabinet therefore stamps
-only the runs it finds without a tree.
-
-## Artifact capacity
-
-A finishing run's tree is lost for good when the
-[artifact service](/components/artifacts/overview/) cannot store it, so the
-backend hands out a new run only while every condition for storing one is
-green. It polls the service's `GET /capacity` over `TCAB_ARTIFACTS_URL` with the
-service token. Each reading carries the volume's free space and the result of
-the service's [write check](/components/artifacts/overview/#capacity), and the
-backend derives one state from the latest reading:
-
-| State         | Condition                                              | Runs       |
-| ------------- | ------------------------------------------------------ | ---------- |
-| `ok`          | Free space is at or above the warn threshold           | Dispatched |
-| `low`         | Free space is under the warn threshold (default 3 GiB) | Dispatched |
-| `blocked`     | Free space is under the stop threshold (default 2 GiB) | On hold    |
-| `unwritable`  | The service's write check failed                       | On hold    |
-| `unavailable` | The latest reading is older than three poll intervals  | On hold    |
-| `unmonitored` | No artifact service or no service token is configured  | Dispatched |
-
-`blocked` takes precedence over `unwritable`, since a full volume fails the
-write check as well.
-
-The stop threshold is the reserve for the runs in flight. The dispatcher runs up
-to eight at once and the largest tree is about 180 MB, so the eight stored trees
-take about 1.4 GB of the reserve. A tree needs about twice its size on the
-volume while it uploads, and the rest of the reserve is that transient room: it
-covers three of the eight landing at the same moment. A deployment that raises
-`TCAB_DISPATCHER_MAX_INFLIGHT` raises the stop threshold in proportion.
-
-### The hold
-
-Runs are on hold while any of these is true, and the first that applies is the
-reported reason:
-
-| Reason                | Condition                                                                                         |
-| --------------------- | ------------------------------------------------------------------------------------------------- |
-| `unreadable`          | The state is `unavailable`                                                                        |
-| `low-space`           | The state is `blocked`                                                                            |
-| `unwritable`          | The state is `unwritable`                                                                         |
-| `uploads-waiting`     | A run in flight is [waiting to store its tree](/components/driver/overview/#waiting-on-the-store) |
-| `write-check-pending` | An upload failed while the store read as faulty, and no passing reading has arrived since         |
-| `state-low-space`     | The backend's own [state volume](#low-space) is `blocked`                                         |
-| `publish-failing`     | [Publishes are failing](#publish-failures) across several runs                                    |
-| `proving-store`       | An upload failed while the store read as healthy, and no tree has landed since                    |
-
-While runs are on hold,
-[`POST /jobs/next`](/components/dispatcher/overview/#backend-enforced-admission-rules)
-claims nothing and every waiting run reads `pending`. The runs stay in the queue
-and are dispatched in their original order once the hold lifts. The publish
-queue is claimed as usual, since a publish reads a tree that is already stored.
-`proving-store` is the one reason that still hands out a run, and it hands out
-one at a time. [Evidence from uploads](#evidence-from-uploads) describes it.
-
-The hold lifts by itself once every condition is green. The backend counts the
-waiting runs from its own job table, as the jobs in the `storing` state, at
-every poll, every claim and every driver report. A run stops counting when its
-job leaves that state: its upload lands, its driver gives up, an operator
-cancels it, or the dispatcher reports its driver
-[lost](/components/dispatcher/overview/#lost-drivers).
-
-### Evidence from uploads
-
-A failed upload is evidence about the store that the write check may not have.
-The check writes a small tree, and an upload can fail for a reason it does not
-exercise: the artifact service cannot reach the backend to verify the job token,
-or a fault that only a large write meets. So the backend remembers that an
-upload failed for a reason that was the store's, and the queue reopens on
-evidence that the fault is gone, never on the last waiting run leaving.
-
-The backend learns of a failed upload from a driver's `storing` report, and from
-a report that says the tree was not stored and names the store as the cause
-(`storeFault`). Those reports count whatever state the job is in, so the upload
-of a canceled run and of a run the dispatcher had already reported lost count as
-well. What the backend then waits for depends on what the store read as when the
-latest failure arrived:
-
-- The store read as faulty: it was unreadable, short of space or failing its
-  write check. The check has seen the fault, so a passing reading with no run
-  waiting is evidence of the repair, and the queue reopens on it. Until then the
-  reason is `write-check-pending`.
-- The store read as healthy. The check cannot see this fault, so a passing
-  reading proves nothing. Once no run is waiting the reason is `proving-store`:
-  the backend hands out a run only while no run is in flight, so one run at a
-  time proves the store. The first tree that lands, from any run, reopens the
-  queue. A run whose upload fails goes back to waiting, and holds the queue as
-  `uploads-waiting`.
-
-A tree that lands always ends both: a report with `artifactsStored: true` is the
-store taking a whole upload.
-
-This memory is the backend process's own. When the backend starts, it reads the
-most recently finished run's recorded
-[artifact presence](#artifact-presence), passing over a run whose tree was
-reclaimed. If that run's tree was not stored, the
-backend starts in `proving-store`, so a restart during a store fault does not
-reopen the whole queue. That recorded presence does not say why the tree was
-not stored, so a backend can start in `proving-store` after a tree the store
-refused as the run's own fault. The first run to store its tree ends it. A run
-the backend finds already `storing` when no failure is on record, which is
-what a backend that restarted during a wait finds, is recorded as a failed
-upload too.
-
-A driver also reports `storing` when its first attempt has run for a minute
-without an answer. A tree that is only slow to upload therefore holds the queue
-until it lands, which is seconds later for a healthy store.
-
-### An unreadable store
-
-A read that fails pauses the claim at once: `POST /jobs/next` answers `204` and
-leaves the queue as it is, so no run is dispatched into a store the backend
-cannot see. The claim is paused while the latest poll failed or the latest
-reading is older than two poll intervals. The pause changes neither the reported
-state nor any run's display state, so one missed poll leaves the console as it
-was.
-
-Once the latest reading is older than three poll intervals the state is
-`unavailable` and runs are on hold, with every waiting run reading `pending`.
-The backend holds no reading when it starts, so it starts `unavailable`, and the
-first reading that arrives decides the state at once.
-
-The backend polls every `TCAB_ARTIFACT_CAPACITY_POLL_SECONDS`. It takes its
-first reading before it serves a claim and gives it five seconds. A service that
-answers in that time decides the first claim.
-
-### Recovery
-
-`unavailable` and `unwritable` are entered on the first reading that calls for
-them and left only after three consecutive passing readings, about thirty
-seconds at the default poll interval. One good answer from a store that is
-failing intermittently therefore does not reopen the queue, and the dispatcher
-cannot fill its lane in the gap before the next failed poll. A failed poll or a
-failed write check during the recovery starts the count again. While the count
-runs the state, the reason and the reported error stay as they were.
-
-The three readings apply only to a state the backend has announced. A single
-missed poll that only [paused the claim](#an-unreadable-store) ends with the
-next reading, and so does the `unavailable` state the backend starts in.
-
-### Publish failures
-
-An unpublished completed run [keeps its tree](#artifact-reclamation) until it is
-published, so a release path that has stopped working fills the store with every
-run that finishes. The backend therefore also holds new runs while publishing is
-failing, with the reason `publish-failing`.
-
-The hold is on while the most recent finished publish jobs are failures of
-`TCAB_PUBLISH_FAILURE_HOLD_RUNS` different runs, five by default, with no
-succeeded publish job among them. `0` turns the hold off. The rule reads the
-publish job table alone:
-
-- Jobs are ordered by when they finished, and only the failures after the latest
-  succeeded job count.
-- Runs are counted, not jobs, so one run that fails on every retry counts once.
-- A failure counts while its run can still be released: the run exists, is
-  unpublished, its tree is neither reclaimed nor recorded as not stored, it is
-  not an attempt an automatic retry replaced, and it still passes the
-  [publish gate](/components/core/results/#publishing) for its state and
-  reviews. A run that has stopped being publishable is therefore neither counted
-  nor published by the backend.
-- A publish refused at the [gate](#artifact-presence) records no publish job and
-  counts for nothing.
-
-While the hold is on the run claim hands out nothing and every waiting run reads
-`pending`, as under the other reasons. Runs in flight finish and store their
-trees, and the publish queue is claimed as usual. The hold applies with or
-without an artifact service configured, and it is reported under whichever
-state the store is in.
-
-The first publish job that succeeds ends the hold, whichever run it releases and
-whether the backend or an operator enqueued it. The hold also ends when fewer
-than the threshold's runs are left to count, which happens when a failing run
-is deleted, loses its tree or stops being publishable; the release path may
-still be failing then, and the log line for the end of the hold does not claim
-otherwise. The backend reads the hold from the table at every run claim, every
-publish result and every status request, so a restart changes nothing and there
-is nothing to reset. A run claim decides on the reading it has just taken.
-
-While the hold is on the backend keeps publishing, so that a recovery is found
-without an operator. The
-[retry of failed publishes](/components/core/results/#retrying-a-failed-publish)
-runs as usual. Whenever no publish job is in flight and none has finished for
-the probe interval, the backend also enqueues one for the failed run whose
-latest attempt is oldest, whatever that run's wait and however long ago it first
-failed. A probe that fails makes its run the most recently attempted, so the
-next probe takes another run: the probes go round every failed run in turn, and
-one run that cannot be published for a reason of its own does not keep the
-others from being tried. The probe interval is five minutes when the hold begins
-and doubles with each further failure, up to thirty minutes. A run the gate
-refuses is passed over for the next.
-
-### Thresholds
-
-The byte states move with hysteresis. `low` returns to `ok`, and `blocked`
-returns to `low` or `ok`, only once free space is `TCAB_ARTIFACT_FREE_RECOVER_MB`
-above the threshold that was crossed, so a reading that hovers at a threshold
-holds one state. The level survives an outage of the service, so a store that
-was `blocked` before one is judged from `blocked` after it.
-
-A run takes minutes between its claim and its upload, so a ten-second-old
-reading decides a claim as well as a fresh one, and the reserve covers the runs
-claimed before the state changed. A claim decided on a reading taken just above
-the stop threshold can still admit a run the reserve has to absorb.
-
-### Reporting
-
-Each change of the state, the hold, its reason, the number of waiting runs or
-the reported error logs one line. Entering a hold logs at `error` for `blocked`,
-`unwritable`, `unavailable` and `state-low-space`, and at `warn` for the three
-reasons that come from uploads and for `publish-failing`, whose line carries the
-number of failing runs and the latest publish error. The end of a
-`publish-failing` hold logs at `info`, as publish failures no longer holding new
-runs, whether or not another reason still holds them. Entering `low` logs at
-`warn`, and a change that leaves the queue open at `ok` logs at `info`. Every
-line carries the hold's reason, the number of runs waiting to store, and the
-error text of the condition: the failed poll's error, the write check's error,
-or the latest reason a driver reported. The first reading the backend takes when
-it starts is logged the same way, so a backend that starts beside a store it
-cannot read says so.
-
-A change of the state volume's level logs a line of its own, naming the volume
-as the backend's: `warn` on entering `low` and on a reading that fails, `error`
-when it becomes `blocked` while another reason already holds the queue, and
-`info` when it returns to `ok`.
-
-The free space of each reading is the `tcab.artifacts.free_bytes` gauge, beside
-`tcab.artifacts.total_bytes`.
-[`GET /artifacts/capacity`](/components/backend/api/#get-artifactscapacity)
-reports the state, and the [console stream](/components/backend/api/#the-console-stream)
-carries each change. Both report the state volume beside the artifact store.
-The hold deletes nothing to make room: space returns as runs are deleted and
-the two sweeps, of the [artifact store](#artifact-reclamation) and of the
-[state volume](#state-volume), run.
-
-### A driver lost while it waits
-
-A waiting driver holds the run's record as well as its tree, since the record
-travels on the terminal report. So the first `storing` report carries the
-record, with the failure reason when the run failed, and the backend keeps it
-on the job. If the dispatcher then reports that driver dead or
-[lost](/components/dispatcher/overview/#lost-drivers), the backend finishes the
-run from the kept record exactly as the driver's own report would have, with
-its artifacts recorded as not stored. The run keeps its outcome, and it is
-retried only if that outcome is one that retries. The tree, the playable-build
-link and the media a driver
-[mirrors into the backend store](/components/driver/overview/#waiting-on-the-store)
-after its upload went with the pod. A driver lost after its wait ended with the
-tree stored is finished the same way, with its artifacts recorded as stored.
-Without the kept record a lost driver is an infrastructure failure with no
-record, which re-runs a session that had already finished.
+against a fresh database beside a populated container leaves the container
+intact. A failing tree listing abandons the pass the same way.
+
+Every pass logs exactly one line: `artifact sweep pass complete` with the trees
+it listed, the orphans it found, and how many it reclaimed and failed to
+reclaim, a pass that reclaimed nothing included, or `artifact sweep pass
+abandoned` with its reason (`no_runs`, `runs_unreadable` or `listing_failed`).
+A pass that did nothing can therefore be told apart from a sweep that is not
+running.
 
 ## Review scheduling
 
-The backend holds each account's reviewer scheduling state: what runs that
-account wants to exist, and how many of them it keeps in flight at once. The data
-is private to the account, stays inside the backend and the web console, and
-stays out of the public snapshot.
+The backend holds each reviewer's scheduling state: what runs that reviewer
+wants to exist, and how many of them it keeps in flight at once. The data is
+private to the reviewer, stays inside the backend and the console, and stays
+out of the public dataset.
 
 - A [coverage plan](/components/backend/coverage/) declares cases pinned to a
   version, variant and engine, crossed with combinations and a target run count
@@ -1109,10 +277,84 @@ fairly. Each run it launches gets the plan's or the ladder's `retryCount` of
 automatic retries, and a launch that uses them up without a counted run blocks
 its cell or climber until the owner retries it. A filling plan or a running
 dispatch left with only blocked cells or climbers to wait for reports that it
-needs attention. There is no background daemon: the backend runs a launch pass of a
-filling plan or a running dispatch whenever a run of one of its cells finishes. Each pass
-claims its row first, so two concurrent passes cannot both enqueue for one
-shortfall.
+needs attention. There is no background daemon: the backend runs a launch pass
+of a filling plan or a running dispatch whenever a run of one of its cells
+finishes. Each pass claims its row first, so two concurrent passes cannot both
+enqueue for one shortfall.
+
+## Durable state
+
+Everything the backend must keep lives in its database or on the
+[artifacts service](/components/artifacts/overview/). A pod's local disk holds
+only the definition store and the ingest checkout, which are caches ingest
+fills from the repositories. A pod that starts with an empty store is held
+unready until ingest fills it.
+
+| State                                                        | Where it lives                                            |
+| ------------------------------------------------------------ | --------------------------------------------------------- |
+| Run records, reviews, links, jobs, plans, ladders and probes | The database                                              |
+| A job's relayed event stream                                 | The database, one row per event keyed by job and sequence |
+| A job's held record and claim lease                          | The database, on the job's row                            |
+| An adversarial run's pushed `controller.wasm`                | The database, beside the run's row                        |
+| A tournament, its standings and its match summaries          | The database                                              |
+| A tournament match's replay                                  | The artifacts service's private container                 |
+| A run's media, gg session record and code-analysis document  | The run's tree on the artifacts service                   |
+
+The driver's upload of the run tree is what stores a run's media, its
+`replay.json.gz` and its `code-analysis.json.gz`, and the artifacts service
+serves them (see [Routes](/components/artifacts/overview/#routes)), so the
+backend keeps no copy. The backend writes each tournament match replay through
+the artifacts service when the arena persists it, and reads it back from there
+to serve `GET /tournaments/{id}/matches/{matchId}/replay.json`. The object route
+it writes and reads through is listed with the artifacts service's
+[routes](/components/artifacts/overview/#routes).
+
+Each accepted batch of relayed events is written to the database before the
+backend acknowledges it, as [delivery to the
+backend](/components/driver/events/#delivery-to-the-backend) specifies. The
+live relay fans a stored batch out to the job's subscribers, and a subscriber
+who connects mid-run is replayed the stored events first.
+
+### Replicas
+
+On PostgreSQL the backend runs as more than one replica, each with its own
+definition store and ingest sidecar. Work one replica does on behalf of all is
+claimed through the database:
+
+- a launch pass claims its plan's or ladder's row with a lease;
+- a snapshot refresh and a publish's index rewrite hold a database lock;
+- a model probe holds a lease on its row, renewed while it runs;
+- a reclamation sweep pass holds a database lock.
+
+Each stored event batch and each [console stream](/components/backend/api/#the-console-stream)
+message is announced through PostgreSQL `LISTEN`/`NOTIFY`, so a subscriber
+connected to any replica receives what every replica accepts. An embedded SQLite
+database is single-writer, so a SQLite deployment runs one replica.
+
+## Finishing a job
+
+A driver hands its finished run to the backend before anything else that could
+fail. Its first `storing` report carries the run record, which the backend
+stores in Postgres on the job's row, so the result survives the driver from
+then on. A job that the dispatcher later reports lost while it holds a record
+is finished from that record, with the state the record carries, and is never
+retried. A job reported lost with no record is failed as
+[`infrastructure`](/components/contracts/run-records/#status) and retried.
+
+Every report is idempotent by job. A repeated `storing` report replaces the
+held record with the same record, and a repeated terminal report for a job
+already in that terminal state is answered with success. A terminal report
+that arrives after the job was reported lost supersedes the lost outcome, and
+the backend withdraws the automatic retry the lost outcome enqueued, canceling
+it when it was already claimed.
+
+Each claim carries a two-minute lease stored on the job's row, which the
+dispatcher renews for every driver it still sees. A `dispatched` job whose
+lease lapsed returns to the queue at its original position with a fresh
+per-job token and no attempt counted. A later-state job whose lease lapsed is
+the dispatcher's to report lost. The routes are specified under [the held
+record](/components/backend/api/#the-held-record) and [leases and lost
+jobs](/components/backend/api/#leases-and-lost-jobs).
 
 ## Restarts
 
@@ -1131,81 +373,98 @@ the jobs the backend believes are executing with the driver `Job`s the cluster
 runs, so it fails only jobs whose driver is actually gone.
 
 Once the definition store is servable after a start, the backend releases every
-launch-pass claim the previous process held and runs one launch pass for every
+launch-pass claim whose lease has lapsed and runs one launch pass for every
 filling plan and every running ladder dispatch, restoring the launch moments the
 restart lost.
 
-## Public snapshot
+The rest of the work the backend owns survives a restart in the database:
+
+- A snapshot refresh, whatever requests it, sets the snapshot state's `dirty`
+  flag before it is queued. A backend that starts with the flag set runs the
+  refresh, and the flag clears only when a refresh has written the dataset.
+- A model probe left `running` loses its lease and is resumed, as [model
+  probes](/components/backend/api/#model-probes) describes.
+- A job's relayed events are already stored, so the recorded stream and the
+  live replay are whole across the restart.
+- The ingest staging area is emptied, and the next ingest pass completes the
+  work the interrupted pass left.
+
+## The public dataset
 
 The public site shows published runs to anonymous visitors without reaching the
-private backend. The backend exports a snapshot of its published dataset to a
-[Cloudflare R2](https://developers.cloudflare.com/r2/) bucket, and the site
-build fetches that export.
+private backend. The backend composes the public dataset, the documents, media
+keys and index objects of [Public Snapshot](/components/backend/snapshot/), and
+writes every object through the artifacts service, the one writer of the public
+bucket.
 
-- Only published runs are exported, apart from the redacted [gg document
+- Only published runs are written, apart from the redacted [gg document
   corpus](/components/backend/snapshot/#gg-runsjson--the-gg-document-corpus),
   which is not gated on publication.
-- Writing the bucket takes the `TCAB_R2_*` credentials, which the backend holds
-  and `tcab publish-reference` is given to upload a case's reference frames. The
-  bucket is read-only to everyone else.
-- The upload is atomic: a new generation is written first and a small pointer
-  object is swapped in last, so a site build never reads a half-written dataset.
-- After uploading, the backend fires the site's deploy hook. The site build
-  fetches the snapshot and produces static output without connecting to the
-  backend.
+- The backend holds no bucket credential. It writes with `PUT /public/{key}`
+  and copies a run's media with `POST /runs/{id}/publish-media`, both on
+  artifacts over its in-cluster URL with the service token.
+- A write is atomic: the objects of a new generation are written first and the
+  small `index.json` pointer is swapped last, so a reader never sees a
+  half-written dataset.
+- `POST /snapshot/refresh` rewrites the whole dataset from the full published
+  set, which is how a change to the documents' shape, or a dataset damaged by
+  hand, is repaired.
 
-Every connection flows outward from the backend, and what crosses into public
-reach is a read-only export of already-published runs. The snapshot's file
-layout is specified in [Public Snapshot](/components/backend/snapshot/).
+Every connection flows outward from the backend, and what reaches the public
+bucket is a read-only export of already-published runs.
 
 ## Configuration
 
 The backend is configured entirely through environment variables.
-`TCAB_BACKEND_CHECKOUT` is the only required one. With the R2 and deploy-hook
-variables omitted the backend still ingests, records reviews and publishes, and
-regenerates the snapshot, skipping the upload and the rebuild.
+`TCAB_BACKEND_CHECKOUT` is the only required one: a checkout of the
+`test-suites` repository, which holds `test-cases/`, `game-jams/` and
+`test-case-groups/` at its root and the suites under `test-suites/`, with a
+`cold-storage` checkout holding the baseline media beside it, where the three
+roots below default. A relative root resolves against the working directory.
+With the artifacts URL omitted the backend still ingests, records reviews and
+marks runs published, skipping the dataset writes.
 
-| Variable                                 | Purpose                                                                                                                                                                                                                                                                                                        | Default                                   |
-| ---------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------- |
-| `TCAB_BACKEND_CHECKOUT`                  | The repository checkout ingest scans. Required.                                                                                                                                                                                                                                                                | —                                         |
-| `TCAB_BACKEND_BIND`                      | Bind address.                                                                                                                                                                                                                                                                                                  | `127.0.0.1:8787`                          |
-| `TCAB_BACKEND_DATABASE_URL`              | System-of-record database; the scheme picks SQLite or PostgreSQL.                                                                                                                                                                                                                                              | `sqlite://./tcab-backend.sqlite?mode=rwc` |
-| `TCAB_BACKEND_DB_AZURE_AD`               | Authenticate to PostgreSQL with a Microsoft Entra managed-identity token.                                                                                                                                                                                                                                      | `false`                                   |
-| `TCAB_BACKEND_STORE`                     | The on-disk definition store.                                                                                                                                                                                                                                                                                  | `./tcab-store`                            |
-| `TCAB_BACKEND_AUTH_URL`                  | The auth service bearer tokens are verified against.                                                                                                                                                                                                                                                           | `http://127.0.0.1:8789`                   |
-| `TCAB_BACKEND_SERVICE_TOKEN`             | Shared token the dispatcher claims jobs with. Unset disables the claim endpoints.                                                                                                                                                                                                                              | —                                         |
-| `TCAB_BACKEND_ALLOW_EXPERIMENTAL`        | Offer experimental case versions to the UI.                                                                                                                                                                                                                                                                    | `false`                                   |
-| `TCAB_ENV`                               | Deployment environment name, selecting this backend's entries in the reference-builds lockfile.                                                                                                                                                                                                                | `local`                                   |
-| `TCAB_SNAPSHOT_COALESCE_MS`              | Quiet window: a pending [refresh batch](#refresh-batching) is released once no request has arrived for this long.                                                                                                                                                                                              | `120000`                                  |
-| `TCAB_SNAPSHOT_BATCH_SIZE`               | Pending refresh requests that release a batch without waiting for the quiet window.                                                                                                                                                                                                                            | `20`                                      |
-| `TCAB_SNAPSHOT_MIN_INTERVAL_MS`          | Minimum time between two batch releases; `0` removes the hold.                                                                                                                                                                                                                                                 | `600000`                                  |
-| `TCAB_SNAPSHOT_REFRESH_TIMEOUT_MS`       | How long one refresh may run before it is abandoned as failed; `0` removes the bound.                                                                                                                                                                                                                          | `1800000`                                 |
-| `TCAB_SNAPSHOT_RETENTION_HOURS`          | How long a superseded snapshot generation is kept before it is [pruned](/components/backend/snapshot/#pruning-superseded-generations).                                                                                                                                                                         | `24`                                      |
-| `TCAB_R2_*`                              | Credentials and bucket the snapshot is uploaded to.                                                                                                                                                                                                                                                            | —                                         |
-| `TCAB_SITE_DEPLOY_HOOK_URL`              | The site deploy hook fired after each upload.                                                                                                                                                                                                                                                                  | —                                         |
-| `TCAB_OPENROUTER_API_KEY`                | OpenRouter key the backend's own [model probes](/components/backend/api/#model-probes) are billed to. Distinct from the runners' `OPENROUTER_API_KEY`. Unset, a probe trigger fails with `openrouter_key_missing`.                                                                                             | —                                         |
-| `TCAB_REFERENCE_BROWSER`                 | Headless browser used to render references at ingest.                                                                                                                                                                                                                                                          | image Chromium                            |
-| `TCAB_GG_REFERENCE`                      | Directory holding gg's projected reference documents. The deployed image bakes them at `/opt/gg-reference`, projected by the same gg build the driver ships.                                                                                                                                                   | `<checkout>/target/gg-reference`          |
-| `TCAB_ARTIFACTS_PUBLIC_URL`              | Artifact service base URL, advertised to the web console.                                                                                                                                                                                                                                                      | —                                         |
-| `TCAB_ARTIFACTS_URL`                     | Artifact service base URL the backend itself calls to prune and sweep run trees, to check a run's tree before a publish and to read the store's free space and write check. Unset disables the prune, the sweep, the publish gate's tree check, the capacity hold, and the snapshot's artifact media fallback. | —                                         |
-| `TCAB_ARTIFACT_SWEEP_INTERVAL_MINUTES`   | Minutes between [reclamation sweeps](#settings-and-logging); `0` disables the sweep.                                                                                                                                                                                                                           | `10`                                      |
-| `TCAB_ARTIFACT_SWEEP_INTERVAL_HOURS`     | The sweep interval in hours, read only while the minutes setting is unset; `0` disables the sweep.                                                                                                                                                                                                             | —                                         |
-| `TCAB_ARTIFACT_SWEEP_GRACE_HOURS`        | How old a run-less tree must be before a sweep deletes it.                                                                                                                                                                                                                                                     | `24`                                      |
-| `TCAB_ARTIFACT_FAILED_RETENTION_HOURS`   | How long after a failed run ended a sweep deletes its tree; `0` keeps it.                                                                                                                                                                                                                                      | `24`                                      |
-| `TCAB_ARTIFACT_CANCELED_RETENTION_HOURS` | How long after a canceled run ended a sweep deletes its tree; `0` keeps it.                                                                                                                                                                                                                                    | `1`                                       |
-| `TCAB_ARTIFACT_RECLAIM_PUBLISHED`        | Whether a sweep deletes a published run's tree once its media is confirmed in the bucket.                                                                                                                                                                                                                      | `true`                                    |
-| `TCAB_ARTIFACT_FREE_WARN_MB`             | Free space on the artifact store, in MiB, under which [artifact capacity](#artifact-capacity) is `low`. At least the stop threshold.                                                                                                                                                                           | `3072`                                    |
-| `TCAB_ARTIFACT_FREE_STOP_MB`             | Free space, in MiB, under which new runs are put on hold.                                                                                                                                                                                                                                                      | `2048`                                    |
-| `TCAB_ARTIFACT_FREE_RECOVER_MB`          | Free space, in MiB, a reading must exceed a crossed threshold by before the state recovers.                                                                                                                                                                                                                    | `256`                                     |
-| `TCAB_ARTIFACT_CAPACITY_POLL_SECONDS`    | Interval between capacity readings. At least `1`.                                                                                                                                                                                                                                                              | `10`                                      |
-| `TCAB_STATE_RECLAIM`                     | Whether the [state sweep](#state-volume) removes run files from the backend's own store.                                                                                                                                                                                                                       | `true`                                    |
-| `TCAB_STATE_FREE_WARN_MB`                | Free space on the state volume, in MiB, under which it reads [`low`](#low-space); `0` turns the warning off.                                                                                                                                                                                                   | `3072`                                    |
-| `TCAB_STATE_FREE_STOP_MB`                | Free space on the state volume, in MiB, under which new runs are put on hold; `0` turns the hold off.                                                                                                                                                                                                          | `1536`                                    |
-| `TCAB_PUBLISH_FAILURE_HOLD_RUNS`         | How many different runs must fail to publish in a row before [new runs are put on hold](#publish-failures); `0` turns the hold off.                                                                                                                                                                            | `5`                                       |
-| `TCAB_ARENA_PUBLIC_URL`                  | Arena service base URL, advertised to the web console.                                                                                                                                                                                                                                                         | —                                         |
-| `TCAB_GRAFANA_PUBLIC_URL`                | Grafana base URL, advertised to the web console.                                                                                                                                                                                                                                                               | —                                         |
-| `TCAB_SNAPSHOT_PUBLIC_URL`               | Public read base URL of the snapshot bucket, advertised to the web console.                                                                                                                                                                                                                                    | —                                         |
+| Variable                             | Purpose                                                                                                                                                                                                                              | Default                                   |
+| ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------- |
+| `TCAB_BACKEND_CHECKOUT`              | The `test-suites` checkout ingest scans. Required.                                                                                                                                                                                   | —                                         |
+| `TCAB_DEFINITIONS_ROOT`              | The directory holding `test-cases/`, `game-jams/` and `test-case-groups/` that ingest scans.                                                                                                                                         | `<checkout>`                              |
+| `TCAB_SUITES_ROOT`                   | The suites directory ingest scans.                                                                                                                                                                                                   | `<checkout>/test-suites`                  |
+| `TCAB_COLD_STORAGE_ROOT`             | The cold-storage tree ingest reads baseline media from. `TCAB_COLD_STORAGE_DIR` is read when it is unset.                                                                                                                            | `<checkout>/../cold-storage`              |
+| `TCAB_BACKEND_BIND`                  | Bind address.                                                                                                                                                                                                                        | `127.0.0.1:8787`                          |
+| `TCAB_BACKEND_DATABASE_URL`          | System-of-record database; the scheme picks SQLite or PostgreSQL.                                                                                                                                                                    | `sqlite://./tcab-backend.sqlite?mode=rwc` |
+| `TCAB_BACKEND_DB_AZURE_AD`           | Authenticate to PostgreSQL with a Microsoft Entra managed-identity token.                                                                                                                                                            | `false`                                   |
+| `TCAB_BACKEND_STORE`                 | The definition store, a cache ingest fills.                                                                                                                                                                                          | `./tcab-store`                            |
+| `TCAB_ACCESS_TEAM_DOMAIN`            | The Cloudflare Access team domain whose certificates assertions are verified against. Unset with the audience (the `local` overlay), no assertion is verified and the identity is `Cf-Access-Authenticated-User-Email` as presented. | —                                         |
+| `TCAB_ACCESS_AUDIENCE`               | The Access application's audience tag an assertion must name.                                                                                                                                                                        | —                                         |
+| `TCAB_BACKEND_SERVICE_TOKEN`         | Shared token the dispatcher claims jobs with and the in-cluster services present. Unset disables the claim endpoints.                                                                                                                | —                                         |
+| `TCAB_BACKEND_ALLOW_EXPERIMENTAL`    | Offer experimental case versions to the UI.                                                                                                                                                                                          | `false`                                   |
+| `TCAB_BACKEND_INGEST_PREVIEWS`       | Also ingest the test suite previews The Spec Cabinet writes. Enabled for the local development stack.                                                                                                                                | `false`                                   |
+| `TCAB_BACKEND_INGEST_REFRESH_URL`    | The ingest sidecar's localhost endpoint that refreshes the checkout, which an ingest asking for `refresh` calls before the scan. Unset, `refresh` is ignored.                                                                        | —                                         |
+| `TCAB_ENV`                           | Deployment environment name, selecting this backend's entries in the reference-builds lockfile.                                                                                                                                      | `local`                                   |
+| `TCAB_SNAPSHOT_COALESCE_MS`          | Sliding debounce a burst of publishes is coalesced over.                                                                                                                                                                             | `60000`                                   |
+| `TCAB_SNAPSHOT_RETENTION_HOURS`      | How long a superseded generation of the index objects is kept before it is [pruned](/components/backend/snapshot/#pruning-superseded-generations).                                                                                   | `24`                                      |
+| `TCAB_OPENROUTER_API_KEY`            | OpenRouter key the backend's own [model probes](/components/backend/api/#model-probes) are billed to. Distinct from the runners' `OPENROUTER_API_KEY`. Unset, a probe trigger fails with `openrouter_key_missing`.                   | —                                         |
+| `TCAB_REFERENCE_BROWSER`             | Headless browser used to render references at ingest.                                                                                                                                                                                | image Chromium                            |
+| `TCAB_GG_REFERENCE`                  | Directory holding gg's projected reference documents. The deployed image bakes them at `/opt/gg-reference`, fetched for the gg release the driver pins.                                                                              | `<checkout>/target/gg-reference`          |
+| `TCAB_ARTIFACTS_URL`                 | Artifacts service base URL the backend calls to prune and sweep run trees and to write the public dataset. Unset disables the prune, the sweep and the dataset writes.                                                               | —                                         |
+| `TCAB_REPOS_URL`                     | Repos service base URL the backend calls to serve a bundle download and prune a deleted run's bundle. Unset disables both.                                                                                                           | —                                         |
+| `TCAB_ARTIFACT_SWEEP_INTERVAL_HOURS` | Interval between reclamation sweeps; `0` disables the sweep.                                                                                                                                                                         | `6`                                       |
+| `TCAB_ARTIFACT_SWEEP_GRACE_HOURS`    | How old a run-less tree must be before a sweep deletes it.                                                                                                                                                                           | `24`                                      |
 
-The backend binds `8787`, the [auth service](/components/auth/overview/) `8789`,
-the [artifact service](/components/artifacts/overview/) `8790`, and the
-[arena](/components/arena/overview/) `8791`, so all four coexist on one host.
+The backend binds `8787`, the [artifacts service](/components/artifacts/overview/)
+`8790`, the [arena](/components/arena/overview/) `8791` and the
+[repos service](/components/repos/overview/) `8792`, so all four coexist on one
+host. The backend advertises no URL: the console reaches every service by path
+under its own origin.
+
+## Deployment
+
+The backend is the `tcab-backend` binary of the `microservice-backend`
+repository, which also holds its ingest sidecar, the `entities` SeaORM models,
+the `migration` crate and `db-auth`. The repository owns review and comparison
+scoring, aggregation and gating, pricing, TCQ (`gg_query`), model-id
+canonicalization, the publish orchestration, the public dataset writer and the
+Access assertion check. Its image bakes the headless browser references are
+rendered with and the `gg-reference` documents of the gg release the driver
+pins. See [Kubernetes: the control
+plane](/deployment/kubernetes/control-plane/).

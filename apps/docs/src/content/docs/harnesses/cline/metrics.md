@@ -9,7 +9,7 @@ record for a completed session.
 ## Token classes
 
 The raw JSON keys map onto the
-[normalized classes](/components/core/metrics/#tokens) as follows:
+[normalized classes](/components/contracts/metrics/#tokens) as follows:
 
 | Normalized class | Cline JSON key                                              |
 | ---------------- | ----------------------------------------------------------- |
@@ -34,4 +34,4 @@ surfaces reasoning content when Cline reports it as a distinct block.
 
 Cline reports no run cost of its own, so the comparable cost is computed from
 the list price held on the model's catalog entry, applied to the recorded
-token classes. See [Cost](/components/core/metrics/#cost).
+token classes. See [Cost](/components/contracts/metrics/#cost).

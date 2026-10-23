@@ -18,7 +18,7 @@
 //! not depend on `test-cabinet-gg`, for two reasons that are worth stating exactly because
 //! the obvious one is wrong. It is **not** wasmtime: this binary already links wasmtime,
 //! statically, under musl, through `foray-host` and `lattice-host` by way of
-//! `test-cabinet-core`. It is that gg pulls `oxc` and `tiktoken-rs`, neither of which is
+//! `test-cabinet-driver`. It is that gg pulls `oxc` and `tiktoken-rs`, neither of which is
 //! anywhere in this crate's tree, and — the larger cost — that *building* gg reflects a
 //! signature catalogue out of each of its eleven SDKs with that SDK's own documentation
 //! tool and compiles every arm's artifacts, so every machine and every CI job that links it
@@ -34,7 +34,7 @@
 //! a regenerate-and-diff check. That was a second source of truth with a guard bolted to
 //! it, and a guard is not the same thing as not having the problem: the committed bytes
 //! could disagree with the gg in the image beside them for as long as it took somebody to
-//! run the gate. A file the *same build* produced cannot. It is the move
+//! run the gate. A file the *same build* produced cannot. It is the move gg's
 //! `crates/gg/build.rs` already made for the eleven signature catalogues and the arms'
 //! artifacts, one level up.
 //!
@@ -44,19 +44,19 @@
 //! # Where the directory comes from
 //!
 //! [`Config::gg_reference`](crate::config::Config::gg_reference) — `TCAB_GG_REFERENCE`.
-//! The backend image bakes the documents at `/opt/gg-reference` out of the same build stage
-//! that produces the gg binary the driver image ships, so a deployed backend and the gg its
-//! runs execute are one build of one checkout. A developer running the binary from a
-//! checkout points it at `target/gg-reference` by default and fills that with
-//! `scripts/gg-reference.sh`.
+//! The backend image bakes the documents at `/opt/gg-reference` from the gg release the
+//! driver pins (`v<version>/gg-reference.tar.gz`, projected by the very binary that release
+//! ships), so a deployed backend and the gg its runs execute are one release. A developer
+//! running the binary from a checkout fills a directory with `scripts/gg-reference.sh` in
+//! the gg checkout (`gg/target/gg-reference` by default) and points the variable at it.
 //!
 //! # Why it is ungated
 //!
-//! Everything under `/gg` so far is auth-gated, so this is the exception and it is a
+//! Everything under `/gg` so far is person-gated, so this is the exception and it is a
 //! deliberate one: the documents are static, identical for every caller, and contain no
 //! account, run or deployment data — they are documentation of the harness, in the same
-//! class as `/test-cases` and `/config`. Requiring a token would buy nothing and would stop
-//! the public docs and a signed-out console from linking to it. `/gg/reference` is a static
+//! class as `/test-cases` and `/config`, so any identity reaches it: requiring a person's
+//! assertion would buy nothing. `/gg/reference` is a static
 //! path and `/gg/reference/{language}` its only child, so neither collides with anything
 //! else mounted under `/gg`.
 //!
@@ -74,8 +74,8 @@ use axum::Json;
 use axum::extract::{Path as UrlPath, State};
 use axum::http::StatusCode;
 
-use test_cabinet_core::gg::GgProgramLanguage;
-use test_cabinet_core::gg_reference::{
+use test_cabinet_contracts::gg::GgProgramLanguage;
+use test_cabinet_contracts::gg_reference::{
     GgReference, GgReferenceApi, GgReferenceEntryKind, GgReferenceLanguage, document_file,
     index_file,
 };
@@ -147,7 +147,7 @@ enum ReferenceError {
 /// a lie. Rebuilding costs one fold over documents that are already in memory and makes
 /// every number the picker shows a number this process counted.
 ///
-/// The filenames come from `core` rather than from a constant here, because the process
+/// The filenames come from the contracts rather than from a constant here, because the process
 /// that writes them is `test-cabinet-gg` — a crate this one deliberately does not link, so
 /// the layout is a contract with two sides and no compiler between them unless both sides
 /// call the same function.
@@ -236,7 +236,7 @@ fn counted(document: &GgReferenceApi) -> GgReferenceLanguage {
 /// documentation page; it is the only thing that degrades.
 ///
 /// **Only success is cached.** A failure is left uncached deliberately, so that a developer
-/// who starts the backend, sees the `503`, and runs `scripts/gg-reference.sh` gets a
+/// who starts the backend, sees the `503`, and runs gg's `scripts/gg-reference.sh` gets a
 /// working page on the next request instead of having to restart the process to clear a
 /// memoized error. It costs one failed directory read per request in exactly the state
 /// where nothing is being served anyway. (In a container the documents are baked into the
@@ -266,8 +266,8 @@ fn unavailable(directory: &Path, err: &ReferenceError) -> ApiError {
         "gg_reference_unavailable",
         format!(
             "gg's reference documents are not available at {} ({err}); write them with \
-             `scripts/gg-reference.sh` or point TCAB_GG_REFERENCE at a \
-             `gg reference --out` directory",
+             `scripts/gg-reference.sh` in the gg checkout and point TCAB_GG_REFERENCE at \
+             them, or at any `gg reference --out` directory",
             directory.display()
         ),
     )

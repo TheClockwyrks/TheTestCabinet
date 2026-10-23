@@ -16,7 +16,7 @@ use std::sync::{Arc, Mutex};
 use axum::body::Body;
 use axum::extract::Path as AxumPath;
 use axum::http::{HeaderMap, Request, StatusCode};
-use axum::routing::{delete, post};
+use axum::routing::delete;
 use tower::ServiceExt;
 
 use super::*;
@@ -24,8 +24,8 @@ use crate::db::tests::{links, new_job, record};
 
 /// The shared control-plane service token, as a deployment sets it.
 const SERVICE_TOKEN: &str = "service-secret";
-/// The bearer an operator's console presents on a mutating call.
-const USER_TOKEN: &str = "user-token";
+/// The identity the local console presents, as the local overlay's backend takes it.
+const OPERATOR: &str = "operator@local";
 
 /// What a stub artifact service recorded, so a test can assert on which one the
 /// backend actually called.
@@ -64,35 +64,6 @@ async fn spawn_artifacts() -> (String, Arc<ArtifactStub>) {
     (serve(app).await, stub)
 }
 
-/// Stand a stub auth service that resolves [`USER_TOKEN`] to an account, so the
-/// token-gated routes are reachable.
-async fn spawn_auth() -> String {
-    let app = Router::new().route(
-        "/auth/verify",
-        post(|headers: HeaderMap| async move {
-            let authorized = headers
-                .get(axum::http::header::AUTHORIZATION)
-                .and_then(|value| value.to_str().ok())
-                == Some(&format!("Bearer {USER_TOKEN}"));
-            if !authorized {
-                return (
-                    StatusCode::UNAUTHORIZED,
-                    axum::Json(serde_json::Value::Null),
-                );
-            }
-            (
-                StatusCode::OK,
-                axum::Json(serde_json::json!({
-                    "id": "account-1",
-                    "username": "operator",
-                    "displayName": "Operator",
-                })),
-            )
-        }),
-    );
-    serve(app).await
-}
-
 /// Serve `app` on an ephemeral port and return its base URL.
 async fn serve(app: Router) -> String {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -110,26 +81,26 @@ struct Harness {
     db: Arc<Db>,
     /// The artifact service the backend is configured to call.
     internal: Arc<ArtifactStub>,
-    /// The artifact service the backend advertises to consoles, which nothing the
-    /// backend does may call.
-    public: Arc<ArtifactStub>,
-    /// The advertised base URL, for the `GET /config` assertion.
-    public_url: String,
     /// Kept alive for the test's duration: dropping it removes the store.
     _store: tempfile::TempDir,
 }
 
-/// Build the harness: two stub artifact services, a stub auth service, the
+/// Build the harness: a stub artifact service, the
 /// environment a deployment sets, and the router `build` would assemble from it.
+///
+/// Its price source is an unconnectable loopback port, so a test that reaches a
+/// price path fails fast instead of reaching OpenRouter's live catalog; a test
+/// that needs prices passes a fake listing to [`harness_with_prices`].
 async fn harness() -> Harness {
-    harness_with_prices(test_cabinet_core::OpenRouterPrices::new()).await
+    harness_with_prices(crate::pricing::OpenRouterPrices::with_endpoint(
+        "http://127.0.0.1:0/models",
+    ))
+    .await
 }
 
 /// [`harness`], with the OpenRouter price source pointed at `prices`.
-async fn harness_with_prices(prices: test_cabinet_core::OpenRouterPrices) -> Harness {
+async fn harness_with_prices(prices: crate::pricing::OpenRouterPrices) -> Harness {
     let (internal_url, internal) = spawn_artifacts().await;
-    let (public_url, public) = spawn_artifacts().await;
-    let auth_url = spawn_auth().await;
     let dir = tempfile::tempdir().unwrap();
 
     // SAFETY: nextest runs each test in its own process, so this environment is
@@ -137,10 +108,8 @@ async fn harness_with_prices(prices: test_cabinet_core::OpenRouterPrices) -> Har
     unsafe {
         std::env::set_var("TCAB_BACKEND_CHECKOUT", dir.path());
         std::env::set_var("TCAB_BACKEND_STORE", dir.path().join("store"));
-        std::env::set_var("TCAB_BACKEND_AUTH_URL", &auth_url);
         std::env::set_var("TCAB_BACKEND_SERVICE_TOKEN", SERVICE_TOKEN);
         std::env::set_var("TCAB_ARTIFACTS_URL", &internal_url);
-        std::env::set_var("TCAB_ARTIFACTS_PUBLIC_URL", &public_url);
     }
     let config = Arc::new(Config::from_env().unwrap());
     assert_eq!(
@@ -148,53 +117,60 @@ async fn harness_with_prices(prices: test_cabinet_core::OpenRouterPrices) -> Har
         Some(internal_url.as_str()),
         "TCAB_ARTIFACTS_URL is the backend's own address for the service"
     );
-    assert_eq!(
-        config.artifacts_public_url.as_deref(),
-        Some(public_url.as_str()),
-        "TCAB_ARTIFACTS_PUBLIC_URL is what the console is told"
-    );
 
     let db = Arc::new(Db::connect_in_memory().await.unwrap());
     let store = DefinitionStore::open(&config.store).unwrap();
-    let auth = Arc::new(test_cabinet_core::AccountsClient::new(
-        config.auth_url.clone(),
-    ));
     let publisher = Publisher::new(
         Arc::clone(&db),
         store.clone(),
         None,
         None,
         config.artifacts_internal_url.clone(),
-        Arc::clone(&auth),
-        config.publisher_timing(),
+        None,
+        crate::publisher::PublisherTiming {
+            coalesce: config.coalesce,
+            snapshot_retention: config.snapshot_retention,
+        },
     );
     let state = AppState {
         db: Arc::clone(&db),
         store,
         ready: Readiness::new(true),
         publisher,
-        auth,
+        access: None,
         relay: Relay::new(),
-        capacity: crate::capacity::CapacityMonitor::unmonitored(config.artifact_capacity),
         publish_relay: PublishRelay::new(),
         config,
         http: reqwest::Client::new(),
         prices,
-        run_files: None,
         gg_docs: crate::gg_docs::GgDocIndex::new(),
     };
     Harness {
         router: router(state),
         db,
         internal,
-        public,
-        public_url,
         _store: dir,
     }
 }
 
+/// A request carrying no credential of its own made under the local operator's
+/// identity, the way the local console's every request is.
+fn identified(mut request: Request<Body>) -> Request<Body> {
+    let headers = request.headers_mut();
+    if !headers.contains_key(axum::http::header::AUTHORIZATION)
+        && !headers.contains_key(crate::auth::LOCAL_IDENTITY_HEADER)
+    {
+        headers.insert(
+            crate::auth::LOCAL_IDENTITY_HEADER,
+            axum::http::HeaderValue::from_static(OPERATOR),
+        );
+    }
+    request
+}
+
 /// Issue one request against the router and return its status and body.
 async fn call(router: &Router, request: Request<Body>) -> (StatusCode, serde_json::Value) {
+    let request = identified(request);
     let response = router.clone().oneshot(request).await.unwrap();
     let status = response.status();
     let bytes = axum::body::to_bytes(response.into_body(), 1 << 20)
@@ -206,9 +182,8 @@ async fn call(router: &Router, request: Request<Body>) -> (StatusCode, serde_jso
 
 #[tokio::test]
 async fn deleting_a_run_prunes_its_tree_through_the_in_cluster_url() {
-    // The wiring the split exists for. Both artifact services are real and reachable
-    // here, so a backend that pruned through the advertised URL would still answer
-    // 200 — what separates the two is which stub recorded the DELETE.
+    // The backend reaches the artifact service at TCAB_ARTIFACTS_URL, the in-cluster
+    // address; the stub records the DELETE it receives there.
     let harness = harness().await;
     harness
         .db
@@ -219,10 +194,7 @@ async fn deleting_a_run_prunes_its_tree_through_the_in_cluster_url() {
     let request = Request::builder()
         .method("DELETE")
         .uri("/runs/r1")
-        .header(
-            axum::http::header::AUTHORIZATION,
-            format!("Bearer {USER_TOKEN}"),
-        )
+        .header(crate::auth::LOCAL_IDENTITY_HEADER, OPERATOR)
         .body(Body::empty())
         .unwrap();
     let (status, body) = call(&harness.router, request).await;
@@ -234,24 +206,18 @@ async fn deleting_a_run_prunes_its_tree_through_the_in_cluster_url() {
         vec!["r1".to_string()],
         "the prune did not go through TCAB_ARTIFACTS_URL"
     );
-    assert!(
-        harness.public.deleted.lock().unwrap().is_empty(),
-        "the prune went through the address the console is given"
-    );
 }
 
 #[tokio::test]
-async fn the_advertised_artifact_url_is_the_one_the_console_reads() {
-    // The other half of the split: `GET /config` carries the browser-facing address,
-    // never the in-cluster one, which resolves to nothing outside the cluster.
+async fn the_backend_serves_no_client_configuration() {
+    // The backend advertises no URL: the console reaches every service by path
+    // under its own origin, so `GET /config` is gone.
     let harness = harness().await;
-    let request = Request::builder()
-        .uri("/config")
-        .body(Body::empty())
-        .unwrap();
-    let (status, body) = call(&harness.router, request).await;
-    assert_eq!(status, StatusCode::OK);
-    assert_eq!(body["artifactsUrl"], harness.public_url);
+    for uri in ["/config", "/api/config"] {
+        let request = Request::builder().uri(uri).body(Body::empty()).unwrap();
+        let (status, _) = call(&harness.router, request).await;
+        assert_eq!(status, StatusCode::NOT_FOUND, "{uri}");
+    }
 }
 
 #[tokio::test]
@@ -337,10 +303,7 @@ fn user_request(method: &str, uri: &str, body: serde_json::Value) -> Request<Bod
     Request::builder()
         .method(method)
         .uri(uri)
-        .header(
-            axum::http::header::AUTHORIZATION,
-            format!("Bearer {USER_TOKEN}"),
-        )
+        .header(crate::auth::LOCAL_IDENTITY_HEADER, OPERATOR)
         .header(axum::http::header::CONTENT_TYPE, "application/json")
         .body(Body::from(body.to_string()))
         .unwrap()
@@ -442,6 +405,171 @@ async fn an_unbounded_account_limit_is_stored_as_itself_and_inherited_by_a_plan(
     );
 }
 
+/// Copy a directory tree, for seeding the harness checkout with a fixture.
+fn copy_dir(from: &std::path::Path, to: &std::path::Path) {
+    std::fs::create_dir_all(to).unwrap();
+    for entry in std::fs::read_dir(from).unwrap() {
+        let entry = entry.unwrap();
+        let target = to.join(entry.file_name());
+        if entry.file_type().unwrap().is_dir() {
+            copy_dir(&entry.path(), &target);
+        } else {
+            std::fs::copy(entry.path(), target).unwrap();
+        }
+    }
+}
+
+/// Issue one request and return its status, `Content-Type` and raw body.
+async fn call_raw(router: &Router, request: Request<Body>) -> (StatusCode, String, Vec<u8>) {
+    let request = identified(request);
+    let response = router.clone().oneshot(request).await.unwrap();
+    let status = response.status();
+    let content_type = response
+        .headers()
+        .get(axum::http::header::CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or_default()
+        .to_string();
+    let bytes = axum::body::to_bytes(response.into_body(), 1 << 24)
+        .await
+        .unwrap();
+    (status, content_type, bytes.to_vec())
+}
+
+fn put_build(uri: &str, archive: Vec<u8>) -> Request<Body> {
+    Request::builder()
+        .method("PUT")
+        .uri(uri)
+        .header(
+            axum::http::header::AUTHORIZATION,
+            format!("Bearer {SERVICE_TOKEN}"),
+        )
+        .header("content-type", "application/gzip")
+        .body(Body::from(archive))
+        .unwrap()
+}
+
+fn get(uri: &str) -> Request<Body> {
+    Request::builder().uri(uri).body(Body::empty()).unwrap()
+}
+
+#[tokio::test]
+async fn a_suite_reference_build_is_uploaded_listed_played_and_replaced() {
+    use crate::suite_store::reference_builds::tests::gzipped_tar;
+
+    let h = harness().await;
+    // Ingest the committed fixture suite into the store the router serves.
+    let checkout = h._store.path();
+    std::fs::create_dir_all(checkout.join("test-cases")).unwrap();
+    copy_dir(
+        &std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join(crate::test_paths::CONTRACT_FIXTURES)
+            .join("test-suite"),
+        &checkout.join("test-suites"),
+    );
+    let store = DefinitionStore::open(checkout.join("store")).unwrap();
+    crate::ingest::Ingestor::new(checkout, &store)
+        .scan(&crate::ingest::IngestRequest::default())
+        .unwrap();
+    assert!(store.has_suite_version("carom", "v1.0.0"));
+
+    const BASE: &str = "/suites/carom/versions/v1.0.0/reference-builds";
+    let first = gzipped_tar(&[
+        (
+            "index.html",
+            b"<!doctype html><html><head></head><body><script src=\"/assets/app.js\"></script></body></html>",
+        ),
+        ("assets/app.js", b"console.log('first')"),
+        ("assets/style.css", b"body{}"),
+    ]);
+
+    // A version the backend has not ingested, and an engine no definition declares,
+    // are each refused with the reason.
+    let (status, body) = call(
+        &h.router,
+        put_build(
+            "/suites/nothing/versions/v1.0.0/reference-builds/none",
+            first.clone(),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    assert!(
+        body["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("is not ingested")
+    );
+    let (status, body) = call(
+        &h.router,
+        put_build(&format!("{BASE}/simple-3d"), first.clone()),
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    let message = body["error"]["message"].as_str().unwrap();
+    assert!(message.contains("`simple-3d` is not declared"), "{message}");
+    assert!(message.contains("`none`, `simple-2d`"), "{message}");
+
+    // A declared engine of an ingested version stores.
+    let (status, body) = call(&h.router, put_build(&format!("{BASE}/none"), first)).await;
+    assert_eq!(status, StatusCode::CREATED);
+    let url = format!("{BASE}/none/");
+    assert_eq!(body["url"], url);
+    assert_eq!(body["engine"], "none");
+
+    // The suite detail and the lowered definition's version detail list it.
+    let (status, suite) = call(&h.router, get("/test-suites/carom/v1.0.0")).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(suite["slug"], "carom", "the record is still the body");
+    assert_eq!(suite["referenceBuilds"], serde_json::json!({ "none": url }));
+    let (status, detail) = call(
+        &h.router,
+        get("/test-cases/carom-end-to-end/versions/v1.0.0"),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    for variant in detail["variants"].as_array().unwrap() {
+        assert_eq!(
+            variant["referenceBuilds"],
+            serde_json::json!({ "none": url })
+        );
+    }
+
+    // The build is served under that URL, bare root included, with its types.
+    for root in [url.as_str(), url.trim_end_matches('/')] {
+        let (status, content_type, html) = call_raw(&h.router, get(root)).await;
+        assert_eq!(status, StatusCode::OK, "{root}");
+        assert_eq!(content_type, "text/html; charset=utf-8");
+        let html = String::from_utf8(html).unwrap();
+        assert!(html.contains(&format!("<base href=\"{url}\">")), "{html}");
+        assert!(html.contains("src=\"assets/app.js\""), "{html}");
+    }
+    let (status, content_type, _) = call_raw(&h.router, get(&format!("{url}assets/app.js"))).await;
+    assert_eq!(
+        (status, content_type.as_str()),
+        (StatusCode::OK, "text/javascript; charset=utf-8")
+    );
+    let (status, content_type, _) =
+        call_raw(&h.router, get(&format!("{url}assets/style.css"))).await;
+    assert_eq!(
+        (status, content_type.as_str()),
+        (StatusCode::OK, "text/css; charset=utf-8")
+    );
+
+    // A second upload replaces the first.
+    let second = gzipped_tar(&[
+        ("index.html", b"<html><head></head>second</html>"),
+        ("assets/next.js", b"console.log('second')"),
+    ]);
+    let (status, _) = call(&h.router, put_build(&format!("{BASE}/none"), second)).await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, _, _) = call_raw(&h.router, get(&format!("{url}assets/app.js"))).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    let (status, _, body) = call_raw(&h.router, get(&format!("{url}assets/next.js"))).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body, b"console.log('second')");
+}
+
 // ---------------------------------------------------------------------------
 // A model's provider policy and candidate list
 // ---------------------------------------------------------------------------
@@ -449,13 +577,13 @@ async fn an_unbounded_account_limit_is_stored_as_itself_and_inherited_by_a_plan(
 /// Serve `endpoints` as every OpenRouter read's body on a loopback port, and return a price
 /// source pointed at it. Only the per-model endpoints read parses it; the catalog reads a save
 /// makes fail to parse, which they treat as best-effort.
-async fn endpoints_listing(endpoints: serde_json::Value) -> test_cabinet_core::OpenRouterPrices {
+async fn endpoints_listing(endpoints: serde_json::Value) -> crate::pricing::OpenRouterPrices {
     let body = serde_json::json!({ "data": { "name": "Z.AI: GLM 5.3", "endpoints": endpoints } });
     let app = Router::new().fallback(move || {
         let body = body.clone();
         async move { axum::Json(body) }
     });
-    test_cabinet_core::OpenRouterPrices::with_endpoint(format!("{}/models", serve(app).await))
+    crate::pricing::OpenRouterPrices::with_endpoint(format!("{}/models", serve(app).await))
 }
 
 /// Serve `endpoints` as every model's endpoints listing and a models listing carrying
@@ -464,7 +592,7 @@ async fn endpoints_listing(endpoints: serde_json::Value) -> test_cabinet_core::O
 async fn endpoints_and_models_listing(
     endpoints: serde_json::Value,
     pricing: Option<serde_json::Value>,
-) -> test_cabinet_core::OpenRouterPrices {
+) -> crate::pricing::OpenRouterPrices {
     let endpoints =
         serde_json::json!({ "data": { "name": "Z.AI: GLM 5.3", "endpoints": endpoints } });
     let entries: Vec<serde_json::Value> = pricing
@@ -480,7 +608,7 @@ async fn endpoints_and_models_listing(
         };
         async move { axum::Json(body) }
     });
-    test_cabinet_core::OpenRouterPrices::with_endpoint(format!("{}/models", serve(app).await))
+    crate::pricing::OpenRouterPrices::with_endpoint(format!("{}/models", serve(app).await))
 }
 
 /// One fp8 endpoint priced per million tokens, with a cache-read price and tool support.
@@ -636,7 +764,7 @@ async fn listed_price(router: &Router, slug: &str) -> (serde_json::Value, serde_
 }
 
 #[tokio::test]
-async fn the_list_price_refresh_needs_a_token_and_answers_with_its_counts() {
+async fn the_list_price_refresh_takes_a_person_and_answers_with_its_counts() {
     // Baidu is listed first and undercuts the developer, Z.AI.
     let prices = endpoints_listing(serde_json::json!([
         listed("Baidu", 0.56, 1.76),
@@ -653,14 +781,19 @@ async fn the_list_price_refresh_needs_a_token_and_answers_with_its_counts() {
         assert_eq!(body["listPrice"], serde_json::Value::Null);
     }
 
-    // A write to the catalog, so it is signed-in only, and refused it writes nothing.
+    // A write to the catalog, so it takes a person's assertion, and refused it writes
+    // nothing.
     let request = Request::builder()
         .method("POST")
         .uri("/models/list-prices/refresh")
+        .header(
+            axum::http::header::AUTHORIZATION,
+            format!("Bearer {SERVICE_TOKEN}"),
+        )
         .body(Body::empty())
         .unwrap();
     let (status, _) = call(&harness.router, request).await;
-    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    assert_eq!(status, StatusCode::FORBIDDEN);
     let (price, _) = listed_price(&harness.router, "glm").await;
     assert_eq!(price, serde_json::Value::Null);
 
@@ -745,13 +878,17 @@ async fn the_openrouter_fill_seeds_the_rate_a_refresh_would_write() {
     .await;
     let harness = harness_with_prices(prices).await;
 
-    // A third-party reach, so it is signed-in only.
+    // A third-party reach, so it takes a person's assertion.
     let request = Request::builder()
         .uri("/models/openrouter?slug=z-ai/glm-5.3")
+        .header(
+            axum::http::header::AUTHORIZATION,
+            format!("Bearer {SERVICE_TOKEN}"),
+        )
         .body(Body::empty())
         .unwrap();
     let (status, _) = call(&harness.router, request).await;
-    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    assert_eq!(status, StatusCode::FORBIDDEN);
 
     for (query, input, output, why) in [
         // No provider on the form: the developer the model id names.
@@ -905,13 +1042,17 @@ async fn the_candidates_read_reports_the_list_the_next_enqueue_would_build() {
     let (status, body) = call(&harness.router, request).await;
     assert_eq!(status, StatusCode::OK, "{body}");
 
-    // A third-party reach, so it is signed-in only.
+    // A third-party reach, so it takes a person's assertion.
     let request = Request::builder()
         .uri("/models/glm/candidates")
+        .header(
+            axum::http::header::AUTHORIZATION,
+            format!("Bearer {SERVICE_TOKEN}"),
+        )
         .body(Body::empty())
         .unwrap();
     let (status, _) = call(&harness.router, request).await;
-    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    assert_eq!(status, StatusCode::FORBIDDEN);
 
     let request = user_request("GET", "/models/glm/candidates", serde_json::Value::Null);
     let (status, body) = call(&harness.router, request).await;
@@ -945,7 +1086,7 @@ async fn the_candidates_read_reports_the_list_the_next_enqueue_would_build() {
     assert_eq!(body["candidates"], serde_json::json!([]));
     assert_eq!(
         body["refusal"],
-        test_cabinet_core::pricing::CandidateRefusal::AllBanned.to_string()
+        crate::pricing::CandidateRefusal::AllBanned.to_string()
     );
 }
 
@@ -959,10 +1100,7 @@ async fn ladders_and_plans_serve_run_stop_and_fill_and_none_of_the_retired_contr
         Request::builder()
             .method(method)
             .uri(uri)
-            .header(
-                axum::http::header::AUTHORIZATION,
-                format!("Bearer {USER_TOKEN}"),
-            )
+            .header(crate::auth::LOCAL_IDENTITY_HEADER, OPERATOR)
             .header(axum::http::header::CONTENT_TYPE, "application/json")
             .body(Body::from(
                 r#"{"combination":{"harness":"claude","model":"m"},"case":{"slug":"pong","version":"v1.0.0","variant":"base"},"rungId":"r","outcome":"passed"}"#,

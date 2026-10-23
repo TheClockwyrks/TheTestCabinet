@@ -10,7 +10,7 @@ session segment, so its metrics are those of the single session.
 ## Runner
 
 The runner reads no parameters. It is a single invocation of the
-[`tcab-session` wrapper](/components/core/orchestrators/#the-tcab-session-wrapper)
+[`tcab-session` wrapper](/components/driver/orchestrators/#the-tcab-session-wrapper)
 against the goal carried in `TCAB_PROMPT`:
 
 ```sh

@@ -67,7 +67,25 @@ trap 'rm -rf "$tmp"' EXIT
 
 COMMIT="0123456789abcdef0123456789abcdef01234567"
 PREVIOUS="89abcdef0123456789abcdef0123456789abcdef"
-IMAGES="tcab-backend tcab-auth-service tcab-dispatcher tcab-driver tcab-artifacts tcab-arena tcab-publisher tcab-web"
+IMAGES="tcab-backend"
+# The repos service's image, built in microservice-repos and pinned to the submodule
+# pointer, which the throwaway repository holds no commit for: TCAB_PIN_GITLINKS
+# names it.
+REPOS="76543210fedcba9876543210fedcba9876543210"
+# The dispatcher's image, built in microservice-dispatcher and pinned the same way.
+DISPATCHER="456789abcdef0123456789abcdef0123456789ab"
+# The driver's image and the run images, built in microservice-driver and pinned the
+# same way.
+DRIVER="cdef0123456789abcdef0123456789abcdef0123"
+# The artifacts service's image, built in microservice-artifacts and pinned the same
+# way.
+ARTIFACTS="abcdef0123456789abcdef0123456789abcdef01"
+# The arena's image, built in microservice-arena and pinned the same way.
+ARENA="9876543210abcdef9876543210abcdef98765432"
+# The console's image, built in console.testcabinet.ai and pinned the same way.
+CONSOLE="02468ace13579bdf02468ace13579bdf02468ace"
+# The publisher's image, built in microservice-publisher and pinned the same way.
+PUBLISHER="2468ace013579bdf2468ace013579bdf2468ace0"
 
 fresh_repo() {
 	local repo image
@@ -82,6 +100,13 @@ fresh_repo() {
 			printf '  - name: REPLACE_REGISTRY/%s\n    newName: testcabinet.azurecr.io/%s\n    newTag: unpinned\n' \
 				"$image" "${image/tcab-backend/the-test-cabinet-backend}"
 		done
+		printf '  - name: REPLACE_REGISTRY/tcab-arena\n    newName: testcabinet.azurecr.io/microservice-arena\n    newTag: unpinned\n'
+		printf '  - name: REPLACE_REGISTRY/tcab-artifacts\n    newName: testcabinet.azurecr.io/microservice-artifacts\n    newTag: unpinned\n'
+		printf '  - name: REPLACE_REGISTRY/tcab-dispatcher\n    newName: testcabinet.azurecr.io/microservice-dispatcher\n    newTag: unpinned\n'
+		printf '  - name: REPLACE_REGISTRY/tcab-driver\n    newName: testcabinet.azurecr.io/microservice-driver\n    newTag: unpinned\n'
+		printf '  - name: REPLACE_REGISTRY/tcab-publisher\n    newName: testcabinet.azurecr.io/microservice-publisher\n    newTag: unpinned\n'
+		printf '  - name: REPLACE_REGISTRY/tcab-repos\n    newName: testcabinet.azurecr.io/microservice-repos\n    newTag: unpinned\n'
+		printf '  - name: REPLACE_REGISTRY/tcab-web\n    newName: testcabinet.azurecr.io/console.testcabinet.ai\n    newTag: unpinned\n'
 		printf 'patches:\n  - path: patch-env.yaml\n'
 	} >"$repo/deployments/k8s/overlays/staging/kustomization.yaml"
 	cp "$repo/deployments/k8s/overlays/staging/kustomization.yaml" "$repo/unpinned.yaml"
@@ -106,6 +131,8 @@ awk '
 	/name: TCAB_/ { print }
 	/value: "testcabinet/ { print }
 ' "$2/kustomization.yaml"
+# A case that binds a workload to an identity drops its rendered objects beside it.
+if [ -f "$2/identity.yaml" ]; then echo "---"; cat "$2/identity.yaml"; fi
 STUB
 	chmod +x "$repo/bin/kubectl"
 
@@ -142,6 +169,7 @@ run() { # repo [env-assignment...] -- [argument...]
 	(
 		cd / || exit 1
 		env PATH="$repo/bin:$PATH" STUB_AZ_LOG="$repo/az.log" STUB_SENT="$repo/sent" \
+			TCAB_PIN_GITLINKS="microservice-arena=${ARENA} microservice-artifacts=${ARTIFACTS} microservice-dispatcher=${DISPATCHER} microservice-driver=${DRIVER} microservice-repos=${REPOS} console.testcabinet.ai=${CONSOLE} microservice-publisher=${PUBLISHER}" \
 			"${assignments[@]}" "$repo/scripts/ci/pre-deploy.sh" "$@" 2>&1
 	)
 }
@@ -153,15 +181,23 @@ out="$(run "$repo" -- --dry-run staging "$COMMIT")"
 status=$?
 check_equal "passes" 0 "$status"
 for image in $IMAGES; do
-	case "$image" in tcab-driver | tcab-publisher) continue ;; esac
 	check_contains "shows ${image} pinned" "${image/tcab-backend/the-test-cabinet-backend}:${COMMIT}" "$out"
 done
-check_contains "shows the dispatcher's driver image" "value: \"testcabinet.azurecr.io/tcab-driver:${COMMIT}\"" "$out"
-check_contains "shows the dispatcher's publisher image" "value: \"testcabinet.azurecr.io/tcab-publisher:${COMMIT}\"" "$out"
+check_contains "shows the repos image pinned to its pointer" "microservice-repos:${REPOS}" "$out"
+check_contains "shows the dispatcher image pinned to its pointer" "microservice-dispatcher:${DISPATCHER}" "$out"
+check_contains "shows the artifacts image pinned to its pointer" "microservice-artifacts:${ARTIFACTS}" "$out"
+check_contains "shows the arena image pinned to its pointer" "microservice-arena:${ARENA}" "$out"
+check_contains "shows the console image pinned to its pointer" "console.testcabinet.ai:${CONSOLE}" "$out"
+check_contains "shows the dispatcher's driver image pinned to its pointer" \
+	"value: \"testcabinet.azurecr.io/microservice-driver:${DRIVER}\"" "$out"
+check_contains "shows the publisher image pinned to its pointer" "microservice-publisher:${PUBLISHER}" "$out"
+check_contains "shows the dispatcher's publisher image pinned to its pointer" \
+	"value: \"testcabinet.azurecr.io/microservice-publisher:${PUBLISHER}\"" "$out"
 check_contains "shows the dispatcher's run-container tag" "name: TCAB_CONTAINER_TAG" "$out"
 check_contains "shows the read of the backend" "kubectl -n tcab-staging get deployment the-test-cabinet-backend --ignore-not-found" "$out"
 check_contains "shows the read of the legacy backend" "kubectl -n tcab-staging get deployment tcab-backend --ignore-not-found" "$out"
-check_contains "shows the retirement" "kubectl -n tcab-staging delete deployment tcab-backend --ignore-not-found" "$out"
+check_contains "shows the retirement" "kubectl -n tcab-staging delete deployment/tcab-backend statefulset/tcab-artifacts ingress/tcab-api" "$out"
+check_contains "and the edge's predecessors" "deployment/tcab-auth service/tcab-auth serviceaccount/tcab-auth secret/tcab-auth-secrets --ignore-not-found" "$out"
 check_contains "shows the catalog check" "scripts/ci/catalog-ingest.sh preflight staging $COMMIT" "$out"
 check_equal "checks no catalog" "" "$(cat "$repo/catalog.log" 2>/dev/null)"
 check_equal "reaches no cluster" "" "$(cat "$repo/az.log" 2>/dev/null)"
@@ -178,7 +214,16 @@ out="$(run "$repo" THE_TEST_CABINET_RESOURCE_GROUP=case-rg THE_TEST_CABINET_CLUS
 status=$?
 check_equal "passes" 0 "$status"
 overlay="$(cat "$repo/deployments/k8s/overlays/staging/kustomization.yaml")"
-check_equal "pins all eight images in place" 8 "$(grep -c "newTag: \"${COMMIT}\"" <<<"$overlay")"
+check_equal "pins the backend in place" 1 "$(grep -c "newTag: \"${COMMIT}\"" <<<"$overlay")"
+check_contains "pins the repos image to its pointer in place" "newTag: \"${REPOS}\"" "$overlay"
+check_contains "pins the dispatcher image to its pointer in place" "newTag: \"${DISPATCHER}\"" "$overlay"
+check_contains "pins the driver image to its pointer in place" "newTag: \"${DRIVER}\"" "$overlay"
+check_contains "pins the artifacts image to its pointer in place" "newTag: \"${ARTIFACTS}\"" "$overlay"
+check_contains "pins the arena image to its pointer in place" "newTag: \"${ARENA}\"" "$overlay"
+check_contains "pins the console image to its pointer in place" "newTag: \"${CONSOLE}\"" "$overlay"
+check_contains "pins the publisher image to its pointer in place" "newTag: \"${PUBLISHER}\"" "$overlay"
+check_contains "and the dispatcher's run-container tag with it" \
+	"$(printf -- '- name: TCAB_CONTAINER_TAG\n                    value: "%s"' "$DRIVER")" "$overlay"
 check_contains "adds the dispatcher's patch in place" "TCAB_PUBLISHER_IMAGE" "$overlay"
 check_equal "checks the catalog of the overlay's branch" "preflight staging $COMMIT" "$(cat "$repo/catalog.log" 2>/dev/null)"
 check_equal "hands the cluster two commands" 2 "$(wc -l <"$repo/az.log")"
@@ -191,7 +236,7 @@ check_contains "sets the previous commit" "##vso[task.setvariable variable=TCAB_
 check_contains "sets the Deployment it came from" \
 	"##vso[task.setvariable variable=TCAB_PREVIOUS_BACKEND]the-test-cabinet-backend" "$out"
 check_contains "sets the rollout timeout" "##vso[task.setvariable variable=THE_TEST_CABINET_ROLLOUT_TIMEOUT]600s" "$out"
-check_contains "retires tcab-backend in tcab-staging" "kubectl -n tcab-staging delete deployment tcab-backend" \
+check_contains "retires tcab-backend in tcab-staging" "kubectl -n tcab-staging delete deployment/tcab-backend" \
 	"$(cat "$repo/sent/retire-legacy-backend.sh")"
 
 echo "--- the first deployment after the rename ---"
@@ -231,6 +276,40 @@ status=$?
 check_failed "fails" "$status"
 check_equal "retires nothing" 1 "$(wc -l <"$repo/az.log")"
 check_lacks "sets no rollout timeout" "THE_TEST_CABINET_ROLLOUT_TIMEOUT" "$out"
+
+echo "--- an overlay bound to an unprovisioned identity ---"
+
+repo="$(fresh_repo)"
+cat >"$repo/deployments/k8s/overlays/staging/identity.yaml" <<'YAML'
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  annotations:
+    azure.workload.identity/client-id: unprovisioned
+  name: tcab-artifacts
+  namespace: tcab-staging
+YAML
+out="$(run "$repo" -- staging "$COMMIT")"
+status=$?
+check_failed "fails" "$status"
+check_contains "naming the identity" "unprovisioned workload identity: ServiceAccount/tcab-artifacts" "$out"
+check_contains "and the trees to move" "artifacts-tcab-artifacts-0 in tcab-staging" "$out"
+check_contains "with the script that moves them" "scripts/ci/copy-artifact-trees.sh staging" "$out"
+check_equal "reads and retires nothing" "" "$(cat "$repo/az.log" 2>/dev/null)"
+
+repo="$(fresh_repo)"
+cat >"$repo/deployments/k8s/overlays/staging/identity.yaml" <<'YAML'
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  annotations:
+    azure.workload.identity/client-id: 3874c619-95e8-4392-a819-284978fb6d12
+  name: tcab-artifacts
+  namespace: tcab-staging
+YAML
+out="$(run "$repo" -- staging "$COMMIT")"
+status=$?
+check_equal "a provisioned identity passes" 0 "$status"
 
 echo "--- refusals ---"
 

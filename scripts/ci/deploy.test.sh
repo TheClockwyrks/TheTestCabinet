@@ -513,7 +513,7 @@ else
 	check_contains "after the commit was deployed" "Deployed $COMMIT" "$out"
 	check_contains "prints what the cluster read of the sidecar" "line one of run 4" "$out"
 	check_contains "says the backend did not ingest" "the staging backend did not ingest the tip of staging" "$out"
-	check_contains "names the command that ingests once it is fixed" "scripts/reingest-cluster.sh --env staging" "$out"
+	check_contains "names the command that ingests once it is fixed" "tcab ingest --env staging" "$out"
 	check_contains "says the deployment stays" "$COMMIT is deployed and stays, but scripts/ci/post-deploy.sh failed" "$out"
 	check_lacks "rolls nothing back" "Rolling back" "$out"
 	check_equal "the cluster is reached four times and no more" 4 "$(wc -l <"$repo/az.log")"

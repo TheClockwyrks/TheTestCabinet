@@ -1,21 +1,19 @@
-# The in-cluster web console (apps/web, packaged as the tcab-web image — a static
-# SPA served by nginx, see deployments/images/web.Dockerfile). Serving it inside the
-# cluster means there is a real URL to visit rather than each operator running the
-# console locally and pointing it at a `kubectl port-forward`ed backend. In prod the
-# `internal-ingress` component fronts it at a private hostname
-# (console.tcab.testcabinet.ai); in local dev the overlay serves it over a
-# `kubectl port-forward` (see the components/web kustomization for both consumers).
+# The in-cluster web console (the console.testcabinet.ai repository, packaged as the
+# tcab-web image — a static SPA served by nginx, see that repository's Dockerfile;
+# its pipeline pushes it as testcabinet.azurecr.io/console.testcabinet.ai:<commit>,
+# pinned to the console.testcabinet.ai submodule pointer). In the staging and
+# prod overlays the edge component (components/edge) nests this one and routes the
+# environment's origin to it: `/` of console[.staging].testcabinet.ai reaches
+# tcab-web:8080 through the Cloudflare Tunnel. The local overlay does not include
+# it; locally the console runs from source.
 #
-# The single tcab-web image is environment-agnostic (one build per git-sha, like the
-# publisher image), so the backend + auth URLs are injected at RUNTIME via env: the
-# image's entrypoint `envsubst`s a /config.js the SPA reads (window.__TCAB_CONFIG__).
-# The placeholders below are empty defaults — each consumer patches the real URLs
-# (prod sets TCAB_WEB_BACKEND_URL=https://api.tcab.testcabinet.ai etc.; local points
-# them at the host-forwarded http://127.0.0.1:8787 / :8789).
+# The tcab-web container takes no runtime configuration: the console carries no
+# service URL and addresses /api, /artifacts and /arena of its own origin, which the
+# edge routes to the services, so it has no environment and no overlay patches it
+# beyond the image.
 #
 # It is a DATA-plane peer like the other services: a ClusterIP Service is the only
-# in-cluster surface, and (in prod) the ingress — never a LoadBalancer here — is the
-# boundary.
+# in-cluster surface, and the edge, never a LoadBalancer here, is the boundary.
 apiVersion: v1
 kind: Service
 metadata:
@@ -28,7 +26,7 @@ spec:
     - name: http
       port: 8080
       targetPort: 8080
-  # ClusterIP only — the internal ingress is the boundary; never a LoadBalancer here.
+  # ClusterIP only — the edge is the boundary; never a LoadBalancer here.
   type: ClusterIP
 ---
 apiVersion: apps/v1
@@ -51,7 +49,7 @@ spec:
     spec:
       containers:
         - name: web
-          image: REPLACE_REGISTRY/tcab-web:latest # the staging and prod overlays name testcabinet.azurecr.io/tcab-web
+          image: REPLACE_REGISTRY/tcab-web:latest # the staging and prod overlays name testcabinet.azurecr.io/console.testcabinet.ai
           resources:
             # MEMORY REQUEST == LIMIT. The scheduler packs a node by requests and
             # ignores limits, so a gap between them is memory promised twice; an
@@ -77,14 +75,6 @@ spec:
               memory: 256Mi
           ports:
             - containerPort: 8080
-          env:
-            # The console reads these at container start (the entrypoint emits
-            # /config.js from them). Empty by default so an unset env yields a valid
-            # (empty) config; each overlay patches the real https URLs (task-3).
-            - name: TCAB_WEB_BACKEND_URL
-              value: ""
-            - name: TCAB_WEB_AUTH_URL
-              value: ""
           readinessProbe:
             httpGet:
               path: /
@@ -101,6 +91,6 @@ spec:
           securityContext:
             runAsNonRoot: true
             allowPrivilegeEscalation: false
-            readOnlyRootFilesystem: false # nginx writes /config.js + its cache/run dirs
+            readOnlyRootFilesystem: false # nginx writes its pid and temp files, the base entrypoint its conf.d
             capabilities:
               drop: ["ALL"]

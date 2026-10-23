@@ -1,7 +1,7 @@
 # Production on managed PostgreSQL.
 #
-# The base with the components/postgres conversion layered on: the backend and auth
-# service run as stateless Deployments backed by an Azure Database for PostgreSQL —
+# The base with the components/postgres conversion layered on: the backend runs as a
+# stateless Deployment backed by an Azure Database for PostgreSQL —
 # Flexible Server instance instead of embedded SQLite. Its namespace is tcab-prod and
 # its TCAB_ENV is `prod`, the base's. The local overlay keeps the SQLite shape.
 #
@@ -27,7 +27,7 @@ resources:
 components:
   - ../../components/postgres
   # The in-cluster Grafana LGTM stack. Listed AFTER postgres so it layers onto the
-  # backend/auth Deployments postgres swaps in; patch-otel.yaml below sets each
+  # backend Deployment postgres swaps in; patch-otel.yaml below sets each
   # workload's OTEL_EXPORTER_OTLP_ENDPOINT to the `tcab-lgtm` Service it adds.
   - ../../components/observability
   # Populate the deployment's Kubernetes Secrets from Azure Key Vault via the
@@ -35,62 +35,60 @@ components:
   # Fill REPLACE_IDENTITY_CLIENT_ID in the component after creating the managed
   # identity; see the runbook.
   - ../../components/keyvault-csi
-  # Serve the web console in-cluster and expose it + the four services over an
-  # INTERNAL (VPN-reachable, never public) ingress-nginx at host-per-service
-  # `*.testcabinet.ai` names with cert-manager TLS. Adds the tcab-web Deployment +
-  # Service, the five Ingress routes, and the ingress-source NetworkPolicy. The
-  # component defaults to the prod hostnames; this overlay patches the runtime console
-  # + backend URLs below (patch-web-config.yaml / patch-backend-public-urls.yaml). The
-  # ingress-nginx + cert-manager controllers and the Let's Encrypt ClusterIssuer are
-  # cluster prerequisites ("Cluster prerequisites" in ../../README.md).
-  - ../../components/internal-ingress
-  # Passwordless (Microsoft Entra managed-identity) Postgres auth for backend + auth.
-  # ENABLED at the v0.6.0-rc2 cutover (2026-07-26): the pods run the db-auth service
-  # image, the in-DB Entra login roles exist on the private server (tcab-backend-db-prod
-  # / tcab-auth-db-prod, each a member of prod's tcab_backend_app / tcab_auth_app owner
-  # role — note prod's owner roles are the *_app names, not the runbook's bare
-  # tcab_backend/tcab_auth), and the Key Vault DB-URL secrets carry the passwordless
-  # role@host form. prod's DB-auth identity clientIDs are baked into the component, so no
-  # per-env patch is needed. See components/postgres-azure-ad and the deployment runbook
+  # The edge: the tcab-cloudflared tunnel connector routing console.testcabinet.ai by
+  # path to the console and the three services, and grafana.testcabinet.ai to
+  # Grafana, with the nested components/web console workload and the NetworkPolicy
+  # admitting the connector. The component's defaults are prod's tunnel and
+  # hostnames, so this overlay patches none of it. The Cloudflare side (the
+  # tcab-prod tunnel, the hostnames, the Access applications) is set up out of band;
+  # see apps/docs/src/content/docs/deployment/kubernetes/edge.md.
+  - ../../components/edge
+  # Passwordless (Microsoft Entra managed-identity) Postgres auth for the backend.
+  # ENABLED at the v0.6.0-rc2 cutover (2026-07-26): the pod runs the db-auth service
+  # image, the in-DB Entra login role exists on the private server (tcab-backend-db-prod,
+  # a member of prod's tcab_backend_app owner role — note prod's owner role is the
+  # *_app name, not the runbook's bare tcab_backend), and the Key Vault DB-URL secret
+  # carries the passwordless role@host form. prod's DB-auth identity clientID is baked
+  # into the component, so no per-env patch is needed. See components/postgres-azure-ad and the deployment runbook
   # for the cutover order.
   - ../../components/postgres-azure-ad
-  # The catalog ingest sidecar in the backend pod: it shares /state, brings the
-  # checkout and its cold storage to the catalog branch tip, and POSTs /ingest over
-  # localhost. Listed after postgres, whose backend Deployment it patches;
-  # patch-backend-ingest.yaml below sets its branch.
-  - ../../components/catalog-ingest
 
 # Every Test Cabinet image, at the Test Cabinet ACR and the tag `unpinned`, which
 # nothing pushes: applied as it stands, the overlay fails to pull rather than running
 # whatever a moving tag last named. scripts/ci/pin-images.sh rewrites each newTag to
 # the commit being deployed (and adds the dispatcher's run-image environment) before
 # anything applies it. The backend's repository is `the-test-cabinet-backend`, the name
-# the workspace template's publish and deploy stages use; the other seven keep their
-# `tcab-*` names.
+# the workspace template's publish and deploy stages use; the arena's is
+# `microservice-arena`, the artifacts service's
+# `microservice-artifacts`, the repos service's `microservice-repos`, the
+# dispatcher's `microservice-dispatcher` and the driver's
+# `microservice-driver`, the console's `console.testcabinet.ai` and the
+# publisher's `microservice-publisher`, the repositories they are built in, each
+# pinned to the commit its submodule pointer names.
 images:
   - name: REPLACE_REGISTRY/tcab-backend
     newName: testcabinet.azurecr.io/the-test-cabinet-backend
     newTag: unpinned
-  - name: REPLACE_REGISTRY/tcab-auth-service
-    newName: testcabinet.azurecr.io/tcab-auth-service
-    newTag: unpinned
   - name: REPLACE_REGISTRY/tcab-dispatcher
-    newName: testcabinet.azurecr.io/tcab-dispatcher
+    newName: testcabinet.azurecr.io/microservice-dispatcher
     newTag: unpinned
   - name: REPLACE_REGISTRY/tcab-driver
-    newName: testcabinet.azurecr.io/tcab-driver
+    newName: testcabinet.azurecr.io/microservice-driver
     newTag: unpinned
   - name: REPLACE_REGISTRY/tcab-artifacts
-    newName: testcabinet.azurecr.io/tcab-artifacts
+    newName: testcabinet.azurecr.io/microservice-artifacts
+    newTag: unpinned
+  - name: REPLACE_REGISTRY/tcab-repos
+    newName: testcabinet.azurecr.io/microservice-repos
     newTag: unpinned
   - name: REPLACE_REGISTRY/tcab-arena
-    newName: testcabinet.azurecr.io/tcab-arena
+    newName: testcabinet.azurecr.io/microservice-arena
     newTag: unpinned
   - name: REPLACE_REGISTRY/tcab-publisher
-    newName: testcabinet.azurecr.io/tcab-publisher
+    newName: testcabinet.azurecr.io/microservice-publisher
     newTag: unpinned
   - name: REPLACE_REGISTRY/tcab-web
-    newName: testcabinet.azurecr.io/tcab-web
+    newName: testcabinet.azurecr.io/console.testcabinet.ai
     newTag: unpinned
 
 patches:
@@ -101,22 +99,29 @@ patches:
   # Enable in-cluster publishing: the publisher credential Secret and the prod publish
   # targets. The publisher image itself is set by scripts/ci/pin-images.sh.
   - path: patch-dispatcher-publisher.yaml
-  # Repoint the backend's advertised data-plane URLs (TCAB_ARTIFACTS_PUBLIC_URL /
-  # TCAB_ARENA_PUBLIC_URL — env VALUES the images: transformer can't reach) to the
-  # internal-ingress https hostnames so console media resolves over the VPN.
-  - path: patch-backend-public-urls.yaml
-  # Set the in-cluster console's runtime backend/auth URLs (TCAB_WEB_BACKEND_URL /
-  # TCAB_WEB_AUTH_URL on the internal-ingress tcab-web pod) to the https hostnames.
-  - path: patch-web-config.yaml
+  # The Access application the backend, artifacts and arena verify the edge's
+  # assertion against.
+  - path: patch-access.yaml
+  # The artifacts service's Blob identity: the managed identity's client id on its
+  # ServiceAccount and the workload-identity label on its pod. The base
+  # names prod's storage account.
+  - path: patch-artifacts-identity.yaml
+  # The repos service's Blob identity, as the artifacts service's: the managed
+  # identity's client id on its ServiceAccount, the workload-identity label on its
+  # pod. The base names prod's storage account.
+  - path: patch-repos-identity.yaml
+  # The repos service's GitHub organization and its token (tcab-repos-secrets, synced
+  # from the Key Vault by the keyvault-csi component).
+  - path: patch-repos-github.yaml
   # Lock down Grafana (disable the otel-lgtm image's anonymous-admin default, set
-  # admin creds from the tcab-grafana-admin Secret) since the internal-ingress
-  # component now exposes it at grafana.tcab.testcabinet.ai over the VPN ingress.
+  # admin creds from the tcab-grafana-admin Secret) since the edge component routes
+  # grafana.testcabinet.ai to it.
   - path: patch-grafana-auth.yaml
   # Hold telemetry for 3 days rather than the component's 24h default — a prod issue
   # is often investigated a day or more after the run that caused it.
   - path: patch-lgtm-retention.yaml
-  # The catalog ingest sidecar's branch (`master`) and environment name; the sidecar
-  # itself is ../../components/catalog-ingest.
+  # Catalog ingest sidecar in the backend pod (shares /state, POSTs /ingest over
+  # localhost) — the base CronJob can't reach the backend or share its checkout volume.
   - path: patch-backend-ingest.yaml
-  # Suspend the base CronJob the sidecar supersedes, so it stops failing every 30 min.
+  # …and suspend that now-superseded base CronJob so it stops failing every 30 min.
   - path: patch-suspend-ingest-cronjob.yaml

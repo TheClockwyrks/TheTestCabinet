@@ -14,12 +14,13 @@ binary is the only channel for placing a voxel, the 3D counterpart of the
   subcommands that build the parts-and-joints hierarchy and author the
   animations.
 
-The binaries are built from `crates/voxel` and `crates/voxel-anim` on the shared
-`crates/model-core` library, which holds the rig and animation model, the CLI
-record plumbing, and the `wgpu` mesh renderer. Each has its own asset-generation
-[run-container image](/components/core/execution/#containerization), `voxel` in
-`test-cabinet-voxel` and `voxel-anim` in `test-cabinet-voxel-animation`, so a
-voxel asset-generation run carries only the tool its `asset_kind` names. A
+The binaries are built from `crates/voxel` and `crates/voxel-anim` in
+`tool-voxel`, on the shared `model-core` library of `tool-model-core`, which
+holds the rig and animation model, the CLI record plumbing, and the `wgpu` mesh
+renderer. Each has its own asset-generation
+[run-container image](/components/driver/execution/#containerization), `voxel`
+in `test-cabinet-voxel` and `voxel-anim` in `test-cabinet-voxel-animation`, so
+a voxel asset-generation run carries only the tool its `asset_kind` names. A
 [full-stack](/testing/full-stack/overview/) run whose `asset_dimension` is `3d`
 carries both, because one such run produces every asset its game needs.
 

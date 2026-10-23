@@ -1,6 +1,6 @@
 //! The `gg_dashboard` table: an operator's named board of TCQ panels.
 //!
-//! Many rows per account (keyed by the auth-service `user_id`), with the same shape
+//! Many rows per account (keyed by the owner's identity in `user_id`), with the same shape
 //! as a [saved query](super::gg_saved_query) — opaque `id`, name, description,
 //! `updated_at` — plus the panel list as JSON text, read and written whole like the
 //! coverage plans' list columns.
@@ -20,8 +20,8 @@ pub struct Model {
     /// The dashboard's opaque id (minted on create). The primary key.
     #[sea_orm(primary_key, auto_increment = false)]
     pub id: String,
-    /// The owning account's id (from the auth service, via the verified bearer
-    /// token).
+    /// The owner's identity: the Access assertion's email. A row made before the
+    /// edge asserted the identity holds the retired auth service's account id.
     pub user_id: String,
     /// The operator-chosen display name (e.g. `compaction comparison`).
     pub name: String,

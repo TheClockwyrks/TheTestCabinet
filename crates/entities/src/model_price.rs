@@ -1,7 +1,7 @@
 //! The `model_price` table: the catalog facts observed for a model.
 //!
 //! A row is one observation of a **canonical model id** (see
-//! `test_cabinet_core::model_id`) on OpenRouter: its context window, its release
+//! `test_cabinet_backend::model_id`) on OpenRouter: its context window, its release
 //! date, the input modalities it accepts, and its developer's provider. It is
 //! captured when the catalog first meets a model, when a run completes, and on the
 //! periodic refresh, and appended only when a fact differs from the previous

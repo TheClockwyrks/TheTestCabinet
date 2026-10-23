@@ -33,7 +33,7 @@ A UI case's brief must direct the model to both binaries. Both ship in the one
 
 The two are front-ends over one shared workspace and one recorded operation log,
 so a run interleaves them freely. Both are the only channel that counts. The
-flattened PNGs core emits are the run's authoritative output.
+flattened PNGs the driver emits are the run's authoritative output.
 
 ## Case layout
 
@@ -168,8 +168,8 @@ Points to get right:
   with `ui set-nine-slice`.
 - `[output].actions` is a single log rather than an `{element}` template,
   because the two binaries share one recorded stream.
-- Core emits the flattened per-element PNGs and `ui.json` to paths it provides,
-  so neither is manifest-declared.
+- The driver emits the flattened per-element PNGs and `ui.json` to paths it
+  provides, so neither is manifest-declared.
 - A UI case declares no `[[reference]]`, no `[build]`, and no `[[check]]`.
 - The single `overall` `[[domain]]` is the whole review. The painted kit is
   judged as a whole against its brief, so the case declares no `[[review_item]]`

@@ -22,12 +22,12 @@ fn authored(mut set: GgCapabilitySet) -> GgCapabilitySet {
 }
 
 /// A second profile beside the root, carrying `slug` and bound to the same model.
-fn profile(slug: &str) -> test_cabinet_core::gg::GgAgentConfig {
-    test_cabinet_core::gg::GgAgentConfig {
+fn profile(slug: &str) -> test_cabinet_contracts::gg::GgAgentConfig {
+    test_cabinet_contracts::gg::GgAgentConfig {
         slug: slug.to_string(),
         name: slug.to_string(),
         model_id: "mock/echo".to_string(),
-        ..test_cabinet_core::gg::GgAgentConfig::root()
+        ..test_cabinet_contracts::gg::GgAgentConfig::root()
     }
 }
 
@@ -186,17 +186,19 @@ fn an_authored_set_is_refused_for_a_malformed_or_repeated_slug() {
     );
     // By display name, because the slug is the very value that cannot be trusted to identify it.
     assert!(
-        defect.contains(test_cabinet_core::gg::ROOT_AGENT),
+        defect.contains(test_cabinet_contracts::gg::ROOT_AGENT),
         "unexpected defect: {defect}"
     );
 
     let mut repeated = GgCapabilitySet::minimal("mock/echo");
-    repeated.agents.push(test_cabinet_core::gg::GgAgentConfig {
-        // A distinct internal id: two genuinely separate profiles that came to spell one slug,
-        // which is what an import following a renamed saved agent leaves behind.
-        id: Some("k-imported".to_string()),
-        ..profile(test_cabinet_core::gg::ROOT_PROFILE_ID)
-    });
+    repeated
+        .agents
+        .push(test_cabinet_contracts::gg::GgAgentConfig {
+            // A distinct internal id: two genuinely separate profiles that came to spell one slug,
+            // which is what an import following a renamed saved agent leaves behind.
+            id: Some("k-imported".to_string()),
+            ..profile(test_cabinet_contracts::gg::ROOT_PROFILE_ID)
+        });
     let defect =
         authored_capability_set_defect(&authored(repeated)).expect("a repeated slug is refused");
     assert!(
@@ -204,7 +206,7 @@ fn an_authored_set_is_refused_for_a_malformed_or_repeated_slug() {
         "unexpected defect: {defect}"
     );
     assert!(
-        defect.contains(test_cabinet_core::gg::ROOT_PROFILE_ID),
+        defect.contains(test_cabinet_contracts::gg::ROOT_PROFILE_ID),
         "unexpected defect: {defect}"
     );
 }
@@ -218,9 +220,9 @@ fn a_sound_authored_set_is_accepted() {
     let mut set = GgCapabilitySet::minimal("mock/echo");
     set.agents.push(profile("careful-reviewer"));
     set.agents.push(profile("merge-agent"));
-    set.agents[0].subagents = vec![test_cabinet_core::gg::GgSubagentRef::new(
+    set.agents[0].subagents = vec![test_cabinet_contracts::gg::GgSubagentRef::new(
         key_of("careful-reviewer"),
-        &[test_cabinet_core::gg::GgSubagentScope::Subagent],
+        &[test_cabinet_contracts::gg::GgSubagentScope::Subagent],
     )];
     assert_eq!(authored_capability_set_defect(&authored(set)), None);
 

@@ -1,0 +1,26 @@
+# The run pod budget (see apps/docs/.../deployment/kubernetes/run-plane.md, "Node
+# drains"). An evicted run pod destroys its run: the driver Job is backoffLimit: 0
+# and the sandbox pod has no controller. This budget refuses the eviction of every
+# run pod in the namespace, so a drain waits for a node's runs to finish.
+#
+# The selector covers the driver and publish Job pods (managed-by: tcab-dispatcher)
+# and the sandbox pods (managed-by: tcab-driver). minAvailable is an absolute
+# integer because it is the one form the disruption controller computes for these
+# pods (a bare pod and a Job have no scale subresource); it sits far above any
+# number of run pods the namespace can hold, so the budget allows zero
+# disruptions. IfHealthyBudget keeps a run pod that is not Ready protected too. A
+# finished pod is outside any budget, so a completed driver pod never holds a
+# drain.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: tcab-run-pods
+  namespace: tcab-prod
+spec:
+  minAvailable: 1000000
+  unhealthyPodEvictionPolicy: IfHealthyBudget
+  selector:
+    matchExpressions:
+      - key: app.kubernetes.io/managed-by
+        operator: In
+        values: [tcab-dispatcher, tcab-driver]

@@ -12,6 +12,9 @@
 #   2. secret-sync.yaml         — the ServiceAccount (federated to the managed
 #      identity) and the always-on pause Deployment that mounts the
 #      SecretProviderClass so the CSI driver keeps those Secrets materialised.
+#   3. test-suites-credential.yaml — the read-only test suites credential's own
+#      SecretProviderClass and mounter, kept apart so a token not yet uploaded
+#      cannot stop the shared mount.
 #
 # Prerequisites (see the deployment runbook): the AKS cluster has the Azure Key
 # Vault Secrets Provider addon enabled, a user-assigned managed identity is
@@ -25,3 +28,4 @@ kind: Component
 resources:
   - secretproviderclass.yaml
   - secret-sync.yaml
+  - test-suites-credential.yaml

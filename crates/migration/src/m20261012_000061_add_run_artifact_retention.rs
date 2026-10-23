@@ -1,24 +1,13 @@
 //! Adds the five columns the artifact reclamation sweep's retention rules read and
 //! write on the `run` table.
 //!
-//! - `media_confirmed_at`: RFC 3339 of the snapshot refresh that found every media
-//!   file of the published run in the bucket. `NULL` until one has, and `NULL`
-//!   again when a later refresh could not confirm the run, or the run's record
-//!   was stored again. A published run's tree is reclaimed only with this set.
-//! - `media_checked_at`: RFC 3339 of the latest refresh that evaluated the
-//!   published run's media, whatever it found. It is what tells a run no refresh
-//!   has looked at from one a refresh could not confirm, so a backend requests a
-//!   refresh at startup for the former only.
-//! - `media_bucket`: the bucket that evaluation was made against, as its endpoint
-//!   and name. A confirmation counts only for the bucket it names, so a database
-//!   restored beside another bucket deletes no tree on the strength of it.
-//! - `artifacts_reclaimed_at`, `artifacts_reclaimed_reason`: when and why the sweep
-//!   deleted the run's tree on purpose (`published`, `failed` or `canceled`). `NULL`
-//!   for every run whose tree was never reclaimed, which keeps a reclaimed tree
-//!   apart from one that was lost.
-//!
-//! Every existing row starts with all five `NULL`. Each is its own statement
-//! because SQLite adds one column per `ALTER TABLE`.
+//! Kept registered for the databases that applied it: staging's schema holds this
+//! migration, and a migrator refuses to start over an applied migration it does
+//! not list. The feature that wrote the columns is not part of this design (the
+//! backend keeps no copy of a run's files and the artifacts service holds no
+//! volume; see `components/backend/overview.md#durable-state`), so nothing reads
+//! or writes them now. The columns are nullable or defaulted, so a row written without
+//! them is valid.
 
 use sea_orm_migration::prelude::*;
 

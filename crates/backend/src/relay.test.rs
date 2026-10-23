@@ -1,6 +1,6 @@
 use super::*;
 
-use test_cabinet_core::JobState;
+use test_cabinet_contracts::job_api::JobState;
 use tokio::sync::broadcast::error::TryRecvError;
 
 fn summary() -> JobSummary {
@@ -211,4 +211,49 @@ fn a_runs_finish_event_precedes_its_completion_alert() {
     assert_eq!(messages.len(), 2);
     assert!(is_run(&messages[0]));
     assert!(is_alert(&messages[1]));
+}
+
+// --- The per-job relay ------------------------------------------------------
+
+fn agent(message: &str) -> HarnessEvent {
+    HarnessEvent {
+        timestamp: "2026-10-19T12:00:00Z".to_string(),
+        session_id: None,
+        kind: test_cabinet_contracts::event::EventKind::Agent {
+            message: message.to_string(),
+        },
+    }
+}
+
+#[test]
+fn a_fanned_out_event_carries_its_sequence_and_is_not_kept() {
+    // The stored rows are the backlog; the relay only passes events on, each with the
+    // sequence a subscriber that replayed the database tells duplicates apart by.
+    let relay = Relay::new();
+    let live = relay.live("j1");
+    let mut sub = live.subscribe();
+
+    live.push_events(vec![(4, agent("a")), (5, agent("b"))]);
+
+    let mut received = Vec::new();
+    while let Ok(item) = sub.receiver.try_recv() {
+        match item {
+            StreamItem::Event { sequence, event } => received.push((sequence, *event)),
+            other => panic!("expected an event, got {other:?}"),
+        }
+    }
+    assert_eq!(received, vec![(4, agent("a")), (5, agent("b"))]);
+
+    let late = relay.live("j1").subscribe();
+    assert!(late.receiver.is_empty());
+    assert!(late.previews.is_empty());
+    assert!(!late.terminated);
+}
+
+#[test]
+fn a_finished_job_is_marked_terminal_for_a_late_subscriber() {
+    let relay = Relay::new();
+    relay.live("j1").finish();
+    assert!(relay.live("j1").subscribe().terminated);
+    assert!(!relay.live("j2").subscribe().terminated);
 }

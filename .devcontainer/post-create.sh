@@ -21,12 +21,51 @@
 # and said to be skipped rather than failing the creation of a container that is
 # otherwise ready to work in.
 #
-# `npm ci` is what gives crates/gg the pinned `typescript` two of its
+# The second `npm ci`, in the `gg/` checkout, installs gg's own npm workspace,
+# which is what gives gg's crates/gg the pinned `typescript` two of its
 # catalogues are reflected with; everything else that build needs is in the
-# image, so a container is ready to build the workspace when this returns.
+# image, so a container is ready to build the workspace and the gg checkout
+# when this returns. It is skipped, and said to be, while gg/ is not checked out.
+#
+# tools/submodule-checkout.sh populates `contracts/` and `engines/`, the
+# contracts and engines repositories whose crates and packages the workspace
+# builds against, `gg/`, whose crate the patch table names and whose pages the
+# documentation site reads, `microservice-arena/`, `microservice-artifacts/`, `microservice-dispatcher/`, `microservice-driver/`, `microservice-publisher/`, `microservice-repos/`,
+# `tool-model-core/`, `tool-paint/`, `tool-particle/`, `tool-sprite/`,
+# `tool-voxel/`, `tool-mc/`, `tool-sn/`, `tool-dc/`, `tool-audio-core/`,
+# `tool-sfx-synth/`, `tool-sfx-sample/`, `tool-music/` and `client-tauri/`,
+# whose crates the patch table names, `test-suites/`, the suites checkout The Test Cabinet
+# ingests from, `ui-common/`, the ui-common repository whose packages the web
+# front ends build against, and `console.testcabinet.ai/`, the console, whose
+# development server runs from its checkout. It names those twenty-five alone,
+# because cold-storage beside them is optional and about 2 GB. It runs ahead of
+# `npm ci`, which lists contracts', engines' and ui-common's packages in the npm
+# workspace, and after tools/ssh-agent.sh, because the clone goes through the
+# host agent that script publishes: this runs before post-start.sh, so the
+# agent is published here first (the script is idempotent, and post-start.sh
+# publishes it again). The checkout pins Azure DevOps' host key so the first
+# clone stops at no prompt, is a no-op when the host clone the checkout is
+# mounted from already populated it, and says a failure rather than failing
+# the creation of a container that is otherwise ready; a host with no agent to
+# publish is one such failure, said by the agent script and held here, so the
+# submodules are checked out at the next start, or by hand, once SSH works.
+#
+# Last, scripts/repos/link-packages.sh links the TypeScript packages the
+# checked-out repositories produce (contracts' and engines') into every
+# checked-out workspace that names one, so a fresh container builds each
+# workspace against the sibling checkouts rather than the versions the feed
+# holds. It runs after the submodule checkout, since it plans only the
+# workspaces that are checked out, and after `npm ci`, and it leaves the
+# manifests, the locks and .package-links.json as committed. It needs the
+# superrepo's submodules, so a directory with no repository or no .gitmodules
+# skips it and says so; a link that fails, as one does with no network or a
+# submodule SSH could not fetch, says so and names the command to run again,
+# rather than failing the creation of a container that is otherwise ready.
 set -euo pipefail
 
 if git rev-parse --git-dir >/dev/null 2>&1; then
+  bash .devcontainer/tools/ssh-agent.sh || true
+  bash .devcontainer/tools/submodule-checkout.sh || true
   bash scripts/setup-hooks.sh
 else
   echo "--- the commit hook (skipped: this is not a git repository yet)"
@@ -34,3 +73,20 @@ else
 fi
 
 npm ci
+
+if [ -f gg/package.json ]; then
+  npm ci --prefix gg
+else
+  echo "--- gg's npm workspace (skipped: gg/ is not checked out)"
+  echo "    run 'npm ci --prefix gg' once it is"
+fi
+
+if git rev-parse --git-dir >/dev/null 2>&1 && [ -f .gitmodules ]; then
+  if ! bash scripts/repos/link-packages.sh; then
+    echo "--- the checked-out repositories' packages (not linked: see above)"
+    echo "    run 'bash scripts/repos/link-packages.sh' once the cause is fixed"
+  fi
+else
+  echo "--- the checked-out repositories' packages (skipped: no submodules here)"
+  echo "    run 'bash scripts/repos/link-packages.sh' once they are checked out"
+fi

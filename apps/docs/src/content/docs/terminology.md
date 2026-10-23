@@ -2,14 +2,31 @@
 title: Terminology
 ---
 
-## Artifact service
+## Access assertion
 
-The [artifact service](/components/artifacts/overview/) serves the produced run
-trees off a persistent volume: a run's playable build and its proof and asset
-media. The [driver](#driver) uploads each run's tree to it, and a
-[console](#web-console) reads it from there to play and review the run. It is a
-data-plane peer of the [backend](#backend), so artifact bytes never transit the
-control plane.
+An Access assertion is the signed token Cloudflare Access attaches to every
+request that crosses the [edge](#edge), as the `Cf-Access-Jwt-Assertion`
+header, after the requester signed in through Entra ID or presented a service
+token. The [backend](#backend), the [artifacts service](#artifacts-service)
+and the arena verify it against the Access team's certificates with their
+application's audience tag and refuse a request without a valid one. The
+identity it carries is the requester's: the `email` of a person, which is what
+a [review](#review) records, or the `common_name` of a service token, which
+is how the CLI's ingest and reference publishing and CI are identified.
+In-cluster callers never cross the edge and keep their service tokens and
+per-job tokens. See [Identity](/components/auth/overview/).
+
+## Artifacts service
+
+The [artifacts service](/components/artifacts/overview/) is the
+[write-through store](#write-through-store) of every byte a run produces and
+every byte the public reads: a run's playable build, its proof and asset
+media, its validation and showcase files and its recorded logs, in a private
+blob container per environment, and the public [snapshot](#snapshot) in the
+public bucket. The [driver](#driver) uploads each run's tree to it, the
+[console](#console) reads a run from it to play and review the run, and the
+backend writes the snapshot through it. It is stateless and the one writer of
+both object stores, so artifact bytes never transit the control plane.
 
 ## Attachment pivot
 
@@ -18,21 +35,24 @@ coordinates, at which it hangs off its parent in a [rig](#rig). Posing the
 parent moves the child about this point, so a `turret`'s pivot is where it sits
 on the `chassis`. For the root part the pivot is its origin in world space.
 
-## Auth service
-
-The [auth service](/components/auth/overview/) is the standalone private service
-that holds The Test Cabinet's [user accounts](#user-account). It handles open
-self-registration and password login, and mints the opaque bearer tokens the
-[backend](#backend) verifies on mutating run requests. It keeps its own
-database, so credential storage stays out of the backend.
-
 ## Backend
 
 The [backend](/components/backend/overview/) is The Test Cabinet's central
 private service. It is the canonical source of test case definitions for runners
 and the system of record for run results through storage, review, and
-publication. It verifies the [auth service](#auth-service)'s bearer tokens
-rather than storing credentials itself.
+publication. It verifies the [Access assertion](#access-assertion) on every
+request that reaches it through the edge, and a service token on the mutating
+routes automation calls.
+
+## Bundle
+
+A bundle is a run's implementation as one file: the model's work committed on
+top of the seed commit at the end of the run and written by `git bundle --all`.
+The [driver](#driver) uploads it to the [repos service](#repos-service), which
+stores it, serves it for download and re-analysis, and pushes its `main` to
+the run's public GitHub repository when the run publishes. The operator
+client's installers are bundles in Tauri's sense, one per platform; see
+[Shell](#shell).
 
 ## Catalog
 
@@ -68,6 +88,19 @@ configuration asks for. It is the unit a [coverage](#coverage) plan crosses with
 its cases to form a cell, the unit a [ladder](#ladder) enrolls as a
 [climber](#climber), and the unit a reusable coverage group holds.
 
+## Console
+
+The [console](/components/web/overview/) is The Test Cabinet's operator GUI,
+`console.testcabinet.ai`, a static web app served from the cluster through
+the [tunnel](#tunnel) behind Cloudflare Access. It mounts the routed
+application from the [UI library](/components/ui/overview/). It enqueues runs
+at the [backend](#backend), which a [dispatcher](#dispatcher) drains into
+per-run [driver](#driver) `Job`s, and it is both a reporter and a launcher of
+runs. It is same-origin with the services it calls: the backend under `/api`,
+the [artifacts service](#artifacts-service) under `/artifacts` and the arena
+under `/arena`. The operator client for the desktop and Android platforms is a
+[shell](#shell) that loads it.
+
 ## Coverage
 
 Coverage carries three meanings in The Test Cabinet, and they are not the same
@@ -78,10 +111,10 @@ thing:
    with [combinations](#combination) and a target run count per cell, and its
    coverage is how many of those cells have met their target. A cell holds the
    first runs to land up to its target, and a run beyond that is not the plan's.
-   This is the older and narrower sense. See [Coverage plans](/components/backend/coverage/).
+   This is the narrower sense. See [Coverage plans](/components/backend/coverage/).
 2. The feature area: the reviewer scheduling surface as a whole, which is plans,
    [ladders](#ladder), the reusable groups both draw their members from, the
-   account-wide [runs-in-flight limit](#runs-in-flight-limit), and the halt and
+   reviewer-wide [runs-in-flight limit](#runs-in-flight-limit), and the halt and
    stop controls. This is the sense in which the console has a Coverage section and
    the backend a coverage API, and it takes in ladders, which are not plans and
    aim at no matrix at all.
@@ -102,13 +135,25 @@ suite has coverage disabled. The static analyzer's walk diagnostics on a run's
 Code tab are headed Analysis notes rather than Coverage, since they describe the
 analysis and measure nothing about the code.
 
+## Debug API
+
+A [test suite](#test-suite)'s debug API is the structured surface an
+implementation exposes so that [validators](#validator) can drive and observe
+it. The suite declares it as data, and an implementation publishes it either
+through a global handle or through the engine's own debug object. Its functions
+are queries, which report state, and commands, which arrange the state a
+[requirement](#requirement) is written against. A validator reaches an
+implementation only through this surface, which keeps its verdict independent of
+how the implementation is written. See [debug APIs](/test-suites/debug-apis/).
+
 ## Dispatcher
 
 The [dispatcher](/components/dispatcher/overview/) is a thin, stateless
 controller that drains the [backend](#backend)'s run queue. It claims each
 queued run and creates one Kubernetes `Job` running a [driver](#driver) to
-execute it. The backend's job table is the source of truth, so concurrency
-scales with the cluster.
+execute it, and claims each queued publish and creates one publisher `Job`. The
+backend's job table is the source of truth, so concurrency scales with the
+cluster.
 
 ## Domain
 
@@ -122,28 +167,57 @@ item](#reviewer-checklist) names the domains its failure lowers on a
 [validator-rated](#validator-rated) version, and on a legacy version may roll
 up to a domain or stay general when it applies to every mode.
 
+## Draft
+
+A draft is an editable, possibly incomplete state of a [test suite](#test-suite)
+that The Spec Cabinet authors. A suite holds any number of drafts, and a draft is
+saved whether or not it is complete. The Test Cabinet never ingests a draft; it
+runs the [exported versions](#exported-version) produced from one. See [test
+suites](/test-suites/overview/#drafts).
+
 ## Driver
 
 The [driver](/components/driver/overview/) is the per-run executor: a one-shot
 process, created by the [dispatcher](#dispatcher) as a Kubernetes `Job`, that
-runs exactly one test case. It resolves the definition from the
-[backend](#backend), drives the run through the
-[core](/components/core/overview/) in an untrusted sandbox pod, streams live
-progress back to the backend, uploads the produced tree to the [artifact
-service](#artifact-service), and exits.
+runs exactly one test case. It holds the run engine. It resolves the
+definition from the [backend](#backend), drives the run in an untrusted
+sandbox pod, streams live progress back to the backend, uploads the produced
+tree to the [artifacts service](#artifacts-service) and the implementation's
+[bundle](#bundle) to the [repos service](#repos-service), and exits. The
+`tcab` CLI is its second binary.
+
+## Edge
+
+Edge carries two meanings in The Test Cabinet:
+
+1. The Cloudflare edge: where a request to a deployment arrives, is
+   authenticated by Access and enters the [tunnel](#tunnel). Nothing in a
+   cluster is reachable from outside it except through the edge. See
+   [The edge](/deployment/kubernetes/edge/).
+2. A dependency edge: the one direction along which one repository of the set
+   may depend on another. A build edge is one a manifest names; a data edge is
+   one no manifest can name, such as the driver pinning gg's released binary.
+   See [The edges](/development/repositories/#the-edges).
 
 ## Engine
 
 In the context of The Test Cabinet, "engine" refers to two elements:
 
-1. The [runtime a produced game is built on](/components/core/engines/), selected
-   per run and recorded on it
+1. The [runtime a produced game is built on](/components/engines/overview/),
+   selected per run and recorded on it
 2. The WebAssembly module a model submits for a
    [performance](/testing/performance/overview/) test case
 
 The first is provided to a run and the second is the deliverable of one. A
 performance case's engine is the artifact under test, so it is never selected and
 a performance case supports no engine in the first sense.
+
+## Exported version
+
+An exported version is an immutable, numbered snapshot of a [draft](#draft) that
+satisfies every [test suite](#test-suite) invariant. Exported versions are the
+suite states The Test Cabinet ingests and runs. See [test
+suites](/test-suites/overview/#exported-versions).
 
 ## Failure cap
 
@@ -166,6 +240,14 @@ In the context of The Test Cabinet, "harness" refers to two elements:
 The Test Cabinet runs other harnesses. It hits no LLM API and implements no
 agentic loop; that responsibility lies entirely with the agentic harnesses it
 drives.
+
+## Hub
+
+The hub is `contracts`, the one repository every other repository of the set
+may depend on and the only place a shape two repositories exchange is defined.
+The set is a hub and its spokes: a library may be depended on, and an
+application, site, shell, tool-binary or content repository never is. See
+[The dependency rule](/development/repositories/#the-dependency-rule).
 
 ## Joint
 
@@ -228,25 +310,29 @@ part at run time with `define-part`.
 
 ## Publishing
 
-Publishing releases a [reviewed](#review) run and makes it public. It releases
-the run's source to a public GitHub repo and its playable build to Cloudflare
-Pages, and adds the run to the public [snapshot](#snapshot) and gallery. It is
-the second of two steps, review then publish, and the release runs
-asynchronously in a per-publish `tcab-publisher` Job. The CLI's `tcab publish`
-performs both steps at once for a solo operator.
+Publishing makes a run public. It releases the run's playable build to
+Cloudflare Pages and its implementation to a public GitHub repository, adds
+the run's document and media to the public [snapshot](#snapshot), and mints
+the run's [short code](#short-code). The [backend](#backend) enqueues a publish
+Job, the [dispatcher](#dispatcher) admits it in the publish lane, and the
+per-publish `tcab-publisher` Job deploys the build and asks the [repos
+service](#repos-service) to push the [bundle](#bundle); the backend then
+writes the snapshot through the [artifacts service](#artifacts-service), so a
+published run appears in the gallery with no site build.
 
-A completed [validator-rated](#validator-rated) run is publishable from the
-moment it completes, on its functional rating and score. A completed legacy run
-needs at least one [review](#review) before it can be published, with two
+A completed [validator-rated](#validator-rated) run publishes itself the
+moment it completes, on its functional rating and score. A completed legacy
+run needs at least one [review](#review) before it can be published, with two
 waivers. A run in a publishable failure state (catastrophic, timed out, harness
 error) has no checklist to complete. An auto-validated
 [comparison](/comparisons/overview/) run carries automated verdicts in place of
 a review.
 
 A produced run is stored privately on the backend as soon as it finishes, and
-its build is playable for review off the [artifact
-service](/components/artifacts/overview/). Publishing is what first releases it
-publicly. See [Results](/components/core/results/#lifecycle).
+its build is playable for review off the [artifacts
+service](/components/artifacts/overview/) behind Access. Publishing is what
+first releases it publicly. See
+[Results](/components/backend/results/#lifecycle).
 
 ## Rating
 
@@ -274,9 +360,26 @@ the run's is the worst across every review. See
 ## Reporters
 
 Reporters are The Test Cabinet components capable of reporting run results. Only
-GUI reporters allow users to interact with test case implementations. The [web
-console](#web-console) is both a reporter and a launcher of
-[runs](#runners).
+GUI reporters allow users to interact with test case implementations. The
+[console](#console) is both a reporter and a launcher of [runs](#runners).
+
+## Repos service
+
+The [repos service](/components/repos/overview/) is the
+[write-through store](#write-through-store) of each run's implementation as a
+git [bundle](#bundle), in a private blob container of its own. It serves a
+bundle for download, re-analysis and review, and on publish creates the run's
+public GitHub repository, scrubbed with the shared redaction, pushes the
+bundle's `main` and returns the URL, idempotently.
+
+## Requirement
+
+A requirement is one RFC 2119 statement within a
+[specification](#specification), classified as functional or non-functional. A
+functional requirement names one or more [validators](#validator) that decide
+it, while a non-functional requirement is judged by a human. Behavioral
+requirements are functional and appearance requirements are non-functional. See
+[specifications](/test-suites/specifications/).
 
 ## Review
 
@@ -284,15 +387,15 @@ A review is a person's assessment of a run after playing its build, providing
 the feedback automation cannot. Reviews are subjective, since games do not map
 cleanly to a rigid grading scale.
 
-A review carries a prose writeup, a [rating](#rating), and the identity of the
-[account](#user-account) that wrote it. On a
+A review carries a prose writeup, a [rating](#rating), and the identity the
+reviewer's [Access assertion](#access-assertion) carries. On a
 [validator-rated](#validator-rated) run the rating is a single run-wide
 aesthetic tier, and the review may also override individual
 [reviewer-checklist](#reviewer-checklist) verdicts the validators decided. On a
 legacy run the rating is the functional one per domain, the review also carries
 a verdict on each reviewer-checklist item the case declares, and those verdicts
 and item weights produce the review's numeric [score](#score), averaged across
-the run's reviews. A run may carry one review per account, typically from
+the run's reviews. A run may carry one review per identity, typically from
 people other than the operator who produced it.
 
 ## Reviewer checklist
@@ -310,7 +413,7 @@ validators' verdicts, so a review's effective checklist is the validators'
 verdicts overlaid with its overrides. Overriding is the exception, for a
 validator whose precondition could not be met or a build that does the right
 thing despite broken instrumentation. On a legacy run the
-[web console](#web-console) presents the checklist as a guided review with a
+[console](#console) presents the checklist as a guided review with a
 completeness gate: every item and sub-item needs a verdict before a review can
 be saved or the run published. The checklist is reporter-side and is never
 seeded, so it stays out of the model's input.
@@ -354,9 +457,8 @@ reported in: three climbers on four rungs are twelve rung slots.
 
 A runner is the component that actually executes a test case. There is exactly
 one: the per-run [driver](#driver) a [dispatcher](#dispatcher) creates for each
-run, built on the [core](/components/core/overview/). The
-[CLI](/components/cli/overview/) and the [web console](#web-console) enqueue a
-run at the [backend](#backend) and watch it.
+run. The [console](#console) enqueues a run at the [backend](#backend) and
+watches it.
 
 ## Runs-in-flight limit
 
@@ -364,7 +466,7 @@ The runs-in-flight limit is how many of a [coverage](#coverage) plan's or a
 [ladder](#ladder) dispatch's own jobs may be queued, pending, dispatched,
 starting, running, validating or storing at once. It exists so one plan or
 ladder shares the global
-queue fairly with everything else waiting on it. It is an account-wide setting
+queue fairly with everything else waiting on it. It is a reviewer-wide setting
 overridable per plan and per ladder, and is either a bound or no limit, which
 launches every missing run at once. Completed runs never occupy it.
 
@@ -387,26 +489,87 @@ A [comparison](/comparisons/experiments/) scores a run from its automated
 validators alone, restricting both the earned points and the available points to
 the machine-checkable ones.
 
+## Shell
+
+Shell carries two meanings in The Test Cabinet:
+
+1. The operator client, [`client-tauri`](/components/client/overview/): a
+   Tauri workspace, the `shell` kind of repository, whose thin native shell
+   loads the [console](#console)'s URL in a WebView and builds a bundle for
+   Windows, Linux, macOS and Android. It links nothing of the project and
+   signs in through Access inside the WebView.
+2. The gallery application shell in `@clockwyrks/ui`: the routed application,
+   its chrome and section navigation, which the gallery and the console both
+   mount.
+
+## Short code
+
+A short code is the handle a run's share links are built from: the shortest
+prefix of the run id, at least eight characters, that no published run
+already holds. A run gets one the first time it publishes, stored on its
+record and as the object `codes/<code>` in the public bucket naming the run
+id, and it is never reassigned. The `tcab.ai` Worker resolves `/r/<code>` to
+the run's verdict page and `/p/<code>` to its play page; see
+[Serving](/components/site/serving/).
+
 ## Snapshot
 
-A snapshot is the public export the [backend](#backend) produces from its
-published results. The static [public site](/components/site/overview/) is built
-from this snapshot, so the gallery keeps no live dependency on the backend.
+A snapshot is the public dataset the [backend](#backend) composes from its
+published results and writes through the [artifacts service](#artifacts-service)
+into the public bucket: run documents, media and content-addressed index
+objects, with the `index.json` pointer swapped atomically after each publish.
+The static [public gallery](/components/site/overview/) reads the index objects
+at runtime, so a publish is an upload and the gallery keeps no live dependency
+on the backend.
+
+## Specification
+
+A specification is one folder of a [test suite](#test-suite) holding a natural
+language explanation of the behavior it covers plus the
+[requirements](#requirement) that state it precisely. Specification folders
+nest, and every file in one belongs to that specification alone. See
+[specifications](/test-suites/specifications/).
+
+## Superrepo
+
+The superrepo is `the-test-cabinet`: the repository that holds every repository
+of the set as a submodule at its root, with the documentation site, the issue
+board, the repository kit and the gates over the whole set. Each repository
+has a kind, which decides its shape: `library` (a Rust workspace with no lock
+committed, and an npm workspace), `application` (a Rust binary crate that
+commits its lock, and an npm workspace), `tool` (a library workspace whose
+binaries are also baked into the run-container images), `shell` (a Tauri
+workspace building desktop and Android bundles), `site` (an npm workspace and
+no Rust) and `content` (neither). See
+[Repositories](/development/repositories/).
 
 ## Test case
 
 Test cases provide the scenarios used for testing. Each test case represents an
 isolated task that a harness and model must perform.
 
-## User account
+## Test suite
 
-A user account is a real, registered identity in the [auth
-service](#auth-service), created by open self-registration with a username,
-password, and display name. Logging in mints a bearer token that authenticates
-the mutating run actions, [review](#review) and [publishing](#publishing), so
-every review a run carries is attributed to the account that wrote it. Accounts
-are an identity layer on top of the private network. Reading the gallery or the
-backend needs no account.
+A test suite is one authored project, committed in the test suites repository,
+from which one or more [test cases](#test-case) are drawn. It is authored as
+[drafts](#draft), and The Test Cabinet runs the [exported
+versions](#exported-version) produced from them. It holds the
+[specifications](#specification) an implementation is written against, the
+[validators](#validator) that decide them, the [debug API](#debug-api) those
+validators drive and read, the demonstrations, the reference implementations,
+the showcase, and the assets.
+The Spec Cabinet authors test suites and The Test Cabinet executes the test
+cases they define. See [test suites](/test-suites/overview/).
+
+## Tunnel
+
+A tunnel is the outbound Cloudflare Tunnel a `cloudflared` Deployment in each
+namespace holds, through which an environment's one public hostname reaches
+its in-cluster services by path: `/` the [console](#console), `/api/` the
+[backend](#backend), `/artifacts/` the [artifacts service](#artifacts-service)
+and `/arena/` the arena, with Grafana on a hostname of its own. A cluster
+exposes no `Ingress`, load balancer, public IP or certificate, and TLS
+terminates at Cloudflare. See [The edge](/deployment/kubernetes/edge/).
 
 ## Validation
 
@@ -419,6 +582,15 @@ mandated debug-API contract fails automatically. Each validator's pass or fail
 is visible per checklist point on a run's Verdict tab, to every visitor
 including the public gallery. A game's feel and quality are left to a human
 [review](#review).
+
+## Validator
+
+A validator is a function that decides one [requirement](#requirement) and
+returns an assertion result per condition it checks. It drives and observes an
+implementation only through the [debug API](#debug-api), and a
+[test suite](#test-suite) holds one validator project.
+Each validator is claimed by exactly one requirement. See
+[validators](/test-suites/validators/).
 
 ## Validator-rated
 
@@ -454,11 +626,14 @@ meshed geometry as a per-part `.glb`, and a rendered preview. The validator
 parses and validates that emitted data rather than regenerating it, and the
 frontend renders an interactive 3D model with three.js.
 
-## Web console
+## Write-through store
 
-The [web console](/components/web/overview/) is The Test Cabinet's
-runner/reporter GUI, delivered as a static web app that runs in a plain browser.
-It mounts the routed application from the [UI
-library](/components/ui/overview/). It enqueues runs at the [backend](#backend),
-which a [dispatcher](#dispatcher) drains into per-run [driver](#driver) `Job`s.
-It is an operator tool served on the private network, not a public site.
+A write-through store is a service that owns an object store and is the one
+writer of it: every byte reaches the store through the service and is read
+back through it, by a stream or a redirect to a short-lived signed URL, the
+service's choice per route. The [artifacts service](#artifacts-service) is the
+write-through store of run trees and of the public [snapshot](#snapshot), over
+a private blob container and the public bucket, and the
+[repos service](#repos-service) is the write-through store of run
+[bundles](#bundle). Neither keeps a volume, so both are stateless and scale
+horizontally.

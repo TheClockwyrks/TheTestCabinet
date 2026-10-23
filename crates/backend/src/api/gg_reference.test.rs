@@ -1,4 +1,6 @@
-use test_cabinet_core::gg_reference::{GgReferenceEntry, GgReferenceLanguage, GgReferenceModule};
+use test_cabinet_contracts::gg_reference::{
+    GgReferenceEntry, GgReferenceLanguage, GgReferenceModule,
+};
 
 use super::*;
 
@@ -82,7 +84,7 @@ fn entry(name: &str, kind: GgReferenceEntryKind) -> GgReferenceEntry {
 /// Write a reference directory holding `languages`, listed in the index and present beside
 /// it — a faithful miniature of what `gg reference --out` leaves behind.
 ///
-/// The filenames come from `core`'s [`index_file`]/[`document_file`], the same two functions
+/// The filenames come from the contracts' [`index_file`]/[`document_file`], the same two functions
 /// `write_reference` in `test-cabinet-gg` calls and [`load`] reads by. That is deliberate:
 /// a fixture that spelled `index.json` here would be a third opinion about the layout, and
 /// the third opinion is the one that agrees with the reader and not with the writer.

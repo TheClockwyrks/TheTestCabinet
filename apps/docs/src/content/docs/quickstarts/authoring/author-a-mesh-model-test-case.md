@@ -66,7 +66,7 @@ contract. The case declares no `[[reference]]` and carries no target model.
    resolution rejects on a meshed case.
 7. Declare `[tool]` with the meshing binary and a `preview` such as `model.png`,
    and `[output]` with an `actions` log. Both name single files; the `{part}`
-   token is rejected on a static case. Core emits the extracted `mesh.glb` on
+   token is rejected on a static case. The driver emits the extracted `mesh.glb` on
    `render`, so the manifest never names it.
 8. Declare the single `overall` `[[domain]]` a human rates the model under. The
    model is judged as a whole against its brief on that one rating, so the case

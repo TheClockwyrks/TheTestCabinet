@@ -1,4 +1,5 @@
 use super::*;
+use test_cabinet_suites::test_case::{AssetDimension, AssetKind, TestType};
 
 use std::collections::HashMap;
 
@@ -37,8 +38,8 @@ fn manifest() -> StoredManifest {
         changelog: "Introduced.".to_string(),
         max_runtime_seconds: 1800,
         test_type: TestType::EndToEnd,
-        engines: vec![test_cabinet_core::EngineSupport::unbounded(
-            test_cabinet_core::engine::NONE_SLUG,
+        engines: vec![test_cabinet_suites::test_case::EngineSupport::unbounded(
+            test_cabinet_suites::engine::NONE_SLUG,
         )],
         experimental: false,
         build: Some(StoredBuild {
@@ -79,6 +80,7 @@ fn manifest() -> StoredManifest {
         domains: vec![],
         instrumentation: None,
         errata: Vec::new(),
+        suite: None,
     }
 }
 
@@ -103,7 +105,8 @@ fn a_variant_reference_build_url_is_folded_onto_the_matching_variant() {
         ]),
     )]);
 
-    let response = version_response(&manifest, &reference_builds, &HashMap::new(), None).unwrap();
+    let response =
+        version_response(&manifest, None, &reference_builds, &HashMap::new(), None).unwrap();
 
     let base = response.variants.iter().find(|v| v.slug == "base").unwrap();
     assert_eq!(
@@ -133,7 +136,8 @@ fn a_variant_reference_sheet_is_folded_onto_the_matching_variant() {
     let manifest = manifest();
     let reference_sheets = HashMap::from([("base".to_string(), vec![0, 1, 2])]);
 
-    let response = version_response(&manifest, &HashMap::new(), &reference_sheets, None).unwrap();
+    let response =
+        version_response(&manifest, None, &HashMap::new(), &reference_sheets, None).unwrap();
 
     let base = response.variants.iter().find(|v| v.slug == "base").unwrap();
     assert_eq!(
@@ -168,7 +172,8 @@ fn no_reference_sheets_leaves_every_variant_without_one() {
     // or the backend has no R2 configured to have discovered one): every variant
     // resolves to `None` rather than to an empty frame list, so a client can tell
     // "no reference" from "a reference with no frames".
-    let response = version_response(&manifest(), &HashMap::new(), &HashMap::new(), None).unwrap();
+    let response =
+        version_response(&manifest(), None, &HashMap::new(), &HashMap::new(), None).unwrap();
     assert!(
         response
             .variants
@@ -191,17 +196,18 @@ fn a_performance_case_scored_set_reaches_the_resolved_version() {
             input: "cases/small.json".to_string(),
             expected: "cases/small.out".to_string(),
             fuel_ceiling: 5_000_000_000,
-            kind: test_cabinet_core::validation::PerformanceCaseKind::Stress,
+            kind: test_cabinet_contracts::validation::PerformanceCaseKind::Stress,
         },
         StoredCase {
             input: "cases/large.json".to_string(),
             expected: "cases/large.out".to_string(),
             fuel_ceiling: 5_000_000_000,
-            kind: test_cabinet_core::validation::PerformanceCaseKind::Stress,
+            kind: test_cabinet_contracts::validation::PerformanceCaseKind::Stress,
         },
     ];
 
-    let response = version_response(&manifest, &HashMap::new(), &HashMap::new(), None).unwrap();
+    let response =
+        version_response(&manifest, None, &HashMap::new(), &HashMap::new(), None).unwrap();
     assert_eq!(response.cases.len(), 2);
     assert_eq!(response.cases[0].input, "cases/small.json");
     assert_eq!(response.cases[0].expected, "cases/small.out");
@@ -231,7 +237,8 @@ fn a_performance_case_scored_set_reaches_the_resolved_version() {
 fn a_non_performance_version_omits_the_cases_field() {
     // `cases` is skipped when empty, so a non-performance version's wire shape is
     // byte-identical to before this field existed (no `cases` key at all).
-    let response = version_response(&manifest(), &HashMap::new(), &HashMap::new(), None).unwrap();
+    let response =
+        version_response(&manifest(), None, &HashMap::new(), &HashMap::new(), None).unwrap();
     assert!(response.cases.is_empty());
     let value = serde_json::to_value(&response).unwrap();
     assert!(
@@ -245,7 +252,8 @@ fn no_reference_builds_leaves_every_variant_without_one() {
     // The empty-map case (no variant of this version has a deployed reference
     // implementation): every variant resolves to an empty map.
     let manifest = manifest();
-    let response = version_response(&manifest, &HashMap::new(), &HashMap::new(), None).unwrap();
+    let response =
+        version_response(&manifest, None, &HashMap::new(), &HashMap::new(), None).unwrap();
     assert!(
         response
             .variants
@@ -262,14 +270,15 @@ fn the_declared_engines_are_folded_into_the_version_response() {
     // a pinned one carries its bounds.
     let mut manifest = manifest();
     manifest.engines = vec![
-        test_cabinet_core::EngineSupport::unbounded("none"),
-        test_cabinet_core::EngineSupport {
+        test_cabinet_suites::test_case::EngineSupport::unbounded("none"),
+        test_cabinet_suites::test_case::EngineSupport {
             slug: "simple-2d".to_string(),
             min_version: Some("1.0.0".parse().expect("a valid version")),
             max_version: Some("2.0.0".parse().expect("a valid version")),
         },
     ];
-    let response = version_response(&manifest, &HashMap::new(), &HashMap::new(), None).unwrap();
+    let response =
+        version_response(&manifest, None, &HashMap::new(), &HashMap::new(), None).unwrap();
     let engines: Vec<&str> = response.engines.iter().map(|e| e.slug.as_str()).collect();
     assert_eq!(engines, vec!["none", "simple-2d"]);
     assert_eq!(response.engines[0].min_version, None);
@@ -287,7 +296,7 @@ fn errata_are_folded_into_the_version_response() {
         id: "cue-clips-rail".to_string(),
         title: "Cue ball clips the rail".to_string(),
         date: Some("2026-07-17".to_string()),
-        severity: test_cabinet_core::test_case::ErratumSeverity::Major,
+        severity: test_cabinet_suites::test_case::ErratumSeverity::Major,
         affects_scoring: true,
         exclude_from_score: false,
         body: "Known tunnelling at high speed.".to_string(),
@@ -295,7 +304,8 @@ fn errata_are_folded_into_the_version_response() {
         variant: None,
         review: None,
     }];
-    let response = version_response(&manifest, &HashMap::new(), &HashMap::new(), None).unwrap();
+    let response =
+        version_response(&manifest, None, &HashMap::new(), &HashMap::new(), None).unwrap();
     assert_eq!(response.errata.len(), 1);
     let erratum = &response.errata[0];
     assert_eq!(erratum.id, "cue-clips-rail");
@@ -329,7 +339,8 @@ fn a_graded_review_item_carries_its_graded_flag_to_the_wire() {
         validation: None,
     }];
 
-    let response = version_response(&manifest, &HashMap::new(), &HashMap::new(), None).unwrap();
+    let response =
+        version_response(&manifest, None, &HashMap::new(), &HashMap::new(), None).unwrap();
 
     let item = &response.common_review_items[0];
     assert_eq!(item.id, "fun");
@@ -366,7 +377,8 @@ fn a_validator_s_engine_scoping_reaches_the_wire_and_an_unscoped_one_is_omitted(
     };
     manifest.common_review_items = vec![point("overlay", &["none"]), point("serve", &[])];
 
-    let response = version_response(&manifest, &HashMap::new(), &HashMap::new(), None).unwrap();
+    let response =
+        version_response(&manifest, None, &HashMap::new(), &HashMap::new(), None).unwrap();
     let json = serde_json::to_value(&response).unwrap();
     let items = json["commonReviewItems"].as_array().unwrap();
 
@@ -656,7 +668,7 @@ fn stored_showcase(file: &str) -> StoredShowcase {
         media: vec![StoredShowcaseMedia {
             file: file.to_string(),
             name: "The title screen".to_string(),
-            kind: test_cabinet_core::MediaKind::Image,
+            kind: test_cabinet_suites::test_case::MediaKind::Image,
             key: format!("showcase/base/{file}"),
         }],
     }
@@ -671,7 +683,8 @@ fn a_variant_showcase_is_folded_onto_the_resolved_version() {
     let mut manifest = manifest();
     manifest.variants[0].showcase = Some(stored_showcase("title.png"));
 
-    let response = version_response(&manifest, &HashMap::new(), &HashMap::new(), None).unwrap();
+    let response =
+        version_response(&manifest, None, &HashMap::new(), &HashMap::new(), None).unwrap();
 
     let base = response.variants.iter().find(|v| v.slug == "base").unwrap();
     let showcase = base.showcase.as_ref().expect("base carries its showcase");
@@ -679,7 +692,10 @@ fn a_variant_showcase_is_folded_onto_the_resolved_version() {
     assert_eq!(showcase.media.len(), 1);
     assert_eq!(showcase.media[0].file, "title.png");
     assert_eq!(showcase.media[0].name, "The title screen");
-    assert_eq!(showcase.media[0].kind, test_cabinet_core::MediaKind::Image);
+    assert_eq!(
+        showcase.media[0].kind,
+        test_cabinet_suites::test_case::MediaKind::Image
+    );
     let serialized = serde_json::to_value(&showcase.media[0]).unwrap();
     assert!(
         serialized.get("key").is_none(),
@@ -737,8 +753,10 @@ fn engine_aware_manifest() -> StoredManifest {
     StoredManifest {
         prompt_template: "Built on {{engine.name}} ({{engine.slug}}).".to_string(),
         engines: vec![
-            test_cabinet_core::EngineSupport::unbounded(test_cabinet_core::engine::NONE_SLUG),
-            test_cabinet_core::EngineSupport::unbounded("simple-2d"),
+            test_cabinet_suites::test_case::EngineSupport::unbounded(
+                test_cabinet_suites::engine::NONE_SLUG,
+            ),
+            test_cabinet_suites::test_case::EngineSupport::unbounded("simple-2d"),
         ],
         ..manifest()
     }
@@ -747,7 +765,7 @@ fn engine_aware_manifest() -> StoredManifest {
 /// A resolved engine, read from an empty package store: the manifest is baked in,
 /// and the staged version a store would supply plays no part in rendering.
 fn resolved(slug: &str) -> ResolvedEngine {
-    test_cabinet_core::EngineCatalog::with_package_store("/nonexistent")
+    test_cabinet_engines::built_in_catalog_in("/nonexistent")
         .resolve(&EngineSelection::new(slug))
         .unwrap()
 }
@@ -760,6 +778,7 @@ fn a_run_s_engine_renders_that_engine_s_branch_of_the_prompt() {
     let engine = resolved("simple-2d");
     let response = version_response(
         &engine_aware_manifest(),
+        None,
         &HashMap::new(),
         &HashMap::new(),
         Some(&engine),
@@ -775,6 +794,7 @@ fn no_engine_renders_the_engineless_prompt() {
     // A case gallery renders a case, not a run, so nothing has selected an engine.
     let response = version_response(
         &engine_aware_manifest(),
+        None,
         &HashMap::new(),
         &HashMap::new(),
         None,
@@ -789,11 +809,17 @@ fn no_engine_renders_the_engineless_prompt() {
 fn an_explicit_engineless_run_reads_exactly_as_no_engine() {
     // A run that recorded `none` and a surface that named no engine are the same
     // text, so a caller never has to special-case the sentinel to get it right.
-    let engine = resolved(test_cabinet_core::engine::NONE_SLUG);
+    let engine = resolved(test_cabinet_suites::engine::NONE_SLUG);
     let manifest = engine_aware_manifest();
-    let explicit =
-        version_response(&manifest, &HashMap::new(), &HashMap::new(), Some(&engine)).unwrap();
-    let absent = version_response(&manifest, &HashMap::new(), &HashMap::new(), None).unwrap();
+    let explicit = version_response(
+        &manifest,
+        None,
+        &HashMap::new(),
+        &HashMap::new(),
+        Some(&engine),
+    )
+    .unwrap();
+    let absent = version_response(&manifest, None, &HashMap::new(), &HashMap::new(), None).unwrap();
 
     assert_eq!(explicit.variants[0].prompt, absent.variants[0].prompt);
 }
@@ -832,8 +858,8 @@ fn an_unknown_engine_is_refused_rather_than_rendered_engineless() {
 
 #[test]
 fn a_version_response_carries_the_engine_format_and_each_points_cap_and_domains() {
+    use crate::review::FailureCap;
     use crate::store::StoredSubReviewItem;
-    use test_cabinet_core::review::FailureCap;
     let mut manifest = manifest();
     manifest.engine_format = true;
     manifest.common_review_items = vec![
@@ -881,7 +907,8 @@ fn a_version_response_carries_the_engine_format_and_each_points_cap_and_domains(
         },
     ];
 
-    let response = version_response(&manifest, &HashMap::new(), &HashMap::new(), None).unwrap();
+    let response =
+        version_response(&manifest, None, &HashMap::new(), &HashMap::new(), None).unwrap();
     let json = serde_json::to_value(&response).unwrap();
     assert_eq!(json["engineFormat"], true);
     let items = json["commonReviewItems"].as_array().unwrap();
@@ -897,8 +924,86 @@ fn a_version_response_carries_the_engine_format_and_each_points_cap_and_domains(
     );
 
     // A legacy version says so and carries neither key on its items.
-    let legacy =
-        version_response(&self::manifest(), &HashMap::new(), &HashMap::new(), None).unwrap();
+    let legacy = version_response(
+        &self::manifest(),
+        None,
+        &HashMap::new(),
+        &HashMap::new(),
+        None,
+    )
+    .unwrap();
     let json = serde_json::to_value(&legacy).unwrap();
     assert_eq!(json["engineFormat"], false);
+}
+
+/// The prompt version detail shows for `version` of the suite-defined fixture case on
+/// `engine`, read out of the store exactly as `resolve_version` reads it.
+fn suite_version_prompt(
+    suite: &crate::prompt::fixture::IngestedSuite,
+    version: &str,
+    engine: Option<&ResolvedEngine>,
+) -> String {
+    let manifest = suite
+        .store
+        .read_manifest(crate::prompt::fixture::CASE, version)
+        .expect("the version is stored");
+    let record = suite
+        .store
+        .read_suite_of(&manifest)
+        .expect("the suite record reads");
+    let response = version_response(
+        &manifest,
+        record.as_ref(),
+        &HashMap::new(),
+        &HashMap::new(),
+        engine,
+    )
+    .expect("the suite-defined version resolves");
+    assert_eq!(response.variants.len(), 1);
+    response.variants[0].prompt.clone()
+}
+
+/// The prompt a run of `version` on `engine` is handed, off the resolved checkout.
+fn suite_run_prompt(
+    suite: &crate::prompt::fixture::IngestedSuite,
+    version: &str,
+    engine: Option<&ResolvedEngine>,
+) -> String {
+    let resolved = suite.resolve(version);
+    let variant = resolved
+        .variant(test_cabinet_suites::test_suite::SUITE_VARIANT_SLUG)
+        .expect("the implicit variant");
+    test_cabinet_suites::prompt::render_case_prompt(&resolved, variant, &[], engine)
+        .expect("the run renders the prompt")
+}
+
+#[test]
+fn a_suite_defined_version_detail_renders_the_prompt_a_run_receives() {
+    use crate::prompt::fixture::{EXPORTED, IngestedSuite, PREVIEW, engine};
+    let suite = IngestedSuite::new();
+    let simple = engine("simple-2d");
+    for version in [EXPORTED, PREVIEW] {
+        for engine in [None, Some(&simple)] {
+            let shown = suite_version_prompt(&suite, version, engine);
+            assert_eq!(
+                shown,
+                suite_run_prompt(&suite, version, engine),
+                "{version} on {:?}",
+                engine.map(|engine| engine.slug())
+            );
+            // The documented context, and nothing authored in front of it.
+            assert!(
+                shown.starts_with("Build Carom in the workspace at `/work`."),
+                "{version}: {shown}"
+            );
+            assert!(
+                shown.contains("`/work/specs/ball-physics.md`"),
+                "{version}: {shown}"
+            );
+        }
+    }
+    assert!(
+        suite_version_prompt(&suite, EXPORTED, Some(&simple)).contains("Simple 2D engine"),
+        "the engine branch renders"
+    );
 }

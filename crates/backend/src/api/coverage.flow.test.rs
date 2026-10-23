@@ -6,7 +6,7 @@
 //! [`halt_plan`], [`retry_plan_cell`], [`plan_coverage`] and the finished-job feed — over
 //! the shared flow harness.
 
-use test_cabinet_core::run_record::RunState;
+use test_cabinet_contracts::run_record::RunState;
 
 use super::*;
 use crate::api::flow_harness::*;
@@ -598,6 +598,47 @@ async fn a_filling_plan_gets_a_pass_at_startup() {
 }
 
 #[tokio::test]
+async fn a_startup_pass_leaves_a_claim_another_replica_holds_to_it() {
+    let (_dir, state) = test_state().await;
+    let id = plan_id(
+        &state,
+        plan_input(&["pong"], 1, InFlightLimit::Bounded { runs: 10 }),
+    )
+    .await;
+    fill(&state, &id).await;
+    let pong = in_flight(&state, "pong").await;
+    set_state(&state, &pong[0].id, "canceled").await;
+    // Another replica's pass holds the claim, within its lease.
+    assert!(
+        state
+            .db
+            .claim_coverage_plan_launch(OWNER, &id, &now().unwrap())
+            .await
+            .unwrap()
+    );
+
+    crate::api::spawn_startup_passes(state.clone());
+    // The startup pass finds the claim held and leaves its request to the holder.
+    let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(20);
+    while !state.db.coverage_plan_launch_requested(&id).await.unwrap() {
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "the startup pass never left a request"
+        );
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    }
+    assert!(in_flight(&state, "pong").await.is_empty());
+    assert!(
+        !state
+            .db
+            .claim_coverage_plan_launch(OWNER, &id, &now().unwrap())
+            .await
+            .unwrap(),
+        "the release at startup took a claim whose lease had not lapsed"
+    );
+}
+
+#[tokio::test]
 async fn a_finished_hand_launch_of_a_plans_cell_feeds_the_filling_plan() {
     let (_dir, state) = test_state().await;
     let id = plan_id(
@@ -754,7 +795,7 @@ async fn a_jam_run_held_behind_the_same_model_holds_no_slot() {
             .db
             .enqueue_job(crate::db::NewJob {
                 test_case_slug: "jam".to_string(),
-                test_type: test_cabinet_core::test_case::TestType::GameJam
+                test_type: test_cabinet_contracts::test_case::TestType::GameJam
                     .as_str()
                     .to_string(),
                 model_id: SONNET.to_string(),
@@ -825,7 +866,10 @@ async fn cancelling_a_filling_plans_run_by_hand_feeds_the_plan() {
         crate::api::jobs::cancel(State(state.clone()), owner(), Path(first[0].id.clone()))
             .await
             .unwrap();
-    assert_eq!(canceled.state, test_cabinet_core::JobState::Canceled);
+    assert_eq!(
+        canceled.state,
+        test_cabinet_contracts::job_api::JobState::Canceled
+    );
     wait_for_in_flight(&state, "pong", 1).await;
     let relaunched = in_flight(&state, "pong").await;
     assert_ne!(relaunched[0].id, first[0].id);
@@ -838,13 +882,12 @@ async fn report_lost(state: &AppState, job_id: &str) -> StatusCode {
         State(state.clone()),
         crate::auth::ServiceAuth,
         Path(job_id.to_string()),
-        Json(test_cabinet_core::StatusUpdate {
-            state: test_cabinet_core::DriverState::Failed,
+        Json(test_cabinet_contracts::job_api::StatusUpdate {
+            state: test_cabinet_contracts::job_api::DriverState::Failed,
             record: None,
             detail: Some("the driver Job no longer exists".to_string()),
             artifacts_stored: None,
             store_fault: None,
-            run_failure: None,
         }),
     )
     .await
@@ -896,13 +939,12 @@ async fn a_job_whose_driver_is_lost_fails_and_its_retry_keeps_the_plan_filling()
         State(state.clone()),
         crate::auth::ServiceAuth,
         Path(now[0].id.clone()),
-        Json(test_cabinet_core::StatusUpdate {
-            state: test_cabinet_core::DriverState::Succeeded,
+        Json(test_cabinet_contracts::job_api::StatusUpdate {
+            state: test_cabinet_contracts::job_api::DriverState::Succeeded,
             record: None,
             detail: None,
             artifacts_stored: None,
             store_fault: None,
-            run_failure: None,
         }),
     )
     .await
@@ -1078,7 +1120,7 @@ async fn a_cell_holds_the_first_runs_to_land_and_the_plan_never_reads_past_its_t
             .db
             .add_review(
                 run,
-                &crate::db::tests::review_by(OWNER, test_cabinet_core::review::Rating::Great),
+                &crate::db::tests::review_by(OWNER, crate::review::Rating::Great),
                 None,
                 None,
             )
@@ -1093,45 +1135,6 @@ async fn a_cell_holds_the_first_runs_to_land_and_the_plan_never_reads_past_its_t
         .unwrap();
     let carded: Vec<String> = runs.runs.iter().map(|run| run.id.clone()).collect();
     assert_eq!(carded, plan_run_ids);
-    assert!(runs.artifacts_not_stored.is_empty());
-
-    // A run recorded as having no stored tree is named beside the cards, so the
-    // console marks it here as it does in the run log.
-    state
-        .db
-        .set_run_artifacts_stored("pong-claude-sonnet-4-5-1", false)
-        .await
-        .unwrap();
-    let Json(runs) = plan_runs(State(state.clone()), owner(), Path(id.clone()))
-        .await
-        .unwrap();
-    assert_eq!(runs.artifacts_not_stored, ["pong-claude-sonnet-4-5-1"]);
-    assert!(runs.artifacts_reclaimed.is_empty());
-
-    // Once the sweep reclaims that run's tree it is named as reclaimed, and no
-    // longer as a run that lost its tree.
-    let seen = state
-        .db
-        .retention_run("pong-claude-sonnet-4-5-1", None)
-        .await
-        .unwrap()
-        .expect("the run exists");
-    assert!(
-        state
-            .db
-            .mark_artifacts_reclaimed(
-                &seen,
-                crate::db::ReclaimReason::Failed,
-                "2026-10-12T00:00:00Z"
-            )
-            .await
-            .unwrap()
-    );
-    let Json(runs) = plan_runs(State(state.clone()), owner(), Path(id.clone()))
-        .await
-        .unwrap();
-    assert!(runs.artifacts_not_stored.is_empty());
-    assert_eq!(runs.artifacts_reclaimed, ["pong-claude-sonnet-4-5-1"]);
     assert!(
         extras
             .iter()

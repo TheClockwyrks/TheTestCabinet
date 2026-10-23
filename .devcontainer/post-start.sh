@@ -19,8 +19,21 @@
 # script has already said what went wrong. A host runtime or an SSH agent that
 # fails to publish is not tolerated, because a silent failure there surfaces
 # later as a `k3d` or a `git push` that cannot explain itself.
+#
+# The other is the checkout of the submodules that runs after them,
+# tools/submodule-checkout.sh, which follows tools/ssh-agent.sh because it
+# clones through the agent that script publishes. post-create.sh runs it once at
+# creation, and it runs here again so a container created with no agent, or no
+# network, gets contracts/, engines/, gg/, microservice-arena/, microservice-artifacts/, microservice-dispatcher/, microservice-driver/,
+# microservice-publisher/, microservice-repos/, tool-model-core/, tool-paint/, tool-particle/,
+# tool-sprite/, tool-voxel/, tool-mc/, tool-sn/, tool-dc/, tool-audio-core/,
+# tool-sfx-synth/, tool-sfx-sample/, tool-music/, client-tauri/, test-suites/,
+# ui-common/ and console.testcabinet.ai/ at its next start. The script never fails, and the `|| true` holds that here as
+# well. It stops a checkout that outlives its deadline too, so an SSH connection
+# that never answers does not hold the start.
 set -euo pipefail
 
 bash .devcontainer/tools/host-runtime.sh
 bash .devcontainer/tools/docker-socket-access.sh || true
 bash .devcontainer/tools/ssh-agent.sh
+bash .devcontainer/tools/submodule-checkout.sh || true

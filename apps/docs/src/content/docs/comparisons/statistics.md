@@ -4,7 +4,7 @@ title: "Statistics"
 
 A comparison runs each arm `N` times because a single run is noise. The
 statistics turn those `N` runs into an honest summary of the spread. They live
-in `crates/core/src/comparison_stats.rs`.
+in `comparison_stats.rs` in `microservice-backend`.
 
 ## The one rule
 
@@ -12,7 +12,7 @@ Present the distribution and its sample size; never emit a verdict. No
 comparison computes significance, crowns a winner, or draws one arm's bar taller
 as a ranking. Every arm is shown with its `n` and its spread, and the reader
 draws the conclusion. This is consistent with the site-wide stance that [metrics
-measure resources, not rank](/components/core/metrics/).
+measure resources, not rank](/components/contracts/metrics/).
 
 ## Statistic per metric
 

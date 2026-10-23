@@ -5,7 +5,7 @@
 # of them (the gates' pipeline plumbing, deploy.sh, build-image.sh, ci-image.sh
 # and the rest), and those source the template's lib.sh beside this file. The
 # project's own scripts, which run its own pipeline jobs and stages
-# (.azure/project/, .azure/tcab/, azure-pipelines-release.yml), source this
+# (.azure/project/, .azure/tcab/), source this
 # file; scripts/ci/README.md lists both. It is named for the project so a
 # template update never renders over it, and a script that needs the
 # template's helpers too (`build_arg`, `aks_invoke`) sources both.
@@ -93,4 +93,77 @@ ci_assert_namespaced() {
 		fi
 	done < <(ci_manifest_index)
 	return "$bad"
+}
+
+# Reads a rendered manifest stream on stdin and prints `<kind>/<name>` for each object
+# annotated `azure.workload.identity/client-id: unprovisioned`: a workload identity an
+# overlay names before it exists in Azure (overlays/prod/patch-artifacts-identity.yaml
+# and patch-repos-identity.yaml until tcab-artifacts-prod and tcab-repos-prod are
+# provisioned).
+ci_unprovisioned_identities() {
+	awk '
+		function unquote(v) { gsub(/^["\047]|["\047]$/, "", v); return v }
+		function flush() {
+			if (hit) print kind "/" name
+			kind = ""; name = ""; top = ""; hit = 0
+		}
+		/^---/ { flush(); next }
+		/^[A-Za-z]/ { top = $1; sub(/:$/, "", top) }
+		top == "kind" && /^kind: / { kind = unquote($2) }
+		top == "metadata" && /^  name: / { name = unquote($2) }
+		top == "metadata" && /^    azure\.workload\.identity\/client-id: / && unquote($2) == "unprovisioned" { hit = 1 }
+		END { flush() }
+	'
+}
+
+# Reads a rendered manifest stream on stdin and fails, naming each, if it binds any
+# workload to an unprovisioned identity (ci_unprovisioned_identities). Such a deploy
+# would retire the artifacts service's StatefulSet and replace it with a Deployment
+# whose start-up listing of the container is refused, and a brand-new Deployment has
+# no revision to roll back to, so the deploy is refused before the cluster is touched.
+ci_assert_identities_provisioned() {
+	local unprovisioned
+	unprovisioned="$(ci_unprovisioned_identities)"
+	if [[ -n "$unprovisioned" ]]; then
+		local object
+		while read -r object; do
+			echo "unprovisioned workload identity: ${object}" >&2
+		done <<<"$unprovisioned"
+		return 1
+	fi
+}
+
+# ci_resolve_url <base> <url>: the address git clones a submodule from when
+# `.gitmodules` names it <url> in a superproject cloned from <base>. An absolute
+# URL is returned as it is. Each leading `../` drops one path component of
+# <base>, which may be a URL, an scp-style address, or a local path.
+ci_resolve_url() {
+	local base="$1" url="$2"
+	if [[ "$url" != ./* && "$url" != ../* ]]; then
+		printf '%s\n' "$url"
+		return
+	fi
+	base="${base%/}"
+	while :; do
+		case "$url" in
+			./*) url="${url#./}" ;;
+			../*)
+				url="${url#../}"
+				if [[ "$base" == */* ]]; then
+					base="${base%/*}"
+				elif [[ "$base" == *:* ]]; then
+					base="${base%:*}:"
+				else
+					echo "cannot resolve a relative URL against '$1'" >&2
+					return 1
+				fi
+				;;
+			*) break ;;
+		esac
+	done
+	if [[ "$base" == *: ]]; then
+		printf '%s%s\n' "$base" "$url"
+	else
+		printf '%s/%s\n' "$base" "$url"
+	fi
 }

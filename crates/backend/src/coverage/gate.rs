@@ -62,9 +62,9 @@
 //! come back as, and the caller cancels the slot's runs that have not started yet
 //! (`queued` and `pending`).
 
-use serde::{Deserialize, Serialize};
+use crate::review::Rating;
 
-use test_cabinet_core::review::Rating;
+pub use test_cabinet_contracts::backend_api::coverage::{Gate, GateOutcome, GateThreshold};
 
 /// Slack allowed when comparing a run count against a
 /// [fractional](GateThreshold::Fraction) requirement.
@@ -78,37 +78,14 @@ use test_cabinet_core::review::Rating;
 /// run in a rung), and so can never absorb a real shortfall.
 const FRACTION_EPSILON: f64 = 1e-9;
 
-/// How many of a rung's runs must clear the [floor](Gate::floor) for the climber to
-/// pass the rung.
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
-#[serde(tag = "kind", rename_all = "camelCase")]
-#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub enum GateThreshold {
-    /// An absolute number of runs, independent of how many the rung ran. `1` is
-    /// "any run clearing the floor is enough", which is how "stop only when
-    /// everything is broken" is expressed.
-    Count {
-        /// The number of runs that must clear the floor.
-        runs: u32,
-    },
-    /// A share of the runs the rung finishes with, compared as
-    /// `count >= fraction * runs`. Values outside `0.0..=1.0` are clamped into
-    /// it, and a non-finite value (which cannot come from valid JSON but can from a
-    /// corrupt row) reads as `0.0`.
-    ///
-    /// Clamping is not the same as neutralising: below the range it degrades to
-    /// "always pass", but above it degrades to `1.0`, the strictest bar the rule
-    /// can express — every run must clear the floor. That is deliberate.
-    /// A fraction over one is a typo, not an instruction, and the nearest expressible
-    /// reading of "more than all of them" is "all of them"; inventing a permissive
-    /// answer instead would let a mistyped gate wave every climber through.
-    Fraction {
-        /// The share of the rung's runs that must clear the floor.
-        fraction: f64,
-    },
+/// The run count a [`GateThreshold`] demands, which is the gate's rule and so the
+/// backend's.
+trait GateThresholdExt {
+    /// The number of runs this threshold demands when the rung ends with `total` runs.
+    fn required(self, total: u32) -> f64;
 }
 
-impl GateThreshold {
+impl GateThresholdExt for GateThreshold {
     /// The number of runs this threshold demands when the rung ends with `total` runs. Fractional by design: `0.5` of five runs is `2.5`, which
     /// three runs clear and two do not — exactly "over half".
     fn required(self, total: u32) -> f64 {
@@ -122,51 +99,6 @@ impl GateThreshold {
                 };
                 fraction * f64::from(total)
             }
-        }
-    }
-}
-
-/// The rule one ladder applies at every rung.
-///
-/// Stored per ladder (not per rung): a ladder is a single question asked of an
-/// ordered series of cases, so the bar it sets is the ladder's, and a rung only
-/// varies how many runs it takes to answer.
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub struct Gate {
-    /// The worst rating that still counts as clearing the rung. A run rated this
-    /// or better passes; anything worse does not.
-    pub floor: Rating,
-    /// How many runs must clear [`Self::floor`].
-    pub threshold: GateThreshold,
-    /// Whether a run whose build never loaded counts as [`Rating::Broken`] outright,
-    /// whatever its validator rating says. On by default: there was nothing to play.
-    #[serde(default = "unloaded_counts_as_broken_default")]
-    pub unloaded_counts_as_broken: bool,
-    /// Whether the gate may decide on partial results, the caller then cancelling the
-    /// slot's jobs that have not started yet. **Off** by default — the runs are evidence in
-    /// their own right, so a rung finishes what it started even when the verdict is
-    /// already certain.
-    #[serde(default)]
-    pub early_stop: bool,
-}
-
-/// The default for [`Gate::unloaded_counts_as_broken`], as a function so serde can
-/// name it when the field is absent from a stored gate.
-fn unloaded_counts_as_broken_default() -> bool {
-    true
-}
-
-impl Default for Gate {
-    /// The gentlest gate that still stops a hopeless climb: pass as long as a single
-    /// run was playable at all, fail only when the whole rung is broken.
-    fn default() -> Self {
-        Self {
-            floor: Rating::Scuffed,
-            threshold: GateThreshold::Count { runs: 1 },
-            unloaded_counts_as_broken: unloaded_counts_as_broken_default(),
-            early_stop: false,
         }
     }
 }
@@ -203,21 +135,6 @@ impl RungRun {
         }
         self.rating
     }
-}
-
-/// What a rung's evidence says about one climber.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub enum GateOutcome {
-    /// The rung is passed; the climber moves to the next one.
-    Passed,
-    /// The rung is failed; the climber stops here. The validators are assumed correct,
-    /// so this is the climber's result for that version of the case.
-    Failed,
-    /// Not enough evidence yet: runs are still to come, or finished runs carry no
-    /// validator rating. The climber stays on the rung.
-    Undecided,
 }
 
 /// The counts a gate decision is made from, exposed so a ladder dashboard can show

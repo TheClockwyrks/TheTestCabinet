@@ -48,7 +48,7 @@ pub struct Model {
     /// The opaque model id, lifted for the active-run list.
     pub model_id: String,
     /// The slug of the engine the queued run's case pin names (see
-    /// `test_cabinet_core::engine`), lifted out of the launch request at enqueue and
+    /// `test_cabinet_driver::engine`), lifted out of the launch request at enqueue and
     /// mirroring `run.engine_slug` on the run the job produces.
     ///
     /// Part of a job's coverage cell: results are only comparable within one engine, so
@@ -124,9 +124,10 @@ pub struct Model {
     /// chronological order. `0` for rows enqueued before the column existed, which
     /// sorts them ahead of everything minted since — correct, as they are older.
     pub queue_seq: i64,
-    /// The account that launched this job (from the auth service, via the verified
-    /// bearer token), or `NULL` when unknown — every row enqueued before the column
-    /// existed, which reads as an unattributed manual launch.
+    /// The identity that launched this job (the Access assertion's email; a retired
+    /// auth service account id on an older row), or `NULL` when unknown — every row
+    /// enqueued before the column existed, which reads as an unattributed manual
+    /// launch.
     ///
     /// Attribution only. Coverage counting stays **global**: a run counts toward its
     /// cell's target whoever launched it, so an existing run is never re-requested
@@ -176,18 +177,38 @@ pub struct Model {
     /// rung is never decided on an attempt whose retry is still to come.
     #[sea_orm(nullable)]
     pub retried_by: Option<String>,
-    /// The terminal report a driver handed over when it began waiting on the
-    /// artifact store, as JSON: the run's record, the failure reason when the run
-    /// failed, and whether the tree was stored once the wait ended. `NULL` for a
-    /// job whose driver never waited, and cleared when the driver's own terminal
-    /// report lands.
+    /// The run record the driver handed over with its `storing` report, serialized as
+    /// JSON, or `NULL` while it has made none. A repeated `storing` report replaces it,
+    /// and the job's terminal state clears it.
     ///
-    /// The record otherwise exists only in the driver's pod for the whole wait. A
-    /// driver lost during it is finished from this, so a run that had already
-    /// ended keeps its outcome instead of failing as infrastructure with no
-    /// record.
+    /// What the backend finishes the run from when the driver cannot: a job reported
+    /// lost, or dead, while it holds one is recorded from it, with the state the record
+    /// carries, and is never retried.
     #[sea_orm(column_type = "Text", nullable)]
-    pub held_report_json: Option<String>,
+    pub held_record: Option<String>,
+    /// The failure detail the `storing` report carried beside the
+    /// [held record](Self::held_record) when the run failed, else `NULL`. Becomes the
+    /// job's [`detail`](Self::detail) when the job is finished from the held record.
+    #[sea_orm(column_type = "Text", nullable)]
+    pub held_detail: Option<String>,
+    /// RFC 3339 of when the dispatcher reported the job lost, or `NULL` when it never
+    /// did. A terminal report that reaches the backend while it is set supersedes the
+    /// lost outcome rather than repeating it, and clears it.
+    #[sea_orm(column_type = "Text", nullable)]
+    pub lost_at: Option<String>,
+    /// RFC 3339 UTC of when the job's claim lease expires, written at whole-second
+    /// precision (`YYYY-MM-DDTHH:MM:SSZ`) so expiries compare chronologically, or `NULL`
+    /// when the job holds none.
+    ///
+    /// The claim sets it two minutes out, and the dispatcher's renewal extends it to
+    /// two minutes past each renewal while the job's driver `Job` is live. A lapsed
+    /// lease (`NULL` included) on a `dispatched` job returns the job to the queue on the
+    /// next claim, at its original position with a fresh [token](Self::job_token); on a
+    /// `starting`, `running` or `storing` job it means the driver is lost. `NULL` on a
+    /// job never claimed, on one a lapsed claim returned to the queue, and on every row
+    /// already in flight when the column was added.
+    #[sea_orm(column_type = "Text", nullable)]
+    pub lease_expires_at: Option<String>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

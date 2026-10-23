@@ -154,7 +154,7 @@ binary  = "sfx-synth"        # the audio binary for this kind
 preview = "waveform.png"     # the waveform + spectrogram written on `render`
 
 [output]
-actions = "actions.json"     # the recorded op log; core emits clip.wav
+actions = "actions.json"     # the recorded op log; the driver emits clip.wav
 
 [[spec]]
 source = "specs/brief.md"
@@ -190,8 +190,8 @@ Points to get right:
 - `[audio]` requires `sample_rate`, `channels`, and `max_duration_ms`, all
   positive. `packs` holds exactly one sample pack for `sfx-sample`, exactly one
   instrument bank for `music`, and nothing for `sfx-synth`.
-- Core emits the rendered `clip.wav`, and for `music` a portable `clip.mid`, to
-  paths it provides. Neither is manifest-declared.
+- The driver emits the rendered `clip.wav`, and for `music` a portable `clip.mid`,
+  to paths it provides. Neither is manifest-declared.
 - An audio case declares no `[model]`, no `[[reference]]`, no `[build]`, and no
   `[[check]]`.
 - The single `overall` `[[domain]]` is the whole review. The clip is judged as a

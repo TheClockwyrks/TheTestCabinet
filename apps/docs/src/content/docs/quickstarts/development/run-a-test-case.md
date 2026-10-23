@@ -5,65 +5,57 @@ title: Run a Test Case
 ## Overview
 
 Launch one test case variant through an agent harness and watch it to completion.
-This page uses the [CLI](/components/cli/overview/); the
-[web console](/components/web/overview/) launches the same run. Every launcher
-enqueues the run at the backend, which executes it as a per-run
-[driver](/components/driver/overview/) Job.
+The [console](/components/web/overview/) enqueues the run at the backend, which
+executes it as a per-run [driver](/components/driver/overview/) Job. The
+[CLI](/components/cli/overview/) inspects the inputs a run is given without
+contacting anything.
 
 ## Prerequisites
 
-- `TCAB_BACKEND_URL` pointing at a reachable backend whose queue an in-cluster
-  [dispatcher](/components/dispatcher/overview/) is draining. Locally that is the
+- A reachable console whose backend queue an in-cluster
+  [dispatcher](/components/dispatcher/overview/) is draining: a deployment's
+  `console.testcabinet.ai`, reached through Cloudflare Access, or the local
   [k3d service stack](/quickstarts/development/run-the-local-service-stack/).
-- A signed-in account
-  ([`tcab login`](/quickstarts/setup/register-and-login/)).
 - Harness credentials configured in that deployment
   ([Set Up Authentication](/quickstarts/setup/set-up-authentication/)). The
   launching machine needs no container runtime and no provider key of its own.
 
 ## Run it
 
-```sh
-tcab run \
-  --test-case carom --version v1.0.0 --variant base \
-  --harness claude --model claude-opus-4-8
-```
+In the console, open the case's page, pick the version and the
+[variant](/testing/end-to-end/overview/#variants), choose the harness and the
+model, and start the run. A run targets exactly one variant, and the model is
+passed to the harness unchanged. The launch form's optional settings:
 
-`--test-case`, `--version`, `--variant`, `--harness`, and `--model` are all
-required: a run targets exactly one
-[variant](/testing/end-to-end/overview/#variants), and `--model` is passed to the
-harness unchanged. The optional flags:
+- The maximum runtime overrides the case's `max_runtime_hours` for this run.
+  Fractional hours are accepted, for example `0.5`.
+- The authentication mode (`auto`, `subscription` or `api-key`) selects how the
+  harness authenticates for this run.
+- The retry count sets how many times the backend retries the run after a
+  terminal infrastructure error. The default is one retry; `0` disables
+  retries.
+- The orchestrator selects what conducts the harness sessions. It defaults to
+  `one-shot`; see [Orchestrators](/orchestrators/overview/).
+- The engine selects the [engine](/components/engines/overview/) the produced
+  build is written against, one the case supports. It defaults to `none`.
 
-- `--max-runtime <hours>` overrides the case's `max_runtime_hours` for this
-  invocation. Fractional hours are accepted, for example `0.5`.
-- `--auth-mode <auto|subscription|api-key>` selects the harness authentication
-  mode for this run.
-- `--retry-count <n>` sets how many times the backend retries the run after a
-  terminal infrastructure error. The default is one retry; `0` disables retries.
-- `--orchestrator <slug>` selects the orchestrator that conducts the harness
-  sessions. It defaults to `one-shot`; see `tcab orchestrators`.
-- `--engine <slug>` selects the [engine](/components/core/engines/) the produced
-  build is written against, one the case supports. It defaults to `none`; see
-  `tcab engines`.
-- `--out-dir <dir>` also writes the finished run record JSON there.
-
-The command prints the queued job id, streams the live
-[event stream](/components/core/events/) as the driver seeds the repository,
-drives the harness, and [validates](/components/core/validation/) the result,
-then prints the [run record](/components/core/run-records/) summary.
-
-From a source checkout, substitute `cargo run -p test-cabinet-cli -- run …` for
-`tcab run …`.
+The console shows the queued job, streams the live
+[event stream](/components/driver/events/) as the driver seeds the repository,
+drives the harness, and [validates](/components/driver/validation/) the result,
+then shows the [run record](/components/contracts/run-records/) summary.
 
 ## Inspect the inputs without a run
+
+From the `microservice-driver` checkout, or with a released `tcab`:
 
 ```sh
 tcab prompt --test-case carom --version v1.0.0 --variant base   # the rendered prompt
 tcab seed   --test-case carom --version v1.0.0 --variant base   # the seeded repo, on disk
-tcab harnesses                                                  # harness availability
 ```
 
-These read the local checkout and contact nothing.
+These read the `test-suites` checkout and contact nothing. From source,
+substitute `cargo run -p test-cabinet-driver --bin tcab -- prompt …` for
+`tcab prompt …`.
 
 ## Next steps
 

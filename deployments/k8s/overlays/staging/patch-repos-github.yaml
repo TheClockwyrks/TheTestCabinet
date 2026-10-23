@@ -1,0 +1,35 @@
+# The repos service's GitHub pair in STAGING: the organization a published run's public
+# repository, tcab-<slug>, is created in, and the token that creates and pushes it
+# (components/repos/overview.md "Publishing"; Run plane "Repos service"). The service
+# refuses to start with half of the pair, and the base names neither.
+#
+# The token is the service's own secret: TCAB_GITHUB_TOKEN of tcab-repos-secrets,
+# which the keyvault-csi component materializes from the Key Vault secret
+# github-pat of testcabinet-staging, a token with administration and contents
+# write on the organization's repositories. The Secret is required, not optional:
+# a pod without it stays in CreateContainerConfigError rather than starting with
+# the organization alone.
+#
+# tcab-repos-secrets is a NEW Secret of the shared SecretProviderClass, and the CSI
+# driver creates the Secrets it lists when the mounter mounts the volume, so the
+# first deploy that carries it is followed by
+#   kubectl rollout restart deploy/tcab-keyvault-sync -n tcab-staging
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tcab-repos
+  # the base pins tcab-prod; this overlay's `namespace:` directive retargets it on build
+  namespace: tcab-prod
+spec:
+  template:
+    spec:
+      containers:
+        - name: repos
+          env:
+            - name: TCAB_GITHUB_ORG
+              value: "TheClockwyrks-Staging"
+            - name: TCAB_GITHUB_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: tcab-repos-secrets
+                  key: TCAB_GITHUB_TOKEN

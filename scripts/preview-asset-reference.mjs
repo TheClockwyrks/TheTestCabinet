@@ -11,7 +11,7 @@
 // logs, and the animated GIFs the console shows for a run of the same case.
 //
 // The GIFs are produced with the **same encoder and the same parameters** as the
-// console's own download button (`packages/ui/src/app/pages/runs/[runId]/spriteGif.ts`)
+// console's own download button (`ui-common/packages/ui/src/app/pages/runs/[runId]/spriteGif.ts`)
 // — `gifenc`, the same integer upscale, the same per-frame delay, and the same
 // 1-bit-alpha quantization — so what you see here is what a reviewer sees, not an
 // approximation of it. Keep the two in step if either changes.
@@ -172,9 +172,12 @@ function findVersionDir(from) {
   return null;
 }
 
+/** The catalog's test cases, in the test-suites checkout beside this one. */
+const TEST_CASES = path.join(REPO_ROOT, "test-suites", "test-cases");
+
 /** Locate `test-cases/**\/<slug>/<version>/`, newest version unless one is named. */
 function findCaseVersion(slug, versionArg) {
-  const root = path.join(REPO_ROOT, "test-cases");
+  const root = TEST_CASES;
   const matches = [];
   const walk = (dir, depth) => {
     if (depth > 3) return;
@@ -186,7 +189,8 @@ function findCaseVersion(slug, versionArg) {
     }
   };
   walk(root, 0);
-  if (matches.length === 0) fail(`no test case \`${slug}\` under test-cases/`);
+  if (matches.length === 0)
+    fail(`no test case \`${slug}\` under test-suites/test-cases/`);
 
   const caseDir = matches[0];
   const versions = fs
@@ -203,7 +207,7 @@ function findCaseVersion(slug, versionArg) {
   return versionDir;
 }
 
-/** The manifest's first listed variant — the default one, as `tcab run` uses. */
+/** The manifest's first listed variant — the default one, as a run uses. */
 function defaultVariant(versionDir) {
   const manifest = toml.parse(
     fs.readFileSync(path.join(versionDir, "test-case.toml"), "utf8"),
@@ -221,7 +225,7 @@ function defaultVariant(versionDir) {
  * config the binary reads, an empty layer document, and (via the binary's own
  * `init`, run by the caller) a blank preview and empty log per declared frame.
  *
- * This mirrors `seed_asset_tool` in `crates/core/src/seeding.rs`. It is deliberately
+ * This mirrors `seed_asset_tool` in microservice-driver's `crates/driver/src/seeding.rs`. It is deliberately
  * derived from the manifest rather than hard-coded, for the same reason the real
  * seeding is: a script must never restate its case's canvas or frame count, so the
  * only way a mismatch can surface is if the config comes from the manifest.
@@ -269,7 +273,7 @@ function seedWorkspace(outDir, manifest, kind) {
 
 /**
  * Locate the directory holding the case's drawing binary, using the same order as
- * `resolve_binary_dir` in `crates/core/src/asset_reference.rs` so a preview and a
+ * `resolve_binary_dir` in microservice-driver's `crates/driver/src/asset_reference.rs` so a preview and a
  * publish always draw with the same tool.
  */
 function resolveBinaryDir(binary) {
@@ -287,6 +291,11 @@ function resolveBinaryDir(binary) {
   );
   if (has(release)) return release;
   tried.push(release);
+  // `cargo build --release` in the tool-sprite checkout, where the drawing
+  // binaries are built since the crate left this workspace.
+  const toolSprite = path.join(REPO_ROOT, "tool-sprite", "target", "release");
+  if (has(toolSprite)) return toolSprite;
+  tried.push(toolSprite);
 
   for (const dir of (process.env.PATH ?? "").split(path.delimiter)) {
     if (has(dir)) return dir;
@@ -295,7 +304,7 @@ function resolveBinaryDir(binary) {
 
   fail(
     `could not find the \`${binary}\` binary (looked in: ${tried.join(", ")}).\n` +
-      `  Build it with \`cargo build --release -p test-cabinet-draw\`, or point TCAB_ASSET_BIN_DIR at its directory.`,
+      `  Build it with \`cargo build --release\` in the tool-sprite checkout, or point TCAB_ASSET_BIN_DIR at its directory.`,
   );
 }
 

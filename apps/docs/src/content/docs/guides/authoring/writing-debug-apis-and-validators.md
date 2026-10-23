@@ -673,7 +673,7 @@ point whose suite had not finished by then is left undecided while the suites th
 finished keep their verdicts. A run the cap leaves with no decided point is rated
 `broken`, which is a further reason a case finishes well inside the budget. See
 [validation that fails to
-complete](/components/core/validation/#validation-that-fails-to-complete). A case
+complete](/components/driver/validation/#validation-that-fails-to-complete). A case
 is authored to finish in fifteen minutes there,
 measured by running the suites against the reference implementation, which
 leaves the margin a loaded host needs.

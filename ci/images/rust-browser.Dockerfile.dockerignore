@@ -1,0 +1,13 @@
+# What the rust-browser CI image's build may see of the checkout: nothing.
+#
+# The image is the Rust CI image with the playwright image's engines copied
+# over it, and copies no file of the checkout, so the context sent to the
+# builder is empty, and nothing a commit touches is uploaded or busts a layer.
+#
+# There is a second reason this file exists. BuildKit reads the ignore file
+# named after the Dockerfile in preference to the root .dockerignore, and this
+# workspace has a root .dockerignore: an allowlist written for the images under
+# deployments/, which re-includes the Rust and web workspaces those builds read.
+# Without this file the build of a CI image would upload them for nothing.
+
+*

@@ -1,5 +1,5 @@
 //! The in-memory **gg document index**: one [`GgRunDoc`] per stored gg run, kept
-//! fresh by a per-id reconcile, and the corpus every [TCQ](test_cabinet_core::gg_query)
+//! fresh by a per-id reconcile, and the corpus every [TCQ](crate::gg_query)
 //! query on this backend runs over. The same parse pass extracts a compact
 //! [`GgRunFacts`] per run for the [`/stats` folds](crate::stats), so the two
 //! consumers share one ledger, one freshness rule, and one deserialization of
@@ -60,7 +60,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use test_cabinet_core::gg_query::{GgDocLifecycle, GgRunDoc, build_run_doc, redacted_for_public};
+use crate::gg_query::{GgDocLifecycle, GgRunDoc, build_run_doc, redacted_for_public};
 
 use crate::db::{Db, StoredRun};
 use crate::error::Result;
@@ -386,9 +386,8 @@ async fn reconcile_into(
 ///    no cases at all. Under this rule that window exports nothing instead of exporting
 ///    every experimental case in the corpus.
 /// 3. **A session record is never involved.** Nothing here touches one. The corpus is
-///    documents, and covers runs that are not published; the record — the complete model
-///    conversation — is exported for a published run alone, as that run's own object
-///    (see [`crate::snapshot`]), and never through this function.
+///    documents; the record — the complete model conversation — is console-only, and
+///    this function is the only door the public site's gg data comes through.
 ///
 /// Ordered by run id, the order [`Db::gg_run_versions`] returns, so two refreshes of an
 /// unchanged corpus produce byte-identical output and R2 stores one object rather than
@@ -467,7 +466,7 @@ impl<'a> CatalogScores<'a> {
     /// The run's score fraction, or `None` when it has no reviews, its case is not
     /// ingested, or that case declares no weighted checklist at all (a zero
     /// denominator is an absent score, never a zero one — see
-    /// [rule 1](test_cabinet_core::gg_query#the-seven-semantic-rules), which a
+    /// [rule 1](crate::gg_query#the-seven-semantic-rules), which a
     /// stored `0` would violate by dragging every average down).
     pub fn score(&mut self, run: &StoredRun) -> Option<f64> {
         let manifest = self.manifest(run)?;

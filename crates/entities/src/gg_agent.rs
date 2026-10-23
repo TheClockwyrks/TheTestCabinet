@@ -1,7 +1,7 @@
 //! The `gg_agent` table: an operator's named, reusable **agent profile**, saved
 //! independently of any one gg configuration.
 //!
-//! Many rows per account (keyed by the auth-service `user_id`), each with an opaque
+//! Many rows per account (keyed by the owner's identity in `user_id`), each with an opaque
 //! `id`, the profile's name, an optional description, and the whole core `GgAgentConfig`
 //! as JSON text. The model slots the profile's bindings defer to are part of that
 //! profile, so they are stored with it.
@@ -21,8 +21,8 @@ pub struct Model {
     /// The saved agent's opaque id (minted on create). The primary key.
     #[sea_orm(primary_key, auto_increment = false)]
     pub id: String,
-    /// The owning account's id (from the auth service, via the verified bearer
-    /// token).
+    /// The owner's identity: the Access assertion's email. A row made before the
+    /// edge asserted the identity holds the retired auth service's account id.
     pub user_id: String,
     /// The profile's name — the same name the agent config carries, lifted out so the
     /// per-account list can order by it.

@@ -1,7 +1,7 @@
 //! A model's provider candidate list: the catalog half of building it, shared by the gg enqueue
 //! and the `GET /models/{slug}/candidates` read the console shows on the model's page.
 //!
-//! The filter and the order are [`test_cabinet_core::pricing::provider_candidates`]; this module
+//! The filter and the order are [`crate::pricing::provider_candidates`]; this module
 //! supplies what it reads from the backend's own stores: the catalog entry's
 //! [policy](CandidatePolicy) and hand-set developer provider, and each provider's recorded fault
 //! rate across the stored gg runs of the model. See the candidate list in
@@ -12,64 +12,23 @@ use std::sync::Arc;
 
 use axum::Json;
 use axum::extract::{Path, State};
-use serde::Serialize;
 
-use test_cabinet_core::pricing::{
+use crate::pricing::{
     CandidateList, CandidatePolicy, CandidateRefusal, EndpointOffer, native_quantization,
     official_provider, provider_candidates, run_parameters,
 };
 
-use crate::auth::AuthUser;
+use crate::auth::Person;
 use crate::db::StoredModel;
 use crate::error::ApiError;
 use crate::stats::{GgRunFacts, provider_fault_rates};
 
 use super::AppState;
 
+pub use test_cabinet_contracts::backend_api::models::{CandidateOut, ModelCandidatesOut};
+
 /// USD per token to USD per million tokens, the unit the catalog entry and the console use.
 const PER_MTOK: f64 = 1_000_000.0;
-
-/// The `GET /models/{slug}/candidates` response: the candidate list the next gg enqueue of the
-/// model would build, for an agent that sets no reasoning.
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub struct ModelCandidatesOut {
-    /// The OpenRouter id the endpoints listing was read under.
-    pub model_id: String,
-    /// The native quantization the filter kept: the catalog entry's, else the highest level any
-    /// endpoint declares. Null when neither names one, which the list survives only with the
-    /// catalog entry's quantization filter off.
-    pub native_quantization: Option<String>,
-    /// The candidates, in the order a run tries them. Empty exactly when
-    /// [`refusal`](Self::refusal) is set.
-    pub candidates: Vec<CandidateOut>,
-    /// Why the list is empty, naming the filter that emptied it, or null when it is not.
-    pub refusal: Option<String>,
-}
-
-/// One candidate of a model's list.
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub struct CandidateOut {
-    /// The provider, spelled as OpenRouter's endpoints listing spells its `provider_name`.
-    pub provider: String,
-    /// The quantization its endpoint declares.
-    pub quantization: String,
-    /// Whether this is the model developer's own endpoint.
-    pub developer: bool,
-    /// The input price, USD per million tokens.
-    pub input_price: f64,
-    /// The output price, USD per million tokens.
-    pub output_price: f64,
-    /// The cache-read price, USD per million tokens.
-    pub cache_read_price: f64,
-    /// The provider's recorded fault rate for the model: stalls, unexpected cache misses and
-    /// turns that ended on its failed model calls, over its calls. Null when no recorded run of
-    /// the model used the provider, which the order reads as zero.
-    pub fault_rate: Option<f64>,
-}
 
 /// What the catalog says about one model's candidate list: the hand-set developer provider, the
 /// [policy](CandidatePolicy), and every id the model's runs are recorded under.
@@ -168,8 +127,8 @@ impl CatalogCandidates {
 }
 
 /// `GET /models/{slug}/candidates` — the candidate list the next gg enqueue of the model would
-/// build, from the endpoints listing read now, for an agent that sets no reasoning. Requires a
-/// bearer token, because it reaches OpenRouter on the caller's behalf.
+/// build, from the endpoints listing read now, for an agent that sets no reasoning. Takes a
+/// person's assertion, because it reaches OpenRouter on the caller's behalf.
 ///
 /// A model OpenRouter does not list is a `404`, as it is for the provider enumeration; a listed
 /// model with no candidate answers with the [refusal](ModelCandidatesOut::refusal).
@@ -177,7 +136,7 @@ impl CatalogCandidates {
 pub async fn candidates(
     State(state): State<AppState>,
     Path(slug): Path<String>,
-    _user: AuthUser,
+    _user: Person,
 ) -> Result<Json<ModelCandidatesOut>, ApiError> {
     let lookup = super::model_probes::resolve_openrouter_slug(&state, &slug).await?;
     let stored = state

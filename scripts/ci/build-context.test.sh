@@ -3,8 +3,9 @@
 # scripts/ci/build-context.test.sh
 #
 # The script reads the whole tracked tree, so each case runs it in a throwaway
-# git repository holding a copy of this checkout's tracked files (test-cases/
-# and tasks/ aside, which no Dockerfile reads), then breaks one thing the case
+# git repository holding a copy of this checkout's tracked files (the
+# test-suites submodule and tasks/ aside, which no Dockerfile reads but for the
+# catalog paths one copies), then breaks one thing the case
 # names. The pristine copy has to pass, which is the build-context gate itself;
 # the subject of the rest is that each kind of break fails, naming the file to
 # fix.
@@ -72,17 +73,43 @@ export GIT_COMMITTER_NAME=test GIT_COMMITTER_EMAIL=test@example.com
 
 SOURCE="$(cd "$CI_DIR/../.." && pwd)"
 readonly SOURCE
-# The paths under test-cases/ a Dockerfile copies, which the copy has to hold.
+# The paths under the test-suites submodule a Dockerfile copies, which the copy
+# has to hold.
 mapfile -t case_sources < <(cd "$SOURCE" && git ls-files -z -- '*Dockerfile' '*.Dockerfile' '*.dockerfile' |
-	xargs -0 grep -hoE '^[[:space:]]*(COPY|ADD)[[:space:]].*' | grep -oE '(^|[[:space:]])test-cases/[^[:space:]]+' |
+	xargs -0 grep -hoE '^[[:space:]]*(COPY|ADD)[[:space:]].*' | grep -oE '(^|[[:space:]])test-suites/[^[:space:]]+' |
 	sed 's/^[[:space:]]*//' | sort -u)
+# The submodules the copy carries whole: each one's tracked files, never the
+# directory itself, whose build output (a gg checkout's target/ runs to
+# gigabytes) the tree does not track. Nor its `.git`: a submodule's is usually a
+# file naming a gitdir under the superproject's .git/modules/, which the copy
+# does not hold, so each is made a repository of its own in the copy and the
+# copy records it as a gitlink, as the checkout does. test-suites is copied below
+# for the catalog paths a Dockerfile reads alone.
+mapfile -t submodule_dirs < <(cd "$SOURCE" && git ls-files -s | awk '$1 == "160000" && $4 != "test-suites" { print $4 }')
 # One repository holding the tracked tree, indexed once; each case works in a copy of it by hard links.
 base="$tmp/base"
 mkdir -p "$base"
-(cd "$SOURCE" && { git ls-files -z -- ':!test-cases' ':!tasks' && git ls-files -z -- "${case_sources[@]}"; } |
-	tar --null -T - -cf -) | tar -C "$base" -xf -
+(cd "$SOURCE" && {
+	git ls-files -z -s -- ':!test-suites' ':!tasks' | awk -v RS='\0' -v ORS='\0' '$1 != "160000" { sub(/^[^\t]*\t/, ""); print }'
+	for sub in "${submodule_dirs[@]}"; do
+		[ -e "$sub/.git" ] || continue
+		git -C "$sub" ls-files -z | sed -z "s|^|$sub/|"
+	done
+	if ((${#case_sources[@]} > 0)); then
+		git -C test-suites ls-files -z -- "${case_sources[@]#test-suites/}" | sed -z 's|^|test-suites/|'
+	fi
+} | tar --null -T - -cf -) | tar -C "$base" -xf -
+# A directory holding a commit of the files under it, so a superproject records it as a gitlink.
+commit_tree() {
+	git -C "$1" init --quiet
+	git -C "$1" add -A -f
+	git -C "$1" commit --quiet --allow-empty -m fixture
+}
+for sub in "${submodule_dirs[@]}" test-suites; do
+	[ -d "$base/$sub" ] && commit_tree "$base/$sub"
+done
 git -C "$base" init --quiet
-git -C "$base" add -A -f
+git -C "$base" -c advice.addEmbeddedRepo=false add -A -f 2>/dev/null
 
 fresh_repo() {
 	local repo
@@ -97,20 +124,56 @@ run() { (cd "$tmp" && "$1/scripts/ci/build-context.sh" 2>&1); }
 repo="$(fresh_repo)"
 out="$(run "$repo")"
 check_equal "the checkout's tree passes" "0" "$?"
-check_contains "and reports what it checked" "Rust pin(s) under containers/ name rust-toolchain.toml's channel" "$out"
+check_contains "and reports what it checked" "re-inclusion(s) across" "$out"
+
+# A nested checkout .gitmodules declares, holding a Dockerfile whose COPY could
+# never be satisfied from the superproject's context. Its files are another
+# repository's to judge, so the check must pass over them, whatever shape the
+# checkout's `.git` takes.
+nested_checkout() { # repo path shape
+	local repo="$1" path="$2" shape="$3"
+	mkdir -p "$repo/$path/containers/broken"
+	printf 'FROM scratch\nCOPY no/such/source.sh /tmp/\n' >"$repo/$path/containers/broken/Dockerfile"
+	case "$shape" in
+	dir) commit_tree "$repo/$path" ;;
+	file)
+		mkdir -p "$repo/.git/modules"
+		git init --quiet --separate-git-dir "$repo/.git/modules/$path" "$repo/$path"
+		git -C "$repo/$path" add -A -f
+		git -C "$repo/$path" commit --quiet -m fixture
+		;;
+	broken)
+		# A `.git` file naming a gitdir that is gone: git cannot read the checkout,
+		# and the superproject indexes its files as ordinary ones.
+		printf 'gitdir: ../.git/modules/%s\n' "$path" >"$repo/$path/.git"
+		;;
+	esac
+	own "$repo/.gitmodules"
+	printf '[submodule "%s"]\n\tpath = %s\n\turl = ../%s\n' "$path" "$path" "$path" >>"$repo/.gitmodules"
+	git -C "$repo" -c advice.addEmbeddedRepo=false add -A -f 2>/dev/null
+}
+
+for shape in dir file broken; do
+	echo "--- a nested checkout whose .git is a ${shape/broken/file naming a missing gitdir} ---"
+	repo="$(fresh_repo)"
+	nested_checkout "$repo" "nested-$shape" "$shape"
+	out="$(run "$repo")"
+	check_equal "passes" "0" "$?"
+	check_lacks "never naming the nested checkout's Dockerfile" "nested-$shape/" "$out"
+done
 
 echo "--- an allowlist that drops a source a Dockerfile copies ---"
 repo="$(fresh_repo)"
 own "$repo/.dockerignore"
-# Both entries admit it: the directory's own, and the file's.
-sed -i -E '\#^!/scripts/ci(/install-java\.sh)?$#d' "$repo/.dockerignore"
+# A file of the gg slice the devcontainer image copies out of the gg submodule.
+sed -i -E '\#^!/gg/packages/gg-sandbox-java/java-version\.sh$#d' "$repo/.dockerignore"
 out="$(run "$repo")"
 check_equal "fails" "1" "$?"
-check_contains "naming the source and the allowlist" "copies 'scripts/ci/install-java.sh', which .dockerignore keeps OUT of the build context." "$out"
+check_contains "naming the source and the allowlist" "copies './gg/packages/gg-sandbox-java/java-version.sh', which .dockerignore keeps OUT of the build context." "$out"
 
 echo "--- a Dockerfile that copies a path that does not exist ---"
 repo="$(fresh_repo)"
-dockerfile="containers/tools/Dockerfile"
+dockerfile="deployments/images/services.Dockerfile"
 own "$repo/$dockerfile"
 printf '\nCOPY scripts/ci/no-such-helper.sh /tmp/\n' >>"$repo/$dockerfile"
 out="$(run "$repo")"
@@ -118,14 +181,24 @@ check_equal "fails" "1" "$?"
 check_contains "naming the Dockerfile and the source" "$dockerfile:" "$out"
 check_contains "and that it is absent" "copies 'scripts/ci/no-such-helper.sh', which does not exist in the repository." "$out"
 
-echo "--- a case image pinning another Rust ---"
+echo "--- a RUN bind mount of a path that does not exist ---"
 repo="$(fresh_repo)"
-own "$repo/containers/base-wasm/Dockerfile"
-sed -i 's/^ARG RUST_VERSION=.*/ARG RUST_VERSION=1.0.0/' "$repo/containers/base-wasm/Dockerfile"
-channel="$(sed -nE 's/^[[:space:]]*channel[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/p' "$repo/rust-toolchain.toml")"
+dockerfile="deployments/images/services.Dockerfile"
+own "$repo/$dockerfile"
+sed -i 's#source=microservice-driver/crates/driver/gg-release-version#source=microservice-driver/crates/driver/no-such-pin#' "$repo/$dockerfile"
 out="$(run "$repo")"
 check_equal "fails" "1" "$?"
-check_contains "naming the pin and the channel" "pins Rust 1.0.0, and rust-toolchain.toml's channel is $channel." "$out"
+check_contains "naming the Dockerfile and the mounted source" \
+	"copies 'microservice-driver/crates/driver/no-such-pin', which does not exist in the repository." "$out"
+
+echo "--- a RUN bind mount of a path the allowlist drops ---"
+repo="$(fresh_repo)"
+own "$repo/.dockerignore"
+printf '\n/microservice-driver/crates/driver/gg-release-version\n' >>"$repo/.dockerignore"
+out="$(run "$repo")"
+check_equal "fails" "1" "$?"
+check_contains "naming the source and the allowlist" \
+	"copies 'microservice-driver/crates/driver/gg-release-version', which .dockerignore keeps OUT of the build context." "$out"
 
 echo "--- a re-inclusion by wildcard ---"
 repo="$(fresh_repo)"

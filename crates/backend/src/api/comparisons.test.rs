@@ -2,9 +2,9 @@ use super::*;
 
 use std::collections::BTreeMap;
 
+use crate::comparison::{ComparisonArm, ComparisonControls};
 use tempfile::TempDir;
-use test_cabinet_core::comparison::{ComparisonArm, ComparisonControls};
-use test_cabinet_core::test_case::{AssetDimension, AssetKind, TestType};
+use test_cabinet_suites::test_case::{AssetDimension, AssetKind, TestType};
 
 use crate::store::{DefinitionStore, StoredBuild, StoredManifest, StoredVariant};
 
@@ -52,8 +52,8 @@ fn carom_manifest() -> StoredManifest {
         changelog: "Introduced.".to_string(),
         max_runtime_seconds: 1800,
         test_type: TestType::EndToEnd,
-        engines: vec![test_cabinet_core::EngineSupport::unbounded(
-            test_cabinet_core::engine::NONE_SLUG,
+        engines: vec![test_cabinet_suites::test_case::EngineSupport::unbounded(
+            test_cabinet_suites::engine::NONE_SLUG,
         )],
         experimental: false,
         build: Some(StoredBuild {
@@ -106,6 +106,7 @@ fn carom_manifest() -> StoredManifest {
         domains: vec![],
         instrumentation: None,
         errata: Vec::new(),
+        suite: None,
     }
 }
 
@@ -341,7 +342,7 @@ fn store_supporting(engines: &[&str]) -> (TempDir, DefinitionStore) {
     let manifest = StoredManifest {
         engines: engines
             .iter()
-            .map(|slug| test_cabinet_core::EngineSupport::unbounded(*slug))
+            .map(|slug| test_cabinet_suites::test_case::EngineSupport::unbounded(*slug))
             .collect(),
         ..carom_manifest()
     };
@@ -458,7 +459,7 @@ fn stored_with(controls: ComparisonControls, arms: Vec<ComparisonArm>, n: u32) -
 #[tokio::test]
 async fn an_arm_holds_the_counted_runs_of_its_cell_whoever_launched_them() {
     use crate::db::tests::{links, new_job, record};
-    use test_cabinet_core::run_record::RunState;
+    use test_cabinet_contracts::run_record::RunState;
 
     let db = crate::db::Db::connect_in_memory().await.unwrap();
     let (_dir, store) = store_supporting(&["none"]);
@@ -664,96 +665,4 @@ async fn publishing_a_comparison_enqueues_only_the_runs_not_already_releasing() 
         .collect();
     releasing.sort();
     assert_eq!(releasing, ["run-releasing", "run-waiting"]);
-}
-
-/// A comparison publish goes through the same gate as every other publish: an arm
-/// run with no stored artifact tree is skipped with that reason, and the runs
-/// beside it are still enqueued.
-#[tokio::test]
-async fn publishing_a_comparison_skips_a_run_with_no_stored_tree() {
-    use crate::api::flow_harness::{
-        GREAT, OWNER, SONNET, enqueue_other, finish, owner, publishing, run_of, test_state,
-        with_artifact_service,
-    };
-    use crate::artifacts::presence_tests::{STUB_TOKEN, spawn_artifact_stub};
-
-    let (_dir, mut state) = test_state().await;
-    for job_id in ["kept", "lost"] {
-        enqueue_other(&state, job_id, "pong", None).await;
-        finish(
-            &state,
-            job_id,
-            run_of(&format!("run-{job_id}"), "pong", GREAT),
-        )
-        .await;
-    }
-    let (base, _stub) = spawn_artifact_stub(&["run-kept"]).await;
-    with_artifact_service(&mut state, &base, STUB_TOKEN);
-
-    let input = ComparisonInput {
-        config: ComparisonConfig {
-            controls: controls_of(&run_of("x", "pong", GREAT)),
-            arms: vec![harness_arm("claude", HarnessSlug::Claude, SONNET), pi_arm()],
-            n: 2,
-        },
-        ..sample_input("arms")
-    };
-    let stored = stored_from_input("c1".into(), OWNER, input, "t", "t").unwrap();
-    state.db.insert_comparison(OWNER, &stored).await.unwrap();
-
-    let Json(outcome) = publish_comparison(State(state.clone()), owner(), Path("c1".to_string()))
-        .await
-        .unwrap();
-
-    assert_eq!(outcome.enqueued, ["run-kept"]);
-    assert_eq!(outcome.skipped.len(), 1, "{:?}", outcome.skipped);
-    assert_eq!(outcome.skipped[0].run_id, "run-lost");
-    assert!(
-        outcome.skipped[0]
-            .reason
-            .contains("artifact tree is not stored"),
-        "{}",
-        outcome.skipped[0].reason
-    );
-    assert_eq!(publishing(&state).await, ["run-kept"]);
-}
-
-/// A service that cannot be asked skips the run rather than failing the whole
-/// comparison publish, and says the service is the reason.
-#[tokio::test]
-async fn publishing_a_comparison_skips_a_run_the_service_cannot_be_asked_about() {
-    use crate::api::flow_harness::{
-        GREAT, OWNER, SONNET, enqueue_other, finish, owner, publish_jobs, run_of, test_state,
-        with_artifact_service,
-    };
-    use crate::artifacts::presence_tests::{STUB_TOKEN, unreachable_base};
-
-    let (_dir, mut state) = test_state().await;
-    enqueue_other(&state, "j", "pong", None).await;
-    finish(&state, "j", run_of("run-j", "pong", GREAT)).await;
-    with_artifact_service(&mut state, &unreachable_base().await, STUB_TOKEN);
-
-    let input = ComparisonInput {
-        config: ComparisonConfig {
-            controls: controls_of(&run_of("x", "pong", GREAT)),
-            arms: vec![harness_arm("claude", HarnessSlug::Claude, SONNET), pi_arm()],
-            n: 1,
-        },
-        ..sample_input("arms")
-    };
-    let stored = stored_from_input("c1".into(), OWNER, input, "t", "t").unwrap();
-    state.db.insert_comparison(OWNER, &stored).await.unwrap();
-
-    let Json(outcome) = publish_comparison(State(state.clone()), owner(), Path("c1".to_string()))
-        .await
-        .unwrap();
-
-    assert!(outcome.enqueued.is_empty());
-    assert_eq!(outcome.skipped.len(), 1, "{:?}", outcome.skipped);
-    assert!(
-        outcome.skipped[0].reason.contains("could not check"),
-        "{}",
-        outcome.skipped[0].reason
-    );
-    assert!(publish_jobs(&state).await.is_empty());
 }

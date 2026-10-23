@@ -1,11 +1,11 @@
 """npm workspace tests (vitest).
 
-Every npm workspace with a `test` script runs its suite here, except two that
-have gates of their own: `apps/web`, whose jsdom and browser projects are
-`web-test` and `web-browser-test`, and `apps/docs`, which `docs-typecheck` and
-`docs-build` answer for. The shared UI library, the engines, the runtimes, the
-statistics, the case harness and the lattice designer are all in it, and so is
-the recording parity suite in `packages/ui`, which holds the console's copy of
+Every npm workspace with a `test` script runs its suite here, except one that
+has gates of its own: `apps/docs`, which `docs-typecheck` and `docs-build`
+answer for. (The console's suites are console.testcabinet.ai's, which runs
+them in its own gates.) The shared UI library, the engines, the runtimes, the
+statistics and the case harness are all in it, and so is
+the recording parity suite in `ui-common/packages/ui`, which holds the console's copy of
 each engine's recording contract to what that engine writes.
 
 The workspace packages are consumed from their builds, so `build:packages` runs
@@ -26,7 +26,7 @@ from pathlib import Path
 from the_test_cabinet_ci import GIT_LOCATION_VARIABLES, artifacts_dir, enter_repo_root, fail, run, say
 
 # The workspaces whose suites belong to other gates, named above.
-OWN_GATES = {"apps/web", "apps/docs"}
+OWN_GATES = {"apps/docs"}
 
 # From the workspace root, so npm finds the workspaces regardless of the
 # caller's working directory.

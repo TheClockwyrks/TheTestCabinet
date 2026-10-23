@@ -11,20 +11,35 @@
 #
 #   0. Checks that the catalog the new backend's ingest sidecar will fetch can be
 #      fetched (scripts/ci/catalog-ingest.sh preflight): the overlay's catalog branch
-#      tip on the GitHub mirror and the cold-storage commit it pins. It fails here,
-#      before anything in the cluster is read or changed, when it cannot.
-#   1. Pins the overlay (scripts/ci/pin-images.sh, in place): the other seven images
-#      and the dispatcher's run-image environment, all at <commit>. deploy.sh lays
-#      its own layer over the overlay, so the render it applies carries them.
-#   2. Reads, in one command in the cluster, the commit the namespace's backend runs
+#      tip on the GitHub mirror and the cold-storage commit it pins, and that the
+#      backend's state volume has room for the fetch and is not resized in a way
+#      the cluster would refuse. It fails here, before anything in the cluster is
+#      changed, when it cannot.
+#   1. Pins the overlay (scripts/ci/pin-images.sh, in place): the arena's, the
+#      artifacts service's, the dispatcher's, the repos service's, the console's
+#      and the publisher's images at the commits <commit>'s microservice-arena,
+#      microservice-artifacts, microservice-dispatcher, microservice-repos,
+#      console.testcabinet.ai and microservice-publisher submodule pointers name
+#      (the dispatcher's publisher image with the last), and the dispatcher's
+#      driver image and run-container tag at the commit its microservice-driver
+#      pointer names, which the run images are built at.
+#      deploy.sh lays its own layer over the overlay, so the render it applies
+#      carries them.
+#   2. Refuses an overlay that binds a workload to a workload identity annotated
+#      `unprovisioned` (tcab-lib.sh's ci_assert_identities_provisioned), before
+#      anything reaches the cluster.
+#   3. Reads, in one command in the cluster, the commit the namespace's backend runs
 #      now: the tag of `the-test-cabinet-backend`, else of the legacy
 #      `tcab-backend`. It sets the pipeline variables TCAB_PREVIOUS_COMMIT (empty on
 #      a first deployment) and TCAB_PREVIOUS_BACKEND (the Deployment it was read
 #      from), which the job's after-failure step reads to print the recovery.
-#   3. Sets THE_TEST_CABINET_ROLLOUT_TIMEOUT to 600s for the steps after it, the time
+#   4. Sets THE_TEST_CABINET_ROLLOUT_TIMEOUT to 600s for the steps after it, the time
 #      every rollout has always been given here, rather than the template's 300s.
-#   4. Retires the legacy `tcab-backend` Deployment
-#      (scripts/ci/retire-legacy-backend.sh), which holds the backend's disk.
+#   5. Retires the objects of an earlier shape (scripts/ci/retire-legacy-backend.sh):
+#      the `tcab-backend` Deployment, which holds the backend's disk, the artifacts
+#      service's `tcab-artifacts` StatefulSet, which the Deployment replaces, and the
+#      internal ingress's Ingresses, its network policies and the `tcab-auth`
+#      workload, which the edge replaced.
 #
 # `--dry-run` pins a temporary copy instead, prints its render and the commands it
 # would run in the cluster, and runs none of them.
@@ -40,6 +55,8 @@ CI_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 readonly CI_DIR
 # shellcheck source=scripts/ci/lib.sh
 source "${CI_DIR}/lib.sh"
+# shellcheck source=scripts/ci/tcab-lib.sh
+source "${CI_DIR}/tcab-lib.sh"
 
 readonly USAGE="usage: scripts/ci/pre-deploy.sh [--dry-run] <staging|prod> <commit>"
 readonly ROLLOUT_TIMEOUT="600s"
@@ -125,6 +142,16 @@ if ! "${CI_DIR}/catalog-ingest.sh" preflight "$OVERLAY" "$COMMIT"; then
 fi
 
 "${CI_DIR}/pin-images.sh" "$OVERLAY" "$COMMIT"
+
+# A workload bound to an identity that does not exist yet would never become ready,
+# and step 5 would already have retired what it replaces. Refuse before the cluster.
+if ! kubectl kustomize "deployments/k8s/overlays/${OVERLAY}" | ci_assert_identities_provisioned; then
+	echo "pre-deploy.sh: overlays/${OVERLAY} binds a workload to an unprovisioned identity, above; nothing was retired or applied." >&2
+	remediation "Provision it, put its clientId in deployments/k8s/overlays/${OVERLAY}/patch-artifacts-identity.yaml or patch-repos-identity.yaml" \
+		"and copy the trees on the claim artifacts-tcab-artifacts-0 in ${NAMESPACE} into the container" \
+		"(scripts/ci/copy-artifact-trees.sh ${OVERLAY}), then deploy again."
+	exit 1
+fi
 
 echo "Reading the commit ${NAMESPACE} runs on ${CLUSTER}."
 answer="$(aks_invoke "$RESOURCE_GROUP" "$CLUSTER" "$READ_SCRIPT" "sh read-backend-commit.sh")" || {
