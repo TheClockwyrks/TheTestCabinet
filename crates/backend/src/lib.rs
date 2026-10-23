@@ -89,6 +89,9 @@ pub struct Backend {
     /// enqueues another publish job for each failed run that is due one; kept alive
     /// for the server's lifetime.
     pub publish_retry: tokio::task::JoinHandle<()>,
+    /// The start's [move](crate::state_move) of an earlier release's on-disk state,
+    /// which holds the backend unready until it finishes.
+    pub state_move: tokio::task::JoinHandle<()>,
 }
 
 /// Assemble a backend from a configuration: open the definition store, connect
@@ -281,23 +284,6 @@ async fn build_with_prices(
         Err(err) => tracing::warn!(error = %err, "skipping stored run-record revalidation"),
     }
 
-    // Move what an earlier release kept on the pod's disk into its durable home: each
-    // pushed controller into its run's row, each match replay through the artifact
-    // service. It runs before the router is built, so before the backend serves or
-    // reports ready, and it never blocks startup: what cannot move stays for the next
-    // start (see `crate::state_move`).
-    crate::state_move::move_legacy_state(
-        store.root(),
-        &db,
-        crate::artifacts::ArtifactsClient::from_config(
-            reqwest::Client::new(),
-            config.artifacts_internal_url.as_deref(),
-            config.service_token.as_deref(),
-        )
-        .as_ref(),
-    )
-    .await;
-
     let db = Arc::new(db);
 
     // In-flight jobs are never reaped at startup. No deployment runs drivers inside the
@@ -434,6 +420,27 @@ async fn build_with_prices(
         };
         tracing::info!(store = %store.root().display(), "{reason}");
     }
+    // Move what an earlier release kept on the pod's disk into its durable home: each
+    // pushed controller into its run's row, each match replay through the artifact
+    // service. It runs beside the server rather than before it binds, holding only
+    // readiness until it finishes: it makes one artifact-service call per replay, and
+    // a start held off its liveness probe for that long would be killed mid-move. It
+    // never fails: what cannot move stays for the next start (see `crate::state_move`).
+    readiness.mark_state_moving();
+    let state_move = tokio::spawn({
+        let db = Arc::clone(&db);
+        let store_root = store.root().to_path_buf();
+        let artifacts = crate::artifacts::ArtifactsClient::from_config(
+            http.clone(),
+            config.artifacts_internal_url.as_deref(),
+            config.service_token.as_deref(),
+        );
+        let readiness = readiness.clone();
+        async move {
+            crate::state_move::move_legacy_state(&store_root, &db, artifacts.as_ref()).await;
+            readiness.mark_state_moved();
+        }
+    });
     let state = AppState {
         db,
         store,
@@ -465,6 +472,7 @@ async fn build_with_prices(
         artifact_sweeper,
         probe_resumer,
         publish_retry,
+        state_move,
     })
 }
 

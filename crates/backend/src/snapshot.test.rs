@@ -754,9 +754,10 @@ async fn a_run_with_no_stored_tree_publishes_no_media() {
 }
 
 #[tokio::test]
-async fn a_failed_media_publish_publishes_the_run_without_its_media() {
-    // The refresh still writes every run: one run's media call failing costs that run
-    // its media until the next refresh calls again, not the whole dataset.
+async fn a_refused_media_publish_fails_the_build() {
+    // Every run's document is rebuilt on every refresh, so publishing through an
+    // outage would put a generation live whose documents name no media. The build
+    // fails instead, leaving the previous generation live.
     let (_tmp, store) = empty_store();
     let stub = stub::spawn().await;
     stub.held
@@ -764,20 +765,48 @@ async fn a_failed_media_publish_publishes_the_run_without_its_media() {
         .lock()
         .unwrap()
         .insert("r1".to_string(), published_media("r1"));
-    *stub.held.failing.lock().unwrap() = Some(reqwest::StatusCode::BAD_GATEWAY);
-    let snapshot = SnapshotBuilder::new(
+    *stub.held.failing.lock().unwrap() = Some(reqwest::StatusCode::INTERNAL_SERVER_ERROR);
+    let result = SnapshotBuilder::new(
         vec![stored_run("r1", "2026-06-17T21:40:00Z")],
         vec![manifest()],
         store,
     )
     .with_artifacts(artifacts(&stub))
     .build(now())
-    .await
-    .unwrap();
+    .await;
 
-    let parsed = run_document_json(&snapshot, "r1");
-    assert_eq!(parsed["proofMedia"], serde_json::json!([]));
-    assert_eq!(parsed["record"]["id"], "r1");
+    let Err(err) = result else {
+        panic!("a refused media publish must fail the build");
+    };
+    assert!(err.to_string().contains("r1"), "{err}");
+}
+
+#[tokio::test]
+async fn an_unreachable_artifact_service_fails_the_build() {
+    let (_tmp, store) = empty_store();
+    // A port bound and released: nothing answers on it.
+    let addr = std::net::TcpListener::bind("127.0.0.1:0")
+        .unwrap()
+        .local_addr()
+        .unwrap();
+    let artifacts = ArtifactsClient::from_config(
+        reqwest::Client::new(),
+        Some(&format!("http://{addr}")),
+        Some(TOKEN),
+    );
+    let result = SnapshotBuilder::new(
+        vec![stored_run("r1", "2026-06-17T21:40:00Z")],
+        vec![manifest()],
+        store,
+    )
+    .with_artifacts(artifacts)
+    .build(now())
+    .await;
+
+    assert!(
+        result.is_err(),
+        "an unreachable service must fail the build"
+    );
 }
 
 #[tokio::test]

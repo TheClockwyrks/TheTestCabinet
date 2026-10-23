@@ -121,6 +121,35 @@ async fn forced_refresh_regenerates_and_clears_dirty_in_dev_mode() {
 }
 
 #[tokio::test]
+async fn a_refresh_the_artifact_service_refuses_leaves_the_snapshot_dirty() {
+    // A run's media publish failing fails the refresh: nothing is regenerated with
+    // the run's media missing, and the dirty flag stays set so the refresh is retried.
+    let dir = TempDir::new().unwrap();
+    let db = Arc::new(Db::connect_in_memory().await.unwrap());
+    let store = DefinitionStore::open(dir.path().join("store")).unwrap();
+    let stub = crate::artifacts::stub::spawn().await;
+    *stub.held.failing.lock().unwrap() = Some(reqwest::StatusCode::SERVICE_UNAVAILABLE);
+    let publisher = Publisher::new(
+        Arc::clone(&db),
+        store,
+        None,
+        Some(stub.url.clone()),
+        Some(crate::artifacts::stub::TOKEN.to_string()),
+        PublisherTiming {
+            coalesce: Duration::from_millis(10),
+            snapshot_retention: Duration::from_secs(24 * 3600),
+        },
+    );
+    seed_published(&db, "r1", "2026-06-17T21:40:00Z").await;
+
+    assert!(publisher.refresh_now().await.is_err());
+    let state = db.snapshot_state().await.unwrap();
+    assert!(state.dirty, "a failed refresh leaves the snapshot dirty");
+    assert_eq!(state.last_run_count, None);
+    assert_eq!(stub.held.requests(), ["POST /runs/r1/publish-media"]);
+}
+
+#[tokio::test]
 async fn coalesced_refresher_folds_a_burst_into_one_clear() {
     let (_dir, publisher, db) = dev_publisher().await;
     let mut refreshes = publisher.refreshes();

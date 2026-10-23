@@ -37,3 +37,21 @@ fn clones_share_one_flag() {
     readiness.mark_store_populated();
     assert!(clone.is_ready());
 }
+
+#[test]
+fn a_running_state_move_holds_a_populated_store_unready() {
+    let readiness = Readiness::new(true);
+    readiness.mark_state_moving();
+    assert!(!readiness.is_ready());
+    assert!(readiness.is_store_populated());
+    readiness.mark_state_moved();
+    assert!(readiness.is_ready());
+}
+
+#[test]
+fn a_finished_state_move_leaves_an_empty_store_unready() {
+    let readiness = Readiness::new(false);
+    readiness.mark_state_moving();
+    readiness.mark_state_moved();
+    assert!(!readiness.is_ready());
+}

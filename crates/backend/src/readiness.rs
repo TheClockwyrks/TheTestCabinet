@@ -1,5 +1,6 @@
 //! Serving readiness: whether this backend's definition store is populated enough
-//! to resolve test-case versions.
+//! to resolve test-case versions, and whether the start's move of an earlier
+//! release's on-disk state ([`crate::state_move`]) has finished.
 //!
 //! This is **not** liveness. The process is alive and correct from the moment it
 //! binds — it simply has nothing to resolve against until its definition store has
@@ -10,6 +11,11 @@
 //!
 //! See [`Readiness`] for why the signal latches rather than tracking the store
 //! continuously.
+//!
+//! The move runs after the backend binds rather than before, for the same reason:
+//! it calls the artifact service once per moved match replay, and a start held off
+//! its liveness probe for that long would be killed mid-move. It holds only
+//! readiness, and only until it finishes.
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -33,6 +39,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 #[derive(Clone, Debug)]
 pub struct Readiness {
     populated: Arc<AtomicBool>,
+    /// Set while the start's move of an earlier release's state is running.
+    moving: Arc<AtomicBool>,
 }
 
 impl Readiness {
@@ -45,12 +53,30 @@ impl Readiness {
     pub fn new(store_populated: bool) -> Self {
         Self {
             populated: Arc::new(AtomicBool::new(store_populated)),
+            moving: Arc::new(AtomicBool::new(false)),
         }
     }
 
-    /// Whether the backend is ready to resolve test-case versions.
+    /// Whether the backend is ready to serve: the store is populated and no move of
+    /// an earlier release's state is running.
     pub fn is_ready(&self) -> bool {
+        self.is_store_populated() && !self.moving.load(Ordering::Acquire)
+    }
+
+    /// Whether the definition store has been populated, regardless of the move.
+    pub fn is_store_populated(&self) -> bool {
         self.populated.load(Ordering::Acquire)
+    }
+
+    /// Hold readiness while the start moves an earlier release's state; released by
+    /// [`Self::mark_state_moved`].
+    pub fn mark_state_moving(&self) {
+        self.moving.store(true, Ordering::Release);
+    }
+
+    /// Release the hold [`Self::mark_state_moving`] placed.
+    pub fn mark_state_moved(&self) {
+        self.moving.store(false, Ordering::Release);
     }
 
     /// Record that the definition store now holds versions. Idempotent, and never

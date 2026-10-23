@@ -590,7 +590,7 @@ pub(super) fn spawn_launch(state: &AppState, target: LaunchTarget, user_id: &str
 /// within its lease belongs to a pass another replica is running and is left to it.
 pub(crate) fn spawn_startup_passes(state: AppState) {
     tokio::spawn(async move {
-        while !state.ready.is_ready() {
+        while !state.ready.is_store_populated() {
             tokio::time::sleep(std::time::Duration::from_secs(2)).await;
         }
         release_lapsed_claims(&state).await;

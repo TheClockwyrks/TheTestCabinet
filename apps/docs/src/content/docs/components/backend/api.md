@@ -68,12 +68,17 @@ can resolve test case versions yet.
 ### `GET /readyz`
 
 Readiness probe. `200` once the definition store holds versions the running
-build can read, `503` otherwise.
+build can read and the start's move of an earlier release's state has finished,
+`503` otherwise.
 
-Two states hold it at `503`: an empty store, and a store stamped with another
-record format, which holds versions this build cannot read (see [Test case
-definitions](/components/backend/overview/#test-case-definitions)). Both are
-cleared by an ingest scan.
+Two states of the store hold it at `503`: an empty store, and a store stamped
+with another record format, which holds versions this build cannot read (see
+[Test case definitions](/components/backend/overview/#test-case-definitions)).
+Both are cleared by an ingest scan. The third is the move on start of what an
+earlier release kept on the pod's disk (see [Durable
+state](/components/backend/overview/#durable-state)), which runs once the
+backend is serving, so `/healthz` answers throughout it, and clears when it
+finishes.
 
 Every deployment keeps this separate from the `/healthz` liveness probe. A
 backend whose definition store lives on an ephemeral volume re-ingests the whole

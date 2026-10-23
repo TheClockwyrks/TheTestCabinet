@@ -549,6 +549,8 @@ async fn a_start_moves_an_earlier_release_s_controllers_and_match_replays() {
     let backend = build_with_prices(Config::from_env().unwrap(), prices, NO_GATEWAY)
         .await
         .unwrap();
+    // The move runs beside the server, holding it unready until it is done.
+    backend.state_move.await.unwrap();
 
     let db = Db::connect(&url).await.unwrap();
     assert_eq!(
@@ -563,7 +565,6 @@ async fn a_start_moves_an_earlier_release_s_controllers_and_match_replays() {
     assert!(!store_root.join("tournaments").exists());
     // The run's other files are left where they are, unread.
     assert!(store_root.join("runs/r1/replay.json").exists());
-    drop(backend);
 }
 
 #[tokio::test]

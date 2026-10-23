@@ -200,6 +200,25 @@ async fn the_probes_answer_without_an_identity() {
 }
 
 #[tokio::test]
+async fn a_running_state_move_holds_readiness_but_not_liveness() {
+    // The start's move of an earlier release's state runs beside the server: the pod
+    // stays live while it runs, and is admitted to traffic once it is done.
+    let (_dir, state, router) = local_backend().await;
+    state.ready.mark_state_moving();
+    let (status, body) = call(&router, "GET", "/healthz", &[Cred::None], None).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["storeReady"], true);
+    let (status, body) = call(&router, "GET", "/readyz", &[Cred::None], None).await;
+    assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE, "{body}");
+    assert_eq!(body["status"], "moving");
+
+    state.ready.mark_state_moved();
+    let (status, body) = call(&router, "GET", "/readyz", &[Cred::None], None).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["status"], "ready");
+}
+
+#[tokio::test]
 async fn token_verification_is_reached_without_an_identity() {
     // The artifacts service forwards a driver's token in the body; the route checks
     // that token itself.

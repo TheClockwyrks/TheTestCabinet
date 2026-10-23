@@ -751,14 +751,15 @@ async fn health(
     axum::Json(serde_json::json!({
         "status": "ok",
         "version": CONTRACT_VERSION,
-        "storeReady": state.ready.is_ready(),
+        "storeReady": state.ready.is_store_populated(),
     }))
 }
 
 /// `GET /readyz` — **readiness** probe: whether this backend can resolve test-case
 /// versions yet.
 ///
-/// `200` once the definition store holds versions, `503` while it is still empty.
+/// `200` once the definition store holds versions and the start's move of an earlier
+/// release's on-disk state ([`crate::state_move`]) has finished, `503` until both.
 /// Kept apart from the `/healthz` liveness probe because the unready state is
 /// *long*: a deployment with an ephemeral `/state` re-ingests the whole catalog on
 /// start, which runs for minutes. Pointing a liveness probe at this signal would
@@ -769,6 +770,7 @@ async fn ready(
     axum::extract::State(state): axum::extract::State<AppState>,
 ) -> (axum::http::StatusCode, axum::Json<serde_json::Value>) {
     let ready = state.ready.is_ready();
+    let store_ready = state.ready.is_store_populated();
     let status = if ready {
         axum::http::StatusCode::OK
     } else {
@@ -777,8 +779,14 @@ async fn ready(
     (
         status,
         axum::Json(serde_json::json!({
-            "status": if ready { "ready" } else { "ingesting" },
-            "storeReady": ready,
+            "status": if ready {
+                "ready"
+            } else if !store_ready {
+                "ingesting"
+            } else {
+                "moving"
+            },
+            "storeReady": store_ready,
         })),
     )
 }

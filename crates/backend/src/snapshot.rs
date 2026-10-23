@@ -473,7 +473,7 @@ impl SnapshotBuilder {
         // every other run's, so they run a bounded few at a time rather than one
         // round trip after another.
         let published: Vec<PublishedMedia> = {
-            use futures_util::StreamExt as _;
+            use futures_util::{StreamExt as _, TryStreamExt as _};
             // The calls are made into futures up front rather than inside a stream
             // combinator's closure, whose borrow of `self` the refresh's `Send` bound
             // cannot see through.
@@ -484,8 +484,8 @@ impl SnapshotBuilder {
                 .collect();
             futures_util::stream::iter(calls)
                 .buffered(MEDIA_PUBLISH_CONCURRENCY)
-                .collect()
-                .await
+                .try_collect()
+                .await?
         };
         for (run, media) in self.runs.iter().zip(published) {
             let events = run
@@ -1290,24 +1290,20 @@ impl SnapshotBuilder {
     /// media").
     ///
     /// A run without media is the empty answer: no artifact service configured, or
-    /// no stored tree for the run (`404`). A call that fails is logged and the run
-    /// published without its media rather than failing the refresh, as a file missing
-    /// from the tree always has been; the next refresh, which calls again, restores it.
-    async fn run_media(&self, run_id: &str) -> PublishedMedia {
+    /// no stored tree for the run (`404`). A call the service refuses or that cannot
+    /// reach it fails the refresh instead: every run's document is rebuilt on every
+    /// refresh, so publishing through an outage would put a generation live whose
+    /// documents name no media at all. Failing leaves the previous generation live and
+    /// the snapshot dirty, so the refresh is retried.
+    async fn run_media(&self, run_id: &str) -> Result<PublishedMedia> {
         let Some(artifacts) = &self.artifacts else {
-            return PublishedMedia::default();
+            return Ok(PublishedMedia::default());
         };
         match artifacts.publish_run_media(run_id).await {
-            Ok(Some(media)) => media,
-            Ok(None) => PublishedMedia::default(),
-            Err(err) => {
-                tracing::warn!(
-                    run.id = %run_id,
-                    error = %err,
-                    "publishing the run's media failed; publishing the run without it"
-                );
-                PublishedMedia::default()
-            }
+            Ok(media) => Ok(media.unwrap_or_default()),
+            Err(err) => Err(BackendError::Snapshot(format!(
+                "publishing the media of run {run_id}: {err}"
+            ))),
         }
     }
 
