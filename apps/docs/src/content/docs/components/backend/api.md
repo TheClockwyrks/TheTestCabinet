@@ -514,9 +514,10 @@ under the `none` engine; see
 Fetch one media file of a variant's authored
 [case showcase](/components/driver/showcase/#the-case-showcase), where `{file}` is
 the plain file name the carousel declares. It is the case-side counterpart of a
-run's `GET /runs/{id}/showcase/{file}`, addressed by case, version, and variant
-because the showcase is authored material committed with the version rather than
-run output. The content type follows the extension. Only a file the
+run's `GET /runs/{id}/showcase/{file}` on the
+[artifacts service](/components/artifacts/overview/#routes), addressed by case,
+version, and variant because the showcase is authored material committed with
+the version rather than run output. The content type follows the extension. Only a file the
 variant's stored carousel lists resolves, and `showcase.toml` is never served.
 The catalog preview and the resolved version's `showcase` fields point here.
 
