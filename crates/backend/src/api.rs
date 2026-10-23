@@ -166,19 +166,13 @@ pub struct AppState {
     pub gg_docs: crate::gg_docs::GgDocIndex,
 }
 
-/// The maximum body size, in bytes, accepted on the run-media and tournament-replay
-/// upload routes (proof media, asset media, the controller wasm, a tournament match
-/// replay).
+/// The maximum body size, in bytes, accepted on the two upload routes: an adversarial
+/// run's controller wasm and a tournament match replay.
 ///
-/// Axum's default request-body limit is 2 MiB, which is far too small for these:
-/// an adversarial run's proof replay serializes to tens of MiB (a full-length
-/// time-limit Pac-Man match is ~20 MiB), and a proof video clip is comparable.
-/// Without this raised ceiling those POSTs are rejected with `413` — and because
-/// the adversarial upload sequences the controller wasm *after* the replays, a
-/// rejected canonical replay silently aborted the whole upload before the
-/// controller landed, leaving a completed run's controller out of the backend store
-/// and so invisible in the arena (Quick Match / tournaments). The artifact service
-/// raises its own (whole-tarball) limit for the same reason.
+/// Axum's default request-body limit is 2 MiB, which is far too small for a replay:
+/// a full-length time-limit Pac-Man match serializes to ~20 MiB. Without this raised
+/// ceiling such a POST is rejected with `413`. The artifact service raises its own
+/// limits for the same reason.
 const MAX_RUN_UPLOAD_BYTES: usize = 512 * 1024 * 1024;
 
 /// Build the Axum router with every contract endpoint mounted, at the root and
@@ -429,81 +423,14 @@ fn routes() -> Router<AppState> {
         .route("/account/review-stats", get(runs::review_stats))
         // Publish a run (requires auth; refused with no reviews). Flips it public.
         .route("/runs/{id}/publish", post(runs::publish))
-        // The run media below are written (POST) by the queue components with their
-        // per-job tokens, and read (GET) by any identity.
-        //
-        // A published run's proof-of-implementation media (`<proof-id>.<ext>`):
-        // uploaded by the publisher (POST) and served as-is for the reviewer UI's
-        // submitted-evidence panes (GET).
-        .route(
-            "/runs/{id}/proof/{file}",
-            get(test_cases::run_proof)
-                .post(test_cases::put_run_proof)
-                .layer(DefaultBodyLimit::max(MAX_RUN_UPLOAD_BYTES)),
-        )
-        // A published asset-generation run's media (regenerated image, final
-        // preview, target, action log): uploaded by the publisher (POST) and
-        // served for the gallery's result view (GET).
-        .route(
-            "/runs/{id}/asset/{file}",
-            get(test_cases::run_asset)
-                .post(test_cases::put_run_asset)
-                .layer(DefaultBodyLimit::max(MAX_RUN_UPLOAD_BYTES)),
-        )
-        // A published run's synthesized *actual* validation media (the model build's
-        // per-review-item debug-script outputs, `<item>__<output>.<ext>`): mirrored in
-        // by the driver (POST) and served for the reviewer's automated-validation
-        // side-by-side (GET). The case-scoped baseline counterpart is served by
-        // `validation_baseline` under the test-case route.
-        .route(
-            "/runs/{id}/validation/{file}",
-            get(test_cases::run_validation)
-                .post(test_cases::put_run_validation)
-                .layer(DefaultBodyLimit::max(MAX_RUN_UPLOAD_BYTES)),
-        )
-        // A published run's showcase files (the carousel media, plus any image the
-        // description references): mirrored in by the driver (POST) and served for
-        // the Play tab's showcase view (GET). The description text itself rides the
-        // run record; `showcase.toml` is never stored.
-        .route(
-            "/runs/{id}/showcase/{file}",
-            get(test_cases::run_showcase)
-                .post(test_cases::put_run_showcase)
-                .layer(DefaultBodyLimit::max(MAX_RUN_UPLOAD_BYTES)),
-        )
-        // An adversarial run's pushed controller wasm: uploaded by the publisher at
-        // push (POST) and served so the arena can pit a pushed implementation from
-        // any host (GET).
+        // An adversarial run's pushed controller wasm, kept in the database beside the
+        // run's row: pushed by the run's driver with its per-job token (POST) and served
+        // so the arena can pit a pushed implementation from any host (GET). Everything
+        // else a run produced is served from its tree by the artifact service.
         .route(
             "/runs/{id}/controller.wasm",
             get(test_cases::run_controller)
                 .post(test_cases::put_run_controller)
-                .layer(DefaultBodyLimit::max(MAX_RUN_UPLOAD_BYTES)),
-        )
-        // A gg run's debug-only session record (the capture of its non-deterministic
-        // inputs — each agent's model I/O and every tool result): mirrored in by the
-        // driver from the `replay.json.gz` the post-run assembly stage folds the run's
-        // capture journal into (POST), and served for a person diagnosing a run the
-        // telemetry cannot explain (GET) — nothing in the console reads it, which is the
-        // record's stated position rather than an omission. Stored opaquely: the bytes are
-        // gzipped and the record is versioned, so what a reader may branch on is the
-        // document's own `formatVersion`, never the route.
-        .route(
-            "/runs/{id}/replay",
-            get(test_cases::run_replay)
-                .post(test_cases::put_run_replay)
-                .layer(DefaultBodyLimit::max(MAX_RUN_UPLOAD_BYTES)),
-        )
-        // A run's code-analysis document — the unbounded tier of the static read of the
-        // code its model wrote (every file, symbol, import edge, cycle and clone group),
-        // mirrored in by the driver from the run tree's `code-analysis.json.gz` (POST) and
-        // served to the per-run Code tab (GET). Same convention as the session record above,
-        // and offered for **every** harness: analysing a directory involves no
-        // harness-specific work, so restricting the route would cost coverage for nothing.
-        .route(
-            "/runs/{id}/code-analysis",
-            get(test_cases::run_code_analysis)
-                .post(test_cases::put_run_code_analysis)
                 .layer(DefaultBodyLimit::max(MAX_RUN_UPLOAD_BYTES)),
         )
         // The published run's recorded, normalized event stream (TTC events only;
@@ -512,7 +439,8 @@ fn routes() -> Router<AppState> {
         .route("/runs/{id}/events", get(runs::events))
         // Adversarial tournaments: a persisted field's standings + per-match
         // summaries (live-only — not folded into the public-site snapshot), with
-        // each match's replay served on demand for browser playback.
+        // each match's replay written through and read back from the artifact
+        // service, for browser playback.
         .route(
             "/tournaments",
             post(tournaments::publish).get(tournaments::list),

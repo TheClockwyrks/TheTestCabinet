@@ -936,21 +936,12 @@ async fn every_exported_document_is_redacted() {
 async fn the_export_is_documents_and_never_a_replay_record() {
     // Owner decision Q1, as a regression rather than a comment. A gg document is a flat
     // map of scalars — configuration ids and outcome numbers. A **session record** is the
-    // complete model conversation verbatim, and it lives in this very store, one call
-    // away from the composer. The distinction is the whole reason the corpus is
-    // publishable at all, and folding a record in would be a small, plausible-looking
-    // change that nothing else would notice.
+    // complete model conversation verbatim, kept in the run's tree on the artifact
+    // service, which the composer has no handle on. The distinction is the whole reason
+    // the corpus is publishable at all, and folding a record in would be a small,
+    // plausible-looking change that nothing else would notice.
     let db = Db::connect_in_memory().await.unwrap();
     let (_dir, store) = ingested_store();
-    // The record exists for this run, so this asserts a choice rather than an absence of
-    // data.
-    store
-        .write_run_artifact(
-            "r1",
-            "replay",
-            br#"{"messages":[{"role":"user","text":"the-verbatim-conversation"}]}"#,
-        )
-        .expect("store the run's session record");
     db.push(
         &gg_record("r1", "mock/echo"),
         &RunLinks::default(),
@@ -961,12 +952,6 @@ async fn the_export_is_documents_and_never_a_replay_record() {
     .unwrap();
 
     let documents = public_documents(&db, &store).await.unwrap();
-    let json = serde_json::to_string(&documents).unwrap();
-    assert!(
-        !json.contains("the-verbatim-conversation"),
-        "the export carried recorded conversation text",
-    );
-
     for doc in &documents {
         for (field, value) in &doc.fields {
             // A scalar map is the whole shape: nothing nested — a message list, a pool,

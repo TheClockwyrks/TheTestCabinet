@@ -181,11 +181,14 @@ pub struct Config {
     /// (`TCAB_ARTIFACTS_URL`) — the same in-cluster Service address the dispatcher
     /// hands its driver Jobs.
     ///
-    /// This is what every backend-originated artifact call uses: pruning a deleted
-    /// run's tree, the periodic reclamation sweep (see [`crate::artifacts`]), and the
-    /// snapshot builder's fallback read of a run's proof/asset media. `None` disables
-    /// all three, which is correct for a single-box dev setup with no artifact
-    /// service.
+    /// This is what every backend-originated artifact call uses, each presenting
+    /// [`service_token`](Self::service_token): pruning a deleted run's tree, the
+    /// periodic reclamation sweep (see [`crate::artifacts`]), writing and reading each
+    /// tournament match replay, the snapshot builder's publish of a run's media and
+    /// read of its code analysis, and the start's move of what an earlier release kept
+    /// on the pod's disk (see [`crate::state_move`]). `None` disables all of them,
+    /// which is correct for a single-box dev setup with no artifact service; the
+    /// replay routes then answer `503`.
     pub artifacts_internal_url: Option<String>,
     /// How often the artifact reclamation sweep runs
     /// (`TCAB_ARTIFACT_SWEEP_INTERVAL_HOURS`). `Duration::ZERO` disables the sweep,

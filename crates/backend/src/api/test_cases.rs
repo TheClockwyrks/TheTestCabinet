@@ -8,7 +8,7 @@ mod tests;
 use axum::Json;
 use axum::body::Body;
 use axum::extract::{Path, Query, State};
-use axum::http::{HeaderMap, StatusCode, header};
+use axum::http::{StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use serde::Deserialize;
 use test_cabinet_suites::content_labels::{self, ContentLabels};
@@ -413,9 +413,10 @@ pub async fn validation_baseline(
 /// `GET /test-cases/{slug}/versions/{version}/showcase/{variant}/{file}` — one
 /// media file of a variant's authored **showcase** (`{file}` is the plain file
 /// name the carousel declares — a `.png` still, a `.webm` clip, or a `.json.gz`
-/// replay recording). The case-side counterpart of [`run_showcase`], served
-/// case-scoped because the showcase is authored material committed with the
-/// version, not run output. The content type follows the extension. The store
+/// replay recording). The case-side counterpart of a run's showcase files, which the
+/// artifact service serves from the run's tree; served case-scoped because the
+/// showcase is authored material committed with the version, not run output. The
+/// content type follows the extension. The store
 /// resolves only a file the variant's stored showcase actually lists — and never
 /// `showcase.toml`, which is authoring input.
 pub async fn case_showcase(
@@ -429,142 +430,25 @@ pub async fn case_showcase(
     Ok(bytes_response(&file, bytes))
 }
 
-/// `GET /runs/{id}/proof/{file}` — a published run's proof media (`{file}` is
-/// `<proof-id>.<ext>`). The content type follows the extension.
-pub async fn run_proof(
-    State(state): State<AppState>,
-    Path((id, file)): Path<(String, String)>,
-) -> Result<Response, ApiError> {
-    let bytes = state
-        .store
-        .read_run_proof(&id, &file)
-        .map_err(ApiError::from)?;
-    Ok(bytes_response(&file, bytes))
-}
-
-/// `POST /runs/{id}/proof/{file}` — store a published run's proof media, uploaded
-/// by the publisher alongside the run record. The raw request body is the bytes.
-pub async fn put_run_proof(
-    State(state): State<AppState>,
-    _caller: JobCaller,
-    Path((id, file)): Path<(String, String)>,
-    body: axum::body::Bytes,
-) -> Result<Response, ApiError> {
-    state
-        .store
-        .write_run_proof(&id, &file, &body)
-        .map_err(ApiError::from)?;
-    Ok((StatusCode::NO_CONTENT, ()).into_response())
-}
-
-/// `GET /runs/{id}/validation/{file}` — a published run's synthesized *actual*
-/// validation media (`{file}` is the flat `<item>__<output>.<ext>`), mirrored into the
-/// backend store by the driver so it reaches the public snapshot (the run-scoped
-/// counterpart to the case-scoped [`validation_baseline`]). The content type follows
-/// the extension.
-pub async fn run_validation(
-    State(state): State<AppState>,
-    Path((id, file)): Path<(String, String)>,
-) -> Result<Response, ApiError> {
-    let bytes = state
-        .store
-        .read_run_validation(&id, &file)
-        .map_err(ApiError::from)?;
-    Ok(bytes_response(&file, bytes))
-}
-
-/// `POST /runs/{id}/validation/{file}` — store a published run's synthesized *actual*
-/// validation media, uploaded by the publisher alongside the run record.
-pub async fn put_run_validation(
-    State(state): State<AppState>,
-    _caller: JobCaller,
-    Path((id, file)): Path<(String, String)>,
-    body: axum::body::Bytes,
-) -> Result<Response, ApiError> {
-    state
-        .store
-        .write_run_validation(&id, &file, &body)
-        .map_err(ApiError::from)?;
-    Ok((StatusCode::NO_CONTENT, ()).into_response())
-}
-
-/// `GET /runs/{id}/asset/{file}` — a published asset-generation run's media
-/// (`{file}` is `regenerated.png`, `preview.png`, `target.png`, or
-/// `actions.json`). The content type follows the extension.
-pub async fn run_asset(
-    State(state): State<AppState>,
-    Path((id, file)): Path<(String, String)>,
-) -> Result<Response, ApiError> {
-    let bytes = state
-        .store
-        .read_run_asset(&id, &file)
-        .map_err(ApiError::from)?;
-    Ok(bytes_response(&file, bytes))
-}
-
-/// `POST /runs/{id}/asset/{file}` — store a published asset-generation run's
-/// media, uploaded by the publisher alongside the run record.
-pub async fn put_run_asset(
-    State(state): State<AppState>,
-    _caller: JobCaller,
-    Path((id, file)): Path<(String, String)>,
-    body: axum::body::Bytes,
-) -> Result<Response, ApiError> {
-    state
-        .store
-        .write_run_asset(&id, &file, &body)
-        .map_err(ApiError::from)?;
-    Ok((StatusCode::NO_CONTENT, ()).into_response())
-}
-
-/// `GET /runs/{id}/showcase/{file}` — one of a published run's
-/// [showcase](test_cabinet_contracts::run_record::RunShowcase) files (`{file}` is the plain file
-/// name in the produced tree's `showcase/` — a carousel media file, or an image
-/// the description references), mirrored into the backend store by the driver so
-/// it reaches the public snapshot. The content type follows the extension; a
-/// `.json.gz` replay serves as JSON travelling gzip-framed, so a browser inflates
-/// it before the player sees it.
-pub async fn run_showcase(
-    State(state): State<AppState>,
-    Path((id, file)): Path<(String, String)>,
-) -> Result<Response, ApiError> {
-    let bytes = state
-        .store
-        .read_run_showcase(&id, &file)
-        .map_err(ApiError::from)?;
-    Ok(bytes_response(&file, bytes))
-}
-
-/// `POST /runs/{id}/showcase/{file}` — store one of a published run's showcase
-/// files, uploaded by the publisher alongside the run record.
-pub async fn put_run_showcase(
-    State(state): State<AppState>,
-    _caller: JobCaller,
-    Path((id, file)): Path<(String, String)>,
-    body: axum::body::Bytes,
-) -> Result<Response, ApiError> {
-    state
-        .store
-        .write_run_showcase(&id, &file, &body)
-        .map_err(ApiError::from)?;
-    Ok((StatusCode::NO_CONTENT, ()).into_response())
-}
-
 /// `GET /runs/{id}/controller.wasm` — an adversarial run's pushed controller wasm,
-/// served so the arena can resolve and pit a pushed implementation from any host.
+/// read from the database, served so the arena can resolve and pit a pushed
+/// implementation from any host. `404` when none was pushed for the run.
 pub async fn run_controller(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<Response, ApiError> {
     let bytes = state
-        .store
-        .read_run_controller(&id)
-        .map_err(ApiError::from)?;
+        .db
+        .run_controller(&id)
+        .await
+        .map_err(ApiError::from)?
+        .ok_or_else(|| ApiError::not_found(format!("controller for run `{id}` not stored")))?;
     Ok(bytes_response("controller.wasm", bytes))
 }
 
-/// `POST /runs/{id}/controller.wasm` — store an adversarial run's controller wasm,
-/// uploaded by the publisher at push alongside the run record.
+/// `POST /runs/{id}/controller.wasm` — store an adversarial run's controller wasm in
+/// the database, pushed by the run's driver ahead of its terminal report, so before
+/// the run's row exists. A re-push replaces it.
 pub async fn put_run_controller(
     State(state): State<AppState>,
     _caller: JobCaller,
@@ -572,87 +456,9 @@ pub async fn put_run_controller(
     body: axum::body::Bytes,
 ) -> Result<Response, ApiError> {
     state
-        .store
-        .write_run_controller(&id, &body)
-        .map_err(ApiError::from)?;
-    Ok((StatusCode::NO_CONTENT, ()).into_response())
-}
-
-/// `GET /runs/{id}/replay` — a gg run's stored
-/// [session record](test_cabinet_contracts::gg_session_record), the capture of its non-deterministic
-/// inputs, served as JSON so a replay driver can re-run the session.
-///
-/// The stored bytes are gzipped, so this is served through [`run_artifact_response`]: a browser
-/// gets them moved verbatim, and a gzip-unaware client (the CLI, the replay driver — anything on
-/// the workspace `reqwest`) gets them decoded here.
-pub async fn run_replay(
-    State(state): State<AppState>,
-    Path(id): Path<String>,
-    headers: HeaderMap,
-) -> Result<Response, ApiError> {
-    let bytes = state.store.read_run_replay(&id).map_err(ApiError::from)?;
-    run_artifact_response(&headers, crate::store::REPLAY_ARTIFACT, bytes)
-}
-
-/// `POST /runs/{id}/replay` — store a gg run's session record, mirrored in by the driver from the
-/// collected run tree. The raw request body is the bytes.
-///
-/// **Store-only**, by the run-tree artifact convention: the driver uploads *before* the terminal
-/// status post that creates the run row, so there is nothing here to patch, and the store keeps the
-/// body opaque: it is never parsed.
-pub async fn put_run_replay(
-    State(state): State<AppState>,
-    _caller: JobCaller,
-    Path(id): Path<String>,
-    body: axum::body::Bytes,
-) -> Result<Response, ApiError> {
-    state
-        .store
-        .write_run_replay(&id, &body)
-        .map_err(ApiError::from)?;
-    Ok((StatusCode::NO_CONTENT, ()).into_response())
-}
-
-/// `GET /runs/{id}/code-analysis` — a run's stored
-/// [code-analysis](test_cabinet_contracts::code_analysis) document: the unbounded tier of the
-/// static read of the code its model wrote, with every file, symbol, import edge, cycle and
-/// clone group.
-///
-/// Served through [`run_artifact_response`] exactly as the session record is: a browser (the
-/// per-run Code tab) gets the stored gzip moved verbatim, and a gzip-unaware client on the
-/// workspace `reqwest` gets it decoded here.
-///
-/// Offered for every harness's runs. The gg-only constraint binds on the *aggregate* query
-/// surface, not on a per-run document that costs nothing harness-specific to produce.
-pub async fn run_code_analysis(
-    State(state): State<AppState>,
-    Path(id): Path<String>,
-    headers: HeaderMap,
-) -> Result<Response, ApiError> {
-    let bytes = state
-        .store
-        .read_run_code_analysis(&id)
-        .map_err(ApiError::from)?;
-    run_artifact_response(&headers, crate::store::CODE_ANALYSIS_ARTIFACT, bytes)
-}
-
-/// `POST /runs/{id}/code-analysis` — store a run's code-analysis document, mirrored in by
-/// the driver from the collected run tree. The raw request body is the bytes.
-///
-/// **Store-only**, by the run-tree artifact convention: the driver uploads *before* the
-/// terminal status post that creates the run row, so there is nothing here to patch. The
-/// lifted `run.code_analyzer_version` column is set from the record on the ordinary insert,
-/// which is why this handler never touches the database and why a document arriving for a
-/// run that does not exist yet is not an error.
-pub async fn put_run_code_analysis(
-    State(state): State<AppState>,
-    _caller: JobCaller,
-    Path(id): Path<String>,
-    body: axum::body::Bytes,
-) -> Result<Response, ApiError> {
-    state
-        .store
-        .write_run_code_analysis(&id, &body)
+        .db
+        .store_run_controller(&id, &body)
+        .await
         .map_err(ApiError::from)?;
     Ok((StatusCode::NO_CONTENT, ()).into_response())
 }
@@ -1041,16 +847,7 @@ fn workspaces_out(
 /// other name describes bytes that are already the resource (see
 /// [`labels_for`]).
 pub(super) fn bytes_response(path: &str, bytes: Vec<u8>) -> Response {
-    labelled_response(labels_for(path), bytes)
-}
-
-/// Build a raw-bytes response under labels the caller already knows.
-///
-/// [`run_artifact_response`] is the one route whose framing is not implied by the
-/// name it serves under: it stores the document gzipped under a `.json` name and
-/// decides per request whether to hand that framing on, so it states the labels
-/// rather than deriving them.
-fn labelled_response(labels: ContentLabels, bytes: Vec<u8>) -> Response {
+    let labels = labels_for(path);
     let len = bytes.len();
     let mut response = (
         StatusCode::OK,
@@ -1070,93 +867,6 @@ fn labelled_response(labels: ContentLabels, bytes: Vec<u8>) -> Response {
     response
 }
 
-/// Serve one of a run's [run-tree artifacts](crate::store::DefinitionStore::run_artifact_path)
-/// — the whole-run analysis documents (`replay`, and code analysis to follow) — content
-/// negotiating on the **request's** `Accept-Encoding`.
-///
-/// Negotiating on the request rather than keying on what happens to be stored is the whole
-/// point of the convention. The workspace HTTP client (`reqwest`, built without its `gzip`
-/// feature so the workspace stays free of a second TLS/compression stack) neither advertises
-/// the encoding nor decodes it, while every browser advertises it unconditionally. Serving
-/// the stored bytes verbatim would break the CLI and the replay driver; decompressing
-/// unconditionally would throw away the ~10× the console's fetch gets for free.
-///
-/// Records captured before the convention are stored as plain JSON, so the stored bytes are
-/// sniffed rather than assumed. Nothing here ever compresses on demand: compression happens
-/// once, where the artifact is written, and this route only ever *removes* it.
-fn run_artifact_response(
-    headers: &HeaderMap,
-    name: &str,
-    stored: Vec<u8>,
-) -> Result<Response, ApiError> {
-    let mut response = if !is_gzip(&stored) {
-        labelled_response(ContentLabels::plain(JSON_CONTENT_TYPE), stored)
-    } else if accepts_gzip(headers) {
-        labelled_response(ContentLabels::gzipped(JSON_CONTENT_TYPE), stored)
-    } else {
-        let mut plain = Vec::new();
-        std::io::Read::read_to_end(
-            &mut flate2::read::GzDecoder::new(std::io::Cursor::new(&stored)),
-            &mut plain,
-        )
-        .map_err(|e| {
-            ApiError::internal(format!(
-                "decoding stored `{name}` artifact for a client that does not accept gzip: {e}"
-            ))
-        })?;
-        labelled_response(ContentLabels::plain(JSON_CONTENT_TYPE), plain)
-    };
-    // The body genuinely varies by request header, so say so — a shared cache in front
-    // of the backend must not hand a browser's gzipped copy to the gzip-unaware CLI.
-    response.headers_mut().insert(
-        header::VARY,
-        header::HeaderValue::from_static("accept-encoding"),
-    );
-    Ok(response)
-}
-
-/// Whether the bytes are a gzip member, by its two-byte magic (RFC 1952 §2.3.1).
-///
-/// Both a gzip stream and the JSON it frames are self-describing enough that this
-/// cannot be ambiguous: a JSON document never begins `0x1f 0x8b`.
-fn is_gzip(bytes: &[u8]) -> bool {
-    bytes.starts_with(&[0x1f, 0x8b])
-}
-
-/// Whether the request advertised gzip in `Accept-Encoding`.
-///
-/// Deliberately narrow: this decides between handing over bytes already in hand and
-/// decompressing them, so it accepts `gzip` (or the `*` wildcard) and honours an explicit
-/// `q=0`, which is how a client *refuses* an encoding — RFC 9110 §12.5.3. Anything it does
-/// not understand means "not advertised", which is always the safe answer: the caller gets
-/// plain JSON.
-fn accepts_gzip(headers: &HeaderMap) -> bool {
-    let Some(value) = headers
-        .get(header::ACCEPT_ENCODING)
-        .and_then(|v| v.to_str().ok())
-    else {
-        return false;
-    };
-    value.split(',').any(|entry| {
-        let mut parts = entry.split(';');
-        let coding = parts.next().unwrap_or_default().trim();
-        if !coding.eq_ignore_ascii_case("gzip") && coding != "*" {
-            return false;
-        }
-        // `;q=0` (and `q=0.0`, `q=0.000`) is a refusal; any other quality is acceptance.
-        !parts.any(|param| {
-            let param = param.trim();
-            let Some(q) = param
-                .strip_prefix("q=")
-                .or_else(|| param.strip_prefix("Q="))
-            else {
-                return false;
-            };
-            q.trim().parse::<f32>().is_ok_and(|q| q <= 0.0)
-        })
-    })
-}
-
 /// The content type and body framing for a stored file, from its name.
 fn labels_for(path: &str) -> ContentLabels {
     let ext = std::path::Path::new(path)
@@ -1167,7 +877,7 @@ fn labels_for(path: &str) -> ContentLabels {
         "md" | "txt" => ContentLabels::plain("text/plain; charset=utf-8"),
         "hbs" => ContentLabels::plain("text/plain; charset=utf-8"),
         "html" => ContentLabels::plain("text/html; charset=utf-8"),
-        "json" => ContentLabels::plain(JSON_CONTENT_TYPE),
+        "json" => ContentLabels::plain("application/json"),
         // A gzipped document served as it is stored — a validator's draw-command
         // recording (`<name>.json.gz`), which is JSON travelling gzip-framed and is
         // labelled that way, so the browser inflates it before the player sees it.
@@ -1185,6 +895,3 @@ fn labels_for(path: &str) -> ContentLabels {
         _ => ContentLabels::plain("application/octet-stream"),
     }
 }
-
-/// The content type every JSON response this module serves carries.
-const JSON_CONTENT_TYPE: &str = "application/json";

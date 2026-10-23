@@ -44,6 +44,7 @@ pub mod review;
 pub mod review_plan;
 pub mod review_revision;
 pub mod run;
+pub mod run_controller;
 pub mod run_link;
 pub mod snapshot_state;
 pub mod tournament;

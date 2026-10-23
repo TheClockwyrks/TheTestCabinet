@@ -50,6 +50,7 @@ pub mod relay;
 pub mod render;
 pub mod review;
 pub mod snapshot;
+pub mod state_move;
 pub mod stats;
 pub mod store;
 pub mod suite_store;
@@ -279,6 +280,23 @@ async fn build_with_prices(
         Ok(decided) => tracing::info!(decided, "revalidated stored run records"),
         Err(err) => tracing::warn!(error = %err, "skipping stored run-record revalidation"),
     }
+
+    // Move what an earlier release kept on the pod's disk into its durable home: each
+    // pushed controller into its run's row, each match replay through the artifact
+    // service. It runs before the router is built, so before the backend serves or
+    // reports ready, and it never blocks startup: what cannot move stays for the next
+    // start (see `crate::state_move`).
+    crate::state_move::move_legacy_state(
+        store.root(),
+        &db,
+        crate::artifacts::ArtifactsClient::from_config(
+            reqwest::Client::new(),
+            config.artifacts_internal_url.as_deref(),
+            config.service_token.as_deref(),
+        )
+        .as_ref(),
+    )
+    .await;
 
     let db = Arc::new(db);
 

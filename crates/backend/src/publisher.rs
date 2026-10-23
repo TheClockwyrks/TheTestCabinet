@@ -34,6 +34,7 @@ use time::format_description::well_known::Rfc3339;
 use tokio::sync::{Notify, mpsc};
 use tracing::Instrument;
 
+use crate::artifacts::ArtifactsClient;
 use crate::db::Db;
 use crate::error::{BackendError, Result};
 use crate::r2::R2Client;
@@ -61,12 +62,12 @@ struct PublisherInner {
     http: reqwest::Client,
     /// The artifact service's **in-cluster** base URL
     /// ([`Config::artifacts_internal_url`](crate::config::Config::artifacts_internal_url)),
-    /// passed to the snapshot builder so it can fall back for run media missing from
-    /// the (ephemeral) store. `None` in a dev/single-box setup with no separate
+    /// through which the snapshot builder publishes each run's media and reads its
+    /// code-analysis document. `None` in a dev/single-box setup with no separate
     /// artifact service, and in any deployment that supplies no in-cluster URL.
     artifacts_url: Option<String>,
     /// The shared service token (`TCAB_BACKEND_SERVICE_TOKEN`) the snapshot builder
-    /// presents on its artifact-service reads.
+    /// presents on its artifact-service calls.
     artifacts_service_token: Option<String>,
     coalesce: Duration,
     /// How long a superseded snapshot generation is kept before the post-upload
@@ -101,7 +102,7 @@ impl Publisher {
     ///
     /// `artifacts_url` is the artifact service's **in-cluster** base URL, the one the
     /// backend itself can reach — not the address advertised to consoles — and
-    /// `artifacts_service_token` the shared service token presented on its reads.
+    /// `artifacts_service_token` the shared service token presented on its calls.
     pub fn new(
         db: Arc<Db>,
         store: DefinitionStore,
@@ -395,11 +396,11 @@ async fn run_refresh(inner: &PublisherInner) -> Result<RefreshOutcome> {
         .collect();
 
     let snapshot = SnapshotBuilder::new(runs, cases, inner.store.clone())
-        .with_artifacts(
-            inner.artifacts_url.clone(),
-            inner.artifacts_service_token.clone(),
+        .with_artifacts(ArtifactsClient::from_config(
             inner.http.clone(),
-        )
+            inner.artifacts_url.as_deref(),
+            inner.artifacts_service_token.as_deref(),
+        ))
         .with_models(models)
         .with_reference_builds(reference_builds)
         .with_reference_sheets(reference_sheets)

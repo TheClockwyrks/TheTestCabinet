@@ -455,7 +455,7 @@ async fn a_lease_renewal_takes_only_the_service_token() {
 }
 
 #[tokio::test]
-async fn a_job_token_reads_and_uploads_run_media_but_takes_nothing_else() {
+async fn a_job_token_reads_and_pushes_a_controller_but_takes_nothing_else() {
     let (_dir, _state, router) = local_backend().await;
     let (status, body) = call(
         &router,
@@ -472,7 +472,7 @@ async fn a_job_token_reads_and_uploads_run_media_but_takes_nothing_else() {
         async move {
             let mut request = Request::builder()
                 .method("POST")
-                .uri("/runs/r1/proof/clip.webm");
+                .uri("/runs/r1/controller.wasm");
             for cred in creds {
                 if let Cred::Bearer(token) = cred {
                     request = request.header("Authorization", format!("Bearer {token}"));

@@ -268,7 +268,8 @@ pub async fn publish(
 /// `DELETE /runs/{id}` — permanently delete a run. Refused with `422` when the
 /// run is **published** and this build can read its record (a public run is in the
 /// snapshot and gallery). Takes a person's assertion. `404` for an unknown run.
-/// Removes the run record, its reviews, its links, and its stored media.
+/// Removes the run record, its reviews, its links, its pushed controller, and its
+/// tree on the artifact service.
 ///
 /// Operates on the stored row rather than on the record, so it deletes a run whose
 /// stored record this build can no longer read as well, published or not. The
@@ -290,18 +291,9 @@ pub async fn delete(
     // published guard, so it runs first.
     state.db.delete_run(&id).await.map_err(ApiError::from)?;
 
-    // Then clear the run's stored media tree so deletion leaves nothing behind.
-    // The authoritative record is already gone, so a media-cleanup fault must not
-    // fail the request: it is logged, and the now-unreferenced bytes stay on the
-    // backend's own volume until an operator clears them, rather than the request
-    // resurrecting a half-deleted run. This is the backend's store, not the artifact
-    // service, so the reclamation sweep below has no part in it.
-    if let Err(err) = state.store.delete_run_media(&id) {
-        tracing::warn!("deleted run {id} but failed to remove its media: {err}");
-    }
-
-    // A run's playable build and recorded logs live in the separate artifact
-    // service; ask it over the in-cluster artifact URL to prune the tree too.
+    // Everything the run produced, its media included, lives in its tree on the
+    // separate artifact service; ask it over the in-cluster artifact URL to prune the
+    // tree too.
     // Best-effort (see [`crate::artifacts`]): a failure is logged, never surfaced —
     // the record is already gone, so the run has vanished from every listing
     // regardless, and the reclamation sweep collects the tree a failure leaves.
@@ -524,11 +516,23 @@ pub async fn adversarial_controllers(
         .list_for_case(&params.test_case)
         .await
         .map_err(ApiError::from)?;
-    let controllers = runs
+    let adversarial: Vec<_> = runs
         .into_iter()
         .filter(|run| run.record.validation.adversarial.is_some())
-        // Only runs whose controller wasm actually landed can be pitted.
-        .filter(|run| state.store.has_run_controller(&run.record.id))
+        .collect();
+    // Only runs whose controller wasm actually landed can be pitted.
+    let ids: Vec<String> = adversarial
+        .iter()
+        .map(|run| run.record.id.clone())
+        .collect();
+    let pushed = state
+        .db
+        .runs_with_controllers(&ids)
+        .await
+        .map_err(ApiError::from)?;
+    let controllers = adversarial
+        .into_iter()
+        .filter(|run| pushed.contains(&run.record.id))
         .map(|run| ControllerRef {
             id: run.record.id.clone(),
             kind: ControllerKind::PushedRun,
