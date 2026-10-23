@@ -61,7 +61,8 @@ deployments/k8s/
 # The client-tauri, contracts, engines, gg, gg.rocks, microservice-arena, microservice-artifacts, microservice-dispatcher, microservice-driver, microservice-publisher, microservice-repos,
 # tool-model-core, tool-paint, tool-particle, tool-sprite, tool-voxel, tool-mc,
 # tool-sn, tool-dc, tool-audio-core, tool-sfx-synth, tool-sfx-sample,
-# tool-music, test-suites, ui-common, console.testcabinet.ai and testcabinet.ai
+# tool-music, test-suites, ui-common, console.testcabinet.ai, testcabinet.ai and
+# the-spec-cabinet
 # repositories, submodules whose own gates format them, and the docs tree's
 # gg/ entry, which points into the gg checkout.
 /client-tauri/**
@@ -92,6 +93,7 @@ deployments/k8s/
 /ui-common/**
 /console.testcabinet.ai/**
 /testcabinet.ai/**
+/the-spec-cabinet/**
 /tasks/**/done/**
 /.claude/workflows/**
 /.claude/worktrees/**

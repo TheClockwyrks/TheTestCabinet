@@ -53,6 +53,7 @@
     "/ui-common/**",
     "/console.testcabinet.ai/**",
     "/testcabinet.ai/**",
+    "/the-spec-cabinet/**",
     "/tasks/**/done/**",
     "/.claude/workflows/**",
     "/.claude/worktrees/**",
