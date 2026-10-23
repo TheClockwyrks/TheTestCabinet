@@ -7,8 +7,19 @@ number: 2
 title: Repair the-test-cabinet failing on nightly
 type: ci
 priority: 0
-state: open
+state: done
 created: 2026-10-22T14:00:43.214064645Z
+done: 2026-10-23T03:55:05.7684973Z
+outcome: |
+  Nightly run 18554 (3ddbc5d97) succeeded in every job: Rust 19.2 min, the seed
+  job 12.8 min, Web 20.7 min, submodule pins, changed paths and the GitHub mirror.
+  Three causes were removed: the project setting "Protect access to repositories
+  in YAML pipelines" is off, matching the vantaloc project, so the job token reads
+  every repository and the 20-repository token cap no longer applies; CICD-1
+  rebuilt and pinned the CI images and dropped the token-scoping lists; CICD-2
+  keyed the cargo-target caches on the committed Cargo.lock and kept the Rust job
+  from restoring the seed job's oversized archive, so the agent no longer runs out
+  of disk.
 ---
 
 The latest run of `the-test-cabinet` on the promotion branch `nightly` failed at
