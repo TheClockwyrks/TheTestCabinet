@@ -104,8 +104,9 @@ on.
 
 The script is the only source of truth for both the images and the logs and
 reproduces both exactly, so neither is committed. Object-store keys are
-constructible, so the backend discovers references by listing the prefix at
-ingest and reconciling a `case_reference_sheet` table. A reference sheet is
+constructible, so the backend discovers references at ingest by listing
+`media/references/` through the artifacts service's `GET /public?prefix=` and
+reconciling a `case_reference_sheet` table. A reference sheet is
 rendered from the variant's `referenceSheet` and its published frame indices.
 
 ### Bundled references (performance)

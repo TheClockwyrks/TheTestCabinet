@@ -50,9 +50,13 @@ Writing each object once keeps a publish cheap as runs and cases accumulate.
 The backend holds no bucket credential. It writes a document, an index object,
 or a code with `PUT /public/{key}` on the artifacts service, and has a run's
 media copied from the run's stored tree with `POST /runs/{id}/publish-media`,
-which answers with the public keys the run's document then names. Every
-connection flows outward from the private plane, and what crosses into public
-reach is a read-only export of already-published runs.
+which answers with the public keys the run's document then names. It lists the
+keys under a prefix with `GET /public?prefix=`, to skip the objects the bucket
+already holds, find the codes not yet written and find the generations to
+prune, and deletes a superseded generation's objects with
+`DELETE /public/{key}`. Every connection flows outward from the private plane,
+and what crosses into public reach is a read-only export of already-published
+runs.
 
 ## Atomic swap
 
@@ -404,7 +408,9 @@ other published document. An empty list is a valid index.
 Every publish writes a whole new `snapshots/<snapshotId>/` generation and cuts
 over by overwriting `index.json`. Nothing can reach an earlier generation
 afterwards, so after the cut-over the publish prunes the ones that are done
-with. A generation is deleted only when both hold:
+with: it lists `snapshots/` through `GET /public?prefix=snapshots/` and deletes
+each stale key with `DELETE /public/{key}`. A generation is deleted only when
+both hold:
 
 1. It is not the one `index.json` points at. The live generation is kept however
    old it is, so a bucket whose live generation predates the retention window

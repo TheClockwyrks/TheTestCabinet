@@ -400,9 +400,11 @@ bucket.
 - Only published runs are written, apart from the redacted [gg document
   corpus](/components/backend/snapshot/#gg-runsjson--the-gg-document-corpus),
   which is not gated on publication.
-- The backend holds no bucket credential. It writes with `PUT /public/{key}`
-  and copies a run's media with `POST /runs/{id}/publish-media`, both on
-  artifacts over its in-cluster URL with the service token.
+- The backend holds no bucket credential. It writes with `PUT /public/{key}`,
+  copies a run's media with `POST /runs/{id}/publish-media`, lists keys with
+  `GET /public?prefix=` and deletes superseded generations with
+  `DELETE /public/{key}`, all on artifacts over its in-cluster URL with the
+  service token.
 - A write is atomic: the objects of a new generation are written first and the
   small `index.json` pointer is swapped last, so a reader never sees a
   half-written dataset.
