@@ -149,7 +149,7 @@ pub enum BackendError {
     #[error("{0}")]
     R2(#[from] crate::r2::R2Error),
 
-    /// A snapshot upload or deploy-hook fire failed.
+    /// A snapshot upload failed.
     #[error("{0}")]
     Snapshot(String),
 

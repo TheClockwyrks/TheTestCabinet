@@ -189,7 +189,6 @@ async fn publish_backend(links: RunLinks) -> (tempfile::TempDir, AppState, axum:
         None,
         None,
         None,
-        None,
         crate::publisher::PublisherTiming {
             coalesce: config.coalesce,
             snapshot_retention: config.snapshot_retention,

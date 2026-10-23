@@ -161,7 +161,7 @@ ENV PLAYWRIGHT_BROWSERS_PATH=/opt/ms-playwright
 # driver.mjs's `import` statements.
 COPY contracts/packages/browser-driver/package.json contracts/packages/browser-driver/driver.mjs contracts/packages/browser-driver/ttc.mjs contracts/packages/browser-driver/validation.mjs /opt/browser-driver/
 
-# ca-certificates covers the backend's outbound HTTPS (R2, deploy hook); the font set
+# ca-certificates covers the backend's outbound HTTPS (R2); the font set
 # is what test cases render with (the slim base ships none — see microservice-driver's
 # containers/README.md). ffmpeg transcodes each run's proof clip from the `.webm`
 # Playwright records to an H.264 `.mp4` when the public snapshot is built

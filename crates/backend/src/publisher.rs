@@ -1,5 +1,5 @@
-//! The synchronized publish path: coalesced snapshot regeneration + upload +
-//! deploy-hook fire (§1.4, §3 and the backend overview's "Publishing and
+//! The synchronized publish path: coalesced snapshot regeneration + upload
+//! (§1.4, §3 and the backend overview's "Publishing and
 //! Synchronization").
 //!
 //! Being a single central entity is the point: the backend serializes publishes
@@ -45,8 +45,6 @@ use crate::store::DefinitionStore;
 pub struct RefreshOutcome {
     /// Runs in the regenerated snapshot.
     pub run_count: usize,
-    /// Whether the deploy hook fired (false when no hook is configured).
-    pub deploy_hook_fired: bool,
 }
 
 /// Drives snapshot regeneration. Cloneable (it is `Arc`-backed) so handlers and
@@ -60,7 +58,6 @@ struct PublisherInner {
     db: Arc<Db>,
     store: DefinitionStore,
     r2: Option<R2Client>,
-    deploy_hook_url: Option<String>,
     http: reqwest::Client,
     /// The artifact service's **in-cluster** base URL
     /// ([`Config::artifacts_internal_url`](crate::config::Config::artifacts_internal_url)),
@@ -100,7 +97,7 @@ pub struct PublisherTiming {
 impl Publisher {
     /// Build a publisher. `r2` is `None` in the dev mode where the R2 credentials
     /// were not configured: the snapshot is still regenerated into SQLite-derived
-    /// form and the dirty flag cleared, but no upload or hook fire happens.
+    /// form and the dirty flag cleared, but no upload happens.
     ///
     /// `artifacts_url` is the artifact service's **in-cluster** base URL, the one the
     /// backend itself can reach — not the address advertised to consoles — and
@@ -109,28 +106,15 @@ impl Publisher {
         db: Arc<Db>,
         store: DefinitionStore,
         r2: Option<R2Client>,
-        deploy_hook_url: Option<String>,
         artifacts_url: Option<String>,
         artifacts_service_token: Option<String>,
         timing: PublisherTiming,
     ) -> Self {
-        // Publishing is enabled (R2 is configured) but no site deploy hook is set:
-        // every publish will upload the snapshot to R2 yet never trigger the
-        // Cloudflare Pages rebuild, so the public gallery silently stays on its last
-        // build. Surface it once at startup — this is otherwise an invisible skip in
-        // `upload_snapshot` (see `TCAB_SITE_DEPLOY_HOOK_URL` in config.rs).
-        if r2.is_some() && deploy_hook_url.is_none() {
-            tracing::warn!(
-                "R2 is configured but TCAB_SITE_DEPLOY_HOOK_URL is unset; snapshots \
-                 will upload to R2 but the gallery site will not be redeployed"
-            );
-        }
         Self {
             inner: Arc::new(PublisherInner {
                 db,
                 store,
                 r2,
-                deploy_hook_url,
                 http: reqwest::Client::new(),
                 artifacts_url,
                 artifacts_service_token,
@@ -272,8 +256,8 @@ impl RefresherHandle {
     }
 }
 
-/// Regenerate the full snapshot, upload it (when R2 is configured), fire the
-/// deploy hook, and clear the dirty flag unless a mark landed while it ran. This
+/// Regenerate the full snapshot, upload it (when R2 is configured), and clear
+/// the dirty flag unless a mark landed while it ran. This
 /// is the one place the snapshot is produced; both the debounce loop and the
 /// forced path call it.
 #[tracing::instrument(
@@ -429,29 +413,21 @@ async fn run_refresh(inner: &PublisherInner) -> Result<RefreshOutcome> {
     let run_count = snapshot.run_count;
     tracing::Span::current().record("run_count", run_count);
 
-    let deploy_hook_fired = match &inner.r2 {
+    match &inner.r2 {
         Some(r2) => {
-            let fired = crate::snapshot::upload_snapshot(
-                &snapshot,
-                r2,
-                inner.deploy_hook_url.as_deref(),
-                &inner.http,
-            )
-            .await?;
+            crate::snapshot::upload_snapshot(&snapshot, r2).await?;
             // Only after the atomic `index.json` cut-over: until it lands, the
             // previous generation is still the live one and must not be touched.
             prune_stale_snapshots(r2, &snapshot.snapshot_id, inner.snapshot_retention).await;
-            fired
         }
         None => {
             // Dev mode: no R2 credentials. The snapshot was still regenerated
-            // (proving it is well-formed) but is not uploaded; nothing is fired.
+            // (proving it is well-formed) but is not uploaded.
             tracing::warn!(
                 "snapshot regenerated ({run_count} runs) but R2 is not configured; skipping upload"
             );
-            false
         }
-    };
+    }
 
     let uploaded_at = generated_at
         .format(&Rfc3339)
@@ -461,16 +437,9 @@ async fn run_refresh(inner: &PublisherInner) -> Result<RefreshOutcome> {
         .mark_uploaded(&uploaded_at, run_count as i64, generation)
         .await?;
 
-    // One line per completed refresh recording whether the gallery deploy hook
-    // fired. `deploy_hook_fired` is false whenever no hook is configured (R2-only)
-    // or R2 itself is off — so this is the log to check when a publish uploaded the
-    // snapshot to R2 but the public gallery never rebuilt.
-    tracing::info!(run_count, deploy_hook_fired, "snapshot refresh complete");
+    tracing::info!(run_count, "snapshot refresh complete");
 
-    Ok(RefreshOutcome {
-        run_count,
-        deploy_hook_fired,
-    })
+    Ok(RefreshOutcome { run_count })
 }
 
 /// Delete the snapshot generations nothing points at any more, keeping the one just

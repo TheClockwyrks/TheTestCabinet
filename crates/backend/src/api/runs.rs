@@ -641,7 +641,7 @@ pub async fn events(
         .into_response())
 }
 
-/// `POST /snapshot/refresh` — force an immediate regen + upload + hook fire. Takes
+/// `POST /snapshot/refresh` — force an immediate regen + upload. Takes
 /// the service token or an Access service token's assertion.
 #[tracing::instrument(name = "snapshot.refresh", skip(state, _caller), err(Debug))]
 pub async fn refresh(
@@ -656,7 +656,6 @@ pub async fn refresh(
     Ok(Json(RefreshResponse {
         refreshed: true,
         run_count: outcome.run_count,
-        deploy_hook_fired: outcome.deploy_hook_fired,
     }))
 }
 
@@ -1179,7 +1178,6 @@ struct LinksOut {
 pub struct RefreshResponse {
     refreshed: bool,
     run_count: usize,
-    deploy_hook_fired: bool,
 }
 
 /// Query parameters for `GET /account/reviews`: the numbered-pager window.
