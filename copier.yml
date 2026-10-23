@@ -63,11 +63,23 @@ _exclude:
     scripts/ci/install-nextest.sh
     scripts/ci/install-nextest.test.sh
     {% endif %}
+  # The crate's source is scaffolded into a repository being created and never
+  # again: the crate's layout is its own, and an update rendering the scaffold
+  # would write a `src/lib.rs` into a crate that has only a binary. Copier sets
+  # `_copier_operation` to `update` for the whole of an update, the renders of
+  # the recorded and current commits it merges between included.
+  - |-
+    {% if _copier_operation == 'update' %}
+    crates/*/src/lib.rs
+    crates/*/src/main.rs
+    {% endif %}
 
 # The crate's source files, and the Dockerfile of a repository building an
 # image, are written once and then belong to the repository: a merge of
-# template scaffolding into a grown crate or image has no right answer. Everything else, README and
-# manifests included, is merged on update.
+# template scaffolding into a grown crate or image has no right answer. The
+# crate's source is also left out of an update's render altogether (`_exclude`
+# above), so a file the crate never had is not written either. Everything else,
+# README and manifests included, is merged on update.
 _skip_if_exists:
   - crates/*/src/lib.rs
   - crates/*/src/main.rs

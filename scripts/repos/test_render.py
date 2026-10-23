@@ -1099,6 +1099,32 @@ def test_an_update_leaves_an_applications_dockerfile_to_it(tmp_path: Path, own_s
     assert (root / "Dockerfile").read_text(encoding="utf-8") == "FROM scratch\n"
 
 
+def test_an_update_writes_no_crate_source(tmp_path: Path, own_superrepo: Path) -> None:
+    """A crate whose layout is its own, such as one with only a binary, is not scaffolded a library on update."""
+    root = tmp_path / "tool-music"
+    render.render(root, "tool-music", "tool", "The music tool", source=own_superrepo)
+    git(["init", "--quiet", "--initial-branch=master"], root)
+    source = root / "crates" / "music" / "src"
+    (source / "lib.rs").unlink()
+    (source / "main.rs").write_text("fn main() {}\n", encoding="utf-8")
+    commit(root, "chore: scaffold")
+
+    for crate_source in ("lib.rs", "main.rs"):
+        scaffold = own_superrepo / "templates" / "repository" / "crates" / "{{crate_dir}}" / "src"
+        template = next(scaffold.glob(f"*{crate_source}*"))
+        template.write_text(template.read_text(encoding="utf-8") + "// A line the kit added.\n", encoding="utf-8")
+    readme = own_superrepo / "templates" / "repository" / "README.md.jinja"
+    readme.write_text(readme.read_text(encoding="utf-8") + "\nA line the kit added.\n", encoding="utf-8")
+    commit(own_superrepo, "change the kit's crate scaffold")
+
+    outcome = render.update(root, source=own_superrepo)
+    assert outcome.conflicts == []
+    assert sorted(path.name for path in source.iterdir()) == ["main.rs"]
+    assert (source / "main.rs").read_text(encoding="utf-8") == "fn main() {}\n"
+    changed = git(["ls-files", "--modified", "--others", "--exclude-standard"], root).splitlines()
+    assert sorted(changed) == [".copier-answers.yml", "README.md"]
+
+
 def test_an_update_refuses_uncommitted_changes(tmp_path: Path, own_superrepo: Path) -> None:
     root = tmp_path / "gg.rocks"
     render.render(root, "gg.rocks", "site", "The site", source=own_superrepo)

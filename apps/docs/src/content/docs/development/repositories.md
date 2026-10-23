@@ -422,9 +422,11 @@ uv run --project ci scripts/repos/render.py --update contracts
 Copier renders the template at the recorded commit and at `HEAD`, and applies
 the difference, so a line the repository added survives and a line the kit
 changed arrives; a line both changed is left between conflict markers. The
-crate's `src/lib.rs` and `src/main.rs` are written once and left to the
-repository. `--uncommitted` renders the working tree, to try a kit change
-before it is committed, and leaves a record that is not for committing.
+crate's `src/lib.rs` and `src/main.rs` are written by the first render only and
+left to the repository: an update writes no crate source, so a crate with only
+a binary is not given a `src/lib.rs`. `--uncommitted` renders the working tree,
+to try a kit change before it is committed, and leaves a record that is not for
+committing.
 
 ## A repository's gates and pipeline
 

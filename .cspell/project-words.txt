@@ -888,6 +888,7 @@ scorable
 scoreable
 screenful
 scroller
+secretproviderclass
 seedable
 selfcheck
 serde

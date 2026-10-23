@@ -5,11 +5,11 @@
 #
 # The sidecar is a shell script held in the patch's `args`. Each case takes that
 # script out of the overlay's file as kubectl would hand it to `sh -c`, moves its
-# absolute paths (the state volume, /tmp, /run, /srv, /usr/local/bin, the token
-# mount) under a throwaway pod directory, and runs it with stubs first on PATH:
-# apk succeeds, git answers each step as the case declares, curl records each
-# request and answers as the case declares, flock runs its command, sleep returns
-# at once, and httpd records its arguments and returns, which ends the run.
+# absolute paths (the state volume, /tmp, /run, /srv, /usr/local/bin) under a
+# throwaway pod directory, and runs it with stubs first on PATH: apk succeeds, git
+# answers each step as the case declares, curl records each request and answers as
+# the case declares, flock runs its command, sleep returns at once, and httpd records
+# its arguments and returns, which ends the run.
 #
 # The subject is the contract scripts/ci/catalog-ingest.sh verify reads: the
 # startup run records its outcome in /tmp/ingest-result, a refresh that fails
@@ -82,8 +82,7 @@ fresh_pod() { # env
 	local pod
 	pod="$(mktemp -d "$tmp/podXXXXXX")"
 	mkdir -p "$pod/stubs" "$pod/usr/local/bin" "$pod/srv" "$pod/tmp" "$pod/run" \
-		"$pod/state" "$pod/secrets" "$pod/proc"
-	printf 'token\n' >"$pod/secrets/token"
+		"$pod/state" "$pod/proc"
 	# /tmp first: the pod's own directory lies under /tmp, and no later expression
 	# matches what an earlier one wrote.
 	sidecar_script "$OVERLAYS/$1/patch-backend-ingest.yaml" | sed \
@@ -91,7 +90,6 @@ fresh_pod() { # env
 		-e "s#/usr/local/bin/#$pod/usr/local/bin/#g" \
 		-e "s#/srv/refresh#$pod/srv/refresh#g" \
 		-e "s#/run/tcab-refresh.lock#$pod/run/tcab-refresh.lock#g" \
-		-e "s#/var/run/secrets/test-suites#$pod/secrets#g" \
 		-e "s#/state/checkout#$pod/state/checkout#g" \
 		-e "s#/proc/1/fd/1#$pod/proc/pid1#g" \
 		>"$pod/sidecar.sh"
@@ -186,6 +184,10 @@ for env in staging prod; do
 	script="$(sidecar_script "$OVERLAYS/$env/patch-backend-ingest.yaml")"
 	check_contains "names its branch" "BRANCH=$branch" "$script"
 	check_contains "records its result" "RESULT=/tmp/ingest-result" "$script"
+	# The test suites mirror is public, so the submodule is fetched at the address
+	# .gitmodules resolves to, as cold-storage is: no rewrite and no credential.
+	check_lacks "rewrites no fetch address" "insteadOf" "$script"
+	check_lacks "installs no credential helper" "credential." "$script"
 
 	echo "--- $env: a refresh and an ingest that both land ---"
 	pod="$(fresh_pod "$env")"

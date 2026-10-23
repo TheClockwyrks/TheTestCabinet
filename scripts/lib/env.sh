@@ -2,9 +2,8 @@
 # Shared per-environment target resolver for the REMOTE cluster/vault scripts.
 #
 # The scripts that act on a deployed environment — upload-subscription-creds.sh,
-# enable-secret-rotation.sh, configure-node-pools.sh, extract-cluster-assets.sh,
-# deployments/k8s/secrets/upload-test-suites-credential.sh — take a
-# REQUIRED `--env <prod|staging>` and source this file to turn that name into the
+# enable-secret-rotation.sh, configure-node-pools.sh, extract-cluster-assets.sh — take
+# a REQUIRED `--env <prod|staging>` and source this file to turn that name into the
 # concrete Azure resources they operate on. Keeping the mapping here means the
 # per-environment facts (Key Vault, AKS cluster, resource group, namespace) live in
 # exactly ONE place: adding an environment, or moving a resource, is a one-line edit

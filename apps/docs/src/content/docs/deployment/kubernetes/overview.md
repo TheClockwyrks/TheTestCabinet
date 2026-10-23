@@ -291,7 +291,11 @@ deployed before:
   admitted the ingress controller (`tcab-allow-services-from-ingress`,
   `tcab-allow-web-from-ingress`, `tcab-allow-lgtm-from-ingress` and
   `tcab-allow-arena-from-console`), and the `tcab-auth` sign-in workload with
-  its `Service`, `ServiceAccount` and `Secret` `tcab-auth-secrets`.
+  its `Service`, `ServiceAccount` and `Secret` `tcab-auth-secrets`;
+- the test suites credential the ingest sidecar fetched the suites with before
+  it fetched them anonymously from their public GitHub mirror: its mounter
+  `tcab-keyvault-sync-test-suites`, its `SecretProviderClass`
+  `tcab-keyvault-test-suites` and its `Secret` `tcab-test-suites-credential`.
 
 It waits for the deleted workloads' pods to be gone, and it is idempotent, so
 every deploy runs it.
