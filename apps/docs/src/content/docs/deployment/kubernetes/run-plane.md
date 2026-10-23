@@ -405,12 +405,13 @@ Data Contributor on the container and federated to the `ServiceAccount` through
 workload identity, as the backend's database identity is (see
 [PostgreSQL](/deployment/kubernetes/postgres/)); the pod carries the
 `azure.workload.identity/use: "true"` label. The R2 bucket takes the
-`TCAB_R2_*` credentials, from the Secret keyvault-csi materializes.
+`TCAB_R2_*` credentials from `tcab-artifacts-secrets`, the Secret keyvault-csi
+materializes for this service alone.
 
 | Variable                                          | Purpose                                                                                         |
 | ------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
 | `TCAB_ARTIFACTS_BLOB_ACCOUNT`, `_BLOB_CONTAINER`  | The storage account and private container the run trees are written to                          |
-| `TCAB_R2_*`                                       | The public bucket's endpoint, name and credentials                                              |
+| `TCAB_R2_*`                                       | The public bucket's endpoint, name and credentials, from `tcab-artifacts-secrets`               |
 | `TCAB_BACKEND_URL`                                | The backend (`http://tcab-backend:8787`) a per-job or per-publish-job token is verified against |
 | `TCAB_BACKEND_SERVICE_TOKEN`                      | The shared service token the backend's own calls present                                        |
 | `TCAB_ACCESS_TEAM_DOMAIN`, `TCAB_ACCESS_AUDIENCE` | The Access application the service verifies an edge request's assertion against                 |
@@ -419,9 +420,11 @@ An upload presents the driver's per-job token, which the service forwards to
 the backend as the token authority, and is streamed to Blob as it arrives. A
 read from the console arrives through the edge at `/artifacts/` and carries the
 Access assertion; the service answers by streaming the object or by redirecting
-to a short-lived signed URL, its choice per route. The backend's calls, the
-tree delete, the `GET /runs` listing, `publish-media` and the `PUT /public/{key}`
-snapshot writes, present the shared service token over `TCAB_ARTIFACTS_URL`.
+to a short-lived signed URL, its choice per route. The backend's calls present
+the shared service token over `TCAB_ARTIFACTS_URL`: the tree delete, the
+`GET /runs` listing, `publish-media`, the `PUT /public/{key}` snapshot writes,
+and the `GET /public` listing and `DELETE /public/{key}` its pruning and
+reference-sheet discovery use.
 
 ## Repos service
 

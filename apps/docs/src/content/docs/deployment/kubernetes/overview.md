@@ -208,9 +208,15 @@ the driver poll Key Vault and reconcile a changed value into the synced Secrets
 on its own, so a refreshed credential reaches the cluster without a restart.
 Enable it once per cluster with
 `scripts/enable-secret-rotation.sh --env <prod|staging>`, which is add-on
-configuration rather than a Kubernetes object. Adding a brand-new key to a
-Secret still needs
-`kubectl delete secret <name> && kubectl rollout restart deploy/tcab-keyvault-sync`.
+configuration rather than a Kubernetes object. Adding a key to a synced Secret
+or removing one from it still needs
+`kubectl delete secret <name> && kubectl rollout restart deploy/tcab-keyvault-sync`,
+and a Secret newly declared in the `SecretProviderClass` syncs on that restart.
+
+A Secret a service needs at start-up is synced before that service rolls. The
+artifacts service refuses to start without its public store, so
+`tcab-artifacts-secrets`, which carries its `TCAB_R2_*` keys, exists before its
+pods restart onto it.
 
 Keep each cluster on a supported Kubernetes version. An upgrade AKS initiates
 for an unsupported version overrides every `PodDisruptionBudget`, the run pod
@@ -582,7 +588,8 @@ these differ:
 
 Give each environment its own [public plane](/deployment/public-gallery/) so
 staging publishes stay out of the prod gallery dataset; point each artifacts
-service's `TCAB_R2_*` at the right bucket.
+service's `TCAB_R2_*`, in that environment's `tcab-artifacts-secrets`, at the
+right bucket.
 
 ## Next steps
 
