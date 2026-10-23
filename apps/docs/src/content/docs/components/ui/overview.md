@@ -30,6 +30,7 @@ A host imports only the entries it needs.
 | `@clockwyrks/ui`            | Presentational primitives, the rating model, and model-id helpers. |
 | `@clockwyrks/ui/app`        | The full routed gallery application and its data context.          |
 | `@clockwyrks/ui/client`     | The transport-agnostic client interfaces and their React contexts. |
+| `@clockwyrks/ui/embed`      | The embedded static-build player, without the application.         |
 | `@clockwyrks/ui/transport`  | The HTTP transports the console mounts.                            |
 | `@clockwyrks/ui/tokens.css` | The `--tcab-*` theme token defaults.                               |
 
