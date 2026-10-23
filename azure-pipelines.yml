@@ -222,9 +222,10 @@ stages:
           # Two caches rather than one, because they are saved under different
           # keys and restored at different rates: the registry changes only
           # with the lockfile, while the build output changes with every
-          # commit. Each restore key is a shorter prefix of the one above it,
-          # so a miss restores the nearest earlier entry and warms the compile
-          # rather than starting from nothing.
+          # commit. The registry's restore key is a shorter prefix of its key,
+          # so a miss restores the nearest earlier entry rather than fetching
+          # every crate again; the build output's restores from the same lock
+          # only, as its comment below says.
           - task: Cache@2
             displayName: Restore the cargo registry
             inputs:
@@ -238,22 +239,28 @@ stages:
           # earlier lock would leave two builds side by side. v2: the contracts
           # crates moved under contracts/, which gave them and every crate above
           # them new artifact names; the v1 output plus the rebuild outgrew the
-          # disk the cache save needs.
+          # disk the cache save needs. v3: restores come from the same
+          # Cargo.lock only, which leaves the v2 entries, grown across locks,
+          # behind.
           #
-          # The build output falls back one step further, to the newest entry
-          # for the OS whatever its toolchain file. That file's hash changes
-          # with any edit of it, a comment included, and a run that restored
-          # nothing compiles the whole workspace cold, which is more than the
-          # hosted agent's memory holds. Cargo revalidates what it restored by
-          # fingerprint and rebuilds only what the change invalidated: nothing
-          # for a comment, everything for a new compiler.
+          # The build output restores only from an entry for this Cargo.lock:
+          # this job's own, or the seed rust_build saved for it (its key is
+          # this one plus a suffix, so the prefix below matches it). This
+          # project drops the toolchain-only and OS-only fallbacks; the OS-only
+          # one is template v0.34.1's, and a template update merges this edit
+          # back over it. A fallback across locks restored the output of every
+          # crate an earlier lock had built, nothing ever removed it, and each
+          # save archived it again with this run's output beside it: by run
+          # 18373 the restored archive was 21 GB, while this workspace builds
+          # in minutes cold, and restoring it ran the agent out of disk. A new
+          # lock or toolchain therefore starts cold here, and rust_build's seed
+          # for it warms the next run.
           - task: Cache@2
             displayName: Restore the build output
             inputs:
-              key: 'cargo-target | v2 | "$(Agent.OS)" | rust-toolchain.toml | Cargo.lock'
+              key: 'cargo-target | v3 | "$(Agent.OS)" | rust-toolchain.toml | Cargo.lock'
               restoreKeys: |
-                cargo-target | v2 | "$(Agent.OS)" | rust-toolchain.toml
-                cargo-target | v2 | "$(Agent.OS)"
+                cargo-target | v3 | "$(Agent.OS)" | rust-toolchain.toml | Cargo.lock
               path: target
 
           # The build output cache restores `target/` whole, the reports the
