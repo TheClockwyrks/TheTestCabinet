@@ -96,8 +96,10 @@ patches:
   # Enable subscription auth (Codex + Claude Code) by mounting the
   # tcab-driver-subscription Secret into each driver Job.
   - path: patch-dispatcher-subscription.yaml
-  # Enable in-cluster publishing: the publisher credential Secret and the prod publish
-  # targets. The publisher image itself is set by scripts/ci/pin-images.sh.
+  # Enable in-cluster publishing: the publisher credential Secret and the prod
+  # Cloudflare Pages project the dispatcher forwards into publish Jobs (the GitHub
+  # org is the repos service's, patch-repos-github.yaml). The publisher image itself
+  # is set by scripts/ci/pin-images.sh.
   - path: patch-dispatcher-publisher.yaml
   # The Access application the backend, artifacts and arena verify the edge's
   # assertion against.
