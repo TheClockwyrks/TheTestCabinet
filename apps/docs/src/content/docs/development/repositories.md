@@ -363,9 +363,11 @@ and the kit's `edges.py` hold:
 - for an `application`, the `Dockerfile` scaffold and its `.dockerignore`
   allowlist, the `build-context` gate, and the image stage that builds the
   image natively on an amd64 and an arm64 agent and fuses the two into
-  `<name>:<commit>` (`IMAGE_KINDS` in `render.py`), and the same for the one
-  `site` a deployment serves, `console.testcabinet.ai` (`IMAGE_SITES`), whose
-  scaffold builds the npm workspace and serves the bundle through nginx;
+  `<name>:<commit>` (`IMAGE_KINDS` in `render.py`), except for an application
+  no deployment runs, `the-spec-cabinet`, which runs on a development machine
+  alone (`APPLICATIONS_WITHOUT_IMAGE`), and the same for the one `site` a
+  deployment serves, `console.testcabinet.ai` (`IMAGE_SITES`), whose scaffold
+  builds the npm workspace and serves the bundle through nginx;
 - the includes of the jobs, stages and Rust setup steps a repository writes
   itself, which `PROJECT_PIPELINE` names with the stages the mirror waits on,
   and the Rust job's time limit (`RUST_TIMEOUTS`);
@@ -455,7 +457,9 @@ and the rendered `ci/tests/test_wiring.py` holds each to its one step.
 A repository whose pipeline runs work beyond the kit's, such as `gg`, which
 releases its binaries, its reference and its toolchains image on a tag, or
 `gg.rocks` and `testcabinet.ai`, whose `deploy` stages upload each site to its
-Pages project, writes it as the superrepo writes its own: its jobs in
+Pages project, or `the-spec-cabinet`, whose `release` stage publishes its
+binary and its built frontend on a tag, writes it as the superrepo writes its
+own: its jobs in
 `.azure/project/jobs.yml`, which the gates stage includes after the kit's
 jobs, and its stages in
 `.azure/project/stages.yml`, which the pipeline includes after the publish
@@ -468,14 +472,15 @@ the rendered `ci/tests/test_wiring.py` holds the includes to the parameters
 each file declares, each stage to depending on the gates, and both files to
 running no gate. Such a repository's Rust job also takes the steps of
 `.azure/project/setup-steps.yml` after it fetched its dependencies and before
-its first check, which is where gg provisions the toolchains its build script
-needs, and `RUST_TIMEOUTS` gives a Rust job whose cold build outlasts the
-kit's hour a longer limit.
+its first check, which is where gg and `the-spec-cabinet` provision the
+toolchains their build scripts need, and `RUST_TIMEOUTS` gives a Rust job whose
+cold build outlasts the kit's hour a longer limit.
 
 A repository's `azure-pipelines.yml` runs on every push to `master`, `staging`
 and `nightly` and to a `v*` tag. The gates stage runs the Rust gates in the
 Rust job and every other check in the checks job, inside the web image. On
-`master` and `staging` an application's run then builds its image and pushes
+`master` and `staging` an application's run then builds its image, unless no
+deployment runs it, and pushes
 it to the registry as `<name>:<commit>`, as `console.testcabinet.ai`'s does,
 and a tool's run builds the image carrying its binaries the same way. A tag's
 run publishes each public package of the workspace to the feed, at the version

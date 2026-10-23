@@ -266,6 +266,8 @@ def test_the_windows_and_extra_gate_tables_name_repositories_carrying_a_crate() 
     assert render.extra_gates("console.testcabinet.ai", "site") == {"checks": ("web-lint", "web-browser-test")}
     # The gallery lints its TypeScript beside the kit's `typescript` gate.
     assert render.extra_gates("testcabinet.ai", "site") == {"checks": ("web-lint",)}
+    # The Spec Cabinet regenerates its browser fixture with cargo, in the Rust job.
+    assert render.extra_gates("the-spec-cabinet", "application") == {"rust": ("fixture-suite-drift",)}
     # gg, an application, takes the kit's `build-context` gate, which holds its
     # Dockerfiles (the `gg-toolchains` image's among them) to its build context.
     assert render.extra_gates("gg", "application") == {}
@@ -289,6 +291,10 @@ def test_the_project_pipeline_table_names_repositories_and_stages() -> None:
     assert render.PROJECT_PIPELINE["testcabinet.ai"] == ("deploy",)
     # The driver builds the run-container images in a stage of its own.
     assert render.PROJECT_PIPELINE["microservice-driver"] == ("runimages",)
+    # The Spec Cabinet publishes its binary on a tag, and its Rust job provisions
+    # the toolchains its sandbox's build scripts need.
+    assert render.PROJECT_PIPELINE["the-spec-cabinet"] == ("release",)
+    assert render.ci_project_setup("the-spec-cabinet", "application") == f"          - template: {render.PROJECT_SETUP}"
     assert (
         render.ci_project_setup("microservice-driver", "application") == f"          - template: {render.PROJECT_SETUP}"
     )
@@ -305,6 +311,7 @@ def test_the_project_pipeline_table_names_repositories_and_stages() -> None:
     assert set(render.RUST_TIMEOUTS) <= set(EDGES.REPOSITORIES)
     assert render.rust_timeout("gg") == 120
     assert render.rust_timeout("microservice-driver") == 180
+    assert render.rust_timeout("the-spec-cabinet") == 120
     assert render.rust_timeout("microservice-arena") == render.RUST_TIMEOUT
 
 
@@ -388,6 +395,15 @@ def test_a_kind_that_builds_an_image_carries_a_crate() -> None:
     for kind in render.IMAGE_KINDS:
         assert EDGES.KINDS[kind].crate == "binary", kind
     assert render.ci_image_stage("contracts", "library") == ""
+
+
+def test_an_application_no_deployment_runs_builds_no_image() -> None:
+    """The Spec Cabinet runs on a development machine alone, so its pipeline builds and pushes no image."""
+    applications = {repo for repo, kind in EDGES.REPOSITORIES.items() if kind in render.IMAGE_KINDS}
+    assert render.APPLICATIONS_WITHOUT_IMAGE.issubset(applications)
+    assert not render.builds_image("the-spec-cabinet", "application")
+    assert render.ci_image_stage("the-spec-cabinet", "application") == ""
+    assert render.builds_image("microservice-arena", "application")
 
 
 def test_a_tool_builds_an_image_when_a_run_image_carries_its_binaries() -> None:

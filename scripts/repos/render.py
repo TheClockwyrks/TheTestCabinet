@@ -202,6 +202,10 @@ EXTRA_GATES: dict[str, dict[str, tuple[str, ...]]] = {
     # The gallery lints its TypeScript with ESLint, as ui-common's and the
     # console's `web-lint` do, beside the kit's `typescript` gate.
     "testcabinet.ai": {"checks": ("web-lint",)},
+    # The Spec Cabinet's browser tests mount a JSON rendering of the contracts
+    # crate's fixture suite, which its crate generates with cargo; the gate
+    # regenerates it and fails on a difference, so it runs where cargo does.
+    "the-spec-cabinet": {"rust": ("fixture-suite-drift",)},
 }
 # The jobs of the gates stage an extra gate may name.
 GATE_JOBS = ("rust", "checks")
@@ -221,12 +225,16 @@ GATE_JOBS = ("rust", "checks")
 # the environment the branch names. microservice-driver's jobs build `tcab` on
 # every run and publish it on a tag, and stage the audio store its image
 # copies; its `runimages` stage builds the run-container images from `master`
-# and `staging`, copying the tools' binaries from their images.
+# and `staging`, copying the tools' binaries from their images. The Spec
+# Cabinet's `release` stage builds `tcab-spec-cabinet` with its frontend on a
+# tag and publishes them as an artifact of the run, and its Rust job's setup
+# provisions the toolchains its sandbox's build scripts compile the guest with.
 PROJECT_PIPELINE: dict[str, tuple[str, ...]] = {
     "gg": ("release",),
     "gg.rocks": ("deploy",),
     "microservice-driver": ("runimages",),
     "testcabinet.ai": ("deploy",),
+    "the-spec-cabinet": ("release",),
 }
 PROJECT_JOBS = ".azure/project/jobs.yml"
 PROJECT_STAGES = ".azure/project/stages.yml"
@@ -251,9 +259,11 @@ ARM64_POOL = "pool-dev-linux-arm64-wus3-4c-eph-01"
 # outlasts the hour the kit's Rust job is given, as the superrepo's Rust job,
 # which compiled gg in the workspace, was given two. The driver's suite, the
 # superrepo's longest, ran in the superrepo's Rust job, which was given two and
-# a half, and drives a browser besides.
+# a half, and drives a browser besides. A cold build of The Spec Cabinet
+# compiles its sandbox's ECMAScript guest and its PureScript library set after
+# restoring their toolchains, as gg's does.
 RUST_TIMEOUT = 60
-RUST_TIMEOUTS: dict[str, int] = {"gg": 120, "microservice-driver": 180}
+RUST_TIMEOUTS: dict[str, int] = {"gg": 120, "microservice-driver": 180, "the-spec-cabinet": 120}
 
 # The crate a render scaffolds in each repository carrying one: its directory
 # under crates/ and its package name. The monorepo's crates keep their
@@ -351,6 +361,9 @@ CHECKS_SOURCES = "$(Build.SourcesDirectory)"
 # that installs the npm workspace and serves what it builds; a kind carrying no
 # crate fetches no repository, so its image jobs rewrite no git source.
 IMAGE_KINDS = frozenset({"application"})
+# The applications no deployment runs, which build no image: The Spec Cabinet
+# runs on a development machine alone, from the binary its tag publishes.
+APPLICATIONS_WITHOUT_IMAGE = frozenset({"the-spec-cabinet"})
 IMAGE_TOOL_KIND = "tool"
 IMAGE_SITE_KIND = "site"
 IMAGE_SITES = frozenset({"console.testcabinet.ai"})
@@ -994,11 +1007,12 @@ def ci_publish(kind: str) -> str:
 def builds_image(name: str, kind: str) -> bool:
     """Whether the repository's pipeline builds and pushes its image.
 
-    Every application does; a tool does when a run image carries its binaries,
-    and a site when a deployment serves it (`IMAGE_SITES`).
+    Every application does but one no deployment runs (`APPLICATIONS_WITHOUT_IMAGE`);
+    a tool does when a run image carries its binaries, and a site when a
+    deployment serves it (`IMAGE_SITES`).
     """
     if kind in IMAGE_KINDS:
-        return True
+        return name not in APPLICATIONS_WITHOUT_IMAGE
     if kind == IMAGE_SITE_KIND:
         return name in IMAGE_SITES
     return kind == IMAGE_TOOL_KIND and name in edge_table().TOOL_IMAGES

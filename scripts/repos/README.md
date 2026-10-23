@@ -64,10 +64,11 @@ out beside its own across a data edge, with the variable naming each checkout
 to the suite (`RUST_CHECKOUTS`), the image pins (`ciImageTag` from
 `ci/images/tags.yml`), the feed (`FEED_REGISTRY`), the long-lived branches
 (`BRANCHES`), the release tags each dependent pins (`TAGS`), the kinds whose
-pipeline builds and pushes an image (`IMAGE_KINDS`, every application; a tool
-builds the image carrying its binaries when the kit's `TOOL_IMAGES` names it,
-its `Dockerfile` compiling every binary of the crate into `/usr/local/bin/` of
-a final stage that runs nothing; each image build is handed the git
+pipeline builds and pushes an image (`IMAGE_KINDS`, every application but
+one no deployment runs, `APPLICATIONS_WITHOUT_IMAGE`; a tool builds the image
+carrying its binaries when the kit's `TOOL_IMAGES` names it, its `Dockerfile`
+compiling every binary of the crate into `/usr/local/bin/` of a final stage
+that runs nothing; each image build is handed the git
 configuration `git-sources.sh` writes as the secret `gitconfig` and npm's
 credential for the feed, written by `npm-feed.sh`, as the secret `npmrc`), the
 repositories whose
