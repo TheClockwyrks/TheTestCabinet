@@ -7,7 +7,8 @@ number: 5
 title: Promote staging to master and deploy the edge to prod
 type: generic
 priority: 3
-state: open
+state: blocked
+reason: Promote nightly into staging (NYX-3's fix 5a53793e4; staging's Deploy failing in runs 20261023.10/.12, NYX-7) and approve the staging→master prod promotion once staging deploys green.
 depends_on:
   - hvd0bgb29td3kqgkv1xv2u8m
   - v7g831wei81xfao35yrhlk4q
