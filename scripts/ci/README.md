@@ -185,10 +185,10 @@ Those jobs take the template `rust` job's variables (`CARGO_HOME` under
 `line-tables-only`) and the same first steps, from `.azure/tcab/rust-job-steps.yml`,
 so what they compile carries the fingerprints that job's would:
 
-| Cache (key prefix)   | Path                             | Saved by                                                              | Restored by                                                                 |
-| -------------------- | -------------------------------- | --------------------------------------------------------------------- | --------------------------------------------------------------------------- |
-| `cargo-home \| v1`   | `$(Pipeline.Workspace)/ci-cache` | the template's `rust` job and every Rust container job                | the same                                                                    |
-| `cargo-target \| v1` | `target`                         | the template's `rust` job; `rust_build` with the `"tcab-seed"` suffix | the template's `rust` job, whose restore key matches the seed; `rust_build` |
+| Cache (key prefix)   | Path                             | Saved by                                                              | Restored by                                                                                                  |
+| -------------------- | -------------------------------- | --------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| `cargo-home \| v1`   | `$(Pipeline.Workspace)/ci-cache` | the template's `rust` job and every Rust container job                | the same                                                                                                     |
+| `cargo-target \| v3` | `target`                         | the template's `rust` job; `rust_build` with the `"tcab-seed"` suffix | the template's `rust` job, whose restore key matches the seed; `rust_build`; from the same `Cargo.lock` only |
 
 Cache@2 saves only after every step of a job succeeded. So a cold template `rust`
 job that outlasts its 120 minutes would never warm itself; **the seed** is what warms
@@ -196,8 +196,19 @@ it. When no seed is cached for the current `Cargo.lock`, `rust_build` runs
 `rust-build.sh --seed` after its own build: the template gates' exact clippy,
 rustdoc and nextest-build commands, each run whether or not the one before it passed,
 saved under a key the `rust` job's restore key matches. A failing seed is reported and
-does not fail the job. Expect the first run after adoption, a `rust-toolchain.toml`
-bump or a cache expiry to be slow, and the template's `rust` job to need a second run.
+does not fail the job. Expect the first run after a `Cargo.lock` change, a
+`rust-toolchain.toml` bump or a cache expiry to be slow, and the template's `rust` job
+to need a second run.
+
+Both jobs restore `target` **from the same `Cargo.lock` only**: the one restore key is
+`cargo-target | v3 | "$(Agent.OS)" | rust-toolchain.toml | Cargo.lock`, a prefix of
+the `rust` job's own key and of the seed's, and of nothing an earlier lock saved. The
+project drops the template's toolchain-only and OS-only fallbacks: restoring across
+locks carried every earlier lock's output forward, each save archived it again, and by
+nightly run 18373 the restored archive was 21 GB and ran the agent out of disk. The
+key hashes `Cargo.lock`, so `rust-build.sh` runs cargo through
+`cargo_keeping_lock_order` and fails when the lock it leaves differs from the committed
+one: a save whose key no longer matches its restore is refused.
 
 **Node** comes from `provision-node.sh <dir>`, through
 `.azure/tcab/node-steps.yml`, for every job that builds or tests Rust and the docs.
