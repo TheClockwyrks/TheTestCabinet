@@ -6,12 +6,27 @@ zone: SHELL
 number: 1
 title: Create the operator client as client-tauri
 type: generic
-state: open
+priority: 3
+state: done
 depends_on:
   - nxs3up9tm7pi706lpgt12xkm
   - zwdbu3cf0k1byv4js6vtj29b
   - j10x004gco5coyozcwcqla2b
 created: 2026-10-13T21:13:39.032189574Z
+done: 2026-10-23T01:33:38.994364191Z
+outcome: |
+  Landed on nightly through PR 5134 (2eb706640). client-tauri is the superrepo
+  submodule at v0.1.0 (0ac734c9), on its master after the nightly → staging
+  (PR 5128) and staging → master (PR 5129) promotions; the v0.1.0 tag run 18512
+  published the four bundle artifacts (linux, android, windows, macos). The
+  android CI image track was built by the image pipeline at 32214df70, which
+  ci/images/tags.yml pins as ciImageTag; every kit-rendered repository was
+  re-rendered onto it (PRs 5083 to 5108) and the gitlinks moved onto master.
+  ui-common carries the tcab:resume stream reopen on master as release 0.1.3 (PRs
+  5071 and 5017's successor), and console.testcabinet.ai pins it (PR 5073). Every
+  superrepo gate passes (22 of 22) and a clean npm ci of nightly installs.
+  Unverified: the device and desktop sign-in through Access (no device or Access
+  app in this environment), and no bundle was installed or launched.
 ---
 
 Operators reach the console through a browser only. The documentation
