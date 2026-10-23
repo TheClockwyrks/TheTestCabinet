@@ -6,10 +6,72 @@ zone: BACK
 number: 2
 title: Move the backend's stored files into Postgres and artifacts
 type: generic
-state: open
+priority: 3
+state: done
 depends_on:
   - mkwwaowuuf9kuvps1wmow2pi
 created: 2026-10-19T00:38:39.876038831Z
+done: 2026-10-23T21:29:01.831772124Z
+outcome: |
+  The block was resolved in the docs first (`components/artifacts/overview.md`,
+  "Routes", "Tournament match replays" and "Auth"). The artifacts service now has
+  `PUT`/`GET /tournaments/{id}/matches/{matchId}/replay`, under the control-plane
+  service token. A replay is stored at
+  `tournaments/<id>/matches/<matchId>/replay.json` in the private container. `GET
+  /runs` never lists it, and a run cannot be given the id `tournaments`.
+  `components/backend/overview.md`, "Durable state", now names the route and
+  describes the one-off move on start.
+
+  Done:
+
+  - **Controllers in the database:** a pushed `controller.wasm` lives in a new
+    `run_controller` table (migration `m20261023_000066`). `GET`/`POST
+    /runs/{id}/controller.wasm` and `GET /adversarial/controllers` read and write
+    it there, and deleting a run deletes its controller. The table has no foreign
+    key to the run, because the driver pushes the controller before the terminal
+    report creates the run's row.
+  - **Match replays:** written to and read back from the artifacts service.
+    Without `TCAB_ARTIFACTS_URL` the backend's replay routes answer `503`.
+  - **Backend run copies removed:** the session record, code-analysis and media
+    copies under `runs/<id>/` are gone, along with their backend routes. The
+    driver's mirror uploads are gone (only the controller push stays), and so are
+    the matching backend-client methods in contracts. The publisher had no such
+    uploads, only stale comments.
+  - **Snapshot:** a run's media is now copied with `POST
+    /runs/{id}/publish-media`, and the code analysis is read from the artifacts
+    service. A media copy the service refuses fails the refresh, so the previous
+    generation stays live.
+  - **Console (ui-common):** a run's media and code analysis are now read from the
+    artifacts service.
+  - **One-off move on start:** controllers go into the database and match replays
+    go through the artifacts service. The move runs in the background, and
+    `/readyz` answers `503` "moving" until it finishes, while `/healthz` stays
+    live. A file that fails to move is left for the next start.
+
+  Verified: the backend test
+  `a_backend_on_an_empty_store_serves_a_pushed_controller_and_a_stored_match_replay`
+  passes, along with tests for the move on start. All Rust gates pass in the
+  superrepo (1501 tests), plus the docs gates and the gates in artifacts (240
+  tests), contracts, driver, publisher and ui-common.
+
+  Not verified:
+
+  - The arena-against-a-replaced-pod check was not run on a cluster.
+  - `cspell` cannot check this worktree because it sits under `.git/`.
+  - The superrepo's `dependency-graph` lock check fails the same way at the base
+    commit: this machine has never downloaded the crate it needs to resolve
+    offline.
+  - In the driver and publisher, the `format`, `markdownlint` and `scripts-test`
+    gates did not run because `npm ci` failed with E401. In contracts and the
+    driver, one test fails the same way at the base commit (the suites browser
+    test, and a bundle test affected by the shell's `GIT_AUTHOR_*` variables).
+
+  Left:
+
+  - A pushed controller whose run never gets a row stays in the table; nothing
+    reclaims it.
+  - One stale comment in
+    `console.testcabinet.ai/apps/web/src/state/use-connections.ts`.
 ---
 
 The backend writes durable files into its definition store on the pod's
