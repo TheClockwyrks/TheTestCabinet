@@ -99,10 +99,9 @@ intact when a variable names a directory the clone has not filled.
   volume, writes the checkout the backend reads, and calls `POST /ingest` over
   localhost, so intra-pod traffic bypasses the `NetworkPolicy`. It presents the
   backend's shared service token, which the ingest route takes. Each refresh
-  fetches the `test-suites` branch tip, authenticated with the read-only
-  credential in the
-  [`tcab-test-suites-credential` Secret](/deployment/overview/#secrets), and
-  `cold-storage` shallowly. It runs one forced ingest of the branch tip on
+  fetches the `test-suites` submodule at the commit the branch tip names and
+  `cold-storage` shallowly, both anonymously from their public GitHub mirrors,
+  so a deploy needs no credential for them. It runs one forced ingest of the branch tip on
   backend start, then idles. Those overlays suspend the base `CronJob`.
 
 A pipeline deploy that moves the backend's pin restarts the backend pod, and
@@ -115,7 +114,7 @@ edge with the Access service token; the backend refreshes its checkout to the
 tip of the branch the environment ingests and scans it. The backend swaps each
 version into place atomically, so it is safe to run while runs execute. Both
 paths treat the suites' own update as the one step allowed to fail: when the
-credential is absent, expired or refused, the refresh prints
+fetch fails, the refresh prints
 `ingest: test suites update failed; ingesting without them` and ingests the
 test cases and the reference-build lockfile the checkout already holds. Every
 other step of `tcab ingest --env <env>` fails it before anything is ingested.

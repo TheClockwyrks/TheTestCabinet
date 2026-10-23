@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # Deletes the objects of an earlier shape from one namespace, before an apply: the
 # backend Deployment of its old name, `tcab-backend`, the artifacts service's
-# StatefulSet, `tcab-artifacts`, and what the edge replaced (the internal ingress's
+# StatefulSet, `tcab-artifacts`, what the edge replaced (the internal ingress's
 # Ingresses and the network policies that admitted it, and the `tcab-auth` sign-in
-# workload).
+# workload), and the test suites credential's mounter.
 #
 #   scripts/ci/retire-legacy-backend.sh [--dry-run]
 #
@@ -35,6 +35,14 @@
 #   - the `tcab-auth` Deployment, its Service, its ServiceAccount and its Secret
 #     `tcab-auth-secrets`, a workload nothing routes to any more.
 #
+# The ingest sidecar fetched the test suites from Azure Repos with a read-only token,
+# synced from Key Vault through a SecretProviderClass of its own,
+# `tcab-keyvault-test-suites`, kept mounted by the `tcab-keyvault-sync-test-suites`
+# Deployment into the Secret `tcab-test-suites-credential`. It now fetches them from
+# the public GitHub mirror, and no render names the three. The mounter is a workload
+# the settle step waits on, and it waits in ContainerCreating wherever the vault lacks
+# the token, failing every deploy of the namespace.
+#
 # This deletes them all, and waits for the workloads' pods to be gone, before
 # anything is applied. It is idempotent: once an object is gone, its delete finds
 # nothing and succeeds, so every deployment runs it.
@@ -64,7 +72,9 @@ ingress/tcab-api ingress/tcab-arena ingress/tcab-artifacts ingress/tcab-auth \
 ingress/tcab-console ingress/tcab-grafana \
 networkpolicy/tcab-allow-services-from-ingress networkpolicy/tcab-allow-web-from-ingress \
 networkpolicy/tcab-allow-lgtm-from-ingress networkpolicy/tcab-allow-arena-from-console \
-deployment/tcab-auth service/tcab-auth serviceaccount/tcab-auth secret/tcab-auth-secrets"
+deployment/tcab-auth service/tcab-auth serviceaccount/tcab-auth secret/tcab-auth-secrets \
+deployment/tcab-keyvault-sync-test-suites secretproviderclass/tcab-keyvault-test-suites \
+secret/tcab-test-suites-credential"
 
 dry_run=""
 if [[ "${1:-}" == --dry-run ]]; then

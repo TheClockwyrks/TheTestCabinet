@@ -98,7 +98,7 @@ run() { # repo [env-assignment...]
 echo "--- the staging defaults ---"
 
 # Every object the retirement deletes, in the order it names them.
-LEGACY="deployment/tcab-backend statefulset/tcab-artifacts ingress/tcab-api ingress/tcab-arena ingress/tcab-artifacts ingress/tcab-auth ingress/tcab-console ingress/tcab-grafana networkpolicy/tcab-allow-services-from-ingress networkpolicy/tcab-allow-web-from-ingress networkpolicy/tcab-allow-lgtm-from-ingress networkpolicy/tcab-allow-arena-from-console deployment/tcab-auth service/tcab-auth serviceaccount/tcab-auth secret/tcab-auth-secrets"
+LEGACY="deployment/tcab-backend statefulset/tcab-artifacts ingress/tcab-api ingress/tcab-arena ingress/tcab-artifacts ingress/tcab-auth ingress/tcab-console ingress/tcab-grafana networkpolicy/tcab-allow-services-from-ingress networkpolicy/tcab-allow-web-from-ingress networkpolicy/tcab-allow-lgtm-from-ingress networkpolicy/tcab-allow-arena-from-console deployment/tcab-auth service/tcab-auth serviceaccount/tcab-auth secret/tcab-auth-secrets deployment/tcab-keyvault-sync-test-suites secretproviderclass/tcab-keyvault-test-suites secret/tcab-test-suites-credential"
 
 repo="$(fresh_repo)"
 out="$(run "$repo")"
@@ -122,6 +122,11 @@ done
 for object in deployment/tcab-auth service/tcab-auth serviceaccount/tcab-auth secret/tcab-auth-secrets; do
 	check_contains "retires the sign-in workload's ${object}" " ${object} " "$sent"
 done
+for object in deployment/tcab-keyvault-sync-test-suites secretproviderclass/tcab-keyvault-test-suites \
+	secret/tcab-test-suites-credential; do
+	check_contains "retires the test suites credential's ${object}" " ${object} " "$sent"
+done
+check_lacks "keeps the shared Key Vault mounter" "deployment/tcab-keyvault-sync " "$sent"
 check_lacks "keeps the edge's tunnel" "cloudflared" "$sent"
 check_lacks "keeps the default-deny policy" "default-deny" "$sent"
 check_lacks "keeps the artifacts Service the Deployment answers on" "service/tcab-artifacts" "$sent"

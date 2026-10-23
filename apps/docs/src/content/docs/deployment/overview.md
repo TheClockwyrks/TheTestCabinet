@@ -245,18 +245,6 @@ files, created from your secret manager rather than committed. The set is:
 - The tunnel's credentials file, in the `tcab-cloudflared` Secret; see
   [The tunnel](/deployment/kubernetes/edge/#the-tunnel).
 - The Grafana admin credentials, in the `tcab-grafana-admin` Secret.
-- The read-only test suites credential, in the `tcab-test-suites-credential`
-  Secret under the key `token`. The backend pod's ingest sidecar fetches the test
-  suites repository with it, so it is a token that can only read that
-  repository. `deployments/k8s/secrets/upload-test-suites-credential.sh --env
-  <env>` stores it in the environment's secret manager, from which the Secret is
-  created. It is synced through its own `SecretProviderClass` and mounter,
-  `tcab-keyvault-sync-test-suites`, rather than the shared one: the Key Vault
-  provider fails a whole mount when one listed secret is missing, so a token not
-  yet uploaded holds back only this Secret, and the backend, whose volume of it is
-  optional, ingests without the suites. Run the script before the first deploy that
-  carries the test suites, or that deploy's settle step reports the mounter as not
-  ready.
 
 Two credentials of the edge live at Cloudflare rather than in the cluster: the
 Entra client secret of the Access identity provider and the Access service
