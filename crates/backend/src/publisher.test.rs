@@ -83,7 +83,7 @@ async fn seed_published(db: &Db, id: &str, published_at: &str) {
     db.publish(id, published_at).await.unwrap();
 }
 
-/// Build a publisher in dev mode (no R2, no hook): an in-memory database and a
+/// Build a publisher in dev mode (no R2): an in-memory database and a
 /// fresh temp definition store. The `TempDir` is returned so the store outlives
 /// the publisher.
 async fn dev_publisher() -> (TempDir, Publisher, Arc<Db>) {
@@ -93,7 +93,6 @@ async fn dev_publisher() -> (TempDir, Publisher, Arc<Db>) {
     let publisher = Publisher::new(
         Arc::clone(&db),
         store,
-        None,
         None,
         None,
         None,
@@ -115,8 +114,6 @@ async fn forced_refresh_regenerates_and_clears_dirty_in_dev_mode() {
 
     let outcome = publisher.refresh_now().await.unwrap();
     assert_eq!(outcome.run_count, 1);
-    // No hook configured in dev mode.
-    assert!(!outcome.deploy_hook_fired);
     // The refresh clears the dirty flag and records the run count.
     let state = db.snapshot_state().await.unwrap();
     assert!(!state.dirty);

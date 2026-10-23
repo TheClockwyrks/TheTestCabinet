@@ -121,9 +121,6 @@ pub struct Config {
     /// because the R2 variables were not all supplied (only valid in dev: see
     /// [`Config::from_env`]).
     pub r2: Option<R2Config>,
-    /// The Cloudflare Pages deploy-hook fired after each upload
-    /// (`TCAB_SITE_DEPLOY_HOOK_URL`). `None` disables the hook (dev only).
-    pub deploy_hook_url: Option<String>,
     /// The coalescing window for bursts of publishes (`TCAB_SNAPSHOT_COALESCE_MS`).
     pub coalesce: Duration,
     /// How long a superseded snapshot generation is kept in the bucket before the
@@ -223,11 +220,11 @@ impl Config {
     /// Resolve the configuration from the process environment.
     ///
     /// `TCAB_BACKEND_CHECKOUT` is the only unconditionally required variable. The
-    /// R2 group and the deploy hook are required for production publishing, but
-    /// the backend is allowed to start without them so a developer can exercise
-    /// ingest and the read API offline; in that mode a publish still records into
-    /// SQLite and regenerates the snapshot on disk, only skipping the R2 upload
-    /// and the deploy-hook fire. Production deployments supply the full set.
+    /// R2 group is required for production publishing, but the backend is allowed
+    /// to start without it so a developer can exercise ingest and the read API
+    /// offline; in that mode a publish still records into SQLite and regenerates
+    /// the snapshot on disk, only skipping the R2 upload. Production deployments
+    /// supply the full set.
     pub fn from_env() -> Result<Self, ConfigError> {
         let bind = env_or("TCAB_BACKEND_BIND", DEFAULT_BIND);
         let env = env_or("TCAB_ENV", "local");
@@ -243,9 +240,6 @@ impl Config {
         let openrouter_api_key = nonempty("TCAB_OPENROUTER_API_KEY");
 
         let r2 = R2Config::from_env();
-        let deploy_hook_url = std::env::var("TCAB_SITE_DEPLOY_HOOK_URL")
-            .ok()
-            .filter(|v| !v.is_empty());
 
         let coalesce_ms = std::env::var("TCAB_SNAPSHOT_COALESCE_MS")
             .ok()
@@ -299,7 +293,6 @@ impl Config {
             service_token,
             openrouter_api_key,
             r2,
-            deploy_hook_url,
             coalesce: Duration::from_millis(coalesce_ms),
             snapshot_retention: Duration::from_secs(snapshot_retention_hours * 3600),
             reference_browser,

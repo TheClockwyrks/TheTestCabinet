@@ -13,7 +13,7 @@
 //!   (SQLite locally and in tests, PostgreSQL in deployments); and
 //! - owns the **synchronized publish path**: a publish ingests into SQLite, then
 //!   a coalesced background task regenerates the full public snapshot, uploads it
-//!   atomically to R2, and fires the site deploy hook.
+//!   atomically to R2.
 //!
 //! Every request identifies its caller, by the Cloudflare Access assertion the
 //! edge attaches or by a token the backend minted; see [`auth`].
@@ -317,7 +317,6 @@ async fn build_with_prices(
         Arc::clone(&db),
         store.clone(),
         r2,
-        config.deploy_hook_url.clone(),
         config.artifacts_internal_url.clone(),
         config.service_token.clone(),
         crate::publisher::PublisherTiming {
