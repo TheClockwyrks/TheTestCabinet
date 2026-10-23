@@ -6,6 +6,7 @@ zone: SITE
 number: 1
 title: Serve the gallery from the index objects the bucket holds
 type: generic
+priority: 3
 state: open
 depends_on:
   - tx7vcyi2kctg8wr9v5qfr9jf
@@ -30,10 +31,8 @@ static shell", "Reading the dataset", "The public read surface" and
   sorting the console's backend query has, as the serving page states.
 - The site's build and deploy as
   `apps/docs/src/content/docs/development/releasing.md`, section "Gallery
-  (Cloudflare Pages and Workers, one-time)", states, with no deploy hook: the
-  backend's `TCAB_SITE_DEPLOY_HOOK_URL` and the Pages projects' deploy hooks
-  retired, as `apps/docs/src/content/docs/components/backend/overview.md`
-  states under "Publish".
+  (Cloudflare Pages and Workers, one-time)", states: a Direct Upload pushed
+  by the `testcabinet.ai` pipeline, with no snapshot baked in.
 
 ## Verify
 

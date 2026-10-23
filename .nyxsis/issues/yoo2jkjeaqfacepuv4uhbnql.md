@@ -7,8 +7,24 @@ number: 5
 title: Retire the gallery deploy hook from the backend and the deploy
 type: generic
 priority: 3
-state: open
+state: done
 created: 2026-10-23T16:20:27.522542876Z
+done: 2026-10-23T18:22:16.123291226Z
+outcome: |
+  Landed in PR 5200 into nightly (0613f413c) and promoted to staging through PR
+  5203 (merge bb83177b7, staging run 18852 green in every stage). The backend no
+  longer reads TCAB_SITE_DEPLOY_HOOK_URL or fires a deploy hook after a snapshot
+  upload, the POST /snapshot/refresh response no longer carries deployHookFired,
+  and the keyvault-csi SecretProviderClass, the example secrets and the local
+  overlay's notes no longer name tcab-site-deploy-hook-url. Superrepo gates 22 of
+  22 on the branch. On staging the backend runs the-test-cabinet-backend:bb83177b7
+  with no deploy-hook variable in its environment, the Pages project
+  the-test-cabinet-staging recorded no build after the deploy, and its Publish
+  deploy hook is deleted. Left: the prod Pages project the-test-cabinet keeps its
+  Publish hook until the master promotion deploys the backend without the hook,
+  then it is deleted the same way; the Pages projects' Git connection to the
+  superrepo mirror and the vault object tcab-site-deploy-hook-url are the
+  operator's to remove.
 ---
 
 The backend overview states under "Publish" that a publish is an upload, and
