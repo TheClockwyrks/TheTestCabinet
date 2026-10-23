@@ -39,7 +39,8 @@ with any other, so the deployment scales it horizontally.
 
 ## Routes
 
-The path `{id}` on every route is the run record's id.
+The path `{id}` on a `/runs/` route is the run record's id, and on a
+`/tournaments/` route the tournament's.
 
 | Route                                                                                    | Caller                                                                              |
 | ---------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
@@ -54,6 +55,8 @@ The path `{id}` on every route is the run record's id.
 | `GET /runs/{id}/replay`, `/code-analysis`                                                | A person or an analysis tool, reading the gg session record or the code analysis    |
 | `POST /runs/{id}/publish-media`                                                          | The backend, copying a published run's media from Blob to R2                        |
 | `PUT /public/{key}`                                                                      | The backend, writing one object of the public dataset; the CLI, an asset reference  |
+| `PUT /tournaments/{id}/matches/{matchId}/replay`                                         | The backend, storing a tournament match's replay as the arena reports it            |
+| `GET /tournaments/{id}/matches/{matchId}/replay`                                         | The backend, reading a tournament match's replay back to serve it                   |
 
 An upload is written straight through to the run's prefix in the private
 container, and the response lands once the tree is stored. A read is answered
@@ -78,6 +81,17 @@ served by the validation media route as `image/png` and
 `application/octet-stream`. An entry inside a recording names one by file name,
 so a console resolves it through the lookup it resolved the recording with. See
 [the shared image store](/components/driver/validation/#the-shared-image-store).
+
+### Tournament match replays
+
+A tournament match's replay is stored in the private container at
+`tournaments/<tournament-id>/matches/<match-id>/replay.json`, apart from every
+run tree. `PUT` writes the request's body whole, replacing a replay already
+stored for the match, and `GET` answers `404` for a match with none. The
+`tournaments/` prefix holds no run tree, so the `GET /runs` listing never
+reports it, the backend's [reclamation
+sweep](/components/backend/overview/#artifact-reclamation) never deletes a
+replay, and deleting a run's tree leaves every replay in place.
 
 ### Publishing a run's media
 
@@ -104,8 +118,9 @@ The artifacts service has no Kubernetes API access. It only talks HTTP.
   which is a different UUID from the run id in the upload path, so the driver
   sends its job id in the `x-tcab-job-id` header and the service verifies
   against that. Only the driver holding a job's token can upload for it.
-- The tree delete, the `GET /runs` listing, `publish-media` and the backend's
-  `PUT /public/{key}` writes present the shared control-plane service token
+- The tree delete, the `GET /runs` listing, `publish-media`, both tournament
+  replay routes and the backend's `PUT /public/{key}` writes present the shared
+  control-plane service token
   (`TCAB_BACKEND_SERVICE_TOKEN`, the same secret the backend and dispatcher
   share). When the token is unset these routes reject every caller.
 

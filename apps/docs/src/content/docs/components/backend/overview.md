@@ -304,10 +304,21 @@ The driver's upload of the run tree is what stores a run's media, its
 `replay.json.gz` and its `code-analysis.json.gz`, and the artifacts service
 serves them (see [Routes](/components/artifacts/overview/#routes)), so the
 backend keeps no copy. The backend writes each tournament match replay through
-the artifacts service when the arena persists it, and reads it back from there
-to serve `GET /tournaments/{id}/matches/{matchId}/replay.json`. The object route
-it writes and reads through is listed with the artifacts service's
-[routes](/components/artifacts/overview/#routes).
+the artifacts service when the arena persists it, with
+`PUT /tournaments/{id}/matches/{matchId}/replay`, and reads it back from there
+with the matching `GET` to serve
+`GET /tournaments/{id}/matches/{matchId}/replay.json` (see [tournament match
+replays](/components/artifacts/overview/#tournament-match-replays)).
+
+A backend whose store still holds what an earlier release kept on the pod's disk
+moves it on start, before it reports ready: each `runs/<id>/controller.wasm`
+into its run's row, and each
+`tournaments/<id>/matches/<matchId>/replay.json` through the artifacts service.
+A file is removed once its new home holds it, and one that cannot move stays for
+the next start, so a store that holds none of them costs the start nothing. The
+run copies of the session record, the code analysis and the media are left where
+they are and never read, since the run's tree holds them, and they go with the
+volume.
 
 Each accepted batch of relayed events is written to the database before the
 backend acknowledges it, as [delivery to the
