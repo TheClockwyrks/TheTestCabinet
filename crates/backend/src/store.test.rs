@@ -783,7 +783,7 @@ fn delete_run_media_removes_every_kind_and_is_idempotent() {
 }
 
 #[test]
-fn validation_files_round_trip_and_list_sorted() {
+fn validation_files_round_trip() {
     let (_dir, store) = temp_store();
     store
         .write_run_validation("r1", "spin__serve.json.gz", b"\x1f\x8bgz")
@@ -800,33 +800,13 @@ fn validation_files_round_trip_and_list_sorted() {
         store.read_run_validation("r1", "img.9f2c1ab4.png").unwrap(),
         b"png:sprite"
     );
-    // The listing is what lets the snapshot builder publish the store at all: those
-    // files back no verdict and are on no record, so the directory is the only place
-    // they can be found. Sorted, so a refresh publishes a stable set.
-    assert_eq!(
-        store.list_run_validation("r1").unwrap(),
-        vec![
-            "img.9f2c1ab4.png".to_string(),
-            "spin__serve.json.gz".to_string(),
-        ]
-    );
-    // A run with nothing stored lists empty rather than erroring — every run recorded
-    // before automated validation existed.
-    assert_eq!(
-        store.list_run_validation("r2").unwrap(),
-        Vec::<String>::new()
-    );
     // Validation media is part of the per-run tree the delete sweeps.
     store.delete_run_media("r1").unwrap();
     assert!(store.read_run_validation("r1", "img.9f2c1ab4.png").is_err());
-    assert_eq!(
-        store.list_run_validation("r1").unwrap(),
-        Vec::<String>::new()
-    );
 }
 
 #[test]
-fn showcase_files_round_trip_and_list_sorted() {
+fn showcase_files_round_trip() {
     let (_dir, store) = temp_store();
     store
         .write_run_showcase("r1", "title.png", b"png:title")
@@ -842,19 +822,6 @@ fn showcase_files_round_trip_and_list_sorted() {
         store.read_run_showcase("r1", "title.png").unwrap(),
         b"png:title"
     );
-    // The listing enumerates the stored names, sorted, so the snapshot builder
-    // publishes a stable set.
-    assert_eq!(
-        store.list_run_showcase("r1").unwrap(),
-        vec![
-            "clip.json.gz".to_string(),
-            "showcase.md".to_string(),
-            "title.png".to_string(),
-        ]
-    );
-    // A run with nothing stored lists empty rather than erroring — every run
-    // recorded before the showcase existed.
-    assert_eq!(store.list_run_showcase("r2").unwrap(), Vec::<String>::new());
     assert!(store.read_run_showcase("r2", "title.png").is_err());
     // Showcase media is part of the per-run tree the delete sweeps.
     store.delete_run_media("r1").unwrap();

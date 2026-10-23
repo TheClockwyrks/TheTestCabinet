@@ -1699,28 +1699,6 @@ impl DefinitionStore {
         Ok(())
     }
 
-    /// List a run's stored proof media file names (`<proof-id>.<ext>`), sorted.
-    /// A run with no stored proofs yields an empty list.
-    pub fn list_run_proofs(&self, run_id: &str) -> Result<Vec<String>> {
-        let dir = self.run_proof_dir(run_id);
-        let read = match std::fs::read_dir(&dir) {
-            Ok(read) => read,
-            Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
-            Err(err) => return Err(err.into()),
-        };
-        let mut names = Vec::new();
-        for entry in read {
-            let entry = entry?;
-            if entry.file_type()?.is_file()
-                && let Some(name) = entry.file_name().to_str()
-            {
-                names.push(name.to_string());
-            }
-        }
-        names.sort();
-        Ok(names)
-    }
-
     /// Read one proof media file for a run (`<proof-id>.<ext>`).
     pub fn read_run_proof(&self, run_id: &str, file: &str) -> Result<Vec<u8>> {
         if !is_safe_segment(run_id) || !is_safe_segment(file) {
@@ -1758,36 +1736,6 @@ impl DefinitionStore {
         std::fs::create_dir_all(&dir)?;
         std::fs::write(dir.join(file), bytes)?;
         Ok(())
-    }
-
-    /// List a run's stored synthesized validation media file names, sorted. A run
-    /// with none stored yields an empty list.
-    ///
-    /// The declared outputs are on the run record, so the snapshot builder does not
-    /// need this to find them. What it needs it for is the recordings' **shared
-    /// image store** (`img.<id>.png` / `img.<id>.bin` — see
-    /// [`VALIDATION_IMAGE_PREFIX`](test_cabinet_contracts::layout::VALIDATION_IMAGE_PREFIX)),
-    /// whose files back no verdict and are named by their own bytes, so they appear
-    /// on no declaration and can only be found by asking the directory. Sorted, so
-    /// the set a refresh publishes is stable.
-    pub fn list_run_validation(&self, run_id: &str) -> Result<Vec<String>> {
-        let dir = self.run_validation_dir(run_id);
-        let read = match std::fs::read_dir(&dir) {
-            Ok(read) => read,
-            Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
-            Err(err) => return Err(err.into()),
-        };
-        let mut names = Vec::new();
-        for entry in read {
-            let entry = entry?;
-            if entry.file_type()?.is_file()
-                && let Some(name) = entry.file_name().to_str()
-            {
-                names.push(name.to_string());
-            }
-        }
-        names.sort();
-        Ok(names)
     }
 
     /// Read one synthesized validation media file for a run
@@ -1961,29 +1909,6 @@ impl DefinitionStore {
         std::fs::create_dir_all(&dir)?;
         std::fs::write(dir.join(file), bytes)?;
         Ok(())
-    }
-
-    /// List a run's stored showcase file names, sorted. A run with no stored
-    /// showcase files yields an empty list — every run recorded before the showcase
-    /// existed, and every run that never produced one.
-    pub fn list_run_showcase(&self, run_id: &str) -> Result<Vec<String>> {
-        let dir = self.run_showcase_dir(run_id);
-        let read = match std::fs::read_dir(&dir) {
-            Ok(read) => read,
-            Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
-            Err(err) => return Err(err.into()),
-        };
-        let mut names = Vec::new();
-        for entry in read {
-            let entry = entry?;
-            if entry.file_type()?.is_file()
-                && let Some(name) = entry.file_name().to_str()
-            {
-                names.push(name.to_string());
-            }
-        }
-        names.sort();
-        Ok(names)
     }
 
     /// Read one showcase file for a run.
