@@ -235,8 +235,11 @@ files, created from your secret manager rather than committed. The set is:
   `tcab-artifacts-secrets` Secret, for writing the public dataset to the
   [public plane](/deployment/public-gallery/). No other component holds a
   bucket credential: the backend writes the public dataset through the
-  artifacts service. Its Blob access, and the repos service's, is a managed
-  identity rather than a secret.
+  artifacts service, and every deploy deletes a synced Secret that still holds
+  a key its declaration dropped (see
+  [Syncing the Secrets](/deployment/kubernetes/overview/#syncing-the-secrets)).
+  Its Blob access, and the repos service's, is a managed identity rather than a
+  secret.
 - The backend's OpenRouter key, `TCAB_OPENROUTER_API_KEY`, which its own
   completion calls ([model probes](/components/backend/api/#model-probes)) are
   billed to. It is mapped from the same vault secret as the drivers'
