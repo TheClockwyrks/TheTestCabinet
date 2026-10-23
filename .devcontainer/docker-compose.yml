@@ -24,6 +24,11 @@ x-devcontainer-build-args: &devcontainer-build-args
   # toolchain's files alone, which the Dockerfile copies over it. See "What the
   # image carries" in README.md.
   TOOLCHAIN_IMAGE: nyxsisdev.azurecr.io/nyxsis-template-k8s-standard/toolchain:ad5bf224e0e39ab7
+  # The Android toolchain the android CI image copies over the Rust image, for
+  # a `shell` repository's Rust job and bundle jobs. Published for amd64 alone,
+  # and read by ci/images/android.Dockerfile alone: the devcontainer's
+  # Dockerfile declares no argument for it, so it never pulls it.
+  ANDROID_IMAGE: nyxsisdev.azurecr.io/nyxsis-template-k8s-standard/android:ndk-29.0.14206865_platform-36_build-tools-36.0.0_cmdline-tools-16111833_platform-tools-37.0.1_jdk-21
   # The browser engines the browser tests run in. Its tag is the Playwright
   # version that downloaded them, and each `playwright` client (the lock's,
   # contracts' and the console's in console.testcabinet.ai) decides which build

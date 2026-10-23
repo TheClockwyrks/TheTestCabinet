@@ -121,6 +121,13 @@
 # is rendered the stage, and one whose kind builds no TypeScript workspace has
 # nothing to publish, so its stage skips with a notice.
 #
+{% if ci_bundles %}
+# A shell's tag also runs the bundle stage, which builds the desktop and
+# Android bundles of each of its flavors, the Linux and Android ones in the
+# image of its Rust track and the Windows and macOS ones on hosted agents of
+# those platforms, and publishes them as the run's artifacts.
+#
+{% endif %}
 {% if ci_project_jobs %}
 # This repository runs jobs and stages of its own beside the kit's, in
 # templates it writes under .azure/project/ and the kit never renders: its
@@ -520,6 +527,15 @@ stages:
   # notice, and a workspace no `typescript` gate of the repository builds is
   # refused.
 {{ci_publish}}
+{% if ci_bundles %}
+
+  # A tag's run builds the shell's bundles too, after every gate passed: one
+  # job per target, each building every flavor (a `tauri.<flavor>.conf.json`
+  # beside the crate's `tauri.conf.json`) with {{bundle_script}}
+  # and publishing them as a pipeline artifact of the run, which is where a
+  # release is downloaded from. Every bundle is unsigned.
+{{ci_bundle_stage}}
+{% endif %}
 {% if ci_project_stages %}
 
   # This repository's own stages, after the publish stage. Each names the

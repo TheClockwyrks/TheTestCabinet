@@ -117,7 +117,13 @@ CI_SHARED_RUST_TRACK = "rust"
 # image is the Rust image with Node and that browser on top. A job in it runs
 # with TCAB_REQUIRE_BROWSER=1, so a browser test that finds no browser fails
 # rather than skipping.
+#
+# A `shell` builds a Tauri workspace, whose Rust gates compile the WebView it
+# links and whose bundle jobs build an Android APK beside the desktop bundles,
+# so its Rust job runs in the android image: the Rust image with the Android
+# SDK, the NDK and the JDK on top.
 RUST_TRACKS: dict[str, str] = {
+    "client-tauri": "android",
     "contracts": "rust-browser",
     "microservice-driver": "rust-browser",
     "the-spec-cabinet": "rust-browser",
@@ -354,6 +360,30 @@ IMAGE_ARCHITECTURES = ("amd64", "arm64")
 IMAGE_SCRIPT = "scripts/ci/image.sh"
 MANIFEST_SCRIPT = "scripts/ci/manifest.sh"
 BUILD_CONTEXT_GATE = "build-context"
+
+# The bundles a `shell` builds on a tag, once the gates passed (the Releasing
+# page's "Releasing the operator client"): one job per target, each building
+# every flavor of the shell with scripts/ci/bundle.sh and publishing what it
+# built as a pipeline artifact of the run, `client-<target>`, which is where a
+# release of the client is downloaded from. The Linux and Android bundles are
+# built in the image of the shell's Rust track, which carries the Android
+# toolchain; the Windows and macOS ones on hosted agents of those platforms,
+# which carry Rust and Node. A shell depends on nothing of the project, so no
+# job fetches a repository of it or authenticates to the feed: the workspace
+# installs from the public registry alone.
+BUNDLE_KINDS = frozenset({"shell"})
+BUNDLE_STAGE = "bundle"
+BUNDLE_SCRIPT = "scripts/ci/bundle.sh"
+BUNDLE_ARTIFACT = "client-{target}"
+BUNDLE_OUTPUT = "$(Build.ArtifactStagingDirectory)/bundles"
+# Each target's pool, or None for a target built in the Rust track's image on
+# the default pool.
+BUNDLE_TARGETS: dict[str, str | None] = {
+    "linux": None,
+    "android": None,
+    "windows": "windows-2022",
+    "macos": "macOS-15",
+}
 # The compiler every checkout builds with, which an image's Rust pin has to
 # name; the `build-context` gate holds the pins to it.
 RUST_TOOLCHAIN = KIT / "rust-toolchain.toml"
@@ -1075,6 +1105,69 @@ def ci_image_stage(name: str, kind: str) -> str:
     return "\n".join(lines)
 
 
+def builds_bundles(kind: str) -> bool:
+    """Whether the repository's pipeline builds bundles on a tag."""
+    return kind in BUNDLE_KINDS
+
+
+def ci_bundle_stage(name: str, kind: str) -> str:
+    """The stage building a shell's bundles, after the gates, on a tag alone.
+
+    One job per target runs `scripts/ci/bundle.sh <target> <directory>`, which
+    builds every flavor of the shell for that target into the directory, and
+    publishes the directory as the artifact `client-<target>`. Nothing for a
+    kind that builds no bundle.
+    """
+    if not builds_bundles(kind):
+        return ""
+    steps = "          "
+    lines = [
+        f"  - stage: {BUNDLE_STAGE}",
+        "    displayName: Bundles",
+        "    dependsOn: gates",
+        "    condition: and(succeeded(), startsWith(variables['Build.SourceBranch'], 'refs/tags/v'))",
+        "    jobs:",
+    ]
+    for target, pool in BUNDLE_TARGETS.items():
+        lines += [
+            f"      - job: {BUNDLE_STAGE}_{target}",
+            f"        displayName: Bundle ({target})",
+            "        timeoutInMinutes: 120",
+        ]
+        if pool is None:
+            lines.append(f"        container: {rust_track(name)}")
+        else:
+            lines += ["        pool:", f"          vmImage: {pool}"]
+        lines += [
+            "        steps:",
+            f"{steps}- checkout: self",
+            f"{steps}  fetchDepth: 1",
+            f"{steps}  clean: true",
+        ]
+        if pool is None:
+            lines += [
+                f"{steps}- script: |",
+                f"{steps}    {HOST_DISK_COMMAND}",
+                f"{steps}    df -h /",
+                f"{steps}  displayName: Free the host's disk of the software the job never uses",
+                f"{steps}  target: host",
+            ]
+        # `bash` is Git Bash on a Windows agent, so the script runs unchanged
+        # on every target.
+        lines += [
+            f"{steps}- bash: npm ci",
+            f"{steps}  displayName: Install the npm workspace",
+            f'{steps}- bash: {BUNDLE_SCRIPT} {target} "{BUNDLE_OUTPUT}"',
+            f"{steps}  displayName: Build every flavor's {target} bundle",
+            f"{steps}- task: PublishPipelineArtifact@1",
+            f"{steps}  displayName: Publish the {target} bundles",
+            f"{steps}  inputs:",
+            f"{steps}    targetPath: {BUNDLE_OUTPUT}",
+            f"{steps}    artifact: {BUNDLE_ARTIFACT.format(target=target)}",
+        ]
+    return "\n".join(lines)
+
+
 def crate_of(name: str) -> tuple[str, str]:
     """The directory under crates/ and the package name of a repository's scaffolded crate."""
     if name not in CRATES:
@@ -1223,6 +1316,17 @@ def variables(name: str, kind: str, description: str) -> Variables:
         "ci_image": builds_image(name, kind),
         "ci_image_stage": ci_image_stage(name, kind),
         "image_carries_binaries": builds_image(name, kind) and kind == IMAGE_TOOL_KIND,
+        # The bundles a shell builds on a tag: the conditional name of its
+        # script, its stage, and the targets and artifact names
+        # ci/tests/test_wiring.py holds the stage to.
+        "ci_bundles": builds_bundles(kind),
+        "ci_bundle_stage": ci_bundle_stage(name, kind),
+        "bundle_targets_dict": python_dict(
+            {target: pool or "" for target, pool in BUNDLE_TARGETS.items()} if builds_bundles(kind) else {}
+        ),
+        "bundle_artifact": BUNDLE_ARTIFACT,
+        "bundle_script": BUNDLE_SCRIPT,
+        "bundle_output": BUNDLE_OUTPUT,
         "tool_binaries": TOOL_BINARIES,
         "image_registry": CI_REGISTRY,
         "rust_channel": rust_channel() if shape.crate else "",

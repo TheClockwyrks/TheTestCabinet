@@ -33,11 +33,11 @@
 # documentation site reads, `microservice-arena/`, `microservice-artifacts/`, `microservice-dispatcher/`, `microservice-driver/`, `microservice-publisher/`, `microservice-repos/`,
 # `tool-model-core/`, `tool-paint/`, `tool-particle/`, `tool-sprite/`,
 # `tool-voxel/`, `tool-mc/`, `tool-sn/`, `tool-dc/`, `tool-audio-core/`,
-# `tool-sfx-synth/`, `tool-sfx-sample/` and `tool-music/`, whose crates the
-# patch table names, `test-suites/`, the suites checkout The Test Cabinet
+# `tool-sfx-synth/`, `tool-sfx-sample/`, `tool-music/` and `client-tauri/`,
+# whose crates the patch table names, `test-suites/`, the suites checkout The Test Cabinet
 # ingests from, `ui-common/`, the ui-common repository whose packages the web
 # front ends build against, and `console.testcabinet.ai/`, the console, whose
-# development server runs from its checkout. It names those twenty-four alone,
+# development server runs from its checkout. It names those twenty-five alone,
 # because cold-storage beside them is optional and about 2 GB. It runs ahead of
 # `npm ci`, which lists contracts', engines' and ui-common's packages in the npm
 # workspace, and after tools/ssh-agent.sh, because the clone goes through the

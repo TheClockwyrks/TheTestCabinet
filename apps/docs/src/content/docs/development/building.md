@@ -70,8 +70,8 @@ repositories still held in the superrepo's own tree build against,
 `microservice-publisher/`, `microservice-repos/`,
 `tool-model-core/`, `tool-paint/`, `tool-particle/`, `tool-sprite/`,
 `tool-voxel/`, `tool-mc/`, `tool-sn/`, `tool-dc/`, `tool-audio-core/`,
-`tool-sfx-synth/`, `tool-sfx-sample/`, `tool-music/`, `ui-common/` and `gg/`,
-whose crates the
+`tool-sfx-synth/`, `tool-sfx-sample/`, `tool-music/`, `client-tauri/`,
+`ui-common/` and `gg/`, whose crates the
 [patch table](/development/repositories/#inside-the-superrepo) names, since
 cargo loads every patch path before it builds anything (`gg/` holds the gg
 pages the docs site builds as well, and the npm workspace lists `ui-common/`'s
@@ -85,7 +85,8 @@ git submodule update --init contracts engines gg microservice-arena \
   microservice-driver microservice-publisher microservice-repos \
   tool-model-core tool-paint \
   tool-particle tool-sprite tool-voxel tool-mc tool-sn tool-dc \
-  tool-audio-core tool-sfx-synth tool-sfx-sample tool-music ui-common
+  tool-audio-core tool-sfx-synth tool-sfx-sample tool-music client-tauri \
+  ui-common
 git submodule update --init gg.rocks console.testcabinet.ai \
   testcabinet.ai   # what the task touches
 git submodule update --init --depth 1 cold-storage
@@ -98,8 +99,9 @@ The devcontainer populates `contracts/`, `engines/`, `gg/`,
 `microservice-publisher/`, `microservice-repos/`,
 `tool-model-core/`, `tool-paint/`, `tool-particle/`, `tool-sprite/`,
 `tool-voxel/`, `tool-mc/`, `tool-sn/`, `tool-dc/`, `tool-audio-core/`,
-`tool-sfx-synth/`, `tool-sfx-sample/`, `tool-music/`, `test-suites/`,
-`ui-common/` and `console.testcabinet.ai/` when it creates a container,
+`tool-sfx-synth/`, `tool-sfx-sample/`, `tool-music/`, `client-tauri/`,
+`test-suites/`, `ui-common/` and `console.testcabinet.ai/` when it creates a
+container,
 `test-suites/` because a local backend ingests its suites from that checkout
 and `console.testcabinet.ai/` because the console's development server runs
 from it.
@@ -303,10 +305,12 @@ the lines an update's conflicts are usually about, are the container registry
 `ubuntu-the-test-cabinet-{rust,rust-browser,web,android}-cicd`), the resource
 group and cluster (`testcabinet-staging-westus2-rg`,
 `testcabinet-staging-westus2-aks`), the service connection (`tcab-deploy`),
-the deploy environment and namespace (both `tcab-staging`), the platform the
-service images are built for (`linux/arm64`) and the two Tauri answers,
-`tauri_desktop` and `tauri_android`, both true, which is what has the template
-render the `android` CI image track the `shell` kind runs in. The other edits
+the deploy environment and namespace (both `tcab-staging`) and the platform
+the service images are built for (`linux/arm64`). The two Tauri answers,
+`tauri_desktop` and `tauri_android`, are false, since the operator client is
+the `client-tauri` repository rather than an application of the superrepo, so
+the `android` CI image track the `shell` kind runs in is the project's own, as
+the rust-browser track is. The other edits
 an update carries are of the same kind: the project's gates and their wiring
 in `.pre-commit-config.yaml` and `azure-pipelines.yml`, the CI image pin in
 `ci/images/tags.yml`, the devcontainer image's gg layer and apt packages, the
@@ -1166,9 +1170,10 @@ commit with Node and Playwright's Chromium on top
 `TCAB_REQUIRE_BROWSER=1`, so the Rust tests that drive a browser run there and
 fail rather than skip when it is missing (see
 [Tests that need a browser](#tests-that-need-a-browser)). The android image is
-the template's, rendered because the superrepo's `tauri_desktop` and
-`tauri_android` answers are both true: the Rust image with the Android SDK and
-NDK, the Android Rust targets and Tauri's build tools on top. Every image is
+the project's own too: the Rust image of the same commit with the JDK, the
+Android SDK and the NDK of the template's published android image copied on
+top (`ci/images/android.Dockerfile`), beside the Android Rust targets and the
+WebView's libraries the toolchain image already holds. Every image is
 tagged by the commit of the image run that built it.
 
 `azure-pipelines-ci-images.yml` builds the images. It triggers on the files an

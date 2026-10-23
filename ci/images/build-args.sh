@@ -2,7 +2,7 @@
 # Prints the build arguments one CI image consumes, as `NAME=VALUE` lines, for
 # scripts/ci/ci-image.sh to pass to `docker buildx build --build-arg`.
 #
-# Usage: ci/images/build-args.sh <rust|rust-browser|web>
+# Usage: ci/images/build-args.sh <rust|rust-browser|web|android>
 #
 # Every CI image is built on the images the template publishes, and the one
 # place this workspace names them is the `x-devcontainer-build-args` anchor in
@@ -42,9 +42,9 @@ readonly COMPOSE="$ROOT/.devcontainer/docker-compose.yml"
 
 readonly TRACK="${1:-}"
 case "$TRACK" in
-	rust | rust-browser | web) ;;
+	rust | rust-browser | web | android) ;;
 	*)
-		echo "build-args.sh: usage: build-args.sh <rust|rust-browser|web>" >&2
+		echo "build-args.sh: usage: build-args.sh <rust|rust-browser|web|android>" >&2
 		exit 2
 		;;
 esac

@@ -651,6 +651,41 @@ def test_a_tool_of_the_library_half_is_rendered_no_image(rendered: Callable[[str
     assert "  - stage: image\n" not in (root / "azure-pipelines.yml").read_text(encoding="utf-8")
 
 
+def test_a_shell_runs_in_the_android_image_and_bundles_on_a_tag(rendered: Callable[[str], Path]) -> None:
+    """A shell's Rust job runs on the android track, and a tag's run builds each target's bundles after the gates."""
+    root = rendered("client-tauri")
+    pipeline = (root / "azure-pipelines.yml").read_text(encoding="utf-8")
+    assert "        container: android\n" in _job(pipeline, "rust")
+    assert render.image_reference("android") in pipeline
+    stages = [stage["stage"] for stage in yaml.safe_load(pipeline)["stages"]]
+    assert stages == ["gates", "publish", render.BUNDLE_STAGE, "mirror"]
+    bundle = next(stage for stage in yaml.safe_load(pipeline)["stages"] if stage["stage"] == render.BUNDLE_STAGE)
+    assert bundle["dependsOn"] == "gates"
+    jobs = {job["job"]: job for job in bundle["jobs"]}
+    assert sorted(jobs) == sorted(f"{render.BUNDLE_STAGE}_{target}" for target in render.BUNDLE_TARGETS)
+    for target, pool in render.BUNDLE_TARGETS.items():
+        job = jobs[f"{render.BUNDLE_STAGE}_{target}"]
+        if pool is None:
+            assert job["container"] == "android", target
+        else:
+            assert job["pool"] == {"vmImage": pool}, target
+        published = [step for step in job["steps"] if step.get("task") == "PublishPipelineArtifact@1"]
+        assert [step["inputs"]["artifact"] for step in published] == [f"client-{target}"]
+    script = root / render.BUNDLE_SCRIPT
+    assert script.is_file() and os.access(script, os.X_OK)
+    _, crate = render.crate_of("client-tauri")
+    directory, _ = render.crate_of("client-tauri")
+    assert f'readonly CRATE="crates/{directory}"\n' in script.read_text(encoding="utf-8")
+    assert crate == "test-cabinet-client-tauri"
+
+
+@pytest.mark.parametrize("name", ["contracts", "microservice-arena", "gg.rocks"])
+def test_no_other_kind_builds_bundles(name: str, rendered: Callable[[str], Path]) -> None:
+    root = rendered(name)
+    assert f"  - stage: {render.BUNDLE_STAGE}\n" not in (root / "azure-pipelines.yml").read_text(encoding="utf-8")
+    assert not (root / render.BUNDLE_SCRIPT).exists()
+
+
 def test_the_image_carrying_binaries_runs_the_binaries_cargo_reports(tmp_path: Path) -> None:
     """The build's extraction of the executables from cargo's JSON keeps every binary and nothing else."""
     template = (render.KIT / "{% if ci_image %}Dockerfile{% endif %}.jinja").read_text(encoding="utf-8")

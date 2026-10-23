@@ -167,9 +167,8 @@ test-cabinet-gg = { path = "gg/crates/gg" }
 #   [patch."https://github.com/TheClockwyrks/the-spec-cabinet"]
 #   test-cabinet-spec-cabinet = { path = "the-spec-cabinet/crates/spec-cabinet" }
 
-# client-tauri is not checked out; the table joins once it is bootstrapped:
-#   [patch."https://github.com/TheClockwyrks/client-tauri"]
-#   test-cabinet-client-tauri = { path = "client-tauri/crates/client-tauri" }
+[patch."https://github.com/TheClockwyrks/client-tauri"]
+test-cabinet-client-tauri = { path = "client-tauri/crates/client-tauri" }
 
 # Cargo still fetches a patched git source to resolve the lock file, so the
 # source has to be reachable even though nothing is built from it. While the

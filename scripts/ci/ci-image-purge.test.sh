@@ -615,7 +615,7 @@ echo "--- usage ---"
 write_fixtures
 out="$(run gates)"
 check_equal "an unknown track is a usage error" "1" "$?"
-check_contains "which says how to call it" "usage: scripts/ci/ci-image-purge.sh [--dry-run] <rust|rust-browser|web>" "$out"
+check_contains "which says how to call it" "usage: scripts/ci/ci-image-purge.sh [--dry-run] <rust|rust-browser|web|android>" "$out"
 out="$(run)"
 check_equal "as is no track" "1" "$?"
 check_equal "and neither touched the registry" "" "$(cat "$stub/curl.log" 2>/dev/null)"

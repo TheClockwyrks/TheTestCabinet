@@ -131,12 +131,18 @@ bundle per target and publishes each as a pipeline artifact of the run:
 | `client-macos`   | The macOS app bundle, both flavors          |
 | `client-android` | The Android APK, both flavors               |
 
-The Android bundle and the Linux bundle are built in the `android` CI image
-track the kit renders for the `shell` kind; the Windows and macOS bundles on
-hosted agents of those platforms. Every bundle is unsigned, so an installer
-asks the platform's usual question about an unknown publisher and the Android
-APK is installed by sideloading. The tag's run is where a release of the
-client is downloaded from.
+Each artifact holds one directory per flavor, `prod/` and `staging/`, built
+from the flavor's `tauri.<flavor>.conf.json`. The Android bundle and the Linux
+bundle are built in the `android` CI image track the kit renders for the
+`shell` kind; the Windows and macOS bundles on hosted agents of those
+platforms. The tag's run is where a release of the client is downloaded from.
+
+No bundle carries a publisher's signature. The desktop bundles are unsigned,
+so an installer asks the platform's usual question about an unknown publisher.
+The Android APK is the release build signed with the debug key the build
+machine's Android SDK creates, and it is installed by sideloading. Each build
+machine holds its own debug key, so Android installs a later APK over an
+earlier one only once the earlier one is removed.
 
 ## The microservice images
 

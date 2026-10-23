@@ -39,6 +39,7 @@ ignores:
   - "**/build/**"
   - "tmp/**"
   - "cold-storage/**"
+  - "client-tauri/**"
   - "contracts/**"
   - "engines/**"
   - "gg/**"
