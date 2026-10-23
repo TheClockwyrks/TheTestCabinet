@@ -8,6 +8,8 @@ title: Promote staging to master and deploy the edge to prod
 type: generic
 priority: 3
 state: open
+depends_on:
+  - hvd0bgb29td3kqgkv1xv2u8m
 created: 2026-10-23T06:31:00.091909791Z
 ---
 
