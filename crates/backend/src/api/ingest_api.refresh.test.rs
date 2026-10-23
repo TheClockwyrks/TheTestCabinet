@@ -96,7 +96,6 @@ async fn backend(refresh_url: Option<&str>) -> (Router, tempfile::TempDir) {
         None,
         None,
         None,
-        None,
         PublisherTiming {
             coalesce: config.coalesce,
             snapshot_retention: config.snapshot_retention,

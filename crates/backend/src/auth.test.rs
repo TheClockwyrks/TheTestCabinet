@@ -42,7 +42,6 @@ async fn backend(access: AccessMode) -> (tempfile::TempDir, AppState, Router) {
         None,
         None,
         None,
-        None,
         crate::publisher::PublisherTiming {
             coalesce: config.coalesce,
             snapshot_retention: config.snapshot_retention,

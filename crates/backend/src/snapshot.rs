@@ -20,8 +20,7 @@
 //!
 //! This module is split in two: [`SnapshotBuilder`] turns the published runs +
 //! case metadata into the set of `(key, bytes, content_type)` objects, and
-//! [`upload_snapshot`] PUTs them to R2 in dependency order and fires the deploy
-//! hook. The split lets the generation be unit-tested without R2.
+//! [`upload_snapshot`] PUTs them to R2 in dependency order. The split lets the generation be unit-tested without R2.
 //!
 //! A run's proof/asset media lives under the content-stable `MEDIA_PREFIX`
 //! (`media/runs/<id>/…`), outside any single snapshot's prefix, and is written once:
@@ -2183,12 +2182,12 @@ fn json_object<T: Serialize>(key: String, value: &T) -> Result<SnapshotObject> {
     })
 }
 
-/// Upload a generated snapshot to R2 and fire the site deploy hook.
+/// Upload a generated snapshot to R2.
 ///
 /// Objects are uploaded first, `UPLOAD_CONCURRENCY` at a time; the top-level
-/// `index.json` pointer is written **last** so the cut-over is atomic — a site
-/// build reading `index.json` always follows it to a complete prefix. The deploy
-/// hook fires only after a successful upload. Returns whether the hook fired.
+/// `index.json` pointer is written **last** so the cut-over is atomic — a reader
+/// of `index.json` always follows it to a complete prefix. The upload ends when
+/// `index.json` is written: nothing is rebuilt or deployed after it.
 ///
 /// The objects have no ordering constraint among themselves (nothing reaches any of
 /// them until `index.json` names their generation), only the barrier before the
@@ -2196,12 +2195,7 @@ fn json_object<T: Serialize>(key: String, value: &T) -> Result<SnapshotObject> {
 /// refresh's wall clock on bucket round trips, which is what made a large snapshot
 /// slow even once it had little new to say. As soon as any upload fails the error
 /// propagates and `index.json` is never written, leaving the previous generation live.
-pub async fn upload_snapshot(
-    snapshot: &Snapshot,
-    r2: &R2Client,
-    deploy_hook_url: Option<&str>,
-    http: &reqwest::Client,
-) -> Result<bool> {
+pub async fn upload_snapshot(snapshot: &Snapshot, r2: &R2Client) -> Result<()> {
     use futures_util::TryStreamExt;
 
     futures_util::stream::iter(snapshot.objects.iter().map(Ok::<_, BackendError>))
@@ -2225,22 +2219,7 @@ pub async fn upload_snapshot(
     )
     .await?;
 
-    let mut fired = false;
-    if let Some(url) = deploy_hook_url {
-        let response = http
-            .post(url)
-            .send()
-            .await
-            .map_err(|e| BackendError::Snapshot(format!("firing deploy hook: {e}")))?;
-        if !response.status().is_success() {
-            let status = response.status();
-            return Err(BackendError::Snapshot(format!(
-                "deploy hook returned {status}"
-            )));
-        }
-        fired = true;
-    }
-    Ok(fired)
+    Ok(())
 }
 
 /// The summary card of a stored run, built by the backend.
