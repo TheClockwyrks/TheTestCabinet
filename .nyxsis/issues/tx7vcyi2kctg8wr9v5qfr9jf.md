@@ -1,16 +1,84 @@
 ---
 format: nyxsis-issue
-version: 2
+version: 3
 id: tx7vcyi2kctg8wr9v5qfr9jf
 zone: DATA
 number: 3
 title: Publish through the artifacts and repos services from the backend and the publisher
 type: generic
-state: open
+priority: 3
+state: done
 depends_on:
   - mkwwaowuuf9kuvps1wmow2pi
   - kzyuvjcx8wexztzcrmk3rwpi
 created: 2026-10-13T21:13:49.156386456Z
+done: 2026-10-23T23:33:52.180129005Z
+outcome: |
+  The question this issue was blocked on was settled with option 1. The artifacts
+  service gained `GET /public?prefix=` and `DELETE /public/{key}`, which admit
+  only the shared service token. The listing returns each object's key, size and
+  last-modified time; deleting a missing key still answers 204. The backend keeps
+  the prune and the reference-sheet discovery, and does both through these routes.
+  Both routes are documented in artifacts/overview.md "Routes" and "Auth", and the
+  backend pages say they go through them.
+
+  Done:
+
+  - **artifacts** (microservice-artifacts): the two routes are implemented for R2,
+    Blob and the in-memory store, with tests.
+  - **backend** (crates/backend): `R2Client`, `r2.rs`, hmac/md-5, the deploy hook
+    and the GitHub credential are removed. A publish refresh runs in the order the
+    results page states:
+    1. Mint the short codes.
+    2. Write `codes/<code>`.
+    3. Call `POST /runs/{id}/publish-media` for each run.
+    4. Write the content-addressed documents the listing shows are missing.
+    5. Write the generation, then `index.json` last.
+    6. Prune stale generations, best effort.
+
+    Ingest discovers reference sheets by listing `media/references/` through the
+    artifacts service. Media listings the snapshot no longer reads were removed
+    from the store.
+  - **short code**: the shortest unclaimed prefix of the run id, at least 8
+    characters. It is stored in a new `run_link.code` column (migration
+    m20261023_000066) and returned as `links.code` by `GET /runs/{id}`. `RunLinks`
+    gained `code` in contracts, and the artifacts and driver tests were updated.
+  - **publisher** (microservice-publisher): the sequence is the Pages deploy, then
+    `POST {TCAB_REPOS_URL}/runs/{id}/publish` on the repos service. The Job holds
+    only the Cloudflare credential, and git and gh are gone from the image. The
+    dispatcher (microservice-dispatcher) no longer forwards `TCAB_GITHUB_ORG`.
+  - **deployments**: the R2 keys moved to the new `tcab-artifacts-secrets`, read
+    only by artifacts. The publisher's `GH_TOKEN` is gone.
+    `scripts/ci/sync-secrets.sh` brings the Key Vault Secrets in line with the
+    render's keys before every apply, called from pre-deploy.sh and
+    deploy-environment.sh. The deployment docs were updated.
+
+  Gates: the backend's Rust gates pass (1484 backend tests), as do `make gate` in
+  publisher and dispatcher and the superrepo's k8s, markdownlint, format, docs and
+  shell-tests gates. Some failures come from the environment, not the change:
+
+  - cspell checks no files, because the worktree path contains `/.git/`. Run on
+    copies of the changed pages, it found 0 issues.
+  - One served-build browser test in contracts times out.
+  - One driver bundle test picks up the host's git identity.
+  - The engines vitest packages in workspace-test fail to resolve modules.
+  - dependency-graph only reorders `[[patch.unused]]`.
+
+  Not verified here, only on staging:
+
+  - a real publish leaving the documents, media, index objects and code object in
+    R2;
+  - the GitHub push by the repos service;
+  - the Key Vault sync against the real CSI driver;
+  - that no site build runs.
+
+  The "unpublishing" clause of Verify contradicts results.md "Publish", which
+  makes a publish irreversible, so no unpublish route was added.
+
+  Left to open issues: the gallery still reads the dataset at build time, and its
+  log line still mentions the deploy hook (SITE, "Serve the gallery from the index
+  objects the bucket holds"). The console does not yet build share links from
+  `links.code` (SITE, "Add the share control for a published run to the console").
 ---
 
 A publish snapshots the dataset into R2 from the backend, triggers a site
