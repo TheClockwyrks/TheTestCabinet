@@ -148,16 +148,9 @@ libsqlite3-sys = { version = "0.30", features = ["bundled"] }
 # the entities are reusable.
 test-cabinet-entities = { path = "crates/entities" }
 test-cabinet-migration = { path = "crates/migration" }
-# SigV4 signing for R2's S3-compatible API (the backend holds the only write
-# credential). Implemented directly over `hmac`/`sha2` rather than pulling the
-# full AWS SDK, since R2 only needs PutObject, ListObjectsV2 and DeleteObjects.
+# The content digests the public snapshot keys its documents and media by.
 sha2 = "0.10"
-hmac = "0.12"
 hex = "0.4"
-# S3's batch `DeleteObjects` authenticates its request body with a `Content-MD5`
-# header — the one place the R2 client needs a digest other than SHA-256. Same
-# RustCrypto family as `sha2`/`hmac`, so it costs no new dependency tree.
-md-5 = "0.10"
 percent-encoding = "2"
 
 # Streaming HTTP bodies. The backend relays a run's live harness events to the

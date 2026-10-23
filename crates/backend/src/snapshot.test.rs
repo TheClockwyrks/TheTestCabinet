@@ -1,9 +1,5 @@
 use super::*;
-use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
 use tempfile::TempDir;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::net::TcpListener;
 
 use crate::review::{DomainRating, Rating, ReviewVerdict};
 use test_cabinet_contracts::metrics::RunMetrics;
@@ -11,8 +7,7 @@ use test_cabinet_contracts::run_record::{
     HarnessSlug, RunEnvironment, RunLinks, RunState, RunStatus, RunSubject, RunTooling,
 };
 use test_cabinet_contracts::validation::{
-    AssetFrameResult, AssetGenResult, DebugScriptOutput, DebugScriptResult, ProofResult,
-    ValidationSummary,
+    AssetFrameResult, AssetGenResult, DebugScriptResult, ValidationSummary,
 };
 use test_cabinet_suites::test_case::MediaKind;
 
@@ -98,6 +93,7 @@ fn stored_run(id: &str, published_at: &str) -> StoredRun {
             links: RunLinks {
                 source_repo: Some("https://github.com/x/y".to_string()),
                 playable_build: Some("https://abc.pages.dev".to_string()),
+                code: None,
             },
             status: RunStatus {
                 state: RunState::Completed,
@@ -131,6 +127,7 @@ fn stored_run(id: &str, published_at: &str) -> StoredRun {
         links: RunLinks {
             source_repo: Some("https://github.com/x/y".to_string()),
             playable_build: Some("https://abc.pages.dev".to_string()),
+            code: None,
         },
         published: true,
         published_at: Some(published_at.to_string()),
@@ -139,7 +136,7 @@ fn stored_run(id: &str, published_at: &str) -> StoredRun {
 }
 
 /// An asset-generation variant of [`stored_run`]: its `validation.asset` is
-/// populated so the snapshot exports the run's media.
+/// populated, as the record of a run whose media the artifacts service publishes.
 fn asset_run(id: &str, published_at: &str) -> StoredRun {
     let mut run = stored_run(id, published_at);
     run.record.subject.test_type = test_cabinet_suites::test_case::TestType::AssetGeneration;
@@ -676,16 +673,79 @@ async fn per_run_file_includes_events_when_present_and_omits_them_when_absent() 
     assert!(r2.get("events").is_none());
 }
 
-#[tokio::test]
-async fn per_run_file_exports_asset_media_and_names_it_by_key() {
-    let (_tmp, store) = empty_store();
-    // Stage the asset media the run uploaded; one of the three (preview.png) is
-    // deliberately absent to prove a missing file is skipped, not fatal.
-    store
-        .write_run_asset("a1", "regenerated.png", b"png:regen")
-        .unwrap();
-    store.write_run_asset("a1", "actions.json", b"[]").unwrap();
+/// The keys the artifacts service answered `publish-media` with for an asset run.
+fn published_asset_media(run_id: &str) -> PublishedMedia {
+    PublishedMedia {
+        proof_media: vec![RunProofOut {
+            id: "title".to_string(),
+            kind: MediaKind::Image,
+            key: format!("media/runs/{run_id}/proof/title.png"),
+        }],
+        validation_media: vec![RunValidationMediaOut {
+            file: "spin__clip.webm".to_string(),
+            key: format!("media/runs/{run_id}/validation/spin__clip.mp4"),
+        }],
+        asset_media: vec![RunAssetOut {
+            file: "regenerated.png".to_string(),
+            key: format!("media/runs/{run_id}/asset/regenerated.png"),
+        }],
+        showcase_media: vec![RunShowcaseOut {
+            file: "title.png".to_string(),
+            key: format!("media/runs/{run_id}/showcase/title.png"),
+        }],
+    }
+}
 
+#[tokio::test]
+async fn per_run_file_names_the_media_the_artifacts_service_published() {
+    // The artifacts service copies a run's media into the bucket and answers with the
+    // keys; the builder names them in the run's document verbatim and writes none of
+    // the media itself, so the store holding nothing for the run changes nothing.
+    let (_tmp, store) = empty_store();
+    let snapshot = SnapshotBuilder::new(
+        vec![asset_run("a1", "2026-06-17T21:40:00Z")],
+        vec![manifest()],
+        store,
+    )
+    .with_published_media(std::collections::HashMap::from([(
+        "a1".to_string(),
+        published_asset_media("a1"),
+    )]))
+    .build(now())
+    .await
+    .unwrap();
+
+    let parsed = run_document_json(&snapshot, "a1");
+    assert_eq!(
+        parsed["proofMedia"],
+        serde_json::json!([{ "id": "title", "kind": "image", "key": "media/runs/a1/proof/title.png" }])
+    );
+    assert_eq!(
+        parsed["validationMedia"],
+        serde_json::json!([{ "file": "spin__clip.webm", "key": "media/runs/a1/validation/spin__clip.mp4" }])
+    );
+    assert_eq!(
+        parsed["assetMedia"],
+        serde_json::json!([{ "file": "regenerated.png", "key": "media/runs/a1/asset/regenerated.png" }])
+    );
+    assert_eq!(
+        parsed["showcaseMedia"],
+        serde_json::json!([{ "file": "title.png", "key": "media/runs/a1/showcase/title.png" }])
+    );
+    assert!(
+        !snapshot
+            .objects
+            .iter()
+            .any(|object| object.key.starts_with("media/runs/a1/")),
+        "the backend writes no run media of its own"
+    );
+}
+
+#[tokio::test]
+async fn a_run_without_published_media_names_empty_lists() {
+    // A run whose copy has not succeeded yet still publishes: an empty list is a
+    // valid document, and the next refresh names the media once it is copied.
+    let (_tmp, store) = empty_store();
     let snapshot = SnapshotBuilder::new(
         vec![asset_run("a1", "2026-06-17T21:40:00Z")],
         vec![manifest()],
@@ -694,35 +754,69 @@ async fn per_run_file_exports_asset_media_and_names_it_by_key() {
     .build(now())
     .await
     .unwrap();
-
-    // The staged bytes are exported under the run's content-stable media prefix
-    // (NOT this snapshot's prefix) with a content type that follows the extension.
-    let regen_key = "media/runs/a1/asset/regenerated.png".to_string();
-    let regen = snapshot
-        .objects
-        .iter()
-        .find(|o| o.key == regen_key)
-        .expect("regenerated image exported");
-    assert_eq!(regen.content_type, "image/png");
-    assert_eq!(regen.bytes, b"png:regen");
-    let actions = snapshot
-        .objects
-        .iter()
-        .find(|o| o.key == "media/runs/a1/asset/actions.json")
-        .expect("action log exported");
-    assert_eq!(actions.content_type, "application/json");
-
-    // The per-run document names each present file by its served name + key; the
-    // missing preview.png is omitted.
     let parsed = run_document_json(&snapshot, "a1");
-    let media = parsed["assetMedia"].as_array().unwrap();
-    let files: Vec<&str> = media.iter().map(|m| m["file"].as_str().unwrap()).collect();
-    assert_eq!(files, vec!["regenerated.png", "actions.json"]);
-    let regen_meta = media
-        .iter()
-        .find(|m| m["file"] == "regenerated.png")
+    for list in [
+        "proofMedia",
+        "validationMedia",
+        "assetMedia",
+        "showcaseMedia",
+    ] {
+        assert_eq!(parsed[list], serde_json::json!([]), "{list}");
+    }
+}
+
+#[tokio::test]
+async fn the_short_code_rides_the_document_and_the_card() {
+    let (_tmp, store) = empty_store();
+    let mut run = stored_run("r1", "2026-06-17T21:40:00Z");
+    run.links.code = Some("r1abcdef".to_string());
+    run.record.links.code = Some("r1abcdef".to_string());
+    let snapshot = SnapshotBuilder::new(vec![run], vec![manifest()], store)
+        .build(now())
+        .await
         .unwrap();
-    assert_eq!(regen_meta["key"], regen_key);
+
+    let document = run_document_json(&snapshot, "r1");
+    assert_eq!(document["links"]["code"], "r1abcdef");
+    assert_eq!(document["record"]["links"]["code"], "r1abcdef");
+    let index = runs_index(&snapshot);
+    assert_eq!(index["runs"][0]["links"]["code"], "r1abcdef");
+}
+
+#[tokio::test]
+async fn the_objects_split_into_shared_content_and_the_generation() {
+    let (_tmp, store) = empty_store();
+    let snapshot = SnapshotBuilder::new(
+        vec![stored_run("r1", "2026-06-17T21:40:00Z")],
+        vec![manifest()],
+        store,
+    )
+    .build(now())
+    .await
+    .unwrap();
+
+    let generation: Vec<&str> = snapshot
+        .generation_objects()
+        .map(|object| object.key.as_str())
+        .collect();
+    let content: Vec<&str> = snapshot
+        .content_objects()
+        .map(|object| object.key.as_str())
+        .collect();
+    let prefix = format!("snapshots/{}/", snapshot.snapshot_id);
+    assert!(generation.contains(&format!("{prefix}runs.json").as_str()));
+    assert!(generation.iter().all(|key| key.starts_with(&prefix)));
+    assert!(
+        content
+            .iter()
+            .any(|key| key.starts_with("documents/runs/r1/"))
+    );
+    assert!(content.iter().all(|key| !key.starts_with("snapshots/")));
+    assert_eq!(
+        generation.len() + content.len(),
+        snapshot.objects.len(),
+        "every object is in exactly one phase"
+    );
 }
 
 #[tokio::test]
@@ -740,198 +834,6 @@ async fn per_run_file_omits_asset_media_for_a_non_asset_run() {
     // An end-to-end run carries an empty assetMedia list and exports no asset objects.
     assert_eq!(parsed["assetMedia"].as_array().unwrap().len(), 0);
     assert!(!snapshot.objects.iter().any(|o| o.key.contains("/asset/")));
-}
-
-#[tokio::test]
-async fn per_run_file_exports_showcase_media_and_names_it_by_key() {
-    let (_tmp, store) = empty_store();
-    // The store holds the whole mirrored directory: the carousel entry, the
-    // description file, and an image the description references that the carousel
-    // does NOT list — which must still publish, or the description renders broken.
-    store
-        .write_run_showcase("s1", "title.png", b"png:title")
-        .unwrap();
-    store
-        .write_run_showcase("s1", "showcase.md", b"# My Game\n![B](banner.png)")
-        .unwrap();
-    store
-        .write_run_showcase("s1", "banner.png", b"png:banner")
-        .unwrap();
-
-    let mut run = stored_run("s1", "2026-06-17T21:40:00Z");
-    run.record.showcase = Some(test_cabinet_contracts::run_record::RunShowcase {
-        description: "# My Game\n![B](banner.png)".to_string(),
-        media: vec![test_cabinet_contracts::run_record::ShowcaseMedia {
-            file: "title.png".to_string(),
-            name: "Title".to_string(),
-            kind: MediaKind::Image,
-        }],
-    });
-    let snapshot = SnapshotBuilder::new(vec![run], vec![manifest()], store)
-        .build(now())
-        .await
-        .unwrap();
-
-    // Every stored file is exported under the run's content-stable media prefix
-    // (NOT this snapshot's prefix) with a content type that follows the extension.
-    let title_key = "media/runs/s1/showcase/title.png".to_string();
-    let title = snapshot
-        .objects
-        .iter()
-        .find(|o| o.key == title_key)
-        .expect("carousel image exported");
-    assert_eq!(title.content_type, "image/png");
-    assert_eq!(title.bytes, b"png:title");
-    let banner = snapshot
-        .objects
-        .iter()
-        .find(|o| o.key == "media/runs/s1/showcase/banner.png")
-        .expect("description-referenced image exported even when not in the carousel");
-    assert_eq!(banner.bytes, b"png:banner");
-
-    // The per-run document names each file by its recorded name + key; the store
-    // listing is sorted, so the set is stable.
-    let parsed = run_document_json(&snapshot, "s1");
-    let media = parsed["showcaseMedia"].as_array().unwrap();
-    let files: Vec<&str> = media.iter().map(|m| m["file"].as_str().unwrap()).collect();
-    assert_eq!(files, vec!["banner.png", "showcase.md", "title.png"]);
-    let title_meta = media.iter().find(|m| m["file"] == "title.png").unwrap();
-    assert_eq!(title_meta["key"], title_key);
-}
-
-#[tokio::test]
-async fn per_run_file_omits_showcase_media_when_the_record_carries_none() {
-    let (_tmp, store) = empty_store();
-    // Bytes sitting in the store without a captured showcase on the record are not
-    // published: the record decides, exactly as it does for code analysis.
-    store
-        .write_run_showcase("s1", "title.png", b"png:title")
-        .unwrap();
-    let snapshot = SnapshotBuilder::new(
-        vec![stored_run("s1", "2026-06-17T21:40:00Z")],
-        vec![manifest()],
-        store,
-    )
-    .build(now())
-    .await
-    .unwrap();
-    let parsed = run_document_json(&snapshot, "s1");
-    assert_eq!(parsed["showcaseMedia"].as_array().unwrap().len(), 0);
-    assert!(
-        !snapshot
-            .objects
-            .iter()
-            .any(|o| o.key.contains("/showcase/"))
-    );
-}
-
-#[tokio::test]
-async fn showcase_video_recorded_as_webm_is_transcoded_to_mp4() {
-    // A `.webm` carousel clip publishes as an iOS-playable `.mp4` under the mp4
-    // key, while the per-run doc keeps the recorded `.webm` name the UI requests —
-    // the validation-media convention.
-    let Some(webm) = make_test_webm() else {
-        eprintln!("skipping: ffmpeg/libvpx unavailable");
-        return;
-    };
-    let (_tmp, store) = empty_store();
-    store.write_run_showcase("s1", "clip.webm", &webm).unwrap();
-
-    let mut run = stored_run("s1", "2026-06-17T21:40:00Z");
-    run.record.showcase = Some(test_cabinet_contracts::run_record::RunShowcase {
-        description: "# My Game".to_string(),
-        media: vec![test_cabinet_contracts::run_record::ShowcaseMedia {
-            file: "clip.webm".to_string(),
-            name: "Gameplay".to_string(),
-            kind: MediaKind::Video,
-        }],
-    });
-    let snapshot = SnapshotBuilder::new(vec![run], vec![manifest()], store)
-        .build(now())
-        .await
-        .unwrap();
-
-    assert!(
-        !snapshot
-            .objects
-            .iter()
-            .any(|o| o.key.ends_with("/clip.webm")),
-        "the raw showcase webm must not be published",
-    );
-    let clip = snapshot
-        .objects
-        .iter()
-        .find(|o| o.key == "media/runs/s1/showcase/clip.mp4")
-        .expect("showcase video published as mp4");
-    assert_eq!(clip.content_type, "video/mp4");
-
-    let parsed = run_document_json(&snapshot, "s1");
-    let media = parsed["showcaseMedia"].as_array().unwrap();
-    assert_eq!(media.len(), 1);
-    assert_eq!(media[0]["file"], "clip.webm");
-    assert_eq!(media[0]["key"], "media/runs/s1/showcase/clip.mp4");
-}
-
-#[tokio::test]
-async fn existing_showcase_media_is_referenced_without_rereading_the_store() {
-    // A key already in the bucket is referenced without touching the source bytes:
-    // stage NO bytes in the store, hand the builder the key as already-existing, and
-    // the meta still names it.
-    let (_tmp, store) = empty_store();
-    let mut run = stored_run("s1", "2026-06-17T21:40:00Z");
-    run.record.showcase = Some(test_cabinet_contracts::run_record::RunShowcase {
-        description: "# My Game".to_string(),
-        media: vec![test_cabinet_contracts::run_record::ShowcaseMedia {
-            file: "title.png".to_string(),
-            name: "Title".to_string(),
-            kind: MediaKind::Image,
-        }],
-    });
-    let key = "media/runs/s1/showcase/title.png".to_string();
-    let snapshot = SnapshotBuilder::new(vec![run], vec![manifest()], store)
-        .with_existing_media(std::collections::HashSet::from([key.clone()]))
-        .build(now())
-        .await
-        .unwrap();
-
-    assert!(
-        !snapshot.objects.iter().any(|o| o.key == key),
-        "an existing showcase key must not be re-uploaded",
-    );
-    let parsed = run_document_json(&snapshot, "s1");
-    let media = parsed["showcaseMedia"].as_array().unwrap();
-    assert_eq!(media.len(), 1);
-    assert_eq!(media[0]["file"], "title.png");
-    assert_eq!(media[0]["key"], key);
-}
-
-#[tokio::test]
-async fn showcase_description_image_survives_a_wiped_store_via_the_record() {
-    // The backend store is ephemeral, and an image the description references
-    // without listing in the carousel is named nowhere else on the record — the
-    // builder must extract its name from the description text or a store loss
-    // silently breaks the published page's image forever (the write-once media
-    // convention never heals it). Stage NOTHING in the store and hand the image's
-    // key as already-in-bucket: the meta naming it proves the extracted name
-    // reached the lookup.
-    let (_tmp, store) = empty_store();
-    let mut run = stored_run("s1", "2026-06-17T21:40:00Z");
-    run.record.showcase = Some(test_cabinet_contracts::run_record::RunShowcase {
-        description: "# My Game\n![B](banner.png)".to_string(),
-        media: vec![],
-    });
-    let key = "media/runs/s1/showcase/banner.png".to_string();
-    let snapshot = SnapshotBuilder::new(vec![run], vec![manifest()], store)
-        .with_existing_media(std::collections::HashSet::from([key.clone()]))
-        .build(now())
-        .await
-        .unwrap();
-
-    let parsed = run_document_json(&snapshot, "s1");
-    let media = parsed["showcaseMedia"].as_array().unwrap();
-    assert_eq!(media.len(), 1);
-    assert_eq!(media[0]["file"], "banner.png");
-    assert_eq!(media[0]["key"], key);
 }
 
 #[tokio::test]
@@ -1358,394 +1260,6 @@ async fn snapshot_id_changes_with_the_run_set() {
     .await
     .unwrap();
     assert_ne!(a.snapshot_id, b.snapshot_id);
-}
-
-/// A stored run carrying the given proof results (end-to-end). The recorded proofs
-/// are what the builder enumerates from — the store/artifact-service only supply the
-/// bytes.
-fn proof_run(id: &str, proofs: Vec<ProofResult>) -> StoredRun {
-    let mut run = stored_run(id, "2026-06-17T21:40:00Z");
-    run.record.validation.proofs = proofs;
-    run
-}
-
-/// A proof result the agent did (or did not) produce at `dest`.
-fn proof(id: &str, dest: &str, kind: MediaKind, present: bool) -> ProofResult {
-    ProofResult {
-        id: id.into(),
-        name: id.into(),
-        kind,
-        dest: dest.into(),
-        present,
-        detail: None,
-    }
-}
-
-/// The service token the stub artifact service accepts.
-const ARTIFACTS_SERVICE_TOKEN: &str = "artifacts-svc-token";
-
-/// A throwaway HTTP server standing in for the artifact service: it answers `401`
-/// to a request without [`ARTIFACTS_SERVICE_TOKEN`], `200` with the staged bytes
-/// for a known `/runs/<id>/<kind>/<file>` path and `404` otherwise, recording every
-/// path it is asked for so a test can assert the store fast-path skipped it.
-/// Returns its base URL and that request log.
-async fn stub_artifacts(files: HashMap<String, Vec<u8>>) -> (String, Arc<Mutex<Vec<String>>>) {
-    let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
-    let addr = listener.local_addr().expect("addr");
-    let seen = Arc::new(Mutex::new(Vec::new()));
-    let sink = seen.clone();
-    tokio::spawn(async move {
-        loop {
-            let Ok((mut sock, _)) = listener.accept().await else {
-                return;
-            };
-            let files = files.clone();
-            let sink = sink.clone();
-            tokio::spawn(async move {
-                let mut buf = [0u8; 2048];
-                let n = sock.read(&mut buf).await.unwrap_or(0);
-                let req = String::from_utf8_lossy(&buf[..n]);
-                let path = req
-                    .lines()
-                    .next()
-                    .and_then(|line| line.split_whitespace().nth(1))
-                    .unwrap_or("")
-                    .to_string();
-                sink.lock().expect("lock").push(path.clone());
-                // Every read of the artifact service needs an identity: the backend
-                // presents the shared service token.
-                let authorized = req.lines().any(|line| {
-                    line.to_ascii_lowercase()
-                        == format!("authorization: bearer {ARTIFACTS_SERVICE_TOKEN}")
-                });
-                let resp = match files.get(&path) {
-                    _ if !authorized => {
-                        b"HTTP/1.1 401 Unauthorized\r\nContent-Length: 0\r\n\r\n".to_vec()
-                    }
-                    Some(body) => {
-                        let mut r =
-                            format!("HTTP/1.1 200 OK\r\nContent-Length: {}\r\n\r\n", body.len())
-                                .into_bytes();
-                        r.extend_from_slice(body);
-                        r
-                    }
-                    None => b"HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\n\r\n".to_vec(),
-                };
-                let _ = sock.write_all(&resp).await;
-                let _ = sock.flush().await;
-            });
-        }
-    });
-    (format!("http://{addr}"), seen)
-}
-
-#[tokio::test]
-async fn per_run_file_exports_proof_media_from_the_record() {
-    let (_tmp, store) = empty_store();
-    // The store holds the produced proofs under their served names; the record
-    // declares them (one image, one video) plus one the agent did not produce.
-    store
-        .write_run_proof("p1", "title.png", b"png:title")
-        .unwrap();
-    store
-        .write_run_proof("p1", "rally.mp4", b"mp4:rally")
-        .unwrap();
-
-    let run = proof_run(
-        "p1",
-        vec![
-            proof("title", "proof/title.png", MediaKind::Image, true),
-            proof("rally", "proof/rally.mp4", MediaKind::Video, true),
-            proof("skip", "proof/skip.png", MediaKind::Image, false),
-        ],
-    );
-    let snapshot = SnapshotBuilder::new(vec![run], vec![manifest()], store)
-        .build(now())
-        .await
-        .unwrap();
-
-    // Each present proof's bytes are exported under its content-stable media key,
-    // with a content type that follows the extension (the video stays a video).
-    let title = snapshot
-        .objects
-        .iter()
-        .find(|o| o.key == "media/runs/p1/proof/title.png")
-        .expect("image proof exported");
-    assert_eq!(title.content_type, "image/png");
-    assert_eq!(title.bytes, b"png:title");
-    let rally = snapshot
-        .objects
-        .iter()
-        .find(|o| o.key == "media/runs/p1/proof/rally.mp4")
-        .expect("video proof exported");
-    assert_eq!(rally.content_type, "video/mp4");
-
-    // The per-run document lists the present proofs with the record's kinds; the
-    // unproduced `skip` is omitted.
-    let parsed = run_document_json(&snapshot, "p1");
-    let media = parsed["proofMedia"].as_array().unwrap();
-    let ids: Vec<&str> = media.iter().map(|m| m["id"].as_str().unwrap()).collect();
-    assert_eq!(ids, vec!["title", "rally"]);
-    let rally_meta = media.iter().find(|m| m["id"] == "rally").unwrap();
-    assert_eq!(rally_meta["kind"], "video");
-}
-
-/// A stored run carrying one debug script with the given image + video outputs, so
-/// the builder enumerates its synthesized *actual* validation media. `present` gates
-/// whether each output is recorded as produced.
-fn validation_run(id: &str, item_id: &str, image_present: bool, video_present: bool) -> StoredRun {
-    let mut run = stored_run(id, "2026-06-17T21:40:00Z");
-    run.record.validation.debug_scripts = vec![DebugScriptResult {
-        item_id: item_id.to_string(),
-        sub_item_id: None,
-        title: "Ball spin".to_string(),
-        category_title: "Ball spin".to_string(),
-        script: "validation/spin.mjs".to_string(),
-        gates: true,
-        ran: true,
-        precondition_unmet: false,
-        inconclusive: None,
-        detail: None,
-        verdicts: vec![],
-        outputs: vec![
-            DebugScriptOutput {
-                id: "still".to_string(),
-                name: "Still".to_string(),
-                kind: MediaKind::Image,
-                actual_present: image_present,
-            },
-            DebugScriptOutput {
-                id: "rally".to_string(),
-                name: "Rally".to_string(),
-                kind: MediaKind::Video,
-                actual_present: video_present,
-            },
-        ],
-    }];
-    run
-}
-
-#[tokio::test]
-async fn per_run_file_exports_actual_validation_media_from_the_record() {
-    // The store holds the mirrored *actual* media under the flat, gallery-requested
-    // names. Only the present image output is a still (no transcode); the absent
-    // outputs contribute nothing.
-    let (_tmp, store) = empty_store();
-    store
-        .write_run_validation("v1", "spin__still.png", b"png:spin-still")
-        .unwrap();
-
-    // `still` present, `rally` (video) absent so no transcode is attempted.
-    let run = validation_run("v1", "spin", true, false);
-    let snapshot = SnapshotBuilder::new(vec![run], vec![], store)
-        .build(now())
-        .await
-        .unwrap();
-
-    // The still's bytes are exported under its content-stable validation media key.
-    let still = snapshot
-        .objects
-        .iter()
-        .find(|o| o.key == "media/runs/v1/validation/spin__still.png")
-        .expect("image validation media exported");
-    assert_eq!(still.content_type, "image/png");
-    assert_eq!(still.bytes, b"png:spin-still");
-
-    // The per-run document names it by the flat name the reviewer UI requests; the
-    // unproduced video output is omitted.
-    let parsed = run_document_json(&snapshot, "v1");
-    let media = parsed["validationMedia"].as_array().unwrap();
-    assert_eq!(media.len(), 1);
-    assert_eq!(media[0]["file"], "spin__still.png");
-    assert_eq!(media[0]["key"], "media/runs/v1/validation/spin__still.png");
-}
-
-#[tokio::test]
-async fn per_run_file_exports_the_recordings_shared_image_store_the_record_cannot_name() {
-    // A recording's image entries name flat `img.<id>.<ext>` files beside it rather
-    // than carrying base64 of their pixels — the same file for a sprite every one of a
-    // run's recordings draws. Those files back no verdict and are named by their own
-    // bytes, so they are on no output declaration: the record-driven loop cannot see
-    // them, and the listing is what carries them. A published replay whose store did
-    // not travel resolves nothing and draws holes.
-    let (_tmp, store) = empty_store();
-    store
-        .write_run_validation("v1", "spin__still.png", b"png:spin-still")
-        .unwrap();
-    store
-        .write_run_validation("v1", "img.9f2c1ab4.png", b"png:sprite")
-        .unwrap();
-    store
-        .write_run_validation("v1", "img.7ee01d33.bin", b"rgba")
-        .unwrap();
-
-    let run = validation_run("v1", "spin", true, false);
-    let snapshot = SnapshotBuilder::new(vec![run], vec![], store)
-        .build(now())
-        .await
-        .unwrap();
-
-    // Published under the very name it is served under — no published-extension and
-    // no transcode branch, because that identity is what lets an entry inside a
-    // recording resolve through the resolver the recording itself came from.
-    let sprite = snapshot
-        .objects
-        .iter()
-        .find(|o| o.key == "media/runs/v1/validation/img.9f2c1ab4.png")
-        .expect("the stored bitmap exported");
-    assert_eq!(sprite.content_type, "image/png");
-    assert_eq!(sprite.bytes, b"png:sprite");
-
-    let pixels = snapshot
-        .objects
-        .iter()
-        .find(|o| o.key == "media/runs/v1/validation/img.7ee01d33.bin")
-        .expect("the stored pixel buffer exported");
-    assert_eq!(pixels.content_type, "application/octet-stream");
-    assert_eq!(pixels.bytes, b"rgba");
-
-    // The per-run document names the store beside the declared output, under the same
-    // flat file names, so every console's `(runId, file) => url` resolver reaches both
-    // with no new plumbing.
-    let parsed = run_document_json(&snapshot, "v1");
-    let mut files: Vec<&str> = parsed["validationMedia"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .map(|m| m["file"].as_str().unwrap())
-        .collect();
-    files.sort_unstable();
-    assert_eq!(
-        files,
-        vec!["img.7ee01d33.bin", "img.9f2c1ab4.png", "spin__still.png"],
-    );
-    // A declared output is published once, by the record-driven loop, and is not
-    // published a second time by the listing that follows it.
-    assert_eq!(
-        parsed["validationMedia"].as_array().unwrap().len(),
-        3,
-        "the union is a union, not a concatenation",
-    );
-}
-
-#[tokio::test]
-async fn per_run_validation_ignores_a_stored_file_that_is_neither_declared_nor_a_store_file() {
-    // The listing exists for one thing: the shared image store, which no record can
-    // name. Everything else in the directory is either already on the record or is not
-    // media at all, so the filter is what keeps a stray file out of the published set
-    // — a scratch file publishing as an unlabelled blob is a leak, not a degradation.
-    let (_tmp, store) = empty_store();
-    store
-        .write_run_validation("v1", "spin__still.png", b"png:spin-still")
-        .unwrap();
-    store
-        .write_run_validation("v1", "notes.txt", b"scratch")
-        .unwrap();
-    // The prefix alone is not enough: the store holds a PNG bitmap and a headerless
-    // RGBA buffer and nothing else, so a name this side cannot label a content type
-    // for stays where it is.
-    store
-        .write_run_validation("v1", "img.9f2c1ab4.json.gz", b"\x1f\x8bgz")
-        .unwrap();
-
-    let run = validation_run("v1", "spin", true, false);
-    let snapshot = SnapshotBuilder::new(vec![run], vec![], store)
-        .build(now())
-        .await
-        .unwrap();
-
-    let parsed = run_document_json(&snapshot, "v1");
-    let media = parsed["validationMedia"].as_array().unwrap();
-    assert_eq!(media.len(), 1);
-    assert_eq!(media[0]["file"], "spin__still.png");
-    assert!(
-        !snapshot
-            .objects
-            .iter()
-            .any(|o| o.key.contains("/validation/notes.txt")
-                || o.key.contains("/validation/img.9f2c1ab4.json.gz")),
-    );
-}
-
-#[tokio::test]
-async fn a_published_recording_carries_its_framing_onto_the_object() {
-    // R2 hands back what the object records, so a recording published without its
-    // framing declared would reach the gallery as an opaque gzip blob. The compound
-    // `.json.gz` suffix is what says the gzip frames a document rather than being one.
-    let (_tmp, store) = empty_store();
-    store
-        .write_run_validation("v1", "spin__replay.json.gz", &[0x1f, 0x8b, 0x08, 0x00])
-        .unwrap();
-
-    let mut run = validation_run("v1", "spin", false, false);
-    run.record.validation.debug_scripts[0].outputs = vec![DebugScriptOutput {
-        id: "replay".to_string(),
-        name: "Replay".to_string(),
-        kind: MediaKind::Replay,
-        actual_present: true,
-    }];
-    let snapshot = SnapshotBuilder::new(vec![run], vec![], store)
-        .build(now())
-        .await
-        .unwrap();
-
-    let replay = snapshot
-        .objects
-        .iter()
-        .find(|o| o.key == "media/runs/v1/validation/spin__replay.json.gz")
-        .expect("replay validation media exported");
-    assert_eq!(replay.content_type, "application/json");
-    assert_eq!(replay.content_encoding.as_deref(), Some("gzip"));
-    assert_eq!(replay.bytes, vec![0x1f, 0x8b, 0x08, 0x00]);
-}
-
-#[tokio::test]
-async fn per_run_validation_media_for_a_sub_item_is_keyed_by_the_composite_verdict_id() {
-    // A per-sub-item driver's media is addressed by the composite verdict id
-    // `<item>.<sub>`, so a sub-item's proof does not collide with its siblings' or the
-    // whole item's. The store holds it (and the reviewer requests it) under that name.
-    let (_tmp, store) = empty_store();
-    store
-        .write_run_validation("v1", "ball-spin.stationary__still.png", b"png:sub-still")
-        .unwrap();
-
-    let mut run = stored_run("v1", "2026-06-17T21:40:00Z");
-    run.record.validation.debug_scripts = vec![DebugScriptResult {
-        item_id: "ball-spin".to_string(),
-        sub_item_id: Some("stationary".to_string()),
-        title: "No spin while stationary".to_string(),
-        category_title: "Paddle spin".to_string(),
-        script: "validation/ball-spin/stationary.mjs".to_string(),
-        gates: true,
-        ran: true,
-        precondition_unmet: false,
-        inconclusive: None,
-        detail: None,
-        verdicts: vec![],
-        outputs: vec![DebugScriptOutput {
-            id: "still".to_string(),
-            name: "Still".to_string(),
-            kind: MediaKind::Image,
-            actual_present: true,
-        }],
-    }];
-
-    let snapshot = SnapshotBuilder::new(vec![run], vec![], store)
-        .build(now())
-        .await
-        .unwrap();
-
-    assert!(
-        snapshot
-            .objects
-            .iter()
-            .any(|o| o.key == "media/runs/v1/validation/ball-spin.stationary__still.png"),
-        "the sub-item's media is exported under the composite verdict-id name"
-    );
-    let parsed = run_document_json(&snapshot, "v1");
-    let media = parsed["validationMedia"].as_array().unwrap();
-    assert_eq!(media.len(), 1);
-    assert_eq!(media[0]["file"], "ball-spin.stationary__still.png");
 }
 
 #[tokio::test]
@@ -2402,296 +1916,6 @@ fn make_test_webm() -> Option<Vec<u8>> {
 }
 
 #[tokio::test]
-async fn video_proof_recorded_as_webm_is_transcoded_to_mp4_for_the_snapshot() {
-    // A run captures its clip as the `.webm` Playwright records; the snapshot must
-    // publish it as an iOS-playable `.mp4`, keyed `<proof-id>.mp4`.
-    let Some(webm) = make_test_webm() else {
-        eprintln!("skipping: ffmpeg/libvpx unavailable");
-        return;
-    };
-    let (_tmp, store) = empty_store();
-    store.write_run_proof("p1", "rally.webm", &webm).unwrap();
-
-    let run = proof_run(
-        "p1",
-        vec![proof("rally", "proof/rally.webm", MediaKind::Video, true)],
-    );
-    let snapshot = SnapshotBuilder::new(vec![run], vec![manifest()], store)
-        .build(now())
-        .await
-        .unwrap();
-
-    // The webm is gone from the snapshot; the exported object is a real mp4.
-    assert!(
-        !snapshot
-            .objects
-            .iter()
-            .any(|o| o.key.ends_with("/rally.webm")),
-        "the raw webm must not be published",
-    );
-    let rally = snapshot
-        .objects
-        .iter()
-        .find(|o| o.key == "media/runs/p1/proof/rally.mp4")
-        .expect("video proof published as mp4");
-    assert_eq!(rally.content_type, "video/mp4");
-    // The bytes are a valid mp4: the `ftyp` box tag sits at offset 4.
-    assert_eq!(&rally.bytes[4..8], b"ftyp", "transcoded bytes are not mp4");
-
-    // The per-run doc points at the mp4 key with a video kind.
-    let parsed = run_document_json(&snapshot, "p1");
-    let rally_meta = parsed["proofMedia"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .find(|m| m["id"] == "rally")
-        .unwrap();
-    assert_eq!(rally_meta["kind"], "video");
-    assert_eq!(rally_meta["key"], "media/runs/p1/proof/rally.mp4");
-}
-
-#[tokio::test]
-async fn video_validation_media_recorded_as_webm_is_transcoded_to_mp4() {
-    // The captured *actual* video output is the `.webm` Playwright records; the
-    // snapshot must publish it as an iOS-playable `.mp4` under the flat validation
-    // key, while the per-run doc keeps the gallery-requested `.webm` name.
-    let Some(webm) = make_test_webm() else {
-        eprintln!("skipping: ffmpeg/libvpx unavailable");
-        return;
-    };
-    let (_tmp, store) = empty_store();
-    store
-        .write_run_validation("v1", "spin__rally.webm", &webm)
-        .unwrap();
-
-    // Only the video output is present.
-    let run = validation_run("v1", "spin", false, true);
-    let snapshot = SnapshotBuilder::new(vec![run], vec![], store)
-        .build(now())
-        .await
-        .unwrap();
-
-    // The raw webm is gone; the exported object is a real mp4 under the mp4 key.
-    assert!(
-        !snapshot
-            .objects
-            .iter()
-            .any(|o| o.key.ends_with("/spin__rally.webm")),
-        "the raw validation webm must not be published",
-    );
-    let rally = snapshot
-        .objects
-        .iter()
-        .find(|o| o.key == "media/runs/v1/validation/spin__rally.mp4")
-        .expect("video validation media published as mp4");
-    assert_eq!(rally.content_type, "video/mp4");
-    assert_eq!(&rally.bytes[4..8], b"ftyp", "transcoded bytes are not mp4");
-
-    // The per-run doc keeps the `.webm` file the UI requests but points at the mp4 key.
-    let parsed = run_document_json(&snapshot, "v1");
-    let media = parsed["validationMedia"].as_array().unwrap();
-    assert_eq!(media.len(), 1);
-    assert_eq!(media[0]["file"], "spin__rally.webm");
-    assert_eq!(media[0]["key"], "media/runs/v1/validation/spin__rally.mp4");
-}
-
-#[tokio::test]
-async fn video_proof_falls_back_to_webm_when_transcode_fails() {
-    // The webm bytes are unusable (or ffmpeg is absent): rather than dropping the
-    // proof, the builder publishes the raw webm so it still appears in the gallery.
-    let (_tmp, store) = empty_store();
-    store
-        .write_run_proof("p1", "rally.webm", b"not a real webm")
-        .unwrap();
-
-    let run = proof_run(
-        "p1",
-        vec![proof("rally", "proof/rally.webm", MediaKind::Video, true)],
-    );
-    let snapshot = SnapshotBuilder::new(vec![run], vec![manifest()], store)
-        .build(now())
-        .await
-        .unwrap();
-
-    let rally = snapshot
-        .objects
-        .iter()
-        .find(|o| o.key == "media/runs/p1/proof/rally.webm")
-        .expect("video proof falls back to raw webm");
-    assert_eq!(rally.content_type, "video/webm");
-    assert_eq!(rally.bytes, b"not a real webm");
-    assert!(
-        !snapshot
-            .objects
-            .iter()
-            .any(|o| o.key.ends_with("/rally.mp4")),
-        "no mp4 should be published when the transcode fails",
-    );
-}
-
-#[tokio::test]
-async fn missing_store_media_falls_back_to_the_artifact_service() {
-    // The store is empty (as after a backend restart wiped its emptyDir), but the
-    // artifact service still holds the run's proof. The builder must recover it.
-    let (_tmp, store) = empty_store();
-    let (base, seen) = stub_artifacts(HashMap::from([(
-        "/runs/p1/proof/title.png".to_string(),
-        b"durable:title".to_vec(),
-    )]))
-    .await;
-
-    let run = proof_run(
-        "p1",
-        vec![proof("title", "proof/title.png", MediaKind::Image, true)],
-    );
-    let snapshot = SnapshotBuilder::new(vec![run], vec![manifest()], store)
-        .with_artifacts(
-            Some(base),
-            Some(ARTIFACTS_SERVICE_TOKEN.to_string()),
-            reqwest::Client::new(),
-        )
-        .build(now())
-        .await
-        .unwrap();
-
-    let title = snapshot
-        .objects
-        .iter()
-        .find(|o| o.key == "media/runs/p1/proof/title.png")
-        .expect("proof recovered from the artifact service");
-    assert_eq!(title.bytes, b"durable:title");
-    assert!(
-        seen.lock()
-            .unwrap()
-            .contains(&"/runs/p1/proof/title.png".to_string()),
-        "the builder fetched the missing proof from the artifact service",
-    );
-}
-
-#[tokio::test]
-async fn the_artifact_fallback_presents_the_service_token() {
-    // Without the service token the artifact service refuses the read, so the media
-    // cannot be recovered.
-    let (_tmp, store) = empty_store();
-    let (base, seen) = stub_artifacts(HashMap::from([(
-        "/runs/p1/proof/title.png".to_string(),
-        b"durable:title".to_vec(),
-    )]))
-    .await;
-
-    let run = proof_run(
-        "p1",
-        vec![proof("title", "proof/title.png", MediaKind::Image, true)],
-    );
-    let snapshot = SnapshotBuilder::new(vec![run], vec![manifest()], store)
-        .with_artifacts(Some(base), None, reqwest::Client::new())
-        .build(now())
-        .await
-        .unwrap();
-
-    assert!(
-        !snapshot
-            .objects
-            .iter()
-            .any(|o| o.key == "media/runs/p1/proof/title.png"),
-        "a refused read recovers nothing",
-    );
-    assert!(
-        seen.lock()
-            .unwrap()
-            .contains(&"/runs/p1/proof/title.png".to_string()),
-        "the builder asked the artifact service",
-    );
-}
-
-#[tokio::test]
-async fn store_media_is_used_without_calling_the_artifact_service() {
-    // When the store has the media, it is the fast path: no artifact request is made
-    // even though the fallback is configured.
-    let (_tmp, store) = empty_store();
-    store
-        .write_run_proof("p1", "title.png", b"local:title")
-        .unwrap();
-    let (base, seen) = stub_artifacts(HashMap::new()).await;
-
-    let run = proof_run(
-        "p1",
-        vec![proof("title", "proof/title.png", MediaKind::Image, true)],
-    );
-    let snapshot = SnapshotBuilder::new(vec![run], vec![manifest()], store)
-        .with_artifacts(
-            Some(base),
-            Some(ARTIFACTS_SERVICE_TOKEN.to_string()),
-            reqwest::Client::new(),
-        )
-        .build(now())
-        .await
-        .unwrap();
-
-    let title = snapshot
-        .objects
-        .iter()
-        .find(|o| o.key == "media/runs/p1/proof/title.png")
-        .expect("proof exported from the store");
-    assert_eq!(title.bytes, b"local:title");
-    assert!(
-        seen.lock().unwrap().is_empty(),
-        "the store fast-path made no artifact-service request",
-    );
-}
-
-#[tokio::test]
-async fn existing_media_is_referenced_without_re_uploading_or_reading_the_source() {
-    // The media is already in the bucket at its content-stable key. The builder must
-    // reference it in the per-run document but NOT re-emit it as an upload object, and
-    // must not need the source bytes at all — proving a refresh keeps a run's media
-    // even when the store and artifact service have both lost the bytes (as after a
-    // cluster recreate). The store is empty and no artifact fallback is configured.
-    let (_tmp, store) = empty_store();
-    let existing = std::collections::HashSet::from([
-        "media/runs/p1/proof/title.png".to_string(),
-        "media/runs/p1/proof/rally.mp4".to_string(),
-    ]);
-
-    let run = proof_run(
-        "p1",
-        vec![
-            proof("title", "proof/title.png", MediaKind::Image, true),
-            proof("rally", "proof/rally.mp4", MediaKind::Video, true),
-        ],
-    );
-    let snapshot = SnapshotBuilder::new(vec![run], vec![manifest()], store)
-        .with_existing_media(existing)
-        .build(now())
-        .await
-        .unwrap();
-
-    // No media object is re-emitted for the already-present keys.
-    assert!(
-        !snapshot
-            .objects
-            .iter()
-            .any(|o| o.key.starts_with("media/runs/p1/proof/")),
-        "existing media must not be re-uploaded",
-    );
-    // But the per-run document still points at both stable keys.
-    let parsed = run_document_json(&snapshot, "p1");
-    let keys: Vec<&str> = parsed["proofMedia"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .map(|m| m["key"].as_str().unwrap())
-        .collect();
-    assert_eq!(
-        keys,
-        vec![
-            "media/runs/p1/proof/title.png",
-            "media/runs/p1/proof/rally.mp4"
-        ],
-    );
-}
-
-#[tokio::test]
 async fn an_unchanged_run_document_is_referenced_without_being_re_uploaded() {
     // The whole point of content-addressing the documents: a refresh where nothing
     // about a run moved must upload nothing for it, while `runs.json` still resolves.
@@ -2753,35 +1977,6 @@ async fn a_changed_run_mints_a_new_document_key_and_uploads_it() {
     assert_eq!(runs_index(&after)["runs"][0]["documentKey"], fresh.key);
     // The superseded revision is no longer referenced, so the prune may reclaim it.
     assert!(!after.run_document_keys.contains(&stale_key));
-}
-
-#[tokio::test]
-async fn media_absent_from_the_bucket_is_still_uploaded_from_the_source() {
-    // The complement: a stable key NOT in the existing set is read from the store and
-    // uploaded as before, so a brand-new run's media is exported on its first refresh.
-    let (_tmp, store) = empty_store();
-    store
-        .write_run_proof("p1", "title.png", b"png:title")
-        .unwrap();
-    let run = proof_run(
-        "p1",
-        vec![proof("title", "proof/title.png", MediaKind::Image, true)],
-    );
-    let snapshot = SnapshotBuilder::new(vec![run], vec![manifest()], store)
-        // An unrelated key is present, but not this run's — so it is not skipped.
-        .with_existing_media(std::collections::HashSet::from([
-            "media/runs/other/proof/x.png".to_string(),
-        ]))
-        .build(now())
-        .await
-        .unwrap();
-
-    let title = snapshot
-        .objects
-        .iter()
-        .find(|o| o.key == "media/runs/p1/proof/title.png")
-        .expect("absent media is uploaded from the source");
-    assert_eq!(title.bytes, b"png:title");
 }
 
 #[tokio::test]
@@ -3145,7 +2340,7 @@ fn generation_timestamp_round_trips_a_real_snapshot_id() {
 async fn a_stored_run_tree_artifact_never_reaches_the_public_snapshot() {
     // R7, and owner decision Q1. The **session record** is never published: it is a
     // private, whole-run capture of everything the model was sent, so it never goes to
-    // R2 at all (and could not be redacted usefully if it did — it is opaque, possibly
+    // the public bucket at all (and could not be redacted usefully if it did — it is opaque, possibly
     // gzipped bytes the scrubber cannot walk). A code-analysis document *is* published
     // now, but only when the run **record** says the run was analysed — the store
     // holding one is not the authority, exactly as it is not for proofs. This run's
@@ -3341,7 +2536,7 @@ async fn the_published_code_analysis_document_is_scrubbed() {
     let body = String::from_utf8(document.bytes.clone()).unwrap();
     assert!(
         !body.contains("sk-ant-api03-notreal-value"),
-        "a leaked key reached R2 through the code-analysis object: {body}",
+        "a leaked key reached the bucket through the code-analysis object: {body}",
     );
     assert!(body.contains(test_cabinet_redact::PLACEHOLDER));
 }
@@ -3546,7 +2741,7 @@ async fn the_gg_corpus_is_published_and_the_index_points_at_it() {
 async fn the_gg_corpus_passes_the_scrubber_like_every_other_public_object() {
     // R7, on the object this milestone adds. `build` scrubs the `PerRun` document by
     // walking it individually, so **every sibling object has to opt in** — a new one
-    // reaches R2 unredacted by default, and that is a two-line change nothing else in
+    // reaches the bucket unredacted by default, and that is a two-line change nothing else in
     // the builder would notice. A gg document is derived from a run's configuration, and
     // an operator who pasted a provider key into a capability parameter has put it into
     // a field short enough to survive the document's own redaction.

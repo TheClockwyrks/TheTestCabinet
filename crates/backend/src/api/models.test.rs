@@ -31,8 +31,6 @@ async fn test_state_with_prices(
         std::sync::Arc::clone(&db),
         store.clone(),
         None,
-        None,
-        None,
         crate::publisher::PublisherTiming {
             coalesce: config.coalesce,
             snapshot_retention: config.snapshot_retention,

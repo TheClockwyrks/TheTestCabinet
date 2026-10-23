@@ -47,8 +47,6 @@ pub(crate) async fn test_state() -> (tempfile::TempDir, AppState) {
         std::sync::Arc::clone(&db),
         store.clone(),
         None,
-        None,
-        None,
         crate::publisher::PublisherTiming {
             coalesce: config.coalesce,
             snapshot_retention: config.snapshot_retention,

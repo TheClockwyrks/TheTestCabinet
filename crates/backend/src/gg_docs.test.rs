@@ -840,7 +840,7 @@ async fn a_case_this_process_cannot_classify_is_withheld_from_the_export() {
     // That is not a contrived state. In production the def store is an `emptyDir`
     // wiped on every restart while the snapshot's dirty flag is durable in Postgres, so
     // a refresh pending at the last restart runs against a store that knows about no
-    // case at all — and every experimental version in the corpus would go to public R2.
+    // case at all — and every experimental version in the corpus would go to the public bucket.
     // An empty store here is that window, exactly.
     let db = Db::connect_in_memory().await.unwrap();
     let dir = TempDir::new().expect("temp dir");

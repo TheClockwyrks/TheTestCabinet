@@ -11,7 +11,7 @@ pub struct Model {
     pub id: i32,
     /// Whether a publish has landed since the last successful upload.
     pub dirty: bool,
-    /// RFC 3339 of the last successful R2 upload, or `NULL` if never uploaded.
+    /// RFC 3339 of the last successful write of the public dataset, or `NULL` if never uploaded.
     pub last_uploaded: Option<String>,
     /// Runs in the last uploaded snapshot, or `NULL` if never uploaded.
     pub last_run_count: Option<i64>,

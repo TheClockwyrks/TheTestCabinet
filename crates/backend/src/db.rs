@@ -515,7 +515,7 @@ pub struct PublishRunOutcome {
 pub struct SnapshotState {
     /// Whether a publish has landed since the last successful upload.
     pub dirty: bool,
-    /// RFC 3339 of the last successful R2 upload, or `None` if never uploaded.
+    /// RFC 3339 of the last successful write of the public dataset, or `None` if never uploaded.
     pub last_uploaded: Option<String>,
     /// Runs in the last uploaded snapshot, or `None` if never uploaded.
     pub last_run_count: Option<i64>,
@@ -658,13 +658,18 @@ impl Db {
         events_json: Option<&str>,
         manifest: Option<&StoredManifest>,
     ) -> Result<PushOutcome> {
-        // The stored record always carries the resolved links, so the snapshot's
-        // record blob and its `links` sibling never disagree.
-        let mut record = record.clone();
-        record.links = links.clone();
-        let record_json = serde_json::to_string(&record)?;
-
         let txn = self.conn().begin().await?;
+
+        // The stored record always carries the resolved links, so the snapshot's
+        // record blob and its `links` sibling never disagree. The short code is the
+        // backend's own, minted at the run's first publish: a pushed record's links
+        // never set it, and a re-push of a published run keeps the one it holds.
+        let mut record = record.clone();
+        record.links = RunLinks {
+            code: stored_code(&txn, &record.id).await?,
+            ..links.clone()
+        };
+        let record_json = serde_json::to_string(&record)?;
 
         let existing = run::Entity::find_by_id(record.id.clone()).one(&txn).await?;
         let newly_pushed = existing.is_none();
@@ -795,10 +800,14 @@ impl Db {
         .exec(&txn)
         .await?;
 
+        // The code and the published media are written only by the publish path
+        // (`ensure_code`, `set_public_media`), so the upsert leaves both alone.
         run_link::Entity::insert(run_link::ActiveModel {
             run_id: Set(record.id.clone()),
             source_repo: Set(links.source_repo.clone()),
             playable_build: Set(links.playable_build.clone()),
+            code: NotSet,
+            public_media: NotSet,
         })
         .on_conflict(
             OnConflict::column(run_link::Column::RunId)
@@ -1047,9 +1056,15 @@ impl Db {
             .clone()
             .unwrap_or_else(|| published_at.to_string());
 
+        // The first publish mints the run's short code; a repeat keeps it. The
+        // record blob carries it like every other link.
+        let code = ensure_code(&txn, run_id).await?;
+        let record_json = with_code(&run.record_json, code)?;
+
         let mut active = run.into_active_model();
         active.published = Set(true);
         active.published_at = Set(Some(effective_published_at));
+        active.record_json = Set(record_json);
         active.update(&txn).await?;
 
         touch_run(&txn, run_id).await?;
@@ -1836,7 +1851,7 @@ impl Db {
             // would 500 an entire worklist, blanking the console. The row is marked
             // unreadable below, which is what keeps it out of the count as well as
             // out of the page and puts it on the unreadable listing.
-            let record: RunRecord = match serde_json::from_str(&run.record_json) {
+            let mut record: RunRecord = match serde_json::from_str(&run.record_json) {
                 Ok(record) => record,
                 Err(err) => {
                     tracing::warn!(
@@ -1850,6 +1865,9 @@ impl Db {
                 }
             };
             let link = link_map.remove(&run.id);
+            // The code is the row's: a record stored before codes existed lacks it,
+            // and the row is what minting writes first.
+            record.links.code = link.as_ref().and_then(|l| l.code.clone());
             out.push(StoredRun {
                 record,
                 reviews: review_map.remove(&run.id).unwrap_or_default(),
@@ -1858,7 +1876,8 @@ impl Db {
                 validator_rated: run.validator_rated,
                 links: RunLinks {
                     source_repo: link.as_ref().and_then(|l| l.source_repo.clone()),
-                    playable_build: link.and_then(|l| l.playable_build.clone()),
+                    playable_build: link.as_ref().and_then(|l| l.playable_build.clone()),
+                    code: link.and_then(|l| l.code),
                 },
                 published: run.published,
                 published_at: run.published_at,
@@ -2094,6 +2113,99 @@ impl Db {
         Ok((tournaments, next_before))
     }
 
+    /// Mint a short code for every published run that has none, oldest
+    /// publication first (`published_at`, then id), so runs published before codes
+    /// existed take theirs in the order they were published. Each run is minted in
+    /// its own transaction, which also writes the code into its record blob.
+    ///
+    /// A snapshot refresh calls this before it composes anything, so every
+    /// published run's document and card carry a code. Returns how many runs were
+    /// given one. It queues no refresh: the refresh that calls it writes the codes.
+    pub async fn assign_missing_codes(&self) -> Result<usize> {
+        let published: Vec<(String, Option<String>)> = readable_runs()
+            .filter(run::Column::Published.eq(true))
+            .select_only()
+            .column(run::Column::Id)
+            .column(run::Column::PublishedAt)
+            .into_tuple()
+            .all(&self.conn())
+            .await?;
+        let coded: std::collections::HashSet<String> = run_link::Entity::find()
+            .filter(run_link::Column::Code.is_not_null())
+            .select_only()
+            .column(run_link::Column::RunId)
+            .into_tuple::<String>()
+            .all(&self.conn())
+            .await?
+            .into_iter()
+            .collect();
+        let mut pending: Vec<(String, Option<String>)> = published
+            .into_iter()
+            .filter(|(id, _)| !coded.contains(id))
+            .collect();
+        // A missing publication time sorts first, as the oldest; every published run
+        // carries one, so this only orders a damaged row deterministically.
+        pending.sort_by(|a, b| a.1.cmp(&b.1).then_with(|| a.0.cmp(&b.0)));
+
+        let mut assigned = 0;
+        for (run_id, _) in pending {
+            let txn = self.conn().begin().await?;
+            let Some(run) = run::Entity::find_by_id(run_id.clone()).one(&txn).await? else {
+                continue;
+            };
+            let code = ensure_code(&txn, &run_id).await?;
+            if code.is_some() {
+                assigned += 1;
+            }
+            let record_json = with_code(&run.record_json, code)?;
+            let mut active = run.into_active_model();
+            active.record_json = Set(record_json);
+            active.update(&txn).await?;
+            touch_run(&txn, &run_id).await?;
+            txn.commit().await?;
+        }
+        Ok(assigned)
+    }
+
+    /// Store the media keys the artifacts service answered a run's
+    /// `POST /runs/{id}/publish-media` with, as the JSON body it answered. A
+    /// published run's media never changes, so a refresh asks for the copy only
+    /// while a run has none stored.
+    pub async fn set_public_media(&self, run_id: &str, media_json: &str) -> Result<()> {
+        run_link::Entity::insert(run_link::ActiveModel {
+            run_id: Set(run_id.to_string()),
+            source_repo: Set(None),
+            playable_build: Set(None),
+            code: NotSet,
+            public_media: Set(Some(media_json.to_string())),
+        })
+        .on_conflict(
+            OnConflict::column(run_link::Column::RunId)
+                .update_column(run_link::Column::PublicMedia)
+                .to_owned(),
+        )
+        .exec(&self.conn())
+        .await?;
+        Ok(())
+    }
+
+    /// Every stored answer of the artifacts service's media copy, keyed by run id:
+    /// the JSON [`Db::set_public_media`] stored. A run with none stored is absent.
+    pub async fn public_media(&self) -> Result<std::collections::HashMap<String, String>> {
+        let rows: Vec<(String, Option<String>)> = run_link::Entity::find()
+            .filter(run_link::Column::PublicMedia.is_not_null())
+            .select_only()
+            .column(run_link::Column::RunId)
+            .column(run_link::Column::PublicMedia)
+            .into_tuple()
+            .all(&self.conn())
+            .await?;
+        Ok(rows
+            .into_iter()
+            .filter_map(|(id, media)| media.map(|media| (id, media)))
+            .collect())
+    }
+
     /// Read the snapshot coalescing state, defaulting to a clean state when the
     /// row has never been written.
     pub async fn snapshot_state(&self) -> Result<SnapshotState> {
@@ -2219,6 +2331,99 @@ async fn touch_run<C: ConnectionTrait>(conn: &C, run_id: &str) -> Result<()> {
         .exec(conn)
         .await?;
     Ok(())
+}
+
+/// The fewest characters of a run id a short code takes.
+pub const SHORT_CODE_MIN_LEN: usize = 8;
+
+/// The short code `run_id` holds, if it has been minted.
+async fn stored_code<C: ConnectionTrait>(conn: &C, run_id: &str) -> Result<Option<String>> {
+    Ok(run_link::Entity::find_by_id(run_id.to_string())
+        .one(conn)
+        .await?
+        .and_then(|link| link.code))
+}
+
+/// The short code of `run_id`, minting it when the run holds none: the shortest
+/// prefix of the id, at least [`SHORT_CODE_MIN_LEN`] characters long, that no
+/// other run holds (the backend overview's "Short codes"). A run that already
+/// holds a code keeps it, so a repeated publish never moves it.
+///
+/// Only published runs hold codes and a published run is never deleted, so a code
+/// is never freed and never reassigned. When every prefix up to the whole id is
+/// taken, which happens only when another run's id begins with this whole id, the
+/// run is left without a code, with an error logged, rather than failing the
+/// publish: it has no share link until an operator resolves the clash.
+async fn ensure_code<C: ConnectionTrait>(conn: &C, run_id: &str) -> Result<Option<String>> {
+    let link = run_link::Entity::find_by_id(run_id.to_string())
+        .one(conn)
+        .await?;
+    if let Some(code) = link.as_ref().and_then(|link| link.code.clone()) {
+        return Ok(Some(code));
+    }
+    let mut minted = None;
+    for len in run_id.len().min(SHORT_CODE_MIN_LEN)..=run_id.len() {
+        let Some(candidate) = run_id.get(..len) else {
+            continue;
+        };
+        let taken = run_link::Entity::find()
+            .filter(run_link::Column::Code.eq(candidate))
+            .filter(run_link::Column::RunId.ne(run_id))
+            .one(conn)
+            .await?
+            .is_some();
+        if !taken {
+            minted = Some(candidate.to_string());
+            break;
+        }
+    }
+    let Some(code) = minted else {
+        tracing::error!(
+            run.id = %run_id,
+            "every prefix of the run id is another run's short code; the run has no share link"
+        );
+        return Ok(None);
+    };
+    match link {
+        Some(link) => {
+            let mut active = link.into_active_model();
+            active.code = Set(Some(code.clone()));
+            active.update(conn).await?;
+        }
+        None => {
+            run_link::Entity::insert(run_link::ActiveModel {
+                run_id: Set(run_id.to_string()),
+                source_repo: Set(None),
+                playable_build: Set(None),
+                code: Set(Some(code.clone())),
+                public_media: Set(None),
+            })
+            .exec(conn)
+            .await?;
+        }
+    }
+    Ok(Some(code))
+}
+
+/// `record_json` with its links' short code set to `code`, so the stored blob and
+/// the `run_link` row agree. Edited as JSON rather than through [`RunRecord`], so a
+/// record this build cannot read keeps every other byte it holds.
+fn with_code(record_json: &str, code: Option<String>) -> Result<String> {
+    let mut value: serde_json::Value = serde_json::from_str(record_json)?;
+    if let Some(links) = value
+        .get_mut("links")
+        .and_then(|links| links.as_object_mut())
+    {
+        match code {
+            Some(code) => {
+                links.insert("code".to_string(), serde_json::Value::String(code));
+            }
+            None => {
+                links.remove("code");
+            }
+        }
+    }
+    Ok(serde_json::to_string(&value)?)
 }
 
 /// The publish gate, factored out so both [`Db::publish`] (the direct flip) and
@@ -7953,28 +8158,14 @@ impl Db {
         let newly_published = !run.published;
         let effective_published_at = run.published_at.clone().unwrap_or_else(|| now.to_string());
 
-        // Patch the record blob's links so the verbatim JSON and the `run_link`
-        // sibling agree — the same invariant `push` maintains.
-        let mut record: RunRecord = serde_json::from_str(&run.record_json)?;
-        record.links = RunLinks {
-            source_repo: source_repo.map(|s| s.to_string()),
-            playable_build: playable_build.map(|s| s.to_string()),
-        };
-        let record_json = serde_json::to_string(&record)?;
-
-        let mut active = run.into_active_model();
-        active.published = Set(true);
-        active.published_at = Set(Some(effective_published_at));
-        active.record_json = Set(record_json);
-        active.update(&txn).await?;
-
-        touch_run(&txn, run_id).await?;
-
-        // Upsert the links sibling, exactly like `push`.
+        // Upsert the links sibling, exactly like `push`, leaving the code and the
+        // published media alone.
         run_link::Entity::insert(run_link::ActiveModel {
             run_id: Set(run_id.to_string()),
             source_repo: Set(source_repo.map(|s| s.to_string())),
             playable_build: Set(playable_build.map(|s| s.to_string())),
+            code: NotSet,
+            public_media: NotSet,
         })
         .on_conflict(
             OnConflict::column(run_link::Column::RunId)
@@ -7986,6 +8177,28 @@ impl Db {
         )
         .exec(&txn)
         .await?;
+
+        // The first successful publish mints the run's short code; a repeated
+        // success keeps the code the run already holds.
+        let code = ensure_code(&txn, run_id).await?;
+
+        // Patch the record blob's links so the verbatim JSON and the `run_link`
+        // sibling agree — the same invariant `push` maintains.
+        let mut record: RunRecord = serde_json::from_str(&run.record_json)?;
+        record.links = RunLinks {
+            source_repo: source_repo.map(|s| s.to_string()),
+            playable_build: playable_build.map(|s| s.to_string()),
+            code,
+        };
+        let record_json = serde_json::to_string(&record)?;
+
+        let mut active = run.into_active_model();
+        active.published = Set(true);
+        active.published_at = Set(Some(effective_published_at));
+        active.record_json = Set(record_json);
+        active.update(&txn).await?;
+
+        touch_run(&txn, run_id).await?;
 
         set_dirty(&txn).await?;
 
@@ -9752,15 +9965,15 @@ impl Db {
     }
 
     /// Reconcile the **entire** reference-sheet table to `desired` — the complete set
-    /// of published asset references, read by listing the snapshot bucket at ingest
+    /// of published asset references, read by listing the public bucket at ingest
     /// (see the `/ingest` handler). Every triple in `desired` is upserted; every
     /// stored triple absent from `desired` is removed. The bucket is the single source
     /// of truth for what a client can actually fetch, so this makes the table match it
     /// exactly — a frame deleted from the bucket must stop being advertised.
     ///
     /// The caller is responsible for only invoking this when it *knows* the desired
-    /// set: a backend with no R2 configured must not reconcile to empty, because
-    /// "listed nothing" and "could not look" are different facts.
+    /// set: a backend with no artifacts service configured must not reconcile to
+    /// empty, because "listed nothing" and "could not look" are different facts.
     ///
     /// Returns whether the table actually changed, so the caller can skip a redundant
     /// snapshot refresh when a re-ingest finds the bucket already in sync.
@@ -10191,6 +10404,10 @@ mod probe_lease_tests;
 #[cfg(test)]
 #[path = "db.publish_lease.test.rs"]
 mod publish_lease_tests;
+
+#[cfg(test)]
+#[path = "db.short_code.test.rs"]
+mod short_code_tests;
 
 #[cfg(test)]
 #[path = "db.job_events.test.rs"]

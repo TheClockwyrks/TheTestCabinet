@@ -1,5 +1,11 @@
-//! The backend's ownership of a run's tree on the **artifact service** (the data
-//! plane): the delete-time prune, and the periodic reclamation sweep.
+//! The backend's calls to the **artifact service** (the data plane): the
+//! delete-time prune and the periodic reclamation sweep of a run's tree, and the
+//! public-dataset routes the snapshot writer goes through ([`put_public`],
+//! [`list_public`], [`delete_public`] and [`publish_media`]).
+//!
+//! The backend holds no bucket credential: every object of the public dataset is
+//! written, listed and deleted through the artifacts service, the one writer of
+//! the public bucket.
 //!
 //! The backend is the system of record: deleting a run removes its row (and the
 //! backend's own proof/asset/controller media). A run's *playable build* and the
@@ -395,6 +401,324 @@ pub async fn scheduled_pass(
     }
 }
 
+/// One object of the public dataset, as the artifacts service's
+/// `GET /public?prefix=` listing reports it.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PublicObject {
+    /// The object's key.
+    pub key: String,
+    /// The object's size in bytes.
+    pub bytes: u64,
+    /// When the object was last written, as RFC 3339, when the store reports it.
+    #[serde(default)]
+    pub modified_at: Option<String>,
+}
+
+/// The artifacts service's `GET /public` body.
+#[derive(Debug, serde::Deserialize)]
+struct PublicListing {
+    objects: Vec<PublicObject>,
+}
+
+/// What the artifacts service's `POST /runs/{id}/publish-media` answers: the
+/// public key of each of the run's media files, in the shapes the run's public
+/// document names them by. The backend stores it per run
+/// ([`Db::set_public_media`](crate::db::Db::set_public_media)) and composes every
+/// later document from the stored copy.
+#[derive(Debug, Clone, Default, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PublishedMedia {
+    /// The proof media, by proof id and kind.
+    #[serde(default)]
+    pub proof_media: Vec<test_cabinet_contracts::backend_api::snapshot::RunProofOut>,
+    /// The synthesized validation outputs and the recordings' image store.
+    #[serde(default)]
+    pub validation_media: Vec<test_cabinet_contracts::backend_api::snapshot::RunValidationMediaOut>,
+    /// An asset-generation run's produced media.
+    #[serde(default)]
+    pub asset_media: Vec<test_cabinet_contracts::backend_api::snapshot::RunAssetOut>,
+    /// The showcase's files.
+    #[serde(default)]
+    pub showcase_media: Vec<test_cabinet_contracts::backend_api::snapshot::RunShowcaseOut>,
+}
+
+/// Why a call to one of the artifacts service's public-dataset routes failed.
+#[derive(Debug, thiserror::Error)]
+pub enum PublicError {
+    /// The service answered a status the route does not succeed with.
+    #[error("the artifacts service answered `{method} {path}` with {status}")]
+    Refused {
+        /// The request's method.
+        method: &'static str,
+        /// The request's path, below the service's base URL.
+        path: String,
+        /// The status it answered.
+        status: reqwest::StatusCode,
+    },
+    /// The request never got an answer, or its body was not the route's shape.
+    #[error("`{method} {path}` on the artifacts service failed: {source}")]
+    Transport {
+        /// The request's method.
+        method: &'static str,
+        /// The request's path, below the service's base URL.
+        path: String,
+        /// What failed.
+        #[source]
+        source: reqwest::Error,
+    },
+}
+
+/// The characters a public key's path segment is percent-encoded over: everything
+/// but the URL-unreserved set, so a key reaches the service's route as written.
+const KEY_SEGMENT: &percent_encoding::AsciiSet = &percent_encoding::NON_ALPHANUMERIC
+    .remove(b'-')
+    .remove(b'.')
+    .remove(b'_')
+    .remove(b'~');
+
+/// `key` as the path below `/public/`, each segment percent-encoded and the `/`
+/// between them kept.
+fn public_path(key: &str) -> String {
+    let segments: Vec<String> = key
+        .split('/')
+        .map(|segment| percent_encoding::utf8_percent_encode(segment, KEY_SEGMENT).to_string())
+        .collect();
+    format!("/public/{}", segments.join("/"))
+}
+
+/// How long one object write may take. A run document or an index object is
+/// small, but the case media the backend writes can be a video baseline.
+const PUT_TIMEOUT: Duration = Duration::from_secs(120);
+
+/// How long a listing or a media copy may take: the service walks a prefix of
+/// the bucket, or copies (and transcodes) a run's media, and no user waits on it.
+const SLOW_TIMEOUT: Duration = Duration::from_secs(600);
+
+/// The public dataset as the backend reaches it: the artifacts service's
+/// in-cluster base URL and the shared control-plane service token its public
+/// routes take. The snapshot writer goes through this for every object; the
+/// backend holds no bucket credential.
+#[derive(Debug, Clone)]
+pub struct PublicDataset {
+    http: reqwest::Client,
+    base: String,
+    token: String,
+}
+
+impl PublicDataset {
+    /// The public dataset behind the artifacts service at `base`, or `None` when
+    /// the URL or the token is unset, in which case nothing is written.
+    pub fn new(http: reqwest::Client, base: Option<&str>, token: Option<&str>) -> Option<Self> {
+        Some(Self {
+            http,
+            base: base?.to_string(),
+            token: token?.to_string(),
+        })
+    }
+
+    /// [`put_public`] against this service.
+    pub async fn put(
+        &self,
+        key: &str,
+        bytes: Vec<u8>,
+        content_type: &str,
+        content_encoding: Option<&str>,
+    ) -> Result<(), PublicError> {
+        put_public(
+            &self.http,
+            &self.base,
+            &self.token,
+            key,
+            bytes,
+            content_type,
+            content_encoding,
+        )
+        .await
+    }
+
+    /// [`list_public`] against this service.
+    pub async fn list(&self, prefix: &str) -> Result<Vec<PublicObject>, PublicError> {
+        list_public(&self.http, &self.base, &self.token, prefix).await
+    }
+
+    /// The keys [`list_public`] reports under `prefix`.
+    pub async fn list_keys(&self, prefix: &str) -> Result<Vec<String>, PublicError> {
+        Ok(self
+            .list(prefix)
+            .await?
+            .into_iter()
+            .map(|object| object.key)
+            .collect())
+    }
+
+    /// [`delete_public`] against this service.
+    pub async fn delete(&self, key: &str) -> Result<(), PublicError> {
+        delete_public(&self.http, &self.base, &self.token, key).await
+    }
+
+    /// [`publish_media`] against this service.
+    pub async fn publish_media(&self, run_id: &str) -> Result<Option<PublishedMedia>, PublicError> {
+        publish_media(&self.http, &self.base, &self.token, run_id).await
+    }
+}
+
+/// Write one object of the public dataset (`PUT /public/{key}`), whole, with the
+/// labels it is served under, presenting the shared control-plane service token.
+/// Succeeds on `201 Created`.
+pub async fn put_public(
+    http: &reqwest::Client,
+    base: &str,
+    token: &str,
+    key: &str,
+    bytes: Vec<u8>,
+    content_type: &str,
+    content_encoding: Option<&str>,
+) -> Result<(), PublicError> {
+    let path = public_path(key);
+    let url = format!("{}{path}", base.trim_end_matches('/'));
+    let mut request = http
+        .put(&url)
+        .bearer_auth(token)
+        .header(reqwest::header::CONTENT_TYPE, content_type)
+        .timeout(PUT_TIMEOUT)
+        .body(bytes);
+    if let Some(encoding) = content_encoding {
+        request = request.header(reqwest::header::CONTENT_ENCODING, encoding);
+    }
+    let response = request
+        .send()
+        .await
+        .map_err(|source| PublicError::Transport {
+            method: "PUT",
+            path: path.clone(),
+            source,
+        })?;
+    if response.status() == reqwest::StatusCode::CREATED {
+        Ok(())
+    } else {
+        Err(PublicError::Refused {
+            method: "PUT",
+            path,
+            status: response.status(),
+        })
+    }
+}
+
+/// List the public dataset's objects under `prefix` (`GET /public?prefix=`),
+/// presenting the shared control-plane service token. The service answers the
+/// whole listing in one response.
+pub async fn list_public(
+    http: &reqwest::Client,
+    base: &str,
+    token: &str,
+    prefix: &str,
+) -> Result<Vec<PublicObject>, PublicError> {
+    let path = "/public".to_string();
+    let url = format!("{}{path}", base.trim_end_matches('/'));
+    let transport = |source| PublicError::Transport {
+        method: "GET",
+        path: format!("{path}?prefix={prefix}"),
+        source,
+    };
+    let response = http
+        .get(&url)
+        .query(&[("prefix", prefix)])
+        .bearer_auth(token)
+        .timeout(SLOW_TIMEOUT)
+        .send()
+        .await
+        .map_err(transport)?;
+    if !response.status().is_success() {
+        return Err(PublicError::Refused {
+            method: "GET",
+            path: format!("{path}?prefix={prefix}"),
+            status: response.status(),
+        });
+    }
+    let listing: PublicListing = response.json().await.map_err(transport)?;
+    Ok(listing.objects)
+}
+
+/// Delete one object of the public dataset (`DELETE /public/{key}`), presenting
+/// the shared control-plane service token. The route answers `204` whether or not
+/// the key existed; a `404` is taken as success too, since the object is gone
+/// either way.
+pub async fn delete_public(
+    http: &reqwest::Client,
+    base: &str,
+    token: &str,
+    key: &str,
+) -> Result<(), PublicError> {
+    let path = public_path(key);
+    let url = format!("{}{path}", base.trim_end_matches('/'));
+    let response = http
+        .delete(&url)
+        .bearer_auth(token)
+        .timeout(PUT_TIMEOUT)
+        .send()
+        .await
+        .map_err(|source| PublicError::Transport {
+            method: "DELETE",
+            path: path.clone(),
+            source,
+        })?;
+    match response.status() {
+        reqwest::StatusCode::NO_CONTENT | reqwest::StatusCode::NOT_FOUND => Ok(()),
+        status if status.is_success() => Ok(()),
+        status => Err(PublicError::Refused {
+            method: "DELETE",
+            path,
+            status,
+        }),
+    }
+}
+
+/// Have the artifacts service copy run `run_id`'s publishable media from its
+/// stored tree into the public dataset (`POST /runs/{id}/publish-media`),
+/// presenting the shared control-plane service token, and answer the key each
+/// file was published under.
+///
+/// `Ok(None)` when the service holds no tree or no run record for the run
+/// (`404`): the run has no media to publish there.
+pub async fn publish_media(
+    http: &reqwest::Client,
+    base: &str,
+    token: &str,
+    run_id: &str,
+) -> Result<Option<PublishedMedia>, PublicError> {
+    let path = format!(
+        "/runs/{}/publish-media",
+        percent_encoding::utf8_percent_encode(run_id, KEY_SEGMENT)
+    );
+    let url = format!("{}{path}", base.trim_end_matches('/'));
+    let transport = |source| PublicError::Transport {
+        method: "POST",
+        path: path.clone(),
+        source,
+    };
+    let response = http
+        .post(&url)
+        .bearer_auth(token)
+        .timeout(SLOW_TIMEOUT)
+        .send()
+        .await
+        .map_err(transport)?;
+    match response.status() {
+        reqwest::StatusCode::NOT_FOUND => Ok(None),
+        status if status.is_success() => Ok(Some(response.json().await.map_err(transport)?)),
+        status => Err(PublicError::Refused {
+            method: "POST",
+            path,
+            status,
+        }),
+    }
+}
+
 #[cfg(test)]
 #[path = "artifacts.test.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "artifacts.public.test.rs"]
+mod public_tests;

@@ -40,8 +40,6 @@ async fn backend(access: AccessMode) -> (tempfile::TempDir, AppState, Router) {
         Arc::clone(&db),
         store.clone(),
         None,
-        None,
-        None,
         crate::publisher::PublisherTiming {
             coalesce: config.coalesce,
             snapshot_retention: config.snapshot_retention,

@@ -187,8 +187,6 @@ async fn publish_backend(links: RunLinks) -> (tempfile::TempDir, AppState, axum:
         std::sync::Arc::clone(&db),
         store.clone(),
         None,
-        None,
-        None,
         crate::publisher::PublisherTiming {
             coalesce: config.coalesce,
             snapshot_retention: config.snapshot_retention,
@@ -252,14 +250,19 @@ fn no_links() -> RunLinks {
     RunLinks {
         source_repo: None,
         playable_build: None,
+        code: None,
     }
 }
 
+/// The links `r1` holds once a success is recorded: the reported ones, and the
+/// short code its first publish minted (the whole id, which is shorter than eight
+/// characters).
 fn result_links() -> RunLinks {
     let result = success_result();
     RunLinks {
         source_repo: result.source_repo,
         playable_build: result.playable_build,
+        code: Some("r1".to_string()),
     }
 }
 

@@ -390,7 +390,7 @@ async fn reconcile_into(
 ///    this function is the only door the public site's gg data comes through.
 ///
 /// Ordered by run id, the order [`Db::gg_run_versions`] returns, so two refreshes of an
-/// unchanged corpus produce byte-identical output and R2 stores one object rather than
+/// unchanged corpus produce byte-identical output and the bucket stores one object rather than
 /// two.
 pub async fn public_documents(db: &Db, store: &DefinitionStore) -> Result<Vec<GgRunDoc>> {
     let ids: Vec<String> = db
@@ -494,7 +494,7 @@ impl<'a> CatalogScores<'a> {
     /// re-ingest — while the snapshot's dirty flag is durable in Postgres, so a refresh
     /// pending at the last restart runs immediately on the next start, against a store that
     /// can answer for no case at all. Every experimental version's slug, existence, run
-    /// count and reviewer scores would go to public R2 in that window. Under this predicate
+    /// count and reviewer scores would go to the public bucket in that window. Under this predicate
     /// the same window exports nothing, which the next refresh corrects the moment the
     /// store is back.
     pub fn is_publishable(&mut self, run: &StoredRun) -> bool {

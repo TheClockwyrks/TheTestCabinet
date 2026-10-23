@@ -1,16 +1,18 @@
-//! The synchronized publish path: coalesced snapshot regeneration + upload
-//! (§1.4, §3 and the backend overview's "Publishing and
-//! Synchronization").
+//! The synchronized publish path: coalesced regeneration of the public dataset
+//! and its write through the artifacts service (the backend overview's "Review
+//! and publish" and "The public dataset", and the [Public Snapshot] page).
 //!
 //! Being a single central entity is the point: the backend serializes publishes
 //! so two operators cannot race on the shared snapshot state, and it **coalesces**
-//! a burst of publishes into one regeneration, one upload, and one site rebuild.
+//! a burst of publishes into one regeneration and one rewrite of the index
+//! objects. A publish is an upload: no site is rebuilt and nothing is deployed,
+//! because the gallery reads the index objects at runtime.
 //!
 //! The coalescing is a debounce: whatever requests a refresh first marks the
 //! snapshot state dirty in the database, then pings the refresher; the refresher
 //! waits the coalescing window, draining any further pings that arrive during it,
 //! then regenerates the **full** published set (idempotent — re-running converges
-//! on the same snapshot), uploads it atomically, and fires the hook. A forced
+//! on the same dataset) and writes it with the `index.json` pointer last. A forced
 //! refresh (`POST /snapshot/refresh`) bypasses the debounce and runs immediately.
 //!
 //! The queue is durable because the mark is written before the ping. A backend
@@ -19,12 +21,29 @@
 //! mark landed after it read the state (the state's generation is unchanged), so a
 //! request that arrives while a refresh is already regenerating is not lost.
 //!
-//! Regenerating the full set is a statement about *correctness*, not about work: the
-//! run and case media, and each run's own JSON document, are content-addressed under
-//! snapshot-independent prefixes, so a refresh lists what the bucket already holds and
-//! uploads only what genuinely differs. A publish therefore costs roughly the runs
-//! that changed rather than the runs that exist — see
+//! A refresh writes in the order the results page's "Publish" states, each phase
+//! concurrent within itself, and any failure before the pointer leaves the previous
+//! generation live:
+//!
+//! 1. every published run's short code object, `codes/<code>`, that the bucket
+//!    does not hold yet — written once and never overwritten;
+//! 2. the artifacts service's copy of each newly published run's media
+//!    (`POST /runs/{id}/publish-media`), whose answer is stored per run;
+//! 3. the content-addressed objects the bucket does not hold: run documents, case
+//!    media and files, code-analysis documents;
+//! 4. the new generation's index objects under `snapshots/<snapshot-id>/`;
+//! 5. `index.json`, the atomic cut-over;
+//!
+//! and then, best-effort, prunes the superseded generations.
+//!
+//! Regenerating the full set is a statement about *correctness*, not about work:
+//! everything but the index objects is content-addressed under a
+//! snapshot-independent prefix, so a refresh lists what the bucket already holds
+//! and writes only what genuinely differs. A publish therefore costs roughly the
+//! runs that changed rather than the runs that exist — see
 //! [`crate::snapshot::RUN_DOCUMENT_PREFIX`].
+//!
+//! [Public Snapshot]: https://docs.testcabinet.ai/components/backend/snapshot/
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -34,9 +53,9 @@ use time::format_description::well_known::Rfc3339;
 use tokio::sync::{Notify, mpsc};
 use tracing::Instrument;
 
-use crate::db::Db;
+use crate::artifacts::{PublicDataset, PublishedMedia};
+use crate::db::{Db, StoredRun};
 use crate::error::{BackendError, Result};
-use crate::r2::R2Client;
 use crate::snapshot::SnapshotBuilder;
 use crate::store::DefinitionStore;
 
@@ -57,19 +76,12 @@ pub struct Publisher {
 struct PublisherInner {
     db: Arc<Db>,
     store: DefinitionStore,
-    r2: Option<R2Client>,
-    http: reqwest::Client,
-    /// The artifact service's **in-cluster** base URL
-    /// ([`Config::artifacts_internal_url`](crate::config::Config::artifacts_internal_url)),
-    /// passed to the snapshot builder so it can fall back for run media missing from
-    /// the (ephemeral) store. `None` in a dev/single-box setup with no separate
-    /// artifact service, and in any deployment that supplies no in-cluster URL.
-    artifacts_url: Option<String>,
-    /// The shared service token (`TCAB_BACKEND_SERVICE_TOKEN`) the snapshot builder
-    /// presents on its artifact-service reads.
-    artifacts_service_token: Option<String>,
+    /// The public dataset, written through the artifacts service's in-cluster URL
+    /// with the shared service token. `None` when either is unset: the dataset is
+    /// still composed (proving it well-formed) but nothing is written.
+    public: Option<PublicDataset>,
     coalesce: Duration,
-    /// How long a superseded snapshot generation is kept before the post-upload
+    /// How long a superseded snapshot generation is kept before the post-write
     /// prune removes it (see [`prune_stale_snapshots`]).
     snapshot_retention: Duration,
     /// Pinged when a publish marks the store dirty, waking the debounce loop.
@@ -95,29 +107,21 @@ pub struct PublisherTiming {
 }
 
 impl Publisher {
-    /// Build a publisher. `r2` is `None` in the dev mode where the R2 credentials
-    /// were not configured: the snapshot is still regenerated into SQLite-derived
-    /// form and the dirty flag cleared, but no upload happens.
-    ///
-    /// `artifacts_url` is the artifact service's **in-cluster** base URL, the one the
-    /// backend itself can reach — not the address advertised to consoles — and
-    /// `artifacts_service_token` the shared service token presented on its reads.
+    /// Build a publisher. `public` is `None` when the artifacts service's URL or
+    /// the service token is not configured: the snapshot is still regenerated and
+    /// the dirty flag cleared, but nothing is written and no code or media is
+    /// published.
     pub fn new(
         db: Arc<Db>,
         store: DefinitionStore,
-        r2: Option<R2Client>,
-        artifacts_url: Option<String>,
-        artifacts_service_token: Option<String>,
+        public: Option<PublicDataset>,
         timing: PublisherTiming,
     ) -> Self {
         Self {
             inner: Arc::new(PublisherInner {
                 db,
                 store,
-                r2,
-                http: reqwest::Client::new(),
-                artifacts_url,
-                artifacts_service_token,
+                public,
                 coalesce: timing.coalesce,
                 snapshot_retention: timing.snapshot_retention,
                 wake: Notify::new(),
@@ -218,7 +222,7 @@ impl Publisher {
     }
 
     /// Force an immediate refresh, bypassing the debounce (operator recovery via
-    /// `POST /snapshot/refresh`). Regenerates, uploads, and fires the hook now.
+    /// `POST /snapshot/refresh`). Regenerates the dataset and writes it now.
     pub async fn refresh_now(&self) -> Result<RefreshOutcome> {
         run_refresh(&self.inner).await
     }
@@ -256,9 +260,26 @@ impl RefresherHandle {
     }
 }
 
-/// Regenerate the full snapshot, upload it (when R2 is configured), and clear
-/// the dirty flag unless a mark landed while it ran. This
-/// is the one place the snapshot is produced; both the debounce loop and the
+/// How many runs' media the artifacts service is asked to copy at once. Each copy
+/// may transcode videos, which the service queues behind a single permit, so a
+/// wide fan-out would only hold connections open.
+const PUBLISH_MEDIA_CONCURRENCY: usize = 4;
+
+/// How many superseded keys the prune deletes at once.
+const PRUNE_CONCURRENCY: usize = 16;
+
+/// The content-addressed prefixes a refresh lists to learn which objects the
+/// bucket already holds: run documents, case media, a run's code-analysis
+/// document (the one object the backend writes under `media/runs/`), and case
+/// files.
+const CONTENT_PREFIXES: [&str; 4] = ["documents/runs/", "media/cases/", "media/runs/", "files/"];
+
+/// The prefix the short-code objects live under.
+pub const CODE_PREFIX: &str = "codes/";
+
+/// Regenerate the full dataset, write it through the artifacts service (when it is
+/// configured), and clear the dirty flag unless a mark landed while it ran. This
+/// is the one place the dataset is produced; both the debounce loop and the
 /// forced path call it.
 #[tracing::instrument(
     name = "snapshot.run_refresh",
@@ -270,7 +291,29 @@ async fn run_refresh(inner: &PublisherInner) -> Result<RefreshOutcome> {
     // Read the state before anything is regenerated: the dirty flag is cleared at the
     // end only if no mark landed after this read.
     let generation = inner.db.snapshot_state().await?.generation;
+
+    // Every published run holds a short code before anything is composed, so each
+    // document and card carries one. A run published before codes existed is given
+    // its code here, in publication order.
+    let assigned = inner.db.assign_missing_codes().await?;
+    if assigned > 0 {
+        tracing::info!(assigned, "minted short codes for published runs");
+    }
+
     let runs = inner.db.all_published().await?;
+
+    // (1) `codes/<code>` for every published run whose object the bucket does not
+    // hold. Before anything names the code, so a share link never resolves to
+    // nothing once a card carries it.
+    if let Some(public) = &inner.public {
+        write_codes(public, &runs).await?;
+    }
+
+    // (2) The media of every published run the artifacts service has not yet copied:
+    // its answer is stored, so each run's media is asked for once. Before the build,
+    // since each run's document names the keys.
+    let published_media = published_media(inner, &runs).await?;
+
     let cases = load_case_manifests(&inner.store)?;
     let generated_at = OffsetDateTime::now_utc();
 
@@ -312,59 +355,26 @@ async fn run_refresh(inner: &PublisherInner) -> Result<RefreshOutcome> {
         }
     }
 
-    // Media that lives outside any one snapshot's prefix: a published run's proof and
-    // asset files (`media/runs/<id>/…`, immutable per run) and a case version's
-    // rendered/committed baselines (`media/cases/<slug>/<version>/…`, content-addressed).
-    // Learn what is already uploaded so the builder references those objects instead of
-    // re-reading, re-transcoding and re-uploading them. The whole `media/` prefix is
-    // listed in one pass — it also covers the reference sheets `tcab publish-reference`
-    // writes, which are simply never looked up here — and the `files/` prefix with it,
-    // covering a case version's content-addressed starter-workspace files
-    // (`files/cases/<slug>/<version>/…`).
-    //
-    // Only when R2 is configured — the dev path has no bucket to list, and re-uploads
-    // nothing anyway. A list failure is not fatal: fall back to an empty set (re-export
-    // everything) rather than abort the whole refresh, so a transient list error
-    // degrades to the old behavior.
-    let existing_media = match &inner.r2 {
-        Some(r2) => {
-            let mut keys = std::collections::HashSet::new();
-            for prefix in ["media/", "files/"] {
-                match r2.list_keys(prefix).await {
-                    Ok(listed) => keys.extend(listed),
-                    Err(err) => {
-                        tracing::warn!(
-                            "listing existing snapshot `{prefix}` objects failed ({err}); \
-                             re-exporting everything under it"
-                        );
-                    }
+    // What the bucket already holds under the content-addressed prefixes, so the
+    // builder writes only what is missing. A listing failure is not fatal: it
+    // degrades to an empty set (write everything under that prefix again, landing
+    // on exactly the keys the next refresh skips) rather than aborting the refresh.
+    let mut existing_media = std::collections::HashSet::new();
+    let mut existing_documents = std::collections::HashSet::new();
+    if let Some(public) = &inner.public {
+        for prefix in CONTENT_PREFIXES {
+            match public.list_keys(prefix).await {
+                Ok(keys) if prefix.starts_with(crate::snapshot::RUN_DOCUMENT_PREFIX) => {
+                    existing_documents.extend(keys);
                 }
+                Ok(keys) => existing_media.extend(keys),
+                Err(err) => tracing::warn!(
+                    "listing the public `{prefix}` objects failed ({err}); writing everything \
+                     under it again"
+                ),
             }
-            keys
         }
-        None => std::collections::HashSet::new(),
-    };
-
-    // The per-run **documents**, on the same principle and for the bigger win: they
-    // are content-addressed under `documents/runs/<id>/<digest>.json`, so learning
-    // which are already uploaded is what stops a refresh from re-PUTting one object
-    // per published run every time anything at all is published.
-    //
-    // As with media, a list failure is not fatal: an empty set re-uploads every
-    // document (landing on exactly the keys the next refresh will skip) rather than
-    // aborting the refresh.
-    let existing_documents = match &inner.r2 {
-        Some(r2) => match r2.list_keys(crate::snapshot::RUN_DOCUMENT_PREFIX).await {
-            Ok(keys) => keys.into_iter().collect(),
-            Err(err) => {
-                tracing::warn!(
-                    "listing existing run documents failed ({err}); re-exporting every run document"
-                );
-                std::collections::HashSet::new()
-            }
-        },
-        None => std::collections::HashSet::new(),
-    };
+    }
 
     // The published harness comparisons, each assembled to its full read model over
     // the whole experiment's runs (not only the published ones) with the same
@@ -395,11 +405,7 @@ async fn run_refresh(inner: &PublisherInner) -> Result<RefreshOutcome> {
         .collect();
 
     let snapshot = SnapshotBuilder::new(runs, cases, inner.store.clone())
-        .with_artifacts(
-            inner.artifacts_url.clone(),
-            inner.artifacts_service_token.clone(),
-            inner.http.clone(),
-        )
+        .with_published_media(published_media)
         .with_models(models)
         .with_reference_builds(reference_builds)
         .with_reference_sheets(reference_sheets)
@@ -413,18 +419,18 @@ async fn run_refresh(inner: &PublisherInner) -> Result<RefreshOutcome> {
     let run_count = snapshot.run_count;
     tracing::Span::current().record("run_count", run_count);
 
-    match &inner.r2 {
-        Some(r2) => {
-            crate::snapshot::upload_snapshot(&snapshot, r2).await?;
-            // Only after the atomic `index.json` cut-over: until it lands, the
+    match &inner.public {
+        Some(public) => {
+            // (3)-(5): the content-addressed objects, the generation, the pointer.
+            crate::snapshot::write_snapshot(&snapshot, public).await?;
+            // (6) Only after the atomic `index.json` cut-over: until it lands, the
             // previous generation is still the live one and must not be touched.
-            prune_stale_snapshots(r2, &snapshot.snapshot_id, inner.snapshot_retention).await;
+            prune_stale_snapshots(public, &snapshot.snapshot_id, inner.snapshot_retention).await;
         }
         None => {
-            // Dev mode: no R2 credentials. The snapshot was still regenerated
-            // (proving it is well-formed) but is not uploaded.
             tracing::warn!(
-                "snapshot regenerated ({run_count} runs) but R2 is not configured; skipping upload"
+                run_count,
+                "public dataset regenerated but not written: the artifacts service is not configured"
             );
         }
     }
@@ -442,25 +448,143 @@ async fn run_refresh(inner: &PublisherInner) -> Result<RefreshOutcome> {
     Ok(RefreshOutcome { run_count })
 }
 
+/// Write `codes/<code>` for every published run that holds a code whose object the
+/// bucket does not, the body the run id as `text/plain`.
+///
+/// A code's object is written once and never overwritten: a key the listing reports
+/// is never written again, whatever it holds, and a write that failed leaves the
+/// key absent, so the next refresh writes it. A failed listing or write fails the
+/// refresh before anything names a code it would have written.
+async fn write_codes(public: &PublicDataset, runs: &[StoredRun]) -> Result<()> {
+    use futures_util::TryStreamExt;
+
+    let existing: std::collections::HashSet<String> =
+        public.list_keys(CODE_PREFIX).await?.into_iter().collect();
+    let missing: Vec<(String, String)> = runs
+        .iter()
+        .filter_map(|run| {
+            let code = run.links.code.as_deref()?;
+            let key = format!("{CODE_PREFIX}{code}");
+            (!existing.contains(&key)).then(|| (key, run.record.id.clone()))
+        })
+        .collect();
+    if missing.is_empty() {
+        return Ok(());
+    }
+    let written = missing.len();
+    futures_util::stream::iter(missing.into_iter().map(Ok::<_, BackendError>))
+        .try_for_each_concurrent(
+            crate::snapshot::UPLOAD_CONCURRENCY,
+            |(key, run_id): (String, String)| {
+                let public = public.clone();
+                async move {
+                    public
+                        .put(&key, run_id.into_bytes(), "text/plain; charset=utf-8", None)
+                        .await
+                        .map_err(BackendError::from)
+                }
+            },
+        )
+        .await?;
+    tracing::info!(written, "wrote short-code objects");
+    Ok(())
+}
+
+/// Each published run's media keys, keyed by run id: the stored answer of the
+/// artifacts service's copy for a run that has one, and for every other run the
+/// answer of a fresh `POST /runs/{id}/publish-media`, stored once it succeeds.
+///
+/// A run the service holds no tree for (`404`), or whose copy fails, is warned
+/// about and left with empty media lists, which is a valid document; nothing is
+/// stored for it, so the next refresh asks again. With the artifacts service
+/// unconfigured only the stored answers are used.
+async fn published_media(
+    inner: &PublisherInner,
+    runs: &[StoredRun],
+) -> Result<std::collections::HashMap<String, PublishedMedia>> {
+    use futures_util::StreamExt;
+
+    let mut media = std::collections::HashMap::new();
+    for (run_id, json) in inner.db.public_media().await? {
+        match serde_json::from_str::<PublishedMedia>(&json) {
+            Ok(published) => {
+                media.insert(run_id, published);
+            }
+            Err(err) => tracing::warn!(
+                run.id = %run_id,
+                "the stored published media does not parse ({err}); asking for the copy again"
+            ),
+        }
+    }
+    let Some(public) = &inner.public else {
+        return Ok(media);
+    };
+    let pending: Vec<String> = runs
+        .iter()
+        .map(|run| run.record.id.clone())
+        .filter(|id| !media.contains_key(id))
+        .collect();
+    let answers: Vec<(String, std::result::Result<Option<PublishedMedia>, _>)> =
+        futures_util::stream::iter(pending)
+            .map(|run_id: String| {
+                let public = public.clone();
+                async move {
+                    let answer = public.publish_media(&run_id).await;
+                    (run_id, answer)
+                }
+            })
+            .buffer_unordered(PUBLISH_MEDIA_CONCURRENCY)
+            .collect()
+            .await;
+    for (run_id, answer) in answers {
+        match answer {
+            Ok(Some(published)) => {
+                let json = serde_json::to_string(&published)?;
+                inner.db.set_public_media(&run_id, &json).await?;
+                media.insert(run_id, published);
+            }
+            Ok(None) => tracing::warn!(
+                run.id = %run_id,
+                "the artifacts service holds no tree for a published run; its document names \
+                 no media until a later refresh copies it"
+            ),
+            Err(err) => tracing::warn!(
+                run.id = %run_id,
+                "copying a published run's media failed ({err}); its document names no media \
+                 until a later refresh copies it"
+            ),
+        }
+    }
+    Ok(media)
+}
+
 /// Delete the snapshot generations nothing points at any more, keeping the one just
-/// uploaded and anything inside the retention window (see
-/// [`crate::snapshot::stale_generation_keys`] for the exact rule).
+/// written and anything inside the retention window (see
+/// [`crate::snapshot::stale_generation_keys`] for the exact rule): list
+/// `snapshots/` through `GET /public?prefix=snapshots/` and delete each stale key
+/// with `DELETE /public/{key}`.
 ///
 /// Every refresh writes a whole new generation, so without this the bucket grows by a
-/// generation per publish and never shrinks — which is precisely how it reached ~7.8 GB
-/// of which 96% was unreachable.
+/// generation per publish and never shrinks. Nothing outside `snapshots/` is ever a
+/// candidate: `documents/`, `media/`, `files/` and `codes/` are untouched.
 ///
-/// **Best-effort by design.** A prune failure must never fail a refresh: the snapshot
-/// is already uploaded and live at this point, and the only consequence of a skipped
-/// prune is that the next refresh has more to clean up. Every path therefore logs and
-/// returns rather than propagating.
+/// **Best-effort by design.** A prune failure must never fail a refresh: the
+/// generation is already live at this point, and the only consequence of a skipped
+/// delete is that the next refresh has more to clean up. Every path therefore logs
+/// and returns rather than propagating.
 #[tracing::instrument(
     name = "snapshot.prune",
-    skip(r2),
+    skip(public),
     fields(pruned_keys = tracing::field::Empty),
 )]
-async fn prune_stale_snapshots(r2: &R2Client, live_snapshot_id: &str, retention: Duration) {
-    let keys = match r2.list_keys(crate::snapshot::SNAPSHOT_PREFIX).await {
+async fn prune_stale_snapshots(
+    public: &PublicDataset,
+    live_snapshot_id: &str,
+    retention: Duration,
+) {
+    use futures_util::StreamExt;
+
+    let keys = match public.list_keys(crate::snapshot::SNAPSHOT_PREFIX).await {
         Ok(keys) => keys,
         Err(err) => {
             tracing::warn!("listing snapshot generations failed ({err}); skipping the prune");
@@ -477,17 +601,29 @@ async fn prune_stale_snapshots(r2: &R2Client, live_snapshot_id: &str, retention:
         return;
     }
     tracing::Span::current().record("pruned_keys", stale.len());
-    match r2.delete_objects(&stale).await {
-        Ok(deleted) => tracing::info!(
-            deleted,
-            live = %live_snapshot_id,
-            "pruned superseded snapshot generations"
-        ),
-        Err(err) => tracing::warn!(
-            "pruning superseded snapshot generations failed ({err}); \
-             the next refresh will retry"
-        ),
-    }
+    let total = stale.len();
+    let failed: usize = futures_util::stream::iter(stale)
+        .map(|key: String| {
+            let public = public.clone();
+            async move {
+                match public.delete(&key).await {
+                    Ok(()) => 0,
+                    Err(err) => {
+                        tracing::warn!(%key, "pruning a superseded snapshot object failed ({err})");
+                        1
+                    }
+                }
+            }
+        })
+        .buffer_unordered(PRUNE_CONCURRENCY)
+        .fold(0, |failed, one| async move { failed + one })
+        .await;
+    tracing::info!(
+        deleted = total - failed,
+        failed,
+        live = %live_snapshot_id,
+        "pruned superseded snapshot generations"
+    );
 }
 
 /// Load every ingested case version's stored manifest, for the snapshot's case
@@ -505,3 +641,7 @@ fn load_case_manifests(store: &DefinitionStore) -> Result<Vec<crate::store::Stor
 #[cfg(test)]
 #[path = "publisher.test.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "publisher.public.test.rs"]
+mod public_tests;

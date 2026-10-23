@@ -11,9 +11,10 @@
 //!   per their own configuration (and install the harness CLI into at run time);
 //! - is the **system of record** for published runs + reviews in a SeaORM store
 //!   (SQLite locally and in tests, PostgreSQL in deployments); and
-//! - owns the **synchronized publish path**: a publish ingests into SQLite, then
-//!   a coalesced background task regenerates the full public snapshot, uploads it
-//!   atomically to R2.
+//! - owns the **synchronized publish path**: a publish is recorded in the
+//!   database, then a coalesced background task regenerates the full public
+//!   dataset and writes it through the artifacts service, swapping its
+//!   `index.json` pointer last.
 //!
 //! Every request identifies its caller, by the Cloudflare Access assertion the
 //! edge attaches or by a token the backend minted; see [`auth`].
@@ -44,7 +45,6 @@ pub mod prompt;
 pub mod publish_relay;
 pub mod publish_retry;
 pub mod publisher;
-pub mod r2;
 pub mod readiness;
 pub mod relay;
 pub mod render;
@@ -60,7 +60,6 @@ use crate::api::AppState;
 use crate::config::Config;
 use crate::db::Db;
 use crate::publisher::Publisher;
-use crate::r2::R2Client;
 use crate::store::DefinitionStore;
 
 /// A fully wired, runnable backend: the Axum router plus the spawned background
@@ -91,8 +90,8 @@ pub struct Backend {
 }
 
 /// Assemble a backend from a configuration: open the definition store, connect
-/// the database and migrate its schema, build the publisher (with R2 when
-/// configured), spawn the coalescing refresher, and construct the router. The
+/// the database and migrate its schema, build the publisher (writing the public
+/// dataset through the artifacts service when it is configured), spawn the coalescing refresher, and construct the router. The
 /// `TCAB_REFERENCE_BROWSER` override, when set, is forwarded to the bundled driver
 /// as `TCAB_CHROMIUM_EXECUTABLE` (the variable it reads), so ingest renders with
 /// that explicit Chromium.
@@ -291,7 +290,13 @@ async fn build_with_prices(
     // (`POST /jobs/{id}/lost`). Failing in-flight jobs here instead would fail runs that
     // are still executing.
 
-    let r2 = config.r2.clone().map(R2Client::new);
+    // The public dataset, written through the artifacts service with the service
+    // token; with either unset the dataset is composed but not written.
+    let public = crate::artifacts::PublicDataset::new(
+        reqwest::Client::new(),
+        config.artifacts_internal_url.as_deref(),
+        config.service_token.as_deref(),
+    );
 
     // The Access assertion check, or `None` for a backend with no Access application
     // (the local overlay), which takes the identity from the local header instead.
@@ -316,9 +321,7 @@ async fn build_with_prices(
     let publisher = Publisher::new(
         Arc::clone(&db),
         store.clone(),
-        r2,
-        config.artifacts_internal_url.clone(),
-        config.service_token.clone(),
+        public,
         crate::publisher::PublisherTiming {
             coalesce: config.coalesce,
             snapshot_retention: config.snapshot_retention,

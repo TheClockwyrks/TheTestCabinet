@@ -2,7 +2,6 @@
 
 use std::convert::Infallible;
 
-use crate::r2::R2Client;
 use axum::Json;
 use axum::body::Body;
 use axum::extract::State;
@@ -256,8 +255,10 @@ async fn reconcile_reference_builds(state: &AppState) -> Result<(), ApiError> {
     Ok(())
 }
 
-/// Reconcile `case_reference_sheet` from the snapshot bucket to the frames actually
-/// published there, queuing a snapshot refresh when the set changes.
+/// Reconcile `case_reference_sheet` from the public bucket to the frames actually
+/// published there, queuing a snapshot refresh when the set changes. The bucket is
+/// listed through the artifacts service's `GET /public?prefix=media/references/`
+/// with the service token; the backend holds no bucket credential.
 ///
 /// The asset-generation half of the reference **pull** model, and the one place it
 /// diverges from [`reconcile_reference_builds`]. A deployed reference *build* has an
@@ -268,8 +269,9 @@ async fn reconcile_reference_builds(state: &AppState) -> Result<(), ApiError> {
 /// what exists, and listing it is both simpler and more truthful than a lockfile —
 /// it cannot claim a frame that was never uploaded or has since been deleted.
 ///
-/// **When R2 is not configured** (the single-box dev setup) this returns having
-/// touched nothing. That is deliberate and mirrors how the lockfile path treats a
+/// **When the artifacts service is not configured** (`TCAB_ARTIFACTS_URL` or
+/// `TCAB_BACKEND_SERVICE_TOKEN` unset, the single-box dev setup) this returns
+/// having touched nothing. That is deliberate and mirrors how the lockfile path treats a
 /// *missing* lockfile: an unconfigured backend has no knowledge of the published set,
 /// which is a different fact from knowing the set is empty, and reconciling an
 /// unknown to empty would silently wipe rows a real deployment's data shares. Only a
@@ -277,18 +279,25 @@ async fn reconcile_reference_builds(state: &AppState) -> Result<(), ApiError> {
 /// for this env — is allowed to reconcile the table to empty.
 ///
 /// Failures are logged and swallowed rather than returned. Ingest's primary job is to
-/// pick up the freshly-fetched git checkout; a transient R2 list error (or an
+/// pick up the freshly-fetched git checkout; a transient listing error (or an
 /// unformattable timestamp) must not fail the whole scan and leave the catalog stale.
 /// The next ingest reconciles again.
 async fn reconcile_reference_sheets(state: &AppState) {
-    // No bucket configured: we cannot know the published set, so leave the table as
-    // it is. See the doc comment — this is not the same as reconciling to empty.
-    let Some(r2_config) = state.config.r2.clone() else {
+    // No artifacts service configured: we cannot know the published set, so leave
+    // the table as it is. See the doc comment — this is not the same as reconciling
+    // to empty.
+    let Some(public) = crate::artifacts::PublicDataset::new(
+        state.http.clone(),
+        state.config.artifacts_internal_url.as_deref(),
+        state.config.service_token.as_deref(),
+    ) else {
         return;
     };
-    let r2 = R2Client::new(r2_config);
 
-    let keys = match r2.list_keys(REFERENCE_MEDIA_PREFIX).await {
+    let keys = match public
+        .list_keys(&format!("{REFERENCE_MEDIA_PREFIX}/"))
+        .await
+    {
         Ok(keys) => keys,
         Err(err) => {
             tracing::warn!(
@@ -313,7 +322,7 @@ async fn reconcile_reference_sheets(state: &AppState) {
         }
     }
     // The store canonicalizes (sorts and de-duplicates) each frame list on the way
-    // in, so the arbitrary order R2 lists keys in cannot make an unchanged set look
+    // in, so the arbitrary order the bucket lists keys in cannot make an unchanged set look
     // changed.
     let desired: Vec<ReferenceSheetEntry> = by_variant
         .into_iter()
@@ -590,3 +599,7 @@ mod tests;
 #[cfg(test)]
 #[path = "ingest_api.refresh.test.rs"]
 mod refresh_tests;
+
+#[cfg(test)]
+#[path = "ingest_api.references.test.rs"]
+mod references_tests;

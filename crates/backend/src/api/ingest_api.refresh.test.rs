@@ -94,8 +94,6 @@ async fn backend(refresh_url: Option<&str>) -> (Router, tempfile::TempDir) {
         Arc::clone(&db),
         store.clone(),
         None,
-        None,
-        None,
         PublisherTiming {
             coalesce: config.coalesce,
             snapshot_retention: config.snapshot_retention,

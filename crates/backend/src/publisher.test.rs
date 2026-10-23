@@ -10,7 +10,7 @@ use test_cabinet_contracts::validation::ValidationSummary;
 
 use crate::db::StoredReview;
 
-fn record(id: &str) -> RunRecord {
+pub(super) fn record(id: &str) -> RunRecord {
     RunRecord {
         id: id.to_string(),
         started_at: "2026-06-17T20:40:00Z".to_string(),
@@ -55,7 +55,7 @@ fn record(id: &str) -> RunRecord {
 
 /// Push, review, and publish a run so it lands in the published set the snapshot
 /// is built from.
-async fn seed_published(db: &Db, id: &str, published_at: &str) {
+pub(super) async fn seed_published(db: &Db, id: &str, published_at: &str) {
     db.push(&record(id), &RunLinks::default(), None, None)
         .await
         .unwrap();
@@ -83,7 +83,7 @@ async fn seed_published(db: &Db, id: &str, published_at: &str) {
     db.publish(id, published_at).await.unwrap();
 }
 
-/// Build a publisher in dev mode (no R2): an in-memory database and a
+/// Build a publisher in dev mode (no artifacts service): an in-memory database and a
 /// fresh temp definition store. The `TempDir` is returned so the store outlives
 /// the publisher.
 async fn dev_publisher() -> (TempDir, Publisher, Arc<Db>) {
@@ -94,12 +94,10 @@ async fn dev_publisher() -> (TempDir, Publisher, Arc<Db>) {
         Arc::clone(&db),
         store,
         None,
-        None,
-        None,
         PublisherTiming {
             coalesce: Duration::from_millis(10),
-            // Retention is irrelevant to the dev publisher: with no R2 there is no
-            // bucket to prune.
+            // Retention is irrelevant to the dev publisher: with no artifacts service
+            // there is no bucket to prune.
             snapshot_retention: Duration::from_secs(24 * 3600),
         },
     );

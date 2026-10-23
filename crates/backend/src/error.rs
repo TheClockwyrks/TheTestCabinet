@@ -145,9 +145,10 @@ pub enum BackendError {
     #[error("{0}")]
     Pricing(String),
 
-    /// A request to the R2 object store failed.
+    /// A write, listing or delete of the public dataset through the artifacts
+    /// service failed.
     #[error("{0}")]
-    R2(#[from] crate::r2::R2Error),
+    Public(#[from] crate::artifacts::PublicError),
 
     /// A snapshot upload failed.
     #[error("{0}")]

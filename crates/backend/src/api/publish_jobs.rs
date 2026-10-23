@@ -336,11 +336,12 @@ pub async fn report_lost(
 }
 
 /// `POST /publish-jobs/{id}/verify-token` — confirm a presented per-job token
-/// matches the one minted for publish job `{id}`. The internal call the **artifact
-/// service** makes to authenticate the publisher's `tree.tar` download: the
-/// publisher presents its publish-job token to the artifact service, which forwards
-/// it here (the backend is the token authority) before serving the run's source
-/// tree.
+/// matches the one minted for publish job `{id}`. The internal call two services
+/// make to authenticate the publisher: the **artifact service** before serving the
+/// run's `tree.tar` download, and the **repos service** before its
+/// `POST /runs/{id}/publish` creates and pushes the run's public repository. The
+/// publisher presents its publish-job token to each, which forwards it here (the
+/// backend is the token authority).
 ///
 /// No other auth gates this endpoint — the presented token *is* the secret
 /// (publish-job tokens are random UUIDs minted at enqueue), so a caller that does
