@@ -75,7 +75,7 @@ binding are the model's to invent.
 
 Running `tcab-blend` emits `character.glb`, carrying the skinned mesh, the glTF
 skin, and one animation per required Action, alongside the preview `model.png`.
-Core emits both, and neither is declared in the manifest.
+The driver emits both, and neither is declared in the manifest.
 
 ## Procedure
 
@@ -119,7 +119,7 @@ Write `specs/brief.md`, a single self-contained file describing:
 
 The self-containment and precise-values rules that govern an end-to-end spec
 apply. The shared quality directive (`ASSET_QUALITY_PREAMBLE` in
-`crates/core/src/prompt.rs`) is prepended to every asset-generation prompt at
+`contracts/crates/suites/src/prompt.rs`) is prepended to every asset-generation prompt at
 render time, so the brief stays factual.
 
 ### 3. Write the starter `build.py`

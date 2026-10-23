@@ -710,7 +710,7 @@ check_contains "prints the sidecar's message" "The cold-storage submodule could 
 check_contains "with the free space it reported" "Free space on /state: 0 free of 9.8G (100% used)." "$out"
 check_contains "and the command's own error" "No space left on device" "$out"
 check_contains "says nothing was rolled back" "Nothing was ingested and nothing was rolled back" "$out"
-check_contains "names the command that ingests once it is fixed" "scripts/reingest-cluster.sh --env staging" "$out"
+check_contains "names the command that ingests once it is fixed" "tcab ingest --env staging" "$out"
 check_equal "reaches the cluster once" 1 "$(wc -l <"$repo/az.log")"
 check_lacks "undoes nothing" "rollout undo" "$(cat "$repo/kubectl.log")"
 

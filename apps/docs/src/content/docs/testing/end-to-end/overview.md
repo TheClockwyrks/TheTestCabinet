@@ -91,7 +91,7 @@ rather than a silent blank. The context exposes exactly:
 - `{{variant.slug}}`, `{{variant.name}}`, and `{{variant.description}}` — the
   selected variant. `description` is empty when the variant declares none.
 - `{{engine.slug}}`, `{{engine.name}}`, and `{{engine.docs}}` — the
-  [engine](/components/core/engines/) selected for the run, always present.
+  [engine](/components/engines/engines/) selected for the run, always present.
   `slug` is `none` when no engine is selected, and `docs` is then empty;
   otherwise `docs` is the absolute in-container path of the seeded engine
   documentation.
@@ -153,7 +153,7 @@ on. Each file seeds at its path relative to that directory, so
 Which directory is seeded depends on how the case
 [names it](/testing/end-to-end/manifests/#the-starter-project): an engineless
 case names one with the top-level `workspace` key, and a case that supports
-[engines](/components/core/engines/) names one per engine in a `[workspaces]`
+[engines](/components/engines/engines/) names one per engine in a `[workspaces]`
 table, because a starter project is written against a runtime. A variant may
 replace either with its own.
 
@@ -163,11 +163,20 @@ pinning Playwright as a dev dependency, so the browser tooling a model verifies
 its build with is a visible part of its own project, installed by the case's
 [init command](#init).
 
+A workspace with a `package.json` ships the `package-lock.json` that pins it,
+so the run begins from a committed lockfile and every file the seed commit
+holds is the case's own. The lockfile pins the project's registry dependencies
+and links each [package](#packages) and [engine](#engines) dependency at its
+vendored `file:` path, so the case's init command is `npm ci` and installs
+exactly what the lockfile pins. The model inherits the lockfile as it inherits
+the rest of the workspace, and the [build interface](#design-requirements)
+requires it committed still.
+
 Workspace files are seeded verbatim; they are never rendered as templates.
 Hidden entries are skipped, with an allowlist of exceptions that are seeded:
 `.gitignore`, `.cargo`, `.prettierrc.json`, and `.prettierignore`. A run's
 implementation is released as a git repository when it is
-[published](/components/core/results/), and the `.gitignore` keeps the build
+[published](/components/backend/results/), and the `.gitignore` keeps the build
 artifacts a run produces out of the public per-run source repository. A case
 that builds inside its run tree should ship a `.gitignore` covering its
 artifacts. `.cargo` carries the Cargo build configuration a Rust case relies
@@ -195,13 +204,13 @@ once the workspace and specs are seeded and mounted, and before the harness
 starts. It is where a case prepares the workspace it shipped, so the model
 begins against a ready project. It runs as the container's unprivileged run user
 with the seeded repository as its working directory, through `sh -c`, so it can
-be a plain command such as `npm install` or invoke a file the workspace
-supplies. Carom and Coil use `npm install && npx playwright install chromium`.
+be a plain command such as `npm ci` or invoke a file the workspace
+supplies. Carom and Coil use `npm ci && npx playwright install chromium`.
 
 The command is bounded by the run's maximum runtime, so a hung setup cannot run
 unbounded. That bound covers the init as a whole: every attempt, check, and delay
 between them shares it. It is verified and retried the way validation's
-[dependency install](/components/core/validation/#the-dependency-install) is:
+[dependency install](/components/driver/validation/#the-dependency-install) is:
 after each attempt, every package the install would place in the container,
 decided by the same rule, must be present on disk, and a non-zero exit or a
 missing package is run again after a delay, up to three attempts in all. Each
@@ -236,7 +245,7 @@ packages = ["@clockwyrks/particle-runtime"]
 
 Only the repo's shippable packages may be named: the curated set staged into the
 host package store, listed under "The shippable Test Cabinet packages" in
-`containers/README.md`. An unknown name is rejected when the case resolves,
+microservice-driver's `containers/README.md`. An unknown name is rejected when the case resolves,
 before any run is spent.
 
 ### The shipped `package.json` declares the dependency
@@ -273,11 +282,12 @@ the model installs its project as usual and imports the library by its bare name
 The spec that relies on the package should describe it as a provided dependency
 to import rather than as a file path.
 
-A case ships no lockfile, so a `packages` case's [init](#init) command must run
-`npm install` or the equivalent. That resolves the `file:` dependency against
-the vendored copy and writes it into the lockfile the model then commits, after
-which the `[build]` step's `npm ci` reinstalls it reproducibly from that
-committed lockfile.
+The workspace's committed `package-lock.json` links each `file:` dependency at
+that path, so the case's [init](#init) command, `npm ci`, installs the vendored
+copy and the `[build]` step's `npm ci` reinstalls it reproducibly from the same
+lockfile the model commits on. The vendored copy is the version the lockfile
+links, and a workspace whose lockfile disagrees with its `package.json` is
+rejected at resolution, before a run is spent.
 
 ## Engines
 
@@ -288,11 +298,13 @@ version can be built on each engine it supports and the results compared. The
 manifest's `engines` key lists the slugs a run of the case may select, and the
 [engine catalogue](/engines/overview/) is the set to name them from.
 
-Seeding vendors the selected engine's runtime into the run repository and writes
-its dependency into the seeded `package.json`, so the build installs and imports
-the engine by its bare package name like any other dependency. A case declaring
-an engine that provides a runtime therefore ships a [workspace](#workspace) with
-a `package.json` for that dependency to land in.
+Seeding vendors the selected engine's runtime into the run repository under
+`.vendor/packages/`, where the engine's [workspace](#workspace) already declares
+it by its `file:` spec, in its `package.json` and in the `package-lock.json`
+that links it, exactly as a [package](#packages) is declared. The build installs
+and imports the engine by its bare package name like any other dependency. A
+case declaring an engine that provides a runtime therefore ships one workspace
+per engine, each with the `package.json` and lockfile for that runtime.
 
 The engine's own documentation is seeded at `engine/` in the run root, and that
 is what the build reads to use the engine. An engine documents its API from its

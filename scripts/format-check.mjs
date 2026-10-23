@@ -1,23 +1,18 @@
 // Checks, or rewrites, Prettier formatting over the whole checkout.
 //
 // A formatting warning anywhere in the repository is a failure: the shared
-// packages, the front ends, the documentation, every test case's specs,
-// validators, seeded workspaces and reference implementations. Two things are
-// left out. What `.prettierignore` names — build trees, vendored copies and the
-// Handlebars templates prettier cannot parse — and the frozen test-case versions,
-// which a commit hook and CI refuse to modify and so cannot be reformatted. The
-// frozen list is derived from the `.frozen` markers on every run, so it never
-// goes stale.
+// packages, the front ends and the documentation. What `.prettierignore` names —
+// build trees, vendored copies, the Handlebars templates prettier cannot parse
+// and the submodules, whose own gates format them — is left out.
 //
 // `.prettierignore` is rendered from the project template, whose broad rules
 // also cover a few tracked sources this project has always formatted: the
-// Kubernetes manifests under `deployments/k8s/` and the case-harness fixture page
-// under `packages/case-harness/test/build/`. Those are checked in a pass of their
-// own that honours `.gitignore` alone (see `REINCLUDED`).
+// Kubernetes manifests under `deployments/k8s/`. Those are checked in a pass of
+// their own that honours `.gitignore` alone (see `REINCLUDED`).
 //
 // Prettier is handed the files git tracks rather than the checkout to expand:
-// a reference implementation's installed dependencies and built site are trees
-// of tens of thousands of files that no ignore rule keeps prettier from walking.
+// an installed dependency tree or a built site is tens of thousands of files that
+// no ignore rule keeps prettier from walking.
 //
 // Three things keep the pass quick over a checkout of ~74k tracked files:
 //
@@ -39,7 +34,7 @@
 
 import { execFileSync, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, lstatSync, mkdirSync, readdirSync } from "node:fs";
+import { lstatSync, mkdirSync } from "node:fs";
 import { availableParallelism } from "node:os";
 import { createRequire } from "node:module";
 import { join } from "node:path";
@@ -50,28 +45,6 @@ const repoRoot = fileURLToPath(new URL("..", import.meta.url));
 const prettier = createRequire(import.meta.url).resolve(
   "prettier/bin/prettier.cjs",
 );
-
-/** Every `test-cases/<type>/<difficulty>/<slug>/<version>/` carrying `.frozen`. */
-function frozenVersions() {
-  const dirs = (path) =>
-    existsSync(path)
-      ? readdirSync(path, { withFileTypes: true })
-          .filter((entry) => entry.isDirectory())
-          .map((entry) => `${path}/${entry.name}`)
-      : [];
-  const frozen = [];
-  for (const type of dirs("test-cases")) {
-    for (const difficulty of dirs(type)) {
-      for (const slug of dirs(difficulty)) {
-        for (const version of dirs(slug)) {
-          if (existsSync(join(repoRoot, version, ".frozen")))
-            frozen.push(version);
-        }
-      }
-    }
-  }
-  return frozen.sort();
-}
 
 /**
  * A test for the paths prettier has a parser for, built from prettier's own
@@ -102,7 +75,6 @@ process.chdir(repoRoot);
 const write = process.argv.includes("--write");
 const cache = !process.argv.includes("--no-cache");
 
-const frozen = frozenVersions().map((dir) => `${dir}/`);
 const known = await formattable();
 // `--stage` prints each entry as `<mode> <object> <stage>\t<path>`, which is what
 // tells a submodule apart: its entry is a gitlink (mode 160000), a directory that
@@ -116,8 +88,6 @@ const tracked = execFileSync("git", ["ls-files", "--stage", "-z"], {
   .filter((entry) => entry.length > 0)
   .filter((entry) => !entry.startsWith("160000 "))
   .map((entry) => entry.slice(entry.indexOf("\t") + 1))
-  // A frozen version cannot be modified, so it is not formatted either.
-  .filter((path) => !frozen.some((dir) => path.startsWith(dir)))
   // A tracked symbolic link is not a file prettier can read, and a tracked file
   // deleted from the working tree (a removal not yet committed) is not there to
   // read at all.
@@ -128,12 +98,10 @@ const tracked = execFileSync("git", ["ls-files", "--stage", "-z"], {
 const targets = tracked.filter(known);
 
 // Tracked sources the template's `.prettierignore` leaves out that this project
-// formats anyway: the Kubernetes manifests (its `deployments/k8s/` rule) and the
-// case-harness fixture page (its `build/` rule, meant for build output, which
-// this directory is not). They are checked without that ignore file.
+// formats anyway: the Kubernetes manifests (its `deployments/k8s/` rule). They
+// are checked without that ignore file.
 const REINCLUDED = [
   (path) => path.startsWith("deployments/k8s/") && /\.(ya?ml|json)$/.test(path),
-  (path) => path.startsWith("packages/case-harness/test/build/"),
 ];
 const reincluded = (path) => REINCLUDED.some((test) => test(path));
 

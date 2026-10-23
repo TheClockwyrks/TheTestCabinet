@@ -1,7 +1,6 @@
 # shellcheck shell=bash
 # A catalog mirror and its cold storage, as two local repositories, for the tests of
-# the catalog ingest (catalog-ingest.test.sh, catalog-ingest-sidecar.test.sh and
-# deploy.test.sh).
+# the catalog ingest (catalog-ingest.test.sh and deploy.test.sh).
 #
 # Sourced, not executed. The repositories are reached over file://, which shallow
 # and filtered fetches treat as they treat a network remote, so the scripts under

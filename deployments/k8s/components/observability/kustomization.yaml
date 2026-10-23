@@ -31,7 +31,7 @@
 #
 # What it deliberately does NOT do: set OTEL_EXPORTER_OTLP_ENDPOINT on the
 # workloads. That env is added by each overlay's own env patches (the same place it
-# retags TCAB_ENV), because backend + auth are a StatefulSet in the SQLite (local)
+# retags TCAB_ENV), because the backend is a StatefulSet in the SQLite (local)
 # overlay and a Deployment in the staging and prod (managed-PostgreSQL) overlays — a
 # kind difference a single shared patch here cannot straddle. The endpoint value is always
 # `http://tcab-lgtm:4318` (in-namespace Service DNS, identical in every environment).

@@ -11,7 +11,8 @@
 //                        write-scoped PUBLISH credentials.
 //   - `headObject`     — the PUBLISH side again: cheaply answer "is this object
 //                        already there, and how big is it" before re-uploading.
-//   - `getObject`      — the STAGING side: `scripts/stage-audio-store.mjs` downloads
+//   - `getObject`      — the STAGING side: microservice-driver's
+//                        `scripts/stage-audio-store.mjs` downloads
 //                        every published object into the audio store and verifies
 //                        each against `objects.lock.json`; needs only the
 //                        read-scoped PRESIGN credentials.

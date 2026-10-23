@@ -17,11 +17,11 @@ single `ui` run-container image and both on the run's `PATH`.
   it does the structural parts of an interface: a panel frame, a button body, a
   label, a set of scalable insets.
 
-Both are built from `crates/paint` and share one raster engine, one layer store,
-one operation log, and one seeded config, so a run interleaves them freely. A
-run blocks a panel out with `ui rounded-rect`, shades it with `paint gradient`
-and `paint brush`, stamps a label with `ui text`, then marks its stretchable
-region with `ui set-nine-slice`.
+Both are built from `crates/paint` in the `tool-paint` repository and share one
+raster engine, one layer store, one operation log, and one seeded config, so a
+run interleaves them freely. A run blocks a panel out with `ui rounded-rect`,
+shades it with `paint gradient` and `paint brush`, stamps a label with
+`ui text`, then marks its stretchable region with `ui set-nine-slice`.
 
 ## Elements, layers, and documents
 
@@ -171,8 +171,7 @@ preview template, so an operation needs no canvas flags.
 
 ## Live preview
 
-When a run is watched, driven by a [driver](/components/driver/overview/)
-rather than a plain `tcab run`, the
+When a run is watched, the
 model's painting streams to the viewer in real time. The orchestrator adds a
 `live` block to the seeded config carrying a `host.docker.internal` endpoint and
 an opaque per-run token. After each operation the binary connects back to the run
@@ -196,7 +195,7 @@ emit a single `ui.json` describing the asset for a consuming game. It carries an
 emitted PNG path, and, when the model authored one, its `nine_slice` insets
 (`left`/`right`/`top`/`bottom`).
 
-The emitted PNGs and `ui.json` are produced by the binaries at the paths core
+The emitted PNGs and `ui.json` are produced by the binaries at the paths the driver
 seeds; the manifest declares only the operation log. The
 [validator](/testing/asset-generation/evaluation/#ui-validation) decodes each
 PNG, confirms it is well-formed and the declared size, parses `ui.json`, and

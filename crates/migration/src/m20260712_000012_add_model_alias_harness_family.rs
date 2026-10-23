@@ -1,5 +1,5 @@
 //! Adds `model_alias.harness_family`: the harness family a curated model's slug is
-//! usable with (`test_cabinet_core::run_record::HarnessFamily` — `claude`,
+//! usable with (`test_cabinet_contracts::run_record::HarnessFamily` — `claude`,
 //! `codex`, `antigravity`, or `openrouter`), so a run form can offer only the
 //! slugs the selected harness can actually launch.
 //!

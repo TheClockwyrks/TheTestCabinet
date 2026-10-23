@@ -11,12 +11,14 @@ to the object store.
 No audio is committed here. Clip bytes live in a private
 [Cloudflare R2](https://developers.cloudflare.com/r2/) bucket keyed by clip id, both as
 the original source and as the normalized output of each pack's normalization profile.
-`scripts/stage-audio-store.mjs` materializes every published pack into the audio store,
+microservice-driver's `scripts/stage-audio-store.mjs` materializes every published pack
+into the audio store,
 which ships as the data-only `test-cabinet-audio-store` image. A run container receives
 the packs its test case declares in `[audio] packs`, staged into `/opt/audio` when the
 container starts, and carries no other pack.
 
-See the audio-store section of [`containers/README.md`](../README.md#the-audio-store)
+See the audio-store section of microservice-driver's
+[`containers/README.md`](../../microservice-driver/containers/README.md#the-audio-store)
 and the [audio-binaries doc](../../apps/docs/src/content/docs/testing/asset-generation/audio-binaries.md#the-sample-library).
 
 ## Clips
@@ -198,10 +200,11 @@ clips and exits non-zero with a summary, so one dead source is reported alongsid
 clip that succeeded. This is the one-time bootstrap for a store that does not yet hold
 the pinned clips; afterwards pack publishing and store staging read the object store.
 
-`scripts/stage-audio-store.mjs` then presigns and downloads the already-normalized
-objects and materializes the audio store the `test-cabinet-audio-store` image publishes.
-No credential enters an image layer. A published pack becomes reachable by a run as soon
-as a test case names it in `[audio] packs`; no run image is rebuilt.
+microservice-driver's `scripts/stage-audio-store.mjs` then presigns and downloads the
+already-normalized objects and materializes the audio store the
+`test-cabinet-audio-store` image publishes. No credential enters an image layer. A
+published pack becomes reachable by a run as soon as a test case names it in
+`[audio] packs`; no run image is rebuilt.
 
 ## R2 environment
 
@@ -220,9 +223,10 @@ only the presign pair, and only for the `audio-store` image.
 
 ## On-disk layout the loader expects
 
-`crates/audio-core/src/sample.rs` (`load_pack`) reads a pack directory holding a
-`pack.toml` manifest: a `sample_rate` plus one entry per sample, each with `name`, `tags`,
-`duration_ms`, `description`, and a `file` path resolved relative to the pack directory.
+`load_pack`, in `tool-audio-core/crates/audio-core/src/sample.rs`, reads a pack directory
+holding a `pack.toml` manifest: a `sample_rate` plus one entry per sample, each with
+`name`, `tags`, `duration_ms`, `description`, and a `file` path resolved relative to the
+pack directory.
 Audio sits in a shared clip directory beside the packs, so an entry's `file` points out of
 its own pack:
 

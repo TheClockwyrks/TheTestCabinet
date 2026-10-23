@@ -1,18 +1,13 @@
 //! Adds the two columns a run's media confirmation gained when it widened to
 //! every file of the run.
 //!
-//! - `media_confirmation_version`: the version of the definition of "confirmed"
-//!   that the run's recorded media evaluation was made under. `NULL` for a run
-//!   no refresh has evaluated, and for one evaluated before the column existed.
-//!   A confirmation counts only under the version the backend currently
-//!   implements, so a row confirmed earlier reads as unconfirmed and is evaluated
-//!   again by the next refresh.
-//! - `media_manifest`: a JSON document listing every file of the run that is in
-//!   the bucket, each with the name the backend store knows it by and its object
-//!   key or keys. Written together with a confirmation and cleared with it.
-//!
-//! Every existing row starts with both `NULL`. Each is its own statement because
-//! SQLite adds one column per `ALTER TABLE`.
+//! Kept registered for the databases that applied it: staging's schema holds this
+//! migration, and a migrator refuses to start over an applied migration it does
+//! not list. The feature that wrote the columns is not part of this design (the
+//! backend keeps no copy of a run's files and the artifacts service holds no
+//! volume; see `components/backend/overview.md#durable-state`), so nothing reads
+//! or writes them now. The columns are nullable or defaulted, so a row written without
+//! them is valid.
 
 use sea_orm_migration::prelude::*;
 

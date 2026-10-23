@@ -1,4 +1,5 @@
 use super::*;
+use test_cabinet_contracts::gg::GgAgentConfig;
 
 /// A save body: one named agent profile, with the model slot its binding defers to.
 fn sample_input(name: &str) -> GgSavedAgentInput {
@@ -7,7 +8,7 @@ fn sample_input(name: &str) -> GgSavedAgentInput {
         agent: GgAgentConfig {
             name: name.to_string(),
             model_slot: Some("critic".to_string()),
-            model_slots: vec![test_cabinet_core::gg::GgModelSlot {
+            model_slots: vec![test_cabinet_contracts::gg::GgModelSlot {
                 name: "critic".to_string(),
                 default_model_id: Some("mock/echo".to_string()),
                 passthrough: true,

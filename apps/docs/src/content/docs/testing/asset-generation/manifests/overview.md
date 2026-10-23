@@ -117,7 +117,7 @@ file and must omit the token.
 per-part animated kind record one log per frame or part, so their paths are
 templates. Every other kind records a single interleaved log. Emitted artifacts
 such as `ui.json`, `material.json`, `mesh.glb`, `rig.json`, `system.json`, and
-`clip.wav` are written to paths core provides and are never declared in the
+`clip.wav` are written to paths the driver provides and are never declared in the
 manifest.
 
 ## Specs, variants, and the prompt
@@ -201,7 +201,7 @@ description = "How good the produced asset is overall, judged against the brief.
 ```
 
 The reviewer takes in the produced asset, reads the brief, and gives it one
-[rating](/components/core/results/#reviews). A run's overall rating is the worst
+[rating](/components/backend/results/#reviews). A run's overall rating is the worst
 across its domains, and there is exactly one, so that rating is the run's rating.
 The run's point score is empty for these cases.
 

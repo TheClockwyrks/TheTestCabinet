@@ -1,0 +1,44 @@
+[zone.EDGE]
+name = "Identity and the edge"
+
+[zone.DATA]
+name = "Run data: the artifacts and repos services"
+
+[zone.SITE]
+name = "The gallery and share links"
+
+[zone.SHELL]
+name = "The operator client"
+
+[zone.REPOS]
+name = "Repository extractions"
+
+[zone.GGH]
+name = "gg, the harness"
+
+[zone.CASE]
+name = "Test cases and their seeding"
+
+[zone.DEPLOY]
+name = "The Kubernetes deployments"
+
+[zone.RUN]
+name = "The run plane: driver and dispatcher"
+
+[zone.BACK]
+name = "The backend"
+
+[zone.ARENA]
+name = "The arena"
+
+[zone.ENGINE]
+name = "The engines and their runtimes"
+
+[zone.CICD]
+name = "Continuous integration and the development environment"
+
+[zone.UICOM]
+name = "UI library (ui-common)"
+
+[zone.NYX]
+name = "Filed by Nyxsis"

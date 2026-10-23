@@ -1,0 +1,33 @@
+# Cargo's build output.
+/target/
+
+{% if rust_crate and not commits_lock %}
+# A library repository commits no lock file: the revisions that build together
+# are recorded by each application's lock file, and every repository's pipeline
+# builds it on its own against its pinned sources.
+/Cargo.lock
+
+{% endif %}
+# The installed npm packages, put back by `npm ci`, and what a package builds.
+node_modules/
+dist/
+
+# Tool caches.
+.cspellcache
+__pycache__/
+*.pyc
+/ci/.venv/
+/ci/.pytest_cache/
+.ruff_cache/
+
+# Editor and operating system droppings.
+.DS_Store
+*~
+
+# Environment files hold secrets.
+.env
+.env.*
+!.env.*.example
+
+# Scratch work, so none of it is offered to a commit.
+tmp/

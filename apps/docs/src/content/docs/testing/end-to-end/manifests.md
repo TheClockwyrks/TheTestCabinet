@@ -28,7 +28,7 @@ prompt = "prompt.hbs"        # the prompt template handed to the harness (requir
 max_runtime_hours = 0.5      # cap on the session and on each setup step (default 1)
 experimental = false         # optional; true hides the case unless the deployment opts in
 workspace = "workspaces/base" # optional starter directory, seeded into the run root
-init = "npm install"         # optional command run after seeding, before the harness
+init = "npm ci"              # optional command run after seeding, before the harness
 assets = []                  # asset files/directories, seeded (relative paths)
 packages = []                # Test Cabinet packages the build imports (npm names)
 engines = ["none"]           # supported engines, no version range (omit for ["none"])
@@ -221,8 +221,8 @@ description = "The escalating Frenzy mode: uncapped speed that ramps every hit."
   run before the container is torn down and the run aborts. It bounds each
   in-container setup step on its own as well. It is authored in hours,
   fractional values allowed, must be a positive finite number, and defaults to
-  `1`. A run can override it for a single invocation, for example
-  `tcab run --max-runtime <hours>`.
+  `1`. A launch overrides it for a single run on the enqueue body, which the
+  console's launch form sets.
 - `experimental` marks a case as still being iterated on and defaults to
   `false`. A deployment offers experimental cases only when it sets
   `TCAB_BACKEND_ALLOW_EXPERIMENTAL` to a truthy value; otherwise an experimental
@@ -236,8 +236,8 @@ description = "The escalating Frenzy mode: uncapped speed that ramps every hit."
   [Workspace](/testing/end-to-end/overview/#workspace).
 - `init` is an optional command run inside the run container once the workspace
   and specs are seeded and before the harness starts. It must be non-empty when
-  declared. It is verified against the workspace's lockfile and retried, up to
-  three attempts. See [Init](/testing/end-to-end/overview/#init).
+  declared. It is verified against the lockfile the workspace ships and retried,
+  up to three attempts. See [Init](/testing/end-to-end/overview/#init).
 - `assets` lists files or directories seeded into the run at their path relative
   to the version folder; a directory is seeded recursively.
 - `packages` lists the Test Cabinet runtime libraries the build imports. Each
@@ -249,7 +249,7 @@ description = "The escalating Frenzy mode: uncapped speed that ramps every hit."
   `.vendor/packages/`. A declared package missing from that file or pointing
   anywhere else is rejected at resolution. Each declared package is surfaced on
   the case's Inputs tab, tagged `Package`, with a description defined centrally
-  in `core` rather than per case. See
+  in `contracts` rather than per case. See
   [Packages](/testing/end-to-end/overview/#packages).
 - `engines` names the engines a run of this case version may select as bare
   slugs, each carrying no version range. A case version that declares no engine
@@ -340,7 +340,7 @@ description = "The escalating Frenzy mode: uncapped speed that ramps every hit."
   the case's fixed simulation rate in whole ticks per second and must be
   positive; it is what lets the validation runtime convert an exact number of
   stepped ticks into simulated time, and under an
-  [engine](/components/core/engines/) it is the step a scripted
+  [engine](/components/engines/engines/) it is the step a scripted
   [clock](/engines/simple-2d/apis/clocks/) takes by default. Omit it for a case
   whose build is clocked in real time. The table is reporter-side and never
   seeded; the seeded specification documents the same handle independently as an
@@ -385,7 +385,7 @@ description = "The escalating Frenzy mode: uncapped speed that ramps every hit."
 
 A case says which starter project a run is seeded with in exactly one way, and
 which way it picks decides whether the case may name an
-[engine](/components/core/engines/) at all.
+[engine](/components/engines/engines/) at all.
 
 | Spelling       | Starter project                   | Engines                                        |
 | -------------- | --------------------------------- | ---------------------------------------------- |
@@ -420,7 +420,7 @@ The two spellings are exclusive: a manifest declaring `workspace` alongside
 rule applies to a variant file, which spells its starter project the way its case
 does.
 
-A per-engine case declares its [validators](/components/core/validation/) per
+A per-engine case declares its [validators](/components/driver/validation/) per
 engine: a review item's `validation.script` is relative to the engine's validator
 project, and every engine the case supports has a project of its own under
 `validation/<engine>/`. A validation covers every supported engine unless its
@@ -480,10 +480,14 @@ supported set is exactly what it declares. A case that builds both ways lists
 `none` alongside the engine it also supports, and ships a starter project for
 each.
 
-A case declaring an engine that provides a runtime ships a starter project
-containing a `package.json`, because the engine dependency is written into that
-file at seed time. An engine's version is the version of its npm package in the
-host package store, read at seed time and recorded on the run.
+A case declaring an engine that provides a runtime ships a starter project for
+it whose `package.json` declares the engine's package as a `file:` dependency
+under `.vendor/packages/` and whose `package-lock.json` links it there, because
+seeding vendors the runtime at the path that declaration names. See
+[Engines](/testing/end-to-end/overview/#engines).
+
+An engine's version is the version of its npm package in the host package
+store, read at seed time and recorded on the run.
 
 A run selects an engine by slug, and the version it receives is the one the
 store holds. A run whose engine version falls outside the case's declared range
@@ -611,12 +615,13 @@ runtime surfaces to the engine and keeps only the game, while the engineless
 build carries that runtime itself. The table must name exactly the engines the
 case supports.
 
-An engine-backed reference depends on the engine's package in the repository
-(`packages/<slug>/`) by a relative `file:` path, which npm installs as a symlink,
-so the reference builds and tests against the engine's current source. The
-repository's npm workspace must therefore be installed and its packages built
-(`npm ci && npm run build:packages` at the repository root) before a reference
-is built.
+An engine-backed reference resolves its engine, `@clockwyrks/simple-2d` or
+`@clockwyrks/structured-2d`, from the feed at the version its manifest names.
+Inside the superrepo the package links point that name at the `engines`
+checkout instead, so the reference builds and tests against the engine's
+current source once that workspace is built (`npm ci && npm run build` in
+`engines/`, then `scripts/repos/link-packages.sh` at the superrepo root); see
+[Reference implementations](/development/building/#reference-implementations).
 
 By convention a per-engine directory lives at `references/<engine>/<variant>/`.
 Each directory is built with the case's `[build]` commands run from it, and its
@@ -630,7 +635,7 @@ is also what
 synthesize the baseline half of the validation media.
 
 `showcase` names a directory, likewise resolved against the version folder,
-holding the variant's [case showcase](/components/core/showcase/#the-case-showcase):
+holding the variant's [case showcase](/components/driver/showcase/#the-case-showcase):
 a `showcase.md` description, a `showcase.toml` media carousel, and the media
 files themselves, captured from the reference implementation. It is the
 presentation the catalog's preview stage and the case page's Play tab render.
@@ -688,8 +693,8 @@ decides the item's verdict from a reporter-side script and synthesizes its media
 from the same run. The verdict unit declares a `validation` table naming the
 script and the media outputs it produces.
 
-The script's shape follows the run's [engine](/components/core/engines/), and the
-two are documented at [Validation](/components/core/validation/):
+The script's shape follows the run's [engine](/components/engines/engines/), and the
+two are documented at [Validation](/components/driver/validation/):
 
 - Under an **engine**, the script is a **validator** — a `.test.ts` file run by
   vitest **in process**, importing the engine and the build's own modules. A case
@@ -779,11 +784,11 @@ assert }` object, or a factory returning one. Its `id` names the verdict the
   baseline media share that name and are told apart by where they are served
   from.
 
-  | `kind`   | Extension | Captured by                                                                                         |
-  | -------- | --------- | --------------------------------------------------------------------------------------------------- |
-  | `image`  | `png`     | A still the drive screenshots.                                                                      |
-  | `video`  | `mp4`     | A clip recorded across the drive.                                                                   |
-  | `replay` | `json.gz` | The draw-command [recording](/components/core/engines/#recording) a validator takes off the engine. |
+| `kind`   | Extension | Captured by                                                                                            |
+| -------- | --------- | ------------------------------------------------------------------------------------------------------ |
+| `image`  | `png`     | A still the drive screenshots.                                                                         |
+| `video`  | `mp4`     | A clip recorded across the drive.                                                                      |
+| `replay` | `json.gz` | The draw-command [recording](/components/engines/engines/#recording) a validator takes off the engine. |
 
   A recording is a JSON document stored gzipped, which both extensions state. A
   frame names its inherited drawing state and its operations by index into tables

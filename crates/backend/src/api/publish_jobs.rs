@@ -1,5 +1,6 @@
 //! The publish-queue endpoints: claim, stream progress, report the terminal
-//! result, and the live stream.
+//! result, the live stream, and the dispatcher's lease renewal, in-flight list and
+//! lost report.
 //!
 //! A publish is no longer a synchronous flip the console waits on; the console
 //! **enqueues** it (`POST /runs/{id}/publish`, see [`super::runs::publish`]), the
@@ -17,7 +18,7 @@
 //! never calls `POST /runs` (which needs an account token) — it reports via the
 //! per-publish-job token instead. On a terminal **failure** it records the reason on
 //! the publish job and pushes a `publish-failed`
-//! [notification](test_cabinet_core::NotificationKind::PublishFailed) onto the
+//! [notification](test_cabinet_contracts::job_api::NotificationKind::PublishFailed) onto the
 //! console's worker-wide feed, because a console that enqueued the publish and
 //! navigated away is no longer watching the live stream.
 
@@ -35,14 +36,20 @@ use time::format_description::well_known::Rfc3339;
 use tokio::sync::broadcast::error::RecvError;
 
 // The notification shapes this module raises a failed publish on; they live in
-// `core` alongside the run-queue's, and are re-exported by `crate::relay`.
-use test_cabinet_core::{JobSummary, Notification};
-// The publish-queue wire shapes the dispatcher and publisher speak live in `core`
+// the contracts alongside the run-queue's, and are re-exported by `crate::relay`.
+use test_cabinet_contracts::job_api::JobSummary;
+use test_cabinet_contracts::job_api::Notification;
+// The publish-queue wire shapes the dispatcher and publisher speak live in the contracts
 // (so neither must depend on this crate); re-export them so this module refers to
 // them unqualified, mirroring `jobs`'s re-export of the run-queue shapes.
-pub use test_cabinet_core::{
-    PublishClaim, PublishJobState, PublishProgress, PublishResult, PublishState,
-};
+pub use test_cabinet_contracts::publish_job_api::PublishClaim;
+pub use test_cabinet_contracts::publish_job_api::PublishJobState;
+pub use test_cabinet_contracts::publish_job_api::PublishProgress;
+pub use test_cabinet_contracts::publish_job_api::PublishResult;
+pub use test_cabinet_contracts::publish_job_api::PublishState;
+// The lease renewal body is the run queue's: a list of job ids, whichever queue they
+// belong to.
+use test_cabinet_contracts::job_api::LeaseRenewal;
 use test_cabinet_entities::{publish_job, run};
 
 use crate::auth::{ServiceAuth, bearer_token, token_matches};
@@ -108,9 +115,8 @@ pub async fn status(
 /// is delivered. A connection to an already-finished publish closes after the
 /// backlog. `404` for an unknown publish job.
 ///
-/// Open to any caller that can reach the backend, exactly like
-/// [`super::jobs::live`] — the private-network model gates the backend, and a
-/// publish-job id is itself opaque.
+/// Open to any identity, exactly like [`super::jobs::live`]; a publish-job id is
+/// itself opaque.
 pub async fn live(
     State(state): State<AppState>,
     Path(id): Path<String>,
@@ -163,8 +169,8 @@ pub async fn ingest_events(
 /// ([`crate::db::Db::complete_publish_job`]), and pushes the terminal item onto the
 /// live stream. On `Failed` it records the reason on the publish job
 /// ([`crate::db::Db::set_publish_job_state`]), raises the worker-wide
-/// `publish-failed` notification ([`notify_publish_failed`]), and likewise closes
-/// the stream. Either way the live stream ends with this exact [`PublishResult`].
+/// `publish-failed` notification and likewise closes the stream, as every recorded
+/// publish failure does ([`record_publish_failed`]). Either way the live stream ends with this exact [`PublishResult`].
 #[tracing::instrument(
     name = "publish_jobs.result",
     skip(state, headers, result),
@@ -182,7 +188,10 @@ pub async fn report_result(
 
     match result.state {
         PublishState::Succeeded => {
-            state
+            // A repeated success (the same job reporting again, or a second job
+            // for a run already published) is accepted like the first: the links
+            // are asserted again and the run keeps its original `published_at`.
+            let outcome = state
                 .db
                 .complete_publish_job(
                     &id,
@@ -193,36 +202,23 @@ pub async fn report_result(
                 )
                 .await
                 .map_err(ApiError::from)?;
-            // Batched: the dirty flag was set in `complete_publish_job`'s
-            // transaction; this counts one request toward the next refresh batch.
-            state.publisher.queue_refresh();
-            crate::metrics::record_run_published(true);
-        }
-        // The job was already recorded as failed, by the backend when its
-        // publisher went an hour without reporting. The failure is on record and
-        // was notified then; writing it again would move the instant the retry
-        // schedule and the publish hold order it by.
-        PublishState::Failed if job.state == "failed" => {
-            tracing::info!(
-                run.id = %job.run_id,
-                "a publisher reported a failure for a publish job already recorded as failed; \
-                 the record is left as it is"
-            );
+            // Coalesced: the dirty flag was set in `complete_publish_job`'s
+            // transaction; this only wakes the debounce loop.
+            state.publisher.queue_refresh().await;
+            crate::metrics::record_run_published(outcome.newly_published);
         }
         PublishState::Failed => {
-            let detail = result.detail.as_deref().unwrap_or("publish failed");
+            let detail = result.detail.as_deref().unwrap_or(FAILED_WITHOUT_DETAIL);
             state
                 .db
                 .set_publish_job_state(&id, "failed", &now, Some(detail))
                 .await
                 .map_err(ApiError::from)?;
-            notify_publish_failed(&state, &id, &job.run_id, detail).await;
+            // Announces the failure and closes the live stream with this exact result.
+            finish_failed_publish(&state, &id, &job.run_id, result).await;
+            return Ok(StatusCode::NO_CONTENT);
         }
     }
-
-    // A finished publish job is what begins and ends the hold publish failures
-    // put on new runs, so it is derived again now and a change announced at once.
-    super::publish_retry::refresh_publish_hold_best_effort(&state).await;
 
     // The terminal item closes every live subscriber's stream — pushed after the
     // durable write so a subscriber that reacts to it sees a consistent store.
@@ -230,17 +226,113 @@ pub async fn report_result(
     Ok(StatusCode::NO_CONTENT)
 }
 
-/// Close out a publish job the backend has just recorded as failed because its
-/// publisher never reported ([`crate::db::Db::fail_abandoned_publish_jobs`]): raise
-/// the `publish-failed` notification and end its live stream, as the publisher's
-/// own failed result would have.
-pub(super) async fn close_abandoned(state: &AppState, job: &publish_job::Model) {
-    let detail = job.detail.as_deref().unwrap_or("publish failed");
-    notify_publish_failed(state, &job.id, &job.run_id, detail).await;
+/// `POST /publish-jobs/leases` — the dispatcher renews the claim leases of the publish
+/// jobs whose publisher `Job` it saw live this tick. Requires the service token. Each
+/// listed publish job still `dispatched` has its lease extended to two minutes past the
+/// call; ids of unknown publish jobs and of publish jobs in any other state are
+/// ignored. A renewal never moves the job's `updated_at`, the dispatch instant the
+/// backend's hour-long bound is measured from. Answers `204`. The publish path's
+/// analogue of [`super::jobs::renew_leases`].
+#[tracing::instrument(
+    name = "publish_jobs.leases",
+    skip(state, _service, renewal),
+    fields(publish_jobs = renewal.job_ids.len()),
+    err(Debug),
+)]
+pub async fn renew_leases(
+    State(state): State<AppState>,
+    _service: ServiceAuth,
+    Json(renewal): Json<LeaseRenewal>,
+) -> Result<StatusCode, ApiError> {
+    let now = now_rfc3339()?;
     state
-        .publish_relay
-        .live(&job.id)
-        .finish(terminal_from_row(job));
+        .db
+        .renew_publish_leases(&renewal.job_ids, &now)
+        .await
+        .map_err(ApiError::from)?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// `GET /publish-jobs/active` — the publish jobs still in flight (`queued` or
+/// `dispatched`), oldest first, each with its run, its state and its claim lease's
+/// expiry when it holds one. Requires the service token. The dispatcher reads it, after
+/// renewing, to judge which dispatched publish jobs' leases have lapsed.
+pub async fn active(
+    State(state): State<AppState>,
+    _service: ServiceAuth,
+) -> Result<Json<Vec<ActivePublishJobOut>>, ApiError> {
+    let jobs = state
+        .db
+        .active_publish_jobs()
+        .await
+        .map_err(ApiError::from)?;
+    Ok(Json(
+        jobs.into_iter()
+            .map(|job| ActivePublishJobOut {
+                state: PublishJobState::from_db(&job.state),
+                id: job.id,
+                run_id: job.run_id,
+                lease_expires_at: job.lease_expires_at,
+            })
+            .collect(),
+    ))
+}
+
+/// `POST /publish-jobs/{id}/lost` — the dispatcher reports a publish job whose
+/// publisher is gone without having reported: the job is `dispatched` and the cluster
+/// has had no active publisher `Job` for it while its lease lapsed (the Job failed,
+/// completed without its result reaching the backend, or no longer exists). Requires
+/// the service token, since a dispatcher that restarted holds no per-job token for the
+/// publish jobs an earlier process claimed.
+///
+/// The body is a `failed` [`PublishResult`] whose detail says what the dispatcher
+/// found (`422` for any other state). A `dispatched` job is recorded `failed` with that
+/// detail, and the failure is announced and its live stream closed as every recorded
+/// publish failure is ([`record_publish_failed`]); the retry of failed publishes takes
+/// it up from there. A publish job in any other state is left alone — a queued one has
+/// no publisher to lose, and a terminal one has already reported — and the answer is
+/// `204` either way, so a report racing the publisher's own is harmless. `404` for an
+/// unknown publish job.
+#[tracing::instrument(
+    name = "publish_jobs.lost",
+    skip(state, _service, result),
+    fields(publish_job.id = %id),
+    err(Debug),
+)]
+pub async fn report_lost(
+    State(state): State<AppState>,
+    _service: ServiceAuth,
+    Path(id): Path<String>,
+    Json(result): Json<PublishResult>,
+) -> Result<StatusCode, ApiError> {
+    if result.state != PublishState::Failed {
+        return Err(ApiError::unprocessable(
+            "a lost publish job is reported as `failed`",
+        ));
+    }
+    state
+        .db
+        .get_publish_job(&id)
+        .await
+        .map_err(ApiError::from)?
+        .ok_or_else(|| ApiError::not_found(format!("no publish job `{id}`")))?;
+    let detail = result.detail.as_deref().unwrap_or(LOST_WITHOUT_DETAIL);
+    let Some(job) = state
+        .db
+        .mark_publish_job_lost(&id, &now_rfc3339()?, detail)
+        .await
+        .map_err(ApiError::from)?
+    else {
+        return Ok(StatusCode::NO_CONTENT);
+    };
+    tracing::warn!(
+        publish_job_id = %id,
+        run_id = %job.run_id,
+        detail,
+        "the dispatcher reported a publish job whose publisher is gone"
+    );
+    record_publish_failed(&state, &job, detail).await;
+    Ok(StatusCode::NO_CONTENT)
 }
 
 /// `POST /publish-jobs/{id}/verify-token` — confirm a presented per-job token
@@ -275,6 +367,43 @@ pub async fn verify_token(
 }
 
 // --- Helpers ----------------------------------------------------------------
+
+/// The reason recorded for a publisher's `failed` report that carries no detail.
+const FAILED_WITHOUT_DETAIL: &str = "publish failed";
+
+/// The reason recorded for a lost report that carries no detail.
+const LOST_WITHOUT_DETAIL: &str = "the publisher ended without reporting a result";
+
+/// The side effects every recorded publish failure has, once `job` has been recorded
+/// `failed` with `detail`: the worker-wide `publish-failed` notification is raised
+/// ([`notify_publish_failed`]) and the job's live stream is closed with a `failed`
+/// [`PublishResult`] carrying `detail`. Shared by the publisher's own `failed` report
+/// ([`report_result`]), the dispatcher's lost report ([`report_lost`]) and the
+/// backend's sweep of publish jobs whose publisher never reported. It writes nothing:
+/// the caller has already recorded the failure.
+pub(crate) async fn record_publish_failed(
+    state: &AppState,
+    job: &publish_job::Model,
+    detail: &str,
+) {
+    let result = PublishResult {
+        state: PublishState::Failed,
+        source_repo: None,
+        playable_build: None,
+        detail: Some(detail.to_string()),
+    };
+    finish_failed_publish(state, &job.id, &job.run_id, result).await;
+}
+
+/// Announce publish job `id`'s recorded failure and close its live stream with
+/// `result`, a `failed` result. The notification carries the result's detail (or
+/// [`FAILED_WITHOUT_DETAIL`]); the stream ends with `result` exactly, pushed after the
+/// durable write so a subscriber that reacts to it sees a consistent store.
+async fn finish_failed_publish(state: &AppState, id: &str, run_id: &str, result: PublishResult) {
+    let detail = result.detail.as_deref().unwrap_or(FAILED_WITHOUT_DETAIL);
+    notify_publish_failed(state, id, run_id, detail).await;
+    state.publish_relay.live(id).finish(result);
+}
 
 /// Raise the worker-wide `publish-failed` alert for a release that did not land, so
 /// a reviewer who enqueued the publish and moved on to the next run still learns
@@ -473,6 +602,23 @@ pub struct VerifyTokenBody {
     /// The per-publish-job bearer token the publisher presented to the artifact
     /// service.
     pub token: String,
+}
+
+/// One entry of `GET /publish-jobs/active`: a publish job still in flight, with its
+/// claim lease's expiry. Serialize-only and read by the dispatcher alone, which
+/// mirrors it, so it is not a codegen contract type.
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ActivePublishJobOut {
+    /// The publish job id.
+    pub id: String,
+    /// The run this publish releases.
+    pub run_id: String,
+    /// The lifecycle state: `queued` or `dispatched`.
+    pub state: PublishJobState,
+    /// When the claim lease lapses (RFC 3339), for a claimed job; `None` before the
+    /// claim.
+    pub lease_expires_at: Option<String>,
 }
 
 /// The body of `GET /publish-jobs/{id}`: a publish job's current lifecycle state

@@ -68,7 +68,7 @@ case declares no `[[reference]]`, `[build]`, `[[check]]`, or `[[review_item]]`.
      pack, a `music` case adds `packs` holding one instrument bank, and an
      `sfx-synth` case declares no `packs`;
    - `[tool]` naming the `binary` for the kind and the `preview` PNG path, and
-     `[output]` naming the `actions` log. Core emits `clip.wav`, and `clip.mid`
+     `[output]` naming the `actions` log. The driver emits `clip.wav`, and `clip.mid`
      for `music`, automatically;
    - one `[[domain]]` with `id = "overall"`, the single rating the clip is
      judged on.

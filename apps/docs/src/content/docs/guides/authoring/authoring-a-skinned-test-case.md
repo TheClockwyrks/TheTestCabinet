@@ -88,7 +88,8 @@ its `--help` is the operations contract, so no operations schema is seeded.
 Running `render` emits the skinned `mesh.glb` and `rig.json`. `mesh.glb` carries
 the geometry plus the glTF skin, its per-vertex bone weights, and its
 inverse-bind matrices. `rig.json` carries the skeleton, the joint interface, and
-the F-curve animations. Core emits both, and neither is declared in the manifest.
+the F-curve animations. The driver emits both, and neither is declared in the
+manifest.
 
 ## Procedure
 
@@ -128,7 +129,7 @@ A brief authored as `specs/brief.md.hbs` reads its bounds from `{{voxel.width}}`
 
 The self-containment and precise-values rules that govern an end-to-end spec
 apply. The shared quality directive (`ASSET_QUALITY_PREAMBLE` in
-`crates/core/src/prompt.rs`) is prepended to every asset-generation prompt at
+`contracts/crates/suites/src/prompt.rs`) is prepended to every asset-generation prompt at
 render time, so the brief stays factual.
 
 ### 3. Write `prompt.hbs`

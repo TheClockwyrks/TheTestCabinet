@@ -87,7 +87,7 @@ mode, and the available variables are `{{workspace}}`, `{{variant.slug}}`,
 `{{time_limit_hours}}`.
 
 The shared quality directive (`ASSET_QUALITY_PREAMBLE` in
-`crates/core/src/prompt.rs`) is prepended to every asset-generation prompt at
+`contracts/crates/suites/src/prompt.rs`) is prepended to every asset-generation prompt at
 render time, so `prompt.hbs` stays factual.
 
 ### 4. Write the manifest

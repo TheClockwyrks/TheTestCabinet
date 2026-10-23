@@ -63,3 +63,135 @@ copier update --trust --conflict inline
 
 `--vcs-ref <tag>` names a version other than the newest, and `--defaults` keeps
 every recorded answer rather than asking again.
+
+## This project's edits of rendered files
+
+Some files the template renders carry project edits that an update will meet
+as a conflict, or merge silently into a shape the project no longer holds.
+Each is listed here with what to keep, so a conflict in it is resolved by
+keeping the project's side of these regions and taking the template's
+everywhere else.
+
+- `.dockerignore`: the template renders a short allowlist; the project's is a
+  much longer one, with a comment per re-inclusion, and the template's lines
+  are a subset of it. Keep the project's file and fold in any new template
+  line. Its `SUBMODULES` paragraph, above `*`, says how a path in a submodule
+  enters the build context and that the image jobs initialize it with
+  `scripts/ci/submodules.sh init --build-context`; keep it, and keep any
+  re-inclusion of a submodule path below it. `scripts/ci/build-context.sh`
+  reads the file for that set (`--submodules`), so a re-inclusion lost in a
+  merge drops the submodule from the image jobs' init as well as from the
+  context.
+- The lint gate: the project has none. The template renders `eslint.config.js`
+  over `apps/web/src`, the root `package.json`'s `lint` script and the ESLint
+  devDependencies it runs, `ci/gates/web-lint.py`, its `.pre-commit-config.yaml`
+  hook and its `azure-pipelines.yml` step. The only TypeScript the project
+  linted was the gallery's, which is the `testcabinet.ai` repository, checked
+  out as a submodule, which lints it with a `web-lint` gate, a configuration
+  and a ratchet (`eslint-suppressions.json`) of its own; the console lints its
+  own in `console.testcabinet.ai`. An update that changes any of them meets a
+  file or a region the project deleted: delete it again, and carry a template
+  change to the rules into those two repositories.
+- The web app: the project has none. The console the template renders as
+  `apps/web` is the `console.testcabinet.ai` repository, checked out as a
+  submodule, which builds, tests and images it with gates and a pipeline of
+  its own. So the project holds none of `apps/web/`, its
+  `deployments/images/web.Dockerfile` and `deployments/images/web/`, or the
+  `web-typecheck`, `web-test`, `web-browser-test` and `web-build` gates, their
+  `.pre-commit-config.yaml` hooks and their `azure-pipelines.yml` steps (with
+  the web tests' `PublishTestResults@2` and the browser tests' `publish`), and
+  `workspace-test`'s `OWN_GATES` names `apps/docs` alone. An update that
+  changes any of them meets a file the project deleted: delete it again, and
+  carry a template change the console needs into `console.testcabinet.ai`.
+  The Playwright pin agreement the template's `web-browser-test` holds is
+  `ci-image-pins`' here: the compose file's
+  `PLAYWRIGHT_IMAGE` tag against the lock's `playwright`, `contracts`' and the
+  console's; keep it there.
+- The CI image tracks: the template renders two, `rust` and `web`, and the
+  project adds a third, `rust-browser` (`ci/images/rust-browser.Dockerfile` and
+  its `.dockerignore`, the project's own files): the Rust image of the same
+  commit with the playwright image's engines copied on top (its one argument
+  from the anchor is `PLAYWRIGHT_IMAGE`), reopening `/home/dev` with
+  `chmod o+rx` after that copy as the web image does, which the template's
+  `rust` gate job runs in with `TCAB_REQUIRE_BROWSER=1`. Keep the track in
+  each rendered file that lists the tracks: the `rust | rust-browser | web`
+  cases and usage lines of `scripts/ci/ci-image.sh` and
+  `ci/images/build-args.sh`, and the former's `RUST_CI_IMAGE` build argument
+  for the `rust-browser` track; `TRACKS` and the rust-browser cases of
+  `scripts/ci/ci-image.test.sh`; the `rustBrowserImage` job of
+  `azure-pipelines-ci-images.yml`, which `dependsOn: rustImage`, the comment
+  above the jobs saying why, and the three paths it adds to the trigger's
+  filter (the Dockerfile and its `.dockerignore`); and the image table and the
+  "Rust browser" section of `ci/images/README.md`. The `rust` job's `container:` image in
+  `azure-pipelines.yml` is `ubuntu-the-test-cabinet-rust-browser-cicd` and its
+  `variables:` carry `TCAB_REQUIRE_BROWSER: 1`, and
+  `ci/tests/test_wiring.py` maps that job to the `rust-browser` image; keep
+  all three. A template change to the Rust image reaches the rust-browser image
+  through its `FROM`.
+- The repository kit's Python and its gate: the project renders other
+  repositories from a copier template of its own (`copier.yml`,
+  `templates/repository/`, `scripts/repos/`; see the Repositories development
+  page), and four rendered files carry it. `ci/pyproject.toml`'s dev group
+  adds `copier` and `copier-template-extensions`, with the comment above them
+  saying why, and its pytest `testpaths` adds `../scripts/repos`; keep both,
+  and take the template's `ci/uv.lock` only after `uv lock` has run over the
+  merged file. `ci/gates/python-lint.py`'s `PROJECTS` is
+  `["ci", "scripts/repos", "templates/repository"]` with the comment above it,
+  and `ci/tests/test_gates.py`'s two uv-project tests match a project by
+  `is_relative_to` a named path, pass over a named directory holding no
+  `pyproject.toml`, and add `test_the_repository_scripts_extend_the_one_configuration`;
+  keep them. `ci/gates/shell-tests.py` globs `scripts/repos/` beside `scripts/`
+  and `scripts/ci/`, with the docstring saying so. In `.pre-commit-config.yaml`
+  the `python-lint` hook's `files` adds `scripts/repos/` and
+  `templates/repository/`, the `ci-tests` hook's adds the kit, `copier.yml`,
+  `.cargo/config.toml` and `.package-links.json` with the comment saying why,
+  and the project's `dependency-graph` hook sits after `ci-image-pins`; in
+  `azure-pipelines.yml` its step sits after the `ci-image-pins` step. The gate
+  itself (`ci/gates/dependency-graph.py`) and its library module
+  (`ci/src/the_test_cabinet_ci/graph.py`, `ci/tests/test_graph.py`) are the
+  project's own files in the template's directories.
+- The devcontainer's build context and its own steps: the `dev` service in
+  `.devcontainer/docker-compose.yml` builds from the repository root
+  (`context: ..`, `dockerfile: ./.devcontainer/ubuntu.dockerfile`), because
+  the last of the project's steps installs gg's toolchains with gg's
+  installers from the `gg/` checkout; keep it, and write every `COPY` in
+  `ubuntu.dockerfile` from the root (`./.devcontainer/...`), the template's
+  own included. At the comment the template leaves for a project's steps, keep
+  `system/packages.sh` (as root), `languages/rust/targets.sh` (the musl
+  target), `tools/helm.sh` and the gg toolchain step with its staged slice of
+  the `gg/` checkout, each a `COPY` of only what it runs. The anchor keeps the
+  project's `NODE_VERSION` and `NEXTEST_VERSION`, which no Dockerfile reads:
+  `scripts/ci/provision-node.sh` and `scripts/repos/test_render.py` read
+  them (gg's `scripts/ci/gg-ci-toolchains.sh` pins the same Node, which its
+  `gg-image-toolchains.test.sh` holds to this file), and each moves with the
+  Node or cargo-nextest the toolchain image a new template version names
+  holds. The Rust CI image carries the same
+  packages and musl target in a step of the project's own, and its
+  `.dockerignore` and the image pipeline's path filter admit
+  `.devcontainer/languages/rust/targets.sh`; keep all three.
+- The language toolchains gg's arms take from the template's images: the
+  project answers yes to `toolchain_wasm_components`, `toolchain_wasi_sdk`,
+  `toolchain_python`, `toolchain_jvm`, `toolchain_dotnet`, `toolchain_ruby`,
+  `toolchain_swift` and `toolchain_purescript`, and no to
+  `toolchain_rust_nightly` and `toolchain_ecmascript` (gg builds on the stable
+  toolchain, and its TypeScript and jco are its npm workspace's locks). The gg
+  step runs gg's `scripts/ci/gg-image-toolchains.sh` before its installers,
+  which links each arm's default home to the image's tree, and that script is
+  in the slice's `gg/scripts/ci` COPY. Each arm's pin under gg's
+  `packages/gg-sandbox-*/<lang>-version.sh` (and componentize-py's in
+  `packages/gg-sandbox-python/build.sh`) is the version its image's tag names,
+  so an update that moves one of those images moves the pin, and what the pin
+  moves (a checker manifest, a test's text, a probe fixture), in a change to
+  the `gg` repository that the update then brings in by moving the `gg/` pin.
+  `gg/scripts/ci/gg-image-toolchains.test.sh`, which the shell-tests gate runs
+  from the checkout, fails until they agree, and the image build fails on
+  the link script if they do not. Two pins move differently. The
+  wasm-components image's `wit-bindgen` is
+  pinned in the C++ and Swift version files and is read by the Rust arm from
+  `packages/gg-sandbox-rust/Cargo.lock`, so moving it also moves the
+  `wit-bindgen` requirement in that crate's and `packages/gg-sandbox/guest/`'s
+  `Cargo.toml` and relocks both with
+  `cargo update -p wit-bindgen --precise <version>`. The C# guest's wasi-sdk,
+  `GG_CSHARP_WASI_SDK_VERSION` in `packages/gg-sandbox-csharp/csharp-version.sh`,
+  follows the Mono runtime pack rather than the wasi-sdk image, and is
+  downloaded while the two differ.

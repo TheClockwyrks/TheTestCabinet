@@ -1,8 +1,8 @@
 # Deployment assets
 
 Copy-pasteable templates for deploying The Test Cabinet's long-running services —
-the **backend** (`tcab-backend`), the **auth service** (`tcab-auth-service`), the
-**dispatcher** (`tcab-dispatcher`), and the **artifact service** (`tcab-artifacts`)
+the **backend** (`tcab-backend`), the **dispatcher** (`tcab-dispatcher`), the
+**artifact service** (`tcab-artifacts`) and the **arena** (`tcab-arena`)
 — to **Kubernetes**, where a run is a **per-run Kubernetes Job**: the dispatcher
 creates one **driver** (`tcab-driver`) Job per queued run, and each driver spawns a
 separate **sandbox pod** via the Kubernetes API. There is no worker pool and no
@@ -21,25 +21,22 @@ documented in the Development section, not here:
 
 (Published at <https://docs.testcabinet.ai/deployment/overview/>.)
 
-Read the docs first. As with [`containers/`](../containers/README.md), the prose
-lives on the docs site and this README is just a map.
+Read the docs first. As with microservice-driver's
+[`containers/`](../microservice-driver/containers/README.md), the prose lives on the
+docs site and this README is just a map.
 
 ## Layout
 
 ```
 deployments/
 ├── local/
-│   ├── compose.yml            # backend + auth service in containers (a minimal stack)
+│   ├── compose.yml            # the backend in a container (a minimal stack)
 │   └── Makefile               # the full stack on a local k3d cluster (`make local-up`)
 ├── images/                    # service images, pushed to the ACR (see below)
 │   ├── services.Dockerfile    # EVERY Rust service, one `--target` each, over one
 │   │                          #   shared cargo build stage: backend (+ headless
-│   │                          #   Chromium), auth, dispatcher, driver, artifacts,
-│   │                          #   arena, publisher
-│   ├── backend.Dockerfile     # the-test-cabinet-backend: a retag of tcab-backend
-│   ├── web.Dockerfile         # tcab-web, the console SPA behind nginx (no crate)
-│   └── web/                   # its nginx.conf, config.js.template and the
-│                              #   30-render-config.sh entrypoint that fills it in
+│   │                          #   Chromium)
+│   └── backend.Dockerfile     # the-test-cabinet-backend: a retag of tcab-backend
 ├── azure/
 │   └── aks-command-invoke.role.json # the deploy identity's custom AKS role
 ├── k8s/
@@ -49,18 +46,16 @@ deployments/
 │   │   ├── rbac.yaml          # driver SA/Role (sandbox pods), dispatcher SA/Role (Jobs)
 │   │   ├── secrets.example.yaml # Secret templates (placeholders only)
 │   │   ├── backend.yaml       # backend StatefulSet (1 replica) + PVC + Service
-│   │   ├── auth.yaml          # auth StatefulSet (1 replica) + PVC + Service
 │   │   ├── dispatcher.yaml    # dispatcher Deployment (1 replica), no Service
-│   │   ├── artifacts.yaml     # artifact StatefulSet (1 replica) + PVC + Service + SA
+│   │   ├── artifacts.yaml     # artifact Deployment (2, no PVC) + Service + PDB + SA
 │   │   ├── arena.yaml         # arena Deployment (1 replica) + Service + SA
 │   │   ├── ingest-cronjob.yaml # periodic POST /ingest to refresh the catalog
 │   │   └── networkpolicy.yaml # optional default-deny-ingress + allows
 │   ├── components/            # observability, postgres, postgres-azure-ad, keyvault-csi,
-│   │                          #   web, internal-ingress
+│   │                          #   web, edge (the Cloudflare Tunnel connector)
 │   ├── cluster/               # cluster-scoped objects, applied by hand by a cluster administrator
 │   │   ├── namespace/         # the environment's Namespace
 │   │   ├── observability/     # the LGTM stack's node-metrics ClusterRole + binding
-│   │   ├── internal-ingress/  # the cert-manager ClusterIssuer
 │   │   └── azure-{staging,prod}/ # the bootstraps for tcab-staging and tcab-prod
 │   ├── overlays/
 │   │   ├── prod/              # prod on managed PostgreSQL, deployed from master
@@ -75,8 +70,6 @@ deployments/
 └── env/
     ├── backend.staging.env.example
     ├── backend.prod.env.example
-    ├── auth.staging.env.example
-    ├── auth.prod.env.example
     ├── dispatcher.staging.env.example
     └── dispatcher.prod.env.example
 ```
@@ -92,9 +85,20 @@ of each service's configuration.
 The Azure pipeline ([`azure-pipelines.yml`](../azure-pipelines.yml)) builds the
 service images under `images/` on every push to `master` and `staging`, natively
 for `amd64` and `arm64`, and pushes each to the Test Cabinet Azure Container
-Registry as `testcabinet.azurecr.io/tcab-backend:<sha>`, `…/tcab-auth-service`,
-`…/tcab-dispatcher`, `…/tcab-driver`, `…/tcab-artifacts`, `…/tcab-arena`,
-`…/tcab-publisher`, and `…/tcab-web`. The workspace template's publish stage then
+Registry as `testcabinet.azurecr.io/tcab-backend:<sha>`. The
+dispatcher's image is built by microservice-dispatcher's pipeline and pushed as
+`testcabinet.azurecr.io/microservice-dispatcher:<commit>`, and the driver's by
+microservice-driver's, as `testcabinet.azurecr.io/microservice-driver:<commit>`. The
+artifacts service's image is built by microservice-artifacts' pipeline and pushed as
+`testcabinet.azurecr.io/microservice-artifacts:<commit>`, and the arena's by
+microservice-arena's, as `testcabinet.azurecr.io/microservice-arena:<commit>`. The
+console's image is built by console.testcabinet.ai's pipeline and pushed as
+`testcabinet.azurecr.io/console.testcabinet.ai:<commit>`, which the `staging` and
+`prod` overlays run `tcab-web` from. The publisher's image is built by
+microservice-publisher's pipeline and pushed as
+`testcabinet.azurecr.io/microservice-publisher:<commit>`, which the dispatcher's
+`TCAB_PUBLISHER_IMAGE` names. The workspace
+template's publish stage then
 builds `images/backend.Dockerfile`, a retag of `tcab-backend:<sha>` with no build
 steps, and pushes it as `testcabinet.azurecr.io/the-test-cabinet-backend:<sha>`,
 the repository the template's deploy runs. To build and push the images by hand
@@ -105,32 +109,40 @@ instead, see the build instructions in each Dockerfile's header.
 The `staging` and `prod` overlays name every Test Cabinet image at the tag
 `unpinned`, which nothing pushes, so an overlay applied as it stands fails to pull.
 [`scripts/ci/pin-images.sh`](../scripts/ci/pin-images.sh) pins an overlay to one
-commit: all eight images, and the dispatcher's driver and publisher images and
-run-container registry and tag. Every deployment goes through it.
+commit: the backend's image, the one the overlays name from this repository's
+build, and the dispatcher's run-container registry, at that commit, the arena's,
+the artifacts service's, the dispatcher's, the repos service's, the console's and
+the publisher's own images at the commits its `microservice-arena`,
+`microservice-artifacts`, `microservice-dispatcher`, `microservice-repos`,
+`console.testcabinet.ai` and `microservice-publisher` submodule pointers name (the
+dispatcher's publisher image with the last), and the
+dispatcher's driver image and run-container tag at the commit its
+`microservice-driver` pointer names, which the driver and the run images were
+pushed at together. Every deployment goes through it.
 
 A push to `staging` deploys staging in the workspace template's deployment job
 (`tcab-staging` on `testcabinet-staging-westus2-aks`):
 
-1. **Before**: [`scripts/ci/pre-deploy.sh`](../scripts/ci/pre-deploy.sh) checks that
-   the catalog the new backend's ingest sidecar fetches can be fetched
-   ([`catalog-ingest.sh preflight`](../scripts/ci/catalog-ingest.sh)), failing with
-   nothing applied when it cannot. The same check reads the backend's state
-   volume: it fails when the volume is too full to fetch onto, counting the
-   growth the deploy applies to it, and when the deploy asks for a resize the
-   cluster would refuse. It then pins the
+1. **Before**: [`scripts/ci/pre-deploy.sh`](../scripts/ci/pre-deploy.sh) pins the
    overlay, records the commit the namespace runs now, gives every rollout 600
-   seconds, and retires the backend Deployment of its old name, `tcab-backend`, which
-   holds the backend's disk
-   ([`retire-legacy-backend.sh`](../scripts/ci/retire-legacy-backend.sh)).
-2. **The template's deploy**: `scripts/ci/deploy.sh` applies the overlay and waits on
-   `the-test-cabinet-backend`, rolling it back if it does not become ready.
+   seconds, checks the catalog the new backend will ingest
+   ([`catalog-ingest.sh`](../scripts/ci/catalog-ingest.sh) `preflight`), and retires
+   the objects of an earlier shape
+   ([`retire-legacy-backend.sh`](../scripts/ci/retire-legacy-backend.sh)): the
+   backend Deployment of its old name, `tcab-backend`, which holds the backend's disk,
+   the artifacts service's StatefulSet, which its stateless Deployment replaces, and
+   the internal ingress's Ingresses, its network policies and the `tcab-auth`
+   workload, which the edge replaced.
+2. **The template's deploy**: `scripts/ci/deploy.sh` runs the catalog preflight
+   ([`deploy-preflight.sh`](../scripts/ci/deploy-preflight.sh)), applies the overlay
+   and waits on `the-test-cabinet-backend`, rolling it back if it does not become
+   ready.
 3. **Post-deploy**: once the backend is ready,
    [`scripts/ci/post-deploy.sh`](../scripts/ci/post-deploy.sh) settles every other
    workload through
    [`scripts/ci/settle-workloads.sh`](../scripts/ci/settle-workloads.sh), which waits
-   on each and undoes each that does not become ready. It then reads the result
-   the backend's ingest sidecar recorded (`catalog-ingest.sh verify`) and fails,
-   printing the sidecar's failing step and message, unless the catalog was ingested.
+   on each and undoes each that does not become ready, and reads the ingest sidecar's
+   result (`catalog-ingest.sh verify`).
 4. **After a failure**: `settle-workloads.sh --after-failure` settles the rest,
    prints the pods and events, and prints the recovery: the command that puts the
    namespace back on the commit it ran before, or "fix forward" when there is no
@@ -139,34 +151,39 @@ A push to `staging` deploys staging in the workspace template's deployment job
 A push to `master` deploys prod in the pipeline's own prod stage, which publishes
 the same retag and runs `scripts/ci/deploy-environment.sh prod <sha>`
 ([source](../scripts/ci/deploy-environment.sh)): it pins a temporary copy, refuses
-a render with anything outside `tcab-prod`, makes the same catalog preflight,
-retires `tcab-backend`, applies, waits on every workload, undoing each that fails,
-and reads the ingest sidecar's result the same way. The same script rolls either
+a render with anything outside `tcab-prod`, runs the catalog preflight, retires the
+objects of an earlier shape, applies, waits on every workload, undoing each that
+fails, and reads the ingest sidecar's result. The same script rolls either
 environment by hand onto any commit the registry holds, and `--render` prints what it
 would apply.
 [`scripts/ci/k8s-deploy-sets.sh`](../scripts/ci/k8s-deploy-sets.sh), the
 `k8s-deploy-sets` gate, holds both deploy sets to that shape.
 
 These are the long-running **service** images, distinct from the **run-container**
-images a run executes inside ([`containers/`](../containers/README.md)), which the
-same pipeline run builds and pushes at the same sha.
+images a run executes inside (microservice-driver's
+[`containers/`](../microservice-driver/containers/README.md)), which that repository's
+pipeline builds and pushes at its own commit.
 
-The `tcab-driver` stage carries the [audio store](../containers/README.md#the-audio-store)
-at `/opt/tcab-audio`, resolved through the `AUDIO_STORE_IMAGE` build arg, so the
+The driver's image, built from microservice-driver's
+[`Dockerfile`](../microservice-driver/Dockerfile), carries the
+[audio store](../microservice-driver/containers/README.md#the-audio-store) at
+`/opt/tcab-audio`, resolved through the `AUDIO_STORE_IMAGE` build arg, so the
 build itself reads no audio credential. The driver stages each run's declared packs
 out of that store, so it and `TCAB_CONTAINER_TAG` move to the same commit; see
 [Pinning images](../apps/docs/src/content/docs/deployment/kubernetes/overview.md#pinning-images).
 
 Where that store comes from depends on who is building:
 
-- **A pipeline build** passes the `test-cabinet-audio-store:<sha>` the same run
-  pushed to the registry, so the driver bakes the store of its own commit.
+- **A pipeline build** takes the arg's default,
+  `testcabinet.azurecr.io/test-cabinet-audio-store:<TCAB_BUILD_COMMIT>`, the store
+  microservice-driver's pipeline pushed at the same commit, so the driver bakes the
+  store of its own commit.
 - **Any other driver build** passes the arg itself, naming a
   `testcabinet.azurecr.io/test-cabinet-audio-store:<sha>` the pipeline pushed or a
-  store built from the checkout. The arg defaults to `scratch`, so a driver build
-  without it fails rather than baking an empty store.
+  store built from the checkout.
 - **A local build does not pull anything.** `local/Makefile`'s `audio-store` target
-  builds the store from the checkout (staging it out of the audio object store with
+  builds the store from the microservice-driver checkout with its
+  `containers/build.sh audio-store` (staging it out of the audio object store with
   the read-scoped `CLOUDFLARE_AUDIO_R2_PRESIGN` credentials) and `make images` passes
   that ref in as `AUDIO_STORE_IMAGE`. So an audio change can be published to the
   object store and exercised locally without pushing a container image anywhere. See
@@ -177,9 +194,10 @@ Where that store comes from depends on who is building:
 Every file here is a **template with placeholder values only** — never commit a
 real secret. The per-environment files under `env/` are deliberately thin; the
 repo-root [`.env.backend.example`](../.env.backend.example),
-[`.env.auth.example`](../.env.auth.example),
-[`.env.dispatcher.example`](../.env.dispatcher.example), and
-[`.env.artifacts.example`](../.env.artifacts.example) remain the authoritative
+microservice-artifacts' [`.env.artifacts.example`](../microservice-artifacts/.env.artifacts.example),
+and microservice-dispatcher's
+[`.env.dispatcher.example`](../microservice-dispatcher/.env.dispatcher.example), each at
+that repository's root, remain the authoritative
 reference for every variable each service reads. Supply real values through
 Kubernetes `Secret`s populated from your secret manager (External Secrets, Sealed
 Secrets, `kubectl create secret`, …).

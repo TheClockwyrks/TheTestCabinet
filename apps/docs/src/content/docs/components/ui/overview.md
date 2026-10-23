@@ -2,12 +2,17 @@
 title: Overview
 ---
 
-The UI library (`@clockwyrks/ui`, in `packages/ui`) is the shared frontend code
-for The Test Cabinet's two GUIs: the [public
-site](/components/site/overview/) and the [web
-console](/components/web/overview/). It hosts the entire routed gallery
+The UI library (`@clockwyrks/ui`) is the shared frontend code for The Test
+Cabinet's two GUIs: the [public gallery](/components/site/overview/) and the
+[console](/components/web/overview/). It hosts the entire routed gallery
 application plus the primitives those GUIs render, so both are thin hosts over
 one application.
+
+It lives in the `ui-common` repository beside `@clockwyrks/run-stats`, the
+framework-free scoring rules whose counterparts the backend scores with, which
+the library's `ratings` module re-exports alongside its display metadata. The
+repository builds against `contracts` and `engines`, and the gallery, the
+console and The Spec Cabinet build against it.
 
 It ships no service and runs in no process of its own. Each GUI mounts the
 shared app inside its own router and supplies it a data source, and the two
@@ -25,7 +30,7 @@ A host imports only the entries it needs.
 | `@clockwyrks/ui`            | Presentational primitives, the rating model, and model-id helpers. |
 | `@clockwyrks/ui/app`        | The full routed gallery application and its data context.          |
 | `@clockwyrks/ui/client`     | The transport-agnostic client interfaces and their React contexts. |
-| `@clockwyrks/ui/transport`  | The HTTP transports the web console mounts.                        |
+| `@clockwyrks/ui/transport`  | The HTTP transports the console mounts.                            |
 | `@clockwyrks/ui/tokens.css` | The `--tcab-*` theme token defaults.                               |
 
 ## The gallery application
@@ -37,14 +42,35 @@ capabilities from context, so a host varies it by what it provides rather than
 by swapping screens. Route paths are built through the exported route builders,
 so each path is defined in one place.
 
+## Back navigation
+
+Every on-page back control returns to the page the viewer was on before
+entering the current page, exactly as the browser's own back button would. This
+covers the chevron beside a detail page's title, a text link that leads back,
+and the brand control that leaves a mode such as gg analysis. A page spans every
+route under its own path, so its tabs and sub-views count as one page and back
+skips over them.
+
+The app records the in-app history of the browser tab, and a back control takes
+the step by moving back through that history rather than pushing a new entry.
+The record survives a reload of the tab. A page opened with no in-app history
+behind it, such as a fresh deep link, falls back to a fixed parent route the
+control names.
+
+A form that leads to the entity it saved or launched replaces itself in the
+history, so back from that entity returns to where the form was opened from.
+
+A back control that must ask before leaving, such as an editor holding unsaved
+work, takes the same step once the question is answered.
+
 ## The data and capability context
 
-Each host builds the gallery data value from its own source. The static site
-builds it from the build-time public snapshot. The web console builds it live
-from a backend.
+Each host builds the gallery data value from its own source. The gallery
+builds it from the public bucket's index objects and documents. The console
+builds it live from a backend.
 
 A `canExecute` flag on that value gates the run-execution surface, including
-authentication and notifications. Optional capability members gate the rest.
+the signed-in identity and notifications. Optional capability members gate the rest.
 `arena` is present on a host that can run adversarial matches and tournaments.
 A host that omits one hides the corresponding surface.
 
@@ -52,19 +78,19 @@ The value also resolves a run's media to loadable URLs, whichever host is
 asking: proof-of-implementation media, an asset-generation run's regenerated,
 target and preview images with its action log, a voxel run's per-part `.glb` and
 `rig.json`, a particle run's `system.json`, and case-scoped validation
-baselines. The site resolves these from snapshot assets, a console from the
-backend for a published run and from the [artifact
-service](/components/artifacts/overview/) for a produced one.
+baselines. The gallery resolves these from the public bucket, and a console
+from the [artifacts service](/components/artifacts/overview/), whether or not
+the run is published.
 
 A run's inputs resolve one variant of one exact case version rendered for one
 engine, using the run's own recorded version and engine. A console resolves them
-from the backend's version and specs routes. The site resolves them from the
-snapshot's case document for that version.
+from the backend's version and specs routes. The gallery resolves them from the
+bucket's case document for that version.
 
 Listing pages are answered through a paged, filtered, sorted query the host
-implements. A console forwards it to the backend's offset endpoint. The site
-answers it from its in-memory summary index with the same semantics, so paging
-is identical on either host.
+implements. A console forwards it to the backend's offset endpoint. The gallery
+answers it from the index objects it holds in memory with the same semantics,
+so paging is identical on either host.
 
 ## The case detail coordinate
 
@@ -119,6 +145,26 @@ Every column has a minimum width. When the shown columns need more than the
 log's width, the log scrolls horizontally instead of narrowing a column below
 its minimum.
 
+### A gg run's agents
+
+A gg run's row names its configuration in the model column, and an arrow beside
+the name lists the configuration's agents beneath the row. Each agent's line
+gives its name, its model, and the tokens and cost the run spent on it, in the
+same columns as the run's totals. The primary agent comes first and is tagged as
+such. An agent the run never started is marked as not run. How many instances
+of an agent a run started varies from run to run of one configuration, so the
+line omits it.
+
+The lines come from the run's summary card. The backend builds them whenever it
+builds the card, from the run record's session summary and the capability set
+it ran, so every recorded gg run carries them with nothing stored beyond its
+record. A run whose session wrote no summary, such as one
+stopped before the session ended, has no lines and no arrow.
+
+An agent's cost is priced at that agent's own model, while a gg run's
+comparable cost prices all of the run's tokens at its primary model's list
+price. The agents' costs therefore need not sum to the run's.
+
 ### Deleting a run
 
 An unpublished run is deletable and a published one is not, which is the rule the
@@ -153,13 +199,12 @@ unavailable or reduced motion is requested, so a run stays reviewable.
 ## Client interfaces and transports
 
 `./client` declares the backend and worker client interfaces the console is
-written against, plus the React contexts that supply them and the
-authentication context. The app depends only on these interfaces.
+written against, plus the React contexts that supply them and the identity
+context. The app depends only on these interfaces.
 
 `./transport` is the single implementation of the backend wire protocol: the
-HTTP backend and execution clients, the HTTP arena client, and the helpers that
-read the artifact, arena, snapshot, and Grafana URLs the backend reports from
-`GET /config`. The web console mounts these transports.
+HTTP backend and execution clients and the HTTP arena client, each addressed by
+a path of the host's own origin. The console mounts these transports.
 
 ## Immutable asset caching
 

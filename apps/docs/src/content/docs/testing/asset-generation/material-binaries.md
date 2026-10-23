@@ -21,8 +21,8 @@ run's `PATH`.
   `material.json` that binds the maps together, and renders a lit 3D preview of
   the material on a test surface.
 
-Both are built from `crates/paint` and share one raster engine, one operation
-log, and one seeded config.
+Both are built from `crates/paint` in the `tool-paint` repository and share one
+raster engine, one operation log, and one seeded config.
 
 ## Material channels
 
@@ -207,7 +207,7 @@ the case's `size` and tileable, plus a single `material.json` carrying:
 
 The `height` and `curvature` scratch channels are authoring aids and are not
 emitted. The emitted PNGs and `material.json` are produced by the binaries at the
-paths core seeds; the manifest declares only the operation log. The
+paths the driver seeds; the manifest declares only the operation log. The
 [validator](/testing/asset-generation/evaluation/#material-validation) decodes
 each declared map, confirms it is well-formed and the declared `size`, requires
 `base-color` to decode, and parses `material.json` for each map's color space and

@@ -19,37 +19,49 @@
 # intra-doc links resolve, which no other gate sees, and rust-doctest runs the
 # examples in those comments, which nextest cannot.
 #
-# The web and documentation hooks (web-lint, web-typecheck, web-test,
-# web-browser-test, web-build, markdownlint, cspell, format, docs-typecheck,
-# docs-build) run the npm workspace's own locked tools, so they need `npm ci` to
-# have run; each says so when it has not. web-browser-test also needs the
-# browser engines, which the devcontainer image carries rather than the npm
-# workspace, and it says which ones are missing when they are not there.
-# web-build is the other slow hook: it is Vite's production
-# build, which is what the server's image embeds.
+# The hooks run at one of two moments, and which one a hook gets is decided by
+# its cost. Everything else runs on every `git commit`; rust-clippy and rust-doc
+# run on `git push` instead (`stages: [pre-push]`), so the commit stays
+# interactive and the lint verdict still arrives before anything leaves the
+# machine. A pre-push hook sees the files that differ across the range being
+# pushed, not the ones in the last commit, so a `files:` pattern keeps its
+# meaning: touch any Rust source anywhere in the push and the Rust gates run.
+# rust-test and rust-doctest have no hook at all (see below).
+#
+# The documentation hooks (markdownlint, cspell, format, docs-typecheck,
+# docs-build) run the npm workspace's own locked tools, so they need `npm ci`
+# to have run; each says so when it has not. The console's typecheck, tests,
+# browser tests and build are console.testcabinet.ai's gates, and the
+# gallery's lint, typecheck, tests and build are testcabinet.ai's.
 #
 # Setup is a single idempotent command: `scripts/setup-hooks.sh`, which the
-# devcontainer runs when it is created. If a hook ever blocks a commit you know
-# is fine, `git commit --no-verify` bypasses it.
+# devcontainer runs when it is created. It installs both hook types;
+# `default_install_hook_types` below is what makes a plain `pre-commit install`
+# wire up the pre-push hook too, so a clone that never gets the pre-push hook
+# installed silently loses the heavy gates entirely. If a hook ever blocks work
+# you know is fine, `git commit --no-verify` and `git push --no-verify` bypass
+# the respective stage.
 #
 # Revisions are pinned; refresh them with `pre-commit autoupdate`. The version
-# below is the framework's own, and .devcontainer/tools/uv.sh is where it is
-# decided: bump it there first and match this floor and scripts/setup-hooks.sh's
-# fallback install to it.
+# below is the framework's own, and the toolchain image the devcontainer is
+# built on is what holds it: match this floor and scripts/setup-hooks.sh's
+# fallback install to the pre-commit that image carries.
 minimum_pre_commit_version: "4.6.0"
+
+default_install_hook_types: [pre-commit, pre-push]
 
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
     hooks:
       - id: check-added-large-files
-        # A test-case or game-jam version ships what a playable game needs: a
-        # reference implementation's music track or gameplay recording is
-        # several megabytes, a performance case's oracle output over one, and
-        # a full spec over the 500 kB default. None of those is a mistake this
-        # hook should stop, and a new version is a copy of the last, so every
-        # version directory is left out, as it is for end-of-file-fixer below.
-        exclude: '^(test-cases|game-jams)/.*/v[0-9]+\.[0-9]+\.[0-9]+/'
+        # The copies of test-case versions the Rust tests read keep what their
+        # source ships, which is what a playable game needs: a reference
+        # implementation's music track or gameplay recording is several
+        # megabytes and a performance case's oracle output over one. None of
+        # those is a mistake this hook should stop, so the copies are left out,
+        # as they are for end-of-file-fixer below.
+        exclude: "^crates/[^/]+/testdata/definitions/"
       - id: check-case-conflict
       - id: check-executables-have-shebangs
       - id: check-illegal-windows-names
@@ -61,11 +73,10 @@ repos:
       - id: end-of-file-fixer
         # Every text file ends with a newline, which nothing else here checks.
         # A reviewer that has to notice a missing one is being spent on what a
-        # hook settles. Binary assets are left alone, and so is every test-case
-        # and game-jam version: a frozen version is immutable (the
-        # `frozen-paths` gate refuses a change to it), and some of them hold
-        # files that end without a newline, which this hook would rewrite.
-        exclude: '\.(svg|png|ico|woff2?)$|^(test-cases|game-jams)/.*/v[0-9]+\.[0-9]+\.[0-9]+/'
+        # hook settles. Binary assets are left alone, and so are the copies of
+        # test-case versions the Rust tests read, which keep their source's
+        # bytes, some of them files that end without a newline.
+        exclude: '\.(svg|png|ico|woff2?)$|^crates/[^/]+/testdata/definitions/'
       - id: check-shebang-scripts-are-executable
         # Rust files open with inner attributes like `#![forbid(unsafe_code)]`,
         # which this hook mistakes for a shebang; opt them out entirely.
@@ -112,16 +123,17 @@ repos:
 
       - id: devcontainer-declaration
         name: devcontainer declaration
-        description: Assert the devcontainer mounts the checkout at the folder the container works in.
+        description: Assert the devcontainer mounts the checkout at the folder the container works in, and builds what its anchor names.
         entry: uv run --quiet --project ci gate run devcontainer-declaration
         language: system
         # Reads both halves of the declaration itself, so it takes no paths:
         # the folder is devcontainer.json's and the mount the compose file's,
         # and either one moving alone is what this catches. A configuration
-        # under a subdirectory and an override it lists are read too. The
+        # under a subdirectory and an override it lists are read too, and so is
+        # the Dockerfile, whose arguments the compose file's anchor holds. The
         # check's own script, and the JSONC reader beside it, re-judge the
         # declaration too.
-        files: '^\.devcontainer/([^/]+/)?devcontainer\.json$|^\.devcontainer/docker-compose(\.[^/]+)?\.yml$|^scripts/(check-devcontainer|jsonc)\.py$|^ci/gates/devcontainer-declaration\.py$'
+        files: '^\.devcontainer/([^/]+/)?devcontainer\.json$|^\.devcontainer/ubuntu\.dockerfile$|^\.devcontainer/docker-compose(\.[^/]+)?\.yml$|^scripts/(check-devcontainer|jsonc)\.py$|^ci/gates/devcontainer-declaration\.py$'
         pass_filenames: false
 
       - id: shell-tests
@@ -132,8 +144,9 @@ repos:
         # A test reads its script beside it, and the pipeline scripts read
         # both compose files and the declaration that names them, so a change
         # to any of them re-judges the tests. Runs every test, so it takes no
-        # paths.
-        files: '^scripts/.*\.(sh|py)$|^ci/images/|^\.devcontainer/([^/]+/)?devcontainer\.json$|^\.devcontainer/docker-compose(\.[^/]+)?\.yml$|^\.pre-commit-config\.yaml$|^ci/gates/shell-tests\.py$'
+        # paths. The gg pin moves the gg checkout's test of the compose file's
+        # language images, which it runs too.
+        files: '^gg$|^scripts/.*\.(sh|py)$|^ci/images/|^\.devcontainer/([^/]+/)?devcontainer\.json$|^\.devcontainer/docker-compose(\.[^/]+)?\.yml$|^\.pre-commit-config\.yaml$|^ci/gates/shell-tests\.py$'
         pass_filenames: false
 
       - id: rust-fmt
@@ -152,6 +165,9 @@ repos:
         description: Run Clippy across the workspace with warnings denied.
         entry: uv run --quiet --project ci gate run rust-clippy
         language: system
+        # One of the two heavy gates: it compiles the workspace, so it runs on
+        # push rather than on every commit (see the header).
+        stages: [pre-push]
         # The manifests and the lockfile are here because a lint policy in
         # Cargo.toml or a `--locked` mismatch changes the verdict for every
         # source.
@@ -163,70 +179,15 @@ repos:
         description: Run rustdoc across the workspace with warnings denied, catching broken intra-doc links.
         entry: uv run --quiet --project ci gate run rust-doc
         language: system
+        # The other heavy gate, and it pairs with clippy: run on push, where it
+        # reuses the `cargo check` artifacts clippy just built.
+        stages: [pre-push]
         files: '\.rs$|(^|/)Cargo\.(toml|lock)$|^rust-toolchain\.toml$|^ci/gates/rust-doc\.py$'
         pass_filenames: false
 
       # rust-test and rust-doctest have no hook: the suite is too slow for a
       # commit. They run in the pipeline's Rust track and in `make gate`, and
       # ci/tests/test_wiring.py names them among the gates held to having none.
-
-      # The web app's gates. Each runs an npm script, which reads its own
-      # configuration for its file set, so none of them takes the staged paths.
-      # They trigger on the sources those tools read and on the configuration
-      # that decides their verdict: the root package.json and the lockfile pin
-      # the tools, and each gate's own script is an input to it.
-      - id: web-lint
-        name: web lint (eslint)
-        description: Lint the TypeScript with the workspace's own locked ESLint configuration.
-        entry: uv run --quiet --project ci gate run web-lint
-        language: system
-        # The rules live in the root eslint.config.js, so a commit that only
-        # edits the configuration changes the verdict for every source under
-        # it and has to run.
-        files: '^apps/web/.*\.(ts|tsx|m?js|json)$|^eslint\.config\.js$|^tsconfig\.base\.json$|^package(-lock)?\.json$|^ci/gates/web-lint\.py$'
-        pass_filenames: false
-
-      - id: web-typecheck
-        name: web typecheck (tsc -b)
-        description: Typecheck the web app against its own tsconfig.
-        entry: uv run --quiet --project ci gate run web-typecheck
-        language: system
-        files: '^apps/web/.*\.(ts|tsx|json)$|^tsconfig\.base\.json$|^package(-lock)?\.json$|^ci/gates/web-typecheck\.py$'
-        pass_filenames: false
-
-      - id: web-test
-        name: web tests (vitest)
-        description: Run the web app's tests under jsdom.
-        entry: uv run --quiet --project ci gate run web-test
-        language: system
-        files: '^apps/web/.*\.(ts|tsx|json)$|^tsconfig\.base\.json$|^package(-lock)?\.json$|^ci/gates/web-test\.py$'
-        pass_filenames: false
-
-      # The browser suite, which drives the engines apps/web/vite.config.ts
-      # names at two viewport widths each. It is a gate of its own rather than
-      # part of web-test because what it states is what only a real engine
-      # decides: the layout a width selects, the color the cascade resolves,
-      # and whether the document overflows itself. It fires on the app's
-      # sources and its configuration, on its own script, and on the engines'
-      # pin and the scripts that install them, because a bump there is the
-      # change most likely to break the suite.
-      - id: web-browser-test
-        name: web browser tests (vitest, playwright)
-        description: Run the web app's browser tests in the engines its test configuration names.
-        entry: uv run --quiet --project ci gate run web-browser-test
-        language: system
-        files: '^apps/web/.*\.(ts|tsx|css|html|json)$|^package(-lock)?\.json$|^ci/gates/web-browser-test\.py$|^\.devcontainer/(docker-compose\.yml|tools/browsers\.sh|system/browser-deps\.sh)$'
-        pass_filenames: false
-
-      - id: web-build
-        name: web build (vite build)
-        description: Build the web app's bundle, which is what the server's image embeds.
-        entry: uv run --quiet --project ci gate run web-build
-        language: system
-        # The entry HTML and everything under public/ are inputs to the bundle
-        # and to nothing above, which is why they are here alone.
-        files: '^apps/web/.*\.(ts|tsx|css|html|json|m?js)$|^tsconfig\.base\.json$|^package(-lock)?\.json$|^ci/gates/web-build\.py$'
-        pass_filenames: false
 
       - id: k8s-manifests
         name: kubernetes manifests
@@ -295,7 +256,7 @@ repos:
         description: Typecheck the documentation site against its content schema.
         entry: uv run --quiet --project ci gate run docs-typecheck
         language: system
-        files: '^apps/docs/|^package(-lock)?\.json$|^ci/gates/docs-typecheck\.py$'
+        files: '^apps/docs/|^gg$|^package(-lock)?\.json$|^ci/gates/docs-typecheck\.py$'
         pass_filenames: false
 
       - id: docs-build
@@ -303,7 +264,7 @@ repos:
         description: Build the documentation site.
         entry: uv run --quiet --project ci gate run docs-build
         language: system
-        files: '^apps/docs/|^package(-lock)?\.json$|^ci/gates/docs-build\.py$'
+        files: '^apps/docs/|^gg$|^package(-lock)?\.json$|^ci/gates/docs-build\.py$'
         pass_filenames: false
 
       # The Python every uv project is written in, the gates' first. ruff reads
@@ -315,7 +276,7 @@ repos:
         description: Lint and check the formatting of the Python every uv project is written in.
         entry: uv run --quiet --project ci gate run python-lint
         language: system
-        files: '^ci/.*\.py$|^ci/pyproject\.toml$'
+        files: '^ci/.*\.py$|^ci/pyproject\.toml$|^scripts/repos/.*\.(py|toml)$|^templates/repository/.*\.(py|toml)$'
         pass_filenames: false
 
       - id: ci-tests
@@ -326,54 +287,21 @@ repos:
         # The pipeline and this file are inputs too: ci/tests/test_wiring.py
         # reads both, with ci/images/tags.yml, and holds the gates, the hooks,
         # the pipeline steps and the images the jobs pull to one another.
-        files: '^ci/|^azure-pipelines\.yml$|^\.pre-commit-config\.yaml$'
+        # The repository scripts' tests run here too, and render the kit, so the
+        # kit, its declaration and the patch and link tables they hold current
+        # are inputs as well.
+        files: '^ci/|^azure-pipelines\.yml$|^\.pre-commit-config\.yaml$|^scripts/repos/|^templates/repository/|^copier\.yml$|^\.cargo/config\.toml$|^\.package-links\.json$'
         pass_filenames: false
 
-      # This project's own gates, each a script under ci/gates/. The ones too
-      # slow for a commit (contract-drift, workspace-test, validators-typecheck
-      # and site-build, which build the workspace or its packages first) have
-      # no hook and run in the pipeline and in `make gate` only;
-      # ci/tests/test_wiring.py names them.
-      - id: frozen-paths
-        name: "frozen test-case versions"
-        entry: uv run --quiet --project ci gate run frozen-paths
-        language: system
-        files: '(^|/)\.frozen$|^(test-cases|game-jams)/|^scripts/(freeze|lib/frozen)\.sh$|^ci/gates/frozen-paths\.py$'
-        pass_filenames: false
-
-      - id: seeded-contract
-        name: "seeded contract vocabulary"
-        entry: uv run --quiet --project ci gate run seeded-contract
-        language: system
-        files: '^packages/|^scripts/stage-tcab-packages\.mjs$|^scripts/ci/seeded-contract-check\.sh$|^ci/gates/seeded-contract\.py$'
-        pass_filenames: false
-
-      - id: spec-vocabulary
-        name: "seeded spec vocabulary"
-        entry: uv run --quiet --project ci gate run spec-vocabulary
-        language: system
-        files: '^(test-cases|game-jams)/.*/v[0-9]+\.[0-9]+\.[0-9]+/(prompt\.hbs$|specs/)|^crates/core/src/prompt\.rs$|^scripts/ci/spec-vocabulary-check\.mjs$|^ci/gates/spec-vocabulary\.py$'
-        pass_filenames: false
-
-      - id: spec-prose
-        name: "spec prose (markdownlint, cspell)"
-        entry: uv run --quiet --project ci gate run spec-prose
-        language: system
-        files: '^(test-cases|game-jams|test-case-groups)/.*\.(md|html|css|toml|hbs)$|^\.cspell/|^\.markdownlint-cli2\.yaml$|^ci/gates/spec-prose\.py$'
-        pass_filenames: false
-
-      - id: audio-packs
-        name: "audio pack declarations"
-        entry: uv run --quiet --project ci gate run audio-packs
-        language: system
-        files: '^(test-cases|game-jams)/.*/(test-case|game-jam)\.toml$|^containers/sample-packs/|^scripts/ci/audio-packs-check\.mjs$|^scripts/lib/audio-packs\.mjs$|^ci/gates/audio-packs\.py$'
-        pass_filenames: false
-
+      # This project's own gates, each a script under ci/gates/. The one too
+      # slow for a commit (workspace-test, which builds the workspace packages
+      # first) has no hook and runs in the pipeline and in `make gate` only;
+      # ci/tests/test_wiring.py names it.
       - id: build-context
         name: "Dockerfile build contexts"
         entry: uv run --quiet --project ci gate run build-context
         language: system
-        files: '(^|/)[^/]*[Dd]ockerfile[^/]*$|(^|/)\.dockerignore$|^rust-toolchain\.toml$|^packages/gg-sandbox|^scripts/stage-tcab-packages\.mjs$|^scripts/ci/build-context\.sh$|^ci/gates/build-context\.py$'
+        files: '(^|/)[^/]*[Dd]ockerfile[^/]*$|(^|/)\.dockerignore$|^rust-toolchain\.toml$|^gg$|^ui-common$|^microservice-driver$|^scripts/ci/build-context\.sh$|^ci/gates/build-context\.py$'
         pass_filenames: false
 
       - id: k8s-deploy-sets
@@ -388,13 +316,25 @@ repos:
         entry: uv run --quiet --project ci gate run ci-image-pins
         language: system
         # The project's pipeline files that name a CI image, and the gate
-        # that holds each reference to the commit ci/images/tags.yml pins.
-        files: '^\.azure/|^azure-pipelines-release\.yml$|^ci/gates/ci-image-pins\.py$'
+        # that holds each reference to the commit ci/images/tags.yml pins;
+        # then Playwright's pins: the compose file naming the playwright
+        # image, the lock and the two submodules whose clients drive it.
+        files: '^\.azure/|^azure-pipelines\.yml$|^ci/gates/ci-image-pins\.py$|^\.devcontainer/docker-compose\.yml$|^package-lock\.json$|^contracts$|^console\.testcabinet\.ai$'
+        pass_filenames: false
+
+      - id: dependency-graph
+        name: "dependency graph (edges, patch table, package links)"
+        entry: uv run --quiet --project ci gate run dependency-graph
+        language: system
+        # The submodules, the two tables joining them, the kit's tables the
+        # check judges by, and every checked-out repository's manifests.
+        files: '^\.gitmodules$|^\.cargo/config\.toml$|^\.package-links\.json$|^templates/repository/ci/src/the_test_cabinet_ci/(edges|links)\.py$|^scripts/repos/render\.py$|^ci/images/tags\.yml$|^ci/src/the_test_cabinet_ci/graph\.py$|^ci/gates/dependency-graph\.py$'
         pass_filenames: false
 
       - id: scripts-test
         name: "script library tests (node --test)"
         entry: uv run --quiet --project ci gate run scripts-test
         language: system
+        # The library, its tests and the gate script.
         files: '^scripts/lib/.*\.m?js$|^ci/gates/scripts-test\.py$'
         pass_filenames: false

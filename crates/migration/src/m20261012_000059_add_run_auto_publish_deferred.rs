@@ -1,15 +1,12 @@
 //! Adds the `auto_publish_deferred` column to the `run` table.
 //!
-//! Automatic publishing passes over a run whose artifact tree it could not
-//! confirm: the artifact service gave no answer, or said the run has no tree. The
-//! triggers that offer a run to automatic publishing fire when the run finishes,
-//! so a run passed over then is offered again only by the backend's periodic
-//! retry, and this column is how the retry knows which runs those are. Without it
-//! the retry would have to consider every unpublished run the rule admits, which
-//! would publish runs nobody passed over.
-//!
-//! `false` for every existing row: no run stored before the column existed was
-//! passed over by a gate that did not exist either.
+//! Kept registered for the databases that applied it: staging's schema holds this
+//! migration, and a migrator refuses to start over an applied migration it does
+//! not list. The feature that wrote the column is not part of this design (the
+//! backend keeps no copy of a run's files and the artifacts service holds no
+//! volume; see `components/backend/overview.md#durable-state`), so nothing reads
+//! or writes it now. The column is nullable or defaulted, so a row written without
+//! it is valid.
 
 use sea_orm_migration::prelude::*;
 

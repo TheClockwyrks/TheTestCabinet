@@ -4,11 +4,11 @@
 #   scripts/ci/catalog-ingest.sh preflight <staging|prod> [<commit>]
 #   scripts/ci/catalog-ingest.sh verify <staging|prod>
 #
-# Every deployment starts a new backend pod, whose ingest sidecar
-# (deployments/k8s/components/catalog-ingest/ingest.sh) brings the backend's checkout
-# to the tip of the environment's catalog branch on the GitHub mirror, brings the
-# cold-storage submodule to the commit that tip pins, and asks the backend for one
-# forced ingest. A deployment whose sidecar cannot do that has not deployed the
+# Every deployment starts a new backend pod, whose ingest sidecar (the `ingest`
+# container of deployments/k8s/overlays/<env>/patch-backend-ingest.yaml) brings the
+# backend's checkout to the tip of the environment's catalog branch on the GitHub
+# mirror, brings the cold-storage submodule to the commit that tip pins, and asks the
+# backend for one forced ingest. A deployment whose sidecar cannot do that has not deployed the
 # catalog, so the deployment fails, on one of two sides of the rollout:
 #
 #   preflight  Before anything is applied, from the machine that deploys. The branch
@@ -109,7 +109,7 @@ source "${CI_DIR}/../lib/env.sh"
 readonly USAGE="usage: scripts/ci/catalog-ingest.sh preflight <staging|prod> [<commit>]
        scripts/ci/catalog-ingest.sh verify <staging|prod>"
 readonly BACKEND="the-test-cabinet-backend"
-# Where ingest.sh records its result, in the `ingest` container.
+# Where the ingest sidecar records its result, in the `ingest` container.
 readonly RESULT_PATH="/tmp/ingest-result"
 readonly SUBMODULE="cold-storage"
 # Where the backend's state volume is mounted, in both of its containers.
@@ -675,7 +675,7 @@ SCRIPT
 				"not known. A sidecar still working is read again with:" \
 				"    scripts/ci/catalog-ingest.sh verify ${ENVIRONMENT}" \
 				"One that stopped is replaced by an ingest without a deployment:" \
-				"    scripts/reingest-cluster.sh --env ${ENVIRONMENT}"
+				"    tcab ingest --env ${ENVIRONMENT}"
 			exit 1
 			;;
 		1:*)
@@ -684,7 +684,7 @@ SCRIPT
 				"Nothing was ingested and nothing was rolled back: the backend is rolled out and" \
 				"serves the catalog and the baselines it had. Fix what the message names, then" \
 				"ingest without a deployment, which fails the same way when the fetch does:" \
-				"    scripts/reingest-cluster.sh --env ${ENVIRONMENT}"
+				"    tcab ingest --env ${ENVIRONMENT}"
 			exit 1
 			;;
 		4:*)

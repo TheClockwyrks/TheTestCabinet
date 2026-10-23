@@ -95,6 +95,190 @@ check_failed "fails" "$status"
 check_contains "names the image" "tcab-extra:unpinned" "$out"
 check_contains "names the deploy that does not render" "the staging deploy does not render" "$out"
 
+echo "--- a repository's own image at the superrepo's commit ---"
+
+tree="$(fresh_tree)"
+cat >>"$tree/overlays/prod/kustomization.yaml" <<'YAML'
+  - target: { kind: Deployment, name: tcab-repos }
+    patch: |-
+      - op: replace
+        path: /spec/template/spec/containers/0/image
+        value: testcabinet.azurecr.io/microservice-repos:0123456789abcdef0123456789abcdef01234567
+YAML
+out="$(check "$tree")"
+status=$?
+check_failed "fails" "$status"
+check_contains "names the image and what it is pinned to" \
+	"the prod deploy names testcabinet.azurecr.io/microservice-repos:0123456789abcdef0123456789abcdef01234567, not testcabinet.azurecr.io/<repository>:<the commit its submodule pointer names>" "$out"
+
+echo "--- the dispatcher's image built here rather than in its repository ---"
+
+tree="$(fresh_tree)"
+sed -i 's#^    newName: testcabinet.azurecr.io/microservice-dispatcher$#    newName: testcabinet.azurecr.io/tcab-dispatcher#' \
+	"$tree/overlays/staging/kustomization.yaml"
+out="$(check "$tree")"
+status=$?
+check_failed "fails" "$status"
+check_contains "names the image it names instead" \
+	"the staging deploy names testcabinet.azurecr.io/tcab-dispatcher:456789abcdef0123456789abcdef0123456789ab" "$out"
+check_contains "names the image at the pointer it requires" \
+	"the staging deploy does not name testcabinet.azurecr.io/microservice-dispatcher:456789abcdef0123456789abcdef0123456789ab" \
+	"$out"
+
+echo "--- the artifacts service's image built here rather than in its repository ---"
+
+tree="$(fresh_tree)"
+sed -i 's#^    newName: testcabinet.azurecr.io/microservice-artifacts$#    newName: testcabinet.azurecr.io/tcab-artifacts#' \
+	"$tree/overlays/prod/kustomization.yaml"
+out="$(check "$tree")"
+status=$?
+check_failed "fails" "$status"
+check_contains "names the image it names instead" \
+	"the prod deploy names testcabinet.azurecr.io/tcab-artifacts:abcdef0123456789abcdef0123456789abcdef01" "$out"
+check_contains "names the image at the pointer it requires" \
+	"the prod deploy does not name testcabinet.azurecr.io/microservice-artifacts:abcdef0123456789abcdef0123456789abcdef01" \
+	"$out"
+
+echo "--- the arena's image built here rather than in its repository ---"
+
+tree="$(fresh_tree)"
+sed -i 's#^    newName: testcabinet.azurecr.io/microservice-arena$#    newName: testcabinet.azurecr.io/tcab-arena#' \
+	"$tree/overlays/staging/kustomization.yaml"
+out="$(check "$tree")"
+status=$?
+check_failed "fails" "$status"
+check_contains "names the image it names instead" \
+	"the staging deploy names testcabinet.azurecr.io/tcab-arena:9876543210abcdef9876543210abcdef98765432" "$out"
+check_contains "names the image at the pointer it requires" \
+	"the staging deploy does not name testcabinet.azurecr.io/microservice-arena:9876543210abcdef9876543210abcdef98765432" \
+	"$out"
+
+echo "--- the console's image built here rather than in its repository ---"
+
+tree="$(fresh_tree)"
+sed -i 's#^    newName: testcabinet.azurecr.io/console.testcabinet.ai$#    newName: testcabinet.azurecr.io/tcab-web#' \
+	"$tree/overlays/prod/kustomization.yaml"
+out="$(check "$tree")"
+status=$?
+check_failed "fails" "$status"
+check_contains "names the image it names instead" \
+	"the prod deploy names testcabinet.azurecr.io/tcab-web:fedcba9876543210fedcba9876543210fedcba98" "$out"
+check_contains "names the image at the pointer it requires" \
+	"the prod deploy does not name testcabinet.azurecr.io/console.testcabinet.ai:fedcba9876543210fedcba9876543210fedcba98" \
+	"$out"
+
+echo "--- the console's image at the superrepo's commit ---"
+
+tree="$(fresh_tree)"
+cat >>"$tree/overlays/staging/kustomization.yaml" <<'YAML'
+  - target: { kind: Deployment, name: tcab-web }
+    patch: |-
+      - op: replace
+        path: /spec/template/spec/containers/0/image
+        value: testcabinet.azurecr.io/console.testcabinet.ai:0123456789abcdef0123456789abcdef01234567
+YAML
+out="$(check "$tree")"
+status=$?
+check_failed "fails" "$status"
+check_contains "names the image and what it is pinned to" \
+	"the staging deploy names testcabinet.azurecr.io/console.testcabinet.ai:0123456789abcdef0123456789abcdef01234567, not testcabinet.azurecr.io/<repository>:<the commit its submodule pointer names>" "$out"
+
+echo "--- the driver built here rather than in its repository ---"
+
+# A patch after the pin's, as an overlay could carry, that puts the dispatcher's
+# driver image and run-container tag back at the superrepo's commit.
+dispatcher_env_patch() { # tree overlay name value
+	cat >>"$1/overlays/$2/kustomization.yaml" <<YAML
+  - target: { kind: Deployment, name: tcab-dispatcher }
+    patch: |-
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: tcab-dispatcher
+      spec:
+        template:
+          spec:
+            containers:
+              - name: dispatcher
+                env:
+                  - name: $3
+                    value: "$4"
+YAML
+}
+
+tree="$(fresh_tree)"
+dispatcher_env_patch "$tree" staging TCAB_DRIVER_IMAGE \
+	testcabinet.azurecr.io/tcab-driver:0123456789abcdef0123456789abcdef01234567
+out="$(check "$tree")"
+status=$?
+check_failed "fails" "$status"
+check_contains "names the driver image at the pointer it requires" \
+	"the staging deploy does not name testcabinet.azurecr.io/microservice-driver:cdef0123456789abcdef0123456789abcdef0123" \
+	"$out"
+
+tree="$(fresh_tree)"
+dispatcher_env_patch "$tree" prod TCAB_CONTAINER_TAG 0123456789abcdef0123456789abcdef01234567
+out="$(check "$tree")"
+status=$?
+check_failed "a run-container tag at the superrepo's commit fails" "$status"
+check_contains "naming the tag and the driver's pointer" \
+	"the prod deploy sets the dispatcher's TCAB_CONTAINER_TAG to '0123456789abcdef0123456789abcdef01234567', not cdef0123456789abcdef0123456789abcdef0123" \
+	"$out"
+
+echo "--- the publisher built here rather than in its repository ---"
+
+tree="$(fresh_tree)"
+dispatcher_env_patch "$tree" prod TCAB_PUBLISHER_IMAGE \
+	testcabinet.azurecr.io/tcab-publisher:0123456789abcdef0123456789abcdef01234567
+out="$(check "$tree")"
+status=$?
+check_failed "fails" "$status"
+check_contains "names the publisher image at the pointer it requires" \
+	"the prod deploy does not name testcabinet.azurecr.io/microservice-publisher:13579bdf02468ace13579bdf02468ace13579bdf" \
+	"$out"
+
+tree="$(fresh_tree)"
+dispatcher_env_patch "$tree" staging TCAB_PUBLISHER_IMAGE \
+	testcabinet.azurecr.io/microservice-publisher:0123456789abcdef0123456789abcdef01234567
+out="$(check "$tree")"
+status=$?
+check_failed "the publisher image at the superrepo's commit fails" "$status"
+check_contains "naming the image and what it is pinned to" \
+	"the staging deploy names testcabinet.azurecr.io/microservice-publisher:0123456789abcdef0123456789abcdef01234567, not testcabinet.azurecr.io/<repository>:<the commit its submodule pointer names>" "$out"
+
+echo "--- a manifest that sets a memory limit on a run pod ---"
+
+tree="$(fresh_tree)"
+sed -i 's#^            - name: TCAB_K8S_RUN_MEMORY_REQUEST$#            - name: TCAB_K8S_RUN_MEMORY_LIMIT\n              value: "8Gi"\n&#' \
+	"$tree/base/dispatcher.yaml"
+out="$(check "$tree")"
+status=$?
+check_failed "fails" "$status"
+check_contains "names the manifest and the variable" \
+	"base/dispatcher.yaml:" "$(grep 'TCAB_K8S_RUN_MEMORY_LIMIT' <<<"$out")"
+check_contains "names the overlay that renders it" "overlays/prod/ renders a memory limit on a run pod" "$out"
+check_contains "cites the rule" "Driver pod reservation" "$out"
+
+echo "--- an overlay patch that sets the driver's memory limit ---"
+
+tree="$(fresh_tree)"
+sed -i 's#^            - name: TCAB_K8S_NAMESPACE$#            - name: TCAB_DISPATCHER_DRIVER_MEMORY_LIMIT\n              value: "4Gi"\n&#' \
+	"$tree/overlays/local/patch-dispatcher.yaml"
+out="$(check "$tree")"
+status=$?
+check_failed "fails" "$status"
+check_contains "names the patch" "overlays/local/patch-dispatcher.yaml:" "$out"
+check_contains "names the overlay that renders it" "overlays/local/ renders a memory limit on a run pod" "$out"
+
+echo "--- a memory limit named only in a comment ---"
+
+tree="$(fresh_tree)"
+sed -i 's#^            - name: TCAB_K8S_RUN_MEMORY_REQUEST$#            \# - name: TCAB_K8S_RUN_MEMORY_LIMIT\n&#' \
+	"$tree/base/dispatcher.yaml"
+out="$(check "$tree")"
+status=$?
+check_equal "passes" 0 "$status"
+
 echo "--- a cluster-scoped object in a deploy set ---"
 
 tree="$(fresh_tree)"

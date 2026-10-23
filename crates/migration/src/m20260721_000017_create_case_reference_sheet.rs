@@ -6,7 +6,7 @@
 //! full-stack reference implementation is a deployed site, so one URL describes it;
 //! an asset reference has no site, only a set of rendered frames published under
 //! deterministic object keys (`media/references/<slug>/<version>/<variant>/frames/…`,
-//! see `test_cabinet_core::asset_reference`). There is therefore nothing to record
+//! see `test_cabinet_driver::asset_reference`). There is therefore nothing to record
 //! but *which* frames exist — every URL is derivable from the triple plus an index.
 //!
 //! One row per `(slug, version, variant)` triple — the composite primary key — so

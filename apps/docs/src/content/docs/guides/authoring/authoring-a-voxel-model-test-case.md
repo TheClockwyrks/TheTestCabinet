@@ -83,8 +83,9 @@ A brief authored as `specs/brief.md.hbs` may read the volume from `{{voxel.width
 The seeded destination drops the `.hbs`.
 
 The [brief-writing rules](#writing-the-brief) below apply. The shared quality
-directive (`ASSET_QUALITY_PREAMBLE` in `crates/core/src/prompt.rs`) is prepended
-to every asset-generation prompt at render time, so the brief stays factual.
+directive (`ASSET_QUALITY_PREAMBLE` in `contracts/crates/suites/src/prompt.rs`)
+is prepended to every asset-generation prompt at render time, so the brief
+stays factual.
 
 ### 3. Write `prompt.hbs`
 
@@ -165,7 +166,7 @@ Key manifest rules for a static voxel case:
 - `[tool]` and `[output]` name single files. `binary = "voxel"`, and neither
   `preview` nor `actions` may carry a `{part}` token, which belongs to an
   animated kind. `voxel render` also emits the `.glb` the 3D client renders, at a
-  path core provides rather than the manifest.
+  path the driver provides rather than the manifest.
 - No `[model]` table. A static model has no rig, and declaring one is
   rejected.
 - No `[[reference]]`, `[build]`, or `[[check]]`. A voxel case has no target

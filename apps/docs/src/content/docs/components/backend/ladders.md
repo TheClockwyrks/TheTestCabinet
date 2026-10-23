@@ -29,7 +29,7 @@ holds:
 - the [gate](#the-gate): its floor, its threshold, `unloadedCountsAsBroken`, and
   `earlyStop`;
 - the runs per rung, which a rung may override;
-- the runs-in-flight limit, or null to inherit the account's;
+- the runs-in-flight limit, or null to inherit the reviewer's;
 - the [retry limit](#the-retry-limit), `retryCount`;
 - the climb order, `outerAxis`.
 
@@ -503,7 +503,7 @@ as `runsUnreviewed`. The queue neither blocks nor feeds the climb.
 ### Publishing a dispatch's runs
 
 A rung is a validator-rated case, so a run a dispatch launches
-[publishes itself](/components/core/results/#automatic-publishing) when it
+[publishes itself](/components/backend/results/#automatic-publishing) when it
 completes. Every launch pass of a running dispatch also applies that rule to the
 [slot runs](#a-rung-slots-runs) it reads, so a completed run the dispatch counts
 is published even when another launch produced it and left it unpublished. A

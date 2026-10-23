@@ -72,7 +72,7 @@ unfold. The run detail view offers an opponent selector, so a reviewer can watch
 the submission against each reference opponent in turn.
 
 A case may declare scoring domains and a reviewer checklist, and a human
-[review](/components/core/results/#reviews) may accompany a published run. The
+[review](/components/backend/results/#reviews) may accompany a published run. The
 decisive signal for an adversarial case is the match record itself.
 
 ## The arena

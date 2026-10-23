@@ -1,15 +1,13 @@
 //! Adds the two columns the backend's state reclamation sweep writes on the `run`
 //! table.
 //!
-//! - `state_reclaimed_at`: RFC 3339 of when the sweep removed the run's files from
-//!   the backend's own store on purpose. `NULL` for a run whose files were never
-//!   reclaimed, and `NULL` again once the run's record is stored again or a file
-//!   is uploaded for it.
-//! - `state_reclaimed_reason`: why (`published`, `failed` or `canceled`); set
-//!   together with `state_reclaimed_at`.
-//!
-//! Every existing row starts with both `NULL`. Each is its own statement because
-//! SQLite adds one column per `ALTER TABLE`.
+//! Kept registered for the databases that applied it: staging's schema holds this
+//! migration, and a migrator refuses to start over an applied migration it does
+//! not list. The feature that wrote the columns is not part of this design (the
+//! backend keeps no copy of a run's files and the artifacts service holds no
+//! volume; see `components/backend/overview.md#durable-state`), so nothing reads
+//! or writes them now. The columns are nullable or defaulted, so a row written without
+//! them is valid.
 
 use sea_orm_migration::prelude::*;
 

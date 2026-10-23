@@ -35,9 +35,20 @@ async fn post(state: &AppState, job_id: &str, update: StatusUpdate) -> StatusCod
     .unwrap()
 }
 
+/// A bare `driver_state` report, carrying nothing else.
+fn status_of(driver_state: DriverState) -> StatusUpdate {
+    StatusUpdate {
+        state: driver_state,
+        record: None,
+        detail: None,
+        artifacts_stored: None,
+        store_fault: None,
+    }
+}
+
 /// Post a bare `driver_state` report as `job_id`'s driver does.
 async fn report(state: &AppState, job_id: &str, driver_state: DriverState) -> StatusCode {
-    post(state, job_id, StatusUpdate::of(driver_state)).await
+    post(state, job_id, status_of(driver_state)).await
 }
 
 async fn job_state(state: &AppState, id: &str) -> String {
@@ -113,7 +124,6 @@ async fn a_validating_report_moves_a_running_job_on_and_announces_it() {
     let Json(active) = active(State(state.clone())).await.unwrap();
     let row = active.iter().find(|row| row.run_id == "j1").unwrap();
     assert_eq!(row.state, JobState::Validating);
-    assert_eq!(row.detail, None);
 
     // A repeat moves nothing and announces nothing.
     report(&state, "j1", DriverState::Validating).await;
@@ -164,7 +174,7 @@ async fn a_late_validating_report_never_moves_a_finished_or_waiting_job() {
             "succeeded",
             StatusUpdate {
                 record: Some(run_of("r-succeeded", "pong", GREAT)),
-                ..StatusUpdate::of(DriverState::Succeeded)
+                ..status_of(DriverState::Succeeded)
             },
         )
         .await,
@@ -176,7 +186,7 @@ async fn a_late_validating_report_never_moves_a_finished_or_waiting_job() {
             "failed",
             StatusUpdate {
                 detail: Some("harness unavailable".to_string()),
-                ..StatusUpdate::of(DriverState::Failed)
+                ..status_of(DriverState::Failed)
             },
         )
         .await,
@@ -223,16 +233,15 @@ async fn the_move_to_validating_is_from_the_states_before_it_alone() {
         .unwrap();
     state
         .db
-        .set_job_storing("storing", now, Some("HTTP 500"), None)
+        .set_job_state("storing", "storing", now, None, None)
         .await
-        .unwrap()
         .unwrap();
 
     for id in ["dispatched", "starting", "running"] {
         let moved = state.db.set_job_validating(id, now).await.unwrap();
         assert_eq!(moved.expect(id).state, "validating", "{id}");
     }
-    // A `storing` job's wait ends only through the wait-over report, and a job
+    // A `storing` job holds its record and is past `validating`, and a job
     // already `validating` is not moved again.
     assert!(
         state
@@ -262,77 +271,6 @@ async fn the_move_to_validating_is_from_the_states_before_it_alone() {
 }
 
 #[tokio::test]
-async fn the_end_of_a_wait_on_the_store_returns_the_job_to_validating() {
-    let (_dir, state) = test_state().await;
-    validating_job(&state, "j1").await;
-    assert_eq!(
-        post(
-            &state,
-            "j1",
-            StatusUpdate {
-                record: Some(run_of("r1", "pong", GREAT)),
-                detail: Some("HTTP 500".to_string()),
-                ..StatusUpdate::of(DriverState::Storing)
-            },
-        )
-        .await,
-        StatusCode::NO_CONTENT
-    );
-    assert_eq!(job_state(&state, "j1").await, "storing");
-    let mut stream = state.relay.notifier().open_stream();
-    state
-        .relay
-        .notifier()
-        .set_topics(&stream.id, None, Some(true));
-
-    assert_eq!(
-        post(
-            &state,
-            "j1",
-            StatusUpdate {
-                artifacts_stored: Some(true),
-                ..StatusUpdate::of(DriverState::Validating)
-            },
-        )
-        .await,
-        StatusCode::NO_CONTENT
-    );
-
-    let job = state.db.get_job("j1").await.unwrap().unwrap();
-    assert_eq!(job.state, "validating");
-    assert_eq!(job.detail, None, "the wait's reason goes with the wait");
-    let held: serde_json::Value =
-        serde_json::from_str(job.held_report_json.as_deref().expect("still held")).unwrap();
-    assert_eq!(
-        held["artifactsStored"], true,
-        "the held report says the tree landed"
-    );
-    assert_eq!(announced_states(&mut stream), ["validating"]);
-}
-
-#[tokio::test]
-async fn a_wait_ended_as_running_by_an_older_driver_lands_the_same_way() {
-    let (_dir, state) = test_state().await;
-    validating_job(&state, "j1").await;
-    post(
-        &state,
-        "j1",
-        StatusUpdate {
-            detail: Some("HTTP 500".to_string()),
-            ..StatusUpdate::of(DriverState::Storing)
-        },
-    )
-    .await;
-    assert_eq!(job_state(&state, "j1").await, "storing");
-
-    report(&state, "j1", DriverState::Running).await;
-
-    let job = state.db.get_job("j1").await.unwrap().unwrap();
-    assert_eq!(job.state, "validating");
-    assert_eq!(job.detail, None);
-}
-
-#[tokio::test]
 async fn a_validating_job_is_in_flight_and_driven() {
     let (_dir, state) = test_state().await;
     validating_job(&state, "j1").await;
@@ -340,7 +278,6 @@ async fn a_validating_job_is_in_flight_and_driven() {
     assert!(crate::db::DRIVEN_STATES.contains(&"validating"));
     assert!(crate::db::CANCELABLE_ACTIVE_STATES.contains(&"validating"));
     assert!(!crate::db::CANCELABLE_WAITING_STATES.contains(&"validating"));
-    assert_eq!(state.db.driven_job_count().await.unwrap(), 1);
     let active: Vec<String> = state
         .db
         .active_jobs()
@@ -393,7 +330,7 @@ async fn a_validating_run_holds_its_harness_slot() {
         "j1",
         StatusUpdate {
             record: Some(run_of("r1", "pong", GREAT)),
-            ..StatusUpdate::of(DriverState::Succeeded)
+            ..status_of(DriverState::Succeeded)
         },
     )
     .await;
@@ -466,7 +403,7 @@ async fn a_validating_job_whose_driver_is_gone_is_failed_as_lost() {
         Path("j1".to_string()),
         Json(StatusUpdate {
             detail: Some("the driver Job no longer exists".to_string()),
-            ..StatusUpdate::of(DriverState::Failed)
+            ..status_of(DriverState::Failed)
         }),
     )
     .await
@@ -540,9 +477,8 @@ async fn the_move_to_running_is_from_the_states_before_validating_alone() {
         .unwrap();
     state
         .db
-        .set_job_storing("storing", now, Some("HTTP 500"), None)
+        .set_job_state("storing", "storing", now, None, None)
         .await
-        .unwrap()
         .unwrap();
     state
         .db

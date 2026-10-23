@@ -171,7 +171,7 @@ root = enter_repo_root()
 if shutil.which("kubectl") is None:
     # The one gate that skips rather than fails when its tool is absent: it is
     # the only check here that needs a tool the language toolchains do not
-    # bring, and .devcontainer/tools/k8s.sh is what installs it.
+    # bring, and the toolchain image the devcontainer is built on holds it.
     skip("k8s-manifests: skipped, kubectl is absent (the devcontainer installs it)")
 
 if not (root / OVERLAYS).is_dir():

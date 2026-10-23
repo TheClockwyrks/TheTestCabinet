@@ -1,33 +1,32 @@
-// Re-vendor the Lattice playback assets the UI bundles from their single source of
-// truth, the lattice case's replay bundle.
+// Re-vendor the lattice version's own playback content the UI bundles from its
+// single source of truth, the lattice case's replay bundle.
 //
 // The shared gallery app (`@clockwyrks/ui`) draws a performance run's factory on
-// a <canvas> with its own copy of the playback engine + sprite atlas, so the web
-// console and the public site replay a run identically without each fetching the case
-// bundle. Only run-specific data (the scenario) is fetched per run; the engine and
-// art ship with the bundle. That copy must stay in lockstep with the case's bundle,
-// or the UI silently renders with a stale engine/atlas — and because the playback
-// engine IS the simulation, a stale wasm would draw a factory that never happened.
+// a <canvas> through `@clockwyrks/lattice-runtime`, which carries the renderer, the
+// interpolation and the reference engine (`lattice-core` compiled to the playback
+// ABI). What the runtime does not carry is the case's content: the sprite atlas the
+// renderer draws with, and the REFERENCE playback scenarios. Those ship with the UI
+// bundle, so the web console and the public site replay a run identically without
+// each fetching the case bundle; only run-specific data (the scenario) is fetched
+// per run. The copy must stay in lockstep with the case's bundle, or the UI silently
+// draws with a stale atlas.
 //
-// The case's REFERENCE playback scenarios ride along for the same reason. The
-// test-case Reference tab plays the three scored factories through the vendored
-// reference engine, and that tab is not scoped to a run — it is reachable with no run
-// at all, and on the static site — so its scenarios cannot come from a run's
-// artifacts. They ship with the bundle like the engine and art do. They are generated
-// from the scored set by the bundle's own `gen-reference.mjs`.
+// The reference scenarios ride along for the same reason. The test-case Reference
+// tab plays the three scored factories through the runtime's reference engine, and
+// that tab is not scoped to a run — it is reachable with no run at all, and on the
+// static site — so its scenarios cannot come from a run's artifacts. They are
+// generated from the scored set by the bundle's own `gen-reference.mjs`.
 //
-// This script copies the binary/JSON assets the UI vendors. It does NOT touch the
-// renderer, which is a hand TS port and must be re-ported by hand when the bundle's
-// renderer logic changes.
-//
-// `renderer.vendor.test.ts` asserts the vendored copies are byte-identical to the
-// bundle, so a forgotten resync fails CI. Run this to fix such a failure:
+// The copies live in the ui-common checkout, whose package ships them, and are
+// committed there. console.testcabinet.ai's `apps/web/src/lattice-assets.test.ts` asserts the copies the
+// resolved `@clockwyrks/ui` ships are byte-identical to the bundle, so a
+// forgotten resync fails CI. Run this to fix such a failure (then rebuild the
+// package and commit the copies in ui-common):
 //   node scripts/vendor-lattice-assets.mjs
 //
 // The bundle's own artifacts are regenerated separately — see
-// `test-cases/performance/hard/lattice/v1.0.0/replay/assets/README.md` for how to
-// rebuild `lattice-core.wasm`, repack `sheet.png`/`sheet.json`, and regenerate the
-// `reference-*.json` scenarios.
+// `test-suites/test-cases/performance/hard/lattice/v1.0.0/replay/assets/README.md` for how to
+// repack `sheet.png`/`sheet.json` and regenerate the `reference-*.json` scenarios.
 
 import { copyFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -37,15 +36,17 @@ const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 
 const SRC = join(
   repoRoot,
-  "test-cases/performance/hard/lattice/v1.0.0/replay/assets",
+  "test-suites/test-cases/performance/hard/lattice/v1.0.0/replay/assets",
 );
-const DST = join(repoRoot, "packages/ui/src/app/pages/runs/lattice/assets");
+const DST = join(
+  repoRoot,
+  "ui-common/packages/ui/src/app/pages/runs/lattice/assets",
+);
 
-// The assets the UI vendors verbatim from the bundle: the playback engine, the
-// sprite atlas, and the reference scenarios the Reference tab plays through that
-// engine. The renderer is deliberately excluded.
+// The assets the UI vendors verbatim from the bundle: the sprite atlas, and the
+// reference scenarios the Reference tab plays through the runtime's engine. The
+// engine and the renderer come from `@clockwyrks/lattice-runtime`, not from here.
 export const VENDORED_ASSETS = [
-  "lattice-core.wasm",
   "sheet.png",
   "sheet.json",
   "reference-small.json",

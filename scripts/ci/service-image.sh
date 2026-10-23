@@ -4,35 +4,24 @@
 #
 #   scripts/ci/service-image.sh <service> <sha>
 #
-# <service> is a target of deployments/images/services.Dockerfile (backend, auth,
-# dispatcher, driver, artifacts, arena, publisher) or `web`, which has a Dockerfile
-# of its own. The build is native: the pipeline runs this once on an amd64 agent and
+# <service> is a target of deployments/images/services.Dockerfile (backend). The
+# console's image is console.testcabinet.ai's, the artifacts
+# service's image is microservice-artifacts', the arena's microservice-arena's, the
+# publisher's microservice-publisher's and the driver's microservice-driver's,
+# each built by its repository's pipeline. The build is native: the pipeline runs this once on an amd64 agent and
 # once on an arm64 agent, and scripts/ci/manifest.sh fuses the two arch tags into the
 # multi-arch `<image>:<sha>` a deployment pins. The caller is already logged in to
 # the registry.
 #
 # <sha> is the commit being built. It is stamped into the binaries as
-# TCAB_BUILD_COMMIT, because the build context carries no `.git`. The driver bakes the
-# audio store the same run pushed, `test-cabinet-audio-store:<sha>`, so the images of
-# one commit always travel together.
+# TCAB_BUILD_COMMIT, because the build context carries no `.git`.
 #
 # Layers are cached in the registry per image and architecture, so a build whose
 # inputs did not change skips those stages.
 #
-# TCAB_PREBUILT_GG — the gg the backend and driver bake
-# ----------------------------------------------------
-# Set it to a directory holding `gg` and `gg-reference/` and the two images that consume
-# the Dockerfile's `gg-build` stage take those bytes instead of linking a gg of their own:
-# the flag becomes `--build-context gg-build=<dir>`, which REPLACES that stage, so it never
-# enters the build graph and each `COPY --from=gg-build` resolves against the directory.
-# scripts/ci/gg-prebuilt.sh is what stages it, out of the gates stage's `gg-<arch>` artifact,
-# and every check on those bytes lives there.
-#
-# The pipeline always sets it. It exists as an opt-in rather than as an edit to the
-# Dockerfile because `deployments/local/Makefile` builds the same targets with no pipeline
-# artifacts and no network, so that path must keep the self-contained stage — and because
-# the variable is read only for `backend` and `driver`, the six other services' command
-# lines are identical whether it is set or not.
+# The backend bakes the reference documents of the gg release the driver pins
+# (microservice-driver/crates/driver/gg-release-version), which the Dockerfile's
+# `gg-release` stage reads and fetches itself, so it needs no argument from here.
 set -euo pipefail
 # shellcheck source=/dev/null
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/tcab-lib.sh"
@@ -47,13 +36,7 @@ readonly SHA="$2"
 dockerfile=deployments/images/services.Dockerfile
 target="$SERVICE"
 case "$SERVICE" in
-	backend | dispatcher | driver | artifacts | arena | publisher) image="tcab-${SERVICE}" ;;
-	auth) image=tcab-auth-service ;;
-	web)
-		image=tcab-web
-		dockerfile=deployments/images/web.Dockerfile
-		target=""
-		;;
+	backend) image="tcab-${SERVICE}" ;;
 	*)
 		echo "service-image.sh: unknown service '${SERVICE}'" >&2
 		exit 1
@@ -75,12 +58,6 @@ args=(
 	--push
 )
 [[ -n "$target" ]] && args+=(--target "$target")
-[[ "$SERVICE" == driver ]] && args+=(--build-arg "AUDIO_STORE_IMAGE=${CI_REGISTRY}/test-cabinet-audio-store:${SHA}")
-# The two targets that COPY out of the `gg-build` stage, and the only two the override may
-# touch: `backend` takes /gg-reference and `driver` takes /gg. Naming them keeps an unrelated
-# leg from being handed a named context for a stage it never resolves.
-[[ -n "${TCAB_PREBUILT_GG:-}" && ("$SERVICE" == backend || "$SERVICE" == driver) ]] \
-	&& args+=(--build-context "gg-build=${TCAB_PREBUILT_GG}")
 
 # The default builder can write neither a registry cache nor a multi-platform
 # manifest. `docker login`'s credentials reach this one through the CLI config.

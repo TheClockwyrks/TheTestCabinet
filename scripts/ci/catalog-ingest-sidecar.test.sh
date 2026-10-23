@@ -1,29 +1,26 @@
 #!/usr/bin/env bash
-# Table test for the catalog ingest sidecar's script,
-# deployments/k8s/components/catalog-ingest/ingest.sh. Run it directly:
-# ./catalog-ingest-sidecar.test.sh
+# Table test for the catalog ingest sidecar, the `ingest` container the staging and
+# prod overlays add to the backend's pod (overlays/<env>/patch-backend-ingest.yaml).
+# Run it directly: ./catalog-ingest-sidecar.test.sh
 #
-# No case reaches a network or a backend. The script's real git commands run
-# against the two local repositories catalog-fixture.sh builds, into a throwaway
-# state directory. Stubs first on PATH stand in for the rest: curl records each
-# request and answers as the case declares, sleep records its argument and returns
-# at once, so no case waits and `sleep infinity` ends the run, and df reports a
-# fixed volume: its `-h` answer never changes, and its `-k` answer, which the wait
-# for space reads, is nothing the script can read unless the case wrote the
-# readings it is to give, one a line, the last of them repeating.
+# The sidecar is a shell script held in the patch's `args`. Each case takes that
+# script out of the overlay's file as kubectl would hand it to `sh -c`, moves its
+# absolute paths (the state volume, /tmp, /run, /srv, /usr/local/bin) under a
+# throwaway pod directory, and runs it with stubs first on PATH: apk succeeds, git
+# answers each step as the case declares, curl records each request and answers as
+# the case declares, flock runs its command, sleep returns at once, and httpd records
+# its arguments and returns, which ends the run.
 #
-# The subject is the script's contract: it asks for an ingest only once the checkout
-# and its cold storage are at the branch tip, a step that fails records its name,
-# its cause and the volume's free space and sends no POST, every path ends parked
-# rather than exited, and a start that follows a killed one in the same pod records
-# that and does not try again. Before a fetch it waits for the space the fetch
-# needs, no longer than its bound, and then fetches whatever the volume holds.
+# The subject is the contract scripts/ci/catalog-ingest.sh verify reads: the
+# startup run records its outcome in /tmp/ingest-result, a refresh that fails
+# ingests nothing and records the step, a failed test suites update alone still
+# ingests, and an ingest that never lands is recorded as failed with the command
+# that retries it. The refresh endpoint's CGI is checked beside it: POST only, and
+# its answer follows the refresh's exit code.
 set -uo pipefail
 
 CI_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-readonly SCRIPT="${CI_DIR}/../../deployments/k8s/components/catalog-ingest/ingest.sh"
-# shellcheck source=scripts/ci/catalog-fixture.sh
-source "${CI_DIR}/catalog-fixture.sh"
+readonly OVERLAYS="${CI_DIR}/../../deployments/k8s/overlays"
 pass=0
 fail=0
 
@@ -53,392 +50,226 @@ check_contains() { # label needle haystack
 
 check_lacks() { # label needle haystack
 	if grep -qF -- "$2" <<<"$3"; then
-		bad "$1" "expected no output containing: $2" "got: ${3:-<empty>}"
+		bad "$1" "expected output without: $2" "got: $3"
 	else
 		ok "$1"
 	fi
 }
 
-if ! command -v git >/dev/null 2>&1; then
-	echo "git is not installed here; skipping the catalog ingest sidecar test."
-	exit 0
-fi
-REAL_GIT="$(command -v git)"
-readonly REAL_GIT
-
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 
-fixture="$tmp/fixture"
-mkdir -p "$fixture"
-catalog_fixture "$fixture"
-readonly GOOD_TIP="$CATALOG_TIP" GOOD_PIN="$CATALOG_PIN"
-
-# A pod: an empty state volume, a place for the result, and the stubs.
-fresh_pod() {
-	local pod
-	pod="$(mktemp -d "$tmp/podXXXXXX")"
-	mkdir -p "$pod/state" "$pod/bin" "$pod/tmp"
-
-	# STUB_HEALTHZ and STUB_INGEST are the exit codes of the two requests. A
-	# refused ingest writes the body a backend would answer with to the -o file.
-	cat >"$pod/bin/curl" <<'STUB'
-#!/usr/bin/env bash
-out="" method=GET url=""
-while [ $# -gt 0 ]; do
-	case "$1" in
-		-o) out="$2"; shift ;;
-		-X) method="$2"; shift ;;
-		http*) url="$1" ;;
-	esac
-	shift
-done
-printf '%s %s\n' "$method" "$url" >>"$STUB_CURL_LOG"
-case "$url" in
-	*/healthz) exit "${STUB_HEALTHZ:-0}" ;;
-	*/ingest)
-		if [ "${STUB_INGEST:-0}" -ne 0 ]; then
-			[ -z "$out" ] || echo '{"error":"the checkout holds no test-cases folder"}' >"$out"
-			echo "curl: (22) The requested URL returned error: 500" >&2
-			exit 22
-		fi
-		[ -z "$out" ] || echo '{"ingested": 31}' >"$out"
-		;;
-esac
-STUB
-	cat >"$pod/bin/sleep" <<'STUB'
-#!/usr/bin/env bash
-printf '%s\n' "$*" >>"$STUB_SLEEP_LOG"
-STUB
-	cat >"$pod/bin/df" <<'STUB'
-#!/usr/bin/env bash
-case " $* " in
-	*" -Pk "*)
-		if [ -s "${STUB_DF_KB:-}" ]; then
-			# A line is the free space, and the filesystem's size after it when
-			# the test gives one; the size is otherwise a 10Gi volume's.
-			read -r kb size <<<"$(sed -n 1p "$STUB_DF_KB")"
-			[ "$(wc -l <"$STUB_DF_KB")" -le 1 ] || sed -i 1d "$STUB_DF_KB"
-			printf 'Filesystem 1024-blocks Used Available Capacity Mounted on\n/dev/sdc %s 1 %s 50%% /state\n' "${size:-10255636}" "$kb"
-			exit 0
-		fi
-		;;
-esac
-printf 'Filesystem Size Used Available Capacity Mounted on\n/dev/sdc 9.8G 9.7G 12.0M 100%% /state\n'
-STUB
-	chmod +x "$pod/bin/curl" "$pod/bin/sleep" "$pod/bin/df"
-	printf '%s' "$pod"
+# The `ingest` container's script: the block scalar after `args:` `- |`, with the
+# block's indentation removed, up to the first line indented less than the block.
+sidecar_script() { # patch file
+	awk '
+		/^ *- name: ingest$/ { in_container = 1 }
+		in_container && /^ *args:$/ { want_block = 1; next }
+		want_block && /^ *- \|$/ { want_block = 0; in_block = 1; indent = -1; next }
+		in_block {
+			if ($0 ~ /^ *$/) { print ""; next }
+			match($0, /^ */)
+			if (indent < 0) indent = RLENGTH
+			if (RLENGTH < indent) exit
+			print substr($0, indent + 1)
+		}
+	' "$1"
 }
 
-# Runs the script as the sidecar does, under sh, and prints what it logged.
-run() { # pod [env-assignment...]
-	local pod="$1"
-	shift
-	env PATH="$pod/bin:$PATH" STUB_CURL_LOG="$pod/curl.log" STUB_SLEEP_LOG="$pod/sleep.log" \
-		STUB_DF_KB="$pod/df-kb" \
-		TCAB_INGEST_BRANCH=staging TCAB_INGEST_ENV=staging TCAB_INGEST_REPO="$CATALOG_REPO" \
-		TCAB_INGEST_STATE="$pod/state" TCAB_INGEST_RESULT="$pod/tmp/ingest-result" \
-		TCAB_INGEST_STATE_SIZE=50Gi \
-		"$@" sh "$SCRIPT" 2>&1
+# A pod: its directories, the sidecar's script with its paths moved into them, and
+# the stubs. Prints the pod's directory.
+fresh_pod() { # env
+	local pod
+	pod="$(mktemp -d "$tmp/podXXXXXX")"
+	mkdir -p "$pod/stubs" "$pod/usr/local/bin" "$pod/srv" "$pod/tmp" "$pod/run" \
+		"$pod/state" "$pod/proc"
+	# /tmp first: the pod's own directory lies under /tmp, and no later expression
+	# matches what an earlier one wrote.
+	sidecar_script "$OVERLAYS/$1/patch-backend-ingest.yaml" | sed \
+		-e "s#/tmp/#$pod/tmp/#g" \
+		-e "s#/usr/local/bin/#$pod/usr/local/bin/#g" \
+		-e "s#/srv/refresh#$pod/srv/refresh#g" \
+		-e "s#/run/tcab-refresh.lock#$pod/run/tcab-refresh.lock#g" \
+		-e "s#/state/checkout#$pod/state/checkout#g" \
+		-e "s#/proc/1/fd/1#$pod/proc/pid1#g" \
+		>"$pod/sidecar.sh"
+
+	cat >"$pod/stubs/apk" <<'EOF'
+#!/bin/sh
+exit 0
+EOF
+	# git: `config --global` writes the pod's own file; a clone or fetch makes the
+	# checkout a repository; `rev-parse HEAD` names one commit. A step the case lists
+	# in STUB_GIT_FAIL (clone, fetch, sync, cold-storage, test-suites) fails.
+	cat >"$pod/stubs/git" <<'EOF'
+#!/bin/sh
+printf '%s\n' "$*" >>"$STUB_LOG/git.log"
+fails() { case " $STUB_GIT_FAIL " in *" $1 "*) return 0 ;; esac; return 1; }
+dir=
+if [ "$1" = -C ]; then dir=$2; shift 2; fi
+case "$1" in
+	config) exit 0 ;;
+	clone)
+		fails clone && { echo "fatal: clone refused" >&2; exit 128; }
+		for last; do :; done
+		mkdir -p "$last/.git"; exit 0 ;;
+	fetch) fails fetch && { echo "fatal: fetch refused" >&2; exit 128; }; exit 0 ;;
+	reset) exit 0 ;;
+	rev-parse) [ -d "$dir/.git" ] && echo 1111111111111111111111111111111111111111; exit 0 ;;
+	submodule)
+		case "$2" in
+			sync) fails sync && exit 1; exit 0 ;;
+			status) exit 0 ;;
+			update)
+				for last; do :; done
+				fails "$last" && { echo "fatal: $last refused" >&2; exit 1; }
+				exit 0 ;;
+		esac ;;
+esac
+exit 0
+EOF
+	# curl: /healthz answers at once; POST /ingest fails the first STUB_INGEST_FAILS
+	# times (all, when it is `always`).
+	cat >"$pod/stubs/curl" <<'EOF'
+#!/bin/sh
+printf '%s\n' "$*" >>"$STUB_LOG/curl.log"
+case "$*" in
+	*/ingest*)
+		n=$(($(cat "$STUB_LOG/ingest.count" 2>/dev/null || echo 0) + 1))
+		echo "$n" >"$STUB_LOG/ingest.count"
+		[ "$STUB_INGEST_FAILS" = always ] && exit 22
+		[ "$n" -le "$STUB_INGEST_FAILS" ] && exit 22
+		exit 0 ;;
+esac
+exit 0
+EOF
+	cat >"$pod/stubs/flock" <<'EOF'
+#!/bin/sh
+shift
+exec "$@"
+EOF
+	cat >"$pod/stubs/sleep" <<'EOF'
+#!/bin/sh
+exit 0
+EOF
+	cat >"$pod/stubs/httpd" <<'EOF'
+#!/bin/sh
+printf '%s\n' "$*" >>"$STUB_LOG/httpd.log"
+exit 0
+EOF
+	chmod +x "$pod/stubs/"*
+	printf '%s\n' "$pod"
+}
+
+# Run the pod's sidecar: STUB_GIT_FAIL and STUB_INGEST_FAILS from the caller.
+run_sidecar() { # pod
+	env PATH="$1/stubs:$PATH" STUB_LOG="$1" STUB_GIT_FAIL="${STUB_GIT_FAIL:-}" \
+		STUB_INGEST_FAILS="${STUB_INGEST_FAILS:-0}" TCAB_BACKEND_SERVICE_TOKEN=svc-token \
+		GIT_CONFIG_GLOBAL="$1/gitconfig" HOME="$1" \
+		sh -c "$(cat "$1/sidecar.sh")" 2>&1
 }
 
 result() { cat "$1/tmp/ingest-result" 2>/dev/null; }
-field() { sed -n "s/^$2=//p" "$1/tmp/ingest-result" 2>/dev/null | head -n 1; }
-posts() { awk '/^POST / { n++ } END { print n + 0 }' "$1/curl.log" 2>/dev/null || echo 0; }
-parked() { tail -n 1 "$1/sleep.log" 2>/dev/null; }
-# How many five-second polls the run spent waiting for space.
-polls() { grep -cx 5 "$1/sleep.log" 2>/dev/null || true; }
-marker() { cat "$1/state/.ingest-in-progress" 2>/dev/null; }
-
-# What every failure has to hold: no ingest was asked for, the result says which
-# step failed and how full the volume is, and the container parked.
-check_failure() { # pod status step
-	check_equal "the script does not exit non-zero" 0 "$2"
-	check_equal "records a failure" failed "$(field "$1" status)"
-	check_equal "at the step" "$3" "$(field "$1" step)"
-	check_equal "asks for no ingest" 0 "$(posts "$1")"
-	check_contains "reports the volume's free space" "Free space on $1/state: 12.0M free of 9.8G (100% used)." "$(result "$1")"
-	check_contains "says nothing was ingested" "Nothing was ingested" "$(result "$1")"
-	check_contains "names the command that ingests once it is fixed" "scripts/reingest-cluster.sh --env staging" "$(result "$1")"
-	check_equal "and parks" infinity "$(parked "$1")"
+posts() { # pod: how many POST /ingest requests reached the backend
+	if [ -f "$1/curl.log" ]; then grep -c -- '/ingest' "$1/curl.log"; else echo 0; fi
 }
 
-echo "--- a cold volume ---"
+for env in staging prod; do
+	case "$env" in
+		staging) branch=staging ;;
+		prod) branch=master ;;
+	esac
 
-pod="$(fresh_pod)"
-out="$(run "$pod")"
-status=$?
-check_equal "the script ends parked, not failed" 0 "$status"
-check_equal "the checkout is at the branch tip" "$GOOD_TIP" "$(git -C "$pod/state/checkout" rev-parse HEAD)"
-check_equal "cold storage is at the commit it pins" "$GOOD_PIN" "$(git -C "$pod/state/checkout/cold-storage" rev-parse HEAD)"
-check_equal "and holds its baselines" "baseline" \
-	"$(cat "$pod/state/checkout/cold-storage/test-cases/demo/v1.0.0/validation-baseline/frame.json")"
-check_equal "waits on /healthz, then asks for one ingest" \
-	"GET http://127.0.0.1:8787/healthz
-POST http://127.0.0.1:8787/ingest" "$(cat "$pod/curl.log")"
-check_equal "records success" ok "$(field "$pod" status)"
-check_equal "of the branch" staging "$(field "$pod" branch)"
-check_equal "at the commit it ingested" "$GOOD_TIP" "$(field "$pod" commit)"
-check_contains "and logs it" "ingest: ok: the backend ingested staging at $GOOD_TIP" "$out"
-check_equal "and parks" infinity "$(parked "$pod")"
+	echo "--- $env: the script is found ---"
+	script="$(sidecar_script "$OVERLAYS/$env/patch-backend-ingest.yaml")"
+	check_contains "names its branch" "BRANCH=$branch" "$script"
+	check_contains "records its result" "RESULT=/tmp/ingest-result" "$script"
+	# The test suites mirror is public, so the submodule is fetched at the address
+	# .gitmodules resolves to, as cold-storage is: no rewrite and no credential.
+	check_lacks "rewrites no fetch address" "insteadOf" "$script"
+	check_lacks "installs no credential helper" "credential." "$script"
 
-echo "--- a warm volume, with the branch moved on ---"
+	echo "--- $env: a refresh and an ingest that both land ---"
+	pod="$(fresh_pod "$env")"
+	out="$(run_sidecar "$pod")"
+	check_equal "records ok after the ingest" \
+		"$(printf 'status=ok\nstep=ingest\nbranch=%s\ncommit=1111111111111111111111111111111111111111' "$branch")" \
+		"$(result "$pod")"
+	check_equal "posts one forced ingest" "1" "$(posts "$pod")"
+	check_contains "presents the service token" "authorization: Bearer svc-token" "$(cat "$pod/curl.log")"
+	check_contains "asks for a forced ingest" '{"force": true}' "$(cat "$pod/curl.log")"
+	check_contains "waits on liveness, not readiness" "/healthz" "$(cat "$pod/curl.log")"
+	check_lacks "never waits on readiness" "/readyz" "$(cat "$pod/curl.log")"
+	check_contains "clones the branch" "--branch $branch" "$(cat "$pod/git.log")"
+	check_contains "serves the refresh endpoint on localhost" "-p 127.0.0.1:8788" "$(cat "$pod/httpd.log")"
+	check_contains "says it triggered" "ingest: triggered ok" "$out"
 
-git -C "$fixture/catalog-work" commit --quiet --allow-empty -m "a later catalog"
-git -C "$fixture/catalog-work" push --quiet origin HEAD:refs/heads/staging
-later="$(git -C "$fixture/catalog-work" rev-parse HEAD)"
-: >"$pod/curl.log"
-out="$(run "$pod")"
-check_equal "the checkout is refreshed to the new tip" "$later" "$(git -C "$pod/state/checkout" rev-parse HEAD)"
-check_equal "records success at it" "ok $later" "$(field "$pod" status) $(field "$pod" commit)"
-check_equal "after one ingest" 1 "$(posts "$pod")"
+	echo "--- $env: a clone that fails ---"
+	pod="$(fresh_pod "$env")"
+	out="$(STUB_GIT_FAIL=clone run_sidecar "$pod")"
+	check_contains "records the refresh as failed" \
+		"$(printf 'status=failed\nstep=refresh\nbranch=%s' "$branch")" "$(result "$pod")"
+	check_contains "keeps the cause in the result" "ingest: clone failed" "$(result "$pod")"
+	check_equal "posts no ingest" "0" "$(posts "$pod")"
+	check_contains "says nothing was ingested" "nothing was ingested" "$out"
+	check_contains "still serves the refresh endpoint" "-p 127.0.0.1:8788" "$(cat "$pod/httpd.log")"
 
-echo "--- a warm volume whose mirror cannot be reached ---"
+	echo "--- $env: a cold-storage update that fails ---"
+	pod="$(fresh_pod "$env")"
+	STUB_GIT_FAIL=cold-storage run_sidecar "$pod" >/dev/null
+	check_contains "records the refresh as failed" "status=failed" "$(result "$pod")"
+	check_contains "names the step" "ingest: cold-storage update failed" "$(result "$pod")"
+	check_equal "posts no ingest" "0" "$(posts "$pod")"
 
-git -C "$pod/state/checkout" remote set-url origin "file://$tmp/no-such-mirror.git"
-: >"$pod/curl.log"
-out="$(run "$pod")"
-status=$?
-check_failure "$pod" "$status" checkout
-check_contains "quotes git's own error" "no-such-mirror.git" "$(result "$pod")"
-check_equal "leaves the checkout where it was" "$later" "$(git -C "$pod/state/checkout" rev-parse HEAD)"
-check_equal "after three tries, ten seconds apart" "10
-10
-infinity" "$(cat "$pod/sleep.log" | tail -n 3)"
-check_contains "and logs the failure" "ingest: FAILED at step 'checkout'." "$out"
+	echo "--- $env: a submodule sync that fails ---"
+	pod="$(fresh_pod "$env")"
+	STUB_GIT_FAIL=sync run_sidecar "$pod" >/dev/null
+	check_contains "records the refresh as failed" "status=failed" "$(result "$pod")"
+	check_equal "posts no ingest" "0" "$(posts "$pod")"
 
-echo "--- a cold volume whose mirror cannot be reached ---"
+	echo "--- $env: only the test suites update fails ---"
+	pod="$(fresh_pod "$env")"
+	out="$(STUB_GIT_FAIL=test-suites run_sidecar "$pod")"
+	check_contains "still ingests and records ok" "status=ok" "$(result "$pod")"
+	check_equal "posts one ingest" "1" "$(posts "$pod")"
+	check_contains "says it ingests without them" "ingesting without them" "$out"
 
-pod="$(fresh_pod)"
-out="$(run "$pod" TCAB_INGEST_REPO="file://$tmp/no-such-mirror.git")"
-status=$?
-check_failure "$pod" "$status" checkout
-check_equal "records no commit" "" "$(field "$pod" commit)"
+	echo "--- $env: a checkout that survived on the volume ---"
+	pod="$(fresh_pod "$env")"
+	mkdir -p "$pod/state/checkout/.git"
+	STUB_GIT_FAIL=fetch run_sidecar "$pod" >/dev/null
+	check_lacks "refreshes it rather than cloning" "clone" "$(cat "$pod/git.log")"
+	check_contains "records the failed refresh" "ingest: refresh failed" "$(result "$pod")"
+	check_equal "posts no ingest" "0" "$(posts "$pod")"
 
-echo "--- a pinned cold-storage commit that cannot be fetched ---"
+	echo "--- $env: an ingest that never lands ---"
+	pod="$(fresh_pod "$env")"
+	STUB_INGEST_FAILS=always run_sidecar "$pod" >/dev/null
+	check_equal "gives up after ten posts" "10" "$(posts "$pod")"
+	check_equal "records the ingest as failed with its retry" \
+		"$(printf 'status=failed\nstep=ingest\nbranch=%s\ncommit=1111111111111111111111111111111111111111\n\nPOST /ingest failed 10 times; run tcab ingest --env %s' "$branch" "$env")" \
+		"$(result "$pod")"
 
-catalog_fixture_unpin "$fixture"
-pod="$(fresh_pod)"
-out="$(run "$pod")"
-status=$?
-check_failure "$pod" "$status" cold-storage
-check_contains "says the submodule could not be fetched" \
-	"The cold-storage submodule could not be fetched at the commit staging pins." "$(result "$pod")"
-check_equal "records the commit it stopped at" "$CATALOG_TIP" "$(field "$pod" commit)"
+	echo "--- $env: an ingest that lands on its third post ---"
+	pod="$(fresh_pod "$env")"
+	STUB_INGEST_FAILS=2 run_sidecar "$pod" >/dev/null
+	check_equal "posts until it lands" "3" "$(posts "$pod")"
+	check_contains "records ok" "status=ok" "$(result "$pod")"
 
-echo "--- a submodule update that succeeds without checking cold storage out ---"
-
-catalog_fixture_publish "$fixture" "$GOOD_PIN"
-pod="$(fresh_pod)"
-# git, but for `submodule`, which answers success and does nothing.
-cat >"$pod/bin/git" <<STUB
-#!/usr/bin/env bash
-for argument in "\$@"; do
-	[ "\$argument" != submodule ] || exit 0
+	echo "--- $env: the refresh endpoint ---"
+	cgi="$pod/srv/refresh/cgi-bin/refresh"
+	for answer in "0:200 OK:{\"suitesUpdated\":true}" "3:200 OK:{\"suitesUpdated\":false}" \
+		"1:500 Internal Server Error:refresh output"; do
+		code="${answer%%:*}"
+		rest="${answer#*:}"
+		printf '#!/bin/sh\necho refresh output\nexit %s\n' "$code" >"$pod/usr/local/bin/tcab-refresh"
+		out="$(env PATH="$pod/stubs:$PATH" REQUEST_METHOD=POST "$cgi")"
+		check_contains "a refresh exiting $code answers ${rest%%:*}" "Status: ${rest%%:*}" "$out"
+		check_contains "a refresh exiting $code says ${rest#*:}" "${rest#*:}" "$out"
+	done
+	out="$(env PATH="$pod/stubs:$PATH" REQUEST_METHOD=GET "$cgi")"
+	check_contains "refuses a GET" "Status: 405" "$out"
 done
-exec "$REAL_GIT" "\$@"
-STUB
-chmod +x "$pod/bin/git"
-out="$(run "$pod")"
-status=$?
-check_failure "$pod" "$status" cold-storage
-check_contains "says cold storage is not checked out" \
-	"The cold-storage submodule is not checked out at the commit staging pins." "$(result "$pod")"
-check_contains "names the commit it should be at" "the checkout pins $GOOD_PIN" "$(result "$pod")"
-
-echo "--- a backend that never answers /healthz ---"
-
-pod="$(fresh_pod)"
-out="$(run "$pod" STUB_HEALTHZ=7)"
-status=$?
-check_failure "$pod" "$status" backend
-check_equal "after two hundred tries" 200 "$(grep -c '/healthz$' "$pod/curl.log")"
-
-echo "--- a backend that refuses the ingest ---"
-
-pod="$(fresh_pod)"
-out="$(run "$pod" STUB_INGEST=22)"
-status=$?
-check_equal "the script does not exit non-zero" 0 "$status"
-check_equal "records a failure" failed "$(field "$pod" status)"
-check_equal "at the ingest" ingest "$(field "$pod" step)"
-check_equal "after ten tries" 10 "$(posts "$pod")"
-check_contains "quotes curl's error" "The requested URL returned error: 500" "$(result "$pod")"
-check_contains "and the backend's answer" "the checkout holds no test-cases folder" "$(result "$pod")"
-check_contains "reports the volume's free space" "12.0M free of 9.8G (100% used)" "$(result "$pod")"
-check_equal "and parks" infinity "$(parked "$pod")"
-
-echo "--- a volume that grows after the pod has mounted it ---"
-
-# Full at the start, as a volume whose claim the deployment enlarged is until the
-# cluster has grown its filesystem, then 40 GiB free of the 50Gi it is declared at.
-pod="$(fresh_pod)"
-printf '%s\n' 0 0 0 "41943040 51474912" >"$pod/df-kb"
-out="$(run "$pod")"
-status=$?
-check_equal "the script ends parked" 0 "$status"
-check_equal "it waits for the space, reading every five seconds" 3 "$(polls "$pod")"
-check_contains "says what it waits for" \
-	"ingest: $pod/state has 0 MiB free and the fetch needs 1024 MiB, and the volume has yet to reach the 50Gi it is declared at; waiting up to 300s for it to grow" "$out"
-check_contains "and what arrived" "ingest: $pod/state has 40960 MiB free" "$out"
-check_equal "then ingests" ok "$(field "$pod" status)"
-check_equal "once" 1 "$(posts "$pod")"
-check_equal "and parks" infinity "$(parked "$pod")"
-
-# Room for the checkout is not room for cold storage, which waits in its turn.
-pod="$(fresh_pod)"
-printf '%s\n' 2097152 2097152 2097152 "41943040 51474912" >"$pod/df-kb"
-out="$(run "$pod")"
-check_equal "the checkout does not wait on a volume with room for it" "" \
-	"$(sed -n '/bringing .* to the tip/,/bringing the cold-storage/p' <<<"$out" | grep 'waiting up to' || true)"
-check_contains "cold storage that has to be fetched waits for its own room" \
-	"has 2048 MiB free and the fetch needs 3584 MiB, and the volume has yet to reach the 50Gi it is declared at; waiting up to 300s for it to grow" "$out"
-check_equal "for as long as it takes to arrive" 2 "$(polls "$pod")"
-check_equal "then ingests" ok "$(field "$pod" status)"
-
-# A warm volume whose cold storage is at its pin fetches none, and needs no room for it.
-printf '%s\n' 2097152 >"$pod/df-kb"
-: >"$pod/sleep.log"
-out="$(run "$pod")"
-check_equal "cold storage already at its pin waits for nothing" 0 "$(polls "$pod")"
-check_lacks "and says nothing of space" "waiting up to" "$out"
-check_equal "and ingests" ok "$(field "$pod" status)"
-
-echo "--- a volume that stays small ---"
-
-pod="$(fresh_pod)"
-printf '%s\n' 102400 >"$pod/df-kb"
-out="$(run "$pod")"
-status=$?
-check_equal "the script ends parked" 0 "$status"
-check_equal "the wait is bounded: three hundred seconds over the whole run" 60 "$(polls "$pod")"
-check_contains "it then fetches anyway, saying so" \
-	"has 100 MiB free and the fetch needs 1024 MiB; fetching anyway, having waited 300s" "$out"
-check_contains "and the second fetch does not wait again" \
-	"has 100 MiB free and the fetch needs 3584 MiB; fetching anyway, having waited 300s" "$out"
-check_equal "so the fetch decides, which here has room" ok "$(field "$pod" status)"
-
-pod="$(fresh_pod)"
-printf '%s\n' 102400 >"$pod/df-kb"
-out="$(run "$pod" TCAB_INGEST_SPACE_WAIT_SECONDS=10 TCAB_INGEST_MIN_FREE_MB=64 TCAB_INGEST_COLD_STORAGE_MB=128)"
-check_equal "the bound and both needs are settings" 2 "$(polls "$pod")"
-check_contains "that the wait names" "has 100 MiB free and the fetch needs 192 MiB, and the volume has yet to reach the 50Gi it is declared at; waiting up to 10s" "$out"
-check_lacks "and a fetch with room does not wait" "the fetch needs 64 MiB" "$out"
-
-pod="$(fresh_pod)"
-printf '%s\n' 102400 >"$pod/df-kb"
-out="$(run "$pod" TCAB_INGEST_SPACE_WAIT_SECONDS=soon TCAB_INGEST_MIN_FREE_MB=)"
-check_equal "a setting that is no number is its default" 60 "$(polls "$pod")"
-
-# A fetch that fails after the wait reports as every failure does.
-pod="$(fresh_pod)"
-printf '%s\n' 0 >"$pod/df-kb"
-out="$(run "$pod" TCAB_INGEST_REPO="file://$tmp/no-such-mirror.git" TCAB_INGEST_SPACE_WAIT_SECONDS=15)"
-status=$?
-check_failure "$pod" "$status" checkout
-check_equal "having waited its bound first" 3 "$(polls "$pod")"
-
-echo "--- a full volume that is not being resized ---"
-
-# The filesystem already has the size the claim asks for, so no room is coming and
-# the fetch is made at once.
-pod="$(fresh_pod)"
-printf '%s\n' "102400 51474912" >"$pod/df-kb"
-out="$(run "$pod")"
-check_equal "a volume at its declared size is not waited on" 0 "$(polls "$pod")"
-check_lacks "and nothing is said of waiting" "waiting up to" "$out"
-check_equal "the fetch decides, which here has room" ok "$(field "$pod" status)"
-
-# Nine tenths of the declared size is a volume that has it: a filesystem keeps the
-# rest for itself.
-pod="$(fresh_pod)"
-printf '%s\n' "102400 47185920" >"$pod/df-kb"
-out="$(run "$pod")"
-check_equal "a filesystem of nine tenths of the size has reached it" 0 "$(polls "$pod")"
-pod="$(fresh_pod)"
-printf '%s\n' "102400 47184000" >"$pod/df-kb"
-out="$(run "$pod" TCAB_INGEST_SPACE_WAIT_SECONDS=10)"
-check_equal "and one just under it has not" 2 "$(polls "$pod")"
-
-# A resize that lands without freeing enough ends the wait all the same.
-pod="$(fresh_pod)"
-printf '%s\n' 102400 102400 "102400 51474912" >"$pod/df-kb"
-out="$(run "$pod" TCAB_INGEST_COLD_STORAGE_MB=0)"
-check_equal "the wait ends when the volume reaches its size" 2 "$(polls "$pod")"
-check_contains "saying so" "has reached its size with 100 MiB free; fetching" "$out"
-
-pod="$(fresh_pod)"
-printf '%s\n' 102400 >"$pod/df-kb"
-out="$(run "$pod" TCAB_INGEST_STATE_SIZE=)"
-check_equal "a sidecar that is told no size waits for nothing" 0 "$(polls "$pod")"
-check_equal "and ingests" ok "$(field "$pod" status)"
-
-pod="$(fresh_pod)"
-printf '%s\n' 102400 >"$pod/df-kb"
-out="$(run "$pod" TCAB_INGEST_STATE_SIZE=copied-from-the-claim)"
-check_equal "nor does one told a size it cannot read" 0 "$(polls "$pod")"
-pod="$(fresh_pod)"
-printf '%s\n' 102400 >"$pod/df-kb"
-out="$(run "$pod" TCAB_INGEST_STATE_SIZE=51200Mi TCAB_INGEST_SPACE_WAIT_SECONDS=10)"
-check_equal "a size in another unit is the same size" 2 "$(polls "$pod")"
-
-echo "--- a volume whose free space cannot be read ---"
-
-pod="$(fresh_pod)"
-out="$(run "$pod")"
-check_equal "is not waited on" 0 "$(polls "$pod")"
-check_equal "and ingests" ok "$(field "$pod" status)"
-
-echo "--- an attempt that was killed ---"
-
-# A killed container records nothing: what it leaves is the marker of the step it
-# was at, which the next start in the same pod finds.
-pod="$(fresh_pod)"
-printf 'backend-7d9f-abcde\ncold-storage\n' >"$pod/state/.ingest-in-progress"
-out="$(run "$pod" TCAB_INGEST_POD=backend-7d9f-abcde)"
-status=$?
-check_failure "$pod" "$status" cold-storage
-check_contains "says the earlier start was killed" \
-	"An earlier start of this container was killed at step 'cold-storage' before it recorded a result" "$(result "$pod")"
-check_contains "names the usual cause" "Running out of memory is the usual cause" "$(result "$pod")"
-check_equal "fetches nothing" "" "$(ls -A "$pod/state")"
-check_contains "logs the failure" "ingest: FAILED at step 'cold-storage'." "$out"
-
-# Another pod's marker is a new pod's first start, which tries afresh.
-pod="$(fresh_pod)"
-printf 'backend-7d9f-abcde\ncold-storage\n' >"$pod/state/.ingest-in-progress"
-out="$(run "$pod" TCAB_INGEST_POD=backend-5c44-vwxyz)"
-check_equal "a new pod ingests over an earlier pod's marker" ok "$(field "$pod" status)"
-check_equal "asking once" 1 "$(posts "$pod")"
-check_equal "and leaves no marker behind" "" "$(marker "$pod")"
-
-# The marker is there while a step runs: the curl stub reads it during the POST.
-pod="$(fresh_pod)"
-mv "$pod/bin/curl" "$pod/bin/curl-inner"
-cat >"$pod/bin/curl" <<'STUB'
-#!/usr/bin/env bash
-case "$*" in
-	*/ingest*) cp "$TCAB_INGEST_STATE/.ingest-in-progress" "$STUB_MARKER_COPY" 2>/dev/null ;;
-esac
-exec "$(dirname "$0")/curl-inner" "$@"
-STUB
-chmod +x "$pod/bin/curl"
-out="$(run "$pod" TCAB_INGEST_POD=backend-7d9f-abcde STUB_MARKER_COPY="$pod/marker-copy")"
-check_equal "an attempt is marked with its pod and step while it runs" "backend-7d9f-abcde
-ingest" "$(cat "$pod/marker-copy" 2>/dev/null)"
-check_equal "and unmarked once it recorded its result" "" "$(marker "$pod")"
-
-pod="$(fresh_pod)"
-out="$(run "$pod" TCAB_INGEST_POD=backend-7d9f-abcde STUB_INGEST=22)"
-check_equal "a failure it recorded leaves no marker either" "" "$(marker "$pod")"
-
-echo "--- no branch ---"
-
-pod="$(fresh_pod)"
-out="$(run "$pod" TCAB_INGEST_BRANCH=)"
-status=$?
-check_failure "$pod" "$status" config
-check_equal "touches no checkout" "" "$(ls -A "$pod/state")"
 
 echo
 echo "catalog-ingest-sidecar.test.sh: ${pass} passed, ${fail} failed"

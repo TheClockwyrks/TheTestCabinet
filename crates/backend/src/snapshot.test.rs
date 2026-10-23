@@ -5,16 +5,16 @@ use tempfile::TempDir;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
 
-use test_cabinet_core::MediaKind;
-use test_cabinet_core::metrics::RunMetrics;
-use test_cabinet_core::review::{DomainRating, Rating, ReviewVerdict};
-use test_cabinet_core::run_record::{
+use crate::review::{DomainRating, Rating, ReviewVerdict};
+use test_cabinet_contracts::metrics::RunMetrics;
+use test_cabinet_contracts::run_record::{
     HarnessSlug, RunEnvironment, RunLinks, RunState, RunStatus, RunSubject, RunTooling,
 };
-use test_cabinet_core::validation::{
+use test_cabinet_contracts::validation::{
     AssetFrameResult, AssetGenResult, DebugScriptOutput, DebugScriptResult, ProofResult,
     ValidationSummary,
 };
+use test_cabinet_suites::test_case::MediaKind;
 
 use crate::db::StoredReview;
 use crate::store::{
@@ -37,7 +37,7 @@ fn run_document<'a>(snapshot: &'a Snapshot, run_id: &str) -> &'a SnapshotObject 
 }
 
 /// The parsed per-run document for `run_id`.
-pub(super) fn run_document_json(snapshot: &Snapshot, run_id: &str) -> serde_json::Value {
+fn run_document_json(snapshot: &Snapshot, run_id: &str) -> serde_json::Value {
     serde_json::from_slice(&run_document(snapshot, run_id).bytes)
         .expect("the run document is valid JSON")
 }
@@ -55,24 +55,13 @@ fn runs_index(snapshot: &Snapshot) -> serde_json::Value {
 
 /// An empty definition store rooted at a fresh temp dir. The `TempDir` is
 /// returned so the caller keeps it alive for the test's duration.
-pub(super) fn empty_store() -> (TempDir, DefinitionStore) {
+fn empty_store() -> (TempDir, DefinitionStore) {
     let dir = TempDir::new().expect("temp dir");
     let store = DefinitionStore::open(dir.path()).expect("open store");
     (dir, store)
 }
 
-/// A store holding one file of a run no test builds. A store holding no run
-/// folder at all says nothing about what a run is missing, so a test about a
-/// file being written off as unrecoverable starts from this one.
-pub(super) fn answering_store() -> (TempDir, DefinitionStore) {
-    let (dir, store) = empty_store();
-    store
-        .write_run_asset("another-run", "replay.json", b"{}")
-        .expect("seed another run");
-    (dir, store)
-}
-
-pub(super) fn stored_run(id: &str, published_at: &str) -> StoredRun {
+fn stored_run(id: &str, published_at: &str) -> StoredRun {
     StoredRun {
         record: RunRecord {
             id: id.to_string(),
@@ -81,7 +70,7 @@ pub(super) fn stored_run(id: &str, published_at: &str) -> StoredRun {
             subject: RunSubject {
                 test_case_slug: "pong".to_string(),
                 test_case_version: "v1.0.0".to_string(),
-                test_type: test_cabinet_core::TestType::EndToEnd,
+                test_type: test_cabinet_suites::test_case::TestType::EndToEnd,
                 variant: "base".to_string(),
                 harness_slug: HarnessSlug::Claude,
                 harness_version: Some("1.2.3".to_string()),
@@ -97,12 +86,13 @@ pub(super) fn stored_run(id: &str, published_at: &str) -> StoredRun {
                 os: "Debian".to_string(),
                 container_image: "test-cabinet/claude:abcd".to_string(),
                 node_version: None,
-                auth_mode: test_cabinet_core::AuthMode::ApiKey,
+                auth_mode: test_cabinet_contracts::run_record::AuthMode::ApiKey,
             },
             metrics: RunMetrics::default(),
             validation: ValidationSummary {
                 debug_scripts: Vec::new(),
                 loaded: true,
+                requirements: Vec::new(),
                 ..ValidationSummary::default()
             },
             links: RunLinks {
@@ -122,11 +112,7 @@ pub(super) fn stored_run(id: &str, published_at: &str) -> StoredRun {
             showcase: None,
         },
         reviews: vec![StoredReview {
-            reviewer: crate::db::Reviewer {
-                user_id: "u1".to_string(),
-                username: "ada".to_string(),
-                display_name: "Ada L.".to_string(),
-            },
+            reviewer: "ada@clockwyrks.com".to_string(),
             ratings: vec![DomainRating {
                 domain: "gameplay".to_string(),
                 rating: Rating::Great,
@@ -147,8 +133,6 @@ pub(super) fn stored_run(id: &str, published_at: &str) -> StoredRun {
             playable_build: Some("https://abc.pages.dev".to_string()),
         },
         published: true,
-        artifacts_stored: None,
-        artifacts_reclaimed: None,
         published_at: Some(published_at.to_string()),
         events_json: None,
     }
@@ -158,7 +142,7 @@ pub(super) fn stored_run(id: &str, published_at: &str) -> StoredRun {
 /// populated so the snapshot exports the run's media.
 fn asset_run(id: &str, published_at: &str) -> StoredRun {
     let mut run = stored_run(id, published_at);
-    run.record.subject.test_type = test_cabinet_core::TestType::AssetGeneration;
+    run.record.subject.test_type = test_cabinet_suites::test_case::TestType::AssetGeneration;
     run.record.validation.asset = Some(AssetGenResult {
         frames: vec![AssetFrameResult {
             index: 0,
@@ -175,7 +159,7 @@ fn asset_run(id: &str, published_at: &str) -> StoredRun {
     run
 }
 
-pub(super) fn manifest() -> StoredManifest {
+fn manifest() -> StoredManifest {
     StoredManifest {
         toolchain: None,
         engine_format: false,
@@ -188,9 +172,9 @@ pub(super) fn manifest() -> StoredManifest {
         description: Some("## Carom".to_string()),
         changelog: "Introduced.".to_string(),
         max_runtime_seconds: 1800,
-        test_type: test_cabinet_core::TestType::EndToEnd,
-        engines: vec![test_cabinet_core::EngineSupport::unbounded(
-            test_cabinet_core::engine::NONE_SLUG,
+        test_type: test_cabinet_suites::test_case::TestType::EndToEnd,
+        engines: vec![test_cabinet_suites::test_case::EngineSupport::unbounded(
+            test_cabinet_suites::engine::NONE_SLUG,
         )],
         experimental: false,
         build: Some(StoredBuild {
@@ -207,8 +191,8 @@ pub(super) fn manifest() -> StoredManifest {
         simulation: None,
         r#match: None,
         replay: None,
-        asset_kind: test_cabinet_core::AssetKind::Sprite,
-        asset_dimension: test_cabinet_core::AssetDimension::TwoD,
+        asset_kind: test_cabinet_suites::test_case::AssetKind::Sprite,
+        asset_dimension: test_cabinet_suites::test_case::AssetDimension::TwoD,
         sheet: None,
         voxel: None,
         model: None,
@@ -238,7 +222,7 @@ pub(super) fn manifest() -> StoredManifest {
         }],
         common_references: vec![StoredReference {
             view: "gameplay".to_string(),
-            kind: test_cabinet_core::ReferenceKind::Rendered,
+            kind: test_cabinet_suites::test_case::ReferenceKind::Rendered,
             extension: "png".to_string(),
         }],
         common_proofs: vec![],
@@ -256,10 +240,11 @@ pub(super) fn manifest() -> StoredManifest {
         }],
         instrumentation: None,
         errata: Vec::new(),
+        suite: None,
     }
 }
 
-pub(super) fn now() -> OffsetDateTime {
+fn now() -> OffsetDateTime {
     OffsetDateTime::from_unix_timestamp(1_718_660_880).unwrap()
 }
 
@@ -279,7 +264,7 @@ fn run_summary_from_stored_maps_fields_without_a_catalog() {
     assert_eq!(summary.case_name, "pong"); // slug fallback, not a catalog name
     assert_eq!(
         summary.subject.test_type,
-        test_cabinet_core::TestType::EndToEnd
+        test_cabinet_suites::test_case::TestType::EndToEnd
     );
     assert_eq!(summary.subject.test_case_slug, "pong");
     assert_eq!(summary.review_count, 1);
@@ -299,7 +284,7 @@ fn run_summary_from_stored_maps_fields_without_a_catalog() {
 
 #[test]
 fn run_summary_lifts_the_gg_configuration_name_onto_the_card() {
-    use test_cabinet_core::gg::GgCapabilitySet;
+    use test_cabinet_contracts::gg::GgCapabilitySet;
 
     // A third-party-harness run has no capability set at all, so its card names no
     // configuration and the run log falls back to showing its model.
@@ -332,8 +317,65 @@ fn run_summary_lifts_the_gg_configuration_name_onto_the_card() {
 }
 
 #[test]
+fn run_summary_lists_gg_agents_only_for_a_gg_run_with_a_session_summary() {
+    use test_cabinet_contracts::gg::GgCapabilitySet;
+
+    // A third-party-harness run has no agents to list.
+    let plain = stored_run("r1", "2026-06-17T21:40:00Z");
+    assert_eq!(RunSummary::from_stored(&plain).subject.gg_agents, None);
+
+    // A gg run whose session wrote no summary, such as one stopped before the session
+    // ended, has nothing to build the lines from.
+    let mut unsummarized = stored_run("r2", "2026-06-17T21:41:00Z");
+    unsummarized.record.subject.harness_slug = HarnessSlug::Gg;
+    unsummarized.record.subject.gg_capability_set = Some(GgCapabilitySet::default());
+    assert_eq!(
+        RunSummary::from_stored(&unsummarized).subject.gg_agents,
+        None
+    );
+}
+
+#[test]
+fn gg_agent_lines_keep_every_model_a_re_pointed_profile_ran_on() {
+    use test_cabinet_contracts::backend_api::snapshot::gg_agent_lines;
+    use test_cabinet_contracts::gg::{GgAgentConfig, GgCapabilitySet, GgSlotCost};
+    use test_cabinet_contracts::metrics::{Cost, TokenCounts};
+
+    let slot_cost = |model: &str, tokens: u64, cost: f64| GgSlotCost {
+        profile_id: "root".to_string(),
+        model_id: model.to_string(),
+        tokens: TokenCounts {
+            uncached_input: Some(tokens),
+            ..Default::default()
+        },
+        cost: Some(Cost {
+            comparable: Some(cost),
+            actual: Some(cost),
+        }),
+        work_cost: None,
+    };
+    let set = GgCapabilitySet {
+        agents: vec![GgAgentConfig {
+            slug: "root".to_string(),
+            name: "root agent".to_string(),
+            model_id: "opus".to_string(),
+            ..GgAgentConfig::root()
+        }],
+        ..GgCapabilitySet::default()
+    };
+    let lines = gg_agent_lines(
+        &set,
+        &[slot_cost("opus", 100, 1.0), slot_cost("sonnet", 40, 0.25)],
+    );
+    assert_eq!(lines.len(), 1);
+    assert_eq!(lines[0].model_ids, vec!["opus", "sonnet"]);
+    assert_eq!(lines[0].tokens.uncached_input, Some(140));
+    assert_eq!(lines[0].cost.actual, Some(1.25));
+}
+
+#[test]
 fn run_summary_lifts_the_gg_configuration_id_beside_the_name() {
-    use test_cabinet_core::gg::GgCapabilitySet;
+    use test_cabinet_contracts::gg::GgCapabilitySet;
 
     // The id is what a listing narrowed to one configuration's runs matches on, so the
     // card carries it beside the name a person reads. Two cards may show one name; the
@@ -363,13 +405,13 @@ fn run_summary_lifts_the_gg_configuration_id_beside_the_name() {
 
 #[test]
 fn run_summary_lifts_performance_fuel_for_the_leaderboard() {
-    use test_cabinet_core::validation::PerformanceResult;
+    use test_cabinet_contracts::validation::PerformanceResult;
 
     // A correct performance run: the card carries the correctness gate and the
     // comparable total fuel, so a fuel leaderboard can rank it from the summary
     // set alone (no full record loaded).
     let mut correct = stored_run("p1", "2026-06-17T21:40:00Z");
-    correct.record.subject.test_type = test_cabinet_core::TestType::Performance;
+    correct.record.subject.test_type = test_cabinet_suites::test_case::TestType::Performance;
     correct.record.validation.performance = Some(PerformanceResult {
         correct: true,
         total_fuel: Some(1_234_567),
@@ -386,7 +428,7 @@ fn run_summary_lifts_performance_fuel_for_the_leaderboard() {
     // An incorrect run earns no fuel score: the gate is recorded but the total is
     // `None`, so it takes no leaderboard placement.
     let mut wrong = stored_run("p2", "2026-06-17T21:41:00Z");
-    wrong.record.subject.test_type = test_cabinet_core::TestType::Performance;
+    wrong.record.subject.test_type = test_cabinet_suites::test_case::TestType::Performance;
     wrong.record.validation.performance = Some(PerformanceResult {
         correct: false,
         total_fuel: None,
@@ -434,7 +476,7 @@ async fn snapshot_has_index_runs_per_run_and_case_objects() {
 #[tokio::test]
 async fn snapshot_emits_the_composed_model_catalog() {
     use crate::api::{AliasOut, ModelOut};
-    use test_cabinet_core::run_record::HarnessFamily;
+    use test_cabinet_contracts::run_record::HarnessFamily;
 
     let (_tmp, store) = empty_store();
     let model = ModelOut {
@@ -592,51 +634,15 @@ async fn per_run_file_embeds_full_record_review_and_links() {
     assert_eq!(parsed["reviews"][0]["ratings"][0]["domain"], "gameplay");
     assert_eq!(parsed["reviews"][0]["ratings"][0]["rating"], "great");
     assert_eq!(parsed["reviews"][0]["writeup"], "Plays well.");
-    assert_eq!(parsed["reviews"][0]["reviewer"], "Ada L.");
-    assert_eq!(parsed["reviews"][0]["reviewerId"], "u1");
+    assert_eq!(parsed["reviews"][0]["reviewer"], "ada@clockwyrks.com");
+    // The reviewer is one identity: no account id and no picture ride with it.
+    assert!(parsed["reviews"][0].get("reviewerId").is_none());
+    assert!(parsed["reviews"][0].get("pictureKey").is_none());
 }
 
 #[tokio::test]
-async fn reviewer_picture_is_exported_and_named_by_key_on_the_review() {
+async fn a_snapshot_exports_no_reviewer_pictures() {
     let (_tmp, store) = empty_store();
-    // The run's sole review is by `u1`; supply that reviewer's picture.
-    let mut pictures = std::collections::HashMap::new();
-    pictures.insert(
-        "u1".to_string(),
-        test_cabinet_core::accounts::ReviewerPicture {
-            bytes: vec![1, 2, 3, 4],
-            content_type: "image/webp".to_string(),
-        },
-    );
-    let snapshot = SnapshotBuilder::new(
-        vec![stored_run("r1", "2026-06-17T21:40:00Z")],
-        vec![manifest()],
-        store,
-    )
-    .with_reviewer_pictures(pictures)
-    .build(now())
-    .await
-    .unwrap();
-
-    // The picture rides under the content-stable top-level `pfp/` prefix (not the
-    // snapshot's own prefix), keyed by reviewer id, with its content type.
-    let pfp = snapshot
-        .objects
-        .iter()
-        .find(|o| o.key == "pfp/u1")
-        .expect("the reviewer's picture object");
-    assert_eq!(pfp.bytes, vec![1, 2, 3, 4]);
-    assert_eq!(pfp.content_type, "image/webp");
-
-    // The review points at it by that key.
-    let parsed = run_document_json(&snapshot, "r1");
-    assert_eq!(parsed["reviews"][0]["pictureKey"], "pfp/u1");
-}
-
-#[tokio::test]
-async fn without_a_reviewer_picture_no_pfp_object_and_no_key() {
-    let (_tmp, store) = empty_store();
-    // No `with_reviewer_pictures`: the reviewer has no picture in this snapshot.
     let snapshot = SnapshotBuilder::new(
         vec![stored_run("r1", "2026-06-17T21:40:00Z")],
         vec![manifest()],
@@ -647,9 +653,6 @@ async fn without_a_reviewer_picture_no_pfp_object_and_no_key() {
     .unwrap();
 
     assert!(!snapshot.objects.iter().any(|o| o.key.starts_with("pfp/")));
-    let parsed = run_document_json(&snapshot, "r1");
-    // The optional key is omitted (skip_serializing_if) when absent.
-    assert!(parsed["reviews"][0].get("pictureKey").is_none());
 }
 
 #[tokio::test]
@@ -756,9 +759,9 @@ async fn per_run_file_exports_showcase_media_and_names_it_by_key() {
         .unwrap();
 
     let mut run = stored_run("s1", "2026-06-17T21:40:00Z");
-    run.record.showcase = Some(test_cabinet_core::RunShowcase {
+    run.record.showcase = Some(test_cabinet_contracts::run_record::RunShowcase {
         description: "# My Game\n![B](banner.png)".to_string(),
-        media: vec![test_cabinet_core::ShowcaseMedia {
+        media: vec![test_cabinet_contracts::run_record::ShowcaseMedia {
             file: "title.png".to_string(),
             name: "Title".to_string(),
             kind: MediaKind::Image,
@@ -835,9 +838,9 @@ async fn showcase_video_recorded_as_webm_is_transcoded_to_mp4() {
     store.write_run_showcase("s1", "clip.webm", &webm).unwrap();
 
     let mut run = stored_run("s1", "2026-06-17T21:40:00Z");
-    run.record.showcase = Some(test_cabinet_core::RunShowcase {
+    run.record.showcase = Some(test_cabinet_contracts::run_record::RunShowcase {
         description: "# My Game".to_string(),
-        media: vec![test_cabinet_core::ShowcaseMedia {
+        media: vec![test_cabinet_contracts::run_record::ShowcaseMedia {
             file: "clip.webm".to_string(),
             name: "Gameplay".to_string(),
             kind: MediaKind::Video,
@@ -848,17 +851,13 @@ async fn showcase_video_recorded_as_webm_is_transcoded_to_mp4() {
         .await
         .unwrap();
 
-    // The recording is published once, verbatim, under `original/`, and never
-    // where the site looks for the clip.
-    let webms: Vec<&SnapshotObject> = snapshot
-        .objects
-        .iter()
-        .filter(|o| o.key.ends_with("/clip.webm"))
-        .collect();
-    assert_eq!(webms.len(), 1, "the raw showcase webm is kept once");
-    assert_eq!(webms[0].key, "media/runs/s1/original/showcase/clip.webm");
-    assert_eq!(webms[0].bytes, webm);
-    assert_eq!(webms[0].content_type, "video/webm");
+    assert!(
+        !snapshot
+            .objects
+            .iter()
+            .any(|o| o.key.ends_with("/clip.webm")),
+        "the raw showcase webm must not be published",
+    );
     let clip = snapshot
         .objects
         .iter()
@@ -880,9 +879,9 @@ async fn existing_showcase_media_is_referenced_without_rereading_the_store() {
     // the meta still names it.
     let (_tmp, store) = empty_store();
     let mut run = stored_run("s1", "2026-06-17T21:40:00Z");
-    run.record.showcase = Some(test_cabinet_core::RunShowcase {
+    run.record.showcase = Some(test_cabinet_contracts::run_record::RunShowcase {
         description: "# My Game".to_string(),
-        media: vec![test_cabinet_core::ShowcaseMedia {
+        media: vec![test_cabinet_contracts::run_record::ShowcaseMedia {
             file: "title.png".to_string(),
             name: "Title".to_string(),
             kind: MediaKind::Image,
@@ -917,7 +916,7 @@ async fn showcase_description_image_survives_a_wiped_store_via_the_record() {
     // reached the lookup.
     let (_tmp, store) = empty_store();
     let mut run = stored_run("s1", "2026-06-17T21:40:00Z");
-    run.record.showcase = Some(test_cabinet_core::RunShowcase {
+    run.record.showcase = Some(test_cabinet_contracts::run_record::RunShowcase {
         description: "# My Game\n![B](banner.png)".to_string(),
         media: vec![],
     });
@@ -933,32 +932,6 @@ async fn showcase_description_image_survives_a_wiped_store_via_the_record() {
     assert_eq!(media.len(), 1);
     assert_eq!(media[0]["file"], "banner.png");
     assert_eq!(media[0]["key"], key);
-}
-
-#[test]
-fn description_image_references_extracts_only_flat_relative_names() {
-    // Bare relative names come back (percent-escapes decoded, angle-bracketed
-    // and titled destinations handled, duplicates folded); everything the
-    // renderer would not resolve against the showcase — absolute, anchored,
-    // schemed — and every name the flat namespace refuses is skipped.
-    let description = "\
-# My Game\n\
-![Banner](banner.png)\n\
-![Same again](banner.png)\n\
-![Encoded](my%20shot.png)\n\
-![Bracketed](<two words.png> \"With a title\")\n\
-![Titled](titled.png \"The title\")\n\
-![Absolute](/logo.png)\n\
-![Anchor](#top)\n\
-![External](https://example.com/x.png)\n\
-![Data](data:image/png;base64,AAAA)\n\
-![Traversal](../escape.png)\n\
-![Dotted](shot..final.png)\n\
-![Manifest](showcase.toml)\n";
-    assert_eq!(
-        description_image_references(description),
-        vec!["banner.png", "my shot.png", "two words.png", "titled.png"],
-    );
 }
 
 #[tokio::test]
@@ -977,7 +950,7 @@ async fn case_metadata_inlines_specs_and_description() {
         source: "spec/build.py".to_string(),
         dest: "build.py".to_string(),
         template: false,
-        kind: test_cabinet_core::SpecKind::Script,
+        kind: test_cabinet_suites::test_case::SpecKind::Script,
     }];
     // A declared runtime package: its UI-only description is looked up from core's
     // registry at snapshot time (never stored), so the static gallery's Inputs tab
@@ -1030,7 +1003,7 @@ async fn case_metadata_inlines_specs_and_description() {
     // The script role survives ingest → snapshot, so the Inputs tab tags it "Script".
     assert_eq!(parsed["variants"][0]["seededInputs"][1]["kind"], "script");
     // The declared package is carried with its UI-only description, looked up from
-    // core's registry at snapshot time.
+    // the suites crate's registry at snapshot time.
     assert_eq!(
         parsed["packages"][0]["name"],
         "@clockwyrks/particle-runtime"
@@ -1039,7 +1012,7 @@ async fn case_metadata_inlines_specs_and_description() {
         parsed["packages"][0]["description"]
             .as_str()
             .is_some_and(|d| !d.is_empty()),
-        "package description should be inlined from core's registry"
+        "package description should be inlined from the suites crate's registry"
     );
 }
 
@@ -1230,8 +1203,10 @@ async fn case_metadata_renders_the_prompt_and_specs_for_every_declared_engine() 
     let mut m = manifest();
     m.prompt_template = "Built on {{engine.name}}.".to_string();
     m.engines = vec![
-        test_cabinet_core::EngineSupport::unbounded(test_cabinet_core::engine::NONE_SLUG),
-        test_cabinet_core::EngineSupport::unbounded("simple-2d"),
+        test_cabinet_suites::test_case::EngineSupport::unbounded(
+            test_cabinet_suites::engine::NONE_SLUG,
+        ),
+        test_cabinet_suites::test_case::EngineSupport::unbounded("simple-2d"),
     ];
     m.common_specs = vec![crate::store::StoredSpec {
         source: "spec/field.md.hbs".to_string(),
@@ -1303,7 +1278,7 @@ async fn case_metadata_exports_reference_baselines_and_names_them_by_key() {
     let mut m = manifest();
     m.variants[0].references = vec![StoredReference {
         view: "title".to_string(),
-        kind: test_cabinet_core::ReferenceKind::Rendered,
+        kind: test_cabinet_suites::test_case::ReferenceKind::Rendered,
         extension: "png".to_string(),
     }];
 
@@ -1388,14 +1363,14 @@ async fn snapshot_id_changes_with_the_run_set() {
 /// A stored run carrying the given proof results (end-to-end). The recorded proofs
 /// are what the builder enumerates from — the store/artifact-service only supply the
 /// bytes.
-pub(super) fn proof_run(id: &str, proofs: Vec<ProofResult>) -> StoredRun {
+fn proof_run(id: &str, proofs: Vec<ProofResult>) -> StoredRun {
     let mut run = stored_run(id, "2026-06-17T21:40:00Z");
     run.record.validation.proofs = proofs;
     run
 }
 
 /// A proof result the agent did (or did not) produce at `dest`.
-pub(super) fn proof(id: &str, dest: &str, kind: MediaKind, present: bool) -> ProofResult {
+fn proof(id: &str, dest: &str, kind: MediaKind, present: bool) -> ProofResult {
     ProofResult {
         id: id.into(),
         name: id.into(),
@@ -1406,14 +1381,15 @@ pub(super) fn proof(id: &str, dest: &str, kind: MediaKind, present: bool) -> Pro
     }
 }
 
-/// A throwaway HTTP server standing in for the artifact service: it answers `200`
-/// with the staged bytes for a known `/runs/<id>/<kind>/<file>` path (the length
-/// alone for a `HEAD`) and `404` otherwise, recording every path it is asked for
-/// so a test can assert the store fast-path skipped it. Returns its base URL and
-/// that request log.
-pub(super) async fn stub_artifacts(
-    files: HashMap<String, Vec<u8>>,
-) -> (String, Arc<Mutex<Vec<String>>>) {
+/// The service token the stub artifact service accepts.
+const ARTIFACTS_SERVICE_TOKEN: &str = "artifacts-svc-token";
+
+/// A throwaway HTTP server standing in for the artifact service: it answers `401`
+/// to a request without [`ARTIFACTS_SERVICE_TOKEN`], `200` with the staged bytes
+/// for a known `/runs/<id>/<kind>/<file>` path and `404` otherwise, recording every
+/// path it is asked for so a test can assert the store fast-path skipped it.
+/// Returns its base URL and that request log.
+async fn stub_artifacts(files: HashMap<String, Vec<u8>>) -> (String, Arc<Mutex<Vec<String>>>) {
     let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
     let addr = listener.local_addr().expect("addr");
     let seen = Arc::new(Mutex::new(Vec::new()));
@@ -1435,17 +1411,22 @@ pub(super) async fn stub_artifacts(
                     .and_then(|line| line.split_whitespace().nth(1))
                     .unwrap_or("")
                     .to_string();
-                let head = req.starts_with("HEAD ");
                 sink.lock().expect("lock").push(path.clone());
+                // Every read of the artifact service needs an identity: the backend
+                // presents the shared service token.
+                let authorized = req.lines().any(|line| {
+                    line.to_ascii_lowercase()
+                        == format!("authorization: bearer {ARTIFACTS_SERVICE_TOKEN}")
+                });
                 let resp = match files.get(&path) {
+                    _ if !authorized => {
+                        b"HTTP/1.1 401 Unauthorized\r\nContent-Length: 0\r\n\r\n".to_vec()
+                    }
                     Some(body) => {
                         let mut r =
                             format!("HTTP/1.1 200 OK\r\nContent-Length: {}\r\n\r\n", body.len())
                                 .into_bytes();
-                        // A `HEAD` is answered with the length and no body.
-                        if !head {
-                            r.extend_from_slice(body);
-                        }
+                        r.extend_from_slice(body);
                         r
                     }
                     None => b"HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\n\r\n".to_vec(),
@@ -1512,12 +1493,7 @@ async fn per_run_file_exports_proof_media_from_the_record() {
 /// A stored run carrying one debug script with the given image + video outputs, so
 /// the builder enumerates its synthesized *actual* validation media. `present` gates
 /// whether each output is recorded as produced.
-pub(super) fn validation_run(
-    id: &str,
-    item_id: &str,
-    image_present: bool,
-    video_present: bool,
-) -> StoredRun {
+fn validation_run(id: &str, item_id: &str, image_present: bool, video_present: bool) -> StoredRun {
     let mut run = stored_run(id, "2026-06-17T21:40:00Z");
     run.record.validation.debug_scripts = vec![DebugScriptResult {
         item_id: item_id.to_string(),
@@ -1782,8 +1758,8 @@ async fn case_metadata_exports_validation_baselines_keyed_by_engine_variant_and_
     let (_tmp, store) = empty_store();
     let baseline_dir = store
         .version_dir(&m.slug, &m.version)
-        .join(test_cabinet_core::VALIDATION_BASELINE_DIR)
-        .join(test_cabinet_core::engine::NONE_SLUG)
+        .join(test_cabinet_contracts::layout::VALIDATION_BASELINE_DIR)
+        .join(test_cabinet_suites::engine::NONE_SLUG)
         .join("base");
     std::fs::create_dir_all(&baseline_dir).unwrap();
     std::fs::write(baseline_dir.join("spin__still.png"), b"png:baseline-still").unwrap();
@@ -1844,8 +1820,8 @@ async fn case_metadata_exports_the_baselines_shared_image_store_too() {
     let (_tmp, store) = empty_store();
     let baseline_dir = store
         .version_dir(&m.slug, &m.version)
-        .join(test_cabinet_core::VALIDATION_BASELINE_DIR)
-        .join(test_cabinet_core::engine::NONE_SLUG)
+        .join(test_cabinet_contracts::layout::VALIDATION_BASELINE_DIR)
+        .join(test_cabinet_suites::engine::NONE_SLUG)
         .join("base");
     std::fs::create_dir_all(&baseline_dir).unwrap();
     std::fs::write(baseline_dir.join("spin__serve.json.gz"), b"\x1f\x8bgz").unwrap();
@@ -2306,8 +2282,10 @@ async fn case_metadata_exports_workspace_files_engineless_and_per_engine() {
     // under the content-addressed files prefix with a text content type.
     let mut m = manifest();
     m.engines = vec![
-        test_cabinet_core::EngineSupport::unbounded(test_cabinet_core::engine::NONE_SLUG),
-        test_cabinet_core::EngineSupport::unbounded("simple-2d"),
+        test_cabinet_suites::test_case::EngineSupport::unbounded(
+            test_cabinet_suites::engine::NONE_SLUG,
+        ),
+        test_cabinet_suites::test_case::EngineSupport::unbounded("simple-2d"),
     ];
     m.workspace = StoredWorkspace(std::collections::BTreeMap::from([
         (
@@ -2443,16 +2421,14 @@ async fn video_proof_recorded_as_webm_is_transcoded_to_mp4_for_the_snapshot() {
         .await
         .unwrap();
 
-    // The recording is published once, verbatim, under `original/`; the object
-    // the document names is a real mp4.
-    let webms: Vec<&SnapshotObject> = snapshot
-        .objects
-        .iter()
-        .filter(|o| o.key.ends_with("/rally.webm"))
-        .collect();
-    assert_eq!(webms.len(), 1, "the raw webm is kept once");
-    assert_eq!(webms[0].key, "media/runs/p1/original/proof/rally.webm");
-    assert_eq!(webms[0].bytes, webm);
+    // The webm is gone from the snapshot; the exported object is a real mp4.
+    assert!(
+        !snapshot
+            .objects
+            .iter()
+            .any(|o| o.key.ends_with("/rally.webm")),
+        "the raw webm must not be published",
+    );
     let rally = snapshot
         .objects
         .iter()
@@ -2495,19 +2471,14 @@ async fn video_validation_media_recorded_as_webm_is_transcoded_to_mp4() {
         .await
         .unwrap();
 
-    // The recording is published once, verbatim, under `original/`; the object
-    // the document names is a real mp4 under the mp4 key.
-    let webms: Vec<&SnapshotObject> = snapshot
-        .objects
-        .iter()
-        .filter(|o| o.key.ends_with("/spin__rally.webm"))
-        .collect();
-    assert_eq!(webms.len(), 1, "the raw validation webm is kept once");
-    assert_eq!(
-        webms[0].key,
-        "media/runs/v1/original/validation/spin__rally.webm"
+    // The raw webm is gone; the exported object is a real mp4 under the mp4 key.
+    assert!(
+        !snapshot
+            .objects
+            .iter()
+            .any(|o| o.key.ends_with("/spin__rally.webm")),
+        "the raw validation webm must not be published",
     );
-    assert_eq!(webms[0].bytes, webm);
     let rally = snapshot
         .objects
         .iter()
@@ -2574,7 +2545,11 @@ async fn missing_store_media_falls_back_to_the_artifact_service() {
         vec![proof("title", "proof/title.png", MediaKind::Image, true)],
     );
     let snapshot = SnapshotBuilder::new(vec![run], vec![manifest()], store)
-        .with_artifacts(Some(base), reqwest::Client::new())
+        .with_artifacts(
+            Some(base),
+            Some(ARTIFACTS_SERVICE_TOKEN.to_string()),
+            reqwest::Client::new(),
+        )
         .build(now())
         .await
         .unwrap();
@@ -2594,6 +2569,42 @@ async fn missing_store_media_falls_back_to_the_artifact_service() {
 }
 
 #[tokio::test]
+async fn the_artifact_fallback_presents_the_service_token() {
+    // Without the service token the artifact service refuses the read, so the media
+    // cannot be recovered.
+    let (_tmp, store) = empty_store();
+    let (base, seen) = stub_artifacts(HashMap::from([(
+        "/runs/p1/proof/title.png".to_string(),
+        b"durable:title".to_vec(),
+    )]))
+    .await;
+
+    let run = proof_run(
+        "p1",
+        vec![proof("title", "proof/title.png", MediaKind::Image, true)],
+    );
+    let snapshot = SnapshotBuilder::new(vec![run], vec![manifest()], store)
+        .with_artifacts(Some(base), None, reqwest::Client::new())
+        .build(now())
+        .await
+        .unwrap();
+
+    assert!(
+        !snapshot
+            .objects
+            .iter()
+            .any(|o| o.key == "media/runs/p1/proof/title.png"),
+        "a refused read recovers nothing",
+    );
+    assert!(
+        seen.lock()
+            .unwrap()
+            .contains(&"/runs/p1/proof/title.png".to_string()),
+        "the builder asked the artifact service",
+    );
+}
+
+#[tokio::test]
 async fn store_media_is_used_without_calling_the_artifact_service() {
     // When the store has the media, it is the fast path: no artifact request is made
     // even though the fallback is configured.
@@ -2608,7 +2619,11 @@ async fn store_media_is_used_without_calling_the_artifact_service() {
         vec![proof("title", "proof/title.png", MediaKind::Image, true)],
     );
     let snapshot = SnapshotBuilder::new(vec![run], vec![manifest()], store)
-        .with_artifacts(Some(base), reqwest::Client::new())
+        .with_artifacts(
+            Some(base),
+            Some(ARTIFACTS_SERVICE_TOKEN.to_string()),
+            reqwest::Client::new(),
+        )
         .build(now())
         .await
         .unwrap();
@@ -2903,7 +2918,7 @@ async fn case_media_already_in_the_bucket_is_referenced_without_re_uploading() {
     let mut m = manifest();
     m.variants[0].references = vec![StoredReference {
         view: "title".to_string(),
-        kind: test_cabinet_core::ReferenceKind::Rendered,
+        kind: test_cabinet_suites::test_case::ReferenceKind::Rendered,
         extension: "png".to_string(),
     }];
 
@@ -2915,8 +2930,8 @@ async fn case_media_already_in_the_bucket_is_referenced_without_re_uploading() {
     }
     let baseline_dir = store
         .version_dir(&m.slug, &m.version)
-        .join(test_cabinet_core::VALIDATION_BASELINE_DIR)
-        .join(test_cabinet_core::engine::NONE_SLUG)
+        .join(test_cabinet_contracts::layout::VALIDATION_BASELINE_DIR)
+        .join(test_cabinet_suites::engine::NONE_SLUG)
         .join("base");
     std::fs::create_dir_all(&baseline_dir).unwrap();
     std::fs::write(baseline_dir.join("spin__still.png"), b"png:baseline-still").unwrap();
@@ -3084,7 +3099,6 @@ fn prune_never_touches_media_or_the_index() {
         "index.json".to_string(),
         "media/runs/r1/proof/hunt.mp4".to_string(),
         "media/cases/pong/v1.0.0/references/_common/abcdef0123456789-gameplay.png".to_string(),
-        "pfp/acct_1".to_string(),
     ];
     let stale = stale_generation_keys(
         &keys,
@@ -3128,42 +3142,27 @@ fn generation_timestamp_round_trips_a_real_snapshot_id() {
 // ── run-tree artifacts and the public snapshot ──────────────────────────────
 
 #[tokio::test]
-async fn a_stored_run_tree_artifact_reaches_the_public_snapshot_only_as_its_own_object() {
-    // The two run-tree artifacts the store holds for a published run. The
-    // **session record** is published as one object of the run, scrubbed, and
-    // is in no other: not the run's document, not the index. A code-analysis
-    // document is published only when the run **record** says the run was
-    // analysed, and the store holding one is not the authority, exactly as it
-    // is not for proofs. This run's record carries none.
+async fn a_stored_run_tree_artifact_never_reaches_the_public_snapshot() {
+    // R7, and owner decision Q1. The **session record** is never published: it is a
+    // private, whole-run capture of everything the model was sent, so it never goes to
+    // R2 at all (and could not be redacted usefully if it did — it is opaque, possibly
+    // gzipped bytes the scrubber cannot walk). A code-analysis document *is* published
+    // now, but only when the run **record** says the run was analysed — the store
+    // holding one is not the authority, exactly as it is not for proofs. This run's
+    // record carries none, so neither artifact becomes an object.
     //
     // This is the regression that would be silent: adding a new sibling object to the
     // snapshot is a two-line change, and nothing else in the builder would notice.
     let (_tmp, store) = empty_store();
     store
-        .write_run_artifact(
-            "r1",
-            "replay",
-            br#"{"entries":[{"text":"the-whole-conversation sk-ant-leaked-key-from-the-env"}]}"#,
-        )
+        .write_run_artifact("r1", "replay", b"prompt sk-ant-leaked-key-from-the-env")
         .unwrap();
     store
         .write_run_artifact("r1", "code-analysis", b"{\"files\":1}")
         .unwrap();
-    // A record that is no document is published as nothing: there is no form
-    // of it the scrubber has read.
-    store
-        .write_run_artifact(
-            "r2",
-            "replay",
-            b"undocumented-prompt sk-ant-leaked-key-from-the-env",
-        )
-        .unwrap();
 
     let snapshot = SnapshotBuilder::new(
-        vec![
-            stored_run("r1", "2026-06-17T21:40:00Z"),
-            stored_run("r2", "2026-06-17T21:41:00Z"),
-        ],
+        vec![stored_run("r1", "2026-06-17T21:40:00Z")],
         vec![],
         store,
     )
@@ -3171,7 +3170,6 @@ async fn a_stored_run_tree_artifact_reaches_the_public_snapshot_only_as_its_own_
     .await
     .unwrap();
 
-    let mut records = Vec::new();
     for object in snapshot
         .objects
         .iter()
@@ -3188,16 +3186,7 @@ async fn a_stored_run_tree_artifact_reaches_the_public_snapshot_only_as_its_own_
             "run-tree artifact bytes leaked into `{}`",
             object.key
         );
-        assert!(
-            !body.contains("undocumented-prompt"),
-            "a record that is no document leaked into `{}`",
-            object.key
-        );
-        if body.contains("the-whole-conversation") {
-            records.push(object.key.as_str());
-        }
     }
-    assert_eq!(records, ["media/runs/r1/session-record.json"]);
 }
 
 #[tokio::test]
@@ -3219,30 +3208,18 @@ async fn every_published_run_document_is_scrubbed_on_its_way_out() {
 
     let body = String::from_utf8(run_document(&snapshot, "r1").bytes.clone()).unwrap();
     assert!(!body.contains("sk-ant-api03-notreal-value"));
-    assert!(body.contains(test_cabinet_core::redact::PLACEHOLDER));
+    assert!(body.contains(test_cabinet_redact::PLACEHOLDER));
 }
 
-/// A real `CodeAnalysisSummary`, produced by pointing the real analyzer at a two-file
-/// tree. Cheaper and far more durable than a ninety-five-field literal, which would drift
-/// from the contract the moment a metric is added.
-pub(super) fn code_analysis_summary() -> test_cabinet_core::CodeAnalysisSummary {
-    let tree = TempDir::new().expect("temp dir");
-    std::fs::create_dir_all(tree.path().join("src")).expect("a source directory");
-    std::fs::write(
-        tree.path().join("src/main.ts"),
-        "export function boot(): number {\n  return 1;\n}\n",
-    )
-    .expect("a source file");
-    test_cabinet_code_analysis::analyze(&test_cabinet_code_analysis::AnalysisRequest {
-        root: tree.path(),
-        seed_commit: None,
-        tree_basis: test_cabinet_core::CodeTreeBasis::PreValidation,
-        // A hand-built fixture tree with no run behind it, so nothing is known to have
-        // been seeded into its root and the floor removes only what the host owns
-        // outright.
-        root_seeding: test_cabinet_code_analysis::walk::RootSeeding::default(),
-    })
-    .summary
+/// A real `CodeAnalysisSummary`: the contract fixture the driver's analyzer produced
+/// over a two-file tree, and is held to by the driver's own test. Cheaper and far more
+/// durable than a ninety-five-field literal, which would drift from the contract the
+/// moment a metric is added.
+fn code_analysis_summary() -> test_cabinet_contracts::code_analysis::CodeAnalysisSummary {
+    serde_json::from_str(include_str!(
+        "../../../contracts/crates/contracts/fixtures/code-analysis/summary.json"
+    ))
+    .expect("the code-analysis summary fixture deserializes")
 }
 
 /// A published run that carries a real code analysis, plus its stored unbounded document.
@@ -3268,7 +3245,7 @@ fn analysed_run(store: &DefinitionStore, id: &str, document: serde_json::Value) 
 fn code_analysis_key(run_id: &str) -> String {
     format!(
         "media/runs/{run_id}/code-analysis/v{}.json",
-        test_cabinet_core::code_analysis::CODE_ANALYZER_VERSION
+        test_cabinet_contracts::code_analysis::CODE_ANALYZER_VERSION
     )
 }
 
@@ -3366,7 +3343,7 @@ async fn the_published_code_analysis_document_is_scrubbed() {
         !body.contains("sk-ant-api03-notreal-value"),
         "a leaked key reached R2 through the code-analysis object: {body}",
     );
-    assert!(body.contains(test_cabinet_core::redact::PLACEHOLDER));
+    assert!(body.contains(test_cabinet_redact::PLACEHOLDER));
 }
 
 #[tokio::test]
@@ -3528,8 +3505,8 @@ async fn an_analysed_run_whose_document_is_gone_still_publishes_its_summary() {
 
 /// A gg document with the given id and a couple of fields, standing in for what
 /// [`crate::gg_docs::public_documents`] hands the builder.
-fn gg_doc(id: &str) -> test_cabinet_core::gg_query::GgRunDoc {
-    let mut doc = test_cabinet_core::gg_query::GgRunDoc::default();
+fn gg_doc(id: &str) -> crate::gg_query::GgRunDoc {
+    let mut doc = crate::gg_query::GgRunDoc::default();
     doc.insert("id", id.to_string());
     doc.insert("case", "pong".to_string());
     doc.insert("metric.cost", 0.42);
@@ -3590,7 +3567,7 @@ async fn the_gg_corpus_passes_the_scrubber_like_every_other_public_object() {
         .expect("the gg corpus");
     let body = String::from_utf8(object.bytes.clone()).unwrap();
     assert!(!body.contains("sk-ant-api03-notreal-value"));
-    assert!(body.contains(test_cabinet_core::redact::PLACEHOLDER));
+    assert!(body.contains(test_cabinet_redact::PLACEHOLDER));
 }
 
 #[tokio::test]
@@ -3628,22 +3605,15 @@ async fn the_builder_redacts_the_corpus_itself_rather_than_trusting_its_caller()
 }
 
 #[tokio::test]
-async fn a_session_record_reaches_the_snapshot_only_as_a_published_run_s_own_object() {
-    // A session record is the complete model conversation verbatim; the exported
-    // documents are configuration ids and outcome numbers. The corpus covers gg
-    // runs that are not published, so a record must never travel with it: the
-    // only record in a snapshot is the one object of a published run.
+async fn a_replay_record_never_reaches_the_public_snapshot_even_beside_the_gg_corpus() {
+    // Owner decision Q1 is a **hard** boundary, and this milestone is where it is most
+    // at risk: the snapshot now carries gg data, so "the run's other gg artifact" is a
+    // short step away. A session record is the complete model conversation verbatim; the
+    // exported documents are configuration ids and outcome numbers. Only the second
+    // travels.
     let (_tmp, store) = empty_store();
     store
-        .write_run_artifact("r1", "replay", b"{\"text\":\"the-published-conversation\"}")
-        .unwrap();
-    // A gg run that is in the corpus and is not published.
-    store
-        .write_run_artifact(
-            "r2",
-            "replay",
-            b"{\"text\":\"the-unpublished-conversation\"}",
-        )
+        .write_run_artifact("r1", "replay", b"{\"text\":\"the-verbatim-conversation\"}")
         .unwrap();
 
     let snapshot = SnapshotBuilder::new(
@@ -3651,58 +3621,27 @@ async fn a_session_record_reaches_the_snapshot_only_as_a_published_run_s_own_obj
         vec![],
         store,
     )
-    .with_gg_documents(vec![gg_doc("r1"), gg_doc("r2")])
+    .with_gg_documents(vec![gg_doc("r1")])
     .build(now())
     .await
     .unwrap();
 
-    const RECORD: &str = "media/runs/r1/session-record.json";
-    assert_eq!(
-        snapshot
-            .objects
-            .iter()
-            .filter(|object| object.key.contains("session-record"))
-            .map(|object| object.key.as_str())
-            .collect::<Vec<_>>(),
-        [RECORD]
-    );
     for object in snapshot
         .objects
         .iter()
         .chain(std::iter::once(&snapshot.index))
     {
-        let body = String::from_utf8_lossy(&object.bytes);
         assert!(
             !object.key.contains("replay"),
             "a replay artifact was published as `{}`",
             object.key
         );
         assert!(
-            !object.key.contains("/r2/"),
-            "a file of an unpublished run was published as `{}`",
-            object.key
-        );
-        assert!(
-            !body.contains("the-unpublished-conversation"),
-            "an unpublished run's conversation leaked into `{}`",
-            object.key
-        );
-        assert!(
-            object.key == RECORD || !body.contains("the-published-conversation"),
+            !String::from_utf8_lossy(&object.bytes).contains("the-verbatim-conversation"),
             "recorded conversation text leaked into `{}`",
             object.key
         );
     }
-    let corpus = snapshot
-        .objects
-        .iter()
-        .find(|object| object.key.ends_with("/gg-runs.json"))
-        .expect("the corpus");
-    let corpus = String::from_utf8_lossy(&corpus.bytes);
-    assert!(
-        corpus.contains("r2"),
-        "the corpus covers the unpublished run"
-    );
 }
 
 // --- Validator-rated runs in the snapshot ---------------------------------------
@@ -3711,8 +3650,8 @@ async fn a_session_record_reaches_the_snapshot_only_as_a_published_run_s_own_obj
 /// (cap `broken`) and `hud` (cap `great`), both on the `gameplay` domain — so the
 /// version is validator-rated and its runs are scored by their validators alone.
 fn validator_manifest() -> StoredManifest {
+    use crate::review::FailureCap;
     use crate::store::{StoredReviewItem, StoredReviewValidation};
-    use test_cabinet_core::review::FailureCap;
     let point = |id: &str, cap: FailureCap| StoredReviewItem {
         id: id.to_string(),
         title: id.to_string(),
@@ -3746,7 +3685,7 @@ fn validator_manifest() -> StoredManifest {
 /// [`stored_run`] with one decided validator verdict per `(point, pass)` pair and
 /// no reviews at all — a validator-rated run the moment it completed.
 fn validator_run(id: &str, published_at: &str, verdicts: &[(&str, bool)]) -> StoredRun {
-    use test_cabinet_core::validation::AutoVerdict;
+    use test_cabinet_contracts::validation::AutoVerdict;
     let mut run = stored_run(id, published_at);
     run.reviews.clear();
     run.validator_rated = true;
@@ -3813,13 +3752,13 @@ fn a_validator_rated_run_that_decided_nothing_summarizes_broken_at_zero() {
     assert_eq!(score.reviews, 0);
     assert_eq!(
         crate::db::functional_rating(Some(&manifest), &run.record, &run.reviews),
-        Some(test_cabinet_core::review::Rating::Broken)
+        Some(test_cabinet_contracts::review::Rating::Broken)
     );
 }
 
 #[test]
 fn run_summary_score_folds_reviewer_overrides_on_a_validator_rated_version() {
-    use test_cabinet_core::review::VerdictStatus;
+    use crate::review::VerdictStatus;
     let manifest = validator_manifest();
     let mut run = validator_run(
         "r1",
@@ -3998,16 +3937,10 @@ fn a_stored_validator_s_engine_scoping_reaches_the_core_type() {
 
 /// A run-wide-aesthetic review carrying the given verdict `overrides`, for the
 /// override-folding score test.
-fn aesthetic_reviewer_review(
-    overrides: &[(&str, test_cabinet_core::review::VerdictStatus)],
-) -> StoredReview {
-    use test_cabinet_core::review::AestheticRating;
+fn aesthetic_reviewer_review(overrides: &[(&str, crate::review::VerdictStatus)]) -> StoredReview {
+    use crate::review::AestheticRating;
     StoredReview {
-        reviewer: crate::db::Reviewer {
-            user_id: "u1".to_string(),
-            username: "ada".to_string(),
-            display_name: "Ada L.".to_string(),
-        },
+        reviewer: "ada@clockwyrks.com".to_string(),
         ratings: vec![],
         aesthetics: vec![],
         aesthetic: Some(AestheticRating::Good),
@@ -4028,7 +3961,7 @@ fn aesthetic_reviewer_review(
 
 #[tokio::test]
 async fn a_validator_rated_run_is_summarized_by_its_validators_and_its_aesthetic_review() {
-    use test_cabinet_core::review::AestheticRating;
+    use crate::review::AestheticRating;
     let (_tmp, store) = empty_store();
     // `r1` is unreviewed; `r2` carries one aesthetic review.
     let unreviewed = validator_run(
@@ -4038,11 +3971,7 @@ async fn a_validator_rated_run_is_summarized_by_its_validators_and_its_aesthetic
     );
     let mut reviewed = validator_run("r2", "2026-06-17T21:41:00Z", &[("serve", false)]);
     reviewed.reviews.push(StoredReview {
-        reviewer: crate::db::Reviewer {
-            user_id: "u1".to_string(),
-            username: "ada".to_string(),
-            display_name: "Ada L.".to_string(),
-        },
+        reviewer: "ada@clockwyrks.com".to_string(),
         ratings: vec![],
         aesthetics: vec![],
         aesthetic: Some(AestheticRating::Legendary),
@@ -4139,4 +4068,60 @@ async fn a_legacy_run_summary_omits_the_aesthetic_channel() {
         .expect("case document");
     let case: serde_json::Value = serde_json::from_slice(&case_obj.bytes).unwrap();
     assert_eq!(case["engineFormat"], false);
+}
+
+#[tokio::test]
+async fn case_metadata_renders_a_suite_defined_prompt_as_its_runs_receive_it() {
+    use crate::prompt::fixture::{CASE, EXPORTED, IngestedSuite, engine};
+    use test_cabinet_suites::test_suite::SUITE_VARIANT_SLUG;
+
+    let suite = IngestedSuite::new();
+    // What a run of the version was handed, engineless and on simple-2d, off the
+    // resolved checkout the run path reads.
+    let resolved = suite.resolve(EXPORTED);
+    let variant = resolved
+        .variant(SUITE_VARIANT_SLUG)
+        .expect("the implicit variant");
+    let simple = engine("simple-2d");
+    let run_prompt = |engine| {
+        test_cabinet_suites::prompt::render_case_prompt(&resolved, variant, &[], engine)
+            .expect("the run renders the prompt")
+    };
+    let (engineless, on_simple) = (run_prompt(None), run_prompt(Some(&simple)));
+
+    let manifest = suite
+        .store
+        .read_manifest(CASE, EXPORTED)
+        .expect("the version is stored");
+    let mut run = stored_run("r1", "t");
+    run.record.subject.test_case_slug = CASE.to_string();
+    run.record.subject.test_case_version = EXPORTED.to_string();
+    run.record.subject.variant = SUITE_VARIANT_SLUG.to_string();
+    let IngestedSuite { dir: _dir, store } = suite;
+    let snapshot = SnapshotBuilder::new(vec![run], vec![manifest], store)
+        .build(now())
+        .await
+        .expect("the snapshot builds");
+    let prefix = format!("snapshots/{}", snapshot.snapshot_id);
+    let case = snapshot
+        .objects
+        .iter()
+        .find(|o| o.key == format!("{prefix}/cases/{CASE}/{EXPORTED}.json"))
+        .expect("the suite-defined case is emitted");
+    let parsed: serde_json::Value = serde_json::from_slice(&case.bytes).unwrap();
+    let variant = &parsed["variants"][0];
+
+    assert_eq!(variant["prompt"], engineless.as_str());
+    assert_eq!(
+        variant["engineRenderings"]["simple-2d"]["prompt"],
+        on_simple.as_str()
+    );
+    assert!(
+        engineless.starts_with("Build Carom in the workspace at `/work`."),
+        "unexpected prompt: {engineless}"
+    );
+    assert!(
+        engineless.contains("`/work/specs/ball-physics/spin.md`"),
+        "unexpected prompt: {engineless}"
+    );
 }

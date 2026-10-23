@@ -11,8 +11,11 @@
 // is a hand TS port of the bundle's `renderer.mjs` and must be re-ported by hand
 // when the bundle's renderer logic changes.
 //
-// `renderer.vendor.test.ts` asserts the vendored copies are byte-identical to the
-// bundle, so a forgotten resync fails CI. Run this to fix such a failure:
+// The copies live in the ui-common checkout, whose package ships them, and are
+// committed there. console.testcabinet.ai's `apps/web/src/foray-assets.test.ts` asserts the copies the
+// resolved `@clockwyrks/ui` ships are byte-identical to the bundle, so a
+// forgotten resync fails CI. Run this to fix such a failure (then rebuild the
+// package and commit the copies in ui-common):
 //   node scripts/vendor-foray-assets.mjs
 
 import { copyFileSync } from "node:fs";
@@ -23,9 +26,12 @@ const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 
 const SRC = join(
   repoRoot,
-  "test-cases/adversarial/easy/foray/v1.0.0/replay/assets",
+  "test-suites/test-cases/adversarial/easy/foray/v1.0.0/replay/assets",
 );
-const DST = join(repoRoot, "packages/ui/src/app/pages/runs/foray/assets");
+const DST = join(
+  repoRoot,
+  "ui-common/packages/ui/src/app/pages/runs/foray/assets",
+);
 
 // The assets the UI vendors verbatim from the bundle (see the import block in
 // AdversarialReplaySection.tsx). `renderer.ts` is deliberately excluded.

@@ -1,14 +1,12 @@
-//! Adds the `artifacts_stored` column to the `run` table.
+//! Adds the `artifacts_stored` column to the `run` table, the earlier of the
+//! two migrations of that meaning.
 //!
-//! A run is released from the tree its driver uploaded to the artifact service, so
-//! the backend records for each run whether the service holds one. The column is a
-//! nullable boolean with three readings: `true` when the tree is stored, `false`
-//! when it is not, and `NULL` while nothing has reported on the run. `NULL` is what
-//! every row carries on a backend with no artifact service configured.
-//!
-//! The rows already stored start `NULL`. The backend fills them from the artifact
-//! service's listing on its next reclamation sweep pass, which is not a migration's
-//! work: it needs the network.
+//! Staging's schema applied it before the column's meaning settled, and a
+//! migrator refuses to start over an applied migration it does not list, so it
+//! stays registered. The column is the one
+//! `m20261019_000060_add_run_artifacts_stored` describes, and a database that
+//! already has it, whichever of the two added it, is left as it is, and rolling
+//! back past both drops it once.
 
 use sea_orm_migration::prelude::*;
 
@@ -18,6 +16,9 @@ pub struct Migration;
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        if manager.has_column("run", "artifacts_stored").await? {
+            return Ok(());
+        }
         manager
             .alter_table(
                 Table::alter()
@@ -29,6 +30,10 @@ impl MigrationTrait for Migration {
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        // The later migration of the same column drops it first on the way down.
+        if !manager.has_column("run", "artifacts_stored").await? {
+            return Ok(());
+        }
         manager
             .alter_table(
                 Table::alter()

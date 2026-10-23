@@ -51,48 +51,7 @@
 //! serializing passes per plan or ladder — this function is pure, so two concurrent
 //! callers observing the same shortfall would each happily return the same launches.
 
-use serde::{Deserialize, Serialize};
-
-/// How many of a plan's or a ladder dispatch's own jobs may be in flight at once before a
-/// launch pass stops emitting — or no bound at all.
-///
-/// The unbounded shape is its own variant rather than a large bound so that it is
-/// stored, reported, and shown as the instruction it is, and so that no bound the owner
-/// types can be mistaken for it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(tag = "kind", rename_all = "camelCase")]
-#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub enum InFlightLimit {
-    /// Keep at most `runs` jobs in flight. `0` is a legitimate bound — "launch nothing"
-    /// — and is not the same instruction as no bound.
-    Bounded {
-        /// The most jobs that may be in flight before a launch pass stops.
-        runs: u32,
-    },
-    /// No bound: a launch pass emits every missing cell it can. The per-cell target and
-    /// the harness parallelism cap still apply.
-    Unbounded,
-}
-
-impl InFlightLimit {
-    /// Whether `in_flight` jobs already fill this limit, so a launch pass must stop
-    /// before emitting another cell. An unbounded limit is never full.
-    pub fn is_full(self, in_flight: u32) -> bool {
-        match self {
-            InFlightLimit::Bounded { runs } => in_flight >= runs,
-            InFlightLimit::Unbounded => false,
-        }
-    }
-
-    /// The bound, or `None` when there is none. For callers that want to show or
-    /// compare the number without matching on the shape.
-    pub fn bound(self) -> Option<u32> {
-        match self {
-            InFlightLimit::Bounded { runs } => Some(runs),
-            InFlightLimit::Unbounded => None,
-        }
-    }
-}
+pub use test_cabinet_contracts::backend_api::coverage::InFlightLimit;
 
 /// One cell's demand: how many runs it wants, how many already count, and how many are
 /// coming.

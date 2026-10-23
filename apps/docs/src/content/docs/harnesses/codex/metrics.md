@@ -5,7 +5,7 @@ title: Metrics
 Codex reports token usage as cumulative totals in the `usage` object carried by
 `turn.completed`. The harness layer reads those totals from the [JSON
 stream](/harnesses/codex/events/) and produces the normalized [token
-classes](/components/core/metrics/#tokens). Aggregation is `Last`: each
+classes](/components/contracts/metrics/#tokens). Aggregation is `Last`: each
 usage-bearing line replaces the running total, so the final reported totals are
 the ones recorded.
 
@@ -30,4 +30,4 @@ model's list price applied to the recorded token classes. The bare OpenAI model
 ID resolves to the catalog entry that lists it as a Codex alias, so `gpt-5.5` is
 priced from the entry carrying the `gpt-5.5` alias. A lookup on OpenRouter
 prefixes it with `openai/`, so `gpt-5.5` is read on OpenRouter as
-`openai/gpt-5.5`. See [Metrics](/components/core/metrics/) for that contract.
+`openai/gpt-5.5`. See [Metrics](/components/contracts/metrics/) for that contract.

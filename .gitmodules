@@ -1,3 +1,111 @@
 [submodule "cold-storage"]
 	path = cold-storage
 	url = ../cold-storage
+[submodule "test-suites"]
+	path = test-suites
+	url = ../test-suites
+	branch = .
+[submodule "contracts"]
+	path = contracts
+	url = ../contracts
+	branch = .
+[submodule "engines"]
+	path = engines
+	url = ../engines
+	branch = .
+[submodule "gg"]
+	path = gg
+	url = ../gg
+	branch = .
+[submodule "microservice-arena"]
+	path = microservice-arena
+	url = ../microservice-arena
+	branch = .
+[submodule "microservice-artifacts"]
+	path = microservice-artifacts
+	url = ../microservice-artifacts
+	branch = .
+[submodule "microservice-dispatcher"]
+	path = microservice-dispatcher
+	url = ../microservice-dispatcher
+	branch = .
+[submodule "microservice-driver"]
+	path = microservice-driver
+	url = ../microservice-driver
+	branch = .
+[submodule "microservice-repos"]
+	path = microservice-repos
+	url = ../microservice-repos
+	branch = .
+[submodule "microservice-publisher"]
+	path = microservice-publisher
+	url = ../microservice-publisher
+	branch = .
+[submodule "gg.rocks"]
+	path = gg.rocks
+	url = ../gg.rocks
+	branch = .
+[submodule "tool-model-core"]
+	path = tool-model-core
+	url = ../tool-model-core
+	branch = .
+[submodule "tool-paint"]
+	path = tool-paint
+	url = ../tool-paint
+	branch = .
+[submodule "tool-particle"]
+	path = tool-particle
+	url = ../tool-particle
+	branch = .
+[submodule "tool-sprite"]
+	path = tool-sprite
+	url = ../tool-sprite
+	branch = .
+[submodule "tool-voxel"]
+	path = tool-voxel
+	url = ../tool-voxel
+	branch = .
+[submodule "tool-mc"]
+	path = tool-mc
+	url = ../tool-mc
+	branch = .
+[submodule "tool-sn"]
+	path = tool-sn
+	url = ../tool-sn
+	branch = .
+[submodule "tool-dc"]
+	path = tool-dc
+	url = ../tool-dc
+	branch = .
+[submodule "tool-audio-core"]
+	path = tool-audio-core
+	url = ../tool-audio-core
+	branch = .
+[submodule "tool-sfx-synth"]
+	path = tool-sfx-synth
+	url = ../tool-sfx-synth
+	branch = .
+[submodule "tool-sfx-sample"]
+	path = tool-sfx-sample
+	url = ../tool-sfx-sample
+	branch = .
+[submodule "tool-music"]
+	path = tool-music
+	url = ../tool-music
+	branch = .
+[submodule "ui-common"]
+	path = ui-common
+	url = ../ui-common
+	branch = .
+[submodule "console.testcabinet.ai"]
+	path = console.testcabinet.ai
+	url = ../console.testcabinet.ai
+	branch = .
+[submodule "testcabinet.ai"]
+	path = testcabinet.ai
+	url = ../testcabinet.ai
+	branch = .
+[submodule "client-tauri"]
+	path = client-tauri
+	url = ../client-tauri
+	branch = .

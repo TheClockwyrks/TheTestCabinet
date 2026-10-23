@@ -1,28 +1,54 @@
-# Catalog ingest sidecar (staging): the two values ../../components/catalog-ingest leaves
-# to the overlay. The component's kustomization.yaml and its ingest.sh describe the
-# sidecar itself; the prod overlay's copy of this patch differs in these values alone.
+# Catalog ingest sidecar (staging) — identical to prod EXCEPT the branch
+# differs (staging ingests `staging`, prod ingests `master`).
 #
-# Every pipeline deploy changes the backend's image tag, so every deploy starts a new
-# backend pod and the sidecar with it. The sidecar brings /state/checkout to the tip
-# of the branch below on the GitHub mirror, which the pipeline pushed before it
-# deployed, and its cold-storage submodule to the commit that tip pins, then asks the
-# backend for one forced ingest. The deploy checks that both are fetchable before it
-# applies anything, and reads the sidecar's result once the rollout is ready
-# (scripts/ci/catalog-ingest.sh); a sidecar that could not fetch ingests nothing, so
-# the backend keeps the catalog and the baselines it had.
+# The shipped base `tcab-ingest` CronJob cannot work in this deployment (the
+# default-deny NetworkPolicy blocks a standalone pod from reaching tcab-backend:8787,
+# and it clones into its own emptyDir the backend never reads). This co-locates ingest
+# INSIDE the backend pod as a sidecar: it shares the `state` volume (writing the
+# /state/checkout the backend ingests) and calls POST /ingest over localhost — intra-pod
+# traffic, so the NetworkPolicy never applies — presenting the backend's shared service
+# token, which the ingest route takes. It runs a ONE-SHOT forced ingest on backend
+# start, then serves the on-demand refresh (see REFRESH below); every pipeline deploy
+# starts a new backend pod, so every deploy re-ingests the branch tip it shipped (see
+# the prod copy of this patch). /state is a PVC (see
+# components/postgres/deployment-backend.yaml), so on a cold volume (first deploy,
+# replaced disk) this is what fills the store, and /readyz holds the pod out of its
+# Service until it lands.
 #
-# /state is a PVC (components/postgres/deployment-backend.yaml). On a warm volume the
-# store is already populated, so the backend is ready and serving while the sidecar
-# works, and stays so when it fails. On a cold one (a first deploy, a replaced disk)
-# the sidecar's ingest is what fills the store, and /readyz holds the backend out of
-# its Service until it lands.
+# SUBMODULES: after the superproject, the sidecar updates its two submodules, each in
+# its own step: cold-storage shallowly (the baseline media), and the test suites at the
+# commit the branch names. The test suites checkout holds the catalog (`test-cases/`,
+# `game-jams/`, `test-case-groups/`), so it is what the backend's
+# TCAB_BACKEND_CHECKOUT names (/state/checkout/test-suites), and cold-storage sits
+# beside it, where the backend's cold-storage root defaults. .gitmodules names the
+# test suites repository relative to the superproject (`../test-suites`), so against
+# the GitHub mirror this clones from it resolves to the mirror's sibling repository,
+# TheClockwyrks/test-suites, which is public: the suites are fetched anonymously, as
+# the superproject and cold-storage are, and a deploy needs no credential for them.
 #
-# The sidecar ingests once per pod start. Catalog changes between deploys are
-# published on demand with `scripts/reingest-cluster.sh --env staging`.
+# BRANCH: ingest the `staging` branch TIP, so a fresh pod, `tcab ingest --env staging`,
+# and a publish to staging from The Spec Cabinet pick up pushed catalog, test suite, and
+# reference-build lockfile updates on demand. It is a stable BRANCH, never a release tag
+# like `v0.5.0`, which does not exist while that release is still being tested on
+# staging. Keep BRANCH == TCAB_INGEST_BRANCH in scripts/lib/env.sh.
 #
-# TCAB_INGEST_BRANCH is `staging`, the branch the pipeline deploys to staging: a stable
-# branch, never a release tag. Keep it == TCAB_INGEST_BRANCH in scripts/lib/env.sh,
-# which scripts/reingest-cluster.sh and the deploy's checks read.
+# REFRESH: the refresh commands live in one script, /usr/local/bin/tcab-refresh, which
+# both the startup run and the on-demand endpoint run, under one lock so two refreshes
+# never share the checkout. The endpoint is a busybox httpd CGI on 127.0.0.1:8788,
+# reachable only from inside the pod; the backend names it in
+# TCAB_BACKEND_INGEST_REFRESH_URL and calls it when `tcab ingest --env staging` posts
+# POST /ingest through the edge with `refresh: true`. The test suites update is the one
+# step allowed to fail: the endpoint answers {"suitesUpdated": false} and the backend
+# tells the caller `ingest: test suites update failed; ingesting without them`. Any
+# other failed step answers 500 with the script's output, and the backend fails the
+# ingest before the scan.
+#
+# RESULT: the startup run records its outcome in /tmp/ingest-result, which
+# scripts/ci/catalog-ingest.sh verify reads once a deployment's rollout is ready:
+# `status=<running|ok|failed>`, `step=<refresh|ingest>`, `branch=` and `commit=` lines,
+# a blank line and the message. A startup refresh that fails ingests nothing, so the
+# backend keeps the catalog and the baselines it had (a cold volume stays empty, and
+# its backend unready, until the cause is fixed and the pod restarted).
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -32,9 +58,169 @@ spec:
   template:
     spec:
       containers:
-        - name: ingest
+        # The backend calls the sidecar's refresh endpoint for an ingest asking for
+        # `refresh`; unset, a backend ignores `refresh`.
+        - name: backend
           env:
-            - name: TCAB_INGEST_BRANCH
-              value: staging
-            - name: TCAB_INGEST_ENV
-              value: staging
+            - name: TCAB_BACKEND_INGEST_REFRESH_URL
+              value: "http://127.0.0.1:8788/cgi-bin/refresh"
+        - name: ingest
+          image: alpine:3
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -u
+              # Keep == TCAB_INGEST_BRANCH in scripts/lib/env.sh (the branch a refresh fetches).
+              BRANCH=staging
+              until apk add --no-cache git curl busybox-extras; do
+                echo "ingest: apk add failed, retrying in 5s"; sleep 5
+              done
+              REPO=https://github.com/TheClockwyrks/TheTestCabinet.git
+              CHECKOUT=/state/checkout
+              # The on-demand refresh endpoint, which TCAB_BACKEND_INGEST_REFRESH_URL names.
+              REFRESH_ADDR=127.0.0.1:8788
+              LOCK=/run/tcab-refresh.lock
+              export GIT_TERMINAL_PROMPT=0
+              # THE REFRESH, one script for the startup run below and the on-demand endpoint.
+              # It checks out the branch tip (refreshing the live checkout when one survives on
+              # the /state PVC, else cloning it fresh) and its two submodules, each in its own
+              # step. Exit 0: refreshed. Exit 3: refreshed except the test suites, the one
+              # step allowed to fail. Exit 1: any other step failed.
+              {
+                printf '#!/bin/sh\nset -u\nBRANCH=%s\nREPO=%s\nCHECKOUT=%s\n' "$BRANCH" "$REPO" "$CHECKOUT"
+                cat <<'SCRIPT'
+              export HOME=/root GIT_TERMINAL_PROMPT=0
+              failed=0
+              if [ -d "$CHECKOUT/.git" ]; then
+                echo "ingest: refreshing $CHECKOUT to origin/$BRANCH"
+                { git -C "$CHECKOUT" fetch --depth 1 origin "$BRANCH" \
+                    && git -C "$CHECKOUT" reset --hard FETCH_HEAD; } \
+                  || { echo "ingest: refresh failed"; failed=1; }
+              else
+                echo "ingest: cloning catalog branch $BRANCH into $CHECKOUT"
+                { rm -rf "$CHECKOUT" \
+                    && git clone --depth 1 --branch "$BRANCH" "$REPO" "$CHECKOUT"; } \
+                  || { echo "ingest: clone failed"; failed=1; }
+              fi
+              # Sync first so a moved submodule URL reaches the persistent checkout.
+              git -C "$CHECKOUT" submodule sync --recursive \
+                || { echo "ingest: submodule sync failed"; failed=1; }
+              # The cold-storage submodule holds every version's baseline validation media,
+              # which ingest copies into the store, fetched shallowly at the pinned commit.
+              echo "ingest: updating the cold-storage submodule"
+              git -C "$CHECKOUT" submodule update --init --depth 1 cold-storage \
+                || { echo "ingest: cold-storage update failed"; failed=1; }
+              # The test suites submodule, at the commit the branch names. Its own step, so a
+              # failed fetch costs the suites and not the baselines or the catalog.
+              echo "ingest: updating the test suites submodule"
+              suites=0
+              git -C "$CHECKOUT" submodule update --init --recursive --force test-suites \
+                || { echo "ingest: test suites update failed; ingesting without them"; suites=1; }
+              git -C "$CHECKOUT" submodule status --recursive || true
+              [ "$failed" -eq 0 ] || exit 1
+              [ "$suites" -eq 0 ] || exit 3
+              exit 0
+              SCRIPT
+              } > /usr/local/bin/tcab-refresh
+              chmod 0755 /usr/local/bin/tcab-refresh
+              # THE ENDPOINT: a CGI on localhost, reachable only from inside the pod. It runs
+              # the refresh under the same lock as the startup run, copies its output into
+              # this container's log, and answers 200 {"suitesUpdated": bool}, or 500 with
+              # the output when any other step failed.
+              mkdir -p /srv/refresh/cgi-bin
+              cat > /srv/refresh/cgi-bin/refresh <<'CGI'
+              #!/bin/sh
+              if [ "${REQUEST_METHOD:-}" != POST ]; then
+                printf 'Status: 405 Method Not Allowed\r\nAllow: POST\r\nContent-Type: text/plain\r\n\r\nPOST only\n'
+                exit 0
+              fi
+              log=$(mktemp)
+              flock /run/tcab-refresh.lock /usr/local/bin/tcab-refresh >"$log" 2>&1
+              status=$?
+              cat "$log" >/proc/1/fd/1 2>/dev/null
+              case "$status" in
+                0) printf 'Status: 200 OK\r\nContent-Type: application/json\r\n\r\n{"suitesUpdated":true}\n' ;;
+                3) printf 'Status: 200 OK\r\nContent-Type: application/json\r\n\r\n{"suitesUpdated":false}\n' ;;
+                *) printf 'Status: 500 Internal Server Error\r\nContent-Type: text/plain\r\n\r\n'; cat "$log" ;;
+              esac
+              rm -f "$log"
+              CGI
+              chmod 0755 /srv/refresh/cgi-bin/refresh
+              echo "ingest: serving the on-demand refresh at http://$REFRESH_ADDR/cgi-bin/refresh"
+              httpd -f -p "$REFRESH_ADDR" -h /srv/refresh &
+              HTTPD=$!
+              # The startup run's outcome, which scripts/ci/catalog-ingest.sh verify reads:
+              # record <running|ok|failed> <step> [<message>], written whole and then moved.
+              RESULT=/tmp/ingest-result
+              record() {
+                {
+                  printf 'status=%s\nstep=%s\nbranch=%s\ncommit=%s\n\n' "$1" "$2" "$BRANCH" \
+                    "$(git -C "$CHECKOUT" rev-parse HEAD 2>/dev/null)"
+                  [ -z "${3:-}" ] || printf '%s\n' "$3"
+                } > "$RESULT.tmp" && mv "$RESULT.tmp" "$RESULT"
+              }
+              # One-shot: refresh the checkout, then trigger a single forced ingest. No
+              # periodic loop. A refresh that fails (exit 1) ingests nothing: what the checkout
+              # holds is not the tip this deployment shipped. A failed test suites update alone
+              # (exit 3) still ingests.
+              record running refresh
+              flock "$LOCK" /usr/local/bin/tcab-refresh > /tmp/refresh.log 2>&1
+              refreshed=$?
+              cat /tmp/refresh.log
+              case "$refreshed" in
+                0 | 3) record running ingest ;;
+                *)
+                  echo "ingest: the refresh did not complete; nothing was ingested"
+                  record failed refresh "$(tail -n 20 /tmp/refresh.log)"
+                  ;;
+              esac
+              # Wait on /healthz (LIVENESS), never /readyz: readiness is 503 until the
+              # store is populated, which is what the POST below is about to do, so
+              # gating on it would deadlock the sidecar against itself.
+              if [ "$refreshed" -eq 0 ] || [ "$refreshed" -eq 3 ]; then
+                echo "ingest: waiting for backend healthz"
+                until curl -fsS -o /dev/null http://127.0.0.1:8787/healthz; do sleep 3; done
+                n=0
+                until curl -fsS -X POST http://127.0.0.1:8787/ingest \
+                       -H "authorization: Bearer $TCAB_BACKEND_SERVICE_TOKEN" \
+                       -H 'content-type: application/json' -d '{"force": true}' >/dev/null; do
+                  n=$((n + 1))
+                  if [ "$n" -ge 10 ]; then
+                    echo "ingest: POST /ingest failed 10x; giving up (run tcab ingest --env staging)"
+                    break
+                  fi
+                  echo "ingest: POST /ingest failed, retry $n in 10s"; sleep 10
+                done
+                if [ "$n" -lt 10 ]; then
+                  echo "ingest: triggered ok"
+                  record ok ingest
+                else
+                  record failed ingest "POST /ingest failed 10 times; run tcab ingest --env staging"
+                fi
+              fi
+              # Idle on the endpoint. Should it exit, so does this container, and the pod
+              # restarts it rather than leaving the refresh unserved.
+              wait "$HTTPD"
+              echo "ingest: the refresh endpoint exited"
+              exit 1
+          env:
+            # The backend's shared service token, which the startup POST /ingest
+            # presents.
+            - name: TCAB_BACKEND_SERVICE_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: tcab-backend-secrets
+                  key: TCAB_BACKEND_SERVICE_TOKEN
+          volumeMounts:
+            - name: state
+              mountPath: /state
+          resources:
+            # MEMORY REQUEST == LIMIT, and the ceiling raised from 128Mi to 256Mi —
+            # same reasoning as the prod overlay's copy of this patch, and staging is
+            # where the 82Mi peak that motivated it was actually measured.
+            requests:
+              cpu: 10m
+              memory: 256Mi
+            limits:
+              cpu: 250m
+              memory: 256Mi

@@ -69,7 +69,7 @@ fn a_succeeded_report_whose_record_is_an_infrastructure_failure_lands_as_a_faile
     // failure (a dependency install that never succeeded) lands the way every other
     // infrastructure failure does, failed with the record's reason.
     let mut record = crate::db::tests::record("run-1");
-    record.status = test_cabinet_core::run_record::RunStatus {
+    record.status = test_cabinet_contracts::run_record::RunStatus {
         state: RunState::Infrastructure,
         detail: Some("dependency install failed: `npm ci` exited 1 after 3 attempts".to_string()),
     };
@@ -82,7 +82,7 @@ fn a_succeeded_report_whose_record_is_an_infrastructure_failure_lands_as_a_faile
     );
 
     for state in [RunState::Completed, RunState::Catastrophic] {
-        record.status = test_cabinet_core::run_record::RunStatus {
+        record.status = test_cabinet_contracts::run_record::RunStatus {
             state,
             detail: None,
         };
@@ -111,11 +111,11 @@ fn launch_models_covers_the_run_model_and_every_bound_agent_model() {
     // A gg run's catalog set is the run's own model plus each model its capability
     // set binds to an agent, de-duplicated — so a subagent on a different model is
     // priced (and window-resolved) too, and a shared model is asked about once.
-    let mut set = test_cabinet_core::gg::GgCapabilitySet::minimal("anthropic/claude-opus-4.8");
-    set.agents.push(test_cabinet_core::gg::GgAgentConfig {
+    let mut set = test_cabinet_contracts::gg::GgCapabilitySet::minimal("anthropic/claude-opus-4.8");
+    set.agents.push(test_cabinet_contracts::gg::GgAgentConfig {
         name: "subagent".to_string(),
         model_id: "openai/gpt-5.4-mini".to_string(),
-        ..test_cabinet_core::gg::GgAgentConfig::root()
+        ..test_cabinet_contracts::gg::GgAgentConfig::root()
     });
     let body = LaunchBody {
         test_case: "pong".to_string(),
@@ -199,8 +199,8 @@ fn launch_body_for(harness: HarnessSlug, model: &str) -> LaunchBody {
 
 /// An OpenRouter endpoint nothing listens on, so a resolution that must not fill from
 /// OpenRouter fails loudly if it tries.
-fn unreachable_prices() -> test_cabinet_core::OpenRouterPrices {
-    test_cabinet_core::OpenRouterPrices::with_endpoint("http://127.0.0.1:0/models")
+fn unreachable_prices() -> crate::pricing::OpenRouterPrices {
+    crate::pricing::OpenRouterPrices::with_endpoint("http://127.0.0.1:0/models")
 }
 
 #[tokio::test]
@@ -311,7 +311,10 @@ fn queued_job(harness_slug: &str, gg_config_json: Option<&str>) -> job::Model {
         updated_at: "2026-06-17T20:40:00Z".to_string(),
         started_at: None,
         retried_by: None,
-        held_report_json: None,
+        held_record: None,
+        held_detail: None,
+        lost_at: None,
+        lease_expires_at: None,
     }
 }
 
@@ -375,13 +378,8 @@ fn job_summary_carries_when_the_run_started() {
 // --- Attribution ------------------------------------------------------------
 
 /// A signed-in account to attribute a launch to.
-fn account(id: &str) -> AuthUser {
-    AuthUser(test_cabinet_core::Account {
-        id: id.to_string(),
-        username: "reviewer".to_string(),
-        display_name: "Reviewer".to_string(),
-        picture_updated_at: None,
-    })
+fn account(id: &str) -> Person {
+    Person(id.to_string())
 }
 
 /// The launch request the attribution tests enqueue; the body itself is irrelevant
@@ -491,7 +489,7 @@ fn an_unparseable_origin_is_rejected_rather_than_dropped() {
 fn stream_event_names_are_the_ones_clients_listen_for() {
     // These strings are the wire contract for `GET /notifications`, and unlike the
     // JSON payloads they are *not* generated — the TypeScript transport hardcodes
-    // the same six literals in its `addEventListener` calls. Nothing links the two
+    // the same five literals in its `addEventListener` calls. Nothing links the two
     // sides, so renaming one here would silently stop every console receiving that
     // frame: SSE never dispatches to a listener for a name the server no longer
     // sends, with no error anywhere. Pinning them means a rename has to be a
@@ -501,7 +499,6 @@ fn stream_event_names_are_the_ones_clients_listen_for() {
     assert_eq!(STREAM_EVENT_RUN, "run");
     assert_eq!(STREAM_EVENT_RESYNC, "resync");
     assert_eq!(STREAM_EVENT_HEARTBEAT, "heartbeat");
-    assert_eq!(STREAM_EVENT_STORAGE, "storage");
 }
 
 #[test]

@@ -1,6 +1,6 @@
 ---
 name: authoring-test-cases
-description: Read this skill before creating, revising, or adding a variant to ANY test case under test-cases/ — an end-to-end playable game, a full-stack game that produces its own 2D assets during the run, or an asset-generation case of any asset_kind (2D sprite/sprite-sheet drawn with draw/draw-sheet; static or animated voxel/cube models; static or animated meshed mc/sn/dc SDF/CSG models; skinned mc/sn/dc characters; ui high-res 2D; material PBR textures; particle systems; audio sfx/music). The authoring and variant procedures now live in the documentation site (Astro Starlight) so they serve both developers and agents; this skill routes you to the right guide and quickstart, and to the authoritative manifest/testing docs, by test type and asset_kind.
+description: Read this skill before creating, revising, or adding a variant to ANY test case under test-suites/test-cases/ — an end-to-end playable game, a full-stack game that produces its own 2D assets during the run, or an asset-generation case of any asset_kind (2D sprite/sprite-sheet drawn with draw/draw-sheet; static or animated voxel/cube models; static or animated meshed mc/sn/dc SDF/CSG models; skinned mc/sn/dc characters; ui high-res 2D; material PBR textures; particle systems; audio sfx/music). The authoring and variant procedures now live in the documentation site (Astro Starlight) so they serve both developers and agents; this skill routes you to the right guide and quickstart, and to the authoritative manifest/testing docs, by test type and asset_kind.
 ---
 
 # Authoring test cases (documentation-first)
@@ -88,7 +88,8 @@ carom v3.0.0's `showcase/capture/` drivers are the worked example to adapt.
 ## After authoring
 
 Validate as each guide's **Validate your work** section describes (`tcab prompt` /
-`tcab seed`, plus `npm run lint:specs`), then exercise the case end to end with
+`tcab seed`, plus `npm run lint:specs` in the `test-suites` checkout), then
+exercise the case end to end with
 [`quickstarts/run-a-test-case.md`](../../../apps/docs/src/content/docs/quickstarts/development/run-a-test-case.md).
 Editing a case the backend already ingested requires a forced re-ingest — see
 [`guides/running-the-local-service-stack.md`](../../../apps/docs/src/content/docs/guides/development/running-the-local-service-stack.md).

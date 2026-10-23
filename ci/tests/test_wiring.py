@@ -61,19 +61,10 @@ CALLERS = [CONFIG.name, PIPELINE.name]
 # and a commit never waits on them. Each has no hook in
 # `.pre-commit-config.yaml`, and a template update carries both edits.
 HOOKLESS: set[str] = {
-    # Regenerates the contract bindings and schemas from the Rust types, which
-    # is a cargo build of the workspace before the comparison starts.
-    "contract-drift",
     # rustdoc's harness compiles every crate and each doc example in it.
     "rust-doctest",
     # Compiles every crate's test binary and runs the whole suite.
     "rust-test",
-    # Builds every workspace package the gallery imports, then Vite's
-    # production build of it.
-    "site-build",
-    # Builds the workspace packages, then runs tsc over one validator project
-    # per engine of every test-case version.
-    "validators-typecheck",
     # Builds the workspace packages, then runs every npm workspace's vitest
     # suite.
     "workspace-test",
@@ -83,8 +74,9 @@ HOOKLESS: set[str] = {
 # push rights on the registry, so it serves this pipeline's pull and the image
 # pipeline's push; a second one would be a second thing to keep in step.
 ACR_ENDPOINT = "the-test-cabinet-acr"
-# Each track with an image, which is also the id of the job that runs in it.
-TRACKS = ["rust", "web"]
+# Each job with an image, and the track whose image it runs in. The project's
+# `rust` job runs in the rust-browser track, the Rust image with a browser.
+TRACKS = {"rust": "rust-browser", "web": "web"}
 # The repository each track's image is pushed to, which ci-image.sh names too.
 REPOSITORY = "testcabinet.azurecr.io/ubuntu-the-test-cabinet-{track}-cicd"
 # The one variable the tags file holds, and the only way a job names its tag.
@@ -370,8 +362,8 @@ def test_the_pipeline_includes_the_tags() -> None:
     assert not written, f"{PIPELINE.name} writes the image tags {written} itself; the commit belongs in {TAGS_TEMPLATE}"
 
 
-@pytest.mark.parametrize("track", TRACKS)
-def test_each_track_runs_in_its_pinned_ci_image(track: str) -> None:
+@pytest.mark.parametrize("job", TRACKS)
+def test_each_track_runs_in_its_pinned_ci_image(job: str) -> None:
     """Every track declares its image, at the commit the tags file pins.
 
     A track with no `container:` runs on the hosted agent, which carries
@@ -379,12 +371,12 @@ def test_each_track_runs_in_its_pinned_ci_image(track: str) -> None:
     checks broke. The job names the tag through a compile-time expression, so
     what the agent pulls is exactly what the tags file says.
     """
-    container = _job_container(track)
-    assert container, f"the {track} job declares no container, so it would run on the bare agent"
-    expected = REPOSITORY.format(track=track) + ":" + IMAGE_TAG
-    assert container.get("image") == expected, f"the {track} job runs in {container.get('image')!r}, not {expected!r}"
+    container = _job_container(job)
+    assert container, f"the {job} job declares no container, so it would run on the bare agent"
+    expected = REPOSITORY.format(track=TRACKS[job]) + ":" + IMAGE_TAG
+    assert container.get("image") == expected, f"the {job} job runs in {container.get('image')!r}, not {expected!r}"
     assert container.get("endpoint") == ACR_ENDPOINT, (
-        f"the {track} job pulls through {container.get('endpoint')!r}, not the {ACR_ENDPOINT!r} service connection"
+        f"the {job} job pulls through {container.get('endpoint')!r}, not the {ACR_ENDPOINT!r} service connection"
     )
 
 

@@ -19,103 +19,180 @@ file, copied from `.env.podman` or `.env.macos` before the first start. See
 
 The pipeline does not build this image. Its gates run inside the purpose-built
 CI images under [`ci/images/`](../ci/images/README.md), which carry what a
-check reads and nothing else and are built by a pipeline of their own. What
-those images share with this one is the versions: they read their pins out of
-the `x-devcontainer-build-args` anchor of `docker-compose.yml`, so a gate
+check reads and nothing else and are built by a pipeline of their own. They
+are built on the same published toolchain image this one is, which the
+`x-devcontainer-build-args` anchor of `docker-compose.yml` names, so a gate
 passes in the pipeline exactly when it passes here.
 
 ## What the image carries
 
+The image is built on images the project's template publishes, which
+`docker-compose.yml` names by full reference in its `x-devcontainer-build-args`
+anchor. Each reference carries the tag of what the image is built from, and the
+template's version decides which tags those are, so updating the project to a
+new template version is what moves it onto new images. See
+[The published images](#the-published-images) for where they are pulled from.
+
+`ubuntu.dockerfile` is built `FROM` the toolchain image, which holds:
+
+- The system packages, and the account every step and every process runs as,
+  `dev` at uid and gid 1000. See [Host files](#host-files) for how a host's
+  own account is mapped onto it.
 - The Rust toolchain `rust-toolchain.toml` pins, with `rustfmt`, `clippy` and
   `cargo-nextest`, and `mold`, the linker cargo links a glibc build with. See
   [Linker](#linker). A wrapper named `cargo` in `~/.local/bin` runs the heavy
   subcommands in turn with the machine's other workspaces. See
   [The cargo wrapper](#the-cargo-wrapper).
-- This architecture's musl target and `musl-tools`, for static builds. See
-  [Static builds](#static-builds).
 - Node and npm, which the web app, the documentation site, the prose gates and
   Prettier run on.
-- Three browser engines, which the web app's browser tests are driven against.
-  See [Browsers](#browsers).
+- The system libraries the browser engines link against.
 - `make`, `python3`, `shellcheck`, `uv` and a pinned `pre-commit`, which is
   what runs the gates.
-- The Claude Code and Codex CLIs, because a harness session runs inside the
-  devcontainer of the workspace it belongs to. Both are in `~/.local/bin`, on
-  the `PATH` the Dockerfile gives every process in the image, because a session
-  is started by an `exec` naming `claude` or `codex` with no shell in between
-  to add a directory to it. `ai/claude.sh` and `ai/codex.sh` each run the
-  command from there once, so an install that put it anywhere else fails the
-  build rather than the first session. `ai/claude-managed-settings.json` is
-  copied to `/etc/claude-code/managed-settings.json`, Claude Code's managed
-  settings, and sets bypass permissions mode as the default for every session
-  in the image with the mode's disclaimer accepted. Claude Code grants that
-  mode from its managed settings, a user's settings or a `--settings` file
-  alone, and ignores it in a checkout's `.claude/settings.json`, so the
-  image's file is what makes a session run unattended whichever configuration
-  directory it points the harness at.
 - `k3d`, `kubectl`, `kubelogin`, the Azure CLI, and the `docker` and `podman`
   clients, which drive the host's container runtime rather than an engine of
   their own.
-- `helm`, at the `HELM_VERSION` `tools/k8s.sh` pins, which installs a
-  cluster's prerequisites from their charts. No CI image carries it, because
-  no gate installs a chart.
+- Cloudflare's `wrangler`, beside the Azure CLI and the GitHub CLI, which
+  authenticates with the API token in `CLOUDFLARE_API_TOKEN`. It is linked into
+  `~/.local/bin`, on the `PATH` every process in the image is given, so an
+  `exec` naming `wrangler` with no shell in between finds it, which is how a
+  tool's login is read from outside the container.
 - `git`, `ssh`, `tmux`, `lazygit` (aliased to `gg`), `jq` and `ripgrep`.
-- gg's eleven program-language toolchains and the build toolchains of its C#
-  guest, about 3.4 GB under `~/.local/share`, installed by the repository's own
-  installers from the pins beside each arm. Building `crates/gg` reflects a
-  signature catalogue out of every arm's SDK, so without them
-  `cargo build --workspace` fails. See [gg's toolchains](#ggs-toolchains).
-- `ruby`, the one gg toolchain that is a distribution package; `libicu-dev`,
-  which the C# arm's Roslyn needs to start; `ffmpeg`, which
-  `scripts/build-sample-pack.mjs` normalizes audio with; `cmake`; and
-  `iproute2`, `lsof` and `procps` for the local cluster tooling. `system/apt.sh`
-  says why each is declared rather than assumed.
-- `wrangler`, the Cloudflare CLI `tcab publish` deploys a run's playable build
-  with, at the `WRANGLER_VERSION` `tools/wrangler.sh` installs, in `~/.local/bin`
-  for the same reason the coding-agent CLIs are.
+- Claude Code's managed settings, `/etc/claude-code/managed-settings.json`,
+  which set bypass permissions mode as the default for every session in the
+  image with the mode's disclaimer accepted. Claude Code grants that mode from
+  its managed settings, a user's settings or a `--settings` file alone, and
+  ignores it in a checkout's `.claude/settings.json`, so the image's file is
+  what makes a session run unattended whichever configuration directory it
+  points the harness at.
 
-Every version is pinned. The toolchain versions are the build arguments in the
-`x-devcontainer-build-args` anchor of `docker-compose.yml`, which the `dev`
-service merges; the tools without one are pinned in the script that installs
-them. gg's toolchains are pinned in each arm's
-`packages/gg-sandbox-*/<lang>-version.sh`, the one pin the pipeline, the run
-images and this image all install from, with the Rust arm's deferring to
-`rust-toolchain.toml`. A gate whose toolchain is absent fails and names the
-command that installs it, so a toolchain missing here is a check that says so
+Over it, the Dockerfile copies one tool image for each optional toolchain this
+project carries, each holding that toolchain's files alone at the paths they
+take here:
+
+- The playwright image: three browser engines, which the web app's browser
+  tests are driven against, and whose Chromium the case-harness suite, the
+  validator's browser driver and the Rust suite's served validator-project
+  tests launch. See [Browsers](#browsers).
+- The wasm-components image: wasmtime, wit-bindgen, wasm-tools and wac in
+  `~/.local/bin`, and the WASI preview 1 command adapter of that wasmtime
+  release, whose path the Dockerfile publishes as
+  `WASI_PREVIEW1_COMMAND_ADAPTER`. See
+  [The language toolchains](#the-language-toolchains).
+- The wasi-sdk image: the WASI SDK, whose prefix the Dockerfile publishes as
+  `WASI_SDK_PATH`, with its compilers linked into `~/.local/bin` as
+  `wasi-clang`, `wasi-clang++` and `wasi-wasm-ld`. See
+  [The language toolchains](#the-language-toolchains).
+- The python image: a pinned CPython, whose directory the Dockerfile
+  publishes as `PYTHON_BIN_DIR` at the front of the `PATH`, and
+  componentize-py. See [The language toolchains](#the-language-toolchains).
+- The jvm image: the Temurin JDK, which the Dockerfile publishes as
+  `JAVA_HOME`, Kotlin, Gradle, and Gradle's cache seeded for an offline build,
+  published as `GRADLE_USER_HOME`. See
+  [The language toolchains](#the-language-toolchains).
+- The dotnet image: the .NET SDK, which the Dockerfile publishes as
+  `DOTNET_ROOT`, and the local package feed its restores read, published as
+  `DOTNET_LOCAL_FEED`, with `DOTNET_CLI_TELEMETRY_OPTOUT` set. See
+  [The language toolchains](#the-language-toolchains).
+- The ruby image: the ruby.wasm builder and YARD, as gems in the tree the
+  Dockerfile publishes as `GEM_HOME`, whose bin directory is on the `PATH`,
+  and binaryen's `wasm-opt`. See
+  [The language toolchains](#the-language-toolchains).
+- The swift image: the Swift toolchain, whose bin directory the Dockerfile
+  puts on the `PATH`, with `swift` and `swiftc` linked into `~/.local/bin`,
+  and the Swift SDK for WebAssembly in SwiftPM's store. See
+  [The language toolchains](#the-language-toolchains).
+- The purescript image: the PureScript compiler, `purs`, and spago, each
+  linked into `~/.local/bin`. See
+  [The language toolchains](#the-language-toolchains).
+
+Then it runs only the steps the published images cannot hold, from what changes
+least often to what changes most often:
+
+- `system/cuda.sh`, which installs the CUDA toolkit when `INSTALL_CUDA` asks
+  for it. See [GPU access](#gpu-access).
+- This project's own steps, at the comment marking their place:
+  - `system/packages.sh`, as root: `musl-tools`, for static builds (see
+    [Static builds](#static-builds)); `ruby`, the one gg toolchain that is a
+    distribution package; `libicu-dev`, which the C# arm's Roslyn needs to
+    start; `ffmpeg`, which `scripts/build-sample-pack.mjs` normalizes audio
+    with; `cmake`; and `iproute2`, `lsof` and `procps` for the local cluster
+    tooling. The script says why each is declared rather than assumed.
+  - `languages/rust/targets.sh`, which adds this architecture's musl target.
+  - `tools/helm.sh`, which installs `helm` at the `HELM_VERSION` it pins, for
+    installing a cluster's prerequisites from their charts. No CI image
+    carries it, because no gate installs a chart.
+  - `languages/gg/install.sh`: gg's eleven program-language toolchains and the
+    build toolchains of its C# guest, under `~/.local/share`, linked to the
+    language images above where those hold an arm and otherwise installed by
+    gg's own installers from the pins beside each arm. Building gg's crate
+    (in the `gg/` checkout) reflects a signature catalogue out of every arm's
+    SDK, so without them its build fails. See
+    [gg's toolchains](#ggs-toolchains).
+- The Claude Code and Codex CLIs, because a harness session runs inside the
+  devcontainer of the workspace it belongs to, and both publish often, so their
+  pins, `CLAUDE_CODE_VERSION` and `CODEX_VERSION`, are the anchor's. Both are
+  in `~/.local/bin`, on the `PATH` every process in the image is given, because
+  a session is started by an `exec` naming `claude` or `codex` with no shell in
+  between to add a directory to it. `ai/claude.sh` and `ai/codex.sh` each run
+  the command from there once, so an install that put it anywhere else fails
+  the build rather than the first session.
+- `post-install.sh`, which writes the shell's configuration from
+  `system/.bashrc` and `system/.tmux.conf`.
+
+Each step copies only the scripts it runs and declares only the build arguments
+they read, so a moved pin builds again only the step reading it and the steps
+after it, and a second workspace of this project builds its image from the
+machine's build cache. Every version is pinned: the published images' by their
+tags, the steps' by the anchor or, where a step reads no argument, by the
+script that installs it. gg's toolchains are pinned in each arm's
+`gg/packages/gg-sandbox-*/<lang>-version.sh` in the gg checkout, the one pin
+the pipeline, the run images and this image all install from, with the Rust
+arm's deferring to gg's `rust-toolchain.toml`. A gate whose toolchain is absent fails and
+names what installs it, so a toolchain missing here is a check that says so
 rather than one that quietly passes.
 
-`post-create.sh` installs the git hook through `scripts/setup-hooks.sh`, places
-cargo's target directory (see [Where cargo builds](#where-cargo-builds)) and
-installs the npm workspace's locked dependencies when the container is created.
+`post-create.sh` populates the `contracts/`, `engines/`, `gg/`,
+`microservice-arena/`, `microservice-artifacts/`, `microservice-dispatcher/`,
+`microservice-driver/`,
+`microservice-publisher/`, `microservice-repos/`,
+`tool-model-core/`, `tool-paint/`, `tool-particle/`, `tool-sprite/`, `tool-voxel/`,
+`tool-mc/`, `tool-sn/`, `tool-dc/`, `tool-audio-core/`, `tool-sfx-synth/`,
+`tool-sfx-sample/`, `tool-music/`, `client-tauri/` and
+`ui-common/` submodules, which every build compiles against, and the
+`test-suites/` submodule, the suites checkout the local backend ingests, and the
+`console.testcabinet.ai/` submodule, whose development server runs the console (not
+`cold-storage/`, which is optional and about 2 GB), through
+`tools/submodule-checkout.sh` (see [Submodule checkout](#submodule-checkout)),
+installs the git hook through `scripts/setup-hooks.sh`, places cargo's target
+directory (see [Where cargo builds](#where-cargo-builds)) and installs the npm
+workspace's locked dependencies, and gg's own in `gg/`, and links the TypeScript
+packages the checked-out repositories produce into the workspaces that name them
+through `scripts/repos/link-packages.sh`, when the container is created. A link
+that fails says so and names that command to run again, without failing the
+creation.
 A folder that `git init` has not been run in yet takes the rest and says the
 hook was skipped. Nothing runs in the background afterwards: when it returns,
 the container builds the whole workspace.
 
+## The published images
+
+The template publishes its images to `nyxsisdev.azurecr.io`, a registry
+holding those images alone, which admits anonymous pulls. Every machine
+therefore pulls them with no login, and a first build pulls them once and takes
+only as long as the steps above. Each image is published for amd64 and arm64
+under one tag, built on a machine of each architecture, so the runtime pulls
+the one for the machine it runs on.
+
 ## Architecture
 
-Every script reads `dpkg --print-architecture` out of the image it installs
-into rather than a build argument, because Podman supplies none, and fails
-loudly on an architecture it has no mapping for.
-
-Every script that downloads a binary by hand runs it once, immediately after
-installing it. `kubectl`, `k3d`, `docker`, `lazygit`, `cargo-nextest` and
-`mold` all install just as happily when they are built for the other CPU, and
-would first fail against a cluster, in the test gate, or under your fingers.
-The three browser engines are started once for the same reason, by
-`tools/browsers.sh`. A
-wrong-architecture `node` fails unrecognizably, because `npm`'s shebang leaves
-the failed exec to glibc:
-
-```text
-/home/<user>/.local/bin/node: 1: Syntax error: ")" unexpected
-```
-
-The release archive `languages/rust/cargo-nextest.sh` downloads is checked
-against the checksum `docker-compose.yml` pins beside `NEXTEST_VERSION` for
-this architecture, `NEXTEST_SHA256_AMD64` or `NEXTEST_SHA256_ARM64`, before the
-binary is taken out of it, and nextest is never built from source.
-`languages/rust/mold.sh` checks mold's archive the same way, against
-`MOLD_SHA256_AMD64` or `MOLD_SHA256_ARM64` beside `MOLD_VERSION`.
+The published images are built on a machine of each architecture they are
+published for, by install scripts that read `dpkg --print-architecture` out of
+the image they install into rather than a build argument, and fail loudly on an
+architecture they have no mapping for. Every script that downloads a binary by
+hand runs it once, immediately after installing it, and every release archive
+is checked against a pinned checksum before the binary is taken out of it, so
+a binary built for the other CPU fails the published image's build rather than
+a test gate here. nextest is never built from source.
 
 ## Linker
 
@@ -125,9 +202,9 @@ crate at once, and `mold` links each in a fraction of the time GNU `ld`
 takes. It carries debug info through, so a failed test reports the
 same panic and backtrace.
 
-`languages/rust/mold.sh` installs `mold` beside `cargo`, with `cc-mold`, a
-driver that runs `cc -fuse-ld=mold`. The image's environment names that driver
-as each target's linker:
+The toolchain image installs `mold` beside `cargo`, with `cc-mold`, a driver
+that runs `cc -fuse-ld=mold`, and its environment names that driver as each
+target's linker, which every image built on it inherits:
 
 ```sh
 CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER=cc-mold
@@ -146,10 +223,9 @@ env -u CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER \
 
 ## The cargo wrapper
 
-`languages/rust/permit-wrapper.sh` places a wrapper named `cargo` in
-`~/.local/bin`, which the Dockerfile puts on the `PATH` ahead of
-`~/.cargo/bin`, so every program that runs `cargo` by name reaches it first. It
-runs the toolchain's cargo, at `$CARGO_HOME/bin/cargo` or
+The toolchain image places a wrapper named `cargo` in `~/.local/bin`, which its
+`PATH` puts ahead of `~/.cargo/bin`, so every program that runs `cargo` by name
+reaches it first. It runs the toolchain's cargo, at `$CARGO_HOME/bin/cargo` or
 `~/.cargo/bin/cargo`, with the arguments it was given.
 
 The subcommand is the first argument that is not an option, after a leading
@@ -162,8 +238,9 @@ hand and a container without the executable run cargo as it is. The permit is
 advisory: a command the agent grants none within the wait runs without one, so
 a machine whose agent is down builds as it always did.
 
-The CI images do not run the script. A pipeline job runs no agent, and a job
-that caches the crate registry repoints `CARGO_HOME`.
+The CI images do not use the wrapper. A pipeline job runs no agent, and a job
+that caches the crate registry repoints `CARGO_HOME`, so their `PATH` puts the
+toolchain's own `cargo` first.
 
 ## Browsers
 
@@ -177,77 +254,167 @@ is what makes a layout or rendering difference show up in here rather than
 first on somebody's Mac. Nothing in this image is Safari, and a check that
 passes against WebKit is evidence about Safari rather than proof.
 
-Two scripts install them, at the `PLAYWRIGHT_VERSION` `docker-compose.yml` pins:
+The system libraries the engines link against are the toolchain image's, from
+Playwright's own package list for the distribution it is built on. The engines
+themselves are the playwright image's, copied into `~/.cache/ms-playwright`,
+where Playwright looks for them. That image's build started each one headless
+and rendered a page in it, so an engine that cannot run fails the published
+image rather than the test gate here. The engines occupy a little over a
+gigabyte, and nothing is downloaded when the container opens.
 
-- `system/browser-deps.sh` installs the system libraries the engines link
-  against, as root. The package list is Playwright's own, resolved for the
-  distribution the image is built on, which is why these packages are absent
-  from `system/apt.sh`.
-- `tools/browsers.sh` downloads the engines themselves, as the container user,
-  into `~/.cache/ms-playwright`. It then starts each one headless and renders a
-  page in it, so an engine that cannot run in this image fails the build rather
-  than the test gate.
+The playwright image's tag is the Playwright version that downloaded the
+engines, and the clients that drive them follow it. `PLAYWRIGHT_IMAGE` in
+`docker-compose.yml` decides which build of each engine the image holds, and
+each `playwright` package decides which build its tests ask for, because
+Playwright resolves an engine per client version: the one the workspace's lock
+resolves, `contracts`' own and the console's in
+`console.testcabinet.ai/apps/web/package.json`. A bump therefore moves them
+all, which for the image means a template version holding them, and
+`ci/gates/ci-image-pins.py` reads them and fails with every value when they
+disagree, rather than leaving the mismatch to surface inside the browser
+provider.
 
-That pin is one of two. It decides which build of each engine lands in
-`~/.cache/ms-playwright`, and `apps/web/package.json`'s `playwright` decides
-which build the app's tests ask for, because Playwright resolves an engine per
-client version. A bump therefore moves both, and
-`ci/gates/web-browser-test.py` reads the two and fails with both values
-when they disagree, rather than leaving the mismatch to surface inside the
-browser provider.
+The `playwright` in `engines/packages/case-harness` and
+`contracts/packages/browser-driver` follows the same tag, for the same reason:
+those launch the Chromium the image holds, and a different client version asks
+for a build that is not there.
 
-Both scripts run at build time, so a machine opening the container downloads
-nothing. The engines occupy a little over a gigabyte in `~/.cache/ms-playwright`,
-and the libraries are on top of that. In a container built before the pin moved,
-running both by hand installs the new engines without waiting for a rebuild:
+## The language toolchains
 
-```sh
-sudo bash .devcontainer/system/browser-deps.sh
-bash .devcontainer/tools/browsers.sh
-```
+Each language toolchain this project carries is an image the template
+publishes, which the Dockerfile copies over the toolchain image and follows
+with the `ENV` lines naming where it sits. The image holds the toolchain's
+files under the account's home alone, at the version the template pins, so
+updating the project to a new template version is what moves it. A machine
+pulls it once, and every workspace of every project there copies it from the
+same layers.
+
+The system half the toolchains link against, clang, cmake, Ruby and the
+libraries the Swift and .NET toolchains load, is the base image's whatever this
+project answers, and the toolchain image's stable Rust carries the
+`wasm32-unknown-unknown`, `wasm32-wasip1` and `wasm32-wasip2` targets.
+
+A toolchain is turned on or off by answering its question,
+`toolchain_<name>`, on a template update, such as
+`copier update --trust --data toolchain_swift=true`, and rebuilding the
+container, with **Rebuild Container** in the editor or
+`devcontainer up --remove-existing-container`.
+
+`WASI_PREVIEW1_COMMAND_ADAPTER` is the path of the WASI preview 1 command
+adapter of the wasmtime release the image holds, which a componentize step
+reads it from. The path names that release, so it moves with the template.
+
+`PYTHON_BIN_DIR` holds the pinned interpreter's three names and nothing else,
+and leads the `PATH`, so `python3` and `python` by name are the pin and the
+directory shadows no other command. The distribution's interpreter stays at
+`/usr/bin/python3` for anything that names it by path.
+
+`JAVA_HOME` names the jvm image's JDK, which exists on both architectures.
+`GRADLE_USER_HOME` is Gradle's own default, `~/.gradle`, published so that
+every build, a shell's and a pipeline step's alike, reads the seeded cache.
+
+`DOTNET_ROOT` is where the `dotnet` host finds its SDK, and
+`DOTNET_LOCAL_FEED` is the package folder a restore names as its only source,
+holding FSharp.Core, DocFX and FSharp.Formatting. On amd64 it holds the
+componentizer as well, whose compiler is published for x64 alone.
+`DOTNET_CLI_TELEMETRY_OPTOUT` keeps the CLI from sending telemetry.
+
+`GEM_HOME` is the tree RubyGems reads and installs into, under the account's
+home, so a `gem install` needs no `sudo`, and its bin directory, where a gem's
+executables land, is on the `PATH`.
 
 ## gg's toolchains
 
 gg drives a model in one of eleven program languages, and what a model is told
-about each one is a signature catalogue that `crates/gg/build.rs` reflects out
+about each one is a signature catalogue that `gg/crates/gg/build.rs` reflects out
 of that arm's own SDK, with that arm's own documentation tool, on every build of
 the crate. The toolchains are therefore a prerequisite of building the
 workspace, and a prerequisite of working in the repository is a prerequisite of
 the image rather than an hour of downloads after the container is created.
-`languages/gg/install.sh` installs them in the image's last layer, and its
-header says why it delegates rather than installs:
+`languages/gg/install.sh` puts them in the image's last layer, and its header
+says why it delegates rather than installs.
 
-- `scripts/ci/install-gg-toolchains.sh` installs the eleven arms, about 1.9 GB:
-  the pinned YARD on the image's `ruby`, the `wasm32` standard library, `purs`
-  and `esbuild`, a JDK with TeaVM and the Kotlin compiler, wasi-sdk, .NET with
-  Roslyn, the Swift toolchain, and the package-manager-delivered build tools
-  the arms' artifact builds resolve offline.
-- `scripts/ci/install-gg-build-toolchains.sh` installs what building the C#
-  guest needs and no run does, about 1.4 GB under `~/.local/share/tcab/gg-build`:
-  a whole .NET SDK and an unpruned wasi-sdk.
+Most of them come from the language images, which every workspace on a machine
+copies from the same layers rather than downloading for itself. The project
+answers yes to the template's `wasm_components`, `wasi_sdk`, `python`, `jvm`,
+`dotnet`, `ruby`, `swift` and `purescript` toolchains, and
+gg's `scripts/ci/gg-image-toolchains.sh` runs first in the layer. It builds, at the
+default home each arm's installer checks, a small tree of links into the
+image's toolchain with the installer's version stamp beside it:
 
-They are the same two installers the pipeline's `scripts/ci/gg-ci-toolchains.sh`
+| Arm | Default home | Linked to |
+| --- | --- | --- |
+| Swift | `~/.local/share/tcab/gg-swift` | the swift image's toolchain and its SDK for WebAssembly |
+| C++, and the ECMAScript guest | `~/.local/share/tcab/gg-wasi-sdk` | the wasi-sdk image's tree |
+| C# | `~/.local/share/tcab/gg-dotnet` | the dotnet image's SDK, its Roslyn and its reference assemblies |
+| C# guest's build | `~/.local/share/tcab/gg-build` | the dotnet image's SDK, unpruned |
+| Java | `~/.local/share/gg-java/jdk` | the jvm image's JDK |
+| Java and Kotlin, TeaVM | `~/.local/share/gg-java/libs` | each pinned TeaVM jar the jvm image's Gradle cache holds |
+| Kotlin | `~/.local/share/gg-kotlin/libs` | the compiler's jars in the jvm image's Gradle cache |
+| PureScript, spago | `~/.local/share/tcab/gg-npm/spago-<version>-<lock digest>` | the purescript image's spago, whose tree has to be the one gg's `scripts/gg-npm-locks/` names |
+| The C++, Swift and Rust arms' bindings | `~/.local/share/tcab/gg-wit-bindgen-<version>` | the wasm-components image's `wit-bindgen` |
+
+`purs`, YARD (in `GEM_HOME`) and componentize-py are where the installers and
+gg already look, so the script only checks their versions. Then the two
+installers run, and each arm the images hold is already installed as far as
+they can tell:
+
+- gg's `scripts/ci/install-gg-toolchains.sh` installs the eleven arms. In this image
+  it fetches what no language image holds: the TeaVM dependencies the jvm
+  image's Gradle cache lacks (it resolved ASM to another release, and holds
+  neither hppc nor Rhino), `esbuild`, the
+  `wasm32` standard library where the toolchain image lacks it, the wasmtime
+  reactor adapter (the image holds the command adapter of another wasmtime
+  release), and the
+  package-manager-delivered build tools the arms' artifact builds resolve
+  offline (spago's store, componentize-js and opal-compiler, the opal gem, the
+  Python arm's wheels and the two Rust crate sets).
+- gg's `scripts/ci/install-gg-build-toolchains.sh` installs what building the C#
+  guest needs and no run does. In this image it fetches the Mono WASI runtime
+  pack, installs the `wasi-experimental` workload into the dotnet image's SDK
+  tree, and fetches the wasi-sdk release the guest links with. That release is
+  pinned apart from the C++ arm's, to the one Mono's prebuilt runtime pack was
+  built against, and while the two differ no image holds it. The workload is
+  the one write into an image's tree: the SDK the guest builds with is the one
+  `DOTNET_ROOT` and `~/.local/bin/dotnet` name, so the workspace's own `dotnet`
+  has the workload too, in this layer only.
+
+They are the same two installers gg's pipeline's `scripts/ci/gg-ci-toolchains.sh`
 and the driver image's gg stage run, so the one pinned list serves every surface
-that builds gg. Everything lands under the container user's home, which is
-where the reflectors look first and all that three of the arms can use, so the
-layer runs as that user and `"updateRemoteUserUID": false` in
-`devcontainer.json` is load-bearing: a uid rewrite at start would orphan it.
+that builds gg. Those surfaces copy no language image and run no link script, so
+there the installers download every arm as before. Everything lands under the
+container user's home, which is where the reflectors look first, so the layer
+runs as that user and `"updateRemoteUserUID": false` in `devcontainer.json` is
+load-bearing: a uid rewrite at start would orphan it.
 
-The layer is last, and its own, so a pin moving under `packages/`, an installer
+Each arm's pin stays in its `gg/packages/gg-sandbox-*/<lang>-version.sh`, and has
+to be the version the image's tag in `docker-compose.yml` names. A pin the
+image does not hold fails the link script, and the image build with it, with
+the pin file and both versions named, rather than letting an installer
+download the arm into the image unnoticed. `gg/scripts/ci/gg-image-toolchains.test.sh`
+reads the anchor's tags against the pins, so the same disagreement fails the
+`shell-tests` gate before an image is built. A template update that moves one
+of these images therefore moves the arm's pin in the same change.
+
+The layer is last, and its own, so a pin moving under `gg/packages/`, an installer
 changing or a new arm arriving rebuilds it and nothing above it, and a failed
-download from one of its half-dozen upstreams is retried with everything else
-cached. Each installer checks what is there against its pin and touches no
-network when they match, so in a container built before a pin moved, running
-both by hand reconciles it without waiting for a rebuild:
+download from one of its upstreams is retried with everything else cached. Each
+installer checks what is there against its pin and touches no network when they
+match, so in a container built before a pin moved, running both by hand
+reconciles it without waiting for a rebuild. An arm whose pin moved past the
+image it came from is then downloaded into its default home, over the links,
+until the container is rebuilt on a template that holds it:
 
 ```sh
+cd gg
 scripts/ci/install-gg-toolchains.sh
 scripts/ci/install-gg-build-toolchains.sh
 ```
 
 The one prerequisite of a gg build that is not in the image is the npm
 workspace, because two of the eleven catalogues are reflected with the pinned
-`typescript` in it, and it lives in the checkout. `post-create.sh` installs it.
+`typescript` in it, and it lives in the gg checkout. `post-create.sh` installs
+it with `npm ci --prefix gg`.
 
 ## The build context
 
@@ -257,16 +424,18 @@ repository is not mounted while an image builds. Every `COPY` in
 `ubuntu.dockerfile` is therefore written from the root, and the last layer
 stages a partial repository at `/tmp/scripts/gg-repo` for the installers: the
 installers and the shell they source, gg's own build shell, every arm's pins
-and the files those pins read, and `rust-toolchain.toml`. `scripts/ci/tcab-lib.sh`
+and the files those pins read, and `rust-toolchain.toml`, all copied from the
+`gg/` checkout, so `gg/` is checked out on the host before the image is built
+(`git submodule update --init gg`). gg's `scripts/ci/tcab-lib.sh`
 resolves the repository root from its own path, which is what lets the slice
 stand in for a checkout. The `RUN` that installs deletes it, so the image ships
 no stale half repository to read a pin out of.
 
 The root `.dockerignore` is an allowlist, and it decides what the build sees:
 it admits the directories under `.devcontainer/` the Dockerfile copies, the
-installers, gg's shell, the guest packages and `rust-toolchain.toml`. A source
+installers, gg's shell, the guest packages and `rust-toolchain.toml` under `gg/`. A source
 it keeps out fails the build at that `COPY` with the path not found, under
-Docker and Podman alike. The files under `packages/` are copied one by one
+Docker and Podman alike. The files under `gg/packages/` are copied one by one
 rather than as a directory, because a directory copy takes everything the
 allowlist admits, and would put the arms' whole sources into the toolchain
 layer's cache key; the price is that a new arm names its version file in the
@@ -278,7 +447,7 @@ does.
 A binary linked statically against musl carries no dynamic loader, so it runs
 on a distribution that ships none of the usual FHS layout, NixOS among them, as
 well as on a mainstream one. `languages/rust/targets.sh` adds this
-architecture's musl target, and `system/apt.sh` installs `musl-tools`, whose
+architecture's musl target, and `system/packages.sh` installs `musl-tools`, whose
 `musl-gcc` is the linker such a build needs and the C compiler a crate
 compiling C of its own calls:
 
@@ -306,7 +475,7 @@ them together and the gate runs it on every commit.
 ## Where cargo builds
 
 cargo builds into the checkout's `target/`, where `make clean` reaches it and
-where `crates/core` looks for a locally built gg (`target/debug/gg`,
+where microservice-driver's `crates/driver` looks for a locally built gg (`target/debug/gg`,
 `target/release/gg`). Every machine in the fleet runs Podman with the checkout
 bound in directly, so nothing moves the directory elsewhere; a developer who
 wants it elsewhere sets `CARGO_TARGET_DIR`, which the scripts that look for a
@@ -366,30 +535,30 @@ Podman, build with `podman build`.
 ## Host files
 
 What differs from one machine to the next is stated in variables the compose
-file reads: the host user's ids, the user namespace the container runs in,
-where the runtime socket and the SSH agent are, and whether the image carries
-the CUDA toolkit. `.env` beside the compose file is where a machine states
-them. Compose reads `.env` from the directory the compose file sits in, so the
-values reach an editor's **Reopen in Container**, which sets no environment of
-its own, and `devcontainer up` alike, and a variable already set in the
-environment the container is started from wins over the file, which is how a
-bring-up managed for the machine states them. `.env` is ignored by git, because
-its values are the machine's, and is copied from one of the files committed
-beside it, each of which says what it sets and why:
+file reads: the user namespace the container runs in, where the runtime socket
+and the SSH agent are, and whether the image carries the CUDA toolkit. `.env`
+beside the compose file is where a machine states them. Compose reads `.env`
+from the directory the compose file sits in, so the values reach an editor's
+**Reopen in Container**, which sets no environment of its own, and
+`devcontainer up` alike, and a variable already set in the environment the
+container is started from wins over the file, which is how a bring-up managed
+for the machine states them. `.env` is ignored by git, because its values are
+the machine's, and is copied from one of the files committed beside it, each
+of which says what it sets and why:
 
 | Host | Before the first start |
 | --- | --- |
-| Rootless Podman on Linux | `cp .devcontainer/.env.podman .devcontainer/.env`, then put the ids `id` prints in it |
+| Rootless Podman on Linux | `cp .devcontainer/.env.podman .devcontainer/.env` |
 | Podman on macOS | `cp .devcontainer/.env.macos .devcontainer/.env`, then start the two bridges [Podman on macOS](#podman-on-macos) describes |
 
-Rootless Podman maps the host user to root inside the container unless told
-otherwise, and the `keep-id` mapping `.env.podman` states maps it onto the
-container user instead, so files the container writes into the checkout stay
-owned by that user on the host. The mapping and the ids the image creates the
-user with are both built from `DEVCONTAINER_UID` and `DEVCONTAINER_GID`, so
-`id` is checked once: a primary group that is `users` (100) rather than a
-per-user group (1000) is the usual difference between a NixOS host and an
-Ubuntu one. Enable Podman's socket once with
+The container's account is the published toolchain image's, `dev` at uid and
+gid 1000, on every machine. Rootless Podman maps the host user to root inside
+the container unless told otherwise, and the
+`keep-id:uid=1000,gid=1000` mapping `.env.podman` states maps the host's
+account onto that account instead, whatever ids the host's account has, so
+files the container writes into the checkout stay owned by that account on the
+host. A host whose account is not 1000:1000, such as a NixOS host whose primary
+group is `users` (100), needs nothing more. Enable Podman's socket once with
 `systemctl --user enable --now podman.socket`, and run the devcontainer CLI
 with `--docker-path podman`, because the `docker` client refuses a `keep-id`
 user namespace before Podman sees it.
@@ -398,8 +567,7 @@ The variables and what the compose file defaults each to when nothing sets it:
 
 | Variable | Default | Declares |
 | --- | --- | --- |
-| `DEVCONTAINER_UID`, `DEVCONTAINER_GID` | `1000`, `1000` | The ids the image creates the container user with |
-| `DEVCONTAINER_USERNS` | `host` | The user namespace, `keep-id:uid=<uid>,gid=<gid>` on rootless Podman |
+| `DEVCONTAINER_USERNS` | `host` | The user namespace, `keep-id:uid=1000,gid=1000` on rootless Podman, which maps the host's account onto the image's |
 | `DEVCONTAINER_RUNTIME_SOCKET` | `/var/run/docker.sock` | The host's runtime socket, bound in; `/dev/null` where none can be |
 | `DEVCONTAINER_SSH_AUTH_SOCK` | `/dev/null` | The host's SSH agent socket, bound in |
 | `DEVCONTAINER_RUNTIME_TCP`, `DEVCONTAINER_SSH_AGENT_TCP` | unset | Where each is bridged from over TCP when it cannot be bound in |
@@ -517,6 +685,56 @@ writes what it did to `/tmp/ssh-agent-socat.log`. If that reports no identities,
 the bridge is fine and the host's agent is empty.
 
 The image's SSH client is configured with `WarnWeakCrypto no` in
-`/etc/ssh/ssh_config.d/50-warn-weak-crypto.conf`, which `system/apt.sh` writes,
-so a connection to a forge offering no post-quantum key exchange prints no
+`/etc/ssh/ssh_config.d/50-warn-weak-crypto.conf`, which the toolchain image
+holds, so a connection to a forge offering no post-quantum key exchange prints no
 warning about it.
+
+## Submodule checkout
+
+The `contracts/`, `engines/`, `gg/`, `microservice-arena/`,
+`microservice-artifacts/`,
+`microservice-dispatcher/`, `microservice-driver/`,
+`microservice-publisher/`, `microservice-repos/`, `tool-model-core/`,
+`tool-paint/`, `tool-particle/`,
+`tool-sprite/`, `tool-voxel/`, `tool-mc/`, `tool-sn/`, `tool-dc/`,
+`tool-audio-core/`, `tool-sfx-synth/`, `tool-sfx-sample/`, `tool-music/`,
+`client-tauri/`, `test-suites/`, `ui-common/` and `console.testcabinet.ai/`
+submodules live in the
+organization's other repositories, reached over SSH at `ssh.dev.azure.com`.
+`post-create.sh` checks them out ahead of `npm ci`, whose workspace lists the
+packages `contracts/`, `engines/` and `ui-common/` hold, and `post-start.sh`
+checks them out again at every start, each through
+`tools/submodule-checkout.sh` after the SSH agent is published. The script pins
+Azure DevOps' published RSA host key in `~/.ssh/known_hosts`, so the first clone
+does not stop at the interactive host-key prompt nothing is there to answer, and
+runs
+
+```sh
+git submodule update --init \
+  contracts engines gg microservice-arena microservice-artifacts \
+  microservice-dispatcher microservice-driver microservice-publisher microservice-repos \
+  tool-model-core tool-paint tool-particle tool-sprite tool-voxel tool-mc \
+  tool-sn tool-dc tool-audio-core tool-sfx-synth tool-sfx-sample tool-music \
+  client-tauri test-suites ui-common console.testcabinet.ai
+```
+
+through the host's agent when the checkout holds a `.gitmodules`. Passed
+submodule paths, it checks out those instead; `cold-storage/` is left to a
+`git submodule update --init cold-storage` by hand, and `gg.rocks/` and
+`testcabinet.ai/`, the public sites no local service runs from, to a
+`git submodule update --init gg.rocks testcabinet.ai` when a task touches
+them. It never fails the step it runs from: a host with no agent, or no network,
+keeps a working container and says so, and the next start or that command
+checks the submodules out once SSH works.
+
+It never holds the step either. A connection can stall where it cannot fail: an
+agent whose key waits on an approval nobody is there to give answers
+`ssh-add -l` and never signs, and a network can accept a connection and carry
+nothing. A submodule already cloned is then fetched without a word, so the step
+would stop with nothing said, and whatever started the container, the Nyxsis
+agent included, would wait on it until its own deadline and count the container
+as never having come up. The script therefore says how long it gives the checkout
+before it begins, connects with `ConnectTimeout` and `ServerAliveInterval`, and
+stops a checkout that outlives the deadline, saying that it did. The deadline is
+120 seconds, or the positive whole number of seconds `SUBMODULE_CHECKOUT_TIMEOUT`
+states in the container's environment.

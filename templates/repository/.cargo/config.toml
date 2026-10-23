@@ -1,0 +1,18 @@
+# Cargo fetches a git dependency through the git on PATH rather than its own
+# client, so a fetch honors the user's git configuration: the SSH agent, and
+# the URL rewrites that send a fetch of a GitHub mirror of a repository of The
+# Test Cabinet to Azure DevOps while the mirrors are private (the superrepo's
+# scripts/repos/sources.py rewrites, and scripts/ci/git-sources.sh in a
+# pipeline).
+[net]
+git-fetch-with-cli = true
+
+# rustdoc documents the private items too, so the `rust-doc` gate holds every
+# doc comment's links, not the public ones alone. The superrepo's
+# .cargo/config.toml sets the same flag, and Cargo reads it as an ancestor
+# configuration inside the superrepo, so a gate run there and the pipeline,
+# which builds this repository on its own, judge the same documentation. There
+# Cargo joins the two lists, and rustdoc takes the repeated flag as one. A
+# `RUSTDOCFLAGS` in the environment, even an empty one, takes precedence.
+[build]
+rustdocflags = ["--document-private-items"]

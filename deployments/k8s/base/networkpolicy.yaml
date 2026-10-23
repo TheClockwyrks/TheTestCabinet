@@ -1,12 +1,20 @@
-# Optional NetworkPolicy. With no public Ingress, reachability is already limited
-# to the cluster network; this tightens it. Your cluster needs a NetworkPolicy-
-# enforcing CNI (Calico, Cilium, etc.) for these to take effect.
+# Optional NetworkPolicy. Nothing outside the cluster connects in (the edge's
+# tunnel is outbound), so reachability is already limited to the cluster network;
+# this tightens it. The console reaches the backend, the artifacts service and the
+# arena through the edge, so no console-to-service flow exists here: the edge
+# component (components/edge) adds the flows from its tunnel's pods. Your cluster
+# needs a NetworkPolicy-enforcing CNI (Calico, Cilium, etc.) for these to take
+# effect.
 #
 # Pod labels this policy selects on (set by the dispatcher + driver):
 #   - dispatcher pod:  app.kubernetes.io/name: tcab-dispatcher
 #   - driver Job pods: app.kubernetes.io/managed-by: tcab-dispatcher (the Jobs it creates)
 #   - sandbox pods:    app.kubernetes.io/managed-by: tcab-driver     (created by a driver)
 #   - artifact pods:   app.kubernetes.io/name: tcab-artifacts
+#   - repos pods:      app.kubernetes.io/name: tcab-repos
+#
+# Publish Job pods carry the driver Job pods' label (the dispatcher creates both),
+# so every flow from a driver below admits the publisher too.
 #
 # Sandbox pods need NO inbound access except the driver's exec/preview connections —
 # exec rides the API server, preview is the driver pod reaching the sandbox pod —
@@ -23,9 +31,10 @@ spec:
   policyTypes: ["Ingress"]
   # No ingress rules => deny all inbound by default; add explicit allows below.
 ---
-# Let the control-plane callers reach the backend and auth service: the dispatcher
-# (claim + status), the driver Job pods (stream events/preview/status, push the
-# record), and the artifact service (verify upload/read tokens).
+# Let the control-plane callers reach the backend: the dispatcher (claim + status),
+# the driver Job pods (stream events/preview/status, push the record), the artifact
+# and repos services (verify a driver's per-job or a publisher's per-publish-job
+# token; the repos service also reads a published run's record) and the arena.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -33,20 +42,11 @@ metadata:
   namespace: tcab-prod
 spec:
   podSelector:
-    matchExpressions:
-      - key: app.kubernetes.io/name
-        operator: In
-        values: ["tcab-backend", "tcab-auth"]
+    matchLabels:
+      app.kubernetes.io/name: tcab-backend
   policyTypes: ["Ingress"]
   ingress:
     - from:
-        # The backend itself, which verifies every bearer token against the auth
-        # service (`POST /auth/verify`) — e.g. when authorizing a run submission.
-        # Without this the backend's in-cluster call to tcab-auth is refused by the
-        # default-deny ingress and run creation fails with a 502 auth transport error.
-        - podSelector:
-            matchLabels:
-              app.kubernetes.io/name: tcab-backend
         # The dispatcher.
         - podSelector:
             matchLabels:
@@ -55,38 +55,21 @@ spec:
         - podSelector:
             matchLabels:
               app.kubernetes.io/managed-by: tcab-dispatcher
-        # The artifact service (forwards a driver's per-job token to the backend and
-        # a reviewer's account token to auth).
+        # The artifact service (forwards a driver's per-job token to the backend).
         - podSelector:
             matchLabels:
               app.kubernetes.io/name: tcab-artifacts
+        # The repos service (forwards a driver's per-job or a publisher's
+        # per-publish-job token to the backend, and reads the record a publish
+        # stamps its commit with).
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: tcab-repos
         # The arena service (fetches controller inputs from the backend and persists
         # finished tournaments + replays back to it).
         - podSelector:
             matchLabels:
               app.kubernetes.io/name: tcab-arena
----
-# Let the console reach the arena service to run matches/tournaments and stream live
-# tournament progress. Like the backend and artifact services, the console reaches it
-# via the same private-network boundary the deployment fronts these with; this allow
-# admits the in-cluster callers (no public Ingress rule lives here). The arena holds
-# no inbound dependency of its own beyond the console — it is a leaf compute service.
-apiVersion: networking.k8s.io/v1
-kind: NetworkPolicy
-metadata:
-  name: tcab-allow-arena-from-console
-  namespace: tcab-prod
-spec:
-  podSelector:
-    matchLabels:
-      app.kubernetes.io/name: tcab-arena
-  policyTypes: ["Ingress"]
-  ingress:
-    # No in-cluster pod posts to the arena (the console does, over the boundary); an
-    # empty `from` with the port keeps the rule explicit without widening ingress.
-    - ports:
-        - protocol: TCP
-          port: 8791
 ---
 # Let the artifact service's two callers in: a driver Job pod uploading its produced
 # run tree, and the backend managing that tree's lifetime (pruning a deleted run's
@@ -114,6 +97,33 @@ spec:
         # are refused by the default-deny ingress as a connection timeout, which reads
         # as an artifact-service outage rather than a policy refusal, and a deleted
         # run's tree occupies the volume forever.
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: tcab-backend
+---
+# Let the repos service's callers in: a driver Job pod uploading the run's bundle, a
+# publish Job pod asking for the public push (both labelled managed-by the
+# dispatcher), and the backend reading a bundle for a console's download and
+# deleting a deleted run's bundle. The service's own traffic out (its Blob
+# container, GitHub and the backend) is egress, which no policy here restricts.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: tcab-allow-repos-from-callers
+  namespace: tcab-prod
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: tcab-repos
+  policyTypes: ["Ingress"]
+  ingress:
+    - from:
+        # Every driver and publish Job pod (the dispatcher labels them managed-by
+        # itself).
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/managed-by: tcab-dispatcher
+        # The backend, over TCAB_REPOS_URL.
         - podSelector:
             matchLabels:
               app.kubernetes.io/name: tcab-backend

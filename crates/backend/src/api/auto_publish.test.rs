@@ -5,7 +5,7 @@
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use sea_orm::ConnectionTrait;
-use test_cabinet_core::run_record::RunState;
+use test_cabinet_contracts::run_record::RunState;
 
 use super::{AutoPublishCause, auto_publish_runs};
 use crate::api::flow_harness::*;
@@ -19,7 +19,7 @@ async fn launch_and_report(
     job_id: &str,
     slug: &str,
     origin: Option<&str>,
-    record: test_cabinet_core::run_record::RunRecord,
+    record: test_cabinet_contracts::run_record::RunRecord,
 ) {
     enqueue_other(state, job_id, slug, origin).await;
     report(state, job_id, record).await;
@@ -120,7 +120,7 @@ async fn a_legacy_run_is_never_published_automatically() {
         .db
         .add_review(
             "run-j",
-            &review_by("reviewer", test_cabinet_core::review::Rating::Great),
+            &review_by("reviewer", crate::review::Rating::Great),
             None,
             None,
         )
@@ -187,12 +187,11 @@ async fn an_already_published_run_is_not_published_again() {
     assert!(publish_jobs(&state).await.is_empty());
 }
 
-/// The triggers enqueue a run's first publish job and no other: a publish that
-/// failed is left to the retry of failed publishes (`publish_retry.rs`), which
-/// spaces its attempts, so a repeated report or a launch pass does not enqueue it
+/// One automatic attempt per run: a publish that failed is left to the retry of
+/// failed publishes, so neither a repeated report nor a ladder pass enqueues it
 /// again.
 #[tokio::test]
-async fn a_failed_publish_is_not_enqueued_again_by_a_trigger() {
+async fn a_failed_publish_is_not_retried_automatically() {
     let (_dir, state) = test_state().await;
     launch_and_report(&state, "j", "pong", None, run_of("run-j", "pong", GREAT)).await;
     let job = publish_jobs(&state).await.remove(0);

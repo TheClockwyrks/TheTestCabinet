@@ -91,28 +91,38 @@ expected() { # image dockerfile arch extra
 	echo "docker buildx build --platform linux/$3 --file $2 --tag $R/$1:$SHA-$3 --build-arg TCAB_BUILD_COMMIT=$SHA --provenance=false --cache-from type=registry,ref=$R/$1:buildcache-$3 --cache-to type=registry,ref=$R/$1:buildcache-$3,mode=max,image-manifest=true,oci-mediatypes=true --push${4:+ $4} . [cwd=$repo]"
 }
 
-for service in backend dispatcher artifacts arena publisher; do
-	out="$(run "$service" "$SHA")"
-	check_equal "$service builds" "0" "$?"
-	check_equal "$service is tcab-$service, its target of services.Dockerfile" \
-		"$(expected "tcab-$service" deployments/images/services.Dockerfile amd64 "--target $service")" "$(build_line)"
-done
+out="$(run backend "$SHA")"
+check_equal "backend builds" "0" "$?"
+check_equal "backend is tcab-backend, its target of services.Dockerfile" \
+	"$(expected tcab-backend deployments/images/services.Dockerfile amd64 "--target backend")" "$(build_line)"
 
 out="$(run auth "$SHA")"
-check_equal "auth builds" "0" "$?"
-check_equal "auth is tcab-auth-service" \
-	"$(expected tcab-auth-service deployments/images/services.Dockerfile amd64 "--target auth")" "$(build_line)"
+check_equal "auth is no longer a service" "1" "$?"
+check_contains "and is named unknown" "unknown service 'auth'" "$out"
+
+out="$(run arena "$SHA")"
+check_equal "arena is no longer a service (microservice-arena builds it)" "1" "$?"
+check_contains "and is named unknown" "unknown service 'arena'" "$out"
+
+out="$(run artifacts "$SHA")"
+check_equal "artifacts is no longer a service (microservice-artifacts builds it)" "1" "$?"
+check_contains "and is named unknown" "unknown service 'artifacts'" "$out"
+
+out="$(run dispatcher "$SHA")"
+check_equal "dispatcher is no longer a service (microservice-dispatcher builds it)" "1" "$?"
+check_contains "and is named unknown" "unknown service 'dispatcher'" "$out"
 
 out="$(run driver "$SHA")"
-check_equal "driver builds" "0" "$?"
-check_equal "driver bakes the audio store of the same commit" \
-	"$(expected tcab-driver deployments/images/services.Dockerfile amd64 "--target driver --build-arg AUDIO_STORE_IMAGE=$R/test-cabinet-audio-store:$SHA")" \
-	"$(build_line)"
+check_equal "driver is no longer a service (microservice-driver builds it)" "1" "$?"
+check_contains "and is named unknown" "unknown service 'driver'" "$out"
 
 out="$(run web "$SHA")"
-check_equal "web builds" "0" "$?"
-check_equal "web has its own Dockerfile and no target" \
-	"$(expected tcab-web deployments/images/web.Dockerfile amd64 "")" "$(build_line)"
+check_equal "web is no longer a service (console.testcabinet.ai builds it)" "1" "$?"
+check_contains "and is named unknown" "unknown service 'web'" "$out"
+
+out="$(run publisher "$SHA")"
+check_equal "publisher is no longer a service (microservice-publisher builds it)" "1" "$?"
+check_contains "and is named unknown" "unknown service 'publisher'" "$out"
 
 out="$(STUB_UNAME_M=aarch64 run backend "$SHA")"
 check_equal "an arm64 build succeeds" "0" "$?"
@@ -126,24 +136,14 @@ out="$(STUB_CREATE_EXIT=1 run backend "$SHA")"
 check_equal "a builder that already exists is reused" "0" "$?"
 check_contains "by name" "docker buildx use tcab-ci" "$(cat "$tmp/docker.log")"
 
-# TCAB_PREBUILT_GG replaces the `gg-build` stage for the two targets that copy out of it,
-# and only those: the flag goes last, after every other argument.
-out="$(TCAB_PREBUILT_GG=/stage/gg run backend "$SHA")"
-check_equal "backend with a prebuilt gg builds" "0" "$?"
-check_equal "and takes it as the gg-build named context" \
-	"$(expected tcab-backend deployments/images/services.Dockerfile amd64 "--target backend --build-context gg-build=/stage/gg")" \
-	"$(build_line)"
-out="$(TCAB_PREBUILT_GG=/stage/gg run driver "$SHA")"
-check_equal "driver with a prebuilt gg builds" "0" "$?"
-check_equal "and takes it after the audio store" \
-	"$(expected tcab-driver deployments/images/services.Dockerfile amd64 "--target driver --build-arg AUDIO_STORE_IMAGE=$R/test-cabinet-audio-store:$SHA --build-context gg-build=/stage/gg")" \
-	"$(build_line)"
-for service in dispatcher web; do
-	out="$(TCAB_PREBUILT_GG=/stage/gg run "$service" "$SHA")"
-	check_lacks "$service ignores a prebuilt gg" "gg-build" "$(build_line)"
-done
-out="$(TCAB_PREBUILT_GG="" run backend "$SHA")"
-check_lacks "an empty TCAB_PREBUILT_GG keeps the Dockerfile's own stage" "--build-context" "$(build_line)"
+# The backend fetches the pinned gg release in the Dockerfile itself, so it is handed
+# neither a named context nor a gg argument.
+out="$(run backend "$SHA")"
+check_lacks "backend takes no gg context" "--build-context" "$(build_line)"
+# The stub annotates each line with its working directory, a mktemp path whose
+# random suffix can hold any letters, so the arguments are judged without it.
+args="$(build_line)"
+check_lacks "backend takes no gg argument" "GG" "${args% \[cwd=*}"
 
 out="$(run gateway "$SHA")"
 check_equal "an unknown service fails" "1" "$?"

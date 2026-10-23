@@ -1,0 +1,35 @@
+# The workspace of the {{name}} repository. Every crate under crates/ is a
+# member; add a crate by adding its directory.
+[workspace]
+# The resolver of edition 2024, the monorepo's, so a crate resolves the same
+# features and the same MSRV-aware versions on both sides of an extraction.
+resolver = "3"
+members = ["crates/*"]
+
+[workspace.package]
+edition = "2024"
+version = "0.0.0"
+license = "MIT"
+repository = "{{public_source}}"
+# A crate of The Test Cabinet is consumed by its git source, never from
+# crates.io, so none is published; a member says `publish.workspace = true`, and
+# Cargo refuses that key when the root holds none to inherit.
+publish = false
+
+# Warnings-as-errors, baked into the manifests for every member crate that
+# opts in with `[lints] workspace = true`, so a plain `cargo build` enforces
+# the policy the clippy gate enforces on the command line.
+[workspace.lints.rust]
+warnings = "deny"
+
+[workspace.lints.clippy]
+all = "deny"
+
+# The crates of the other repositories this one may depend on, each at its
+# public source, the GitHub mirror, and the tag its dependents pin. The
+# superrepo's .cargo/config.toml redirects every one of these to the sibling
+# checkout, so a build inside the superrepo never fetches them. A manifest
+# never names an Azure URL or a path outside the repository: the
+# dependency-edges gate refuses both.
+[workspace.dependencies]
+{{workspace_dependencies}}

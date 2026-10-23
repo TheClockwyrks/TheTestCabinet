@@ -71,7 +71,7 @@ the lock and is left alone.
 
 The audio bucket is private and distinct from the backend's public
 [snapshot](/components/backend/snapshot/) bucket. The snapshot bucket is
-public-read, so the site fetches it anonymously at build time; the audio objects
+public-read, so the gallery fetches it anonymously at runtime; the audio objects
 stay private. R2's public access is a per-bucket switch, so the two need
 separate buckets, and they have different writer identities and different blast
 radius. R2 charges no egress, so the fetch is free.
@@ -228,8 +228,8 @@ lock says which bytes exist and what they hash to.
 ## Publishing the store a run stages out of
 
 Every published pack lives in the audio store, and a run container is given the
-subset its test case declares. `scripts/stage-audio-store.mjs` materializes that
-store under `dist/audio-store/tree`:
+subset its test case declares. microservice-driver's `scripts/stage-audio-store.mjs`
+materializes that store under `dist/audio-store/tree` in that checkout:
 
 ```
 objects.lock.json                     the published objects, copied in as-is
@@ -245,25 +245,28 @@ to Freesound.
 
 The lock is copied into the store beside the tree it describes, so the same check
 runs wherever the store ends up. [Staging a
-run](/components/core/execution/#staged-audio) verifies every clip it copies into
+run](/components/driver/execution/#staged-audio) verifies every clip it copies into
 a container against it.
 
-`./containers/build.sh audio-store` and the Azure pipeline both run the stager
+`containers/build.sh audio-store` in `microservice-driver/` and the Azure
+pipeline both run the stager
 and build the data-only `audio-store` image over its output. Run the stager on
 its own to materialize the tree without building.
 
 ```sh
+# In microservice-driver.
 node scripts/stage-audio-store.mjs                 # every published pack
 node scripts/stage-audio-store.mjs gm-lite@0.1.0   # only the refs you name
 
-./containers/build.sh audio-store                  # the image, locally
+containers/build.sh audio-store                    # the image, locally
 ```
 
 The `audio-store` image is what carries the store to a machine with no audio
 credentials. The pipeline publishes it on every push to `master` and `staging`
 as `testcabinet.azurecr.io/test-cabinet-audio-store:<sha>`. The driver image
 copies it in at `/opt/tcab-audio`, and a local checkout fetches it with
-`scripts/fetch-audio-store.sh`, which pulls the image and extracts the tree.
+microservice-driver's `scripts/fetch-audio-store.sh`, which pulls the image and
+extracts the tree.
 Pulling it needs `az acr login --name testcabinet` and `TCAB_CONTAINER_TAG` set
 to the commit whose store you want.
 
@@ -282,7 +285,7 @@ take the bytes straight from the object store:
 make -C deployments/local audio-store
 make -C deployments/local local-rebuild
 
-# a host-side `tcab run` / `tcab validate`
+# a host-side `tcab validate`, in microservice-driver
 scripts/fetch-audio-store.sh --stage
 ```
 

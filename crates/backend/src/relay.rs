@@ -4,12 +4,24 @@
 //! A run is driven by a per-run Job pod (the driver), not the backend, so the
 //! backend never executes a run — it **relays** one. The driver streams the
 //! harness events and asset-preview frames it produces to the backend over HTTP
-//! (`POST /jobs/{id}/events|preview`); the relay records them per job and fans
-//! them out to every live subscriber on `GET /jobs/{id}/live` (NDJSON), exactly
-//! as the old in-process worker did over its own broadcast channel — only now the
-//! producer is across the network. A late subscriber is replayed the backlog (and
-//! the latest preview per frame) before the live tail, so it never misses
-//! progress between dispatch and connect.
+//! (`POST /jobs/{id}/events|preview`), and the relay fans them out to every live
+//! subscriber on `GET /jobs/{id}/live` (NDJSON).
+//!
+//! The relay holds no events. Every event batch is written to the database, keyed
+//! by job and sequence, before it is acknowledged and only then handed to the relay
+//! (see "Delivery to the backend" in the driver's event documentation), so the
+//! stored rows are the job's recorded stream: a late subscriber is replayed them
+//! from the database before the live tail, the run record is persisted with them,
+//! and a backend restart loses none of them. What the relay keeps in memory is
+//! only what is never stored: the latest preview frame per frame index, and whether
+//! the job has finished, so a stream to a finished job closes after its backlog.
+//! A restart drops those; the live handler then reads the job's terminal state
+//! from its row, and previews resume with the next frame the driver sends.
+//!
+//! Each fanned-out event carries its sequence, so a subscriber that took its
+//! backlog from the database after subscribing here skips the events it was
+//! already replayed, and one that falls behind the channel reads the events it
+//! missed back from the database.
 //!
 //! Alongside the per-job relay this module owns the **console stream**
 //! ([`Notifier`]): one worker-wide fan-out, multiplexed per client, carrying both
@@ -18,24 +30,19 @@
 //! while connected, so a console subscribes to the churn only while it is on a page
 //! that shows it. That is a different thing from the per-job relay above — this one
 //! is about *every* run's coarse lifecycle, not one run's harness output.
-//!
-//! This state is deliberately **in-memory and transient**: the durable record of
-//! a run is the `RunRecord` persisted to the `run` table on completion, and the
-//! job lifecycle is the `job` table. A backend restart drops the live buffers; a
-//! subscriber that reconnects afterward falls back to the persisted record and
-//! its recorded events. Losing the live buffer never loses the run.
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
-use test_cabinet_core::{AssetPreview, HarnessEvent};
+use test_cabinet_contracts::preview::AssetPreview;
+
+use test_cabinet_contracts::event::HarnessEvent;
 use tokio::sync::broadcast;
 
 /// The capacity of each job's live broadcast channel. A slow streaming client
-/// that falls this far behind is lagged (the stream handler reports the gap
-/// rather than blocking ingestion); the full ordered history is always available
-/// from the backlog, so a lag never loses an event for a fresh subscriber.
+/// that falls this far behind is lagged (the stream handler reads what it missed
+/// back from the database rather than blocking ingestion).
 const EVENT_CHANNEL_CAPACITY: usize = 1024;
 
 /// How many messages the worker-wide console channel buffers for a slow subscriber
@@ -49,35 +56,39 @@ const EVENT_CHANNEL_CAPACITY: usize = 1024;
 /// Messages are small (a run's identity and a state), so this is cheap.
 const STREAM_CHANNEL_CAPACITY: usize = 4096;
 
-/// An item delivered to a live stream: a harness event, an asset-preview frame,
-/// or the terminal marker that lets a streaming client close cleanly.
+/// An item delivered to a live stream: a stored harness event with its sequence, an
+/// asset-preview frame, or the terminal marker that lets a streaming client close
+/// cleanly.
 #[derive(Debug, Clone)]
 pub enum StreamItem {
-    /// A normalized harness event.
-    Event(Box<HarnessEvent>),
+    /// A normalized harness event the backend has stored.
+    Event {
+        /// The event's sequence within its job, as the driver numbered it.
+        sequence: u64,
+        /// The event.
+        event: Box<HarnessEvent>,
+    },
     /// A live asset-generation preview frame. Carried on the same channel as
-    /// events but never persisted; a viewer renders it to watch the sprite form.
+    /// events but never stored; a viewer renders it to watch the sprite form.
     Preview(Box<AssetPreview>),
     /// The run reached a terminal state; no further items will arrive.
     Done,
 }
 
-/// One running job's shared live state: the ordered event backlog and the latest
-/// preview per frame, behind a `Mutex` because ingestion writes it while live
-/// subscribers read it.
+/// One running job's shared live state, behind a `Mutex` because ingestion writes
+/// it while live subscribers read it.
 #[derive(Debug, Default)]
 struct LiveInner {
-    events: Vec<HarnessEvent>,
-    /// The most recent preview frame, keyed by frame index. Unlike `events`,
-    /// previews are not accumulated — only the latest per frame is kept, since a
-    /// viewer only shows the current image and previews are never persisted.
+    /// The most recent preview frame, keyed by frame index. Only the latest per
+    /// frame is kept, since a viewer only shows the current image and previews are
+    /// never stored.
     latest_previews: HashMap<u32, AssetPreview>,
     /// Whether the job has reached a terminal state. A late subscriber to a
-    /// terminated job drains the backlog and closes without waiting on the channel.
+    /// terminated job drains its backlog and closes without waiting on the channel.
     terminated: bool,
 }
 
-/// A handle to one job's live relay: its shared backlog plus the live broadcast.
+/// A handle to one job's live relay: its latest previews plus the live broadcast.
 /// Cloning shares the same underlying state (it is `Arc`-backed).
 #[derive(Debug, Clone)]
 pub struct LiveJob {
@@ -86,24 +97,17 @@ pub struct LiveJob {
 }
 
 impl LiveJob {
-    /// Append an event to the backlog and publish it to every live subscriber.
-    ///
-    /// Recording under the lock before broadcasting keeps a fresh subscriber's
-    /// replayed backlog consistent with the live items it then receives.
-    pub fn push_event(&self, event: HarnessEvent) {
-        {
-            let mut inner = self.inner.lock().expect("relay mutex poisoned");
-            inner.events.push(event.clone());
-        }
-        // A send error only means there are no live subscribers, which is fine —
-        // the event is in the backlog for a later one.
-        let _ = self.tx.send(StreamItem::Event(Box::new(event)));
-    }
-
-    /// Append a batch of events in order (the driver streams events in batches).
-    pub fn push_events(&self, events: Vec<HarnessEvent>) {
-        for event in events {
-            self.push_event(event);
+    /// Publish events the backend has just stored, each with its sequence, in order
+    /// to every live subscriber. A subscriber connecting later is replayed them from
+    /// the database instead.
+    pub fn push_events(&self, events: Vec<(u64, HarnessEvent)>) {
+        for (sequence, event) in events {
+            // A send error only means there are no live subscribers, which is fine —
+            // the event is stored for a later one.
+            let _ = self.tx.send(StreamItem::Event {
+                sequence,
+                event: Box::new(event),
+            });
         }
     }
 
@@ -118,18 +122,6 @@ impl LiveJob {
         let _ = self.tx.send(StreamItem::Preview(Box::new(preview)));
     }
 
-    /// A snapshot of the events relayed so far, in order. On completion the
-    /// backend persists this as the run's recorded event stream — the same
-    /// backlog the live stream replays, so the stored events match what viewers
-    /// saw live, with no need for the driver to re-send them.
-    pub fn events_snapshot(&self) -> Vec<HarnessEvent> {
-        self.inner
-            .lock()
-            .expect("relay mutex poisoned")
-            .events
-            .clone()
-    }
-
     /// Mark the job terminal and signal every live stream to close. Idempotent.
     pub fn finish(&self) {
         {
@@ -139,21 +131,19 @@ impl LiveJob {
         let _ = self.tx.send(StreamItem::Done);
     }
 
-    /// Subscribe to the job's live stream: the backlog accumulated so far
-    /// (replayed in order), the latest preview per frame, a live receiver for
-    /// everything published afterward, and whether the job is already terminal.
-    /// The backlog is snapshotted under the same lock that gates appends, so no
-    /// item falls between the snapshot and the subscription.
+    /// Subscribe to the job's live stream: the latest preview per frame, a live
+    /// receiver for everything published afterward, and whether the job is already
+    /// terminal. The caller reads the stored events as its backlog *after* this, so
+    /// an event stored in between arrives on the receiver as well and is skipped by
+    /// its sequence; none falls between the two.
     pub fn subscribe(&self) -> Subscription {
         let inner = self.inner.lock().expect("relay mutex poisoned");
-        let backlog = inner.events.clone();
         let mut previews: Vec<AssetPreview> = inner.latest_previews.values().cloned().collect();
         previews.sort_by_key(|preview| preview.frame);
         let terminated = inner.terminated;
         let receiver = self.tx.subscribe();
         drop(inner);
         Subscription {
-            backlog,
             previews,
             receiver,
             terminated,
@@ -161,12 +151,11 @@ impl LiveJob {
     }
 }
 
-/// What a new subscriber receives: the replayed backlog, the latest preview per
-/// frame, a live receiver, and whether the job had already finished at subscribe
-/// time (so the stream closes once the backlog is drained).
+/// What a new subscriber receives from the relay: the latest preview per frame, a
+/// live receiver, and whether the job had already finished at subscribe time (so
+/// the stream closes once its backlog is drained). The event backlog comes from
+/// the database.
 pub struct Subscription {
-    /// Events accumulated before this subscription, replayed in order.
-    pub backlog: Vec<HarnessEvent>,
     /// The latest preview per frame at subscribe time. Empty for anything but an
     /// observed asset-generation run.
     pub previews: Vec<AssetPreview>,
@@ -228,12 +217,14 @@ impl Default for Relay {
 // The notification wire shapes (`Notification`, `NotificationKind`,
 // `NotificationOutcome`), the run-lifecycle event (`RunEvent`, `RunEventKind`), and
 // the run's display identity (`JobSummary`) are shared with the queue's Rust
-// clients, so they live in `core::job_api`; re-export them here so this module —
-// and the `contract-codegen` generator that names them as `relay::…` — keep
-// referring to them unchanged.
-pub use test_cabinet_core::{
-    JobSummary, Notification, NotificationKind, NotificationOutcome, RunEvent, RunEventKind,
-};
+// clients, so they live in the contracts crate's `job_api`; re-export them here so
+// the rest of the backend keeps referring to them as `relay::…`.
+pub use test_cabinet_contracts::job_api::JobSummary;
+pub use test_cabinet_contracts::job_api::Notification;
+pub use test_cabinet_contracts::job_api::NotificationKind;
+pub use test_cabinet_contracts::job_api::NotificationOutcome;
+pub use test_cabinet_contracts::job_api::RunEvent;
+pub use test_cabinet_contracts::job_api::RunEventKind;
 
 /// One message on the console stream, tagged with the topic that gates it.
 ///
@@ -249,9 +240,6 @@ pub enum StreamMessage {
     Notification(Box<Notification>),
     /// An in-flight list transition: gated on the `runs` topic.
     Run(Box<RunEvent>),
-    /// A change in the artifact store's [capacity](crate::capacity): delivered to
-    /// every stream, since it decides whether any run starts at all.
-    Storage(Box<crate::capacity::ArtifactStorageStatus>),
 }
 
 /// Which topics one connected stream currently wants.
@@ -281,7 +269,6 @@ impl StreamTopics {
         match message {
             StreamMessage::Notification(_) => self.notifications.load(Ordering::Relaxed),
             StreamMessage::Run(_) => self.runs.load(Ordering::Relaxed),
-            StreamMessage::Storage(_) => true,
         }
     }
 
@@ -416,12 +403,6 @@ impl Notifier {
     /// Publish a run-lifecycle event to every stream subscribed to the `runs` topic.
     pub fn publish_run(&self, event: RunEvent) {
         let _ = self.tx.send(StreamMessage::Run(Box::new(event)));
-    }
-
-    /// Publish a change in the artifact store's capacity to every stream, whatever
-    /// its topics.
-    pub fn publish_storage(&self, status: crate::capacity::ArtifactStorageStatus) {
-        let _ = self.tx.send(StreamMessage::Storage(Box::new(status)));
     }
 
     /// How many streams are connected right now. Test/diagnostic only.

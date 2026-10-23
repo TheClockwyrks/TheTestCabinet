@@ -23,8 +23,7 @@ record beside the earlier ones.
 
 ## Prerequisites
 
-- A signed-in account in the web console. See
-  [Register and Log In](/quickstarts/setup/register-and-login/).
+- Signed in to the console. See [Sign In](/quickstarts/setup/sign-in/).
 - A backend configured with `TCAB_OPENROUTER_API_KEY`, the key the probe's
   completion calls are billed to.
 

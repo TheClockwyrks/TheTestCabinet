@@ -5,7 +5,7 @@ title: Adding or Updating a Model
 ## Overview
 
 The model catalog is the list of subjects a run can be attributed to: the models
-the suite drives through a [harness](/components/core/harnesses/). This guide
+the suite drives through a [harness](/components/driver/harnesses/). This guide
 covers how the catalog is owned and served, how a model comes to appear, and how
 to curate one. The
 [Add or Update a Model](/quickstarts/devops/add-or-update-a-model/) quickstart is
@@ -40,13 +40,13 @@ automatically:
 
 ## Curating a model in the app
 
-Curated configuration is edited in the Models section of the web console. It is
+Curated configuration is edited in the Models section of the console. It is
 a write, so it requires sign-in.
 
 A model record has these fields:
 
-- Display name, the Test-Cabinet name shown across the site and the web console. It is
-  required and never auto-generated.
+- Display name, the Test-Cabinet name shown across the site and the console. It
+  is required and never auto-generated.
 - Aliases, one or more run-record model ids this entry covers, each paired with
   the harness family it is usable with. An alias is globally unique: an id
   belongs to at most one curated model.
@@ -108,7 +108,7 @@ Claude Opus 4.8, for example, carries `claude-opus-4-8` under Claude Code and
 `anthropic/claude-opus-4.8` under Others. Listing every form maps each run
 record's `subject.modelId` back to the one curated entry. The family also lets
 the New Run and Coverage forms filter the model dropdown to the slugs the
-selected harness can launch. See [Harnesses](/components/core/harnesses/) for the
+selected harness can launch. See [Harnesses](/components/driver/harnesses/) for the
 reporting details.
 
 ## Filling the form in from OpenRouter
@@ -124,7 +124,7 @@ looks the slug up in OpenRouter's catalog and fills in the display fields:
   itself, so what lands in the field is what it serves.
 
 The fill also seeds the three list-price rates by the
-[list price resolution](/components/core/metrics/#list-price-resolution), which
+[list price resolution](/components/contracts/metrics/#list-price-resolution), which
 tries the developer provider currently entered on the form first. Enter the
 date the figures were taken.
 
@@ -156,7 +156,7 @@ name is required.
 ## List price
 
 A run's comparable cost is computed from the list price on the model's catalog
-entry and from no other price (see [Metrics](/components/core/metrics/#cost)).
+entry and from no other price (see [Metrics](/components/contracts/metrics/#cost)).
 The backend reads the list price from OpenRouter, taking the first of these
 that lists a complete rate:
 
@@ -304,5 +304,5 @@ contract is at [Model probes](/components/backend/api/#model-probes).
 
 - [Run a Test Case](/quickstarts/development/run-a-test-case/) accepts the model
   as a valid `--model` argument.
-- [Harnesses](/components/core/harnesses/) documents how each harness reports the
+- [Harnesses](/components/driver/harnesses/) documents how each harness reports the
   model id an alias maps back to a curated entry.

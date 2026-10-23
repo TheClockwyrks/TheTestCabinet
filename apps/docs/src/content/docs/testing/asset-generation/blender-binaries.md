@@ -231,7 +231,7 @@ It emits two files:
   CPU Workbench engine so it works headless. The preview render is best-effort
   and a failure never fails the export.
 
-Core provides both paths; neither is manifest-declared. The model must reach the
+The driver provides both paths; neither is manifest-declared. The model must reach the
 export call by running `tcab-blend` before finishing, because the emitted glTF is
 what is judged. An un-exported model scores as empty.
 

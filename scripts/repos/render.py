@@ -1,0 +1,1593 @@
+#!/usr/bin/env python3
+"""Render the repository kit into a repository of The Test Cabinet, or merge a kit change into one.
+
+    uv run --project ci scripts/repos/render.py <name> --description "<one line>" [--kind <kind>] [--into DIR]
+    uv run --project ci scripts/repos/render.py --update <name> [--into DIR]
+
+The kit under templates/repository/ is a copier template, declared by the
+copier.yml at the superrepo root; this script is the one way it is rendered.
+A first render answers copier's three questions (`name`, `kind`,
+`description`) from the arguments and the table of repositories, and every
+other value a file needs is derived from those three by the context extension
+beside this script (`context.py`), which reads the tables held here and in the
+kit's edge table. The render leaves two records at the repository's root:
+`.copier-answers.yml`, which copier maintains and which holds the answers, the
+template's source and the superrepo commit the repository was rendered from,
+and `.test-cabinet-repo.toml`, rendered for the `dependency-edges` gate.
+
+An update is a three-way merge. Copier renders the template at the commit
+`.copier-answers.yml` records and at the superrepo's current commit, takes the
+difference, and applies it to the repository, so a line the repository added
+to a rendered file survives and a line the kit changed arrives; a hunk that
+meets a line both sides changed is written with inline conflict markers. Every
+rendered file merges this way; the crate's source files alone are written by
+the first render only and then left to the repository, so an update writes no
+crate source, not even a file the crate never had (`_exclude` and
+`_skip_if_exists` in copier.yml).
+
+The kit is rendered at the superrepo's committed HEAD, so the record names a
+commit that exists. `--uncommitted` renders the working tree instead, which is
+how a kit change is tried against a repository before it is committed; the
+record such a render leaves names a commit copier made up, and is not for
+committing.
+
+Copier clones the superrepo to render it, and the superrepo is the whole of
+The Test Cabinet while the monorepo still sits at its root, so a render takes
+as long as a checkout of it does. `--source` names another superrepo to render
+from, which is how the tests render from a small one of their own.
+"""
+
+from __future__ import annotations
+
+import argparse
+import functools
+import importlib.util
+import json
+import os
+import re
+import subprocess
+import sys
+import textwrap
+import tomllib
+from collections.abc import Iterator
+from contextlib import chdir, contextmanager
+from pathlib import Path
+from types import ModuleType
+from typing import NamedTuple
+
+SUPERREPO = Path(__file__).resolve().parents[2]
+KIT = SUPERREPO / "templates" / "repository"
+EDGES = KIT / "ci" / "src" / "the_test_cabinet_ci" / "edges.py"
+COPIER_CONFIG = SUPERREPO / "copier.yml"
+RECORD = ".test-cabinet-repo.toml"
+ANSWERS = ".copier-answers.yml"
+# How copier's git is configured while it clones the superrepo to render it.
+# The superrepo's submodules are the repositories themselves and cold-storage,
+# which a render of the template has no use for, and their relative URLs
+# resolve to nothing beside a clone in a temporary directory; a pathspec no
+# submodule matches keeps `git submodule update --init` from registering any. A
+# submodule whose checkout has moved is not a change to the kit, so the check
+# copier makes for uncommitted template changes leaves submodules out.
+GIT_ENVIRONMENT = {
+    "GIT_CONFIG_COUNT": "2",
+    "GIT_CONFIG_KEY_0": "submodule.active",
+    "GIT_CONFIG_VALUE_0": "no-submodule-of-the-template",
+    "GIT_CONFIG_KEY_1": "diff.ignoreSubmodules",
+    "GIT_CONFIG_VALUE_1": "all",
+}
+# The variables that tell git which repository it is in. A commit hook runs
+# with them pointing at the repository being committed to, and a render run
+# from one would otherwise clone, check and commit in that repository instead
+# of its own, so every git this script starts, copier's included, runs without
+# them.
+GIT_LOCATING = (
+    "GIT_DIR",
+    "GIT_WORK_TREE",
+    "GIT_INDEX_FILE",
+    "GIT_PREFIX",
+    "GIT_COMMON_DIR",
+    "GIT_OBJECT_DIRECTORY",
+    "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+)
+CONFLICT_MARKER = "<<<<<<<"
+
+# Where every repository lives: the Azure DevOps project, over ssh (what work is
+# pushed to) and over https (what a pipeline's token reaches), and the name a
+# pipeline declares a repository resource by.
+AZURE_ORGANISATION = "https://dev.azure.com/genyume"
+AZURE_PROJECT = "the-test-cabinet"
+AZURE_REMOTE = "git@ssh.dev.azure.com:v3/genyume/the-test-cabinet/{repo}"
+AZURE_HTTPS = "https://dev.azure.com/genyume/the-test-cabinet/_git/{repo}"
+AZURE_PROJECT_REPOSITORY = "the-test-cabinet/{repo}"
+
+# The CI images the superrepo builds and every repository's pipeline pins: the
+# registry, the service connection a pipeline pulls through, and the name of a
+# track's image. Each is tagged with the commit whose image pipeline run built
+# it, which ci/images/tags.yml pins as `ciImageTag`.
+CI_REGISTRY = "testcabinet.azurecr.io"
+CI_IMAGE_ENDPOINT = "the-test-cabinet-acr"
+CI_IMAGE = "ubuntu-the-test-cabinet-{track}-cicd"
+CI_IMAGES = SUPERREPO / "ci" / "images"
+CI_IMAGE_TAGS = CI_IMAGES / "tags.yml"
+CI_IMAGE_TAG = re.compile(r"^\s*ciImageTag:\s*([0-9a-f]{40})\s*$", re.MULTILINE)
+# The track every repository runs its prose and npm gates on, and the track a
+# repository runs its Rust gates on unless `RUST_TRACKS` names another.
+CI_WEB_TRACK = "web"
+CI_SHARED_RUST_TRACK = "rust"
+# The repositories whose Rust suite needs a browser: the validation tests the
+# suite runtime carries drive Chromium through Playwright, and the rust-browser
+# image is the Rust image with Node and that browser on top. A job in it runs
+# with TCAB_REQUIRE_BROWSER=1, so a browser test that finds no browser fails
+# rather than skipping.
+#
+# A `shell` builds a Tauri workspace, whose Rust gates compile the WebView it
+# links and whose bundle jobs build an Android APK beside the desktop bundles,
+# so its Rust job runs in the android image: the Rust image with the Android
+# SDK, the NDK and the JDK on top.
+RUST_TRACKS: dict[str, str] = {
+    "client-tauri": "android",
+    "contracts": "rust-browser",
+    "microservice-driver": "rust-browser",
+    "the-spec-cabinet": "rust-browser",
+}
+BROWSER_TRACKS = frozenset({"rust-browser"})
+# The gate a Rust job on a browser track runs to hold the npm workspace's
+# Playwright to the browser the image carries, so a skew between the two fails
+# with one message rather than as every browser test.
+PLAYWRIGHT_GATE = "playwright-image"
+
+# The repositories whose Rust suite also runs on Windows, in a job of its own on
+# a hosted Windows agent: a suite that reads its committed fixtures byte for
+# byte, or that the shipped CLI runs on Windows, is held there. The job runs no
+# gate (the runner and its tools are the Linux images'), only the suite under
+# nextest, which `scripts/ci/install-nextest.sh` installs.
+WINDOWS_TESTS = frozenset({"contracts", "microservice-driver"})
+WINDOWS_IMAGE = "windows-2022"
+NEXTEST_SCRIPT = "scripts/ci/install-nextest.sh"
+
+# The repositories whose Rust suite reads another repository's files across a
+# data edge, which no manifest can name and so no fetch reaches: the Rust job
+# checks each repository named out beside its own, and hands the suite the
+# variable named, set to that checkout. The backend's tests hold every
+# committed case version to a rule, reading the catalog from
+# `TCAB_DEFINITIONS_ROOT`, which is the `test-suites` checkout (the Building
+# development page, "Tests that read case versions"). Each repository named has
+# to be the target of a data edge of the one reading it in the kit's edge
+# table. A job with a second checkout has every repository under the sources
+# directory by name, so this repository lands in `s/<name>` and each data
+# repository in `s/<target>` beside it, where `<repo>/../<target>` reaches it
+# as it does in the superrepo, and every step of the Rust job runs in this
+# repository's checkout.
+RUST_CHECKOUTS: dict[str, dict[str, str]] = {
+    "microservice-backend": {"test-suites": "TCAB_DEFINITIONS_ROOT"},
+}
+# The same for a kind carrying no crate, whose suites run in the checks job:
+# the checks job checks each repository named out beside this one, under the
+# same rules, names it to every step by the variable, and runs every step in
+# this repository's checkout. The console's tests hold the replay assets the UI
+# library vendors to the case bundles they were copied from, which they read
+# from the `test-suites` checkout across the console's data edge (the
+# Repositories development page, "The edges").
+CHECKS_CHECKOUTS: dict[str, dict[str, str]] = {
+    "console.testcabinet.ai": {"test-suites": "TCAB_DEFINITIONS_ROOT"},
+}
+
+# The gates a repository runs that the kit does not render: each is a file the
+# repository writes under its own `ci/gates/`, and the pipeline gives it one
+# step in the job named, after the kit's gates there. An update never touches
+# the file, and the rendered wiring test holds the step to it and names it
+# hookless, since a gate a repository adds builds or generates something.
+EXTRA_GATES: dict[str, dict[str, tuple[str, ...]]] = {
+    "contracts": {"rust": ("contract-drift",)},
+    "engines": {"checks": ("seeded-contract",)},
+    # ui-common lints the hand-written TypeScript of its npm workspace with
+    # ESLint, under a ratchet of suppressions it may only shrink.
+    "ui-common": {"checks": ("web-lint",)},
+    "test-suites": {
+        "checks": ("frozen-paths", "spec-prose", "spec-vocabulary", "audio-packs", "validators-typecheck"),
+    },
+    # microservice-backend's clip store module (scripts/lib/audio-store.mjs), the
+    # one test-suites' `audio-packs` gate resolves the sample packs through, keeps
+    # its Node tests beside it, as the superrepo's `scripts-test` runs its own.
+    "microservice-backend": {"checks": ("scripts-test",)},
+    # microservice-driver's Node scripts (the package store's stager, the audio
+    # store's, the sibling lookup) keep their tests beside them, and
+    # containers/build.sh's table test drives the run-image build through a
+    # docker stub.
+    "microservice-driver": {"checks": ("scripts-test", "containers-test")},
+    # The console lints its TypeScript with ESLint, as ui-common's `web-lint`
+    # does, and runs its browser suite, whose Playwright the web image's
+    # browser serves, beside the kit's `typescript` gate, which runs the rest.
+    "console.testcabinet.ai": {"checks": ("web-lint", "web-browser-test")},
+    # The gallery lints its TypeScript with ESLint, as ui-common's and the
+    # console's `web-lint` do, beside the kit's `typescript` gate.
+    "testcabinet.ai": {"checks": ("web-lint",)},
+}
+# The jobs of the gates stage an extra gate may name.
+GATE_JOBS = ("rust", "checks")
+
+# The repositories whose pipeline runs jobs and stages of their own beyond the
+# kit's, as the superrepo's pipeline runs the files under its `.azure/project/`.
+# Such a repository writes two templates the kit leaves to it: `PROJECT_JOBS`,
+# included at the end of the gates stage, so its jobs are gated with the kit's
+# and the mirror waits on them through the stage, and `PROJECT_STAGES`,
+# included after the publish stage, whose stages each run after the gates on
+# the tags or branches their own conditions name. The table names those
+# stages, and the mirror stage waits on each, so a ref is mirrored only once
+# what the repository releases from it is out. gg's `release` stage publishes
+# its binaries, its reference and its toolchains image on a tag, and gg.rocks's
+# `deploy` stage uploads the site to its Pages project from `master` and
+# `staging`, as testcabinet.ai's uploads the gallery to the Pages project of
+# the environment the branch names. microservice-driver's jobs build `tcab` on
+# every run and publish it on a tag, and stage the audio store its image
+# copies; its `runimages` stage builds the run-container images from `master`
+# and `staging`, copying the tools' binaries from their images.
+PROJECT_PIPELINE: dict[str, tuple[str, ...]] = {
+    "gg": ("release",),
+    "gg.rocks": ("deploy",),
+    "microservice-driver": ("runimages",),
+    "testcabinet.ai": ("deploy",),
+}
+PROJECT_JOBS = ".azure/project/jobs.yml"
+PROJECT_STAGES = ".azure/project/stages.yml"
+# The steps such a repository's Rust job takes after it fetched its
+# dependencies and before its first gate, which the kit includes there without
+# parameters, as the superrepo's Rust job includes its own
+# `.azure/project/setup-steps.yml`: what compiling the workspace needs beyond
+# the track's image. gg's build script reflects every arm's catalogue with that
+# arm's toolchain and the workspace's `typescript`, so its setup provisions
+# them from a cache before clippy compiles anything.
+PROJECT_SETUP = ".azure/project/setup-steps.yml"
+# The stages the kit's pipeline declares itself, which no project stage may be.
+KIT_STAGES = ("gates", "publish", "mirror")
+# The organisation's arm64 agent pool, where an arm64 build runs natively: the
+# clusters' nodes are arm64 and a hosted agent is x86_64. A project's jobs are
+# handed it as the `arm64Pool` parameter, which the superrepo's
+# `.azure/project/jobs.yml` defaults to the same pool, and the image stage of
+# a repository building one builds its arm64 image on it.
+ARM64_POOL = "pool-dev-linux-arm64-wus3-4c-eph-01"
+# The minutes a Rust job may run, and the repositories given longer. A cold
+# gg build compiles every arm's guest and restores its toolchains first, which
+# outlasts the hour the kit's Rust job is given, as the superrepo's Rust job,
+# which compiled gg in the workspace, was given two. The driver's suite, the
+# superrepo's longest, ran in the superrepo's Rust job, which was given two and
+# a half, and drives a browser besides.
+RUST_TIMEOUT = 60
+RUST_TIMEOUTS: dict[str, int] = {"gg": 120, "microservice-driver": 180}
+
+# The crate a render scaffolds in each repository carrying one: its directory
+# under crates/ and its package name. The monorepo's crates keep their
+# directories when a repository is extracted, so the scaffold is named as the
+# crate it becomes: the driver is `crates/driver`, gg `crates/gg`. A
+# repository whose crate the monorepo does not hold yet is scaffolded under its
+# own name.
+CRATES: dict[str, tuple[str, str]] = {
+    "contracts": ("contracts", "test-cabinet-contracts"),
+    "engines": ("engines", "test-cabinet-engines"),
+    "ui-common": ("ui-common", "test-cabinet-ui-common"),
+    "tool-model-core": ("model-core", "test-cabinet-model-core"),
+    "tool-sprite": ("draw", "test-cabinet-draw"),
+    "tool-paint": ("paint", "test-cabinet-paint"),
+    "tool-voxel": ("voxel", "test-cabinet-voxel"),
+    "tool-mc": ("mc", "test-cabinet-mc"),
+    "tool-sn": ("sn", "test-cabinet-sn"),
+    "tool-dc": ("dc", "test-cabinet-dc"),
+    "tool-particle": ("particle-core", "test-cabinet-particle-core"),
+    "tool-audio-core": ("audio-core", "test-cabinet-audio-core"),
+    "tool-sfx-synth": ("sfx-synth", "test-cabinet-sfx-synth"),
+    "tool-sfx-sample": ("sfx-sample", "test-cabinet-sfx-sample"),
+    "tool-music": ("music", "test-cabinet-music"),
+    "microservice-backend": ("backend", "test-cabinet-backend"),
+    "microservice-dispatcher": ("dispatcher", "test-cabinet-dispatcher"),
+    "microservice-driver": ("driver", "test-cabinet-driver"),
+    "microservice-artifacts": ("artifacts", "test-cabinet-artifacts"),
+    "microservice-repos": ("repos", "test-cabinet-repos"),
+    "microservice-publisher": ("publisher", "tcab-publisher"),
+    "microservice-arena": ("arena", "test-cabinet-arena"),
+    "gg": ("gg", "test-cabinet-gg"),
+    "the-spec-cabinet": ("spec-cabinet", "test-cabinet-spec-cabinet"),
+    "client-tauri": ("client-tauri", "test-cabinet-client-tauri"),
+}
+
+# The release tag each repository's dependents pin, for the repositories that
+# have cut one. A manifest names a dependency at its public source on this tag,
+# and on the `master` branch while the repository has none. `contracts` cut
+# `v0.2.4` and `engines` `v1.1.4`, whose runs published their packages to the
+# feed at those versions. `tool-model-core` cut `v0.1.2`, the shared model
+# libraries the model tools build on, and `tool-audio-core` cut `v0.1.2`, the
+# shared audio library the audio tools build on; neither publishes a package.
+# Every one of the four names contracts at `v0.2.4`, so the driver, whose build
+# reaches all of them, compiles one copy of the contracts crates.
+TAGS: dict[str, str] = {
+    "contracts": "v0.2.4",
+    "engines": "v1.1.4",
+    "tool-model-core": "v0.1.2",
+    "tool-audio-core": "v0.1.2",
+}
+
+# The npm registry of the `the-test-cabinet` feed of the project's Azure
+# Artifacts, as the Repositories development page names it. A tag's run
+# publishes the repositories' packages there, and a workspace that names one
+# installs it from there when it builds outside the superrepo.
+FEED_REGISTRY = "https://pkgs.dev.azure.com/genyume/the-test-cabinet/_packaging/the-test-cabinet/npm/registry/"
+NPM_FEED_SCRIPT = "scripts/ci/npm-feed.sh"
+PUBLISH_SCRIPT = "scripts/ci/publish-packages.sh"
+PUBLISH_STAGE = "publish"
+RELEASE_TAGS = "v*"
+# The long-lived branches of every repository, whose push runs its pipeline
+# and which a repository's mirror stage pushes to the mirror. `master` and
+# `staging` are protected by branch policy and take pull requests alone;
+# `nightly` takes pushes.
+BRANCHES = ("master", "staging", "nightly")
+# The secure file holding a repository's GitHub deploy key. GitHub refuses one
+# key on two repositories, so each mirror has its own.
+MIRROR_KEY = "github-mirror-key-{repo}"
+MIRROR_SCRIPT = "scripts/ci/mirror.sh"
+# What a hosted agent carries that no job here uses, removed before a Rust job
+# so the build output and its cache archive fit on the disk together.
+HOST_DISK_COMMAND = (
+    "sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/.ghcup /opt/hostedtoolcache/CodeQL"
+)
+CHECKS_SOURCES = "$(Build.SourcesDirectory)"
+
+# The image a repository's pipeline builds: on every gated push to `master`
+# and `staging`, natively once per architecture, each pushed to the registry
+# as `<name>:<commit>-<arch>`, then fused into the multi-arch `<name>:<commit>`
+# a deployment or a run image pins (the Repositories and Releasing development
+# pages). The amd64 build runs on a hosted agent and the arm64 one on the
+# project's managed arm64 pool, as the superrepo's own service images do; both
+# push through the Docker Registry service connection holding AcrPush on the
+# registry, the one the CI images are pulled through.
+#
+# Every application builds one, its service. A tool builds one when a
+# run-container image carries its binaries (`TOOL_IMAGES` in the kit's edge
+# table): the image carrying them, which the driver's run images copy from at
+# the commit the driver pins. A tool of the library half alone builds none.
+#
+# A site is served by Cloudflare Pages and builds none, except one a
+# deployment serves itself: the console, whose `vite build` bundle the cluster
+# serves through nginx as the `tcab-web` image (the console's overview,
+# "Deployment"). Its image is built as an application's is, from a Dockerfile
+# that installs the npm workspace and serves what it builds; a kind carrying no
+# crate fetches no repository, so its image jobs rewrite no git source.
+IMAGE_KINDS = frozenset({"application"})
+IMAGE_TOOL_KIND = "tool"
+IMAGE_SITE_KIND = "site"
+IMAGE_SITES = frozenset({"console.testcabinet.ai"})
+# Where a tool's image carries its binaries, which a run image copies them from.
+TOOL_BINARIES = "/usr/local/bin"
+IMAGE_STAGE = "image"
+IMAGE_BRANCHES = ("master", "staging")
+IMAGE_ARCHITECTURES = ("amd64", "arm64")
+IMAGE_SCRIPT = "scripts/ci/image.sh"
+MANIFEST_SCRIPT = "scripts/ci/manifest.sh"
+BUILD_CONTEXT_GATE = "build-context"
+
+# The bundles a `shell` builds on a tag, once the gates passed (the Releasing
+# page's "Releasing the operator client"): one job per target, each building
+# every flavor of the shell with scripts/ci/bundle.sh and publishing what it
+# built as a pipeline artifact of the run, `client-<target>`, which is where a
+# release of the client is downloaded from. The Linux and Android bundles are
+# built in the image of the shell's Rust track, which carries the Android
+# toolchain; the Windows and macOS ones on hosted agents of those platforms,
+# which carry Rust and Node. A shell depends on nothing of the project, so no
+# job fetches a repository of it or authenticates to the feed: the workspace
+# installs from the public registry alone.
+BUNDLE_KINDS = frozenset({"shell"})
+BUNDLE_STAGE = "bundle"
+BUNDLE_SCRIPT = "scripts/ci/bundle.sh"
+BUNDLE_ARTIFACT = "client-{target}"
+BUNDLE_OUTPUT = "$(Build.ArtifactStagingDirectory)/bundles"
+# Each target's pool, or None for a target built in the Rust track's image on
+# the default pool.
+BUNDLE_TARGETS: dict[str, str | None] = {
+    "linux": None,
+    "android": None,
+    "windows": "windows-2022",
+    "macos": "macOS-15",
+}
+# The compiler every checkout builds with, which an image's Rust pin has to
+# name; the `build-context` gate holds the pins to it.
+RUST_TOOLCHAIN = KIT / "rust-toolchain.toml"
+
+
+class RenderError(Exception):
+    """A render that cannot proceed, with the reason as its message."""
+
+
+@functools.cache
+def edge_table() -> ModuleType:
+    """The kit's own edge table, loaded by path so the render and the gate agree."""
+    spec = importlib.util.spec_from_file_location("test_cabinet_kit_edges", EDGES)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def kinds() -> list[str]:
+    """The kinds a repository may be, as the `kind` question offers them."""
+    return sorted(edge_table().KINDS)
+
+
+def repositories() -> dict[str, str]:
+    """Every repository the kit renders, to its kind."""
+    return dict(edge_table().REPOSITORIES)
+
+
+def public_source(repo: str) -> str:
+    """The public git source of a repository: its GitHub mirror, without a `.git` suffix."""
+    edges = edge_table()
+    if repo not in edges.MIRRORS:
+        raise RenderError(f"{repo} has no public mirror")
+    return f"{edges.GITHUB}{edges.MIRRORS[repo]}"
+
+
+def azure_remote(repo: str) -> str:
+    """The Azure DevOps remote of a repository, the one the work is pushed to."""
+    return AZURE_REMOTE.format(repo=repo)
+
+
+def azure_https(repo: str) -> str:
+    """The Azure DevOps remote over https, the one a pipeline's token reaches."""
+    return AZURE_HTTPS.format(repo=repo)
+
+
+def ci_sources() -> str:
+    """One line per repository, `<azure https> <public source>`, for a pipeline's git rewrites.
+
+    Every repository carrying a crate is listed rather than the ones this one
+    may depend on, so the rendered file is the same in every repository and a
+    crate that takes up a new edge needs no re-render to fetch it.
+    """
+    edges = edge_table()
+    rust = [repo for repo, kind in edges.REPOSITORIES.items() if edges.KINDS[kind].crate]
+    return "\n".join(f"{azure_https(repo)} {public_source(repo)}" for repo in rust)
+
+
+def fetched_repositories(name: str) -> list[str]:
+    """The repositories a pipeline of `name` may fetch: the closure of its Rust edges."""
+    return list(edge_table().closure(name))
+
+
+def _data_checkouts(name: str, job: str, checkouts: dict[str, str]) -> None:
+    """Refuse a data checkout of a job no data edge of the repository draws, or one named oddly.
+
+    Each has to be the target of a data edge of this repository: a build
+    edge is fetched by cargo or installed from the feed, and a checkout no
+    edge draws would read a repository the Repositories page says this one
+    never reads.
+    """
+    read = {one.target for one in edge_table().DATA_EDGES if one.source == name}
+    for repo, variable in checkouts.items():
+        if repo not in read:
+            raise RenderError(f"{name}'s {job} job checks out {repo}, which is no data edge {name} -> {repo}")
+        if repo == name:
+            raise RenderError(f"{name}'s {job} job checks itself out as a data repository")
+        if not re.fullmatch(r"[A-Z][A-Z0-9_]*", variable):
+            raise RenderError(f"{variable!r} is not shaped like an environment variable")
+
+
+def rust_checkouts(name: str) -> dict[str, str]:
+    """The repositories the Rust job checks out beside this one, each to the variable naming its checkout."""
+    checkouts = RUST_CHECKOUTS.get(name, {})
+    if not checkouts:
+        return {}
+    edges = edge_table()
+    kind = edges.REPOSITORIES.get(name)
+    if kind is None or not edges.KINDS[kind].crate:
+        raise RenderError(f"{name}'s Rust job checks out {list(checkouts)}, and a {kind} repository has no Rust job")
+    _data_checkouts(name, "Rust", checkouts)
+    if name in WINDOWS_TESTS:
+        raise RenderError(f"{name} runs its suite on Windows too, whose job checks out no data repository")
+    if name in PROJECT_PIPELINE:
+        raise RenderError(
+            f"{name} takes setup steps of its own, which run outside its checkout beside {list(checkouts)}"
+        )
+    return dict(checkouts)
+
+
+def checks_checkouts(name: str) -> dict[str, str]:
+    """The repositories the checks job checks out beside this one, each to the variable naming its checkout.
+
+    Only a kind carrying no crate is given them: one carrying a crate runs its
+    suite in the Rust job, which checks its data out (`RUST_CHECKOUTS`).
+    """
+    checkouts = CHECKS_CHECKOUTS.get(name, {})
+    if not checkouts:
+        return {}
+    edges = edge_table()
+    kind = edges.REPOSITORIES.get(name)
+    if kind is None or edges.KINDS[kind].crate:
+        raise RenderError(
+            f"{name}'s checks job checks out {list(checkouts)}, and a {kind} repository reads its data in its Rust "
+            "job (RUST_CHECKOUTS)"
+        )
+    _data_checkouts(name, "checks", checkouts)
+    return dict(checkouts)
+
+
+def rust_repositories(name: str) -> list[str]:
+    """The repositories a pipeline of `name` declares: what it may fetch, then what its gates check out."""
+    fetched = fetched_repositories(name)
+    checked = [*rust_checkouts(name), *checks_checkouts(name)]
+    return fetched + [repo for repo in checked if repo not in fetched]
+
+
+def rust_dir(name: str) -> str:
+    """Where under the sources directory the Rust job checks this repository out, or `""` for the directory itself.
+
+    A job checking out one repository has it at the sources directory; one
+    checking out more has each at its name under it.
+    """
+    return name if rust_checkouts(name) else ""
+
+
+def rust_root(name: str) -> str:
+    """Where the Rust job's checkout of this repository is, as the pipeline names it."""
+    return f"{CHECKS_SOURCES}/{rust_dir(name)}" if rust_dir(name) else CHECKS_SOURCES
+
+
+def rust_workdir(name: str) -> list[str]:
+    """The line a step of the Rust job runs in this repository's checkout by, or none for a lone checkout."""
+    return [f"            workingDirectory: {rust_root(name)}"] if rust_dir(name) else []
+
+
+def checks_dir(name: str) -> str:
+    """Where under the sources directory the checks job checks this repository out, or `""` for the directory itself."""
+    return name if checks_checkouts(name) else ""
+
+
+def checks_root(name: str) -> str:
+    """Where the checks job's checkout of this repository is, as the pipeline names it."""
+    return f"{CHECKS_SOURCES}/{checks_dir(name)}" if checks_dir(name) else CHECKS_SOURCES
+
+
+def checks_workdir(name: str) -> list[str]:
+    """The line a step of the checks job runs in this repository's checkout by, or none for a lone checkout."""
+    return [f"            workingDirectory: {checks_root(name)}"] if checks_dir(name) else []
+
+
+def _checkout_steps(name: str, checkouts: dict[str, str], reader: str) -> str:
+    """A job's checkouts: this repository alone, or it and then each data repository it reads beside it."""
+    step = "          "
+    if not checkouts:
+        return "\n".join([f"{step}- checkout: self", f"{step}  fetchDepth: 1", f"{step}  clean: true"])
+    lines = [
+        f"{step}# This repository beside each repository {reader} across a data",
+        f"{step}# edge, every one at its name under the sources directory.",
+    ]
+    for repo, path in (("self", name), *((repo, repo) for repo in checkouts)):
+        lines += [
+            f"{step}- checkout: {repo}",
+            f"{step}  path: s/{path}",
+            f"{step}  fetchDepth: 1",
+            f"{step}  clean: true",
+        ]
+    return "\n".join(lines)
+
+
+def ci_rust_checkout(name: str) -> str:
+    """The Rust job's checkouts: this repository, then each data repository its suite reads beside it."""
+    return _checkout_steps(name, rust_checkouts(name), "its suite reads")
+
+
+def ci_checks_checkout(name: str) -> str:
+    """The checks job's checkouts: this repository, then each data repository its tests read beside it."""
+    return _checkout_steps(name, checks_checkouts(name), "its tests read")
+
+
+def ci_checks_head(name: str) -> str:
+    """What the checks job declares ahead of its steps: the data repositories it uses and the variables naming them."""
+    checkouts = checks_checkouts(name)
+    if not checkouts:
+        return ""
+    lines = [uses_block(list(checkouts)), "        variables:"]
+    lines += [f"          {variable}: {CHECKS_SOURCES}/{repo}" for repo, variable in checkouts.items()]
+    return "\n".join(lines)
+
+
+def uses_block(aliases: list[str]) -> str:
+    """A job's `uses.repositories` list of the resources named, or nothing when there is none."""
+    if not aliases:
+        return ""
+    lines = ["        uses:", "          repositories:"]
+    lines += [f"            - {alias}" for alias in aliases]
+    return "\n".join(lines)
+
+
+def ci_image_tag(source: Path = SUPERREPO) -> str:
+    """The commit ci/images/tags.yml pins as `ciImageTag`, the tag of every CI image."""
+    path = source / CI_IMAGE_TAGS.relative_to(SUPERREPO)
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError as error:
+        raise RenderError(f"{path} cannot be read, so no CI image can be pinned: {error}") from error
+    found = CI_IMAGE_TAG.search(text)
+    if found is None:
+        raise RenderError(f"{path} pins no forty-character ciImageTag, so no CI image can be pinned")
+    return found.group(1)
+
+
+def image_reference(track: str, source: Path = SUPERREPO) -> str:
+    """The image a track runs in, at the commit the superrepo pins."""
+    dockerfile = source / CI_IMAGES.relative_to(SUPERREPO) / f"{track}.Dockerfile"
+    if not dockerfile.is_file():
+        raise RenderError(f"the superrepo builds no {track} CI image ({dockerfile} does not exist)")
+    return f"{CI_REGISTRY}/{CI_IMAGE.format(track=track)}:{ci_image_tag(source)}"
+
+
+def rust_track(name: str) -> str:
+    """The track a repository runs its Rust job in."""
+    return RUST_TRACKS.get(name, CI_SHARED_RUST_TRACK)
+
+
+def ci_tracks(name: str, kind: str) -> tuple[str, ...]:
+    """The tracks a repository's pipeline declares a container for, in the order it writes them."""
+    if edge_table().KINDS[kind].crate:
+        return (rust_track(name), CI_WEB_TRACK)
+    return (CI_WEB_TRACK,)
+
+
+def ci_resources(name: str, kind: str) -> str:
+    """The pipeline's `resources` block: the repositories a run may fetch, and the images.
+
+    A project that protects repository access in YAML pipelines gives a run's
+    token only the repositories the pipeline declares, so every one a fetch
+    may reach is declared here, and every one a job of the gates checks out.
+    """
+    lines = ["resources:"]
+    repos = rust_repositories(name)
+    if repos:
+        if rust_checkouts(name):
+            lines += [
+                "  # Every repository the run may fetch, and each the Rust job checks out",
+                "  # beside this one, so the job's access token may read each one.",
+            ]
+        elif checks_checkouts(name):
+            lines += [
+                "  # Each repository the checks job checks out beside this one, so the",
+                "  # job's access token may read it.",
+            ]
+        else:
+            lines += [
+                "  # Every repository the run may fetch, so the job's access token may",
+                "  # read each one.",
+            ]
+        lines.append("  repositories:")
+        for repo in repos:
+            lines += [
+                f"    - repository: {repo}",
+                "      type: git",
+                f"      name: {AZURE_PROJECT_REPOSITORY.format(repo=repo)}",
+                "      ref: master",
+            ]
+    lines += [
+        "  # The images the tracks run in, built by the superrepo's image pipeline",
+        f"  # and pulled through the service connection {CI_IMAGE_ENDPOINT} before a",
+        "  # job starts. Each tag is the commit whose image pipeline run built the",
+        "  # image, which the superrepo's ci/images/tags.yml pins; a bump arrives",
+        "  # with `scripts/repos/render.py --update`.",
+        "  containers:",
+    ]
+    for track in ci_tracks(name, kind):
+        lines += [
+            f"    - container: {track}",
+            f"      image: {image_reference(track)}",
+            f"      endpoint: {CI_IMAGE_ENDPOINT}",
+        ]
+    return "\n".join(lines)
+
+
+def browser_track(name: str) -> bool:
+    """Whether the repository's Rust job runs on a track whose suite drives a browser."""
+    return rust_track(name) in BROWSER_TRACKS
+
+
+def ci_rust_npm(name: str, kind: str) -> str:
+    """The Rust job's install of the npm workspace, for a browser track, or nothing.
+
+    The browser tests of the Rust suite drive the browser through the
+    workspace's own `vitest`, `@vitest/browser-playwright` and `playwright`,
+    which they find under its `node_modules`, so the job installs the
+    workspace as the checks job does, after authenticating npm to the feed.
+    """
+    if not (edge_table().KINDS[kind].crate and browser_track(name)):
+        return ""
+    return "\n".join(
+        [
+            npm_feed_step(rust_workdir(name)),
+            "          - script: npm ci",
+            "            displayName: Install the npm workspace the browser tests drive",
+            *rust_workdir(name),
+        ]
+    )
+
+
+def ci_rust_variables(name: str) -> str:
+    """The Rust job's `variables`: the cargo home under the cache, the browser on its track, and each data checkout."""
+    lines = [
+        "        variables:",
+        "          CARGO_HOME: $(ciCache)/cargo-home",
+        "          CARGO_INCREMENTAL: 0",
+    ]
+    if browser_track(name):
+        lines.append("          TCAB_REQUIRE_BROWSER: 1")
+    for repo, variable in rust_checkouts(name).items():
+        lines.append(f"          {variable}: {CHECKS_SOURCES}/{repo}")
+    return "\n".join(lines)
+
+
+class KindCheck(NamedTuple):
+    """A gate a kind adds under `ci/gates/`, run by the pipeline alone.
+
+    Such a gate builds or runs a test suite, so it has no hook: its id joins
+    `PIPELINE_ONLY` in the rendered `ci/tests/test_wiring.py`, and it runs as
+    one step of the pipeline's checks job, inside the web image, after the
+    prose gates. A gate that runs tests is given an artifacts directory and
+    its JUnit report is published as the run's test results.
+    """
+
+    id: str
+    display_name: str
+    # What the gate's tests are called in the run's test results, or None for
+    # a gate that runs no tests.
+    tests: str | None = None
+
+
+# The `typescript` gate, `ci/gates/typescript.py` in a render of a kind that
+# carries it, which installs, builds, type-checks and tests the npm workspace
+# at the repository root.
+TYPESCRIPT_CHECK = KindCheck("typescript", "TypeScript (npm ci, build, type-check, test)", "TypeScript")
+
+
+def kind_checks(kind: str) -> tuple[KindCheck, ...]:
+    """The gates the kind adds, in the order the checks job runs them."""
+    return (TYPESCRIPT_CHECK,) if edge_table().KINDS[kind].typescript else ()
+
+
+def typescript_workspace(kind: str) -> str:
+    """The npm workspace the kind's `typescript` gate builds, `.` for the root, or nothing for a kind without it.
+
+    The kit's gate, its test and the `.npmrc` carry a conditional name on this
+    value, so a kind is rendered them exactly when it carries the gate.
+    """
+    return "." if TYPESCRIPT_CHECK in kind_checks(kind) else ""
+
+
+# The members the root `package.json` of a kind carrying an npm workspace
+# names: the published packages under `packages/` and the pages and apps under
+# `apps/`, the layout the monorepo had, except in a content repository, whose
+# workspace holds the tools its content is authored with, under `tools/`.
+NPM_WORKSPACES: dict[str, tuple[str, ...]] = {"content": ("tools/*",)}
+DEFAULT_NPM_WORKSPACES = ("packages/*", "apps/*")
+
+
+def npm_workspaces(kind: str) -> list[str]:
+    """The member patterns of the kind's npm workspace, or none for a kind without one."""
+    if not typescript_workspace(kind):
+        return []
+    return list(NPM_WORKSPACES.get(kind, DEFAULT_NPM_WORKSPACES))
+
+
+def npm_feed_step(workdir: list[str] | None = None) -> str:
+    """The step writing the job's access token as npm's credential for the feed, run where `workdir` says."""
+    return "\n".join(
+        [
+            f"          - script: {NPM_FEED_SCRIPT} {FEED_REGISTRY}",
+            "            displayName: Authenticate npm to the package feed",
+            *(workdir or []),
+            "            env:",
+            "              SYSTEM_ACCESSTOKEN: $(System.AccessToken)",
+        ]
+    )
+
+
+def ci_npm_feed(name: str, kind: str) -> str:
+    """The feed step a checks job runs before its first `npm ci`, or nothing for a kind building no workspace."""
+    return npm_feed_step(checks_workdir(name)) if typescript_workspace(kind) else ""
+
+
+def ci_kind_checks(name: str, kind: str) -> str:
+    """The checks-job steps of the gates the kind adds, or nothing."""
+    lines: list[str] = []
+    for check in kind_checks(kind):
+        lines += [
+            f"          - script: uv run --quiet --project ci gate run {check.id}",
+            f"            displayName: {check.display_name}",
+            *checks_workdir(name),
+            "            condition: eq(variables['checksReady'], 'true')",
+        ]
+        if check.tests is None:
+            continue
+        artifacts = f"target/gate-artifacts/{check.id}"
+        lines += [
+            "            env:",
+            f"              CI_GATE_ARTIFACTS: {artifacts}",
+            "          - task: PublishTestResults@2",
+            f"            displayName: Publish the {check.tests} test results",
+            "            condition: succeededOrFailed()",
+            "            inputs:",
+            "              testResultsFormat: JUnit",
+            f"              testResultsFiles: {checks_root(name)}/{artifacts}/junit.xml",
+            f"              testRunTitle: {check.tests} tests",
+            "              failTaskOnMissingResultsFile: false",
+        ]
+    return "\n".join(lines)
+
+
+def extra_gates(name: str, kind: str) -> dict[str, tuple[str, ...]]:
+    """The repository's own gates, by the job of the gates stage each runs in."""
+    extra = EXTRA_GATES.get(name, {})
+    jobs = GATE_JOBS if edge_table().KINDS[kind].crate else ("checks",)
+    for job, ids in extra.items():
+        if job not in jobs:
+            raise RenderError(f"{name}'s extra gates name the job {job!r}; its pipeline's jobs are {list(jobs)}")
+        for gate_id in ids:
+            if not re.fullmatch(r"[a-z0-9]+(?:-[a-z0-9]+)*", gate_id):
+                raise RenderError(f"{gate_id!r} is not shaped like a gate id")
+    return dict(extra)
+
+
+def ci_extra_gates(name: str, kind: str, job: str) -> str:
+    """The steps of the repository's own gates in one job, or nothing."""
+    lines: list[str] = []
+    workdir = rust_workdir(name) if job == "rust" else checks_workdir(name)
+    for gate_id in extra_gates(name, kind).get(job, ()):
+        lines += [
+            f"          - script: uv run --quiet --project ci gate run {gate_id}",
+            f"            displayName: {gate_id} (this repository's own gate)",
+            *workdir,
+            "            condition: eq(variables['checksReady'], 'true')",
+        ]
+    return "\n".join(lines)
+
+
+def ci_playwright_gate(name: str, kind: str) -> str:
+    """The Rust job's step of the `playwright-image` gate, for a browser track, or nothing."""
+    if not ci_rust_npm(name, kind):
+        return ""
+    return "\n".join(
+        [
+            f"          - script: uv run --quiet --project ci gate run {PLAYWRIGHT_GATE}",
+            "            displayName: Playwright against the image's browser",
+            *rust_workdir(name),
+            "            condition: eq(variables['checksReady'], 'true')",
+        ]
+    )
+
+
+def pipeline_only_of_repository(name: str, kind: str) -> str:
+    """The hookless ids this repository adds: the browser gate and its own gates, as the words of one string."""
+    ids = [PLAYWRIGHT_GATE] if ci_rust_npm(name, kind) else []
+    ids += [gate_id for gate_ids in extra_gates(name, kind).values() for gate_id in gate_ids]
+    return " ".join(ids)
+
+
+def pipeline_only_of_kind(kind: str) -> str:
+    """The ids the kind adds to `PIPELINE_ONLY`, as the words of one string."""
+    return " ".join(check.id for check in kind_checks(kind))
+
+
+def project_stages(name: str) -> tuple[str, ...]:
+    """The stages the repository's own `PROJECT_STAGES` declares, or none for a repository without them."""
+    stages = PROJECT_PIPELINE.get(name, ())
+    for stage in stages:
+        if not re.fullmatch(r"[a-z][a-z0-9_]*", stage):
+            raise RenderError(f"{stage!r} is not shaped like a stage id (lower case, digits and underscores)")
+        if stage in KIT_STAGES:
+            raise RenderError(f"{name}'s own stage {stage!r} is one the kit's pipeline declares")
+    if name in PROJECT_PIPELINE and not stages:
+        raise RenderError(f"{name} runs a pipeline of its own and names none of its stages")
+    if len(set(stages)) != len(stages):
+        raise RenderError(f"{name} names one of its own stages twice: {list(stages)}")
+    return stages
+
+
+def project_parameters(name: str, kind: str) -> dict[str, str]:
+    """What the pipeline hands each of the repository's own templates, by parameter, or nothing.
+
+    A template cannot read the pipeline's resources, so what a job needs to
+    run beside the kit's is passed in: the image of the repository's Rust
+    track at the commit its container resource pins (for a kind carrying a
+    crate), the registry and the Docker Registry service connection that
+    pulls and pushes there, and the arm64 agent pool.
+    """
+    if name not in PROJECT_PIPELINE:
+        return {}
+    parameters = {}
+    if edge_table().KINDS[kind].crate:
+        parameters["rustImage"] = image_reference(rust_track(name))
+    parameters["registry"] = CI_REGISTRY
+    parameters["registryEndpoint"] = CI_IMAGE_ENDPOINT
+    parameters["arm64Pool"] = ARM64_POOL
+    return parameters
+
+
+def _include(template: str, parameters: dict[str, str], indent: int) -> str:
+    pad = " " * indent
+    lines = [f"{pad}- template: {template}", f"{pad}  parameters:"]
+    lines += [f"{pad}    {key}: {value}" for key, value in parameters.items()]
+    return "\n".join(lines)
+
+
+def ci_project_jobs(name: str, kind: str) -> str:
+    """The gates stage's include of the repository's own jobs, or nothing."""
+    if name not in PROJECT_PIPELINE:
+        return ""
+    return _include(PROJECT_JOBS, project_parameters(name, kind), 6)
+
+
+def ci_project_stages(name: str, kind: str) -> str:
+    """The include of the repository's own stages, after the publish stage, or nothing."""
+    if not project_stages(name):
+        return ""
+    return _include(PROJECT_STAGES, project_parameters(name, kind), 2)
+
+
+def ci_project_setup(name: str, kind: str) -> str:
+    """The Rust job's include of the repository's own setup steps, or nothing."""
+    if name not in PROJECT_PIPELINE or not edge_table().KINDS[kind].crate:
+        return ""
+    return f"          - template: {PROJECT_SETUP}"
+
+
+def rust_timeout(name: str) -> int:
+    """The minutes the repository's Rust job may run."""
+    return RUST_TIMEOUTS.get(name, RUST_TIMEOUT)
+
+
+# The longest line the rendered ci project's ruff allows (`line-length` in
+# templates/repository/ci/pyproject.toml).
+PYTHON_LINE_LENGTH = 120
+
+
+def python_dict(mapping: dict[str, str]) -> str:
+    """A mapping of strings as a Python literal laid out as `ruff format` lays it out, one entry a line.
+
+    `ruff format` never splits a string, so an entry whose value runs past the
+    line length, such as a CI image pinned at a commit under a long name, is
+    marked as the one long line ruff is to let pass.
+    """
+    if not mapping:
+        return "{}"
+    lines = []
+    for key, value in mapping.items():
+        line = f"    {json.dumps(key)}: {json.dumps(value)},"
+        if len(line) > PYTHON_LINE_LENGTH:
+            line += "  # noqa: E501"
+        lines.append(line + "\n")
+    return "{\n" + "".join(lines) + "}"
+
+
+def ci_publish(kind: str) -> str:
+    """The stage publishing the workspace's public packages on a tag.
+
+    Every kind is rendered the stage and the trigger on tags, and the stage
+    comes before the mirror stage, which stays the pipeline's last. A kind
+    without the `typescript` gate has no workspace to publish, and the script
+    skips it with a notice, or refuses a workspace no gate of the repository
+    builds.
+    """
+    lines = [
+        f"  - stage: {PUBLISH_STAGE}",
+        "    displayName: Publish",
+        "    dependsOn: gates",
+        "    condition: and(succeeded(), startsWith(variables['Build.SourceBranch'], 'refs/tags/v'))",
+        "    jobs:",
+        "      - job: packages",
+        "        displayName: Publish the TypeScript packages",
+        "        timeoutInMinutes: 30",
+        f"        container: {CI_WEB_TRACK}",
+        "        steps:",
+        "          - checkout: self",
+        "            fetchDepth: 1",
+        "            clean: true",
+        f"          - script: {PUBLISH_SCRIPT} . {FEED_REGISTRY} $(Build.SourceBranch)",
+        "            displayName: Publish the packages to the feed",
+        "            env:",
+        "              SYSTEM_ACCESSTOKEN: $(System.AccessToken)",
+    ]
+    return "\n".join(lines)
+
+
+def builds_image(name: str, kind: str) -> bool:
+    """Whether the repository's pipeline builds and pushes its image.
+
+    Every application does; a tool does when a run image carries its binaries,
+    and a site when a deployment serves it (`IMAGE_SITES`).
+    """
+    if kind in IMAGE_KINDS:
+        return True
+    if kind == IMAGE_SITE_KIND:
+        return name in IMAGE_SITES
+    return kind == IMAGE_TOOL_KIND and name in edge_table().TOOL_IMAGES
+
+
+def rust_channel(kit: Path = KIT) -> str:
+    """The channel the kit's rust-toolchain.toml pins, which an image's Rust pin names."""
+    path = kit / RUST_TOOLCHAIN.relative_to(KIT)
+    try:
+        channel = tomllib.loads(path.read_text(encoding="utf-8"))["toolchain"]["channel"]
+    except (OSError, KeyError, tomllib.TOMLDecodeError) as error:
+        raise RenderError(f"{path} pins no toolchain channel: {error}") from error
+    return str(channel)
+
+
+def _registry_login(indent: str) -> list[str]:
+    """The step logging in to the registry, retried: the token exchange is what times out, not the commit."""
+    return [
+        f"{indent}- task: Docker@2",
+        f"{indent}  displayName: Log in to the registry",
+        f"{indent}  retryCountOnTaskFailure: 2",
+        f"{indent}  inputs:",
+        f"{indent}    command: login",
+        f"{indent}    containerRegistry: {CI_IMAGE_ENDPOINT}",
+    ]
+
+
+def ci_image_stage(name: str, kind: str) -> str:
+    """The stage building the repository's image, after the gates, on master and staging alone.
+
+    One job per architecture builds natively and pushes `<name>:<commit>-<arch>`
+    (`scripts/ci/image.sh`), with the job's token able to fetch the repositories
+    its manifests reach, as the Rust job does, for a kind carrying a crate, and,
+    for a kind carrying an npm
+    workspace, written as npm's credential for the feed, which the build is
+    handed as a secret, so a Dockerfile installing a package of the project
+    from the feed reaches it; a last job fuses the two into `<name>:<commit>`
+    (`scripts/ci/manifest.sh`). Nothing for a repository that builds no image.
+    """
+    if not builds_image(name, kind):
+        return ""
+    steps = "          "
+    branches = ", ".join(f"'refs/heads/{branch}'" for branch in IMAGE_BRANCHES)
+    lines = [
+        f"  - stage: {IMAGE_STAGE}",
+        "    displayName: Image",
+        "    dependsOn: gates",
+        f"    condition: and(succeeded(), in(variables['Build.SourceBranch'], {branches}))",
+        "    jobs:",
+    ]
+    uses = uses_block(fetched_repositories(name))
+    for arch in IMAGE_ARCHITECTURES:
+        lines += [
+            f"      - job: {IMAGE_STAGE}_{arch}",
+            f"        displayName: Image ({arch})",
+            "        timeoutInMinutes: 120",
+            "        pool:",
+            "          vmImage: ubuntu-24.04" if arch == "amd64" else f"          name: {ARM64_POOL}",
+        ]
+        if uses:
+            lines.append(uses)
+        lines += [
+            "        steps:",
+            f"{steps}- checkout: self",
+            f"{steps}  fetchDepth: 1",
+            f"{steps}  clean: true",
+        ]
+        if arch == "amd64":
+            # A hosted agent's disk holds toolchains no job here uses; the
+            # managed arm64 pool hands every job a fresh VM of its own.
+            lines += [
+                f"{steps}- script: |",
+                f"{steps}    {HOST_DISK_COMMAND}",
+                f"{steps}    df -h /",
+                f"{steps}  displayName: Free the host's disk of the software the job never uses",
+            ]
+        if edge_table().KINDS[kind].crate:
+            # A kind carrying no crate is rendered no git-sources.sh: its
+            # build fetches no repository.
+            lines += [
+                f"{steps}- script: scripts/ci/git-sources.sh",
+                f"{steps}  displayName: Fetch the project's dependencies from Azure",
+                f"{steps}  env:",
+                f"{steps}    SYSTEM_ACCESSTOKEN: $(System.AccessToken)",
+            ]
+        lines += [
+            *([npm_feed_step()] if typescript_workspace(kind) else []),
+            *_registry_login(steps),
+            f'{steps}- script: {IMAGE_SCRIPT} {name} "$(Build.SourceVersion)"',
+            f"{steps}  displayName: Build and push the image ({arch})",
+        ]
+    lines += [
+        f"      - job: {IMAGE_STAGE}_manifest",
+        '        displayName: "Image: the multi-arch tag"',
+        "        dependsOn:",
+        *(f"          - {IMAGE_STAGE}_{arch}" for arch in IMAGE_ARCHITECTURES),
+        "        steps:",
+        f"{steps}- checkout: self",
+        f"{steps}  fetchDepth: 1",
+        f"{steps}  clean: true",
+        *_registry_login(steps),
+        f'{steps}- script: {MANIFEST_SCRIPT} "$(Build.SourceVersion)" {name}',
+        f"{steps}  displayName: Fuse the architectures",
+        f"{steps}  retryCountOnTaskFailure: 2",
+    ]
+    return "\n".join(lines)
+
+
+def builds_bundles(kind: str) -> bool:
+    """Whether the repository's pipeline builds bundles on a tag."""
+    return kind in BUNDLE_KINDS
+
+
+def ci_bundle_stage(name: str, kind: str) -> str:
+    """The stage building a shell's bundles, after the gates, on a tag alone.
+
+    One job per target runs `scripts/ci/bundle.sh <target> <directory>`, which
+    builds every flavor of the shell for that target into the directory, and
+    publishes the directory as the artifact `client-<target>`. Nothing for a
+    kind that builds no bundle.
+    """
+    if not builds_bundles(kind):
+        return ""
+    steps = "          "
+    lines = [
+        f"  - stage: {BUNDLE_STAGE}",
+        "    displayName: Bundles",
+        "    dependsOn: gates",
+        "    condition: and(succeeded(), startsWith(variables['Build.SourceBranch'], 'refs/tags/v'))",
+        "    jobs:",
+    ]
+    for target, pool in BUNDLE_TARGETS.items():
+        lines += [
+            f"      - job: {BUNDLE_STAGE}_{target}",
+            f"        displayName: Bundle ({target})",
+            "        timeoutInMinutes: 120",
+        ]
+        if pool is None:
+            lines.append(f"        container: {rust_track(name)}")
+        else:
+            lines += ["        pool:", f"          vmImage: {pool}"]
+        lines += [
+            "        steps:",
+            f"{steps}- checkout: self",
+            f"{steps}  fetchDepth: 1",
+            f"{steps}  clean: true",
+        ]
+        if pool is None:
+            lines += [
+                f"{steps}- script: |",
+                f"{steps}    {HOST_DISK_COMMAND}",
+                f"{steps}    df -h /",
+                f"{steps}  displayName: Free the host's disk of the software the job never uses",
+                f"{steps}  target: host",
+            ]
+        # `bash` is Git Bash on a Windows agent, so the script runs unchanged
+        # on every target.
+        lines += [
+            f"{steps}- bash: npm ci",
+            f"{steps}  displayName: Install the npm workspace",
+            f'{steps}- bash: {BUNDLE_SCRIPT} {target} "{BUNDLE_OUTPUT}"',
+            f"{steps}  displayName: Build every flavor's {target} bundle",
+            f"{steps}- task: PublishPipelineArtifact@1",
+            f"{steps}  displayName: Publish the {target} bundles",
+            f"{steps}  inputs:",
+            f"{steps}    targetPath: {BUNDLE_OUTPUT}",
+            f"{steps}    artifact: {BUNDLE_ARTIFACT.format(target=target)}",
+        ]
+    return "\n".join(lines)
+
+
+def crate_of(name: str) -> tuple[str, str]:
+    """The directory under crates/ and the package name of a repository's scaffolded crate."""
+    if name not in CRATES:
+        raise RenderError(f"{name} carries a crate, and the kit names none for it in CRATES")
+    return CRATES[name]
+
+
+def pinned_reference(repo: str) -> str:
+    """The reference a manifest pins a repository at: its recorded tag, else `master`."""
+    tag = TAGS.get(repo)
+    return f'tag = "{tag}"' if tag is not None else 'branch = "master"'
+
+
+def workspace_dependencies(name: str) -> str:
+    """The `[workspace.dependencies]` body: the crate of each repository the Rust edges permit."""
+    edges = edge_table()
+    lines = []
+    for one in edges.edges_of(name):
+        if not one.crates:
+            continue
+        _, crate = crate_of(one.target)
+        lines.append(f'{crate} = {{ git = "{public_source(one.target)}", {pinned_reference(one.target)} }}')
+    return "\n".join(lines) if lines else f"# {name} depends on no crate of another repository."
+
+
+def lock_file_rule(kind: str) -> str:
+    """The lock-file rule of the kind, as a wrapped list item, or nothing for a kind carrying no crate."""
+    shape = edge_table().KINDS[kind]
+    if not shape.crate:
+        return ""
+    if shape.commits_lock:
+        rule = (
+            "It commits its lock file: an application's lock file is the record of the "
+            "revisions that build together. Inside the superrepo every build rewrites the "
+            "working copy under the patch table; that copy is never committed, and "
+            "`scripts/resolve-lock.sh` writes the standalone one back."
+        )
+    else:
+        rule = (
+            "It commits no lock file: a library's revisions that build together are recorded "
+            "by each application's lock file, and its pipeline builds it on its own."
+        )
+    return textwrap.fill(rule, width=80, initial_indent="- ", subsequent_indent="  ")
+
+
+def edges_rule(name: str) -> str:
+    """What the repository may depend on, as a wrapped list item of CLAUDE.md.
+
+    A repository with no edge depends on no other repository at all, which the
+    sentence says once.
+    """
+    edges = edge_table()
+    if edges.edges_of(name):
+        depends = f"It depends on {edges.describe(name)}, and on no other repository of the project"
+    else:
+        depends = "It depends on no other repository of the project"
+    rule = (
+        f"{depends}; the `dependency-edges` gate holds every Cargo and npm manifest to the "
+        "edges the superrepo's Repositories page draws."
+    )
+    return textwrap.fill(rule, width=80, initial_indent="- ", subsequent_indent="  ", break_on_hyphens=False)
+
+
+# A value of the derived context: the template interpolates the strings and
+# tests the flags.
+Variables = dict[str, str | bool | list[str]]
+
+
+def variables(name: str, kind: str, description: str) -> Variables:
+    """Every value a template derives from the answers."""
+    edges = edge_table()
+    if kind not in edges.KINDS:
+        raise RenderError(f"unknown kind {kind!r}; the kinds are {kinds()}")
+    if name not in edges.REPOSITORIES:
+        raise RenderError(f"{name} is no repository the kit renders; they are {sorted(edges.REPOSITORIES)}")
+    if edges.REPOSITORIES[name] != kind:
+        raise RenderError(f"{name} is a {edges.REPOSITORIES[name]} repository, not a {kind} one")
+    if '"' in description or "\\" in description or "\n" in description:
+        raise RenderError("a description is one line holding no double quote or backslash")
+    shape = edges.KINDS[kind]
+    crate_dir, crate = crate_of(name) if shape.crate else ("", "")
+    if shape.crate and browser_track(name) and not typescript_workspace(kind):
+        raise RenderError(
+            f"{name} runs its Rust job on the {rust_track(name)} track, whose browser tests drive the npm "
+            f"workspace's Playwright, and a {kind} repository carries no workspace"
+        )
+    return {
+        "name": name,
+        "kind": kind,
+        "description": description,
+        # The same sentence as a Markdown paragraph, held to 80 columns.
+        "description_wrapped": textwrap.fill(description, width=80),
+        "crate": crate,
+        "crate_dir": crate_dir,
+        "public_source": public_source(name),
+        "azure_remote": azure_remote(name),
+        "workspace_dependencies": workspace_dependencies(name) if shape.crate else "",
+        "lock_file_rule": lock_file_rule(kind),
+        "edges_rule": edges_rule(name),
+        "ci_sources": ci_sources(),
+        "ci_resources": ci_resources(name, kind),
+        "ci_rust_track": rust_track(name) if shape.crate else "",
+        "ci_rust_variables": ci_rust_variables(name),
+        # The Rust job's checkouts, and where in them its steps run: this
+        # repository alone at the sources directory, or beside each data
+        # repository its suite reads, at its name under it.
+        "ci_rust_checkout": ci_rust_checkout(name) if shape.crate else "",
+        "ci_rust_uses": uses_block(rust_repositories(name)) if shape.crate else "",
+        "ci_rust_root": rust_root(name),
+        "ci_rust_workdir": rust_root(name) if shape.crate and rust_dir(name) else "",
+        # The prefix of a path relative to the sources directory that reaches
+        # into this repository's checkout.
+        "rust_dir_prefix": f"{rust_dir(name)}/" if rust_dir(name) else "",
+        "ci_rust_npm": ci_rust_npm(name, kind),
+        "ci_playwright_gate": ci_playwright_gate(name, kind),
+        # The conditional name of the `playwright-image` gate and its test.
+        "ci_browser": bool(ci_rust_npm(name, kind)),
+        "ci_rust_extra_gates": ci_extra_gates(name, kind, "rust") if shape.crate else "",
+        "ci_checks_extra_gates": ci_extra_gates(name, kind, "checks"),
+        "ci_windows": bool(shape.crate) and name in WINDOWS_TESTS,
+        "windows_image": WINDOWS_IMAGE,
+        "nextest_script": NEXTEST_SCRIPT,
+        "ci_uses": uses_block(fetched_repositories(name)),
+        # The checks job's checkouts, what it declares ahead of its steps, and
+        # where its steps run: this repository alone at the sources directory,
+        # or beside each data repository its tests read, at its name under it.
+        "ci_checks_checkout": ci_checks_checkout(name),
+        "ci_checks_head": ci_checks_head(name),
+        "ci_checks_workdir": checks_root(name) if checks_dir(name) else "",
+        "ci_npm_feed": ci_npm_feed(name, kind),
+        "ci_kind_checks": ci_kind_checks(name, kind),
+        "ci_publish": ci_publish(kind),
+        "ci_project_jobs": ci_project_jobs(name, kind),
+        "ci_project_stages": ci_project_stages(name, kind),
+        "ci_project_setup": ci_project_setup(name, kind),
+        "project_setup": PROJECT_SETUP if ci_project_setup(name, kind) else "",
+        "rust_timeout": rust_timeout(name),
+        "project_stages": list(project_stages(name)),
+        # The same stages and parameters as Python literals, for ci/tests/test_wiring.py.
+        "project_stages_list": json.dumps(list(project_stages(name))),
+        "project_parameters_dict": python_dict(project_parameters(name, kind)),
+        # The image an application or a binary-carrying tool builds: the
+        # conditional name of its Dockerfile, its `build-context` gate and its
+        # scripts, and its stage. A tool's image carries its binaries at
+        # `tool_binaries` rather than running a service.
+        "ci_image": builds_image(name, kind),
+        "ci_image_stage": ci_image_stage(name, kind),
+        "image_carries_binaries": builds_image(name, kind) and kind == IMAGE_TOOL_KIND,
+        # The bundles a shell builds on a tag: the conditional name of its
+        # script, its stage, and the targets and artifact names
+        # ci/tests/test_wiring.py holds the stage to.
+        "ci_bundles": builds_bundles(kind),
+        "ci_bundle_stage": ci_bundle_stage(name, kind),
+        "bundle_targets_dict": python_dict(
+            {target: pool or "" for target, pool in BUNDLE_TARGETS.items()} if builds_bundles(kind) else {}
+        ),
+        "bundle_artifact": BUNDLE_ARTIFACT,
+        "bundle_script": BUNDLE_SCRIPT,
+        "bundle_output": BUNDLE_OUTPUT,
+        "tool_binaries": TOOL_BINARIES,
+        "image_registry": CI_REGISTRY,
+        "rust_channel": rust_channel() if shape.crate else "",
+        "ci_image_endpoint": CI_IMAGE_ENDPOINT,
+        "ci_registry": CI_REGISTRY,
+        "ci_image_tag": ci_image_tag(),
+        "checks_root": checks_root(name),
+        "branches": list(BRANCHES),
+        "release_tags": RELEASE_TAGS,
+        "feed_registry": FEED_REGISTRY,
+        "pipeline_only_of_kind": pipeline_only_of_kind(kind),
+        "pipeline_only_of_repository": pipeline_only_of_repository(name, kind),
+        "typescript_workspace": typescript_workspace(kind),
+        "npm_workspaces": npm_workspaces(kind),
+        # The same members as Markdown code spans, for the layout tables.
+        "npm_workspace_dirs": ", ".join(f"`{pattern.removesuffix('*')}`" for pattern in npm_workspaces(kind)),
+        "host_disk_command": HOST_DISK_COMMAND,
+        "rust_crate": shape.crate,
+        "commits_lock": shape.commits_lock,
+        # Every repository of the project has a GitHub mirror (plan Q10).
+        "ci_mirror": name in edges.MIRRORS,
+        "mirror_key": MIRROR_KEY.format(repo=name),
+        "mirror_script": MIRROR_SCRIPT,
+        # The same repositories as a Python list, for ci/tests/test_wiring.py.
+        "fetched_list": json.dumps(fetched_repositories(name)),
+        # The data checkouts and the directory of this repository's own, for
+        # ci/tests/test_wiring.py.
+        "rust_checkouts_dict": python_dict(rust_checkouts(name)),
+        "rust_dir": rust_dir(name),
+        "checks_checkouts_dict": python_dict(checks_checkouts(name)),
+        "checks_dir": checks_dir(name),
+    }
+
+
+# --- Rendering ----------------------------------------------------------------
+
+
+class Outcome(NamedTuple):
+    """What a render or an update did to a repository."""
+
+    # The paths written, removed or merged, relative to the repository root.
+    written: list[str]
+    # The paths left with inline conflict markers for the updater to settle.
+    conflicts: list[str]
+
+
+def _git(args: list[str], cwd: Path, *, check: bool = True) -> subprocess.CompletedProcess[str]:
+    env = {key: value for key, value in os.environ.items() if key not in GIT_LOCATING}
+    return subprocess.run(["git", *args], cwd=cwd, env=env, capture_output=True, text=True, check=check)
+
+
+@contextmanager
+def _copier() -> Iterator[ModuleType]:
+    """Copier, with its git configured for the superrepo while the block runs.
+
+    Copier runs git through plumbum, whose environment is a copy of the
+    process's taken when it is imported, so both are given the settings, and
+    lose the variables that locate a repository, and both are given back what
+    they held afterwards.
+    """
+    import copier
+    import plumbum
+
+    keys = (*GIT_ENVIRONMENT, *GIT_LOCATING)
+    saved = {key: os.environ.get(key) for key in keys}
+    saved_plumbum = {key: plumbum.local.env.get(key) for key in keys}
+    for environment in (os.environ, plumbum.local.env):
+        for key in GIT_LOCATING:
+            environment.pop(key, None)
+        environment.update(GIT_ENVIRONMENT)
+    try:
+        yield copier
+    finally:
+        for environment, held in ((os.environ, saved), (plumbum.local.env, saved_plumbum)):
+            for key, value in held.items():
+                if value is None:
+                    environment.pop(key, None)
+                else:
+                    environment[key] = value
+
+
+def template_ref(source: Path, *, uncommitted: bool) -> str:
+    """The ref copier renders the superrepo at.
+
+    The committed HEAD, named by its hash so the record names a commit that
+    exists, unless the working tree is asked for: copier includes a local
+    template's uncommitted changes when it renders the literal `HEAD`, by
+    committing them in its clone, and records that made-up commit.
+    """
+    if uncommitted:
+        return "HEAD"
+    return _git(["rev-parse", "HEAD"], source).stdout.strip()
+
+
+def read_record(root: Path) -> dict[str, object]:
+    record = root / RECORD
+    if not record.is_file():
+        raise RenderError(f"{record} is missing, so this is not a rendered repository")
+    return tomllib.loads(record.read_text(encoding="utf-8"))
+
+
+def read_answers(root: Path) -> dict[str, object]:
+    import yaml
+
+    answers = root / ANSWERS
+    if not answers.is_file():
+        raise RenderError(f"{answers} is missing, so this is not a rendered repository")
+    return yaml.safe_load(answers.read_text(encoding="utf-8"))
+
+
+def _is_dirty(root: Path) -> bool:
+    return bool(_git(["status", "--porcelain"], root).stdout.strip())
+
+
+def _files(tree: Path) -> set[str]:
+    return {
+        path.relative_to(tree).as_posix()
+        for path in tree.rglob("*")
+        if path.is_file() and ".git" not in path.relative_to(tree).parts
+    }
+
+
+def _conflicted(root: Path, paths: list[str]) -> list[str]:
+    conflicted = []
+    for relative in paths:
+        path = root / relative
+        if not path.is_file():
+            continue
+        try:
+            text = path.read_text(encoding="utf-8")
+        except UnicodeDecodeError:
+            continue
+        if any(line.startswith(CONFLICT_MARKER) for line in text.splitlines()):
+            conflicted.append(relative)
+    return conflicted
+
+
+def _changed(root: Path) -> list[str]:
+    """The paths git sees changed under `root`, deletions included, relative to it."""
+    out = _git(["status", "--porcelain", "--untracked-files=all"], root).stdout
+    return sorted(line[3:] for line in out.splitlines())
+
+
+def render(
+    root: Path,
+    name: str,
+    kind: str,
+    description: str,
+    *,
+    source: Path = SUPERREPO,
+    uncommitted: bool = False,
+) -> Outcome:
+    """Render the template into `root`, which must not exist or be empty."""
+    if root.exists() and any(root.iterdir()):
+        raise RenderError(f"{root} is not empty; use --update to refresh a rendered repository")
+    variables(name, kind, description)
+    root.mkdir(parents=True, exist_ok=True)
+    ref = template_ref(source, uncommitted=uncommitted)
+    # Run from the repository, naming the superrepo relative to it, so the
+    # `_src_path` the record holds is `..` for a repository checked out inside
+    # the superrepo, and resolves on every machine the checkout is on.
+    with _copier() as copier, chdir(root):
+        try:
+            copier.run_copy(
+                os.path.relpath(source, root),
+                ".",
+                data={"name": name, "kind": kind, "description": description},
+                vcs_ref=ref,
+                unsafe=True,
+                defaults=True,
+                quiet=True,
+            )
+        except copier.errors.CopierError as error:
+            raise RenderError(f"copier could not render {name}: {error}") from error
+    return Outcome(sorted(_files(root)), [])
+
+
+def update(root: Path, *, source: Path = SUPERREPO, uncommitted: bool = False) -> Outcome:
+    """Merge the kit's change since the repository's last render into it."""
+    if _is_dirty(root):
+        raise RenderError(
+            f"{root} has uncommitted changes; the merge is against committed state, so commit or stash them first"
+        )
+    answers = read_answers(root)
+    recorded = (root / str(answers["_src_path"])).resolve()
+    if recorded != source.resolve():
+        raise RenderError(
+            f"{root / ANSWERS} names {recorded} as the template, not {source}; "
+            "the record's `_src_path` is relative to the repository"
+        )
+    ref = template_ref(source, uncommitted=uncommitted)
+    # From the repository, where the record's `_src_path` resolves.
+    with _copier() as copier, chdir(root):
+        try:
+            copier.run_update(
+                ".",
+                vcs_ref=ref,
+                unsafe=True,
+                defaults=True,
+                skip_answered=True,
+                conflict="inline",
+                overwrite=True,
+                quiet=True,
+            )
+        except copier.errors.CopierError as error:
+            raise RenderError(f"copier could not update {root.name}: {error}") from error
+    changed = _changed(root)
+    return Outcome(changed, _conflicted(root, changed))
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=(__doc__ or "").splitlines()[0])
+    parser.add_argument("name", help="the repository, such as contracts")
+    parser.add_argument("--kind", help="the repository's kind, which the table of repositories otherwise gives")
+    parser.add_argument("--description", help="one line saying what the repository holds")
+    parser.add_argument("--into", type=Path, help="the directory to render into (default: <superrepo>/<name>)")
+    parser.add_argument(
+        "--update", action="store_true", help="merge the kit's change since the last render into a rendered repository"
+    )
+    parser.add_argument(
+        "--uncommitted",
+        action="store_true",
+        help="render the superrepo's working tree rather than its committed HEAD, to try a kit change; "
+        "the record it leaves is not for committing",
+    )
+    parser.add_argument(
+        "--source", type=Path, default=SUPERREPO, help="the superrepo to render from (default: this one)"
+    )
+    args = parser.parse_args(argv)
+    root = args.into if args.into is not None else args.source / args.name
+    try:
+        if args.update:
+            outcome = update(root, source=args.source, uncommitted=args.uncommitted)
+            kind = str(read_record(root)["kind"])
+        else:
+            kind = args.kind or repositories().get(args.name)
+            if kind is None:
+                raise RenderError(f"{args.name} is not a known repository; they are {sorted(repositories())}")
+            if not args.description:
+                raise RenderError("--description is required for a first render")
+            outcome = render(root, args.name, kind, args.description, source=args.source, uncommitted=args.uncommitted)
+    except RenderError as error:
+        print(f"render: {error}", file=sys.stderr)
+        return 1
+    for path in outcome.written:
+        print(path)
+    print(f"{'updated' if args.update else 'rendered'} {args.name} ({kind}) at {os.path.relpath(root)}")
+    if args.uncommitted:
+        print(
+            "render: the record names a commit copier made up for the uncommitted kit; do not commit it",
+            file=sys.stderr,
+        )
+    if outcome.conflicts:
+        print("render: conflicts to settle before committing:", file=sys.stderr)
+        for path in outcome.conflicts:
+            print(f"    {path}", file=sys.stderr)
+        return 2
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

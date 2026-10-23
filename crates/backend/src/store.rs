@@ -29,20 +29,28 @@
 use std::collections::BTreeMap;
 use std::path::{Component, Path, PathBuf};
 
+use crate::review::FailureCap;
 use serde::{Deserialize, Serialize};
-use test_cabinet_core::review::FailureCap;
-use test_cabinet_core::test_case::{
+use test_cabinet_suites::test_case::AssetDimension;
+use test_cabinet_suites::test_case::AssetKind;
+use test_cabinet_suites::test_case::ModelSpec;
+use test_cabinet_suites::test_case::SheetSpec;
+use test_cabinet_suites::test_case::TestType;
+use test_cabinet_suites::test_case::VoxelSpec;
+use test_cabinet_suites::test_case::{
     AudioSpec, EngineSupport, ErratumSeverity, MaterialSpec, ParticleSpec, UiSpec, version_key,
 };
-use test_cabinet_core::{
-    AssetDimension, AssetKind, ModelSpec, SheetSpec, TestCaseGroup, TestType, VoxelSpec,
+use test_cabinet_suites::test_case_group::TestCaseGroup;
+use test_cabinet_suites::test_suite::{
+    DEBUG_API_DIR, DEBUG_API_FILE, SPECIFICATIONS_DIR, SUITE_MANIFEST_FILE,
+    TEST_CASES_DIR as SUITE_TEST_CASES_DIR, VALIDATORS_DIR, VERSION_MANIFEST_FILE,
 };
 
 use crate::error::{BackendError, Result};
 
 /// The sidecar directory holding backend-generated metadata inside a keyed
 /// definition directory.
-const SIDECAR: &str = ".tcab";
+pub(crate) const SIDECAR: &str = ".tcab";
 
 /// The version of the record shapes this build writes into the store, stamped on
 /// the store by every ingest scan and checked against on startup.
@@ -60,7 +68,30 @@ const SIDECAR: &str = ".tcab";
 /// type-level signal is absent, ingest returns early for a version it already holds,
 /// and without a bump every stored version would keep an empty pack list, staging no
 /// audio into any run and silencing the frozen full-stack cases outright.
-pub const STORE_FORMAT: u32 = 2;
+///
+/// `3` adds [`StoredManifest::suite`], the [test
+/// suite](crate::suite_store::StoredSuite) coordinate a suite-defined version is
+/// lowered from, and the sibling `test-suites/` key space the suite's own record
+/// lives in. Both are additive, so a record written at `2` still parses — and both
+/// are exactly what a store written before them cannot produce: every stored
+/// version would keep an absent coordinate and no suite would be served at all,
+/// because ingest returns early for a version it already holds.
+///
+/// `4` stores the suite's own declaration — `suite.toml`, the specification
+/// folders and the definition files — inside each suite-derived version, so a
+/// driver materializing one rebuilds the version folder it was lowered from and
+/// reads the suite model back out of it. A store written at `3` holds the seeded
+/// materials but none of that declaration, and a run resolved out of it would read
+/// as an authored case: the wrong prompt, and no requirement outcome recorded at
+/// all. Nothing in the record changed shape, so only the bump makes
+/// [`DefinitionStore::needs_reingest`] fire.
+///
+/// `5` splits a suite's identity from its version: a stored suite record carries
+/// the `suite.toml` manifest beside the `version.toml` one, and each suite-derived
+/// version stores `version.toml` with a copy of the `suite.toml` it belongs to. A
+/// record written at `4` holds one combined manifest and a suite-derived version
+/// holds no `version.toml`, which this build reads as an authored case.
+pub const STORE_FORMAT: u32 = 5;
 
 /// The [run-tree artifact](DefinitionStore::run_artifact_path) name of a gg run's
 /// session record. One constant, because the same string is the store slot
@@ -76,31 +107,17 @@ pub const REPLAY_ARTIFACT: &str = "replay";
 /// `code-analysis.json.gz` into the run tree from another crate entirely, and the driver
 /// mirrors it in from a third, so the name has to sit somewhere all three already depend
 /// on. Aliased here so the store's two artifact slots read alike at their use sites.
-pub use test_cabinet_core::CODE_ANALYSIS_ARTIFACT;
+pub use test_cabinet_contracts::code_analysis::CODE_ANALYSIS_ARTIFACT;
+
+pub use test_cabinet_contracts::backend_api::store::{
+    StoredContract, StoredMatch, StoredReplay, StoredSandbox, StoredSimulation,
+    StoredSuiteCoordinate,
+};
 
 /// Owns the on-disk definition store rooted at a single directory.
 #[derive(Debug, Clone)]
 pub struct DefinitionStore {
     root: PathBuf,
-    /// Held shared by every write of a run's file and exclusively while the
-    /// [state reclamation sweep](crate::state_reclaim) removes a run's emptied
-    /// directories, so a directory a write has just made sure of is still there
-    /// when the write lands. Shared by every clone of the store a process opened.
-    run_writes: std::sync::Arc<std::sync::RwLock<()>>,
-    /// Makes every [`remove_run_file_as_listed`](Self::remove_run_file_as_listed) fail, so a test can
-    /// see what a removal that removes nothing leaves behind.
-    #[cfg(test)]
-    pub(crate) fail_removals: std::sync::Arc<std::sync::atomic::AtomicBool>,
-    /// Run once by the next
-    /// [`remove_published_document`](Self::remove_published_document), after it
-    /// compared the document and before it takes the write lock, so a test can
-    /// replace the document at exactly the moment a race would.
-    #[cfg(test)]
-    pub(crate) before_document_removal: state::RemovalHook,
-    /// When set, every write of a run's file fails part-way, as a write to a full
-    /// volume does.
-    #[cfg(test)]
-    pub(crate) fail_writes: std::sync::Arc<std::sync::atomic::AtomicBool>,
 }
 
 /// Display names by case slug, as [`DefinitionStore::case_names`] builds them.
@@ -179,7 +196,7 @@ pub struct StoredManifest {
     pub experimental: bool,
     /// Whether the version is on the **engine manifest format** (the per-engine
     /// spelling: `[workspaces]` / `engines` / `[[engine]]`), mirroring
-    /// [`test_cabinet_core::test_case::TestCaseVersion::engine_format`]. Together
+    /// [`test_cabinet_suites::test_case::TestCaseVersion::engine_format`]. Together
     /// with the test type this decides whether the version is
     /// [validator-rated](Self::validator_rated). Defaulted to `false` for manifests
     /// stored before the field existed — every one of which is on the legacy
@@ -281,7 +298,7 @@ pub struct StoredManifest {
     pub audio: Option<AudioSpec>,
     /// The audio packs a run of this version is staged with, in declaration order.
     /// Carried verbatim from
-    /// [`TestCaseVersion::audio_packs`](test_cabinet_core::TestCaseVersion::audio_packs),
+    /// [`TestCaseVersion::audio_packs`](test_cabinet_suites::test_case::TestCaseVersion::audio_packs),
     /// because the driver stages a run out of the **stored** record rather than the
     /// manifest — a version served without it would stage no audio at all. Empty for
     /// a version that declares none.
@@ -290,7 +307,7 @@ pub struct StoredManifest {
     /// parses — and reads as declaring none. That is exactly why adding it bumps
     /// [`STORE_FORMAT`]: only the bump makes [`DefinitionStore::needs_reingest`] fire
     /// and re-resolve the catalog, which is what fills this in (and applies
-    /// [`DEFAULT_AUDIO_PACKS`](test_cabinet_core::test_case::DEFAULT_AUDIO_PACKS) to
+    /// [`DEFAULT_AUDIO_PACKS`](test_cabinet_suites::test_case::DEFAULT_AUDIO_PACKS) to
     /// the frozen full-stack versions that declare no `[audio]` table).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub audio_packs: Vec<String>,
@@ -299,7 +316,7 @@ pub struct StoredManifest {
     /// Common specs (`source` is a store-relative artifact key, `dest` the
     /// workspace destination, `template` whether it is a `.hbs` the runner renders).
     pub common_specs: Vec<StoredSpec>,
-    /// The [engines](test_cabinet_core::engine) a run of this version may select,
+    /// The [engines](test_cabinet_suites::engine) a run of this version may select,
     /// each with the version range it accepts. This is the gate the driver holds a
     /// run's engine selection against, so it has to survive the trip through the
     /// store: a version served without it would resolve as supporting the
@@ -307,7 +324,7 @@ pub struct StoredManifest {
     /// Ingest always writes it, so a stored record always carries it.
     pub engines: Vec<EngineSupport>,
     /// Common starter workspace files (directory already expanded to individual
-    /// files), per [engine](test_cabinet_core::engine), seeded into the run root for
+    /// files), per [engine](test_cabinet_suites::engine), seeded into the run root for
     /// every variant that does not override the workspace. Defaulted for manifests
     /// stored before the field existed.
     #[serde(default)]
@@ -359,6 +376,11 @@ pub struct StoredManifest {
     /// manifests stored before the field existed.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub errata: Vec<StoredErratum>,
+    /// The [test suite](crate::suite_store) coordinate this version was lowered
+    /// from, when it was: the suite, the suite version, and the definition inside
+    /// it. Absent on an authored case, which is how a client tells the two apart.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub suite: Option<StoredSuiteCoordinate>,
 }
 
 impl StoredManifest {
@@ -367,14 +389,14 @@ impl StoredManifest {
     /// declared `failure_cap`), its score stands the moment it completes, and its
     /// reviewers rate only the aesthetic channel. True iff the version is on the
     /// [engine format](Self::engine_format) and is not a game jam — the stored
-    /// mirror of [`test_cabinet_core::test_case::TestCaseVersion::validator_rated`].
+    /// mirror of [`test_cabinet_suites::test_case::TestCaseVersion::validator_rated`].
     pub fn validator_rated(&self) -> bool {
         self.engine_format && self.test_type != TestType::GameJam
     }
 }
 
 /// A known-issue erratum persisted in a [`StoredManifest`] (see
-/// [`test_cabinet_core::test_case::Erratum`]). Its serialized shape carries the
+/// [`test_cabinet_suites::test_case::Erratum`]). Its serialized shape carries the
 /// full entry so the API can map it to the wire response and the snapshot can inline
 /// it, without re-reading the version's `errata.toml`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -454,50 +476,6 @@ pub struct StoredToolchain {
     pub test: Option<String>,
 }
 
-/// The submission contract of an adversarial or performance case persisted in a
-/// [`StoredManifest`]. Path fields are forward-slashed run-workspace-relative keys.
-/// Adversarial carries the per-tick `world`/`action` schemas; performance carries
-/// the per-scenario `input`/`output` schemas. The pairs are `Option` so the two
-/// types coexist on one stored shape (only one pair is set).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub struct StoredContract {
-    /// The exported function invoked once per tick (adversarial) or once per
-    /// scenario (performance).
-    pub entry: String,
-    /// Adversarial only: the seeded `world` observation schema path.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub world: Option<String>,
-    /// Adversarial only: the seeded `action` schema path.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub action: Option<String>,
-    /// Performance only: the seeded `input` (scenario) schema path.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub input: Option<String>,
-    /// Performance only: the seeded `output` (state) schema path.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub output: Option<String>,
-}
-
-/// The sandbox limits of an adversarial or performance case persisted in a
-/// [`StoredManifest`]. Adversarial meters per tick (`fuel_per_tick`); performance
-/// meters per scenario (`fuel_limit`). Both fuel fields are `Option` so the two
-/// types coexist (only one is set).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub struct StoredSandbox {
-    /// Adversarial only: the wasmtime fuel ceiling for a single tick.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub fuel_per_tick: Option<u64>,
-    /// Performance only: the wasmtime fuel ceiling for a whole scenario.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub fuel_limit: Option<u64>,
-    /// The linear-memory cap in bytes.
-    pub max_memory_bytes: u64,
-}
-
 /// One held-out scored input case of a performance case persisted in a
 /// [`StoredManifest`]. Path fields are forward-slashed catalog-relative keys; the
 /// scored set is committed with the case and is **not** seeded into a run.
@@ -516,43 +494,7 @@ pub struct StoredCase {
     /// scored `stress` case. Defaults to `stress` for manifests stored before smoke
     /// tests existed.
     #[serde(default)]
-    pub kind: test_cabinet_core::validation::PerformanceCaseKind,
-}
-
-/// The simulation-loop configuration of an adversarial case persisted in a
-/// [`StoredManifest`].
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub struct StoredSimulation {
-    /// The fixed, faked delta handed to the game logic each tick (milliseconds).
-    pub timestep_ms: u32,
-    /// Hard cap on match length.
-    pub max_ticks: u32,
-}
-
-/// How an adversarial case pairs implementations into matches, persisted in a
-/// [`StoredManifest`].
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub struct StoredMatch {
-    /// Controllers per match.
-    pub participants: u32,
-    /// How the field is paired (for example `round-robin`).
-    pub structure: String,
-    /// Matches played per pairing.
-    pub rounds: u32,
-}
-
-/// How an adversarial case renders a recorded match for browser playback,
-/// persisted in a [`StoredManifest`].
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub struct StoredReplay {
-    /// The run-workspace-relative path the renderer is seeded to, forward-slashed.
-    pub renderer: String,
+    pub kind: test_cabinet_contracts::validation::PerformanceCaseKind,
 }
 
 /// The canvas of an asset-generation case persisted in a [`StoredManifest`].
@@ -601,7 +543,7 @@ pub struct StoredSpec {
     /// can tag it. Presentation only; defaults to `spec` for stores ingested
     /// before the field existed.
     #[serde(default)]
-    pub kind: test_cabinet_core::SpecKind,
+    pub kind: test_cabinet_suites::test_case::SpecKind,
 }
 
 /// An asset mapping persisted in a [`StoredManifest`].
@@ -626,7 +568,7 @@ pub struct StoredWorkspaceFile {
 }
 
 /// The starter project a [`StoredManifest`] carries, keyed by
-/// [engine](test_cabinet_core::engine) slug.
+/// [engine](test_cabinet_suites::engine) slug.
 ///
 /// A case ships one project per engine, because a project is written against a
 /// runtime: its `package.json` declares the engine's dependency and its case-owned
@@ -661,7 +603,7 @@ pub struct StoredVariant {
     /// Additive specs.
     pub specs: Vec<StoredSpec>,
     /// The variant's workspace override (directory expanded to files, per
-    /// [engine](test_cabinet_core::engine)), when it replaces the common workspace
+    /// [engine](test_cabinet_suites::engine)), when it replaces the common workspace
     /// for this variant. `None` inherits the common workspace. Defaulted for
     /// manifests stored before the field existed.
     #[serde(default)]
@@ -694,7 +636,7 @@ pub struct StoredVariant {
     pub showcase: Option<StoredShowcase>,
 }
 
-/// A variant's authored [showcase](test_cabinet_core::test_case::CaseShowcase)
+/// A variant's authored [showcase](test_cabinet_suites::test_case::CaseShowcase)
 /// persisted in a [`StoredManifest`]: the description (inlined — it is bounded
 /// text, like a variant's own description) plus the ordered media carousel. The
 /// media bytes themselves ride the copied version tree; each entry names its
@@ -717,7 +659,7 @@ pub struct StoredShowcaseMedia {
     /// The short caption for the entry.
     pub name: String,
     /// The kind of media the file holds, inferred from its name at resolution.
-    pub kind: test_cabinet_core::MediaKind,
+    pub kind: test_cabinet_suites::test_case::MediaKind,
     /// Store-relative artifact key of the media bytes.
     pub key: String,
 }
@@ -733,7 +675,7 @@ pub struct StoredReference {
     /// video). Defaulted to `rendered` for manifests stored before the field
     /// existed (every reference was an HTML mockup then).
     #[serde(default = "default_reference_kind")]
-    pub kind: test_cabinet_core::ReferenceKind,
+    pub kind: test_cabinet_suites::test_case::ReferenceKind,
     /// The file extension the media is stored and served under (`png` for a
     /// rendered mockup; the static source's own extension otherwise). Defaulted to
     /// `png` for manifests stored before the field existed.
@@ -743,8 +685,8 @@ pub struct StoredReference {
 
 /// The default reference kind for manifests stored before `kind` was recorded:
 /// every reference used to be an HTML mockup rendered to a screenshot.
-fn default_reference_kind() -> test_cabinet_core::ReferenceKind {
-    test_cabinet_core::ReferenceKind::Rendered
+fn default_reference_kind() -> test_cabinet_suites::test_case::ReferenceKind {
+    test_cabinet_suites::test_case::ReferenceKind::Rendered
 }
 
 /// The default reference extension for manifests stored before it was recorded.
@@ -762,7 +704,7 @@ pub struct StoredProof {
     /// Human-readable display name.
     pub name: String,
     /// Whether the proof media is an image or a video.
-    pub kind: test_cabinet_core::MediaKind,
+    pub kind: test_cabinet_suites::test_case::MediaKind,
     /// The run-root-relative path the agent must write the proof to.
     pub dest: String,
 }
@@ -866,7 +808,7 @@ pub struct StoredReviewOutput {
     /// Human-readable display name (resolved at ingest, defaulted from `id`).
     pub name: String,
     /// Whether the output is an image or a video clip.
-    pub kind: test_cabinet_core::MediaKind,
+    pub kind: test_cabinet_suites::test_case::MediaKind,
 }
 
 /// A sub-item of a [`StoredReviewItem`], persisted in a [`StoredManifest`]: one
@@ -902,7 +844,7 @@ pub struct StoredSubReviewItem {
     pub validation: Option<StoredReviewValidation>,
     /// This point's **failure cap** on a validator-rated version: the highest
     /// functional rating its [`domains`](Self::domains) may reach while its
-    /// validator fails (see [`test_cabinet_core::review::FailureCap`]). `None` on
+    /// validator fails (see [`crate::review::FailureCap`]). `None` on
     /// a legacy version, which never declares one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub failure_cap: Option<FailureCap>,
@@ -939,7 +881,7 @@ pub struct StoredCheck {
     /// Reference view that is the comparison baseline.
     pub reference_view: String,
     /// Actions driving the implementation into the view before capture.
-    pub actions: Vec<test_cabinet_core::test_case::CheckAction>,
+    pub actions: Vec<test_cabinet_suites::test_case::CheckAction>,
 }
 
 impl DefinitionStore {
@@ -947,16 +889,7 @@ impl DefinitionStore {
     pub fn open(root: impl Into<PathBuf>) -> Result<Self> {
         let root = root.into();
         std::fs::create_dir_all(&root)?;
-        Ok(Self {
-            root,
-            run_writes: std::sync::Arc::default(),
-            #[cfg(test)]
-            fail_removals: std::sync::Arc::default(),
-            #[cfg(test)]
-            before_document_removal: state::RemovalHook::default(),
-            #[cfg(test)]
-            fail_writes: std::sync::Arc::default(),
-        })
+        Ok(Self { root })
     }
 
     /// The store root directory.
@@ -976,13 +909,47 @@ impl DefinitionStore {
         self.manifest_path(slug, version).is_file()
     }
 
+    /// The [ingest stamp](IngestStamp) of a stored `(slug, version)`, if it has one.
+    pub fn version_stamp(&self, slug: &str, version: &str) -> Option<IngestStamp> {
+        read_ingest_stamp_in(&self.version_dir(slug, version))
+    }
+
     /// The root under which version builds are staged before being swapped into the
     /// served `test-cases/` tree. It lives inside the store's sidecar so it shares
     /// the store's filesystem (the swap is then a plain rename) and stays off the
     /// `test-cases/` tree that `list_versions` walks, so a half-built staging dir is
-    /// never mistaken for an ingested version.
-    fn staging_root(&self) -> PathBuf {
+    /// never mistaken for an ingested version. A pass that stops part way leaves its
+    /// staging behind, so the backend [empties](Self::clear_staging) this root when it
+    /// starts, before it serves or ingests anything.
+    pub(crate) fn staging_root(&self) -> PathBuf {
         self.root.join(SIDECAR).join("staging")
+    }
+
+    /// Remove everything under the [staging root](Self::staging_root), returning how
+    /// many entries it held. A store with no staging root yet has nothing to remove.
+    ///
+    /// Startup calls this before the backend serves or ingests anything, so every
+    /// entry is the leftover of a pass an earlier process did not finish: a half-built
+    /// version, or a retired copy a swap had set aside.
+    pub(crate) fn clear_staging(&self) -> Result<usize> {
+        let root = self.staging_root();
+        let entries = match std::fs::read_dir(&root) {
+            Ok(entries) => entries,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(0),
+            Err(error) => return Err(error.into()),
+        };
+        let mut removed = 0;
+        for entry in entries {
+            let entry = entry?;
+            let path = entry.path();
+            if entry.file_type()?.is_dir() {
+                std::fs::remove_dir_all(&path)?;
+            } else {
+                std::fs::remove_file(&path)?;
+            }
+            removed += 1;
+        }
+        Ok(removed)
     }
 
     /// Create a fresh, empty staging directory for building one version's tree
@@ -1006,30 +973,60 @@ impl DefinitionStore {
     /// move rather than a copy.
     pub fn publish_staged_version(&self, slug: &str, version: &str, staged: &Path) -> Result<()> {
         let dest = self.version_dir(slug, version);
+        self.swap_into_place(&dest, staged, &format!("retired-{slug}-{version}"))
+    }
+
+    /// Move `staged` onto `dest`, replacing whatever `dest` holds, so a concurrent
+    /// reader sees either the previous tree or the new one and never a half-written
+    /// one. `label` names the retired copy in the staging area, for a human reading
+    /// the directory during an ingest.
+    ///
+    /// The swap discipline both keyed trees are published through — a test-case
+    /// version and a [suite version](crate::suite_store) — so neither can grow a
+    /// destructive in-place rebuild of its own.
+    pub(crate) fn swap_into_place(&self, dest: &Path, staged: &Path, label: &str) -> Result<()> {
         if let Some(parent) = dest.parent() {
             std::fs::create_dir_all(parent)?;
         }
         if !dest.exists() {
-            std::fs::rename(staged, &dest)?;
+            std::fs::rename(staged, dest)?;
             return Ok(());
         }
-        // Two-step swap: move the live version aside, move the staged one in, then
+        // Two-step swap: move the live tree aside, move the staged one in, then
         // drop the retired copy. The window where `dest` is briefly absent is two
         // rename syscalls wide (microseconds) rather than the seconds-to-minutes a
         // destructive in-place rebuild (remove → copy → render → write manifest)
         // left it manifest-less.
         let retired = self
             .staging_root()
-            .join(format!("retired-{slug}-{version}-{}", cuid2::create_id()));
+            .join(format!("{label}-{}", cuid2::create_id()));
         if let Some(parent) = retired.parent() {
             std::fs::create_dir_all(parent)?;
         }
-        std::fs::rename(&dest, &retired)?;
-        if let Err(err) = std::fs::rename(staged, &dest) {
-            // Roll the live version back so a failed swap is not a lost version.
-            let _ = std::fs::rename(&retired, &dest);
+        std::fs::rename(dest, &retired)?;
+        if let Err(err) = std::fs::rename(staged, dest) {
+            // Roll the live tree back so a failed swap is not a lost version.
+            let _ = std::fs::rename(&retired, dest);
             return Err(err.into());
         }
+        let _ = std::fs::remove_dir_all(&retired);
+        Ok(())
+    }
+
+    /// Remove a keyed tree by renaming it aside into the staging area and deleting
+    /// it there, so a concurrent reader sees it wholly present or wholly gone. A
+    /// tree that is already absent is a no-op.
+    pub(crate) fn retire_dir(&self, dir: &Path, label: &str) -> Result<()> {
+        if !dir.exists() {
+            return Ok(());
+        }
+        let retired = self
+            .staging_root()
+            .join(format!("{label}-{}", cuid2::create_id()));
+        if let Some(parent) = retired.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        std::fs::rename(dir, &retired)?;
         let _ = std::fs::remove_dir_all(&retired);
         Ok(())
     }
@@ -1047,17 +1044,7 @@ impl DefinitionStore {
     /// absent is a no-op.
     pub fn remove_version(&self, slug: &str, version: &str) -> Result<()> {
         let dir = self.version_dir(slug, version);
-        if !dir.exists() {
-            return Ok(());
-        }
-        let retired = self
-            .staging_root()
-            .join(format!("pruned-{slug}-{version}-{}", cuid2::create_id()));
-        if let Some(parent) = retired.parent() {
-            std::fs::create_dir_all(parent)?;
-        }
-        std::fs::rename(&dir, &retired)?;
-        let _ = std::fs::remove_dir_all(&retired);
+        self.retire_dir(&dir, &format!("pruned-{slug}-{version}"))?;
         // Drop the slug directory once its last version is gone. `remove_dir` only
         // succeeds on an empty directory, so a slug that still has other versions is
         // left untouched.
@@ -1415,7 +1402,7 @@ impl DefinitionStore {
         variant_name: &str,
         variant_description: Option<&str>,
         voxel: Option<&VoxelSpec>,
-        engine: Option<&test_cabinet_core::engine::ResolvedEngine>,
+        engine: Option<&test_cabinet_suites::engine::ResolvedEngine>,
     ) -> Result<String> {
         let bytes = self.read_artifact(slug, version, &spec.source)?;
         let text = String::from_utf8(bytes).map_err(|err| {
@@ -1427,7 +1414,7 @@ impl DefinitionStore {
         if !spec.template {
             return Ok(text);
         }
-        Ok(test_cabinet_core::render_spec_from_template(
+        Ok(test_cabinet_suites::prompt::render_spec_from_template(
             slug,
             version,
             &spec.source,
@@ -1558,9 +1545,9 @@ impl DefinitionStore {
     ) -> PathBuf {
         let root = self
             .version_dir(slug, version)
-            .join(test_cabinet_core::VALIDATION_BASELINE_DIR);
+            .join(test_cabinet_contracts::layout::VALIDATION_BASELINE_DIR);
         let keyed = root.join(engine).join(variant);
-        if engine == test_cabinet_core::engine::NONE_SLUG && !keyed.is_dir() {
+        if engine == test_cabinet_contracts::engine::NONE_SLUG && !keyed.is_dir() {
             let legacy = root.join(variant);
             if legacy.is_dir() {
                 return legacy;
@@ -1616,13 +1603,53 @@ impl DefinitionStore {
     /// scripted items) yields an empty list.
     ///
     /// A backend-driven run fetches this whole set into its definition store (see
-    /// `test_cabinet_core::materialize_version`) so a debug script's sibling `import`s
+    /// the driver's `materialize_version`) so a debug script's sibling `import`s
     /// resolve when the validator runs it — the named scripts alone are not enough.
     pub fn list_validation_files(&self, slug: &str, version: &str) -> Result<Vec<String>> {
         let base = self.version_dir(slug, version);
-        let dir = base.join(test_cabinet_core::VALIDATION_SCRIPT_DIR);
+        let dir = base.join(test_cabinet_contracts::layout::VALIDATION_SCRIPT_DIR);
         let mut keys = Vec::new();
         collect_files_relative(&base, &dir, &mut keys)?;
+        keys.sort();
+        Ok(keys)
+    }
+
+    /// List the files of the suite version a suite-defined version was lowered from,
+    /// as store-relative keys (forward-slashed, e.g. `suite.toml`, `version.toml`,
+    /// `specifications/ball-physics/specification.toml`,
+    /// `validators/ball/constant-speed.ts`), sorted.
+    ///
+    /// A run of a suite-defined case is judged against its suite: the prompt is
+    /// rendered from the definition and the specifications it selects, and one
+    /// requirement outcome is recorded per requirement those specifications declare,
+    /// with the suite's `validators/` project deciding the functional ones. None of
+    /// that is reachable from the lowered manifest's keys, so a backend-driven run
+    /// fetches this whole set into its definition store (see
+    /// the driver's `materialize_version`), which rebuilds the version folder
+    /// there and reads the suite model back out of it.
+    ///
+    /// An authored version yields an empty list: it was lowered from no suite, which
+    /// is exactly what the absent `version.toml` says.
+    pub fn list_suite_files(&self, slug: &str, version: &str) -> Result<Vec<String>> {
+        let base = self.version_dir(slug, version);
+        if !base.join(VERSION_MANIFEST_FILE).is_file() {
+            return Ok(Vec::new());
+        }
+        let mut keys = vec![VERSION_MANIFEST_FILE.to_string()];
+        if base.join(SUITE_MANIFEST_FILE).is_file() {
+            keys.push(SUITE_MANIFEST_FILE.to_string());
+        }
+        if base.join(DEBUG_API_FILE).is_file() {
+            keys.push(DEBUG_API_FILE.to_string());
+        }
+        for dir in [
+            SPECIFICATIONS_DIR,
+            SUITE_TEST_CASES_DIR,
+            VALIDATORS_DIR,
+            DEBUG_API_DIR,
+        ] {
+            collect_files_relative(&base, &base.join(dir), &mut keys)?;
+        }
         keys.sort();
         Ok(keys)
     }
@@ -1651,49 +1678,6 @@ impl DefinitionStore {
         }
     }
 
-    /// Where the store holds the file of run `run_id` named `name`, a path
-    /// relative to the run's folder: `proof/<file>`, `validation/<file>`,
-    /// `asset/<file>`, `showcase/<file>`, `code-analysis.json`, `controller.wasm`
-    /// or `replay.json`. `None` when the run id or any segment of `name` is not a
-    /// safe path segment.
-    ///
-    /// This is the name a run's [file
-    /// manifest](crate::db::MediaManifestFile::name) records a file under.
-    pub fn run_file_path(&self, run_id: &str, name: &str) -> Option<PathBuf> {
-        if !is_safe_segment(run_id) {
-            return None;
-        }
-        let mut path = self.run_dir(run_id);
-        for segment in name.split('/') {
-            if !is_safe_segment(segment) {
-                return None;
-            }
-            path.push(segment);
-        }
-        Some(path)
-    }
-
-    /// Whether the store answers that it holds no copy of the file of run `run_id`
-    /// named `name` (see [`run_file_path`](Self::run_file_path)).
-    ///
-    /// `true` when the file system reports that nothing is there, and when what is
-    /// there is a regular file with no bytes: an empty file is what a write cut
-    /// off by a full volume left behind before writes became atomic, and it is a
-    /// copy of nothing. A name that is not a safe path, and a lookup that fails
-    /// any other way, are `false`: the store could not say. A snapshot refresh
-    /// records a file as lost for good only on a `true` here, which the
-    /// `read_run_*` methods cannot tell it, because they report every failed read
-    /// as not found.
-    pub fn run_file_absent(&self, run_id: &str, name: &str) -> bool {
-        let Some(path) = self.run_file_path(run_id, name) else {
-            return false;
-        };
-        match std::fs::symlink_metadata(&path) {
-            Ok(metadata) => metadata.is_file() && metadata.len() == 0,
-            Err(err) => err.kind() == std::io::ErrorKind::NotFound,
-        }
-    }
-
     /// The directory a published run's proof media is stored under.
     pub fn run_proof_dir(&self, run_id: &str) -> PathBuf {
         self.run_dir(run_id).join("proof")
@@ -1709,7 +1693,10 @@ impl DefinitionStore {
                 "invalid run id or proof file".to_string(),
             ));
         }
-        self.write_run_file(&self.run_proof_dir(run_id).join(file), bytes)
+        let dir = self.run_proof_dir(run_id);
+        std::fs::create_dir_all(&dir)?;
+        std::fs::write(dir.join(file), bytes)?;
+        Ok(())
     }
 
     /// List a run's stored proof media file names (`<proof-id>.<ext>`), sorted.
@@ -1767,7 +1754,10 @@ impl DefinitionStore {
                 "invalid run id or validation file".to_string(),
             ));
         }
-        self.write_run_file(&self.run_validation_dir(run_id).join(file), bytes)
+        let dir = self.run_validation_dir(run_id);
+        std::fs::create_dir_all(&dir)?;
+        std::fs::write(dir.join(file), bytes)?;
+        Ok(())
     }
 
     /// List a run's stored synthesized validation media file names, sorted. A run
@@ -1776,7 +1766,7 @@ impl DefinitionStore {
     /// The declared outputs are on the run record, so the snapshot builder does not
     /// need this to find them. What it needs it for is the recordings' **shared
     /// image store** (`img.<id>.png` / `img.<id>.bin` — see
-    /// [`VALIDATION_IMAGE_PREFIX`](test_cabinet_core::VALIDATION_IMAGE_PREFIX)),
+    /// [`VALIDATION_IMAGE_PREFIX`](test_cabinet_contracts::layout::VALIDATION_IMAGE_PREFIX)),
     /// whose files back no verdict and are named by their own bytes, so they appear
     /// on no declaration and can only be found by asking the directory. Sorted, so
     /// the set a refresh publishes is stable.
@@ -1819,7 +1809,7 @@ impl DefinitionStore {
     /// Where one of a run's **run-tree artifacts** is stored: `runs/<run_id>/<name>.json`.
     ///
     /// A run-tree artifact is a whole-run analysis document produced *about* a run rather
-    /// than *by* it — today the gg [session record](test_cabinet_core::gg_session_record)
+    /// than *by* it — today the gg [session record](test_cabinet_contracts::gg_session_record)
     /// ([`REPLAY_ARTIFACT`]), with code analysis to follow. Each is written to the produced
     /// run tree's root as `<name>.json.gz` and mirrored here by the driver, keyed by run id,
     /// so it survives the collected tree and can be served per run.
@@ -1841,7 +1831,12 @@ impl DefinitionStore {
                 "invalid run id or artifact name".to_string(),
             ));
         }
-        self.write_run_file(&self.run_artifact_path(run_id, name), bytes)
+        let path = self.run_artifact_path(run_id, name);
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        std::fs::write(&path, bytes)?;
+        Ok(())
     }
 
     /// Read one of a run's stored [run-tree artifacts](Self::run_artifact_path). A run that
@@ -1859,7 +1854,7 @@ impl DefinitionStore {
             .map_err(|_| BackendError::NotFound(format!("{name} for run `{run_id}` not stored")))
     }
 
-    /// Where a gg run's [session record](test_cabinet_core::gg_session_record) is stored:
+    /// Where a gg run's [session record](test_cabinet_contracts::gg_session_record) is stored:
     /// `runs/<run_id>/replay.json` — an address the record keeps, not a name. A capture of
     /// each agent's model I/O and every tool result, mirrored here by the driver from the run
     /// tree so a reader can fetch a run's session without its tree.
@@ -1879,7 +1874,7 @@ impl DefinitionStore {
         self.read_run_artifact(run_id, REPLAY_ARTIFACT)
     }
 
-    /// Where a run's [code-analysis](test_cabinet_core::code_analysis) document is stored:
+    /// Where a run's [code-analysis](test_cabinet_contracts::code_analysis) document is stored:
     /// `runs/<run_id>/code-analysis.json`. The unbounded tier — every file, symbol, import
     /// edge, cycle and clone group — mirrored here by the driver from the run tree so the
     /// per-run Code tab can fetch it without the run archive. Its bounded sibling rides on
@@ -1920,7 +1915,10 @@ impl DefinitionStore {
                 "invalid run id or asset file".to_string(),
             ));
         }
-        self.write_run_file(&self.run_asset_dir(run_id).join(file), bytes)
+        let dir = self.run_asset_dir(run_id);
+        std::fs::create_dir_all(&dir)?;
+        std::fs::write(dir.join(file), bytes)?;
+        Ok(())
     }
 
     /// Read one asset media file for a run.
@@ -1937,7 +1935,7 @@ impl DefinitionStore {
 
     // --- Per-run showcase files ----------------------------------------------
 
-    /// The directory a published run's [showcase](test_cabinet_core::RunShowcase)
+    /// The directory a published run's [showcase](test_cabinet_contracts::run_record::RunShowcase)
     /// files are stored under (`runs/<run_id>/showcase/`) — the carousel media plus
     /// any image the description references, mirrored here by the driver so the
     /// public snapshot can read them. The description text itself rides the run
@@ -1959,7 +1957,10 @@ impl DefinitionStore {
                 "invalid run id or showcase file".to_string(),
             ));
         }
-        self.write_run_file(&self.run_showcase_dir(run_id).join(file), bytes)
+        let dir = self.run_showcase_dir(run_id);
+        std::fs::create_dir_all(&dir)?;
+        std::fs::write(dir.join(file), bytes)?;
+        Ok(())
     }
 
     /// List a run's stored showcase file names, sorted. A run with no stored
@@ -2010,7 +2011,12 @@ impl DefinitionStore {
         if !is_safe_segment(run_id) {
             return Err(BackendError::BadRequest("invalid run id".to_string()));
         }
-        self.write_run_file(&self.run_controller_path(run_id), bytes)
+        let path = self.run_controller_path(run_id);
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        std::fs::write(&path, bytes)?;
+        Ok(())
     }
 
     /// Whether a run has an uploaded controller wasm (so it can be pitted in the
@@ -2078,55 +2084,8 @@ impl DefinitionStore {
     }
 }
 
-/// What a part of the store holds on disk.
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
-pub struct StoreUsage {
-    /// The total size of the files, in bytes.
-    pub bytes: u64,
-    /// How many files there are.
-    pub files: u64,
-}
-
-impl DefinitionStore {
-    /// What the tournaments' match replays hold on disk: every file under
-    /// `tournaments/`. A store with no tournament holds nothing.
-    ///
-    /// This walks the directory, so it is for a caller that runs once per pass of
-    /// some periodic work and off the async runtime's threads, never per request.
-    pub fn tournament_replay_usage(&self) -> Result<StoreUsage> {
-        let mut usage = StoreUsage::default();
-        add_usage(&self.root.join("tournaments"), &mut usage)?;
-        Ok(usage)
-    }
-}
-
-/// Add every file under `dir` to `usage`. A directory that is not there, or that
-/// goes away while it is walked, adds nothing.
-fn add_usage(dir: &Path, usage: &mut StoreUsage) -> Result<()> {
-    let read = match std::fs::read_dir(dir) {
-        Ok(read) => read,
-        Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(()),
-        Err(err) => return Err(err.into()),
-    };
-    for entry in read {
-        let entry = entry?;
-        let metadata = match entry.metadata() {
-            Ok(metadata) => metadata,
-            Err(err) if err.kind() == std::io::ErrorKind::NotFound => continue,
-            Err(err) => return Err(err.into()),
-        };
-        if metadata.is_dir() {
-            add_usage(&entry.path(), usage)?;
-        } else if metadata.is_file() {
-            usage.bytes += metadata.len();
-            usage.files += 1;
-        }
-    }
-    Ok(())
-}
-
 /// Read a directory's immediate subdirectory names, sorted lexically.
-fn sorted_dir_names(dir: &Path) -> Result<Vec<String>> {
+pub(crate) fn sorted_dir_names(dir: &Path) -> Result<Vec<String>> {
     let mut names = raw_dir_names(dir)?;
     names.sort();
     Ok(names)
@@ -2134,7 +2093,7 @@ fn sorted_dir_names(dir: &Path) -> Result<Vec<String>> {
 
 /// Read a directory's immediate subdirectory names, ignoring files and hidden
 /// entries. A missing directory yields an empty list (an empty store is valid).
-fn raw_dir_names(dir: &Path) -> Result<Vec<String>> {
+pub(crate) fn raw_dir_names(dir: &Path) -> Result<Vec<String>> {
     let mut names = Vec::new();
     let read = match std::fs::read_dir(dir) {
         Ok(read) => read,
@@ -2183,7 +2142,7 @@ fn collect_files_relative(base: &Path, dir: &Path, keys: &mut Vec<String>) -> Re
 
 /// Join a forward-slash relative key onto a base directory, rejecting any key
 /// that is absolute or escapes the base via `..`. Returns the resolved path.
-fn safe_join(base: &Path, key: &str) -> Result<PathBuf> {
+pub(crate) fn safe_join(base: &Path, key: &str) -> Result<PathBuf> {
     let rel = Path::new(key);
     let mut depth: i32 = 0;
     for component in rel.components() {
@@ -2209,7 +2168,7 @@ fn safe_join(base: &Path, key: &str) -> Result<PathBuf> {
 }
 
 /// Whether a key's first path component is the reserved `.tcab` sidecar.
-fn first_component_is_sidecar(key: &str) -> bool {
+pub(crate) fn first_component_is_sidecar(key: &str) -> bool {
     Path::new(key)
         .components()
         .find_map(|c| match c {
@@ -2224,6 +2183,48 @@ fn first_component_is_sidecar(key: &str) -> bool {
 /// [`DefinitionStore::manifest_path`] and the staging build path.
 pub fn manifest_in(version_dir: &Path) -> PathBuf {
     version_dir.join(SIDECAR).join("manifest.json")
+}
+
+/// What a stored version record was ingested from, kept in the record's sidecar
+/// beside it and published in the same atomic swap.
+///
+/// A [`changed`](test_cabinet_contracts::ingest::IngestMode::Changed) scan compares it against the
+/// checkout: the record is rewritten when its content digest, the record format it
+/// was written in, or the catalog version the store was at differs.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct IngestStamp {
+    /// The [content digest](crate::ingest) of the checkout files the record was
+    /// built from, as lowercase hex SHA-256.
+    pub digest: String,
+    /// The [`STORE_FORMAT`] the record was written in.
+    pub format: u32,
+    /// The catalog version the store was at when the record was written, if any
+    /// ingest has recorded one (see [`DefinitionStore::catalog_version`]).
+    #[serde(default)]
+    pub catalog_version: Option<String>,
+}
+
+/// The ingest stamp path inside a stored version directory (canonical or staging).
+pub fn ingest_stamp_in(version_dir: &Path) -> PathBuf {
+    version_dir.join(SIDECAR).join("ingest.json")
+}
+
+/// Write an ingest stamp into a stored version directory, creating its sidecar.
+pub fn write_ingest_stamp_in(version_dir: &Path, stamp: &IngestStamp) -> Result<()> {
+    let path = ingest_stamp_in(version_dir);
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::write(&path, serde_json::to_vec_pretty(stamp)?)?;
+    Ok(())
+}
+
+/// Read the ingest stamp of a stored version directory. An absent or unreadable
+/// stamp reads as none, which a `changed` scan treats as a record to rewrite.
+pub fn read_ingest_stamp_in(version_dir: &Path) -> Option<IngestStamp> {
+    let bytes = std::fs::read(ingest_stamp_in(version_dir)).ok()?;
+    serde_json::from_slice(&bytes).ok()
 }
 
 /// A stored reference media path relative to a version directory. `scope` is
@@ -2260,17 +2261,6 @@ fn is_safe_segment(segment: &str) -> bool {
         && !segment.contains('\\')
 }
 
-#[path = "store.state.rs"]
-mod state;
-pub use state::{
-    PublishedCopy, Removal, RunFolder, RunFolderFile, SESSION_RECORD_FILE, StateVolume,
-    is_scrubbed_document,
-};
-
 #[cfg(test)]
 #[path = "store.test.rs"]
 mod tests;
-
-#[cfg(test)]
-#[path = "store.state.test.rs"]
-mod state_tests;

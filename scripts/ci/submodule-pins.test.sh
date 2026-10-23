@@ -19,6 +19,9 @@ scratch="$(mktemp -d)"
 trap 'rm -rf "$scratch"' EXIT
 
 export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1
+# The gate reads which branch it checks for from the agent's variables when no
+# --branch is given, and this test runs on agents too.
+unset SYSTEM_PULLREQUEST_TARGETBRANCH BUILD_SOURCEBRANCH SYSTEM_ACCESSTOKEN
 export GIT_AUTHOR_NAME=test GIT_AUTHOR_EMAIL=test@example.com
 export GIT_COMMITTER_NAME=test GIT_COMMITTER_EMAIL=test@example.com
 
@@ -72,7 +75,8 @@ resolves https://example.com/a/b/super ../../sub https://example.com/a/sub
 resolves https://example.com/a/super https://example.org/elsewhere https://example.org/elsewhere
 
 # A host holding a superproject and its submodule repositories side by side.
-# The submodule `sub` has two commits on master and one on a side branch.
+# The submodule `sub` has two commits on master, one on a side branch, and one
+# on each of `nightly` and `staging`, which branch from master's tip.
 host="${scratch}/host"
 mkdir -p "$host"
 git init --quiet --initial-branch=master "${host}/sub"
@@ -84,6 +88,12 @@ tip="$(git -C "${host}/sub" rev-parse HEAD)"
 git -C "${host}/sub" checkout --quiet -b side
 git -C "${host}/sub" commit --quiet --allow-empty -m side
 side="$(git -C "${host}/sub" rev-parse HEAD)"
+git -C "${host}/sub" checkout --quiet -b nightly master
+git -C "${host}/sub" commit --quiet --allow-empty -m nightly
+nightly="$(git -C "${host}/sub" rev-parse HEAD)"
+git -C "${host}/sub" checkout --quiet -b staging master
+git -C "${host}/sub" commit --quiet --allow-empty -m staging
+staging="$(git -C "${host}/sub" rev-parse HEAD)"
 git -C "${host}/sub" checkout --quiet master
 missing="$(printf '%040d' 7)"
 
@@ -96,11 +106,12 @@ git -C "${behind}/sub" update-ref refs/heads/master "$old"
 git -C "${behind}/sub" config uploadpack.allowFilter true
 
 # super <gitmodules path=url...> -- <path=commit...>: a fresh superproject in
-# $host carrying the gate, the given .gitmodules and the given gitlinks.
+# $host carrying the gate, the given .gitmodules and the given gitlinks, on the
+# branch SUPER_BRANCH names (master by default).
 super() {
 	local repo="${host}/super" entry
 	rm -rf "$repo"
-	git init --quiet "$repo"
+	git init --quiet --initial-branch="${SUPER_BRANCH:-master}" "$repo"
 	mkdir -p "${repo}/scripts/ci"
 	cp "$GATE" "${HERE}/tcab-lib.sh" "${repo}/scripts/ci/"
 	git -C "$repo" remote add origin "$repo"
@@ -120,7 +131,7 @@ super() {
 	git -C "$repo" commit --quiet --allow-empty -m super
 }
 
-gate() { # label expected(pass|fail) [superproject-url]
+gate() { # label expected(pass|fail) [gate arguments...]
 	local out verdict
 	if out="$("${host}/super/scripts/ci/submodule-pins.sh" "${@:3}" 2>&1)"; then
 		verdict=pass
@@ -145,6 +156,29 @@ super sub=../absent -- "sub=${tip}" && gate "submodule repository missing" fail
 super sub=../sub -- "sub=${tip}" && gate "the superproject URL argument decides the host" fail "${behind}/super"
 super sub=../sub -- "sub=${old}" && gate "a host that holds the pin passes" pass "${behind}/super"
 super sub="${host}/sub" -- "sub=${side}" && gate "absolute URLs are checked too" fail
+
+echo "--- the branch rule ---"
+super sub=../sub -- "sub=${nightly}" && gate "on master, a pin on nightly fails" fail
+super sub=../sub -- "sub=${nightly}" && gate "on nightly, a pin on nightly passes" pass --branch nightly
+super sub=../sub -- "sub=${old}" && gate "on nightly, a pin on master passes" pass --branch nightly
+super sub=../sub -- "sub=${staging}" && gate "on nightly, a pin on staging fails" fail --branch nightly
+super sub=../sub -- "sub=${staging}" && gate "on staging, a pin on staging passes" pass --branch staging
+super sub=../sub -- "sub=${nightly}" && gate "on staging, a pin on nightly fails" fail --branch staging
+super sub=../sub -- "sub=${side}" && gate "on a branch the submodule lacks, master decides" fail --branch feat/x
+super sub=../sub -- "sub=${tip}" && gate "and a pin on master passes there" pass --branch feat/x
+super sub=../sub -- "sub=${nightly}" && gate "--branch takes a full ref" pass --branch refs/heads/nightly
+super sub=../sub -- "sub=${nightly}" && gate "a ref that is not a branch is held to master" fail --branch refs/tags/v1
+super sub=../sub -- "sub=${nightly}" && gate "the host decides with --branch too" fail --branch nightly "${behind}/super"
+SUPER_BRANCH=nightly super sub=../sub -- "sub=${nightly}" &&
+	gate "off an agent, the checked-out branch is B" pass
+super sub=../sub -- "sub=${nightly}" && BUILD_SOURCEBRANCH=refs/heads/nightly \
+	gate "on an agent, the built branch is B" pass
+super sub=../sub -- "sub=${nightly}" && BUILD_SOURCEBRANCH=refs/pull/7/merge \
+	SYSTEM_PULLREQUEST_TARGETBRANCH=refs/heads/nightly gate "a pull request takes its target" pass
+super sub=../sub -- "sub=${nightly}" && BUILD_SOURCEBRANCH=refs/pull/7/merge \
+	SYSTEM_PULLREQUEST_TARGETBRANCH=master gate "a pull request into master takes master" fail
+super sub=../sub -- "sub=${nightly}" && SYSTEM_PULLREQUEST_TARGETBRANCH=master \
+	gate "--branch outranks the agent's variables" pass --branch nightly
 
 echo
 echo "${pass} passed, ${fail} failed"

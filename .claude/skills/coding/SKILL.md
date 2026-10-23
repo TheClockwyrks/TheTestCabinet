@@ -82,13 +82,15 @@ test: treat it as one, and fix it or the code under it.
 The one exception: nextest does not execute doctests. When a change touches
 doctests, additionally run `cargo test --workspace --doc` to cover them.
 
-`crates/gg/Cargo.toml` sets `test = false`, so neither `cargo nextest run
---workspace` nor the `rust-test` gate runs gg's suite; the project's
-`gg_tests_<k>` CI jobs do. After any change under `crates/gg/`, run it locally:
+gg is the `gg` repository, checked out at `gg/`. Its `crates/gg/Cargo.toml`
+sets `test = false`, so neither `cargo nextest run --workspace` nor the
+`rust-test` gate runs gg's suite; gg's own `gg_tests_<k>` CI jobs do. After any
+change in the gg checkout, run its gates and its suite there:
 
 ```sh
-scripts/ci/gg-test.sh        # the whole suite
-scripts/ci/gg-test.sh 1/4    # one hash partition of it, as CI runs it
+cd gg && make gate           # gg's own gates
+scripts/ci/gg-test.sh        # the whole suite, from the gg checkout
+scripts/ci/gg-test.sh 1/4    # one hash partition of it, as gg's CI runs it
 ```
 
 ## Gates
@@ -99,17 +101,21 @@ gates for what it touched:
 
 | Change | Gates |
 | --- | --- |
-| Rust (`crates/`, `Cargo.*`) | `rust-fmt`, `rust-clippy`, `rust-doc`, `rust-test`, `rust-doctest`; `contract-drift` when a contract type changed |
-| `crates/gg/` | the above, plus `scripts/ci/gg-test.sh` |
-| `apps/web/` | `web-lint`, `web-typecheck`, `web-test`, `web-browser-test`, `web-build` |
-| `packages/`, `apps/site/` | `web-lint`, `workspace-test`, `site-build`, `seeded-contract`, `format` |
+| Rust (`crates/`, `Cargo.*`) | `rust-fmt`, `rust-clippy`, `rust-doc`, `rust-test`, `rust-doctest` |
+| `gg/` | its own `make gate`, plus its `scripts/ci/gg-test.sh` |
+| `contracts/` | its own `make gate` (`contract-drift` among them, after `npm run gen:contract` in that checkout when a contract or backend API type changed) |
+| `engines/` | its own `make gate` (`seeded-contract` among them) |
+| `console.testcabinet.ai/` | its own `make gate` (`web-lint`, `web-browser-test` among them) |
+| `testcabinet.ai/` | its own `make gate` (`web-lint` among them) |
+| `packages/` | `workspace-test`, `format` |
 | Documentation (`apps/docs/`) | `markdownlint`, `cspell`, `docs-typecheck`, `docs-build` |
 | Any Markdown elsewhere | `markdownlint`, `cspell` |
-| A test case, game jam or group | `frozen-paths`, `spec-prose`, `spec-vocabulary`, `audio-packs`, `validators-typecheck`, `format` |
+| `test-suites/` (a test case, game jam or group) | its own `make gate` (`frozen-paths`, `spec-prose`, `spec-vocabulary`, `audio-packs`, `validators-typecheck` among them) |
 | A Dockerfile, `.dockerignore`, `rust-toolchain.toml` | `build-context` |
 | `deployments/k8s/`, the deploy scripts | `k8s-manifests`, `k8s-deploy-sets` |
 | `scripts/` | `shell-tests`, `scripts-test`, and `shellcheck` (`pre-commit run shellcheck --files …`) |
-| `ci/`, `.azure/project/`, `ci/images/tags.yml` | `python-lint`, `ci-tests`, `ci-image-pins` |
+| `ci/`, `.azure/project/`, `ci/images/tags.yml`, a Playwright pin | `python-lint`, `ci-tests`, `ci-image-pins` |
+| The repository kit (`copier.yml`, `templates/repository/`, `scripts/repos/`), `.gitmodules`, `.cargo/config.toml`, `.package-links.json` | `python-lint`, `ci-tests`, `shell-tests`, `dependency-graph` |
 | `.claude/hooks/` | every `.claude/hooks/*.test.sh`, run directly, and `shellcheck` |
 | Anything | `no-nul-bytes`, and `pre-commit run --all-files` for the upstream file checks |
 

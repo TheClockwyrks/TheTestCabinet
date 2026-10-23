@@ -1,0 +1,119 @@
+#!/usr/bin/env bash
+# Builds every flavor of the shell's bundle for one target into a directory.
+#
+#   scripts/ci/bundle.sh <linux|android|windows|macos> <directory>
+#
+# The pipeline's bundle stage runs it on a tag, one job per target, and
+# publishes the directory as the run's artifact `client-<target>`. A flavor is
+# a `tauri.<flavor>.conf.json` beside the crate's `tauri.conf.json`, which the
+# Tauri CLI merges over it with `--config`, and each flavor's bundles land
+# under `<directory>/<flavor>/`, so two flavors' files of the same name never
+# meet. Every bundle is unsigned: the Android APK is the release build signed
+# with the debug key the Gradle project names, and the rest carry no
+# signature at all.
+#
+# What each target builds, from the workspace's own `node_modules/.bin/tauri`:
+#
+#   linux    the AppImage and the `.deb`
+#   android  the universal APK of the four Android targets
+#   windows  the NSIS installer
+#   macos    the universal app bundle, as a `.tar.gz` of the `.app`
+#
+# The Rust toolchain rust-toolchain.toml pins is installed first, since a
+# hosted Windows or macOS agent carries rustup and not that toolchain; in the
+# Rust track's image it is already there and the install is a no-op.
+#
+# TAURI_CLI and RUSTUP name the two programs, for the test to stub.
+set -euo pipefail
+
+cd "$(dirname "${BASH_SOURCE[0]}")/../.."
+
+readonly CRATE="crates/{{crate_dir}}"
+readonly USAGE="usage: scripts/ci/bundle.sh <linux|android|windows|macos> <directory>"
+TAURI="${TAURI_CLI:-$PWD/node_modules/.bin/tauri}"
+RUSTUP="${RUSTUP:-rustup}"
+readonly TAURI RUSTUP
+
+die() {
+	printf 'bundle: %s\n' "$*" >&2
+	exit 1
+}
+
+[ $# -eq 2 ] || die "$USAGE"
+target="$1"
+out="$2"
+case "$target" in
+linux | android | windows | macos) ;;
+*) die "unknown target '$target'; $USAGE" ;;
+esac
+[ -n "$out" ] || die "$USAGE"
+
+[ -f "$CRATE/tauri.conf.json" ] || die "$CRATE holds no tauri.conf.json"
+[ -x "$TAURI" ] || die "no Tauri CLI at $TAURI; run npm ci first"
+
+shopt -s nullglob
+overlays=("$CRATE"/tauri.*.conf.json)
+shopt -u nullglob
+[ -n "${overlays[*]:-}" ] || die "$CRATE holds no flavor, a tauri.<flavor>.conf.json beside tauri.conf.json"
+
+channel="$(sed -n 's/^channel *= *"\([^"]*\)".*/\1/p' rust-toolchain.toml)"
+[ -n "$channel" ] || die "rust-toolchain.toml pins no channel"
+"$RUSTUP" toolchain install "$channel" --profile minimal
+
+# Where cargo writes, from the workspace root, and what each target collects
+# from it after a build.
+target_dir="target/release/bundle"
+case "$target" in
+linux)
+	# The AppImage tools are AppImages themselves, which a container without
+	# FUSE runs by extracting; and their strip predates the sections a current
+	# toolchain writes, so the binaries go in as cargo left them.
+	export APPIMAGE_EXTRACT_AND_RUN=1 NO_STRIP=true
+	build=(build --bundles "appimage,deb")
+	collect=("appimage/*.AppImage" "deb/*.deb")
+	;;
+windows)
+	build=(build --bundles nsis)
+	collect=("nsis/*.exe")
+	;;
+macos)
+	"$RUSTUP" target add --toolchain "$channel" aarch64-apple-darwin x86_64-apple-darwin
+	target_dir="target/universal-apple-darwin/release/bundle"
+	build=(build --target universal-apple-darwin --bundles app)
+	collect=("macos/*.app")
+	;;
+android)
+	target_dir="$CRATE/gen/android/app/build/outputs/apk"
+	build=(android build --apk)
+	collect=("universal/release/*.apk")
+	;;
+esac
+
+mkdir -p "$out"
+for overlay in "${overlays[@]}"; do
+	flavor="${overlay##*/tauri.}"
+	flavor="${flavor%.conf.json}"
+	echo "Building the $flavor $target bundle"
+	# Each flavor starts from an empty output, so what is collected is what
+	# this build wrote.
+	rm -rf "$target_dir"
+	(cd "$CRATE" && "$TAURI" "${build[@]}" --config "${overlay##*/}")
+
+	mkdir -p "$out/$flavor"
+	found=0
+	for pattern in "${collect[@]}"; do
+		for built in "$target_dir"/$pattern; do
+			[ -e "$built" ] || continue
+			found=$((found + 1))
+			if [ -d "$built" ]; then
+				tar -C "$(dirname "$built")" -czf "$out/$flavor/$(basename "$built").tar.gz" "$(basename "$built")"
+			else
+				cp "$built" "$out/$flavor/"
+			fi
+		done
+	done
+	[ "$found" -gt 0 ] || die "the $flavor $target build left nothing under $target_dir matching ${collect[*]}"
+done
+
+echo "Bundles in $out:"
+find "$out" -type f | sort

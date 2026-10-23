@@ -58,13 +58,14 @@ process.
 
 CI enforces the identity half of this rule: the `spec-vocabulary` gate (also a
 pre-commit hook) reads every non-frozen version's `prompt.hbs` and
-`specs/**`, plus the shared preambles `crates/core/src/prompt.rs` prepends, and
-fails on the project's name, `tcab`, "benchmark", "test case", "evaluation", "run
-record", any review surface of ours, the case manifest, or a link to this
-repository or the gallery. Hits in a frozen version are reported rather than
-failed, because a frozen version cannot be edited; the fix there is a new version.
-"scoring" and "grading" are not on its list, since a game scores and a road is
-graded, so keeping those framings out remains a matter of judgment.
+`specs/**`, plus the shared preambles `contracts/crates/suites/src/prompt.rs`
+prepends, and fails on the project's name, `tcab`, "benchmark", "test case",
+"evaluation", "run record", any review surface of ours, the case manifest, or
+a link to this repository or the gallery. Hits in a frozen version are reported
+rather than failed, because a frozen version cannot be edited; the fix there is
+a new version. "scoring" and "grading" are not on its list, since a game scores
+and a road is graded, so keeping those framings out remains a matter of
+judgment.
 
 ## Never help the model
 
@@ -156,7 +157,7 @@ case picks the figure.
 
 A seeded spec states the showcase the build owes: the description, the carousel
 manifest, and the media files, at the paths the
-[showcase format](/components/core/showcase/) fixes. The showcase is a
+[showcase format](/components/driver/showcase/) fixes. The showcase is a
 deliverable of the build like any other, so the spec states it as one.
 
 What a reference implementation carries for that validator is covered by

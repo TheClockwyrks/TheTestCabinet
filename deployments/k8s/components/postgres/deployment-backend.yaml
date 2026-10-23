@@ -42,10 +42,9 @@ spec:
   # released) — which is another reason not to relax `Recreate` below.
   accessModes: ["ReadWriteOnce"]
   # The size of /state, for staging and prod alike: no overlay patches it. To grow
-  # the volume, raise this and deploy; that is the whole procedure
-  # (deployment/kubernetes/control-plane.md, "Growing the state volume"). The deploy's
-  # preflight (scripts/ci/catalog-ingest.sh) compares it with the live claim: it counts
-  # the growth as free space, and refuses a deploy that asks for a smaller size, which
+  # the volume, raise this and deploy. The deploy's preflight
+  # (scripts/ci/catalog-ingest.sh) compares it with the live claim: it counts the
+  # growth as free space, and refuses a deploy that asks for a smaller size, which
   # Kubernetes rejects, or for a larger one on a storage class that cannot expand.
   resources:
     requests:
@@ -104,26 +103,21 @@ spec:
             # emptyDir mounted at /state below).
             - name: TCAB_BACKEND_STORE
               value: "/state/tcab-store"
+            # The test suites checkout inside the superproject's clone, with the
+            # cold-storage checkout beside it.
             - name: TCAB_BACKEND_CHECKOUT
-              value: "/state/checkout"
-            # The auth service this backend verifies tokens against.
-            - name: TCAB_BACKEND_AUTH_URL
-              value: "http://tcab-auth:8789"
-            # Console-facing data-plane base URLs the backend reports via GET /config
-            # (bytes never transit the backend — these are just the URLs the console
-            # fetches from). Same in-cluster Service DNS the base uses.
-            - name: TCAB_ARTIFACTS_PUBLIC_URL
-              value: "http://tcab-artifacts:8790"
-            - name: TCAB_ARENA_PUBLIC_URL
-              value: "http://tcab-arena:8791"
+              value: "/state/checkout/test-suites"
             # The artifact service as THIS POD reaches it, for pruning a deleted run's
-            # tree and sweeping the trees no run row references. Distinct from the
-            # advertised URL above, which the azure overlays repoint at a VPN hostname;
-            # this one stays on in-cluster Service DNS. This Deployment replaces the
-            # base StatefulSet wholesale, so the base's copy of this variable does not
-            # reach the postgres overlays and it is repeated here.
+            # tree and sweeping the trees no run row references. This Deployment
+            # replaces the base StatefulSet wholesale, so the base's copy of this
+            # variable does not reach the postgres overlays and it is repeated here.
             - name: TCAB_ARTIFACTS_URL
               value: "http://tcab-artifacts:8790"
+            # The repos service as this pod reaches it, to read a run's bundle for a
+            # console's download and to prune a deleted run's bundle; repeated here
+            # for the same reason as TCAB_ARTIFACTS_URL.
+            - name: TCAB_REPOS_URL
+              value: "http://tcab-repos:8792"
             # The shared service token the dispatcher claims queued jobs with; MUST
             # match the dispatcher's TCAB_BACKEND_SERVICE_TOKEN or the queue never
             # drains. From the backend secret below.

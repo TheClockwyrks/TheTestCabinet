@@ -39,7 +39,7 @@ A run gets headless Blender and `tcab-blend` on `PATH` plus a seeded
 `blender.config.json` carrying the bounding box, the authoring axes (+Z up,
 facing `-Y`), the emitted glTF and preview paths, the build-script path, the
 required animation names, and any required caller joints. The skeleton and
-binding are the model's to invent. Core emits `character.glb` and `model.png`, so
+binding are the model's to invent. The driver emits `character.glb` and `model.png`, so
 the manifest names neither, and the case declares no `[[reference]]`.
 
 ## Steps

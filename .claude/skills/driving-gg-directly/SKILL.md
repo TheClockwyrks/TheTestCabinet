@@ -11,20 +11,22 @@ the environment, NDJSON telemetry on stdout. Nothing in the run path needs
 user message, so an issue file from `tasks/` works as the whole brief.
 
 Authoritative references: the invocation contract is `GgInvocation` in
-`crates/core/src/gg.rs`; the configuration surface is
+`contracts/crates/contracts/src/gg.rs`; the configuration surface is
 `apps/docs/src/content/docs/gg/configurations.md`; the launch refusal rules are
-the header of `crates/gg/src/validate.rs`. This skill is the shortest path
-through them, not a replacement.
+the header of `crates/gg/src/validate.rs` in the `gg` checkout. This skill is
+the shortest path through them, not a replacement.
 
 ## The recipe
 
-1. **Build.** `cargo build -p test-cabinet-gg` (about a minute when the arm
-   artifacts are cached; the first build on a fresh machine reflects eleven
+1. **Build.** `cargo build -p test-cabinet-gg` in the `gg/` checkout (about a
+   minute when the arm artifacts are cached; the first build on a fresh machine reflects eleven
    toolchains and takes much longer. The dev container's image carries every
-   toolchain; a container built before a pin moved catches up with
+   toolchain; a container built before a pin moved catches up with gg's
    `scripts/ci/install-gg-toolchains.sh` and
    `scripts/ci/install-gg-build-toolchains.sh`, both idempotent). The
-   binary lands at `target/debug/gg` in the checkout.
+   binary lands at `gg/target/debug/gg`. The release the driver pins is the
+   other way to get one: `scripts/ci/gg-release.sh fetch <dir>` from the
+   superrepo's root.
 2. **Check the sandbox arms.** `PATH="$HOME/.local/bin:$PATH" gg selfcheck`
    drives every language's bootstrap turn with no model. On 2026-09-22 ten arms
    passed here; `rust` failed for want of the `wasm32-wasip1` target. Use
@@ -54,7 +56,7 @@ through them, not a replacement.
    ```sh
    set -a; source .env; set +a          # OPENROUTER_API_KEY lives in the repo .env
    export PATH="$HOME/.local/bin:$PATH" # purs, node, esbuild for the sandbox arms
-   target/debug/gg --config inv.json > run.ndjson
+   gg/target/debug/gg --config inv.json > run.ndjson
    ```
 
    Exit `0` is a session that ended by its own `finish` call, `3` is a run
@@ -181,7 +183,7 @@ copy with one block moved.
 
 Both templates leave `skills` and `memories` out (they are on in the console's
 default profile). Add them from the authoring catalog in
-`crates/core/src/gg.rs` (`build_authoring_catalog`) if a study wants them.
+`contracts/crates/contracts/src/gg.rs` (`build_authoring_catalog`) if a study wants them.
 
 ### Ceilings worth keeping
 
@@ -209,7 +211,8 @@ Paste the `tasks/` file verbatim into `prompt`, preceded by one line saying the
 workspace is the repository the issue describes and that the session ends by
 calling `finish` once the change is complete and the gates named in the issue
 pass. Anything you would put in a system prompt goes in the profile's
-`customInstructions`; follow the `agent-prompts` skill for that text.
+`customInstructions`; follow the `agent-prompts` skill (in the `gg` checkout,
+`gg/.claude/skills/agent-prompts/`) for that text.
 
 ## Models resolved on 2026-09-22
 

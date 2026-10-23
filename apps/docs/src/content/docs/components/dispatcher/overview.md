@@ -5,10 +5,11 @@ title: Overview
 The dispatcher is a stateless controller that turns the
 [backend](/components/backend/overview/)'s queues into Kubernetes work. It
 claims a queued run and creates one [driver](/components/driver/overview/) `Job`
-to execute it, and claims a queued publish and creates one publisher `Job` to
-release it. The backend's job tables are the source of truth, so the dispatcher
-holds no durable state of its own. It sits entirely behind the backend. A
-console enqueues work at the backend and never addresses the dispatcher.
+to execute it, and claims a queued publish and creates one
+[publisher](/components/backend/results/#publish) `Job` to release it. The
+backend's job tables are the source of truth, so the dispatcher holds no durable
+state of its own. It sits entirely behind the backend. A console enqueues work
+at the backend and never addresses the dispatcher.
 
 ## The control loop
 
@@ -16,9 +17,11 @@ The dispatcher runs one loop forever. Each tick:
 
 1. Reconcile against the live cluster: list the `Job`s this dispatcher owns
    (selected by their `app.kubernetes.io/managed-by` label), count the
-   non-terminal ones of each kind as that kind's in-flight total, report any
-   driver-pod death the driver itself could not, report any job whose driver is
-   [lost](#lost-drivers), and reap the sandbox pods a dead driver orphaned (see
+   non-terminal ones of each kind as that kind's in-flight total, renew the
+   [lease](#claim-leases) of every run whose driver `Job` is live and, while
+   publishing is enabled, of every publish job whose publisher `Job` is live,
+   report any driver-pod death the driver itself could not, resolve every
+   lapsed lease, and reap the sandbox pods a dead driver orphaned (see
    [Sandbox reaping](#sandbox-reaping)). Counting from the cluster rather
    than from an in-memory tally is what makes a restart safe.
 2. Admit through the two [lanes](#admission-lanes), one driver `Job` and one
@@ -31,7 +34,8 @@ interval.
 
 The dispatcher authenticates its claims with a shared service token
 (`TCAB_BACKEND_SERVICE_TOKEN`, which the backend also holds). The claim is
-atomic, so the backend hands each job to exactly one dispatcher.
+atomic, so the backend hands each job to exactly one dispatcher, and a claimed
+run carries a [lease](#claim-leases).
 
 ## Admission lanes
 
@@ -62,35 +66,17 @@ name starts with `tcab-publisher-` and a run otherwise.
 
 ## Backend-enforced admission rules
 
-These admission rules are enforced by the backend at the claim, not by the
+Two admission rules are enforced by the backend at the claim, not by the
 dispatcher.
 
 - Per-harness maximum parallelism. The backend hands back only a job whose
   harness has fewer than its configured limit of runs already in flight, holding
   the rest in the `pending` state until a slot frees. See
-  [Harnesses](/components/core/harnesses/#per-harness-configuration).
+  [Harnesses](/components/driver/harnesses/#per-harness-configuration).
 - One game-jam entry per jam and model. The backend holds a
   [game-jam](/testing/game-jam/overview/) job back while another run of the same
   jam by the same model is in flight under any harness, so a model's jam entries
   run one at a time and each is briefed with the previous one's README.
-- Artifact capacity. While any condition for storing a run's tree is
-  [not green](/components/backend/overview/#artifact-capacity), the run claim
-  hands back nothing and every waiting run is held in `pending`. The conditions
-  are the store's free space, its write check, its being readable, every run
-  in flight having stored its tree, and no upload having failed since a tree
-  last landed. After a failed upload the write check could not account for,
-  the claim hands back one run at a time, and only while no run is in flight,
-  until a tree lands.
-  The publish lane's claim is unaffected.
-- State volume. While the backend's own
-  [state volume](/components/backend/overview/#low-space) is under its stop
-  threshold, the run claim hands back nothing and every waiting run is held in
-  `pending`. The publish lane's claim is unaffected.
-- Publish failures. While publishes are
-  [failing across several runs](/components/backend/overview/#publish-failures),
-  the run claim hands back nothing and every waiting run is held in `pending`.
-  The publish lane's claim is unaffected, and a publish that succeeds through it
-  is what ends the hold.
 
 ## Queue order
 
@@ -134,7 +120,10 @@ was running.
 
 The dispatcher's product for a claimed run is one `batch/v1` `Job` running the
 driver image, with exactly the environment the driver reads: the backend URL,
-the job id and its per-job token, the serialized launch request,
+the [artifacts](/components/artifacts/overview/) and
+[repos](/components/repos/overview/) URLs the run tree and bundle are uploaded
+to, the job id and its per-job token, the serialized launch request, the
+driver's two [finishing deadlines](/components/driver/overview/#retries),
 `TCAB_DRIVER_RUNTIME=kubernetes`, the `TCAB_K8S_*` sandbox-pod passthroughs, and
 the `TCAB_CONTAINER_*` run-image selection the driver resolves the sandbox image
 from. A deployment therefore pins the run images by `:<git-sha>` here rather
@@ -147,6 +136,11 @@ the driver owns reporting its own specific failure and a silent retry would race
 that. Every `Job` carries the `managed-by` label the reconcile selects on, a
 `tcab.dev/job-id` label mapping it back to its backend job, and the
 `tcab.dev/job-kind` label naming its [lane](#admission-lanes).
+
+The driver pod's `terminationGracePeriodSeconds` is
+`TCAB_DISPATCHER_DRIVER_TERMINATION_GRACE_SECONDS` (default `120`): the time a
+driver sent `SIGTERM` has to hand its record to the backend and report (see
+[Termination](/components/driver/overview/#termination)).
 
 Configured driver `Secret`s reach the pod's environment through `envFrom`, which
 is how the harness provider API key arrives. When a subscription `Secret` is
@@ -162,7 +156,40 @@ owned `Job` that failed terminally, the dispatcher checks the backend job's
 state and, while it is still live, reports the failure with the dead pod's logs
 as the detail (`POST /jobs/{id}/status`), presenting the per-job token it
 retained at dispatch. Each job is reported once. A token lost across a restart
-leaves that job to [lost-driver detection](#lost-drivers).
+leaves that job to [lost-driver detection](#lost-drivers). The backend treats
+the report as it treats a lost job, finishing the run from its held record when
+it holds one.
+
+## Claim leases
+
+Every claimed run carries a lease: an expiry the backend stores on the job's row
+in Postgres. The claim sets it two minutes out. Each tick the dispatcher renews,
+in one call (`POST /jobs/leases` with the service token), the lease of every
+driven job whose driver `Job` exists and has not finished, extending each to two
+minutes past the renewal. The lease stands for the dispatcher's view of the
+cluster, so it is renewed whatever the driver is doing, including while the
+driver retries an upload or a report.
+
+The dispatcher judges a lapsed lease on a job past `dispatched`, and the
+backend returns a lapsed `dispatched` job to the queue on its next claim, as
+its [leases](/components/backend/api/#leases-and-lost-jobs) state. Each
+tick the dispatcher renews before it judges. A lease that lapsed while the
+dispatcher or the backend was down is therefore renewed for every job that
+still has a live `Job`, and judged only for the rest. The expiry lives in
+Postgres, so a restarted dispatcher judges each job against the expiry its
+predecessor last set.
+
+A lapsed lease resolves by the job's state:
+
+- `dispatched`: no driver reported, so nothing ran. The job returns to the queue
+  at its original queue position with a fresh per-job token, and no attempt is
+  counted. This recovers a claim whose `Job` creation failed and a claim made by
+  a dispatcher that died before creating its `Job`.
+- `starting`, `running`, `validating` or `storing`: the driver is
+  [lost](#lost-drivers).
+
+A driver whose job returned to the queue presents a token the backend no longer
+accepts. Its first report is refused, and it deletes its sandbox and exits.
 
 ## Lost drivers
 
@@ -174,44 +201,50 @@ report its death:
 - the whole machine restarted, taking every driver pod and the dispatcher down
   together (a local cluster after a host or Docker restart);
 - a driver `Job` failed while no dispatcher held its token;
-- a driver exited after its final report failed to reach the backend;
-- a claim whose `Job` was never created.
+- a driver exited after its report deadline passed with its terminal report
+  undelivered.
 
-Each tick, the dispatcher reads the backend's jobs in flight (`GET /jobs/active`)
-and then lists its `Job`s. A driven job with no `Active` driver `Job` is missing.
-A driven job is one in the `dispatched`, `starting`, `running`, `validating`
-or `storing` state. A job missing for two minutes without a break is lost, and the dispatcher
-reports it with `POST /jobs/{id}/lost`. That call uses the service token, so it
-needs no per-job token a restart could have lost. The detail names what the
-cluster shows: the dead pod's reason, a driver that exited without its report
-landing, or a `Job` that no longer exists.
+Each tick, after renewing, the dispatcher reads the backend's jobs in flight with
+their lease expiries (`GET /jobs/active`). A driven job past `dispatched` whose
+lease has lapsed is lost, and the dispatcher reports it with
+`POST /jobs/{id}/lost`. That call uses the service token, so it needs no per-job
+token a restart could have lost. The detail names what the cluster shows: the
+dead pod's reason, a driver that exited without its report landing, or a `Job`
+that no longer exists.
 
-The backend fails a lost job exactly as it would a driver's own `failed` report.
-The automatic retry and the coverage feed both apply. The exception is a job
-whose driver had
-[handed its report over](/components/backend/overview/#a-driver-lost-while-it-waits)
-before it began waiting on the artifact store: that run had finished, and the
-backend lands the report it holds. It ignores the report for
-a job that is no longer driven, so a report racing the driver's own is harmless.
+The backend finishes a lost job from its held record when it holds one, with the
+state the run reached, and enqueues no retry. Otherwise it fails the job as
+[`infrastructure`](/components/contracts/run-records/#status), exactly as it
+would a driver's own `failed` report, and the automatic retry and the coverage
+feed both apply. It ignores the report for a job that is no longer driven, so a
+report racing the driver's own is harmless. A terminal report that reaches the
+backend after the job was reported lost supersedes the lost outcome and
+withdraws its retry (see [Late terminal
+reports](/components/driver/overview/#late-terminal-reports)).
 
-The grace period covers the gap between a claim and its `Job` appearing, and the
-gap between a driver's last report and its `Job` completing. The clock is held in
-memory, so a dispatcher restart starts it again.
+### Lost publishers
 
-### The publisher Job
+The same coverage extends to publisher `Job`s while publishing is enabled, by
+the three bounds of [a publisher that
+stops](/components/backend/results/#a-publisher-that-stops). A claimed publish
+job carries a lease as a claimed run does, and each tick the dispatcher renews,
+in one call (`POST /publish-jobs/leases` with the service token), the lease of
+every publish job whose publisher `Job` exists and has not finished. After
+renewing it reads the publish jobs in flight (`GET /publish-jobs/active`) and
+reports each `dispatched` publish job whose lease has lapsed with
+`POST /publish-jobs/{id}/lost`, a `failed` publish result whose detail names
+what the cluster shows: the dead publisher pod's reason, a publisher that
+exited without its result landing, or a `Job` that no longer exists. A publish
+job held `dispatched` with no active publisher `Job` for two minutes is
+therefore reported lost, and the backend records it failed and
+[retries](/components/backend/results/#retrying-a-failed-publish) it. As with
+runs, the dispatcher judges nothing on a tick whose publish renewal failed and
+never reports a publish job whose publisher `Job` is still active.
 
-A publisher `Job` carries `activeDeadlineSeconds` of forty-five minutes, counted
-from the `Job`'s start. A release takes minutes, so the deadline only ever ends
-a publisher that has hung, and Kubernetes then stops its pod. A driver `Job`
-carries no such deadline, since the driver enforces a run's own time limit.
-
-A publisher that dies, or that the deadline ends, surfaces as a stuck
-`dispatched` publish job or is reaped by its TTL. The backend records a publish
-job left `dispatched` for an hour as failed and
-[retries it](/components/core/results/#retrying-a-failed-publish). The deadline
-is shorter than that hour on purpose: by the time the backend enqueues the
-retry, the first publisher is gone, so two publishers never release one run at
-the same time.
+Every publisher `Job` carries an `activeDeadlineSeconds` of 45 minutes, which
+ends a publisher that has hung. Its `Job` then fails, and the publish job is
+reported lost the same way. Behind both, the backend itself records failed a
+publish job that has been `dispatched` for an hour with no result.
 
 ## Sandbox reaping
 
@@ -294,15 +327,18 @@ deployment that points the driver at a different sandbox namespace
 reaping fails in that namespace, which is logged and never fatal. Naming a
 `Secret` on a `Job` needs no `secrets` rule, because the kubelet reads and
 projects it. The manifests are in `deployments/k8s/base/rbac.yaml`. See
-[Kubernetes: staging & prod](/deployment/kubernetes/run-plane/#rbac).
+[Run plane](/deployment/kubernetes/run-plane/#rbac).
 
 ## Deployment
 
-The dispatcher is the `test-cabinet-dispatcher` crate (`crates/dispatcher`),
-with no HTTP server and no flags. Its whole configuration is environment
-variables, documented in `crates/dispatcher/src/config.rs`. `TCAB_BACKEND_URL`,
-`TCAB_BACKEND_SERVICE_TOKEN` and `TCAB_DRIVER_IMAGE` are required, and
-`TCAB_PUBLISHER_IMAGE` enables the publish path.
+The dispatcher is the `tcab-dispatcher` binary of the `microservice-dispatcher`
+repository, with no HTTP server and no flags. Its whole configuration is
+environment variables, documented in the repository's
+`crates/dispatcher/src/config.rs`.
+`TCAB_BACKEND_URL`, `TCAB_BACKEND_SERVICE_TOKEN` and `TCAB_DRIVER_IMAGE` are
+required, and `TCAB_PUBLISHER_IMAGE` enables the publish path. The dispatcher
+never crosses the [edge](/deployment/kubernetes/edge/): it reaches the backend
+over its in-cluster `Service`.
 
 It is deployed as a single-replica `Deployment` with no `Service`, since it
 binds no socket. A second replica would only race the same atomic claim. Local

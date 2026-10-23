@@ -256,11 +256,6 @@ __pycache__/
 /ci/.pytest_cache/
 .ruff_cache/
 
-# What a failing browser test leaves behind: the screenshot Vitest takes of the
-# page the assertion failed on, written beside the app it rendered. It describes
-# one run on one machine and is read from the failure report.
-/apps/web/.vitest/
-
 # Editor and operating system droppings.
 .DS_Store
 *~
@@ -283,20 +278,11 @@ __pycache__/
 tmp/
 
 # What this repository alone ignores.
-!/apps/docs/public/schema/coverage/
+# The contract schemas, copied from the contracts submodule by the docs site's
+# prebuild (scripts/copy-contract-schemas.mjs).
+/apps/docs/public/schema/
 !/crates/backend/src/coverage/
-!/packages/case-harness/test/host/root/dist/
-!/apps/web/.env.development
-!/apps/web/.env.example
-/test-cases/**/reference/.rendered/
 **/*.rs.bk
-/crates/gg/src/sandbox/checkers/*
-!/crates/gg/src/sandbox/checkers/java.compiler.java
-!/crates/gg/src/sandbox/checkers/java.toolchain.json
-!/crates/gg/src/sandbox/checkers/jvm.backend.java
-!/crates/gg/src/sandbox/checkers/kotlin.compiler.java
-!/crates/gg/src/sandbox/checkers/kotlin.toolchain.json
-/crates/gg/src/sandbox/guests/
 /runs/
 .claude/workflows/
 .claude/worktrees/
@@ -309,13 +295,11 @@ tmp/
 **/.claude/agent-memory-local
 **/.claude/first-run
 **/.claude/assistant-daemon-state.json
-tcab-auth.sqlite*
 tcab-backend.sqlite*
 /tcab-store/
 /.tcab-driver/
 /tcab-artifacts/
 .vendor/
-/.reingest-timestamp
 *.pyo
 *.pyd
 .pytest_cache/

@@ -1,0 +1,25 @@
+# What Prettier must not touch. This file is the whole of the format gate's
+# scope: a path is formatted unless it is excluded here or Prettier has no
+# parser for it (Rust, shell and TOML need no entry).
+
+# --- Generated or vendored -------------------------------------------------
+
+node_modules/
+target/
+# What a package of the npm workspace builds into its own dist/.
+dist/
+# npm writes this file and its formatting is npm's own.
+package-lock.json
+# Copier writes the answers file on every render and update, in its own
+# formatting.
+.copier-answers.yml
+# The environment uv builds for the ci project.
+.venv/
+# Scratch work, which nobody formats.
+/tmp/
+
+# --- Prose -----------------------------------------------------------------
+
+# Markdown style is markdownlint's.
+*.md
+*.mdx

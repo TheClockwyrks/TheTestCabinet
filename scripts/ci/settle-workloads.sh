@@ -6,8 +6,8 @@
 #
 # The workspace template's scripts/ci/deploy.sh applies the whole overlay but waits
 # on the backend Deployment, `the-test-cabinet-backend`, alone, and undoes only that
-# one. The same apply rolls every other Test Cabinet workload (the auth service, the
-# dispatcher, the artifact and arena services, the console, the telemetry stack).
+# one. The same apply rolls every other Test Cabinet workload (the dispatcher, the
+# artifact and arena services, the console, the telemetry stack).
 # This settles them: in ONE `az aks command invoke`, it waits concurrently on every
 # Deployment and StatefulSet in the namespace except the backend, each for the
 # rollout timeout, then, for each that did not become ready, describes its pods,
@@ -234,7 +234,7 @@ if [[ "$mode" == after-failure ]]; then
 			"rolled it back. A check after the rollout failed, above. When it was the catalog" \
 			"ingest, read the sidecar's result again, or ingest once its cause is fixed:" \
 			"    scripts/ci/catalog-ingest.sh verify ${ENVIRONMENT}" \
-			"    scripts/reingest-cluster.sh --env ${ENVIRONMENT}" \
+			"    tcab ingest --env ${ENVIRONMENT}" \
 			"When it was a workload that did not become ready, roll the environment again:" \
 			"    scripts/ci/deploy-environment.sh ${ENVIRONMENT} ${COMMIT}"
 	elif [[ "$previous" =~ ^[0-9a-f]{40}$ && "$previous_backend" != "$LEGACY_BACKEND" ]]; then

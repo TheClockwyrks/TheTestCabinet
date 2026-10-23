@@ -1,26 +1,31 @@
 //! The ingest trigger handler (§1.1's `POST /ingest`).
 
 use std::convert::Infallible;
-use std::path::PathBuf;
 
+use crate::r2::R2Client;
 use axum::Json;
 use axum::body::Body;
 use axum::extract::State;
-use axum::http::{HeaderMap, header};
+use axum::http::{HeaderMap, StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use bytes::Bytes;
 use futures_util::stream;
-use serde::{Deserialize, Serialize};
-use test_cabinet_core::asset_reference::{REFERENCE_MEDIA_PREFIX, parse_reference_image_key};
-use test_cabinet_core::r2::R2Client;
-use test_cabinet_core::reference_lock::{REFERENCE_LOCK_FILENAME, ReferenceLock};
+use test_cabinet_contracts::asset_reference::{REFERENCE_MEDIA_PREFIX, parse_reference_image_key};
+use test_cabinet_contracts::ingest::{
+    IngestBody, IngestBodyMode, IngestProgress, IngestResponse, IngestResponseSuite,
+    IngestResponseVersion,
+};
+use test_cabinet_contracts::reference_lock::ReferenceLock;
 use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
 
+use crate::auth::ServiceCaller;
 use crate::db::{Db, ReferenceSheetEntry};
 use crate::error::ApiError;
-use crate::ingest::{IngestEvent, IngestReport, IngestRequest, Ingestor};
+use crate::ingest::{IngestEvent, IngestReport, IngestRequest, IngestRoots, Ingestor};
+use crate::ingest_refresh::{RefreshError, refresh_checkout};
 use crate::store::DefinitionStore;
+use test_cabinet_contracts::ingest::IngestMode;
 
 use super::AppState;
 
@@ -38,60 +43,66 @@ use super::AppState;
 /// progress feed (one NDJSON line per version as it completes, then a `done` line),
 /// while the default answers once with the full JSON report. The streaming and
 /// default paths run the identical scan; only the framing differs.
+///
+/// A body asking for `refresh` first has the ingest sidecar refresh the checkout
+/// (see [`refresh_if_asked`]). A refresh that could not update the test suites
+/// proceeds, and the streamed feed opens with the notice saying so; any other
+/// refresh failure fails the ingest before anything is scanned. The refresh can
+/// outlast the edge's wait for a first byte (a cold-storage fetch, or the
+/// sidecar's startup clone holding the lock), so the streamed feed opens at once
+/// and runs the refresh inside it, reporting its failure as the feed's `error`
+/// line; the plain JSON answer reports it as `502` `ingest_refresh_failed`.
 #[tracing::instrument(name = "ingest", skip(state, headers, body), err(Debug))]
 pub async fn ingest(
     State(state): State<AppState>,
+    _caller: ServiceCaller,
     headers: HeaderMap,
     body: Option<Json<IngestBody>>,
 ) -> Result<Response, ApiError> {
     let body = body.map(|Json(b)| b).unwrap_or_default();
-    let request = IngestRequest {
-        test_cases: body.test_cases,
-        force: body.force,
-        catalog_version: body.catalog_version,
-    };
-
-    let checkout = state.config.checkout.clone();
-    let store = state.store.clone();
-
-    // Reconcile the reference-build table from the committed lockfile before the
-    // definition scan. It reads the same freshly-fetched checkout and is independent
-    // of the version scan, so it runs identically for both response framings (the
-    // streamed scan below only reports on definitions).
-    reconcile_reference_builds(&state).await?;
-    reconcile_reference_sheets(&state).await;
-
-    // The whole-catalog prune must never drop a definition a run still references, so
-    // fetch that protected set here (async, before the blocking scan) and hand it to
-    // the ingestor. Cheap and harmless on a partial scan, which does not prune.
-    let protected = state.db.referenced_cases().await.map_err(ApiError::from)?;
+    let request = promote_for_store_readiness(
+        IngestRequest {
+            test_cases: body.test_cases,
+            force: body.force,
+            mode: IngestBodyMode::scan_mode(body.mode),
+            catalog_version: body.catalog_version,
+        },
+        state.ready.is_ready(),
+    );
 
     if wants_ndjson(&headers) {
-        return Ok(ingest_streaming(checkout, store, request, protected, state));
+        return Ok(ingest_streaming(state, request, body.refresh));
     }
 
+    refresh_if_asked(&state, body.refresh)
+        .await
+        .map_err(|error| {
+            ApiError::new(
+                StatusCode::BAD_GATEWAY,
+                "ingest_refresh_failed",
+                error.to_string(),
+            )
+        })?;
+    let scan = prepare_scan(&state).await?;
+
     // Default: run the scan to completion and answer with the full report.
-    let report = tokio::task::spawn_blocking(move || {
-        Ingestor::new(&checkout, &store)
-            .with_protected_cases(protected)
-            .scan(&request)
-    })
-    .await
-    .map_err(|e| ApiError::internal(format!("ingest task panicked: {e}")))?
-    .map_err(ApiError::from)?;
+    let report = tokio::task::spawn_blocking(move || scan.run(&request, |_| {}))
+        .await
+        .map_err(|e| ApiError::internal(format!("ingest task panicked: {e}")))?
+        .map_err(ApiError::from)?;
 
     // A scan that actually (re)ingested a version changed the definition store the
     // public snapshot's case metadata is exported from, so queue a refresh (see
     // `scan_changed_store`). This is what makes repopulating an emptied store — the
     // ephemeral `/state` volume's self-heal after a reschedule, or a manual
-    // `reingest-cluster.sh` — republish a corrected snapshot instead of leaving the
+    // `tcab ingest --env` — republish a corrected snapshot instead of leaving the
     // gallery frozen on whatever was built while the store was momentarily empty.
     if scan_changed_store(&report) {
         // The stored ratings a ladder's gate and the console's sort read wait on the
         // case versions this scan may just have supplied (see `recompute_ratings`),
         // so they are settled before the refresh that republishes them.
         recompute_ratings(&state.db, &state.store).await;
-        state.publisher.queue_refresh();
+        state.publisher.queue_refresh().await;
         // ...and the gg document index holds a `score` per run that is a fraction of the
         // case manifest's checklist weights. A re-ingest can change those weights (or an
         // erratum's `exclude_from_score`) without touching a single `run` row, which is
@@ -108,7 +119,63 @@ pub async fn ingest(
         state.ready.mark_store_populated();
     }
 
-    Ok(Json(IngestResponse::from(report)).into_response())
+    Ok(Json(ingest_response(report)).into_response())
+}
+
+/// Refresh the checkout when the body asked for it and this backend has an ingest
+/// sidecar to do it (`TCAB_BACKEND_INGEST_REFRESH_URL`), returning the notice the
+/// caller is told, if any.
+///
+/// A backend with no sidecar ignores `refresh` and scans the checkout as it is. A
+/// refresh that could not update the test suites is the one failure survived: the
+/// scan ingests what the checkout already holds and the caller is told so. Any
+/// other failure is returned, and fails the ingest before the scan.
+async fn refresh_if_asked(
+    state: &AppState,
+    refresh: bool,
+) -> Result<Option<&'static str>, RefreshError> {
+    if !refresh {
+        return Ok(None);
+    }
+    let Some(url) = state.config.ingest_refresh_url.as_deref() else {
+        tracing::debug!("ingest asked for a refresh; this backend has no ingest sidecar");
+        return Ok(None);
+    };
+    Ok(refresh_checkout(&state.http, url).await?.notice())
+}
+
+/// Everything the scan needs from the (refreshed) checkout and the database before
+/// it runs, identical for both response framings.
+async fn prepare_scan(state: &AppState) -> Result<Scan, ApiError> {
+    // Reconcile the reference-build table from the committed lockfile before the
+    // definition scan. It reads the same freshly-fetched checkout and is independent
+    // of the version scan, so it runs identically for both response framings (the
+    // streamed scan only reports on definitions).
+    reconcile_reference_builds(state).await?;
+    reconcile_reference_sheets(state).await;
+
+    // The whole-catalog prune must never drop a definition a run still references, so
+    // fetch that protected set here (async, before the blocking scan) and hand it to
+    // the ingestor. Cheap and harmless on a partial scan, which does not prune.
+    let protected = state.db.referenced_cases().await.map_err(ApiError::from)?;
+    Ok(Scan {
+        roots: state.config.ingest_roots(),
+        store: state.store.clone(),
+        previews: state.config.ingest_previews,
+        protected,
+    })
+}
+
+/// Force a `changed` scan against a backend whose store is not ready.
+///
+/// `store_ready` is what `/healthz` reports as `storeReady`. While it is false no
+/// stored record is servable, so there is nothing a `changed` scan can safely leave
+/// in place and every target is ingested.
+fn promote_for_store_readiness(mut request: IngestRequest, store_ready: bool) -> IngestRequest {
+    if request.mode == IngestMode::Changed && !store_ready {
+        request.force = true;
+    }
+    request
 }
 
 /// Finish the one-time recompute of the stored validator ratings
@@ -137,7 +204,8 @@ async fn recompute_ratings(db: &Db, store: &DefinitionStore) {
 /// non-forced periodic ingest does not fire a gallery rebuild every cycle; only a
 /// scan that moved something republishes. A forced re-ingest re-writes every version
 /// (all `ingested`), so it always refreshes — which is exactly what an operator
-/// running `reingest-cluster.sh` to push catalog edits to the site wants.
+/// running `tcab ingest --env` or publishing from The Spec Cabinet to push catalog
+/// edits to the site wants.
 fn scan_changed_store(report: &IngestReport) -> bool {
     // A changed test-case-group set counts too: the snapshot exports the set as
     // its own object, so a group-only edit must republish even though no version
@@ -150,22 +218,20 @@ fn scan_changed_store(report: &IngestReport) -> bool {
 /// this backend's environment, queuing a snapshot refresh when the set changes.
 ///
 /// This is the ingest half of the reference-implementation **pull** model: rather
-/// than a client pushing a URL to a (private, VPN-only) backend, `tcab
+/// than a client pushing a URL to a (private, Access-guarded) backend, `tcab
 /// publish-reference` commits each deployed URL into
 /// `test-cases/reference-builds.lock.json`, and the backend — which git-fetches its
-/// checkout before ingesting — reads the entries for its own `TCAB_ENV` and makes
+/// checkout before ingesting — reads the entries for its own `TCAB_ENV` from the
+/// copy under its definitions root ([`IngestRoots::reference_lock`]) and makes
 /// the table match them. This runs on the same pull path
-/// (`scripts/reingest-cluster.sh`) that refreshes definitions.
+/// (`tcab ingest --env`, or a publish from The Spec Cabinet) that refreshes
+/// definitions.
 ///
 /// A **missing** lockfile means it has not been committed yet, so the table is left
 /// untouched (never wiped). An env **absent** from an existing lockfile likewise
 /// leaves the table alone; a present-but-empty env reconciles to empty.
 async fn reconcile_reference_builds(state: &AppState) -> Result<(), ApiError> {
-    let path = state
-        .config
-        .checkout
-        .join("test-cases")
-        .join(REFERENCE_LOCK_FILENAME);
+    let path = state.config.ingest_roots().reference_lock();
     let Some(lock) = ReferenceLock::load(&path)
         .map_err(|e| ApiError::internal(format!("reading {}: {e}", path.display())))?
     else {
@@ -185,7 +251,7 @@ async fn reconcile_reference_builds(state: &AppState) -> Result<(), ApiError> {
     if changed {
         // The public snapshot folds each variant's reference-build URL onto its case
         // metadata, so a changed set must be re-exported.
-        state.publisher.queue_refresh();
+        state.publisher.queue_refresh().await;
     }
     Ok(())
 }
@@ -198,7 +264,7 @@ async fn reconcile_reference_builds(state: &AppState) -> Result<(), ApiError> {
 /// opaque URL only Cloudflare knows, so it must be committed into a lockfile for the
 /// backend to learn it. A published reference *sheet* has no such secret: every
 /// frame's key is derived from `(slug, version, variant, index)` by
-/// [`test_cabinet_core::asset_reference`], so the bucket itself is the register of
+/// [`test_cabinet_contracts::asset_reference`], so the bucket itself is the register of
 /// what exists, and listing it is both simpler and more truthful than a lockfile —
 /// it cannot claim a frame that was never uploaded or has since been deleted.
 ///
@@ -273,10 +339,41 @@ async fn reconcile_reference_sheets(state: &AppState) {
         // The public snapshot folds each variant's published frame list onto its case
         // metadata, so a changed set must be re-exported.
         Ok(true) => {
-            state.publisher.queue_refresh();
+            state.publisher.queue_refresh().await;
         }
         Ok(false) => {}
         Err(err) => tracing::warn!("reconciling the reference-sheet table failed ({err})"),
+    }
+}
+
+/// What one ingest scan runs against, taken from the backend's state before the
+/// scan moves onto a blocking thread.
+struct Scan {
+    /// Where the scan reads each tree from (`TCAB_DEFINITIONS_ROOT`,
+    /// `TCAB_SUITES_ROOT`, `TCAB_COLD_STORAGE_ROOT`, each defaulting into
+    /// `TCAB_BACKEND_CHECKOUT`).
+    roots: IngestRoots,
+    /// The definition store the scan writes.
+    store: DefinitionStore,
+    /// Whether the suites checkout's `.previews/` is read
+    /// (`TCAB_BACKEND_INGEST_PREVIEWS`).
+    previews: bool,
+    /// The `(slug, version)` pairs a stored run references, which a whole-catalog
+    /// prune keeps.
+    protected: std::collections::HashSet<(String, String)>,
+}
+
+impl Scan {
+    /// Run the scan, reporting each version to `on_event` as it completes.
+    fn run(
+        self,
+        request: &IngestRequest,
+        on_event: impl FnMut(IngestEvent),
+    ) -> crate::error::Result<IngestReport> {
+        Ingestor::with_roots(self.roots, &self.store)
+            .with_protected_cases(self.protected)
+            .with_previews(self.previews)
+            .scan_with_progress(request, on_event)
     }
 }
 
@@ -288,67 +385,92 @@ fn wants_ndjson(headers: &HeaderMap) -> bool {
         .is_some_and(|accept| accept.contains("application/x-ndjson"))
 }
 
-/// Run the scan on a blocking thread, streaming an NDJSON progress line per version
-/// as it completes (plus a closing `done`, or an `error` line if the scan aborts).
+/// Open the NDJSON feed at once and run the whole ingest inside it: the refresh
+/// (a `notice` line when the suites could not be updated, an `error` line ending
+/// the feed on any other failure), the scan's preparation, then the scan on a
+/// blocking thread, streaming a progress line per version as it completes and a
+/// closing `done`, or an `error` line if the scan aborts.
+///
+/// The response's headers leave before any of that work starts, so a refresh or
+/// scan that runs for minutes never reads to the edge as an origin that does not
+/// answer. The work runs on its own task, so a client that goes away does not
+/// stop an ingest already under way.
 /// The scan outpaces no realistic consumer here, so an unbounded channel buffers the
-/// handful of small lines without backpressure; the response ends when the blocking
-/// task drops its sender.
-fn ingest_streaming(
-    checkout: PathBuf,
-    store: DefinitionStore,
-    request: IngestRequest,
-    protected: std::collections::HashSet<(String, String)>,
-    state: AppState,
-) -> Response {
-    // What a scan that changed the store refreshes, and the readiness latch it releases.
-    let AppState {
-        db,
-        publisher,
-        gg_docs,
-        ready: readiness,
-        ..
-    } = state;
+/// handful of small lines without backpressure; the response ends when the task
+/// drops its sender.
+fn ingest_streaming(state: AppState, request: IngestRequest, refresh: bool) -> Response {
     let (tx, rx) = tokio::sync::mpsc::unbounded_channel::<Bytes>();
 
-    tokio::task::spawn_blocking(move || {
-        let ingestor = Ingestor::new(&checkout, &store).with_protected_cases(protected);
-        let result = ingestor.scan_with_progress(&request, |event| {
-            let _ = tx.send(encode_event(&StreamEvent::from(event)));
-        });
-        // A single closing line conveys the outcome in-band: the stream has already
-        // sent a 200, so a late failure cannot become an HTTP error code.
-        let closing = match result {
-            Ok(report) => {
-                // Same as the non-streaming path: a scan that changed the definition
-                // store must re-export the snapshot's case metadata (see
-                // `scan_changed_store`).
-                if scan_changed_store(&report) {
-                    // As on the non-streaming path, the stored ratings waiting on the
-                    // versions this scan supplied are settled before the refresh, and
-                    // before the `done` line.
-                    tokio::runtime::Handle::current().block_on(recompute_ratings(&db, &store));
-                    publisher.queue_refresh();
-                    // ...and, also as the non-streaming path, drop the gg document
-                    // index: a manifest's checklist weights are an input to every gg
-                    // run's `score` and are invisible to that index's per-run
-                    // freshness rule. Blocking on it rather than spawning it keeps the
-                    // invalidation ordered *before* the `done` line, so a client that
-                    // queries the moment ingest reports finished cannot be served the
-                    // pre-ingest scores.
-                    tokio::runtime::Handle::current().block_on(gg_docs.invalidate_all());
-                }
-                // …and, as on the non-streaming path, a scan that leaves the store
-                // servable releases the readiness latch.
-                if store.is_servable() {
-                    readiness.mark_store_populated();
-                }
-                StreamEvent::done(&report)
-            }
-            Err(err) => StreamEvent::Error {
-                message: err.to_string(),
-            },
+    tokio::spawn(async move {
+        let fail = |message: String| {
+            let _ = tx.send(encode_event(&IngestProgress::Error { message }));
         };
-        let _ = tx.send(encode_event(&closing));
+        match refresh_if_asked(&state, refresh).await {
+            Ok(Some(message)) => {
+                let _ = tx.send(encode_event(&IngestProgress::Notice {
+                    message: message.to_owned(),
+                }));
+            }
+            Ok(None) => {}
+            Err(error) => return fail(error.to_string()),
+        }
+        let scan = match prepare_scan(&state).await {
+            Ok(scan) => scan,
+            Err(error) => return fail(error.message),
+        };
+
+        let blocking_tx = tx.clone();
+        let db = state.db.clone();
+        let publisher = state.publisher.clone();
+        let gg_docs = state.gg_docs.clone();
+        let readiness = state.ready.clone();
+        let joined = tokio::task::spawn_blocking(move || {
+            let tx = blocking_tx;
+            let store = scan.store.clone();
+            let result = scan.run(&request, |event| {
+                let _ = tx.send(encode_event(&progress_line(event)));
+            });
+            // A single closing line conveys the outcome in-band: the stream has
+            // already sent a 200, so a late failure cannot become an HTTP error code.
+            let closing = match result {
+                Ok(report) => {
+                    // Same as the non-streaming path: a scan that changed the
+                    // definition store must re-export the snapshot's case metadata
+                    // (see `scan_changed_store`).
+                    if scan_changed_store(&report) {
+                        // As on the non-streaming path, the stored ratings waiting on
+                        // the versions this scan supplied are settled before the
+                        // refresh, and before the `done` line.
+                        tokio::runtime::Handle::current().block_on(recompute_ratings(&db, &store));
+                        // Blocking (this closure runs on a blocking thread) so the
+                        // dirty mark is written before the `done` line goes out.
+                        tokio::runtime::Handle::current().block_on(publisher.queue_refresh());
+                        // ...and, also as the non-streaming path, drop the gg document
+                        // index: a manifest's checklist weights are an input to every
+                        // gg run's `score` and are invisible to that index's per-run
+                        // freshness rule. Blocking on it rather than spawning it keeps
+                        // the invalidation ordered *before* the `done` line, so a
+                        // client that queries the moment ingest reports finished
+                        // cannot be served the pre-ingest scores.
+                        tokio::runtime::Handle::current().block_on(gg_docs.invalidate_all());
+                    }
+                    // …and, as on the non-streaming path, a scan that leaves the store
+                    // servable releases the readiness latch.
+                    if store.is_servable() {
+                        readiness.mark_store_populated();
+                    }
+                    done_line(&report)
+                }
+                Err(err) => IngestProgress::Error {
+                    message: err.to_string(),
+                },
+            };
+            let _ = tx.send(encode_event(&closing));
+        })
+        .await;
+        if let Err(error) = joined {
+            fail(format!("ingest task panicked: {error}"));
+        }
     });
 
     let stream = stream::unfold(rx, |mut rx| async move {
@@ -370,7 +492,7 @@ fn ingest_streaming(
 /// Encode one progress event as a `\n`-terminated NDJSON line. The fields are
 /// JSON-safe scalars, so a defensive empty line stands in for the impossible
 /// serialization error rather than aborting the stream.
-fn encode_event(event: &StreamEvent) -> Bytes {
+fn encode_event(event: &IngestProgress) -> Bytes {
     match serde_json::to_string(event) {
         Ok(mut line) => {
             line.push('\n');
@@ -381,123 +503,90 @@ fn encode_event(event: &StreamEvent) -> Bytes {
 }
 
 // --- Wire shapes (§1.1) -----------------------------------------------------
+//
+// The request body, the report and the feed lines are the ingest API's contract,
+// `test_cabinet_contracts::ingest` (re-exported by `test_cabinet_contracts::ingest`),
+// which the client writes and reads with too. What the scan's own report comes to on
+// the wire is decided here.
 
-#[derive(Deserialize, Default)]
-#[serde(rename_all = "camelCase")]
-pub struct IngestBody {
-    /// Restrict the scan to these entries, each a bare case `id` (slug or folder name,
-    /// expanding to all its versions) or a version-qualified `id@version` (that one
-    /// version only). Omitted/empty means a whole-catalog scan. See
-    /// [`IngestRequest::test_cases`].
-    #[serde(default)]
-    test_cases: Option<Vec<String>>,
-    #[serde(default)]
-    force: bool,
-    /// A version token (the client's build commit) tagging a whole-catalog ingest,
-    /// letting the backend skip the re-render when the catalog is unchanged. See
-    /// [`IngestRequest::catalog_version`].
-    #[serde(default)]
-    catalog_version: Option<String>,
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct IngestResponse {
-    test_case_versions: Vec<VersionOut>,
-}
-
-impl From<IngestReport> for IngestResponse {
-    fn from(report: IngestReport) -> Self {
-        IngestResponse {
-            test_case_versions: report
-                .test_case_versions
-                .into_iter()
-                .map(|v| VersionOut {
-                    slug: v.slug,
-                    version: v.version,
-                    ingested: v.ingested,
-                    rendered_references: v.rendered_references,
-                })
-                .collect(),
-        }
-    }
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-struct VersionOut {
-    slug: String,
-    version: String,
-    ingested: bool,
-    rendered_references: usize,
-}
-
-/// One line of the streamed (`Accept: application/x-ndjson`) progress feed,
-/// discriminated by an `event` tag: `start` once up front, a `version` per
-/// completed version, then a single closing `done` (or `error`).
-#[derive(Serialize)]
-#[serde(tag = "event", rename_all = "camelCase")]
-enum StreamEvent {
-    Start {
-        total: usize,
-    },
-    Version {
-        index: usize,
-        total: usize,
-        slug: String,
-        version: String,
-        ingested: bool,
-        #[serde(rename = "renderedReferences")]
-        rendered_references: usize,
-    },
-    Done {
-        total: usize,
-        ingested: usize,
-        skipped: usize,
-    },
-    Error {
-        message: String,
-    },
-}
-
-impl StreamEvent {
-    /// The closing summary for a successful scan: how many versions were (re)ingested
-    /// vs. skipped as unchanged.
-    fn done(report: &IngestReport) -> Self {
-        let total = report.test_case_versions.len();
-        let ingested = report
+/// The report a finished scan answers with when the feed was not asked for.
+fn ingest_response(report: IngestReport) -> IngestResponse {
+    IngestResponse {
+        test_case_versions: report
             .test_case_versions
-            .iter()
-            .filter(|v| v.ingested)
-            .count();
-        StreamEvent::Done {
-            total,
-            ingested,
-            skipped: total - ingested,
-        }
+            .into_iter()
+            .map(|v| IngestResponseVersion {
+                slug: v.slug,
+                version: v.version,
+                ingested: v.ingested,
+                rendered_references: v.rendered_references,
+                reason: v.reason.map(|reason| reason.as_str().to_owned()),
+                problem: v.problem,
+            })
+            .collect(),
+        refused_prunes: report.refused_prunes,
+        test_suites: report
+            .suite_versions
+            .into_iter()
+            .map(|suite| IngestResponseSuite {
+                slug: suite.slug,
+                version: suite.version,
+                ingested: suite.ingested,
+                reason: suite.reason.map(|reason| reason.as_str().to_owned()),
+                problem: suite.problem,
+            })
+            .collect(),
     }
 }
 
-impl From<IngestEvent<'_>> for StreamEvent {
-    fn from(event: IngestEvent<'_>) -> Self {
-        match event {
-            IngestEvent::Start { total } => StreamEvent::Start { total },
-            IngestEvent::Version {
-                index,
-                total,
-                version,
-            } => StreamEvent::Version {
-                index,
-                total,
-                slug: version.slug.clone(),
-                version: version.version.clone(),
-                ingested: version.ingested,
-                rendered_references: version.rendered_references,
-            },
-        }
+/// The closing summary for a successful scan: how many versions were (re)ingested
+/// vs. skipped, as unchanged or for a problem. A refused suite version is one
+/// `version` line of the feed, so it counts here too.
+fn done_line(report: &IngestReport) -> IngestProgress {
+    let refused = report
+        .suite_versions
+        .iter()
+        .filter(|suite| suite.problem.is_some())
+        .count();
+    let total = report.test_case_versions.len() + refused;
+    let ingested = report
+        .test_case_versions
+        .iter()
+        .filter(|v| v.ingested)
+        .count();
+    IngestProgress::Done {
+        total,
+        ingested,
+        skipped: total - ingested,
+        refused_prunes: report.refused_prunes.clone(),
+    }
+}
+
+/// The feed line one scan event is reported as.
+fn progress_line(event: IngestEvent<'_>) -> IngestProgress {
+    match event {
+        IngestEvent::Start { total } => IngestProgress::Start { total },
+        IngestEvent::Version {
+            index,
+            total,
+            version,
+        } => IngestProgress::Version {
+            index,
+            total,
+            slug: version.slug.clone(),
+            version: version.version.clone(),
+            ingested: version.ingested,
+            rendered_references: version.rendered_references,
+            reason: version.reason.map(|reason| reason.as_str().to_owned()),
+            problem: version.problem.clone(),
+        },
     }
 }
 
 #[cfg(test)]
 #[path = "ingest_api.test.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "ingest_api.refresh.test.rs"]
+mod refresh_tests;

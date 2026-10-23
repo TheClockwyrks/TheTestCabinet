@@ -9,7 +9,8 @@
 use axum::Json;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
-use serde::Serialize;
+
+pub use test_cabinet_contracts::backend_api::error::{ErrorBody, ErrorEnvelope};
 
 /// An error rendered to the contract's HTTP envelope.
 #[derive(Debug)]
@@ -37,15 +38,21 @@ impl ApiError {
         Self::new(StatusCode::NOT_FOUND, "not_found", message)
     }
 
-    /// `401 Unauthorized` with code `unauthorized` — an absent, invalid, or
-    /// expired bearer token on a mutating endpoint.
+    /// `401 Unauthorized` with code `unauthorized` — a request carrying no
+    /// identity, or an Access assertion or backend token that does not verify.
     pub fn unauthorized(message: impl Into<String>) -> Self {
         Self::new(StatusCode::UNAUTHORIZED, "unauthorized", message)
     }
 
-    /// `502 Bad Gateway` with code `auth_unavailable` — the auth service could
-    /// not be reached to verify a token (distinct from a *rejected* token, which
-    /// is a `401`).
+    /// `403 Forbidden` with code `forbidden` — a verified identity of a kind the
+    /// route does not take, such as a person on a route automation drives.
+    pub fn forbidden(message: impl Into<String>) -> Self {
+        Self::new(StatusCode::FORBIDDEN, "forbidden", message)
+    }
+
+    /// `502 Bad Gateway` with code `auth_unavailable` — the Access signing keys
+    /// could not be fetched to verify an assertion (distinct from a *rejected*
+    /// assertion, which is a `401`).
     pub fn auth_unavailable(message: impl Into<String>) -> Self {
         Self::new(StatusCode::BAD_GATEWAY, "auth_unavailable", message)
     }
@@ -78,22 +85,6 @@ impl ApiError {
     pub fn unavailable(message: impl Into<String>) -> Self {
         Self::new(StatusCode::SERVICE_UNAVAILABLE, "unavailable", message)
     }
-}
-
-/// The JSON body of an error response: `{ "error": { "code", "message" } }`.
-#[derive(Debug, Serialize)]
-#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub struct ErrorEnvelope {
-    pub error: ErrorBody,
-}
-
-/// The `error` member of an [`ErrorEnvelope`]: a stable machine-readable code and
-/// a human-readable message.
-#[derive(Debug, Serialize)]
-#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub struct ErrorBody {
-    pub code: String,
-    pub message: String,
 }
 
 impl IntoResponse for ApiError {
@@ -144,11 +135,21 @@ pub enum BackendError {
     #[error("serialization error: {0}")]
     Serde(#[from] serde_json::Error),
 
-    /// A core operation (manifest resolution, reference render) failed.
+    /// Loading or resolving a test case, suite or group, or rendering its prompt,
+    /// failed.
     #[error("{0}")]
-    Core(#[from] test_cabinet_core::Error),
+    Suites(#[from] test_cabinet_suites::Error),
 
-    /// A snapshot upload or deploy-hook fire failed.
+    /// The OpenRouter catalog could not be fetched, read or parsed for a price or
+    /// a model's listing (see [`crate::pricing`]).
+    #[error("{0}")]
+    Pricing(String),
+
+    /// A request to the R2 object store failed.
+    #[error("{0}")]
+    R2(#[from] crate::r2::R2Error),
+
+    /// A snapshot upload failed.
     #[error("{0}")]
     Snapshot(String),
 

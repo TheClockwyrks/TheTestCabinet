@@ -4,7 +4,9 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "predev": "node ../../scripts/copy-contract-schemas.mjs",
     "dev": "astro dev --host",
+    "prebuild": "node ../../scripts/copy-contract-schemas.mjs",
     "build": "astro build",
     "preview": "astro preview",
     "astro": "astro",

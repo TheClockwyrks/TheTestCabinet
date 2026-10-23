@@ -45,8 +45,9 @@ as recorded. Do not skip this step; it is not a rounding concern.
 
 1. **gg is priced differently from everything else.** A harness that reports its
    own cost has that figure used verbatim and the catalog skipped entirely
-   (`crates/core/src/lib.rs:1405`, `:1107`). gg reports the gateway's actual
-   charge; every other harness is priced from the model catalog.
+   (`RunEngine::collect_metrics` in microservice-driver's
+   `crates/driver/src/lib.rs`). gg reports the gateway's actual charge; every
+   other harness is priced from the model catalog.
 2. **The catalog has no cache-write class.** `TokenCounts` carries uncached and
    cached input only, so cache-creation tokens land in `uncachedInput` and are
    priced at the plain input rate. They are billed at a premium — measured at

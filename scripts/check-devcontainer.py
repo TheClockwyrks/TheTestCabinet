@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Check that the devcontainer mounts the checkout where the container works.
+"""Check that the devcontainer mounts the checkout where the container works, and builds what its anchor names.
 
 The service's mount of the checkout has to land at ``workspaceFolder``.
 Without it the devcontainer CLI mounts the checkout at its own directory name,
@@ -24,6 +24,20 @@ The compose file is read as text rather than through a YAML parser, because
 this runs wherever the gate runs and the only thing it needs out of that file
 is one service's list of mounts. A parser would be a dependency on every
 machine that commits, for a list this reads in a dozen lines.
+
+The service's image is built from the Dockerfile its ``build.dockerfile``
+names, with the arguments the compose file's ``x-devcontainer-build-args``
+anchor holds, and the two are held together as well. Every bare ``ARG`` the
+Dockerfile declares, the global ones its ``FROM`` lines read among them, has an
+entry in the anchor, so no argument reaches the build empty; the arguments the
+builder supplies itself, such as ``TARGETARCH``, are its own. Every ``*_IMAGE``
+entry is a full reference to a published image, with a registry, a repository
+and a tag, so a ``FROM`` resolves it nowhere but where the template published
+it and at the version it named. And the anchor names no ``USER_UID`` or
+``USER_GID``: the account is the published image's, ``dev`` at 1000:1000, and a
+host whose own account has other ids is mapped onto it by the user namespace
+the service reads rather than by an image built for it. The Dockerfile is read
+as text too, one instruction at a time.
 
 A configuration under a subdirectory of ``.devcontainer/``, which is how an
 editor is offered a choice of containers and ``devcontainer up --config``
@@ -71,6 +85,45 @@ CHECKOUT = re.compile(r"^-\s+(?P<source>\.\.(?:/[^:]*)?):(?P<target>[^:]+)(?::(?
 SERVICES = re.compile(r"^services:\s*$")
 SERVICE = re.compile(r"^  (?P<name>[A-Za-z0-9._-]+):\s*$")
 SERVICE_KEY = re.compile(r"^    (?P<key>[A-Za-z0-9._-]+):\s*(?P<value>.*)$")
+# A key of the service's `build` mapping, one level deeper.
+BUILD_KEY = re.compile(r"^      (?P<key>[A-Za-z0-9._-]+):\s*(?P<value>.*?)\s*$")
+
+# The anchor every build argument of the service is merged from, and one entry
+# of it: a name at two spaces' indentation and its value.
+ANCHOR = "x-devcontainer-build-args"
+ANCHOR_LINE = re.compile(rf"^{ANCHOR}:")
+ANCHOR_ENTRY = re.compile(r"^  (?P<name>[A-Za-z_][A-Za-z0-9_]*):\s*(?P<value>.*?)\s*$")
+
+# A bare `ARG NAME`, declaring an argument with no default of its own, which
+# the build is handed or leaves empty.
+BARE_ARG = re.compile(r"^ARG\s+(?P<name>[A-Za-z_][A-Za-z0-9_]*)\s*$", re.IGNORECASE)
+
+# The arguments a builder supplies itself, from the platform it builds for.
+# The anchor states none of them, or it would replace what the builder knows.
+AUTOMATIC_ARGS = frozenset(
+    {
+        "TARGETPLATFORM",
+        "TARGETOS",
+        "TARGETARCH",
+        "TARGETVARIANT",
+        "BUILDPLATFORM",
+        "BUILDOS",
+        "BUILDARCH",
+        "BUILDVARIANT",
+    }
+)
+
+# A reference a `FROM` resolves to one published image at one version: a
+# registry host, a repository of one or more path components, and a tag.
+IMAGE_REFERENCE = re.compile(
+    r"^(?P<registry>(?:[a-z0-9-]+\.)+[a-z0-9-]+(?::[0-9]+)?|localhost(?::[0-9]+)?)"
+    r"/(?P<repository>[a-z0-9]+(?:[._-][a-z0-9]+)*(?:/[a-z0-9]+(?:[._-][a-z0-9]+)*)*)"
+    r":(?P<tag>[A-Za-z0-9_][A-Za-z0-9_.-]{0,127})$"
+)
+
+# The ids a host once built the account with, which the image's fixed account
+# replaces.
+ID_ARGS = ("USER_UID", "USER_GID")
 
 
 def service_volumes(text: str, service: str) -> list[str] | None:
@@ -106,6 +159,110 @@ def service_volumes(text: str, service: str) -> list[str] | None:
         if in_volumes:
             found.append(line.strip())
     return found if declared else None
+
+
+def service_dockerfile(text: str, service: str) -> str | None:
+    """The Dockerfile *service*'s ``build.dockerfile`` names, or ``None`` when it builds none."""
+    return service_build_value(text, service, "dockerfile")
+
+
+def service_build_value(text: str, service: str, wanted: str) -> str | None:
+    """The value of the key *wanted* under *service*'s ``build``, or ``None`` when it states none."""
+    in_services = False
+    in_service = False
+    in_build = False
+    for line in text.splitlines():
+        if not line.strip() or line.lstrip().startswith("#"):
+            continue
+        if SERVICES.match(line):
+            in_services, in_service, in_build = True, False, False
+            continue
+        if not in_services:
+            continue
+        if not line.startswith(" "):
+            break
+        match = SERVICE.match(line)
+        if match is not None:
+            in_service = match["name"] == service
+            in_build = False
+            continue
+        if not in_service:
+            continue
+        key = SERVICE_KEY.match(line)
+        if key is not None:
+            in_build = key["key"] == "build"
+            continue
+        build = BUILD_KEY.match(line) if in_build else None
+        if build is not None and build["key"] == wanted:
+            return build["value"].strip("'\"")
+    return None
+
+
+def anchor_entries(text: str) -> dict[str, str] | None:
+    """The entries of the compose file's build-argument anchor, or ``None`` when it declares none."""
+    entries: dict[str, str] | None = None
+    for line in text.splitlines():
+        if ANCHOR_LINE.match(line):
+            entries = {}
+            continue
+        if entries is None:
+            continue
+        if line.strip() and not line.startswith(" ") and not line.startswith("#"):
+            break
+        match = ANCHOR_ENTRY.match(line)
+        if match is not None:
+            entries[match["name"]] = match["value"].strip("'\"")
+    return entries
+
+
+def bare_arguments(text: str) -> list[str]:
+    """Every argument a Dockerfile declares with a bare ``ARG``, in the order it declares them."""
+    names: list[str] = []
+    for line in text.splitlines():
+        match = BARE_ARG.match(line.strip())
+        if match is not None and match["name"] not in names:
+            names.append(match["name"])
+    return names
+
+
+def build_failures(compose: Path, service: str) -> list[str]:
+    """Every way the Dockerfile *compose* builds *service* from and the anchor fail to agree."""
+    text = compose.read_text(encoding="utf-8")
+    named = service_dockerfile(text, service)
+    if named is None:
+        return []
+    found: list[str] = []
+    # Compose resolves `dockerfile` against the build's `context`, and the
+    # context against the compose file's directory, so a service built from a
+    # context other than that directory names its Dockerfile from there.
+    context = service_build_value(text, service, "context") or "."
+    dockerfile = compose.parent / context / named
+    if not dockerfile.is_file():
+        return [f"{compose}: the {service} service is built from {named}, which is absent"]
+    anchor = anchor_entries(text)
+    if anchor is None:
+        return [
+            f"{compose}: declares no {ANCHOR}, so no argument {dockerfile} declares reaches the build",
+        ]
+    for name in bare_arguments(dockerfile.read_text(encoding="utf-8")):
+        if name not in AUTOMATIC_ARGS and name not in anchor:
+            found.append(
+                f"{dockerfile}: declares ARG {name}, which {ANCHOR} in {compose} has no entry for, "
+                f"so it reaches the build empty"
+            )
+    for name, value in anchor.items():
+        if name.endswith("_IMAGE") and IMAGE_REFERENCE.match(value) is None:
+            found.append(
+                f"{compose}: {ANCHOR} names {name} as {value!r}, which is not a reference with a "
+                f"registry, a repository and a tag"
+            )
+    for name in ID_ARGS:
+        if name in anchor:
+            found.append(
+                f"{compose}: {ANCHOR} names {name}; the account is the published image's, 1000:1000, "
+                f"and a host's own ids are mapped onto it by the user namespace instead"
+            )
+    return found
 
 
 def checkout_target(volumes: list[str]) -> str | None:
@@ -157,6 +314,7 @@ def failures(document: dict, declaration: Path = DEVCONTAINER) -> list[str]:
         mounted = checkout_target(volumes)
         if mounted is not None:
             target, declaring = mounted, path
+        found.extend(build_failures(path, service))
 
     if found:
         return found

@@ -1,16 +1,16 @@
 //! The saved **harness comparison** (A/B) endpoints (`/comparisons`).
 //!
 //! A comparison holds every run variable constant and varies one — the harness, a
-//! [gg configuration](test_cabinet_core::gg::GgCapabilitySet), or the model — into
+//! [gg configuration](test_cabinet_contracts::gg::GgCapabilitySet), or the model — into
 //! `N`-run arms, then presents the cost/token/score distributions side by side. Only
-//! the [configuration](test_cabinet_core::comparison::ComparisonConfig) is stored;
+//! the [configuration](crate::comparison::ComparisonConfig) is stored;
 //! the per-arm statistics and diagnostics are **computed on read** from the arms'
-//! runs (see [`test_cabinet_core::comparison_aggregate`]), so a comparison always
+//! runs (see [`crate::comparison_aggregate`]), so a comparison always
 //! reflects whatever runs have since landed. An arm holds the runs of its
 //! [coverage cell](super::coverage), whoever launched them, exactly as a coverage plan's
 //! cell and a ladder's rung slot do.
 //!
-//! Everything is per-account (attributed to the token's account via [`AuthUser`])
+//! Everything is per-account (attributed to the caller's email via [`Person`])
 //! and private to that operator, exactly like the reviewer's
 //! [coverage](super::coverage) and [gg configuration](super::gg_config) tooling.
 //! Comparisons are created and run only here; they are published read-only to the
@@ -25,15 +25,15 @@ use std::collections::{BTreeMap, BTreeSet};
 use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
 
-use test_cabinet_core::comparison::{Comparison, ComparisonArm, ComparisonConfig, is_complete};
-use test_cabinet_core::comparison_aggregate::{ArmHolding, aggregate_comparison};
-use test_cabinet_core::run_record::{HarnessSlug, RunRecord};
+use crate::comparison::{Comparison, ComparisonArm, ComparisonConfig, is_complete};
+use crate::comparison_aggregate::{ArmHolding, aggregate_comparison};
+use test_cabinet_contracts::run_record::{HarnessSlug, RunRecord};
 
-use crate::auth::AuthUser;
+use crate::auth::Person;
 use crate::db::{CellKey, PublishEnqueue, StoredComparison};
 use crate::error::ApiError;
 
@@ -42,9 +42,8 @@ use super::ReviewPlanCombo;
 use super::coverage::{
     GgLibrary, cell_in_flight, cell_key_of, cell_runs, member_cell_identity, resolve_member,
 };
-use super::publish_gate::{
-    GatedEnqueue, artifacts_unavailable_message, no_stored_tree_message, reclaimed_message,
-};
+
+pub use test_cabinet_contracts::backend_api::comparisons::ComparisonInput;
 
 /// The longest a comparison's display name may be.
 const MAX_NAME_LEN: usize = 80;
@@ -64,30 +63,15 @@ const MAX_N: u32 = 50;
 /// compares it against nothing.
 const MIN_ARMS: usize = 2;
 
-/// The create/update body for a comparison (the server assigns the id and
-/// timestamps, and owns the published state).
-#[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub struct ComparisonInput {
-    /// The operator-chosen display name.
-    pub name: String,
-    /// A one-line note on what is being compared and why.
-    #[serde(default)]
-    pub description: String,
-    /// The controls, varied dimension, and arms to save.
-    pub config: ComparisonConfig,
-}
-
 /// `GET /comparisons` — every comparison the token account owns, most recently
 /// updated first, each with its per-arm results computed from its runs.
 pub async fn list_comparisons(
     State(state): State<AppState>,
-    user: AuthUser,
+    user: Person,
 ) -> Result<Json<Vec<Comparison>>, ApiError> {
     let stored = state
         .db
-        .list_comparisons(&user.0.id)
+        .list_comparisons(&user.0)
         .await
         .map_err(ApiError::from)?;
     let mut out = Vec::with_capacity(stored.len());
@@ -105,16 +89,16 @@ pub async fn list_comparisons(
 /// mostly empty) per-arm results.
 pub async fn create_comparison(
     State(state): State<AppState>,
-    user: AuthUser,
+    user: Person,
     Json(input): Json<ComparisonInput>,
 ) -> Result<Json<Comparison>, ApiError> {
     let now = now()?;
     ensure_engine_control_supported(&state.store, &input.config)?;
-    let stored = stored_from_input(new_id(), &user.0.id, input, &now, &now)?;
-    ensure_distinct_cells(state.db.as_ref(), &user.0.id, &stored.config).await?;
+    let stored = stored_from_input(new_id(), &user.0, input, &now, &now)?;
+    ensure_distinct_cells(state.db.as_ref(), &user.0, &stored.config).await?;
     state
         .db
-        .insert_comparison(&user.0.id, &stored)
+        .insert_comparison(&user.0, &stored)
         .await
         .map_err(ApiError::from)?;
     Ok(Json(
@@ -128,12 +112,12 @@ pub async fn create_comparison(
 /// its runs. 404 when the id is not the caller's.
 pub async fn get_comparison(
     State(state): State<AppState>,
-    user: AuthUser,
+    user: Person,
     Path(id): Path<String>,
 ) -> Result<Json<Comparison>, ApiError> {
     let Some(stored) = state
         .db
-        .get_comparison(&user.0.id, &id)
+        .get_comparison(&user.0, &id)
         .await
         .map_err(ApiError::from)?
     else {
@@ -150,7 +134,7 @@ pub async fn get_comparison(
 /// place. 404 when the id is not the caller's.
 pub async fn update_comparison(
     State(state): State<AppState>,
-    user: AuthUser,
+    user: Person,
     Path(id): Path<String>,
     Json(input): Json<ComparisonInput>,
 ) -> Result<Json<Comparison>, ApiError> {
@@ -158,7 +142,7 @@ pub async fn update_comparison(
     // preserves; a missing row is a 404 before any write.
     let Some(existing) = state
         .db
-        .get_comparison(&user.0.id, &id)
+        .get_comparison(&user.0, &id)
         .await
         .map_err(ApiError::from)?
     else {
@@ -167,11 +151,11 @@ pub async fn update_comparison(
     ensure_engine_control_supported(&state.store, &input.config)?;
     // An arm's runs follow from its cell, so the configuration is stored as sent
     // (docs/comparisons/experiments.md, "Editing a comparison").
-    let stored = stored_from_input(id, &user.0.id, input, &existing.created_at, &now()?)?;
-    ensure_distinct_cells(state.db.as_ref(), &user.0.id, &stored.config).await?;
+    let stored = stored_from_input(id, &user.0, input, &existing.created_at, &now()?)?;
+    ensure_distinct_cells(state.db.as_ref(), &user.0, &stored.config).await?;
     let updated = state
         .db
-        .update_comparison(&user.0.id, &stored)
+        .update_comparison(&user.0, &stored)
         .await
         .map_err(ApiError::from)?;
     if !updated {
@@ -188,12 +172,12 @@ pub async fn update_comparison(
 /// unaffected. 404 when the id is not the caller's.
 pub async fn delete_comparison(
     State(state): State<AppState>,
-    user: AuthUser,
+    user: Person,
     Path(id): Path<String>,
 ) -> Result<StatusCode, ApiError> {
     let deleted = state
         .db
-        .delete_comparison(&user.0.id, &id)
+        .delete_comparison(&user.0, &id)
         .await
         .map_err(ApiError::from)?;
     if !deleted {
@@ -235,12 +219,12 @@ pub struct ComparisonPublishOutcome {
 /// failing the whole publish. 404 when the id is not the caller's.
 pub async fn publish_comparison(
     State(state): State<AppState>,
-    user: AuthUser,
+    user: Person,
     Path(id): Path<String>,
 ) -> Result<Json<ComparisonPublishOutcome>, ApiError> {
     let Some(stored) = state
         .db
-        .get_comparison(&user.0.id, &id)
+        .get_comparison(&user.0, &id)
         .await
         .map_err(ApiError::from)?
     else {
@@ -281,31 +265,13 @@ pub async fn publish_comparison(
                     // The shared enqueue: a run whose release is already under way
                     // (its own automatic publish, say) keeps that job and is not
                     // counted as enqueued here.
-                    //
-                    // The enqueue checks the run's stored artifact tree first. A
-                    // run without one, or one the artifact service could not be
-                    // asked about, is skipped with that reason like any other run
-                    // that cannot be published, so the rest of the batch goes on.
-                    match super::publish_gate::enqueue_publish(&state, run_id, &now()?)
+                    let outcome = state
+                        .db
+                        .enqueue_publish_job_once(run_id, &now()?)
                         .await
-                        .map_err(ApiError::from)?
-                    {
-                        GatedEnqueue::Enqueued(PublishEnqueue::Enqueued(_)) => {
-                            enqueued.push(run_id.clone());
-                        }
-                        GatedEnqueue::Enqueued(PublishEnqueue::Attached(_)) => {}
-                        GatedEnqueue::NoStoredTree => skipped.push(SkippedRun {
-                            run_id: run_id.clone(),
-                            reason: no_stored_tree_message(run_id),
-                        }),
-                        GatedEnqueue::Reclaimed(reason) => skipped.push(SkippedRun {
-                            run_id: run_id.clone(),
-                            reason: reclaimed_message(run_id, reason),
-                        }),
-                        GatedEnqueue::ArtifactsUnavailable(error) => skipped.push(SkippedRun {
-                            run_id: run_id.clone(),
-                            reason: artifacts_unavailable_message(run_id, &error),
-                        }),
+                        .map_err(ApiError::from)?;
+                    if matches!(outcome, PublishEnqueue::Enqueued(_)) {
+                        enqueued.push(run_id.clone());
                     }
                 }
                 Err(err) => skipped.push(SkippedRun {
@@ -316,14 +282,14 @@ pub async fn publish_comparison(
         }
     }
 
-    // Publish the comparison record itself and request a snapshot refresh so the
-    // public snapshot rebuilds with it (each completed run publish requests one again).
+    // Publish the comparison record itself and wake the snapshot debounce so the
+    // public snapshot rebuilds with it (each completed run publish wakes it again).
     state
         .db
-        .set_comparison_published(&user.0.id, &id, true, Some(&now()?))
+        .set_comparison_published(&user.0, &id, true, Some(&now()?))
         .await
         .map_err(ApiError::from)?;
-    state.publisher.queue_refresh();
+    state.publisher.queue_refresh().await;
 
     Ok(Json(ComparisonPublishOutcome { enqueued, skipped }))
 }
@@ -562,10 +528,10 @@ fn now() -> Result<String, ApiError> {
         .map_err(|e| ApiError::internal(format!("formatting timestamp: {e}")))
 }
 
-/// Hold the comparison's [engine](test_cabinet_core::engine) control against the
+/// Hold the comparison's [engine](test_cabinet_suites::engine) control against the
 /// engines its anchored case version declares support for, the same gate a run is
 /// held to before any container starts
-/// ([`test_cabinet_core::ensure_engine_supported`]) and worded the same way.
+/// (the driver's `ensure_engine_supported`) and worded the same way.
 ///
 /// The engine is a control, so every arm's runs launch under it and the review
 /// checklist `assemble_comparison` resolves is the one that engine carries. A

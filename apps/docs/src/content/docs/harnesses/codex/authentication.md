@@ -6,7 +6,7 @@ Codex authenticates in one of two modes: an OpenAI API key, or a ChatGPT account
 subscription. The Test Cabinet resolves which mode a run uses, then makes the
 chosen credential available to the CLI inside the run container. The contracts
 shared by every harness are defined in [Agent
-Harnesses](/components/core/harnesses/#authentication).
+Harnesses](/components/driver/harnesses/#authentication).
 
 ## API key
 

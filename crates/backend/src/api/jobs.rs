@@ -33,37 +33,52 @@ use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
 use tokio::sync::broadcast::error::RecvError;
 
-use test_cabinet_core::event::HarnessEvent;
-use test_cabinet_core::gg::GgCapabilitySet;
-use test_cabinet_core::preview::AssetPreview;
-use test_cabinet_core::run_record::{HarnessSlug, RunRecord, RunState};
-use test_cabinet_core::test_case::TestType;
+use test_cabinet_contracts::event::HarnessEvent;
+use test_cabinet_contracts::gg::GgCapabilitySet;
+use test_cabinet_contracts::preview::AssetPreview;
+use test_cabinet_contracts::run_record::{HarnessSlug, RunRecord, RunState};
+use test_cabinet_suites::test_case::TestType;
 // The job-API wire shapes shared with the dispatcher, driver, and the queue's
-// Rust clients live in `core` (so neither must depend on this crate) — both the
-// request shapes the driver/dispatcher speak and the server **output** shapes a
-// client deserializes. Re-export them so this module — and `api.rs`'s public
-// re-export, which the `contract-codegen` generator names — keep referring to
-// them as `jobs::{LaunchBody, …}`.
-pub use test_cabinet_core::{
-    ActiveJobOut, ClaimedJob, DriverState, JobState, JobStatusOut, LaunchAck, LaunchBatchAck,
-    LaunchBatchBody, LaunchBatchItem, LaunchBody, StatusUpdate, StreamTopicsBody,
-};
+// Rust clients live in the contracts crate (so neither must depend on this crate) —
+// both the request shapes the driver/dispatcher speak and the server **output**
+// shapes a client deserializes. Re-export them so this module — and `api.rs`'s
+// public re-export — keep referring to them as `jobs::{LaunchBody, …}`.
+pub use test_cabinet_contracts::job_api::ActiveJobOut;
+pub use test_cabinet_contracts::job_api::ClaimedJob;
+pub use test_cabinet_contracts::job_api::DriverState;
+pub use test_cabinet_contracts::job_api::EventBatch;
+pub use test_cabinet_contracts::job_api::JobState;
+pub use test_cabinet_contracts::job_api::JobStatusOut;
+pub use test_cabinet_contracts::job_api::LaunchAck;
+pub use test_cabinet_contracts::job_api::LaunchBatchAck;
+pub use test_cabinet_contracts::job_api::LaunchBatchBody;
+pub use test_cabinet_contracts::job_api::LaunchBatchItem;
+pub use test_cabinet_contracts::job_api::LaunchBody;
+pub use test_cabinet_contracts::job_api::LeaseRenewal;
+pub use test_cabinet_contracts::job_api::StatusUpdate;
+pub use test_cabinet_contracts::job_api::StreamTopicsBody;
 use test_cabinet_entities::job;
 
-use crate::auth::{AuthUser, ServiceAuth, bearer_token, token_matches};
-use crate::db::{CANCELABLE_ACTIVE_STATES, CANCELABLE_WAITING_STATES, JobCancelFilter, JobOrigin};
+use crate::auth::{Person, ServiceAuth, bearer_token, token_matches};
+use crate::db::{
+    CANCELABLE_ACTIVE_STATES, CANCELABLE_WAITING_STATES, DRIVEN_STATES, JobCancelFilter, JobOrigin,
+    WithdrawnRetry,
+};
 use crate::error::ApiError;
 use crate::relay::{JobSummary, Notification, RunEvent, StreamItem, StreamMessage};
 
 use super::AppState;
 use super::gg::{bind_launch_configuration, launch_configuration_names};
 
-/// `POST /jobs` — enqueue a run. Requires a bearer token; validates the request,
+pub(super) use test_cabinet_contracts::backend_api::jobs::DEFAULT_RETRY_COUNT;
+pub use test_cabinet_contracts::backend_api::jobs::{BulkCancelOut, StreamOpened, StreamResync};
+
+/// `POST /jobs` — enqueue a run. Takes a person's assertion; validates the request,
 /// mints a job id and per-job driver token, stores it in the `queued` state, and
 /// returns the job id. The run itself is driven later by a driver pod the dispatcher
 /// creates; observe it via the endpoints below.
 ///
-/// The run is **attributed** to the token's account (`job.user_id`) and, when the
+/// The run is **attributed** to the caller's email (`job.user_id`) and, when the
 /// request carries an [`origin`](LaunchQuery::origin), to the coverage plan or ladder
 /// that asked for it (`job.origin`). A launch by hand from the console's run form
 /// sends no origin and so is never swept up by a plan's or ladder's scoped halt.
@@ -82,7 +97,7 @@ use super::gg::{bind_launch_configuration, launch_configuration_names};
 )]
 pub async fn launch(
     State(state): State<AppState>,
-    user: AuthUser,
+    user: Person,
     Query(query): Query<LaunchQuery>,
     Json(mut body): Json<LaunchBody>,
 ) -> Result<Response, ApiError> {
@@ -94,15 +109,13 @@ pub async fn launch(
         && let Some(set) = body.gg_capability_set.as_mut()
     {
         let names =
-            launch_configuration_names(&state.db, &user.0.id, set.preset_id.as_deref()).await?;
+            launch_configuration_names(&state.db, &user.0, set.preset_id.as_deref()).await?;
         bind_launch_configuration(set, &names).map_err(ApiError::bad_request)?;
     }
     crate::bootstrap::seed_launch_facts(&state.db, &state.prices, &launch_models(&body)).await;
     let record = candidate_record(&state, [&body]).await;
     // A list price filled at this enqueue changes the catalog the public snapshot shows.
-    let on_fill = || {
-        state.publisher.queue_refresh();
-    };
+    let on_fill = || state.publisher.queue_refresh_detached();
     resolve_gg_model_facts(&state.db, &state.prices, &record, &mut body, &on_fill)
         .await
         .map_err(ApiError::bad_request)?;
@@ -142,7 +155,7 @@ pub async fn launch(
 /// worth of missing runs.
 const MAX_BATCH_RUNS: usize = 20_000;
 
-/// `POST /jobs/batch` — enqueue many runs in one request. Requires a bearer token,
+/// `POST /jobs/batch` — enqueue many runs in one request. Takes a person's assertion,
 /// the same gate as `POST /jobs`. Each requested run is
 /// validated and minted independently, so a single malformed request is reported as
 /// its own error without aborting the rest; the accepted runs are then inserted in
@@ -153,7 +166,7 @@ const MAX_BATCH_RUNS: usize = 20_000;
 /// (the coverage matrix's still-missing runs, the new-run form's combinations)
 /// sends one request and one insert instead of one per run.
 ///
-/// Every run in the batch takes the **same** attribution — the token's account, and
+/// Every run in the batch takes the **same** attribution — the caller's email, and
 /// the one [`origin`](LaunchQuery::origin) the query carries — because a batch is one
 /// decision by one plan, ladder, or person. A caller wanting runs attributed to two
 /// different origins sends two batches.
@@ -171,7 +184,7 @@ const MAX_BATCH_RUNS: usize = 20_000;
 )]
 pub async fn launch_batch(
     State(state): State<AppState>,
-    user: AuthUser,
+    user: Person,
     Query(query): Query<LaunchQuery>,
     Json(body): Json<LaunchBatchBody>,
 ) -> Result<Response, ApiError> {
@@ -199,9 +212,7 @@ pub async fn launch_batch(
     let mut items: Vec<LaunchBatchItem> = Vec::with_capacity(body.runs.len());
     let mut to_insert: Vec<crate::db::NewJob> = Vec::with_capacity(body.runs.len());
     // A list price filled for any run changes the catalog the public snapshot shows.
-    let on_fill = || {
-        state.publisher.queue_refresh();
-    };
+    let on_fill = || state.publisher.queue_refresh_detached();
     // A batch usually fans one case out over many models/harnesses, so resolve each
     // (case, version)'s type once instead of re-reading the same manifest per run.
     let mut types: HashMap<(String, String), TestType> = HashMap::new();
@@ -210,7 +221,7 @@ pub async fn launch_batch(
     // same configuration usually appears in most of its runs.
     let config_names = launch_configuration_names(
         &state.db,
-        &user.0.id,
+        &user.0,
         body.runs
             .iter()
             .filter(|run| run.harness == HarnessSlug::Gg)
@@ -340,7 +351,7 @@ pub(super) fn launch_models(body: &LaunchBody) -> Vec<(String, HarnessSlug)> {
 ///
 /// Per model, the window and the modalities come from the
 /// [catalog](super::models::launch_facts_for) — the observations the backend already holds —
-/// and from a live [per-model fetch](test_cabinet_core::OpenRouterPrices::model_launch_facts)
+/// and from a live [per-model fetch](crate::pricing::OpenRouterPrices::model_launch_facts)
 /// only when the catalog has not observed the window yet (the first run against a
 /// just-released model). The candidate list is always built from the model's endpoints listing
 /// read live at this moment, filtered by the model's catalog entry and ordered by each
@@ -370,7 +381,7 @@ pub(super) fn launch_models(body: &LaunchBody) -> Vec<(String, HarnessSlug)> {
 /// snapshot it feeds.
 pub(super) async fn resolve_gg_model_facts(
     db: &crate::db::Db,
-    prices: &test_cabinet_core::OpenRouterPrices,
+    prices: &crate::pricing::OpenRouterPrices,
     record: &[Arc<crate::stats::GgRunFacts>],
     body: &mut LaunchBody,
     on_fill: &(dyn Fn() + Sync),
@@ -419,14 +430,15 @@ pub(super) struct GgModelFacts {
     /// The context window every bound model is measured against.
     windows: std::collections::BTreeMap<String, u64>,
     /// The ordered provider candidates every bound model's requests are served by.
-    providers: std::collections::BTreeMap<String, Vec<test_cabinet_core::gg::GgProviderCandidate>>,
+    providers:
+        std::collections::BTreeMap<String, Vec<test_cabinet_contracts::gg::GgProviderCandidate>>,
     /// The input modalities of the bound models the catalog (or OpenRouter) lists them for.
     /// A model with none is simply absent: unknown modalities are not a launch failure.
     modalities: std::collections::BTreeMap<String, Vec<String>>,
     /// The curated list price (USD per token) every bound model is scored at. A
     /// model the catalog cannot price refuses the launch, so every bound model is
     /// present.
-    prices: std::collections::BTreeMap<String, test_cabinet_core::TokenPrices>,
+    prices: std::collections::BTreeMap<String, test_cabinet_contracts::metrics::TokenPrices>,
 }
 
 impl GgModelFacts {
@@ -445,9 +457,9 @@ impl GgModelFacts {
 /// `on_fill` is as documented there.
 pub(super) async fn gg_model_facts(
     db: &crate::db::Db,
-    prices: &test_cabinet_core::OpenRouterPrices,
+    prices: &crate::pricing::OpenRouterPrices,
     record: &[Arc<crate::stats::GgRunFacts>],
-    set: &test_cabinet_core::gg::GgCapabilitySet,
+    set: &test_cabinet_contracts::gg::GgCapabilitySet,
     launch_model: &str,
     harness: HarnessSlug,
     on_fill: &(dyn Fn() + Sync),
@@ -480,11 +492,11 @@ pub(super) async fn gg_model_facts(
 }
 
 /// Whether a request of `model_id` in a run of `set` may carry `reasoning`: whether any agent
-/// whose own model it is sets a [reasoning setting](test_cabinet_core::gg::GgAgentConfig::reasoning).
+/// whose own model it is sets a [reasoning setting](test_cabinet_contracts::gg::GgAgentConfig::reasoning).
 ///
 /// A handoff compaction's model is not counted: gg sends the summary request with the provider's
 /// default reasoning whatever the agent chose, so a model bound only as a handoff sends none.
-fn binds_reasoning(set: &test_cabinet_core::gg::GgCapabilitySet, model_id: &str) -> bool {
+fn binds_reasoning(set: &test_cabinet_contracts::gg::GgCapabilitySet, model_id: &str) -> bool {
     set.agents
         .iter()
         .any(|agent| agent.reasoning.is_some() && agent.resolved_model_id() == Some(model_id))
@@ -502,10 +514,10 @@ fn binds_reasoning(set: &test_cabinet_core::gg::GgCapabilitySet, model_id: &str)
 /// from OpenRouter just now, so the caller can refresh the public snapshot.
 pub(super) async fn resolve_model_price(
     db: &crate::db::Db,
-    prices: &test_cabinet_core::OpenRouterPrices,
+    prices: &crate::pricing::OpenRouterPrices,
     body: &LaunchBody,
     on_fill: &(dyn Fn() + Sync),
-) -> Result<Option<test_cabinet_core::TokenPrices>, String> {
+) -> Result<Option<test_cabinet_contracts::metrics::TokenPrices>, String> {
     if body.harness == HarnessSlug::Gg {
         return Ok(None);
     }
@@ -526,10 +538,10 @@ pub(super) async fn resolve_model_price(
 /// legitimately be unknown).
 struct ResolvedModelFacts {
     window: u64,
-    candidates: Vec<test_cabinet_core::gg::GgProviderCandidate>,
+    candidates: Vec<test_cabinet_contracts::gg::GgProviderCandidate>,
     input_modalities: Vec<String>,
     /// The catalog's curated list price for the model — what the run is scored at.
-    prices: test_cabinet_core::TokenPrices,
+    prices: test_cabinet_contracts::metrics::TokenPrices,
 }
 
 /// One model's launch facts, or the reason this run cannot start.
@@ -540,7 +552,7 @@ struct ResolvedModelFacts {
 /// which also asks each candidate to support `reasoning`.
 async fn resolve_one_model_facts(
     db: &crate::db::Db,
-    prices: &test_cabinet_core::OpenRouterPrices,
+    prices: &crate::pricing::OpenRouterPrices,
     record: &[Arc<crate::stats::GgRunFacts>],
     model_id: &str,
     harness: HarnessSlug,
@@ -566,7 +578,7 @@ async fn resolve_one_model_facts(
             .map_err(|err| {
                 format!("could not resolve the model catalog's list price for `{model_id}`: {err}")
             })?;
-    let canonical = test_cabinet_core::model_id::canonical_model_id(model_id, harness);
+    let canonical = crate::model_id::canonical_model_id(model_id, harness);
     let entry = db.model_config_for_alias(&canonical).await.map_err(|err| {
         format!("could not read the catalog entry's provider policy for `{model_id}`: {err}")
     })?;
@@ -574,7 +586,7 @@ async fn resolve_one_model_facts(
     // resolves through its configured slug.
     let lookup = crate::bootstrap::openrouter_lookup_id(db, model_id, harness)
         .await
-        .unwrap_or_else(|_| test_cabinet_core::model_id::openrouter_price_id(model_id, harness));
+        .unwrap_or_else(|_| crate::model_id::openrouter_price_id(model_id, harness));
 
     // The window first: a model the catalog has not observed is looked up for this one model,
     // and a run with no window is refused before its providers are asked about.
@@ -619,7 +631,7 @@ async fn resolve_one_model_facts(
         candidates: list
             .candidates
             .iter()
-            .map(test_cabinet_core::pricing::ProviderCandidate::to_invocation)
+            .map(crate::pricing::ProviderCandidate::to_invocation)
             .collect(),
         input_modalities,
         prices: list_prices?,
@@ -680,7 +692,7 @@ impl JobAttribution {
     }
 }
 
-/// Resolve the attribution for a launch request: the token's account, plus the plan
+/// Resolve the attribution for a launch request: the caller's email, plus the plan
 /// named by the query's `origin`.
 ///
 /// A client may name only a plan's hand launch, `plan:<id>`. A fill's
@@ -691,10 +703,7 @@ impl JobAttribution {
 /// jobs again, so a run enqueued under a typo'd origin is one no halt will ever reach
 /// — a fault that surfaces much later and in a confusing shape ("this plan will not
 /// stop"), far from the request that caused it.
-pub(super) fn attribution(
-    user: &AuthUser,
-    query: &LaunchQuery,
-) -> Result<JobAttribution, ApiError> {
+pub(super) fn attribution(user: &Person, query: &LaunchQuery) -> Result<JobAttribution, ApiError> {
     let origin = match query.origin.as_deref() {
         None => None,
         Some(token) => match JobOrigin::parse(token) {
@@ -708,7 +717,7 @@ pub(super) fn attribution(
         },
     };
     Ok(JobAttribution {
-        user_id: Some(user.0.id.clone()),
+        user_id: Some(user.0.clone()),
         origin,
     })
 }
@@ -801,25 +810,20 @@ pub(super) fn build_new_job(
 }
 
 /// `GET /jobs/active` — the runs still in flight (queued, pending, dispatched,
-/// starting, running, validating or storing), each described by the identity captured at enqueue. The
-/// console seeds its in-progress list from this so a run it is watching survives a
-/// reload — including runs held back (`pending`) or still spinning up (`starting`).
+/// starting, running, validating or storing), each described by the identity captured
+/// at enqueue, with its claim lease's expiry when it holds one. The console seeds its
+/// in-progress list from this so a run it is watching survives a reload — including
+/// runs held back (`pending`) or still spinning up (`starting`) — and the dispatcher
+/// reads it, after renewing, to judge which driven jobs' leases have lapsed.
 pub async fn active(State(state): State<AppState>) -> Result<Json<Vec<ActiveJobOut>>, ApiError> {
     let jobs = state.db.active_jobs().await.map_err(ApiError::from)?;
     Ok(Json(
         jobs.iter()
-            .map(|job| {
-                let state = JobState::from_db(&job.state);
-                ActiveJobOut {
-                    run_id: job.id.clone(),
-                    summary: job_summary(job),
-                    state,
-                    // An in-flight job's detail is a reason only while it is
-                    // `storing`.
-                    detail: (state == JobState::Storing)
-                        .then(|| job.detail.clone())
-                        .flatten(),
-                }
+            .map(|job| ActiveJobOut {
+                run_id: job.id.clone(),
+                summary: job_summary(job),
+                state: JobState::from_db(&job.state),
+                lease_expires_at: job.lease_expires_at.clone(),
             })
             .collect(),
     ))
@@ -841,15 +845,15 @@ pub async fn status(
     Ok(Json(job_status_out(&job)))
 }
 
-/// `POST /jobs/{id}/cancel` — request cancellation of an in-flight run. Requires a
-/// bearer token, the same gate as `POST /jobs`. Any signed-in account may cancel any
+/// `POST /jobs/{id}/cancel` — request cancellation of an in-flight run. Takes a
+/// person's assertion, the same gate as `POST /jobs`. Any signed-in person may cancel any
 /// run: the queue is a shared workbench, and a stuck run costs everyone. The job
 /// records who *launched* it (`job.user_id`), not who stopped it.
 ///
 /// A job still in a non-terminal state (`queued`, `pending`, `dispatched`,
-/// `starting`, `running`, `validating` or `storing`) is atomically moved to the terminal `canceled` state
-/// and its live stream is closed,
-/// so every watching console's monitor reflects the end at once. The
+/// `starting`, `running`, `validating` or `storing`) is atomically moved to the
+/// terminal `canceled` state and its live stream is closed, so every watching
+/// console's monitor reflects the end at once. The
 /// [driver](crate) polls its own job's state while it runs, so it observes the
 /// cancellation, drops the in-flight harness exec, tears its sandbox down, and
 /// exits — the same both on the local cluster and in production, since both drive a
@@ -867,7 +871,7 @@ pub async fn status(
 #[tracing::instrument(name = "jobs.cancel", skip(state, _user), fields(job.id = %id), err(Debug))]
 pub async fn cancel(
     State(state): State<AppState>,
-    _user: AuthUser,
+    _user: Person,
     Path(id): Path<String>,
 ) -> Result<Json<JobStatusOut>, ApiError> {
     let job = state
@@ -920,18 +924,14 @@ pub async fn cancel(
             Some(detail),
         ),
     );
-    // A canceled run that was waiting to store its tree no longer holds the queue.
-    if job.state == crate::db::STORING_STATE {
-        refresh_waiting_runs(&state).await;
-    }
     // The job held its cell for every plan filling it, and its slot for its dispatch.
     spawn_cancel_feed(&state, vec![canceled.clone()]);
     Ok(Json(job_status_out(&canceled)))
 }
 
 /// `POST /jobs/cancel-waiting` — cancel every run that has not started yet
-/// (`queued` or `pending`), whoever launched it and whatever launched it. Requires a
-/// bearer token, the same gate as the other job mutations.
+/// (`queued` or `pending`), whoever launched it and whatever launched it. Takes a
+/// person's assertion, the same gate as the other job mutations.
 ///
 /// This is the Runs page's **"Clear pending"** control, and the one of the three that
 /// needs no confirmation: a waiting job has no driver and has spent nothing, so
@@ -946,7 +946,7 @@ pub async fn cancel(
 #[tracing::instrument(name = "jobs.cancel_waiting", skip(state, _user), err(Debug))]
 pub async fn cancel_waiting(
     State(state): State<AppState>,
-    _user: AuthUser,
+    _user: Person,
 ) -> Result<Json<BulkCancelOut>, ApiError> {
     let canceled = sweep_cancel(
         &state,
@@ -964,8 +964,7 @@ pub async fn cancel_waiting(
 
 /// `POST /jobs/cancel-active` — cancel every run that is already executing
 /// (`dispatched`, `starting`, `running`, `validating` or `storing`), whoever launched
-/// it. Requires a bearer
-/// token, the same gate as the other job mutations.
+/// it. Takes a person's assertion, the same gate as the other job mutations.
 ///
 /// This is the Runs page's **"Kill active"** control. Unlike [`cancel_waiting`] it
 /// throws work away: each of these runs has a driver Job that is being created,
@@ -976,7 +975,7 @@ pub async fn cancel_waiting(
 #[tracing::instrument(name = "jobs.cancel_active", skip(state, _user), err(Debug))]
 pub async fn cancel_active(
     State(state): State<AppState>,
-    _user: AuthUser,
+    _user: Person,
 ) -> Result<Json<BulkCancelOut>, ApiError> {
     let canceled = sweep_cancel(
         &state,
@@ -993,7 +992,7 @@ pub async fn cancel_active(
 }
 
 /// `POST /jobs/cancel-all` — cancel every in-flight run, waiting or executing.
-/// Requires a bearer token, the same gate as the other job mutations.
+/// Takes a person's assertion, the same gate as the other job mutations.
 ///
 /// This is the Runs page's **"Stop all"** control: [`cancel_waiting`] and
 /// [`cancel_active`] in one atomic sweep, so nothing that was waiting can be claimed
@@ -1002,7 +1001,7 @@ pub async fn cancel_active(
 #[tracing::instrument(name = "jobs.cancel_all", skip(state, _user), err(Debug))]
 pub async fn cancel_all(
     State(state): State<AppState>,
-    _user: AuthUser,
+    _user: Person,
 ) -> Result<Json<BulkCancelOut>, ApiError> {
     let mut states: Vec<&str> = CANCELABLE_WAITING_STATES.to_vec();
     states.extend_from_slice(&CANCELABLE_ACTIVE_STATES);
@@ -1126,14 +1125,6 @@ pub(super) async fn sweep_cancel(
         );
     }
 
-    // Any of them that was waiting to store its tree no longer holds the queue.
-    if ended
-        .iter()
-        .any(|job| job.state == crate::db::STORING_STATE)
-    {
-        refresh_waiting_runs(state).await;
-    }
-
     if feed == CancelFeed::Feed && !ended.is_empty() {
         spawn_cancel_feed(state, ended);
     }
@@ -1146,10 +1137,12 @@ pub(super) async fn sweep_cancel(
 }
 
 /// `GET /jobs/{id}/live` — the live harness-event + asset-preview stream as
-/// NDJSON. A subscriber is first replayed the backlog (and the latest preview per
-/// frame), then receives new items as the driver produces them; the stream closes
-/// when the run reaches a terminal state. A connection to an already-finished job
-/// closes after the backlog. `404` for an unknown job.
+/// NDJSON. A subscriber is first replayed the job's stored events in sequence order
+/// (and the latest preview per frame), then receives new items as the driver
+/// produces them; the stream closes when the run reaches a terminal state. A
+/// connection to an already-finished job closes after the backlog. Because the
+/// backlog is read from the database, it is whole across a backend restart. `404`
+/// for an unknown job.
 pub async fn live(
     State(state): State<AppState>,
     Path(id): Path<String>,
@@ -1160,13 +1153,26 @@ pub async fn live(
         .await
         .map_err(ApiError::from)?
         .ok_or_else(|| ApiError::not_found(format!("no job `{id}`")))?;
-    // If the job is already terminal but its in-memory buffer was lost (e.g. a
-    // backend restart), close the stream after the (possibly empty) backlog
-    // instead of waiting forever for a `Done` that will never come; the console
-    // then falls back to the persisted run record.
+    // If the job is already terminal but the relay never saw it finish (e.g. a
+    // backend restart), close the stream after the backlog instead of waiting
+    // forever for a `Done` that will never come.
     let db_terminal = JobState::from_db(&job.state).is_terminal();
-    let live = state.relay.live(&id);
-    let body = Body::from_stream(event_stream(live, db_terminal));
+    // Subscribe before reading the stored events: an event stored in between then
+    // reaches the receiver too, where its sequence marks it as already replayed,
+    // and none can fall between the backlog and the live tail.
+    let sub = state.relay.live(&id).subscribe();
+    let backlog = state
+        .db
+        .job_events_after(&id, None)
+        .await
+        .map_err(ApiError::from)?;
+    let body = Body::from_stream(event_stream(
+        Arc::clone(&state.db),
+        id,
+        sub,
+        backlog,
+        db_terminal,
+    ));
     Ok((
         [
             (header::CONTENT_TYPE, "application/x-ndjson"),
@@ -1180,62 +1186,18 @@ pub async fn live(
 
 /// `POST /jobs/next` — the dispatcher claims the oldest queued job. Requires the
 /// service token. Returns `200` with the claimed job (id, driver token, and the
-/// launch request to run) or `204 No Content` when nothing is claimable: the queue
-/// is empty, every waiting run is held back, or the whole queue is on hold.
+/// launch request to run) or `204 No Content` when the queue is empty.
 ///
-/// This is the one place a queued run is handed to a dispatcher, so it is where the
-/// [artifact capacity](crate::capacity) hold applies. While any condition for
-/// storing a run's tree is not green, or while
-/// [publishes are failing](crate::publish_health) across several runs, the pass
-/// claims nothing and every waiting run reads `pending`; the runs stay queued and
-/// are claimed in their original order once the hold lifts. While the store's latest read has failed but the
-/// failure is not yet announced, the pass is skipped whole: nothing is claimed and
-/// no run's display state changes. While the store is being
-/// [proved](crate::capacity::ClaimGate::Trial) the pass claims a run only if no
-/// run is in flight, and holds the queue otherwise.
+/// The claim stores a lease on the job's row two minutes out, and the same pass first
+/// returns every `dispatched` job whose lease lapsed to the queue at its original
+/// position with a fresh per-job token (see [`crate::db::Db::claim_next`]); each such
+/// job is announced to the console like any other display state the pass reconciled.
 pub async fn claim(
     State(state): State<AppState>,
     _service: ServiceAuth,
 ) -> Result<Response, ApiError> {
     let now = now_rfc3339()?;
-    // The hold counts the runs waiting to store from the job table, so a claim
-    // never rests on a count older than itself.
-    refresh_waiting_runs(&state).await;
-    // Likewise the hold publish failures call for, read from the publish job
-    // table. A table that cannot be read fails the claim: no run is handed out on
-    // a hold that could not be derived.
-    //
-    // The claim decides on the answer it has just derived, laid over the store's
-    // own gate, so a status request that read the table a moment earlier cannot
-    // lift the hold in between by storing its older answer.
-    let publish_held = super::publish_retry::refresh_publish_hold(&state)
-        .await
-        .map_err(ApiError::from)?;
-    let gate = match state.capacity.claim_gate_with(publish_held) {
-        crate::capacity::ClaimGate::Open => crate::db::ClaimGate::Open,
-        crate::capacity::ClaimGate::Hold => crate::db::ClaimGate::Hold,
-        crate::capacity::ClaimGate::Trial => {
-            // One run at a time proves the store: the next is handed out only once
-            // the one before it has reported.
-            let in_flight = state.db.driven_job_count().await.map_err(ApiError::from)?;
-            if in_flight > 0 {
-                crate::db::ClaimGate::Hold
-            } else {
-                crate::db::ClaimGate::Open
-            }
-        }
-        crate::capacity::ClaimGate::Paused => {
-            tracing::debug!(
-                "the artifact store's latest read failed; claiming nothing until it is read again"
-            );
-            return Ok(StatusCode::NO_CONTENT.into_response());
-        }
-    };
-    let outcome = state
-        .db
-        .claim_next_gated(&now, gate)
-        .await
-        .map_err(ApiError::from)?;
+    let outcome = state.db.claim_next(&now).await.map_err(ApiError::from)?;
 
     // Announce the display states this pass reconciled, whether or not it claimed
     // anything. A pass that claims nothing still moves runs between `queued` and
@@ -1269,17 +1231,54 @@ pub async fn claim(
     .into_response())
 }
 
-/// `POST /jobs/{id}/events` — the driver streams a batch of harness events.
-/// Authenticated by the per-job token. The events join the live stream and are
-/// retained as the backlog persisted with the run on completion.
+/// `POST /jobs/leases` — the dispatcher renews the claim leases of the jobs whose
+/// driver `Job` it saw live this tick. Requires the service token. Each listed job
+/// still driven (`dispatched`, `starting`, `running` or `storing`) has its lease
+/// extended to two minutes past the call; ids of unknown jobs and of jobs in any other
+/// state are ignored. Answers `204`.
+#[tracing::instrument(name = "jobs.leases", skip(state, _service, renewal), fields(jobs = renewal.job_ids.len()), err(Debug))]
+pub async fn renew_leases(
+    State(state): State<AppState>,
+    _service: ServiceAuth,
+    Json(renewal): Json<LeaseRenewal>,
+) -> Result<StatusCode, ApiError> {
+    let now = now_rfc3339()?;
+    state
+        .db
+        .renew_job_leases(&renewal.job_ids, &now)
+        .await
+        .map_err(ApiError::from)?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// `POST /jobs/{id}/events` — the driver delivers a batch of harness events, the
+/// sequence of its first event beside the events that follow it contiguously.
+/// Authenticated by the per-job token.
+///
+/// Every event of the batch is written to the `job_event` table in one transaction,
+/// keyed by job and sequence; an event whose key is already stored is skipped, so a
+/// resent batch is idempotent. The `204` is answered only once that write has
+/// committed, and only the events this call newly stored are then fanned out to the
+/// job's live subscribers, so a resend never shows a viewer an event twice. The
+/// stored events are the job's recorded stream: the live backlog and the stream the
+/// run record is persisted with (see "Delivery to the backend" in the driver's event
+/// documentation).
 pub async fn ingest_events(
     State(state): State<AppState>,
     Path(id): Path<String>,
     headers: HeaderMap,
-    Json(events): Json<Vec<HarnessEvent>>,
+    Json(batch): Json<EventBatch>,
 ) -> Result<StatusCode, ApiError> {
     authorize_job(&state, &id, &headers).await?;
-    state.relay.live(&id).push_events(events);
+    let stored = state
+        .db
+        .store_job_events(&id, batch.sequence, &batch.events)
+        .await
+        .map_err(ApiError::from)?;
+    // The write has committed; the batch is acknowledged whatever the fan-out does.
+    // Publishing it here, after the commit and before the handler returns, keeps
+    // the batches in the order the driver delivered them on the live channel.
+    state.relay.live(&id).push_events(stored);
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -1300,24 +1299,33 @@ pub async fn ingest_preview(
 /// by the per-job token.
 ///
 /// `starting` records that the driver pod is up and running the pre-run setup;
-/// `running` records that execution began. `storing` records that the run has
-/// finished and its driver is waiting on the artifact store to take the tree, with
-/// the failed upload as its `detail`: the job reads `storing`, and the run queue is
-/// [on hold](crate::capacity) until it leaves that state, which a later `running`
-/// or any terminal status does. The first `storing` report carries the run's
-/// record, which is kept on the job ([`HeldReport`]) and is what the run is
-/// finished from if its driver is lost during the wait. `succeeded` carries the produced
+/// `running` records that execution began. `storing` is the driver's held report: it
+/// carries the finished run's record (and the failure detail when the run failed), which
+/// is stored on the job's row before the report is answered, a repeat replacing it, so a
+/// driver lost from then on leaves a run the backend finishes from that record (see
+/// [`report_lost`]). `succeeded` carries the produced
 /// [`RunRecord`] — persisted to the `run` store **regardless of outcome**
-/// (completed, unevaluable, or a model failure that produced a record), using the
-/// events the relay accumulated as its recorded stream, so nothing the ephemeral
+/// (completed, unevaluable, or a model failure that produced a record), with the
+/// events stored for the job as its recorded stream, so nothing the ephemeral
 /// driver produced is lost. `failed` records a terminal infrastructure/setup
 /// failure with a specific diagnostic reason; the failure record it produced (if
 /// any) is retained too. A terminal update closes the live stream and fires a
-/// completion notification.
+/// completion notification. A `failed` report with no record on a job that holds a
+/// record is the dispatcher's report of a dead driver, presented with the per-job
+/// token: it is treated as [`report_lost`] treats a lost job.
+///
+/// Every terminal report is idempotent by job. One repeated for a job already in the
+/// state it reports answers `204` and changes nothing about the job (its record is
+/// stored again, which only matters to [automatic publishing](auto_publish_reported_run)). One that reaches a job the
+/// dispatcher reported lost supersedes the lost outcome: the run is recorded from it,
+/// and the automatic retry the lost outcome enqueued is withdrawn (deleted while it
+/// still waits, canceled once claimed). A terminal report also carries
+/// `artifactsStored`, recorded on the run when present and left as it is when absent,
+/// and may carry `storeFault`, which is logged whatever state the job is in.
 ///
 /// `canceled` is the driver acknowledging an operator's kill: the job is already
 /// terminal, so this only persists the partial record the driver built (with the
-/// relayed events) and attaches it to the job — no state change, no notification,
+/// events stored for the job) and attaches it to the job — no state change, no notification,
 /// no retry. It is the only status accepted on an already-canceled job.
 ///
 /// Whether a retained non-completed record is *publishable* is deliberately not
@@ -1337,17 +1345,21 @@ pub async fn update_status(
 
 /// `POST /jobs/{id}/lost` — the dispatcher reports a job whose driver is gone without
 /// having reported: the job is `dispatched`, `starting`, `running`, `validating` or
-/// `storing`, and the cluster has
-/// had no live driver `Job` for it for a while (it failed, completed without a terminal
-/// report reaching the backend, or no longer exists). Requires the service token, since
-/// a dispatcher that restarted holds no per-job token for the jobs an earlier process
-/// dispatched.
+/// `storing`, and the cluster has had no live driver `Job` for it for a while (it
+/// failed, completed without a terminal report reaching the backend, or no longer
+/// exists). Requires the service token, since a dispatcher that restarted holds no
+/// per-job token for the jobs an earlier process dispatched.
 ///
 /// The body is a `failed` [`StatusUpdate`] with no record; its detail says what the
-/// dispatcher found. It lands exactly as a driver's own `failed` report would, automatic
-/// retry and coverage feed included. A job in any other state is left alone — a queued
-/// or pending job has no driver to lose, and a terminal one has already reported — and
-/// the answer is `204` either way, so a report racing the driver's own is harmless.
+/// dispatcher found. A job that holds a record (its driver's held `storing` report
+/// landed) is finished from it, with the state that record carries, and no retry is
+/// enqueued. One that holds none lands exactly as a driver's own `failed` report would,
+/// as `infrastructure`, automatic retry and coverage feed included. Either way the job
+/// is marked lost, so a terminal report that reaches the backend afterwards supersedes
+/// the lost outcome (see [`update_status`]). A job in any other state is left alone — a
+/// queued or pending job has no driver to lose, and a terminal one has already
+/// reported — and the answer is `204` either way, so a report racing the driver's own is
+/// harmless.
 #[tracing::instrument(name = "jobs.lost", skip(state, _service, update), fields(job.id = %id), err(Debug))]
 pub async fn report_lost(
     State(state): State<AppState>,
@@ -1366,8 +1378,7 @@ pub async fn report_lost(
         .await
         .map_err(ApiError::from)?
         .ok_or_else(|| ApiError::not_found(format!("no job `{id}`")))?;
-    // Only a job a driver exists for can lose it.
-    if !crate::db::DRIVEN_STATES.contains(&job.state.as_str()) {
+    if !DRIVEN_STATES.contains(&job.state.as_str()) {
         return Ok(StatusCode::NO_CONTENT);
     }
     tracing::warn!(
@@ -1375,17 +1386,164 @@ pub async fn report_lost(
         detail = update.detail.as_deref().unwrap_or(""),
         "the dispatcher reported a job whose driver is gone"
     );
+    state
+        .db
+        .mark_job_lost(&id, &now_rfc3339()?)
+        .await
+        .map_err(ApiError::from)?;
+    if let Some(held) = held_record_of(&job) {
+        return Box::pin(finish_from_held(&state, &id, &job, held)).await;
+    }
     apply_status(&state, &id, job, update).await
 }
 
-/// Count the runs waiting to store their artifact trees and hand the count to the
-/// [capacity](crate::capacity) monitor, announcing the change it makes to the hold,
-/// if any. Called wherever a job may have entered or left `storing`.
-async fn refresh_waiting_runs(state: &AppState) {
-    if let Some(waiting) = crate::capacity::waiting_runs(&state.db).await {
-        state.capacity.set_waiting(waiting);
+/// The record `job` holds from its driver's `storing` report, or `None` when it holds
+/// none. A held record that no longer decodes is logged and treated as none: the job
+/// then takes the path of a job that never held one, which loses the run but not the
+/// job.
+fn held_record_of(job: &job::Model) -> Option<RunRecord> {
+    let json = job.held_record.as_deref()?;
+    match serde_json::from_str(json) {
+        Ok(record) => Some(record),
+        Err(err) => {
+            tracing::error!(
+                job_id = %job.id,
+                error = %err,
+                "the job's held record does not decode; finishing it as if it held none"
+            );
+            None
+        }
     }
-    state.capacity.announce(state.relay.notifier());
+}
+
+/// Finish `job`, whose driver is gone, from the record it held: the run is recorded
+/// from `record`, the job takes the state a terminal report carrying it would have
+/// given it, and no retry is enqueued.
+///
+/// A record held with a failure detail is one the driver would have reported `failed`,
+/// so the job fails with that detail; any other is one it would have reported
+/// `succeeded`, which lands as [`succeeded_job_outcome`] decides. The completion
+/// notification, automatic publishing and the coverage feed follow as they do for the
+/// driver's own report.
+async fn finish_from_held(
+    state: &AppState,
+    id: &str,
+    job: &job::Model,
+    record: RunRecord,
+) -> Result<StatusCode, ApiError> {
+    let now = now_rfc3339()?;
+    let record_id = persist_record(state, id, &record).await?;
+    let (job_state, detail) = match job.held_detail.as_deref() {
+        Some(detail) => (JobState::Failed, Some(detail)),
+        None => match succeeded_job_outcome(&record) {
+            (JobState::Failed, detail) => (JobState::Failed, Some(detail.unwrap_or("run failed"))),
+            _ => (JobState::Succeeded, None),
+        },
+    };
+    let state_name = if job_state == JobState::Failed {
+        "failed"
+    } else {
+        "succeeded"
+    };
+    state
+        .db
+        .set_job_state(id, state_name, &now, detail, Some(&record_id))
+        .await
+        .map_err(ApiError::from)?;
+    tracing::info!(
+        job_id = %id,
+        record_id = %record_id,
+        job_state = state_name,
+        "finished a job whose driver is gone from the record it held"
+    );
+    let notification = match detail {
+        Some(detail) => Notification::failed(id, job_summary(job), detail, Some(&record_id)),
+        None => Notification::completed(id, job_summary(job), &record_id),
+    };
+    finish_and_notify(
+        state,
+        RunEvent::finished(id, job_summary(job), job_state, Some(&record_id), detail),
+        notification,
+    );
+    auto_publish_reported_run(state, Some(&record_id), false).await;
+    spawn_coverage_feed(state, job);
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// Answer a terminal report repeated for a job already in the state it reports: the
+/// job keeps its state, and no notification, retry or coverage feed follows.
+///
+/// The record it carries is the record already stored, and storing it again is what
+/// lets [automatic publishing](auto_publish_reported_run) publish a run whose case
+/// version the backend did not hold when the first report stored it; for any other
+/// run the store is left as it was.
+async fn store_repeated_record(
+    state: &AppState,
+    id: &str,
+    job: &job::Model,
+    update: &StatusUpdate,
+) -> Result<StatusCode, ApiError> {
+    let record_id = persist_produced(state, id, update.record.as_ref()).await?;
+    record_artifacts_stored(state, record_id.as_deref(), update.artifacts_stored).await?;
+    auto_publish_reported_run(state, record_id.as_deref(), job.retried_by.is_some()).await;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// The job state a terminal report would leave its job in: `failed` for a `failed`
+/// report, and what [`succeeded_job_outcome`] decides for a `succeeded` one. `None`
+/// for a report that is not terminal, or a `succeeded` one with no record (refused
+/// later).
+fn reported_terminal_state(update: &StatusUpdate) -> Option<JobState> {
+    match update.state {
+        DriverState::Failed => Some(JobState::Failed),
+        DriverState::Succeeded => update
+            .record
+            .as_ref()
+            .map(|record| succeeded_job_outcome(record).0),
+        _ => None,
+    }
+}
+
+/// Withdraw the automatic retry the lost outcome of job `id` enqueued, now that a
+/// terminal report superseded it, and end the retry's run on every console showing it.
+/// Returns whether a retry was withdrawn.
+async fn withdraw_lost_retry(state: &AppState, id: &str) -> Result<bool, ApiError> {
+    let detail = "withdrawn: the attempt it retried reported its own result";
+    let withdrawn = state
+        .db
+        .withdraw_retry(id, &now_rfc3339()?, detail)
+        .await
+        .map_err(ApiError::from)?;
+    let retry = match withdrawn {
+        Some(WithdrawnRetry::Deleted(retry) | WithdrawnRetry::Canceled(retry)) => retry,
+        Some(WithdrawnRetry::Finished(retry)) => {
+            tracing::warn!(
+                job_id = %id,
+                retry_job = %retry.id,
+                "a terminal report superseded a lost outcome whose retry already finished; \
+                 the retry stands"
+            );
+            return Ok(false);
+        }
+        None => return Ok(false),
+    };
+    tracing::info!(
+        job_id = %id,
+        retry_job = %retry.id,
+        retry_state = %retry.state,
+        "withdrew the retry of a lost job whose terminal report arrived"
+    );
+    finish_run(
+        state,
+        RunEvent::finished(
+            &retry.id,
+            job_summary(&retry),
+            JobState::Canceled,
+            None,
+            Some(detail),
+        ),
+    );
+    Ok(true)
 }
 
 /// Apply a status update to `job`, once whoever sent it is authorized: the driver itself
@@ -1396,103 +1554,18 @@ async fn apply_status(
     job: job::Model,
     update: StatusUpdate,
 ) -> Result<StatusCode, ApiError> {
-    // Any report can move a job into or out of `storing`, the state the artifact
-    // capacity hold counts, so the count is taken again after every one.
-    let was_storing = job.state == crate::db::STORING_STATE;
-    let storing_report = matches!(update.state, DriverState::Storing);
-    // What the report says about the store is taken whatever state the job is in:
-    // the upload of a canceled run, or of a run already reported lost, fails on
-    // the same store every other run's tree is headed for.
-    let evidence = match (storing_report, update.artifacts_stored) {
-        (true, _) => {
-            state.capacity.upload_failed(update.detail.as_deref());
-            true
-        }
-        (false, Some(true)) => {
-            state.capacity.tree_landed();
-            true
-        }
-        (false, Some(false)) if update.store_fault.is_some() => {
-            state.capacity.upload_failed(update.store_fault.as_deref());
-            true
-        }
-        (false, _) => false,
-    };
-    let result = apply_status_update(state, id, job, update).await;
-    if was_storing || evidence {
-        refresh_waiting_runs(state).await;
-    }
-    result
-}
-
-/// The terminal report a waiting driver handed over for safekeeping: what
-/// [`job::Model::held_report_json`] holds.
-///
-/// The record of a run whose driver is waiting on the artifact store exists
-/// nowhere but that driver's pod until its terminal report. This is the copy the
-/// backend finishes the run from if the pod is lost first.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct HeldReport {
-    /// The record the run produced.
-    record: RunRecord,
-    /// Why the run failed, when the report being held is a `failed` one.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    run_failure: Option<String>,
-    /// Whether the tree was stored, once the wait has ended. Absent while the
-    /// driver is still waiting, which reads as not stored.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    artifacts_stored: Option<bool>,
-}
-
-impl HeldReport {
-    /// The report held on `job`, if it holds one that still parses.
-    fn of(job: &job::Model) -> Option<Self> {
-        let json = job.held_report_json.as_deref()?;
-        match serde_json::from_str(json) {
-            Ok(held) => Some(held),
-            Err(error) => {
-                tracing::warn!(job_id = %job.id, %error, "the job's held report does not parse; ignoring it");
-                None
-            }
-        }
-    }
-
-    /// The report serialized for the column, or `None` (logged) if it cannot be.
-    fn to_json(&self, job_id: &str) -> Option<String> {
-        match serde_json::to_string(self) {
-            Ok(json) => Some(json),
-            Err(error) => {
-                tracing::warn!(%job_id, %error, "could not serialize the run's held report");
-                None
-            }
-        }
-    }
-
-    /// The terminal report the driver would have made.
-    fn into_update(self) -> StatusUpdate {
-        let state = if self.run_failure.is_some() {
-            DriverState::Failed
-        } else {
-            DriverState::Succeeded
-        };
-        StatusUpdate {
-            record: Some(self.record),
-            detail: self.run_failure,
-            artifacts_stored: Some(self.artifacts_stored.unwrap_or(false)),
-            ..StatusUpdate::of(state)
-        }
-    }
-}
-
-/// The body of [`apply_status`]: the transition one report makes.
-async fn apply_status_update(
-    state: &AppState,
-    id: &str,
-    job: job::Model,
-    update: StatusUpdate,
-) -> Result<StatusCode, ApiError> {
     let id = id.to_string();
+
+    // A store fault is evidence about the artifacts service, read whatever state the
+    // job is in, so it is logged before any report is discarded.
+    if let Some(fault) = update.store_fault.as_deref() {
+        tracing::warn!(
+            job_id = %id,
+            driver_state = ?update.state,
+            store_fault = fault,
+            "the driver reported a fault of the artifacts service"
+        );
+    }
 
     // A canceled job is terminal. Ignore any status the in-flight driver posts
     // before it notices the cancellation, so a late `running`/`succeeded`/`failed`
@@ -1514,32 +1587,60 @@ async fn apply_status_update(
     // The auto-retry decision below keys off it: a retry is considered only the
     // first time a job crosses into a terminal state, so a duplicate or late
     // terminal report from a still-winding-down driver cannot fire a second retry.
-    let already_terminal = JobState::from_db(&job.state).is_terminal();
+    let current = JobState::from_db(&job.state);
+    let already_terminal = current.is_terminal();
 
-    let now = now_rfc3339()?;
+    // A terminal report on a job the dispatcher reported lost supersedes the lost
+    // outcome; any other terminal report on a job already in the state it reports is a
+    // repeat whose earlier answer was lost, and changes nothing about the job. A report
+    // with no record on a finished job changes nothing either: it says no more than the
+    // outcome already recorded (a lost one included), and must not overwrite a run.
+    let lost = already_terminal && job.lost_at.is_some();
+    if let Some(target) = reported_terminal_state(&update)
+        && already_terminal
+    {
+        if update.record.is_none() {
+            return Ok(StatusCode::NO_CONTENT);
+        }
+        if !lost && current == target {
+            return Box::pin(store_repeated_record(state, &id, &job, &update)).await;
+        }
+    }
+    let superseding = lost && reported_terminal_state(&update).is_some();
 
-    // A `failed` report with no record is the dispatcher saying the driver is gone.
-    // If that driver had handed its report over before it began waiting on the
-    // artifact store, the run had already finished: land the report it was
-    // holding, so the run keeps its outcome and is not run again as an
-    // infrastructure failure. Its tree went with the pod unless the wait had
-    // already ended with it stored.
-    let mut update = update;
+    // A `failed` report with no record on a live job that holds a record is the
+    // dispatcher's report of its dead driver: finish it from the held record, exactly
+    // as a lost job is finished.
     if matches!(update.state, DriverState::Failed)
         && update.record.is_none()
         && !already_terminal
-        && let Some(held) = HeldReport::of(&job)
+        && let Some(held) = held_record_of(&job)
     {
         tracing::warn!(
             job_id = %id,
-            run.id = %held.record.id,
-            lost = update.detail.as_deref().unwrap_or(""),
-            artifacts_stored = held.artifacts_stored.unwrap_or(false),
-            "the driver of a finished run was lost while it held the run's report; \
-             finishing the run from the record it handed over"
+            detail = update.detail.as_deref().unwrap_or(""),
+            "the dispatcher reported a dead driver whose job holds a record"
         );
-        update = held.into_update();
+        state
+            .db
+            .mark_job_lost(&id, &now_rfc3339()?)
+            .await
+            .map_err(ApiError::from)?;
+        return Box::pin(finish_from_held(state, &id, &job, held)).await;
     }
+
+    // Withdrawn before the report is recorded, so the retry stops as soon as possible
+    // and no launch pass counts it beside the run that replaces it.
+    let withdrew = if superseding {
+        Box::pin(withdraw_lost_retry(state, &id)).await?
+    } else {
+        false
+    };
+    // A superseding report feeds what the job belongs to when it withdrew the retry
+    // that had taken the job's place; the lost outcome fed nothing then.
+    let fed_already = already_terminal && !withdrew;
+
+    let now = now_rfc3339()?;
 
     match update.state {
         DriverState::Starting => {
@@ -1562,40 +1663,12 @@ async fn apply_status_update(
             ));
             Ok(StatusCode::NO_CONTENT)
         }
-        DriverState::Validating | DriverState::Running if job.state == crate::db::STORING_STATE => {
-            // The driver's wait on the artifact store is over. The job returns to
-            // `validating`, the state it waited from, for the moment it takes the
-            // driver to finish its report, and the reason the wait recorded goes
-            // with the wait. A driver that predates `validating` reports the end of
-            // its wait as `running`, which lands the same way.
-            // The report the driver handed over stays on the job until its terminal
-            // report lands, now saying what became of the tree.
-            let held = update.artifacts_stored.and_then(|stored| {
-                let mut held = HeldReport::of(&job)?;
-                held.artifacts_stored = Some(stored);
-                held.to_json(&id)
-            });
-            let validating = state
-                .db
-                .set_job_stored(&id, &now, held.as_deref())
-                .await
-                .map_err(ApiError::from)?;
-            if let Some(validating) = validating {
-                tracing::info!(job_id = %id, "the run is no longer waiting to store its artifacts");
-                state.relay.notifier().publish_run(RunEvent::state_changed(
-                    &id,
-                    job_summary(&validating),
-                    JobState::Validating,
-                ));
-            }
-            Ok(StatusCode::NO_CONTENT)
-        }
         DriverState::Validating => {
             // The harness session has ended and the driver is collecting and
             // validating the run. Only a job before `validating` in the lifecycle
-            // moves, in one conditional update, so a cancellation or a terminal
-            // report committed beside this one is never overwritten and a late
-            // report never moves a job backwards. Announced only when a row moved.
+            // moves, in one conditional update, so a cancellation, the held report or
+            // a terminal report committed beside this one is never overwritten and a
+            // late report never moves a job backwards. Announced only when a row moved.
             let validating = state
                 .db
                 .set_job_validating(&id, &now)
@@ -1606,42 +1679,6 @@ async fn apply_status_update(
                     &id,
                     job_summary(&validating),
                     JobState::Validating,
-                ));
-            }
-            Ok(StatusCode::NO_CONTENT)
-        }
-        DriverState::Storing => {
-            // The run has finished and its driver is holding the tree for a store
-            // that could not take it. Only a job a driver exists for moves: a
-            // report that outlived its job is ignored, so nothing terminal is
-            // brought back into flight to hold the queue.
-            let reason = update.detail.as_deref();
-            let held = update.record.as_ref().and_then(|record| {
-                HeldReport {
-                    record: record.clone(),
-                    run_failure: update.run_failure.clone(),
-                    artifacts_stored: None,
-                }
-                .to_json(&id)
-            });
-            let storing = state
-                .db
-                .set_job_storing(&id, &now, reason, held.as_deref())
-                .await
-                .map_err(ApiError::from)?;
-            if let Some(storing) = storing {
-                // Once per wait, not once per repeated report.
-                if job.state != crate::db::STORING_STATE {
-                    tracing::warn!(
-                        job_id = %id,
-                        reason = reason.unwrap_or(""),
-                        "a finished run is waiting to store its artifacts"
-                    );
-                }
-                state.relay.notifier().publish_run(RunEvent::storing(
-                    &id,
-                    job_summary(&storing),
-                    reason,
                 ));
             }
             Ok(StatusCode::NO_CONTENT)
@@ -1662,6 +1699,39 @@ async fn apply_status_update(
                     &id,
                     job_summary(&running),
                     JobState::Running,
+                ));
+            }
+            Ok(StatusCode::NO_CONTENT)
+        }
+        DriverState::Storing => {
+            // The held report: the finished run's record, kept on the job's row before
+            // the answer so the run survives its driver. A repeat (one after each failed
+            // upload) replaces it. A job no longer driven — finished, or already lost —
+            // discards it, as a canceled one does above.
+            let record = update.record.as_ref().ok_or_else(|| {
+                ApiError::unprocessable("a storing status must carry the run record")
+            })?;
+            let record_json = serde_json::to_string(record)
+                .map_err(|e| ApiError::internal(format!("serializing the held record: {e}")))?;
+            let Some(held) = state
+                .db
+                .hold_job_record(
+                    &id,
+                    &DRIVEN_STATES,
+                    &record_json,
+                    update.detail.as_deref(),
+                    &now,
+                )
+                .await
+                .map_err(ApiError::from)?
+            else {
+                return Ok(StatusCode::NO_CONTENT);
+            };
+            if current != JobState::Storing {
+                state.relay.notifier().publish_run(RunEvent::state_changed(
+                    &id,
+                    job_summary(&held),
+                    JobState::Storing,
                 ));
             }
             Ok(StatusCode::NO_CONTENT)
@@ -1689,12 +1759,15 @@ async fn apply_status_update(
             )
             .await?;
             let record_id = persist_produced(state, &id, update.record.as_ref()).await?;
-            record_artifact_presence(state, record_id.as_deref(), update.artifacts_stored).await;
+            record_artifacts_stored(state, record_id.as_deref(), update.artifacts_stored).await?;
             state
                 .db
                 .set_job_state(&id, "failed", &now, Some(detail), record_id.as_deref())
                 .await
                 .map_err(ApiError::from)?;
+            if superseding {
+                state.db.clear_job_lost(&id).await.map_err(ApiError::from)?;
+            }
             finish_and_notify(
                 state,
                 RunEvent::finished(
@@ -1707,7 +1780,7 @@ async fn apply_status_update(
                 Notification::failed(&id, job_summary(&job), detail, record_id.as_deref()),
             );
             auto_publish_reported_run(state, record_id.as_deref(), retried).await;
-            if feeds_coverage(already_terminal, retried) {
+            if feeds_coverage(fed_already, retried) {
                 spawn_coverage_feed(state, &job);
             }
             Ok(StatusCode::NO_CONTENT)
@@ -1731,7 +1804,7 @@ async fn apply_status_update(
             )
             .await?;
             let record_id = persist_record(state, &id, record).await?;
-            record_artifact_presence(state, Some(&record_id), update.artifacts_stored).await;
+            record_artifacts_stored(state, Some(&record_id), update.artifacts_stored).await?;
             // A clean harness exit is `Completed` (evaluable) or `Catastrophic` (the
             // model claimed done but the build won't load) — the record carries
             // which — unless the engine classified the run as the Test Cabinet's own
@@ -1778,18 +1851,21 @@ async fn apply_status_update(
                     );
                 }
             }
+            if superseding {
+                state.db.clear_job_lost(&id).await.map_err(ApiError::from)?;
+            }
             auto_publish_reported_run(state, Some(&record_id), retried).await;
-            if feeds_coverage(already_terminal, retried) {
+            if feeds_coverage(fed_already, retried) {
                 spawn_coverage_feed(state, &job);
             }
             Ok(StatusCode::NO_CONTENT)
         }
         DriverState::Canceled => {
             // The driver acknowledging an operator's kill, handing back the partial
-            // record for what the run got through. Persist it with the events the
-            // relay accumulated — that stream is the whole point, it is where a gg
-            // run's telemetry lives — and attach it to the already-terminal job so
-            // the console can navigate to it.
+            // record for what the run got through. Persist it with the events stored
+            // for the job — that stream is the whole point, it is where a gg run's
+            // telemetry lives — and attach it to the already-terminal job so the
+            // console can navigate to it.
             //
             // Everything else a terminal report normally does is deliberately
             // skipped: the job keeps its `canceled` state and its cancellation
@@ -1803,7 +1879,7 @@ async fn apply_status_update(
                 ));
             };
             let record_id = persist_record(state, &id, record).await?;
-            record_artifact_presence(state, Some(&record_id), update.artifacts_stored).await;
+            record_artifacts_stored(state, Some(&record_id), update.artifacts_stored).await?;
             state
                 .db
                 .attach_canceled_job_record(&id, &record_id, &now)
@@ -1814,52 +1890,34 @@ async fn apply_status_update(
     }
 }
 
-/// Record what a terminal status report says about its run's artifact tree
-/// ([`StatusUpdate::artifacts_stored`]), once the run it describes is stored.
-///
-/// A report that says nothing (no artifact service on the driver's side, or a
-/// report that produced no run) leaves the run's recorded presence as it is. A
-/// tree the driver could not store is logged here, at the moment the backend
-/// learns of it: such a run is never offered to automatic publishing, so nothing
-/// later would say why it stayed unpublished.
-///
-/// Best effort, like everything a report does after its record is stored: a
-/// failure to write the column is logged, and the reclamation sweep's next pass
-/// reconciles the run from the artifact service's listing.
-async fn record_artifact_presence(
+/// Record on the run `record_id` names whether the artifacts service holds its tree,
+/// as a terminal report's `artifactsStored` says. A report that omits it (a driver
+/// with no artifacts service), or that stored no run, leaves the run as it is.
+async fn record_artifacts_stored(
     state: &AppState,
     record_id: Option<&str>,
     artifacts_stored: Option<bool>,
-) {
-    let (Some(record_id), Some(stored)) = (record_id, artifacts_stored) else {
-        return;
-    };
-    if let Err(error) = state.db.set_run_artifacts_stored(record_id, stored).await {
-        tracing::warn!(
-            run.id = %record_id,
-            %error,
-            "could not record the run's artifact presence"
-        );
-        return;
+) -> Result<(), ApiError> {
+    if let (Some(record_id), Some(stored)) = (record_id, artifacts_stored) {
+        state
+            .db
+            .set_run_artifacts_stored(record_id, stored)
+            .await
+            .map_err(ApiError::from)?;
     }
-    if !stored {
-        tracing::warn!(
-            run.id = %record_id,
-            "the run's driver could not store its artifact tree: the run has no \
-             build to play and cannot be published"
-        );
-    }
+    Ok(())
 }
 
 /// Apply [automatic publishing](super::auto_publish) to the run a terminal status
 /// report just stored: every run reaches the store through such a report, however
 /// it was launched, so this is where a run publishes itself.
 ///
-/// It runs on every terminal report, a repeated one included. A report stores its
-/// record again, which is the only place a run's validator rating is decided, so a
-/// run that was stored unrated and is rated by a later report publishes then. A
-/// run that already has a publish job is passed over, so a repeated report never
-/// enqueues a second.
+/// It runs on every terminal report that stores a record, a repeated one, the one that
+/// supersedes a lost outcome and a finish from a held record included. A report stores
+/// its record again, which is the only place a run's validator rating is decided, so a
+/// run that was stored unrated and is rated by a later report publishes then. A run
+/// that already has a publish job is passed over, so a repeated report never enqueues
+/// a second.
 ///
 /// The attempt a retry replaced is skipped: only the attempt that stands
 /// publishes. Nothing here can fail the report (see
@@ -1904,10 +1962,6 @@ fn spawn_coverage_feed(state: &AppState, job: &job::Model) {
         super::launch::feed_finished_job(&state, &job).await;
     });
 }
-
-/// The default `retryCount` when a launch request omits it: one retry after a
-/// failure, so the total attempts allowed is `1 + retry_count` = 2.
-pub(super) const DEFAULT_RETRY_COUNT: u32 = 1;
 
 /// The largest `retryCount` honored, clamping an absurd request so a run cannot
 /// re-enqueue itself an unbounded number of times.
@@ -2167,21 +2221,23 @@ async fn maybe_enqueue_retry(
     Ok(true)
 }
 
-/// Persist a produced run record to the `run` store, using the events the relay
-/// accumulated as its recorded stream (so the driver never re-sends them).
-/// Returns the record's id. Retains the record regardless of its outcome.
+/// Persist a produced run record to the `run` store, with the events stored for
+/// job `job_id`, in sequence order, as its recorded stream (so the driver never
+/// re-sends them, and a backend restart during the run loses none of them).
+/// Returns the record's id. Retains the record regardless of its outcome. The job's
+/// stored rows stay where they are.
 async fn persist_record(
     state: &AppState,
     job_id: &str,
     record: &RunRecord,
 ) -> Result<String, ApiError> {
-    let events = state.relay.live(job_id).events_snapshot();
+    let events = state.db.job_events(job_id).await.map_err(ApiError::from)?;
     let events_json = if events.is_empty() {
         None
     } else {
         Some(
             serde_json::to_string(&events)
-                .map_err(|e| ApiError::internal(format!("serializing relayed events: {e}")))?,
+                .map_err(|e| ApiError::internal(format!("serializing stored events: {e}")))?,
         )
     };
 
@@ -2326,9 +2382,6 @@ pub async fn notifications(
                         StreamMessage::Run(run) => Event::default()
                             .event(STREAM_EVENT_RUN)
                             .json_data(run.as_ref()),
-                        StreamMessage::Storage(status) => Event::default()
-                            .event(STREAM_EVENT_STORAGE)
-                            .json_data(status.as_ref()),
                     }
                     .unwrap_or_else(|_| Event::default());
                     return Some((Ok(event), handle));
@@ -2351,15 +2404,7 @@ pub async fn notifications(
         }
     });
 
-    // The artifact store's status follows the hello frame on every connection, so a
-    // console holds the current one from the moment it connects, and again after
-    // any reconnect, without asking. Changes then arrive as they happen.
-    let storage = Event::default()
-        .event(STREAM_EVENT_STORAGE)
-        .json_data(state.capacity.status())
-        .unwrap_or_else(|_| Event::default());
-
-    let stream = stream::iter([Ok(hello), Ok(storage)]).chain(tail);
+    let stream = stream::once(async move { Ok(hello) }).chain(tail);
     Sse::new(stream).keep_alive(KeepAlive::default())
 }
 
@@ -2510,17 +2555,30 @@ pub(super) fn now_rfc3339() -> Result<String, ApiError> {
 /// and stays well under the ~60s request idle timeout of Safari's WebKit networking.
 const LIVE_HEARTBEAT: std::time::Duration = std::time::Duration::from_secs(15);
 
-/// Build the NDJSON byte stream for a job: the replayed backlog and latest
-/// previews, then the live tail, each item one `\n`-terminated JSON line, ending
-/// when the run does. `force_terminated` closes the stream after the backlog when
-/// the job is already terminal but its live buffer is gone.
+/// Build the NDJSON byte stream for a job: the stored events replayed as the
+/// backlog and the latest previews, then the live tail, each item one
+/// `\n`-terminated JSON line, ending when the run does. `force_terminated` closes
+/// the stream after the backlog when the job is already terminal but the relay never
+/// saw it finish.
+///
+/// `sub` must have been taken before `backlog` was read from the database. An event
+/// in both is told apart by its sequence: the tail skips every event at or below the
+/// last one delivered. A subscriber that falls behind the live channel reads the
+/// events it missed back from the database, so a lag costs it nothing either.
 fn event_stream(
-    live: crate::relay::LiveJob,
+    db: Arc<crate::db::Db>,
+    job_id: String,
+    sub: crate::relay::Subscription,
+    backlog: Vec<(u64, HarnessEvent)>,
     force_terminated: bool,
 ) -> impl Stream<Item = Result<Bytes, Infallible>> {
-    let sub = live.subscribe();
     let terminated = sub.terminated || force_terminated;
-    let backlog = stream::iter(sub.backlog.into_iter().map(|event| Ok(encode_line(&event))));
+    let last_replayed = backlog.last().map(|(sequence, _)| *sequence);
+    let backlog = stream::iter(
+        backlog
+            .into_iter()
+            .map(|(_, event)| Ok(encode_line(&event))),
+    );
     let previews = stream::iter(
         sub.previews
             .into_iter()
@@ -2538,33 +2596,91 @@ fn event_stream(
     // out so a freshly subscribed client isn't sent a redundant immediate tick.
     let heartbeat =
         tokio::time::interval_at(tokio::time::Instant::now() + LIVE_HEARTBEAT, LIVE_HEARTBEAT);
-    let live_tail = stream::unfold(
-        (terminated, sub.receiver, heartbeat),
-        |(done, mut receiver, mut heartbeat)| async move {
-            if done {
-                return None;
-            }
-            loop {
-                tokio::select! {
-                    _ = heartbeat.tick() => {
-                        return Some((Ok(Bytes::from_static(b"\n")), (false, receiver, heartbeat)));
-                    }
-                    received = receiver.recv() => match received {
-                        Ok(StreamItem::Event(event)) => {
-                            return Some((Ok(encode_line(&event)), (false, receiver, heartbeat)));
-                        }
-                        Ok(StreamItem::Preview(preview)) => {
-                            return Some((Ok(encode_preview_line(&preview)), (false, receiver, heartbeat)));
-                        }
-                        Ok(StreamItem::Done) => return None,
-                        Err(RecvError::Closed) => return None,
-                        Err(RecvError::Lagged(_)) => continue,
-                    },
-                }
-            }
-        },
-    );
+    let tail = LiveTail {
+        done: terminated,
+        receiver: sub.receiver,
+        heartbeat,
+        last: last_replayed,
+        caught_up: std::collections::VecDeque::new(),
+        db,
+        job_id,
+    };
+    let live_tail = stream::unfold(tail, |mut tail| async move {
+        let line = tail.next_line().await?;
+        Some((Ok(line), tail))
+    });
     backlog.chain(previews).chain(live_tail)
+}
+
+/// The live part of a job's NDJSON stream, after its backlog: what it has delivered
+/// so far and where the next line comes from.
+struct LiveTail {
+    /// The run ended (or was already over at subscribe time); no line follows.
+    done: bool,
+    receiver: tokio::sync::broadcast::Receiver<StreamItem>,
+    heartbeat: tokio::time::Interval,
+    /// The sequence of the last event delivered, backlog included. An event at or
+    /// below it on the channel was already delivered.
+    last: Option<u64>,
+    /// Events read back from the database after the receiver lagged, delivered
+    /// before anything further from the channel.
+    caught_up: std::collections::VecDeque<(u64, HarnessEvent)>,
+    db: Arc<crate::db::Db>,
+    job_id: String,
+}
+
+impl LiveTail {
+    /// Whether an event of `sequence` is new to this subscriber.
+    fn is_new(&self, sequence: u64) -> bool {
+        self.last.is_none_or(|last| sequence > last)
+    }
+
+    /// The next line to send, or `None` once the stream is over.
+    async fn next_line(&mut self) -> Option<Bytes> {
+        if self.done {
+            return None;
+        }
+        loop {
+            if let Some((sequence, event)) = self.caught_up.pop_front() {
+                if self.is_new(sequence) {
+                    self.last = Some(sequence);
+                    return Some(encode_line(&event));
+                }
+                continue;
+            }
+            tokio::select! {
+                _ = self.heartbeat.tick() => return Some(Bytes::from_static(b"\n")),
+                received = self.receiver.recv() => match received {
+                    Ok(StreamItem::Event { sequence, event }) => {
+                        if self.is_new(sequence) {
+                            self.last = Some(sequence);
+                            return Some(encode_line(&event));
+                        }
+                    }
+                    Ok(StreamItem::Preview(preview)) => return Some(encode_preview_line(&preview)),
+                    Ok(StreamItem::Done) | Err(RecvError::Closed) => {
+                        self.done = true;
+                        return None;
+                    }
+                    Err(RecvError::Lagged(_)) => {
+                        // The channel dropped items this subscriber had not read. The
+                        // events among them are stored, so read every event after the
+                        // last one delivered back from the database; the channel's
+                        // later copies of them are skipped by their sequence. Missed
+                        // previews are simply gone, as the next frame replaces them.
+                        match self.db.job_events_after(&self.job_id, self.last).await {
+                            Ok(events) => self.caught_up.extend(events),
+                            Err(error) => tracing::warn!(
+                                job = %self.job_id,
+                                %error,
+                                "reading a lagged live stream's missed events back failed"
+                            ),
+                        }
+                    }
+                },
+            }
+        }
+    }
 }
 
 /// Encode one event as a `\n`-terminated NDJSON line. A `HarnessEvent`'s fields
@@ -2606,7 +2722,7 @@ fn encode_preview_line(preview: &AssetPreview) -> Bytes {
 /// back to the driver when the dispatcher claims the job — it is the description of
 /// *what to run*, and a driver has no business knowing which plan wanted it. An origin
 /// is queue bookkeeping: one `job` column, read only by a scoped halt. Keeping it out
-/// of the body also keeps [`LaunchBody`] — which lives in `core`, shared with the
+/// of the body also keeps [`LaunchBody`] — which lives in the contracts, shared with the
 /// driver and the dispatcher — from growing a field only the backend ever reads.
 ///
 /// Deserialize-only, and not a codegen contract type: a query string is not a JSON
@@ -2620,29 +2736,6 @@ pub struct LaunchQuery {
     /// [`attribution`].
     #[serde(default)]
     pub origin: Option<String>,
-}
-
-/// The response to one of the three global cancel controls: how many runs the sweep
-/// stopped, and how far into the queue it reached.
-///
-/// The **count is the point**. A sweep that reported only success would leave the
-/// operator unable to tell "the queue was already empty" from "nothing matched", and
-/// those call for opposite next moves. The two scope flags let the console phrase what
-/// it just did ("stopped 12 runs, including 3 already executing") from the response
-/// alone, rather than from which button it happens to have called.
-#[derive(Debug, Clone, serde::Serialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub struct BulkCancelOut {
-    /// How many jobs moved to the terminal `canceled` state.
-    pub canceled: u32,
-    /// Whether the sweep reached runs that had not started yet (`queued`, `pending`)
-    /// — the ones that had cost nothing.
-    pub included_waiting: bool,
-    /// Whether the sweep reached runs that were already executing (`dispatched`,
-    /// `starting`, `running`, `validating` or `storing`) — the ones whose work was
-    /// discarded.
-    pub included_active: bool,
 }
 
 /// The body of `POST /jobs/{id}/verify-token`: the per-job token to check against
@@ -2666,10 +2759,6 @@ pub const STREAM_EVENT_RUN: &str = "run";
 /// The SSE `event:` name telling a client it fell behind and must re-read the
 /// authoritative lists.
 pub const STREAM_EVENT_RESYNC: &str = "resync";
-/// The SSE event name of the frame carrying the artifact store's
-/// [status](crate::capacity::ArtifactStorageStatus): one after the hello frame on
-/// every connection, and one on each change of state.
-pub const STREAM_EVENT_STORAGE: &str = "storage";
 /// The SSE `event:` name of the periodic liveness frame. Payloadless — its arrival
 /// is the whole message.
 pub const STREAM_EVENT_HEARTBEAT: &str = "heartbeat";
@@ -2684,37 +2773,6 @@ pub const STREAM_EVENT_HEARTBEAT: &str = "heartbeat";
 /// well under the 60s idle timeouts proxies and Safari's WebKit networking impose.
 const STREAM_HEARTBEAT: std::time::Duration = std::time::Duration::from_secs(15);
 
-/// The console stream's first frame: the id this client quotes back to
-/// `PUT /notifications/{stream}/topics`.
-///
-/// The id is minted per **connection**, not per client, and deliberately so. An
-/// `EventSource` reconnects on its own after a drop, and the reconnected stream is a
-/// new subscriber with default topics — so the client must be told the new id and
-/// re-apply what it wanted. Handing out a client-chosen or long-lived id would hide
-/// that transition and leave a console silently subscribed to nothing.
-#[derive(Debug, Clone, serde::Serialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub struct StreamOpened {
-    /// The connected stream's id.
-    pub stream_id: String,
-}
-
-/// The console stream's "you fell behind" frame: this client was lagged and the
-/// named number of messages were dropped for it.
-///
-/// It carries the count only as a diagnostic — a client's response is the same
-/// whatever the number: re-read the active list (and, if it is showing them, the
-/// produced runs). The frame exists because the stream keeps no backlog, so there is
-/// nothing to replay and silence would be indistinguishable from an idle queue.
-#[derive(Debug, Clone, serde::Serialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub struct StreamResync {
-    /// How many messages were dropped for this client.
-    pub dropped: u64,
-}
-
 // The server output shapes `LaunchAck`, `JobState`, `ActiveJobOut`, and
 // `JobStatusOut` are shared with the queue's Rust clients, so they live in
 // `core::job_api` and are re-exported at the top of this module. So are the console
@@ -2725,12 +2783,16 @@ pub struct StreamResync {
 mod tests;
 
 #[cfg(test)]
-#[path = "jobs.capacity.test.rs"]
-mod capacity_tests;
-
-#[cfg(test)]
 #[path = "jobs.storing.test.rs"]
 mod storing_tests;
+
+#[cfg(test)]
+#[path = "jobs.lease.test.rs"]
+mod lease_tests;
+
+#[cfg(test)]
+#[path = "jobs.events.test.rs"]
+mod events_tests;
 
 #[cfg(test)]
 #[path = "jobs.validating.test.rs"]

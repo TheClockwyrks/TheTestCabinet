@@ -32,8 +32,8 @@ pub struct Model {
     /// for the default route.
     #[sea_orm(nullable)]
     pub provider: Option<String>,
-    /// The triggering account's id (from the auth service, via the verified
-    /// bearer token).
+    /// The triggering identity: the Access assertion's email. A row made before
+    /// the edge asserted the identity holds the retired auth service's account id.
     pub user_id: String,
     /// The probed program-language arm's wire id, or `NULL` for every language.
     #[sea_orm(nullable)]
@@ -67,6 +67,17 @@ pub struct Model {
     /// RFC 3339 of when the probe completed or failed, or `NULL` while running.
     #[sea_orm(nullable)]
     pub finished_at: Option<String>,
+    /// When the lease of the runner executing the probe expires: an RFC 3339
+    /// UTC instant at whole-second precision, set on trigger and renewed while
+    /// the runner runs. A `running` probe whose lease has lapsed has lost its
+    /// runner and may be taken over. `NULL` once the probe finished, and on a
+    /// probe made before leases existed.
+    #[sea_orm(nullable)]
+    pub lease_expires_at: Option<String>,
+    /// The opaque token of the runner holding the lease, so only that runner
+    /// renews it or finishes the probe; `NULL` alongside `lease_expires_at`.
+    #[sea_orm(nullable)]
+    pub lease_holder: Option<String>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

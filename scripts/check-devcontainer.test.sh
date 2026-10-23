@@ -9,7 +9,10 @@
 # moved one half without the other fails here rather than in a container that
 # comes up without its working directory. A configuration under a
 # subdirectory, which lists the compose file and an override of its own, is
-# read against its own directory and held to the default's declaration.
+# read against its own directory and held to the default's declaration. The
+# Dockerfile the service is built from is held to the compose file's anchor:
+# every bare `ARG` it declares has an entry, every image entry is a full
+# reference, and no entry names the host's ids.
 set -uo pipefail
 
 SCRIPTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -52,14 +55,16 @@ check_contains() { # label needle haystack
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 
-# A tree holding the check, a devcontainer.json and a compose file.
-fresh_tree() { # devcontainer-json-text compose-text
+# A tree holding the check, a devcontainer.json, a compose file and the
+# Dockerfile the compose file builds, $DOCKERFILE unless a third text is given.
+fresh_tree() { # devcontainer-json-text compose-text [dockerfile-text]
 	local tree
 	tree="$(mktemp -d "$tmp/treeXXXXXX")"
 	mkdir -p "$tree/scripts" "$tree/.devcontainer"
 	cp "$SCRIPTS_DIR/check-devcontainer.py" "$SCRIPTS_DIR/jsonc.py" "$tree/scripts/"
 	printf '%s\n' "$1" >"$tree/.devcontainer/devcontainer.json"
 	printf '%s\n' "$2" >"$tree/.devcontainer/docker-compose.yml"
+	printf '%s\n' "${3-$DOCKERFILE}" >"$tree/.devcontainer/ubuntu.dockerfile"
 	printf '%s' "$tree"
 }
 
@@ -80,11 +85,20 @@ DECLARATION='{
   "workspaceFolder": "/workspaces/demo",
 }'
 
-COMPOSE='services:
+# shellcheck disable=SC2016 # the compose file's own interpolation, written as it is
+ANCHOR='x-devcontainer-build-args: &devcontainer-build-args
+  # The image it is built on.
+  TOOLCHAIN_IMAGE: registry.example.com/template/toolchain:0123456789abcdef
+  INSTALL_CUDA: ${INSTALL_CUDA:-false}
+  CLAUDE_CODE_VERSION: 2.0.0'
+
+SERVICES='services:
   dev:
     build:
       context: .
       dockerfile: ./ubuntu.dockerfile
+      args:
+        <<: *devcontainer-build-args
     command: sleep infinity
     volumes:
       # The checkout.
@@ -93,6 +107,19 @@ COMPOSE='services:
   other:
     volumes:
       - ..:/elsewhere:rw'
+
+COMPOSE="$ANCHOR
+
+$SERVICES"
+
+# shellcheck disable=SC2016 # the Dockerfile's own expansions, written as they are
+DOCKERFILE='ARG TOOLCHAIN_IMAGE
+ARG TARGETARCH
+FROM ${TOOLCHAIN_IMAGE}
+ARG INSTALL_CUDA
+RUN true
+ARG CLAUDE_CODE_VERSION
+RUN true'
 
 echo "--- the declaration the template renders ---"
 
@@ -123,6 +150,42 @@ tree="$(fresh_tree "$DECLARATION" 'services:
 out="$(run "$tree")"
 check_failed "a service mounting the checkout nowhere fails" $?
 check_contains "says so" "mounts this checkout nowhere" "$out"
+
+echo "--- a Dockerfile and an anchor that disagree ---"
+
+tree="$(fresh_tree "$DECLARATION" "$COMPOSE" "$DOCKERFILE
+ARG CODEX_VERSION
+RUN true")"
+out="$(run "$tree")"
+check_failed "a Dockerfile ARG the anchor has no entry for fails" $?
+check_contains "names the argument" "declares ARG CODEX_VERSION" "$out"
+
+tree="$(fresh_tree "$DECLARATION" "${COMPOSE/toolchain:0123456789abcdef/toolchain}")"
+out="$(run "$tree")"
+check_failed "an image entry with no tag fails" $?
+check_contains "names the entry" "names TOOLCHAIN_IMAGE as 'registry.example.com/template/toolchain'" "$out"
+
+tree="$(fresh_tree "$DECLARATION" "${COMPOSE/registry.example.com\/template\/toolchain/toolchain}")"
+out="$(run "$tree")"
+check_failed "an image entry with no registry fails" $?
+check_contains "names the entry" "names TOOLCHAIN_IMAGE as 'toolchain:0123456789abcdef'" "$out"
+
+tree="$(fresh_tree "$DECLARATION" "${COMPOSE/  INSTALL_CUDA:/  USER_UID: 1000
+  INSTALL_CUDA:}")"
+out="$(run "$tree")"
+check_failed "an anchor naming USER_UID fails" $?
+check_contains "names the entry" "names USER_UID" "$out"
+
+tree="$(fresh_tree "$DECLARATION" "$SERVICES")"
+out="$(run "$tree")"
+check_failed "a compose file with no anchor fails" $?
+check_contains "says so" "declares no x-devcontainer-build-args" "$out"
+
+tree="$(fresh_tree "$DECLARATION" "$COMPOSE")"
+rm "$tree/.devcontainer/ubuntu.dockerfile"
+out="$(run "$tree")"
+check_failed "a Dockerfile that is absent fails" $?
+check_contains "names it" "ubuntu.dockerfile, which is absent" "$out"
 
 echo "--- a declaration that cannot be read ---"
 

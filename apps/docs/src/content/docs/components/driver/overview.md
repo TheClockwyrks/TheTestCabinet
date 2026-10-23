@@ -5,50 +5,59 @@ title: Overview
 The driver is the per-run executor: it runs exactly one test case and exits. The
 [dispatcher](/components/dispatcher/overview/) creates one driver `Job` per
 claimed run. The driver resolves the definition from the
-[backend](/components/backend/overview/), drives the run through the
-[core](/components/core/overview/), streams live progress back to the backend,
-uploads the produced tree to the [artifact
-service](/components/artifacts/overview/), and reports its terminal status
-carrying the produced [run record](/components/core/run-records/).
+[backend](/components/backend/overview/), runs it through its own run engine,
+streams live progress back to the backend, uploads the produced tree to the
+[artifacts service](/components/artifacts/overview/) and the implementation's
+git bundle to the [repos service](/components/repos/overview/), and reports its
+terminal status carrying the produced [run
+record](/components/contracts/run-records/).
 
 Everything the driver needs arrives in its environment when the dispatcher
 creates the `Job`. It serves nothing, takes no flags, and keeps no state beyond
 the run; the only sockets it opens are the per-run listeners its sandbox
 connects back to.
 
-## Relationship to the core
+## The run engine
 
-Like every other [runner](/components/architecture/#runners-and-reporters), the
-driver takes a run's behavior from the core. It assembles the same
-[`RunEngine`](/components/core/execution/) any other host does, with
-backend-streaming sinks in place of the in-process ones.
+The driver owns a run's behavior end to end. Its `RunEngine` is the one
+implementation of a run, and the pages beside this one specify its stages:
 
-- It drives the launch request the dispatcher passed in through the core. The
-  request names a version, a variant, a [harness](/components/core/harnesses/),
-  a model, and an [orchestrator](/components/core/orchestrators/).
-- It streams the run's live [harness events](/components/core/events/) to the
-  backend as they happen, along with the live drawing [preview
-  frames](/testing/asset-generation/sprite-binaries/#live-preview) of an
-  asset-generation run. The backend's relay fans them out to every watching
-  console.
-- It produces the same [run record](/components/core/run-records/) any other
-  host would and reports it with the terminal status. The backend persists it
-  using the events the relay already accumulated.
+- [Execution](/components/driver/execution/): seeding the workspace, starting
+  the sandbox and driving the [harness](/components/driver/harnesses/) session
+  under an [orchestrator](/components/driver/orchestrators/).
+- [Events](/components/driver/events/): the normalized event stream every
+  harness's output is lifted into.
+- [Validation](/components/driver/validation/): the three validators, the
+  toolchain stage and the post-run stages that turn a produced tree into
+  verdicts, plus the [showcase](/components/driver/showcase/) capture.
+- [Code analysis](#code-analysis): the static read of the code the model wrote.
 
-The driver reports `starting` before any work, advances the job to `running`
-once setup finishes and the harness session is about to begin, and advances it
-to `validating` once the session has ended. It posts its terminal status once,
-after the relay has drained so that every streamed event has reached the backend
-first. The run's own start is taken immediately after the `starting` report, so
-the [`startedAt`](/components/backend/api/#topics) the backend stamps from that
+The launch request the dispatcher passed in names a version, a variant, a
+harness, a model, and an orchestrator. The driver streams the run's live harness
+events to the backend as they happen, along with the live drawing [preview
+frames](/testing/asset-generation/sprite-binaries/#live-preview) of an
+asset-generation run, and the backend's relay fans them out to every watching
+console. It produces the run record and reports it with the terminal status,
+and the backend persists it with the events it stored as each batch arrived.
+
+The driver reports `starting` before any work and advances the job to `running`
+once setup finishes and the harness session is about to begin, and to
+`validating` once the session has ended. Once the run has a record, the driver
+hands it to the backend in a held report, uploads the run's files, and posts its
+terminal status last, after the backend has acknowledged every event batch so
+that the stored stream is complete first (see [Delivery to the
+backend](/components/driver/events/#delivery-to-the-backend)). [Finishing a
+run](#finishing-a-run) gives the order and the retries. The run's own start is
+taken immediately after the `starting` report, so the
+[`startedAt`](/components/backend/api/#topics) the backend stamps from that
 transition names the same instant the produced record does.
 
 A `validating` job is one whose model has finished working. The state covers
 everything after the session: collecting the tree, the post-run analysis, the
 case's toolchain, validation and the upload of the tree. The engine announces
 the session's end through its event sink, and the driver posts `validating`
-through the relay after the events that preceded it, so a console never shows
-the run validating while the session's last events are still arriving.
+after the events that preceded it, so a console never shows the run validating
+while the session's last events are still arriving.
 
 ## Sandbox container runtime
 
@@ -116,15 +125,15 @@ The engine therefore gets back a normal harness outcome marked canceled,
 carrying the tokens, the cost and the session summary the run accumulated, and
 walks its whole post-session path: it collects the produced tree out of the
 sandbox, runs the post-run analysis stages, folds the metrics, and assembles the
-[run record](/components/core/run-records/). The one stage a cancellation skips
-is [validation](/components/core/validation/), which is fresh work judging
+[run record](/components/contracts/run-records/). The one stage a cancellation skips
+is [validation](/components/driver/validation/), which is fresh work judging
 output an operator chose to stop, so a canceled run's validation summary is
 empty rather than failed. The record's terminal state is
-[`canceled`](/components/core/run-records/#status).
+[`canceled`](/components/contracts/run-records/#status).
 
-The driver then runs every artifact upload it runs for any other run and posts a
+The driver then runs every upload it runs for any other run and posts a
 `canceled` status carrying the record. The backend persists it with the events
-its relay accumulated and attaches it to the already-canceled job, changing
+it stored for the job and attaches it to the already-canceled job, changing
 nothing else: no state change, no completion notification, and no retry.
 
 #### Degraded fallbacks
@@ -133,12 +142,12 @@ Two paths produce a bare canceled record instead: the session does not wind down
 inside the grace, or the run errors on its way out. Both concern a session that
 had been launched, since a run killed before that is destroyed rather than
 recorded bare. In both the driver builds the record itself from what it still
-holds: state [`canceled`](/components/core/run-records/#status), the detail
+holds: state [`canceled`](/components/contracts/run-records/#status), the detail
 `canceled by operator`, and the resolved case identity and test type when the
 definition had materialized. That record carries no produced tree and zero
 metrics.
 
-That record anchors the [events](/components/core/events/) the run streamed
+That record anchors the [events](/components/driver/events/) the run streamed
 right up to the kill, which the backend already holds, and is what brings the
 killed run into the run list. Recording here is best-effort: the job is already
 terminal and the teardown still has to happen, so a record that cannot be built
@@ -149,8 +158,9 @@ or posted is logged rather than fatal.
 A canceled run of any other harness is destroyed. The driver drops the run
 future, tears the sandbox down, and exits. No record is built, no artifacts are
 uploaded, and no terminal status is posted, so the job stays `canceled` with the
-record slot empty and the run is absent from the run list. The events the relay
-streamed before the kill are discarded with it.
+record slot empty and the run is absent from the run list. The events the
+backend stored before the kill stay stored against the job, and those it had
+not yet acknowledged are dropped with the relay.
 
 Destroying the run is what frees its scheduling slot promptly, so the runs an
 operator queues after a kill start straight away. The disposition is decided by
@@ -182,7 +192,7 @@ cancels an in-flight sandbox creation on the client side only and the sandbox
 can still appear just after the first sweep looked.
 
 A wound-down gg run appears in the run list like any other unpublished run and
-is [never publishable](/components/core/results/#publish).
+is [never publishable](/components/backend/results/#publish).
 
 Any other late status a winding-down driver posts before it notices the kill is
 discarded by the backend, so only the driver's own `canceled` acknowledgement
@@ -247,108 +257,169 @@ cannot change a host-side fault. A collection failure report names the
 innermost cause of the failure.
 
 The sandbox pod is ephemeral and its disk is lost on exit, so the driver uploads
-the produced run tree to the [artifact service](/components/artifacts/overview/)
-(`TCAB_ARTIFACTS_URL`, forwarded by the dispatcher) before reporting terminal
-status, and stamps the playable-build link onto the record. That tree is the
-playable build, the proof media, and the asset media. By the time a console sees
-the run finish, its build and media are already servable. When the artifacts URL
-is unset the upload is skipped.
+the produced run tree to the artifacts service (`TCAB_ARTIFACTS_URL`, forwarded
+by the dispatcher) as one tar, `POST /runs/{id}/artifacts` with its per-job
+token, before reporting terminal status, and stamps the playable-build link onto
+the record. That tree is the playable build, the proof media, the asset media,
+the validation media, the showcase files, the code-analysis document and the
+recorded logs. By the time a console sees the run finish, its build and media
+are already servable from the artifacts service, which is the one store a
+console reads a run's media from and the one the backend publishes it from.
+When the artifacts URL is unset the upload is skipped.
 
-The driver's copy of the tree is the only one until the upload is acknowledged,
-so the driver keeps a tree it could not upload for as long as the failure is
-the store's. The tarball stays on the driver's disk between attempts, and each
-attempt reads it from its first byte at offsets of its own, so an attempt the
-service answered before reading its whole body leaves the next one unaffected.
-
-An attempt has no overall deadline, since its body is as large as the run tree.
-It is abandoned as stalled when the service takes none of the tree and gives no
-answer for five minutes.
+The driver's copy of the tree is the only one until the upload is acknowledged.
+The tarball stays on the driver's disk between attempts, and each attempt reads
+it from its first byte, so an attempt the service answered before reading its
+whole body leaves the next one unaffected. An attempt has no overall deadline,
+since its body is as large as the run tree, and it is abandoned as stalled when
+the service takes none of the tree and gives no answer for five minutes. The
+service replaces a run's stored tree atomically, so a repeated upload stores the
+tree once.
 
 A failed upload is one of two kinds:
 
-| Kind              | Failures                                                                                                                              | The driver                           |
-| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------ |
-| The run's own     | The tree cannot be tarred, the service answers `413` (over its size cap), `400` (a refused path) or `422` (an archive it cannot read) | Ends the upload at once              |
-| A store condition | Every other failure: no answer, a stall, a `5xx`, a `401` or `403`, a `404`, any other status                                         | [Waits](#waiting-on-the-store) on it |
+| Kind              | Failures                                                                                      | The driver                             |
+| ----------------- | --------------------------------------------------------------------------------------------- | -------------------------------------- |
+| The run's own     | The tree cannot be tarred, or the service answers `413`, `400` or `422`                       | Ends the upload at once                |
+| A store condition | Every other failure: no answer, a stall, a `5xx`, a `401` or `403`, a `404`, any other status | [Retries](#retries) until it is stored |
 
-The run's outcome is independent of the upload. When the upload ends without
-the tree stored, the driver logs the last status and body at `error`, leaves the
-playable-build link off the record, since nothing would serve it, and reports
-the run with the state it reached. Its terminal status report carries
-`artifactsStored`: `true` when the service acknowledged the tree, `false` when
-it did not, and absent when no artifact service is configured. A report with
-`artifactsStored: false` whose upload ended on a store condition also carries
-`storeFault`, the failure's text, which is how the backend learns of a failed
-upload from a driver that never reported a wait.
+When the upload ends without the tree stored, the driver leaves the
+playable-build link off the record and reports the run with the state it
+reached. The terminal report carries `artifactsStored`: `true` when the service
+acknowledged the tree, `false` when it did not, and absent when no artifact
+service is configured.
 
-### Waiting on the store
+### What the backend reads from the tree
 
-On a store condition the driver retries the upload until it lands, waiting 5,
-10, 20 and 40 seconds and then 60 seconds between attempts. It gives up once
-`TCAB_ARTIFACT_UPLOAD_WAIT_SECONDS` (default `21600`, six hours) have passed
-since the first failure, and then reports the run with `artifactsStored: false`.
+The run tree the artifacts service holds is the one copy of a run's servable
+media: the proof-of-implementation media, the synthesized validation media, an
+asset-generation run's media and action log, the
+[showcase](/components/driver/showcase/) files, an adversarial run's proof
+replays, a performance run's scored scenarios, a captured gg replay, and the
+code-analysis document. The backend serves each of them from that tree through
+the artifacts service, as its [durable
+state](/components/backend/overview/#durable-state) states, so the driver
+writes nothing into the backend's store.
+
+## The implementation bundle
+
+A run's workspace is a git repository whose first commit is the seed. At run
+end, after the post-run stages, the driver commits everything the model left
+uncommitted on top of the history the run holds, with the commit message the
+[contract](/components/contracts/overview/) defines, writes `git bundle --all`
+and uploads the bundle to the repos service (`TCAB_REPOS_URL`, forwarded by the
+dispatcher) with `POST /runs/{id}/bundle` and its per-job token. The bundle is
+what a console downloads, what a re-analysis reads and what the run's public
+repository is pushed from at [publish](/components/backend/results/#publish).
+
+The commit happens after the tree is collected out of the sandbox, on the
+driver's own copy, so the sandbox never holds a credential and the committed
+tree is exactly the one the validators judged. The repos service replaces a
+run's bundle on a repeated upload, and the upload is [retried](#retries) like
+the tree's. A bundle still failing at the deadline is logged and the run's
+record still reports, so a run is never lost for want of its bundle; the
+console then offers no download for it.
+
+## Code analysis
+
+The driver runs the [static code analyzer](/gg/analysis/code-analysis/) over the
+collected tree before the uploads: a deterministic, execute-nothing read of the
+code the model wrote, with the seed commit telling the authored files from the
+seeded ones. The bounded tier of the analysis rides on the run record and the
+unbounded tier is written into the run tree as `code-analysis.json.gz`, which the
+artifacts upload carries. The analysis is the driver's own module, so a run's
+analysis and the `tcab` CLI's read of a tree on disk are the same code.
+
+## Finishing a run
+
+Once the session ends, the driver collects the tree, deletes the sandbox, runs
+the post-run stages and writes the record locally. From then on the run's result
+exists only on the driver pod's disk, so the driver hands it to durable storage
+in this order:
+
+1. The held report: a `storing` status carrying the record, and the failure
+   detail when the run failed. The backend stores the record in Postgres against
+   the job.
+2. The uploads: the run tree to the artifacts service and the bundle to the
+   repos service.
+3. The terminal report: a `succeeded`, `failed` or `canceled` status carrying
+   the record with its build link and `artifactsStored`.
+
+The held report is what makes a finished run durable. A driver lost after it
+landed has its run finished by the backend from the held record, with the state
+the run reached, and the run is never retried. A driver lost before it landed
+leaves no result, and its job takes the path of a [lost
+driver](/components/dispatcher/overview/#lost-drivers).
+
+A failed run whose driver builds a record takes the same sequence, and so does
+a canceled gg run. A destroyed run takes none of it.
+
+### Retries
+
+Every call in the sequence is retried until it lands, waiting 5, 10, 20 and 40
+seconds and then 60 seconds between attempts. A call ends at once when its
+answer says the request itself is at fault: a `4xx` other than `408` and `429`
+from the backend, or one of the run's own upload failures. Every other failure
+is retried.
+
+Two deadlines bound the waiting, each counted from a call's first failure:
+
+| Variable                            | Bounds                                  | Default           |
+| ----------------------------------- | --------------------------------------- | ----------------- |
+| `TCAB_ARTIFACT_UPLOAD_WAIT_SECONDS` | each upload                             | `21600` (6 hours) |
+| `TCAB_DRIVER_REPORT_WAIT_SECONDS`   | the held report and the terminal report | `21600` (6 hours) |
+
 A value of `0` makes a single attempt, and a value that is not a whole number
-of seconds stops the driver before it runs anything. The dispatcher forwards the
-setting from its own environment.
+of seconds stops the driver before it runs anything. The dispatcher forwards
+both from its own environment.
 
-The driver reports the wait to the backend with a `storing` status carrying the
-failure as its reason: after the first failed attempt and again after every
-later one. A first attempt that has neither landed nor failed after 60 seconds
-is reported the same way while it goes on, so a store that accepts an upload
-and then hangs does not leave the run reading as running. The job then reads
-`storing`, which the console shows as waiting to store artifacts, and the
-backend [holds the run queue](/components/backend/overview/#the-hold) while any
-job is in that state.
+While an upload waits, the driver repeats the `storing` report after each
+failed attempt with the failure as its reason, so the job reads `storing` and
+the console shows the run as waiting to store its files. A `storing` report
+that fails is logged, and the wait goes on.
 
-The first `storing` report of a wait also carries the run's record, and the
-reason the run failed when it did. The record exists nowhere but the driver's
-pod until the terminal report, so the driver hands it to the backend before it
-waits, and the backend
-[finishes the run from it](/components/backend/overview/#a-driver-lost-while-it-waits)
-if the pod is lost.
+Every call is idempotent by run id. A repeated `storing` report replaces the
+held record with the same record, a repeated upload replaces what the
+earlier attempt stored, and a terminal report repeated after its answer was lost
+is answered with success when the job already holds that terminal state.
 
-When the wait ends the driver reports `validating` again, with `artifactsStored`
-saying whether the tree was stored, and goes on to its terminal report. A
-report that fails to reach the backend is logged and the wait continues.
+An operator's cancellation ends the waiting wherever it is. The driver polls its
+job's state every three seconds throughout, and a `canceled` job ends the call
+in flight; the driver then posts `canceled` carrying the record. A gg run that
+was already canceled when its finishing began retries each upload for at most
+ten minutes, or for the configured wait when that is shorter.
 
-An operator's cancellation ends the upload wherever it is: during the first
-attempt, a later one, or the pause between two. The driver polls its job's
-state every three seconds from the moment the upload begins, and a `canceled`
-job ends the attempt in flight and the wait with it. The driver then posts a
-`canceled` status carrying the record with `artifactsStored: false`, so the run
-stays inspectable.
+The driver exits successfully once its terminal report lands or the backend
+refuses it. It exits non-zero when the report deadline passes with the terminal
+report undelivered, and the backend then finishes the run from the held record.
+An event batch that goes unacknowledged leaves the terminal report undelivered
+too, since the status is posted only once every batch is acknowledged.
 
-A run that was already canceled when its upload began is the exception, since a
-canceled gg run uploads its tree after the cancellation. Its upload is not ended
-by that cancellation, and it is retried on a store condition for at most ten
-minutes, or for the configured wait when that is shorter. Its job is terminal,
-so it never reads `storing`, and its reports still tell the backend that an
-upload failed.
+### Late terminal reports
 
-Nothing else ends the wait. The driver `Job` carries no active deadline, the
-per-job token is valid for as long as the job row exists, whatever its state,
-and the backend reaps no job by age. A driver that dies while waiting is
-[reported lost](/components/dispatcher/overview/#lost-drivers) by the
-dispatcher, which ends its job and its share of the hold.
+The dispatcher can report a job lost while its driver is still delivering a
+report. A terminal report that reaches the backend after that supersedes the
+lost outcome. The backend records the run from the report and withdraws the
+automatic retry the lost outcome enqueued, canceling it when it was already
+claimed, so a finished run's record is always kept and its work is never
+repeated.
 
-The artifact service serves a run only to the console session that produced it,
-so the driver also mirrors a backend-driven run's servable media into the
-[backend](/components/backend/overview/) store: every run's
-proof-of-implementation media, synthesized validation media and code-analysis
-document, the files of a run's [showcase](/components/core/showcase/), an
-adversarial run's controller wasm and proof replays, a performance run's scored
-scenarios, an asset-generation run's regenerated and preview images with their
-action log, and a captured gg replay. That store, rather than the artifact
-service, is what the backend exports the public snapshot from and what a console
-reads a run's media from. Each mirror is best-effort: a failure is logged and
-the run's record still reports.
+## Termination
 
-The store is a staging area rather than the record of truth. A snapshot refresh
-publishes a published run's files from it to the bucket, and the backend then
-[removes them from the store](/components/backend/overview/#state-volume) and
-serves them from the bucket. For a file the store does not hold, the snapshot
-builder falls back to the run's tree on the artifact service, so a store that
-lost a file is repaired by the next refresh.
+Kubernetes sends the driver `SIGTERM` before it kills the pod for a drain, an
+eviction or a preemption, and the driver `Job` grants it a [grace
+period](/components/dispatcher/overview/#the-driver-job) to act on it. The
+driver handles the signal by what it holds:
+
+- A driver that holds the run's record posts the held report at once if it has
+  not landed, then goes on finishing the run for as long as the grace lasts.
+  The backend finishes from the held record whatever the driver did not.
+- A driver that holds no record yet reports the run `failed` with the state
+  [`infrastructure`](/components/contracts/run-records/#status) and the detail
+  `driver interrupted by SIGTERM`, naming the stage it was in.
+
+Either way the driver deletes its sandbox before it exits, so an interrupted run
+leaves nothing for the dispatcher's [reaper](#sandbox-lifetime).
 
 ## RBAC
 
@@ -359,32 +430,37 @@ get/create. Both exec verbs are required, because the driver's Kubernetes client
 execs over a WebSocket, which the API server authorizes as `get`. The
 [dispatcher](/components/dispatcher/overview/) names this ServiceAccount on
 every `Job` it creates. The manifests are in `deployments/k8s/base/rbac.yaml`.
-See [Kubernetes: staging & prod](/deployment/kubernetes/run-plane/#rbac).
+See [Run plane](/deployment/kubernetes/run-plane/#rbac).
 
 ## Deployment
 
-The driver is the `test-cabinet-driver` crate (`crates/driver`). It is a client
-rather than a server, so it carries no app-level auth of its own. Its streaming
-calls authenticate to the backend with the per-job token the dispatcher passed
-in. Its configuration is entirely environment variables, documented in
-`crates/driver/src/config.rs`.
+The driver is the `tcab-driver` binary of the `microservice-driver` repository,
+which also builds the [`tcab` CLI](/components/cli/overview/) as a second
+binary over the same run engine. The driver is a client rather than a server,
+so it carries no app-level auth of its own. Its streaming calls authenticate to
+the backend with the per-job token the dispatcher passed in, and it never
+crosses the [edge](/deployment/kubernetes/edge/). Its configuration is entirely
+environment variables, documented in the repository's `crates/driver/src/config.rs`.
 
-The driver image carries the tooling a run needs end to end in-process: `git` to
-seed each run's fresh repository, and a Node runtime with the bundled Playwright
-browser to run an end-to-end case's build steps and load-check the build with a
-headless screenshot. That is the same browser toolchain the
-[backend](/components/backend/overview/) bakes to render references, so the
-image layers the driver binary on the Node and browser base. It also bakes the
-static-musl gg binary the core copies into each sandbox pod, so a gg run
-installs locally with no network egress; that binary is the one the pipeline
-built and self-checked in the run images, and the one the backend's reference
-documents were projected by. Publishing is a separate backend
-operation, so the image ships no publish CLIs. The driver runs unprivileged and
-needs no Docker or Podman daemon.
+The driver image carries the tooling a run needs end to end in-process: `git`
+to seed each run's fresh repository and commit its bundle, and a Node runtime
+with the bundled Playwright browser to run an end-to-end case's build steps and
+load-check the build with a headless screenshot. That is the same browser
+toolchain the [backend](/components/backend/overview/) bakes to render
+references, so the image layers the driver binary on the Node and browser base.
+It also bakes the static-musl gg binary the driver copies into each sandbox
+pod, so a gg run installs locally with no network egress; that binary is the
+release the driver pins, and the one the backend's reference documents were
+projected by. Publishing is a separate operation, so the image ships no publish
+CLIs. The driver runs unprivileged and needs no Docker or Podman daemon.
 
 ### Installing gg
 
-The core resolves the gg binary a run installs in this order:
+The driver declares the gg release it runs once, as a pinned gg version
+independent of any crate version. Its image fetches that release from gg's
+release container at build time, and the backend image fetches the matching
+`gg-reference` the same way. The driver resolves the gg binary a run installs
+in this order:
 
 1. `TCAB_GG_INSTALL=release` forces a download.
 2. `TCAB_GG_BINARY` names a local binary, which must exist.
@@ -399,7 +475,7 @@ sandbox with one `curl`:
 | Variable                  | Sets        | Default                                                          |
 | ------------------------- | ----------- | ---------------------------------------------------------------- |
 | `TCAB_GG_RELEASE_URL`     | `<base>`    | `https://testcabinetartifacts.blob.core.windows.net/gg-releases` |
-| `TCAB_GG_RELEASE_VERSION` | `<version>` | the core's own package version                                   |
+| `TCAB_GG_RELEASE_VERSION` | `<version>` | the driver's pinned gg version                                   |
 | `TCAB_GG_RELEASE_TARGET`  | `<target>`  | `<arch>-unknown-linux-musl` for the driver's architecture        |
 
 The default base is gg's release container, which the Azure pipeline publishes

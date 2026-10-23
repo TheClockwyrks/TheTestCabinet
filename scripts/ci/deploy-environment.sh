@@ -14,9 +14,13 @@
 # It copies deployments/k8s to a temporary directory and pins the copy's
 # overlays/<env> with scripts/ci/pin-images.sh: every Test Cabinet image at
 # `testcabinet.azurecr.io/<image>:<commit>` (the backend's repository is
-# `the-test-cabinet-backend`), and the dispatcher's driver and publisher images and
-# run-container registry and tag at the same registry and commit. The checkout is
-# left as it was. `--render` prints that render and touches no cluster;
+# `the-test-cabinet-backend`; `microservice-arena`, `microservice-artifacts`,
+# `microservice-dispatcher`, `microservice-repos`, `console.testcabinet.ai` and
+# `microservice-publisher` are at the commits their submodule pointers name), the
+# dispatcher's publisher image at microservice-publisher's, and its driver image and
+# run-container tag at the commit the microservice-driver pointer names, whose
+# pipeline pushed the driver and the run images together. The checkout is left as it
+# was. `--render` prints that render and touches no cluster;
 # scripts/ci/k8s-deploy-sets.sh gates on the same bytes. TCAB_K8S_ROOT names another
 # deployments/k8s tree to copy, which is how the gate's test feeds it broken ones.
 #
@@ -33,6 +37,10 @@
 #     (deployments/azure/aks-command-invoke.role.json): run a command and read its
 #     result, and nothing else on the cluster resource.
 #
+# It refuses, before touching the cluster, an overlay that binds a workload to a
+# workload identity annotated `unprovisioned` (tcab-lib.sh's
+# ci_assert_identities_provisioned): prod's artifacts identity until it exists.
+#
 # Before it changes anything in the cluster it checks that the catalog the new
 # backend's ingest sidecar will fetch can be fetched (scripts/ci/catalog-ingest.sh
 # preflight): the environment's catalog branch tip on the GitHub mirror and the
@@ -42,8 +50,10 @@
 # deployment applies counted, and when the render asks for a resize of the volume
 # the cluster would refuse.
 #
-# Before the apply it retires the backend Deployment of its old name
-# (scripts/ci/retire-legacy-backend.sh), which holds the backend's disk. After it,
+# Before the apply it retires the workloads of an earlier shape
+# (scripts/ci/retire-legacy-backend.sh): the backend Deployment of its old name,
+# which holds the backend's disk, the artifacts service's StatefulSet, and the
+# objects the edge replaced, which an apply never prunes. After it,
 # scripts/ci/settle-workloads.sh --include-backend waits concurrently on every
 # Deployment and StatefulSet in the namespace; each that does not become ready is
 # described, its logs are printed, and it is undone before the script fails.
@@ -118,6 +128,18 @@ fi
 # it would fail half-way through the apply. Refuse before touching the cluster.
 if ! ci_assert_namespaced "$NAMESPACE" <"$manifest"; then
 	echo "deploy-environment.sh: overlays/${ENVIRONMENT} renders objects outside ${NAMESPACE}; move them under deployments/k8s/cluster/." >&2
+	exit 1
+fi
+
+# A workload bound to an identity that does not exist yet would never become ready,
+# and the retirement below would already have removed what it replaces (a brand-new
+# Deployment has no revision to undo to). Refuse before touching the cluster.
+if ! ci_assert_identities_provisioned <"$manifest"; then
+	echo "deploy-environment.sh: overlays/${ENVIRONMENT} binds a workload to an unprovisioned identity, above; nothing was retired or applied." >&2
+	remediation "Provision it, put its clientId in the overlay's patch and move the run trees, then deploy again:" \
+		"    the storage account, private container run-trees, the identity with Storage Blob Data Contributor on it and its federated credential (deployments/k8s/overlays/${ENVIRONMENT}/patch-artifacts-identity.yaml)" \
+		"    the private container bundles, the repos identity with Storage Blob Data Contributor on it and its federated credential (deployments/k8s/overlays/${ENVIRONMENT}/patch-repos-identity.yaml)" \
+		"    copy the trees on the claim artifacts-tcab-artifacts-0 in ${NAMESPACE} into the container: scripts/ci/copy-artifact-trees.sh ${ENVIRONMENT}"
 	exit 1
 fi
 

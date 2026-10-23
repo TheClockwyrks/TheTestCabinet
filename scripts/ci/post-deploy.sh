@@ -19,7 +19,7 @@
 # Both run whatever became of the other, so one failure does not hide the second,
 # and the hook fails when either did. The backend stays rolled out either way, as
 # deploy.sh says: the next deployment, or scripts/ci/deploy-environment.sh by hand,
-# finishes the workloads, and scripts/reingest-cluster.sh the catalog.
+# finishes the workloads, and `tcab ingest --env staging` the catalog.
 set -euo pipefail
 
 if [[ $# -ne 1 ]]; then

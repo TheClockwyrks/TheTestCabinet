@@ -12,37 +12,47 @@
 //! - is the **system of record** for published runs + reviews in a SeaORM store
 //!   (SQLite locally and in tests, PostgreSQL in deployments); and
 //! - owns the **synchronized publish path**: a publish ingests into SQLite, then
-//!   a batching background task regenerates the full public snapshot, uploads it
-//!   atomically to R2, and fires the site deploy hook.
+//!   a coalesced background task regenerates the full public snapshot, uploads it
+//!   atomically to R2.
 //!
-//! There is **no app-level auth**: the backend sits on a private network and
-//! trusts every caller that can reach it.
+//! Every request identifies its caller, by the Cloudflare Access assertion the
+//! edge attaches or by a token the backend minted; see [`auth`].
 
+pub mod access;
 pub mod api;
 pub mod artifacts;
 pub mod auth;
 pub mod bootstrap;
-pub mod capacity;
+pub mod comparison;
+pub mod comparison_aggregate;
+pub mod comparison_stats;
 pub mod config;
 pub mod coverage;
 pub mod db;
 pub mod error;
 pub mod gg_docs;
+pub mod gg_query;
 pub mod ingest;
+pub mod ingest_refresh;
 pub mod logo;
 pub mod metrics;
+pub mod model_id;
 pub mod model_seed;
+pub mod pricing;
 pub mod probe;
-pub mod publish_health;
+pub mod prompt;
 pub mod publish_relay;
+pub mod publish_retry;
 pub mod publisher;
+pub mod r2;
 pub mod readiness;
 pub mod relay;
 pub mod render;
+pub mod review;
 pub mod snapshot;
-pub mod state_reclaim;
 pub mod stats;
 pub mod store;
+pub mod suite_store;
 
 use std::sync::Arc;
 
@@ -50,8 +60,8 @@ use crate::api::AppState;
 use crate::config::Config;
 use crate::db::Db;
 use crate::publisher::Publisher;
+use crate::r2::R2Client;
 use crate::store::DefinitionStore;
-use test_cabinet_core::r2::R2Client;
 
 /// A fully wired, runnable backend: the Axum router plus the spawned background
 /// refresher that keeps the snapshot up to date.
@@ -70,15 +80,14 @@ pub struct Backend {
     /// not configured: no in-cluster artifact URL, no service token, or a zero
     /// interval.
     pub artifact_sweeper: Option<tokio::task::JoinHandle<()>>,
-    /// The periodic [state reclamation sweep](crate::state_reclaim) of the
-    /// backend's own store; kept alive for the server's lifetime (dropping it
-    /// aborts the loop). `None` when `TCAB_STATE_RECLAIM` is off or the sweep
-    /// interval is zero.
-    pub state_sweeper: Option<tokio::task::JoinHandle<()>>,
-    /// The [artifact capacity](crate::capacity) poll loop's task, which runs for
-    /// the server's lifetime. `None` when no artifact
-    /// service is configured, in which case nothing is watched and no run is held.
-    pub capacity_monitor: Option<tokio::task::JoinHandle<()>>,
+    /// The [probe resumer](crate::probe::spawn_resumer), which resumes every `running`
+    /// model probe whose lease has lapsed; kept alive for the server's lifetime.
+    pub probe_resumer: tokio::task::JoinHandle<()>,
+    /// The [retry of failed publishes](crate::publish_retry), which every 30 seconds
+    /// records the publish jobs whose publishers never reported as failed and
+    /// enqueues another publish job for each failed run that is due one; kept alive
+    /// for the server's lifetime.
+    pub publish_retry: tokio::task::JoinHandle<()>,
 }
 
 /// Assemble a backend from a configuration: open the definition store, connect
@@ -88,6 +97,23 @@ pub struct Backend {
 /// as `TCAB_CHROMIUM_EXECUTABLE` (the variable it reads), so ingest renders with
 /// that explicit Chromium.
 pub async fn build(config: Config) -> error::Result<Backend> {
+    build_with_prices(
+        config,
+        crate::pricing::OpenRouterPrices::new(),
+        crate::probe::DEFAULT_COMPLETIONS_ENDPOINT,
+    )
+    .await
+}
+
+/// [`build`], reading model prices from `prices` rather than OpenRouter's public
+/// catalog and resuming model probes against `probe_endpoint` rather than
+/// OpenRouter's chat/completions, so a test assembles a backend without reaching
+/// the network.
+async fn build_with_prices(
+    config: Config,
+    prices: crate::pricing::OpenRouterPrices,
+    probe_endpoint: &str,
+) -> error::Result<Backend> {
     use test_cabinet_migration::MigratorTrait;
 
     if let Some(browser) = &config.reference_browser {
@@ -111,12 +137,19 @@ pub async fn build(config: Config) -> error::Result<Backend> {
         tracing::warn!(
             directory = %config.gg_reference.display(),
             "no gg reference documents (index.json), so GET /gg/reference answers 503; \
-             write them with `scripts/gg-reference.sh` or point TCAB_GG_REFERENCE at a \
-             `gg reference --out` directory"
+             write them with `scripts/gg-reference.sh` in the gg checkout and point \
+             TCAB_GG_REFERENCE at them, or at any `gg reference --out` directory"
         );
     }
 
     let store = DefinitionStore::open(&config.store)?;
+    // An ingest that stopped part way (the process died, or the pod was replaced) left
+    // its half-built version in the staging area. Nothing serves or ingests yet, so
+    // every entry there is such a leftover: empty it before anything can.
+    match store.clear_staging()? {
+        0 => {}
+        removed => tracing::info!(removed, "emptied the ingest staging area"),
+    }
     let db = if config.db_azure_ad {
         Db::connect_azure_ad(&config.database_url).await?
     } else {
@@ -212,19 +245,6 @@ pub async fn build(config: Config) -> error::Result<Backend> {
         }
     }
 
-    // Reap probes orphaned by the last shutdown. A model probe runs inside this
-    // process, so a restart always killed it; the row is failed rather than left
-    // `running` forever (which would also block re-triggering). Idempotent,
-    // best-effort, never blocks startup.
-    match time::OffsetDateTime::now_utc().format(&time::format_description::well_known::Rfc3339) {
-        Ok(now) => match db.fail_running_model_probes(&now).await {
-            Ok(0) => {}
-            Ok(reaped) => tracing::info!(reaped, "failed model probes orphaned by restart"),
-            Err(err) => tracing::warn!(error = %err, "skipping model-probe reap"),
-        },
-        Err(err) => tracing::warn!(error = %err, "skipping model-probe reap"),
-    }
-
     // The engine slug, lifted out of records stored before the `engine_slug` column
     // existed (pre-engine-era records deserialize to `none`, which is lifted too — it
     // is what the engineless filter matches). Same contract as the two above:
@@ -270,65 +290,45 @@ pub async fn build(config: Config) -> error::Result<Backend> {
     // the driver `Job`s the cluster actually runs and reports each lost one
     // (`POST /jobs/{id}/lost`). Failing in-flight jobs here instead would fail runs that
     // are still executing.
-    //
-    // A launch-pass claim still held at startup, on a plan or a ladder, was held by a pass
-    // that died with the previous process: the backend is the single coordinator, so
-    // nothing else can hold one. Left in place it would turn the startup passes away as
-    // busy until its lease ran out, with no holder left to serve the request that leaves
-    // behind.
-    let released = db.release_all_launch_claims().await?;
-    if released > 0 {
-        tracing::info!(
-            released,
-            "released launch-pass claims left by the previous process"
-        );
-    }
 
     let r2 = config.r2.clone().map(R2Client::new);
-    // The same bucket, for the run file routes to read a confirmed run's files
-    // back from. It is named as the confirmations name it, so a route fetches a
-    // file only for a run confirmed in this very bucket.
-    let run_files = r2
-        .clone()
-        .zip(config.artifact_retention.bucket)
-        .map(|(client, identity)| api::RunFileBucket::new(client, identity));
 
-    // The client the auth middleware verifies bearer tokens against, and the
-    // publisher fetches reviewer profile pictures from for the public snapshot.
-    // Constructed once and shared; it holds only the auth service base URL.
-    let auth = Arc::new(test_cabinet_core::AccountsClient::new(
-        config.auth_url.clone(),
-    ));
-
-    // Files a write left half-made in the store's staging directory when the
-    // last process died. Nothing reads them, and nothing else removes them.
-    store.clear_staged_uploads();
-
-    // Give the space of the backend's own store back once nothing needs a run's
-    // files there (see `crate::state_reclaim`). It reads the same bucket, to see
-    // every object a run's manifest names before it removes the run's files.
-    let state_sweeper = crate::state_reclaim::spawn_state_sweeper(
-        Arc::clone(&db),
-        store.clone(),
-        r2.clone(),
-        config.state_sweep_timing(),
-    );
+    // The Access assertion check, or `None` for a backend with no Access application
+    // (the local overlay), which takes the identity from the local header instead.
+    let access = config.access.as_ref().map(|access| {
+        tracing::info!(
+            team_domain = %access.team_domain,
+            "verifying Cloudflare Access assertions"
+        );
+        Arc::new(crate::access::AccessVerifier::new(
+            access,
+            reqwest::Client::new(),
+        ))
+    });
+    if access.is_none() {
+        tracing::warn!(
+            "no Access application configured (TCAB_ACCESS_TEAM_DOMAIN and \
+             TCAB_ACCESS_AUDIENCE unset): taking the identity from \
+             Cf-Access-Authenticated-User-Email as presented"
+        );
+    }
 
     let publisher = Publisher::new(
         Arc::clone(&db),
         store.clone(),
         r2,
-        config.deploy_hook_url.clone(),
         config.artifacts_internal_url.clone(),
-        Arc::clone(&auth),
-        config.publisher_timing(),
+        config.service_token.clone(),
+        crate::publisher::PublisherTiming {
+            coalesce: config.coalesce,
+            snapshot_retention: config.snapshot_retention,
+        },
     );
     let refresher = publisher.spawn();
 
     // Model catalog bootstrap: seed the curated configs into an empty store and
     // re-associate any legacy `:free`-tagged runs to their base model. Both are
     // idempotent, so a restart or a shared deployment database is a safe no-op.
-    let prices = test_cabinet_core::OpenRouterPrices::new();
     crate::bootstrap::seed_models_if_empty(&db).await?;
     if let Err(err) = crate::bootstrap::backfill_alias_families(&db).await {
         // Best-effort: a stale harness family only mis-filters a run form's model
@@ -362,23 +362,11 @@ pub async fn build(config: Config) -> error::Result<Backend> {
     let price_refresher = {
         let publisher = publisher.clone();
         crate::bootstrap::spawn_price_refresher(Arc::clone(&db), prices.clone(), move || {
-            publisher.queue_refresh();
+            // The callback is synchronous (it fires from a drop guard, so a
+            // cancelled refresh still reports its changes).
+            publisher.queue_refresh_detached();
         })
     };
-
-    // A deployment that advertises an artifact service to consoles but gives this
-    // backend no address of its own for it silently loses three things, none of which
-    // announce themselves at the moment they stop working. Say so at boot, where an
-    // operator is already reading. A WARNING and not an error: the artifact URL is
-    // optional by design (a single-box dev setup has no artifact service at all), and
-    // a backend without it serves runs, reviews and the catalog perfectly.
-    if config.artifacts_public_url.is_some() && config.artifacts_internal_url.is_none() {
-        tracing::warn!(
-            "TCAB_ARTIFACTS_URL is unset while an artifact service is advertised to consoles; \
-             tree pruning, the reclamation sweep, the capacity hold on new runs and the \
-             snapshot's artifact media fallback are all off"
-        );
-    }
 
     let http = reqwest::Client::new();
     // Reclaim the artifact trees no run row references (see `crate::artifacts`). The
@@ -392,28 +380,22 @@ pub async fn build(config: Config) -> error::Result<Backend> {
         config.service_token.clone(),
         crate::artifacts::SweepTiming {
             interval: config.artifact_sweep_interval,
-            rules: crate::artifacts::SweepRules {
-                grace: config.artifact_sweep_grace,
-                retention: config.artifact_retention,
-            },
+            grace: config.artifact_sweep_grace,
         },
     );
 
-    // Watch the artifact store, and hold the run queue while any condition for
-    // storing a run's tree is not green (see `crate::capacity`). The
-    // relay is built here rather than in the state literal below because the watch
-    // announces each change of state on its console stream.
-    let relay = crate::relay::Relay::new();
-    let (capacity, capacity_monitor) = crate::capacity::spawn_capacity_monitor(
-        config.artifact_capacity,
-        http.clone(),
-        config.artifacts_internal_url.clone(),
-        config.service_token.clone(),
-        relay.notifier().clone(),
-        db.clone(),
-        store.clone(),
-    )
-    .await;
+    // A model probe runs inside a backend, so one whose backend restarted or died is left
+    // `running` with a lease nobody renews. Every backend resumes such probes, as it starts
+    // and periodically after, issuing only the calls each has no item for.
+    let probe_resumer = crate::probe::spawn_resumer(
+        Arc::clone(&db),
+        crate::probe::ResumerConfig {
+            http: http.clone(),
+            endpoint: probe_endpoint.to_string(),
+            api_key: config.openrouter_api_key.clone(),
+            interval: crate::probe::PROBE_RESUME_INTERVAL,
+        },
+    );
 
     let bind = config.bind.clone();
     // Every test-case resolution reads the definition store, and on a deployment
@@ -439,27 +421,22 @@ pub async fn build(config: Config) -> error::Result<Backend> {
         store,
         ready: readiness,
         publisher,
-        auth,
-        relay,
-        capacity,
+        access,
+        relay: crate::relay::Relay::new(),
         publish_relay: crate::publish_relay::PublishRelay::new(),
         config: Arc::new(config),
         http,
         prices,
-        run_files,
         gg_docs: crate::gg_docs::GgDocIndex::new(),
     };
     // A running ladder dispatch and a filling plan are fed when one of their runs
     // finishes, and a restart loses some of those moments: a feed that was spawned but had
     // not finished dies with the process. Run a launch pass of each once, as soon as the
-    // store can be served.
+    // store can be served, after releasing every launch-pass claim whose lease lapsed.
     api::spawn_startup_passes(state.clone());
-    // Offer the runs automatic publishing could not publish when they finished to
-    // it again, on an interval, for as long as the process lives.
-    api::spawn_auto_publish_retry(state.clone());
-    // Give each failed publish another attempt on its schedule, and keep probing
-    // while publish failures hold new runs, for as long as the process lives.
-    api::spawn_failed_publish_retry(state.clone());
+    // A publish that fails, or whose publisher dies, is retried by the backend on its
+    // own schedule, so a transient release failure never needs a person.
+    let publish_retry = api::spawn_failed_publish_retry(state.clone());
     let router = api::router(state);
 
     Ok(Backend {
@@ -468,11 +445,14 @@ pub async fn build(config: Config) -> error::Result<Backend> {
         refresher,
         price_refresher,
         artifact_sweeper,
-        state_sweeper,
-        capacity_monitor,
+        probe_resumer,
+        publish_retry,
     })
 }
 
 #[cfg(test)]
 #[path = "lib.test.rs"]
 mod tests;
+
+#[cfg(test)]
+mod test_paths;

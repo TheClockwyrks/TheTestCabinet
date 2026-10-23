@@ -1,0 +1,89 @@
+# Azurite: the local stack's object store, standing in for the environment's Azure
+# Blob containers and its Cloudflare R2 bucket (Running the services locally,
+# apps/docs/src/content/docs/development/running.md "The local stack"). The private
+# run-tree container, the public dataset's container and the repos service's private
+# bundle container are containers of it, so nothing local reaches Azure or Cloudflare.
+#
+# Blob only, on Azurite's well-known development account `devstoreaccount1`, whose
+# key is public; clients sign with Shared Key against the path-style endpoint
+# http://tcab-azurite:10000/devstoreaccount1. The artifacts and repos services
+# create their containers at start-up when they sign with Shared Key, so nothing
+# provisions them here. Version 3.29 or later: both pin x-ms-version 2023-11-03.
+#
+# One replica over a claim, so the stored trees survive an Azurite restart and a
+# `local-rebuild` of the services, as they did on the artifacts service's own volume.
+apiVersion: v1
+kind: Service
+metadata:
+  name: tcab-azurite
+  namespace: tcab-prod
+spec:
+  selector:
+    app.kubernetes.io/name: tcab-azurite
+  ports:
+    - name: blob
+      port: 10000
+      targetPort: 10000
+  type: ClusterIP
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: tcab-azurite
+  namespace: tcab-prod
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 20Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tcab-azurite
+  namespace: tcab-prod
+spec:
+  replicas: 1
+  # The claim is ReadWriteOnce, so the old pod lets go of it before the new one starts.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: tcab-azurite
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: tcab-azurite
+        app.kubernetes.io/part-of: test-cabinet
+    spec:
+      automountServiceAccountToken: false
+      containers:
+        - name: azurite
+          image: mcr.microsoft.com/azure-storage/azurite:3.35.0
+          command:
+            - azurite-blob
+            - --blobHost
+            - 0.0.0.0
+            - --blobPort
+            - "10000"
+            - --location
+            - /data
+          ports:
+            - containerPort: 10000
+          readinessProbe:
+            tcpSocket:
+              port: 10000
+            periodSeconds: 5
+          resources:
+            requests:
+              cpu: 50m
+              memory: 512Mi
+            limits:
+              memory: 512Mi
+          volumeMounts:
+            - name: data
+              mountPath: /data
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: tcab-azurite

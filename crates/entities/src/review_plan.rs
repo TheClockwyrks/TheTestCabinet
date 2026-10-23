@@ -1,6 +1,6 @@
 //! The `review_plan` table: a reviewer's declarative coverage plan.
 //!
-//! One row per account (the auth-service user id is the primary key). A plan
+//! One row per account (the owner's identity is the primary key). A plan
 //! declares the harness+model combinations and the version-pinned test cases the
 //! reviewer wants covered, plus a single target number of runs per
 //! `case × combination` cell. The console reads it back to render the coverage
@@ -16,8 +16,9 @@ use sea_orm::entity::prelude::*;
 #[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel)]
 #[sea_orm(table_name = "review_plan")]
 pub struct Model {
-    /// The owning account's id (from the auth service, via the verified bearer
-    /// token). The primary key — one plan per account.
+    /// The owner's identity: the Access assertion's email. A row made before the
+    /// edge asserted the identity holds the retired auth service's account id.
+    /// The primary key — one plan per identity.
     #[sea_orm(primary_key, auto_increment = false)]
     pub user_id: String,
     /// The target number of runs desired for each `case × combination` cell.

@@ -19,7 +19,7 @@ carries no in-tree code: it is a directory under `orchestrators/<slug>/` holding
 an `orchestrator.toml` manifest and a runner script. For the contract they
 implement, covering the execution model, the `tcab-session` wrapper, the runner
 environment, and how external orchestrators are resolved, see
-[Orchestrators](/components/core/orchestrators/).
+[Orchestrators](/components/driver/orchestrators/).
 
 ## Built-in orchestrators
 
@@ -27,9 +27,9 @@ environment, and how external orchestrators are resolved, see
 | ------------------------------------ | ---------- | ----------------------------------------------------------- |
 | [One-shot](/orchestrators/one-shot/) | `one-shot` | A single harness session driven to completion. The default. |
 
-The built-ins are embedded into `crates/core` at build time, so a backend-driven
-worker with no checkout resolves them the same way the CLI does. They are listed
-by `tcab orchestrators`.
+The built-ins are embedded into the driver at build time, so a driver Job with
+no checkout resolves them the same way the CLI does. The console's launch form
+lists them.
 
 ## Selecting an orchestrator
 

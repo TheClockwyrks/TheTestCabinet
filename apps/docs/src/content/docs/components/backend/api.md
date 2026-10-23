@@ -16,7 +16,7 @@ are specified [here](#stopping-runs-in-bulk) instead, as an operator surface.
 ## Conventions
 
 - The API is JSON over HTTP. Request and response bodies are camelCase, matching
-  the [run record](/components/core/run-records/) contract.
+  the [run record](/components/contracts/run-records/) contract.
 - A collection of objects is returned wrapped, under a named key (for example
   `{ "testCases": [...] }`). The three reads that return a plain list of values
   are bare JSON arrays: the validation-file keys, a run's events, and a jam's
@@ -24,17 +24,24 @@ are specified [here](#stopping-runs-in-bulk) instead, as an operator surface.
   [reviewer scheduling](#coverage-plans-and-ladders)
   collections are bare arrays too.
 - Timestamps are RFC 3339 strings.
-- Harness slugs are those defined in [Harnesses](/components/core/harnesses/).
+- Harness slugs are those defined in [Harnesses](/components/driver/harnesses/).
 - Ratings are the tiers defined in
-  [Reviews](/components/core/results/#ratings): a functional rating is one of
+  [Reviews](/components/backend/results/#ratings): a functional rating is one of
   `flawless`, `great`, `passable`, `scuffed`, `broken`, and an aesthetic rating
   is one of `legendary`, `amazing`, `good`, `okay`, `slop`.
-- The reads on this page are open. The mutating run endpoints require an
-  `Authorization: Bearer <token>` header identifying the acting account, which
-  the backend verifies against the [auth service](/components/auth/overview/). A
-  missing or invalid token is a `401`; an auth service that cannot be reached to
-  answer is a `502`. See
-  [Authentication](/components/backend/overview/#authentication).
+- Every request identifies its caller, in one of two ways: an Access assertion
+  in `Cf-Access-Jwt-Assertion`, which every request through the edge carries
+  and the backend verifies against the Access application's certificates and
+  audience tag, or a backend-minted token in `Authorization: Bearer <token>`,
+  the service token or a per-job token. A request carrying neither, or an
+  assertion that fails to verify, is a `401`. See
+  [Identity](/components/backend/overview/#identity).
+- A read on this page is open: any identity reaches it. A route marked as
+  taking a person's assertion is attributed to that assertion's `email`, and
+  refuses a service token's assertion and a backend-minted token with `403`. A
+  route marked as taking the service token accepts the service token or a
+  service token's assertion, and refuses a person with `403`. A route the queue
+  components drive takes the per-job token the component holds.
 - Errors use one envelope across every endpoint, paired with an HTTP status
   (`400`, `401`, `404`, `409`, `422`, `500`, `502`):
 
@@ -47,9 +54,9 @@ are specified [here](#stopping-runs-in-bulk) instead, as an operator surface.
 
 Container images are resolved by each runner from its own registry
 configuration, so they are absent from this API. See
-[Execution](/components/core/execution/#containerization).
+[Execution](/components/driver/execution/#containerization).
 
-## Health and client configuration
+## Health
 
 ### `GET /healthz`
 
@@ -78,72 +85,6 @@ The signal latches. Once the store is populated the backend stays ready, and a
 later re-ingest does not withdraw it: a re-ingest swaps each version into place
 atomically, so resolution keeps working throughout one.
 
-### `GET /config`
-
-The per-deployment URLs a console needs to reach the data plane: `artifactsUrl`,
-`arenaUrl`, `grafanaUrl`, and `snapshotUrl` (the public read base of the
-snapshot bucket). Each is `null` when the deployment configures no such service,
-and the console degrades that feature. An open read.
-
-### `GET /artifacts/capacity`
-
-The backend's current reading of the artifact store's
-[capacity](/components/backend/overview/#artifact-capacity):
-
-```json
-{
-  "state": "low",
-  "runsOnHold": true,
-  "holdReason": "uploads-waiting",
-  "runsWaitingToStore": 2,
-  "detail": "the artifact service rejected the upload: HTTP 500",
-  "freeBytes": 2684354560,
-  "totalBytes": 21474836480,
-  "writable": true,
-  "warnBytes": 3221225472,
-  "stopBytes": 2147483648,
-  "stateVolume": {
-    "level": "ok",
-    "freeBytes": 9663676416,
-    "totalBytes": 16776658944,
-    "warnBytes": 3221225472,
-    "stopBytes": 1610612736
-  }
-}
-```
-
-- `state` is `ok`, `low`, `blocked`, `unwritable`, `unavailable` or
-  `unmonitored`.
-- `runsOnHold` says whether the run queue is being held.
-- `holdReason` is present while it is: `unreadable`, `low-space`, `unwritable`,
-  `uploads-waiting`, `write-check-pending`, `state-low-space`,
-  `publish-failing` or `proving-store`. Under `proving-store` the queue hands
-  out one run at a time rather than none; see [the
-  hold](/components/backend/overview/#the-hold). `publish-failing` is reported
-  under any `state`, `unmonitored` included. `state-low-space` is about the
-  backend's own volume and is reported while `state` describes the artifact
-  store as it reads, `ok` included.
-- `runsWaitingToStore` is the number of jobs in the `storing` state.
-- `detail` is the error text behind the hold when there is one: the failed
-  poll's error, the write check's error, the reason the latest failed upload
-  reported, or under `publish-failing` the reason the latest failed publish job
-  reported. A change of `detail` alone is announced on the console stream.
-- `publishFailingRuns` is present while
-  [publish failures](/components/backend/overview/#publish-failures) call for a
-  hold, under whichever reason is reported: the number of different runs whose
-  publishes have failed since a publish last succeeded. The request reads the
-  publish job table, so the answer is current.
-- `freeBytes`, `totalBytes` and `writable` are the latest reading and are absent
-  until one has arrived.
-- The two thresholds are always present.
-- `stateVolume` is the backend's own [state
-  volume](/components/backend/overview/#low-space), present once it has been
-  read. Its `level` is `ok`, `low`, `blocked` or `unreadable`. `freeBytes` and
-  `totalBytes` are the latest reading that succeeded, `warnBytes` and
-  `stopBytes` are its two thresholds with `0` for one that is turned off, and
-  `error` is present while the latest reading failed. A change of `level` is
-  announced on the console stream.
-
 ## `POST /ingest`
 
 Scan the repository checkout the backend ingests from. New or changed [test case
@@ -154,15 +95,45 @@ no-op unless re-ingestion is forced. A whole-catalog scan also prunes any
 `(slug, version)` the checkout no longer declares, keeping the ones a stored run
 still references.
 
-The request body is optional JSON:
+The scan covers the [test suites](/test-suites/overview/) tree beside the
+authored catalog. Every definition a suite version offers is lowered into the
+same store as an ordinary test case version, carrying the suite coordinate it
+came from, and the suite's own entities are stored for the [suite
+reads](#test-suites). A whole-catalog scan enumerates both trees, so it prunes a
+suite version the checkout no longer declares along with the versions it
+defined.
+
+A whole-catalog scan refuses a prune that an empty tree would cause: it keeps
+the stored authored test-case versions when it finds no version under
+`test-cases/`, the stored game jams when it finds none under `game-jams/`, the
+stored suite versions and the case versions they defined when it finds no suite
+version, and the stored [test-case groups](#test-case-groups) when it accepts no
+group. Each tree answers for its own kind only, so a populated `game-jams/` does
+not let an empty `test-cases/` prune. A refused prune is logged and reported
+under `refusedPrunes`, one sentence per refusal naming what was kept. A refusal
+is reported only when the store held something the prune would have removed.
+`force` does not lift the refusal.
+
+The route takes the service token. The request body is optional JSON:
 
 ```jsonc
 {
   "testCases": ["carom", "coil@v1.1.0"], // restrict the scan (default: all)
   "force": true, // re-ingest even versions already in the store
+  "mode": "changed", // ingest only versions whose content differs from the store
   "catalogVersion": "a1b2c3", // tag a whole-catalog ingest with its content version
+  "refresh": true, // have the ingest sidecar refresh its checkout first
 }
 ```
+
+`refresh` has the deployed backend's ingest sidecar refresh its `test-suites`
+checkout, and the `cold-storage` clone beside it, to the tip of the branch the
+environment ingests before the scan. A backend with no sidecar ignores it. When
+the suites' update fails and the scan continues without it, the streamed feed
+opens with a `notice` line carrying the message the caller prints. Any other
+refresh failure fails the ingest before the scan. The streamed feed opens before
+the refresh runs, so the failure ends it as its `error` line; the JSON answer is
+a `502` with `ingest_refresh_failed`.
 
 Each `testCases` entry is either a bare case id, its slug or folder name,
 expanding to every version the case declares (`"carom"`), or a version-qualified
@@ -170,14 +141,38 @@ expanding to every version the case declares (`"carom"`), or a version-qualified
 version-qualified form re-ingests a single edited version without re-rendering
 the case's others.
 
+An entry the authored catalog does not know is resolved against the suites tree
+in the same two spellings. A suite slug expands to every definition of every
+version that suite declares, and `<suite>@<version>` to every definition of that
+one version.
+
 `force` overwrites a version already stored and re-renders its references, for
 development iteration on a version no run has been published against. A version
 that published runs reference is immutable and is revised by adding a new
 version.
 
+Ingest computes a digest for each version it scans, and the stored version
+record keeps the digest it was ingested from. The digest is SHA-256 over the
+version folder's files, visiting relative paths in sorted order and hashing each
+path followed by its bytes. A suite version's digest also covers the suite's
+`suite.toml`, since the display name every lowered definition reports comes from
+it. A legacy case's digest also covers
+`test-cases/reference-builds.lock.json`.
+
+`"mode": "changed"` ingests a target when the store holds no record for it, when
+its stored digest differs from the checkout's, or when the stored record's
+catalog version differs from the backend's. Every other target reports
+`ingested: false` with `reason: "unchanged"`. A whole-catalog `changed` scan
+prunes as any whole-catalog scan does. When `/healthz` would report
+`storeReady: false`, a `changed` scan ingests every target, since no stored
+record is servable. `force` rewrites every target in
+either mode.
+
 A scan against a store stamped with another record format is promoted to a
 forced whole-catalog scan, whatever the request asked for. This repairs a store
-after a backend upgrade that changed the record shapes.
+after a backend upgrade that changed the record shapes. Its prune of versions
+and suite versions is exempt from the empty-tree refusal, since this build can
+read nothing the store holds.
 
 `catalogVersion` is an opaque token identifying the catalog content of a
 whole-catalog ingest, such as the calling build's commit. The backend records it
@@ -186,7 +181,8 @@ versions instead of re-rendering them. A changed or first-seen token forces a
 full re-ingest and advances the recorded marker, so content that changed under
 an unchanged version string is still picked up. The marker lives in the store,
 so a fresh store re-ingests unconditionally. A partial scan ignores
-`catalogVersion` and leaves the marker untouched.
+`catalogVersion` and leaves the marker untouched, and so does a scan that
+refused a prune, so the next scan carrying the same token is forced.
 
 A full re-render can take a minute or more, so the response shape is content
 negotiated. By default the call answers once with the full JSON report. A client
@@ -196,19 +192,38 @@ as each version finishes. Both paths run the identical scan. The lines are
 discriminated by an `event` tag:
 
 ```jsonc
+{ "event": "notice",                               // a refresh's notice, before the scan
+  "message": "ingest: test suites update failed; ingesting without them" }
 { "event": "start", "total": 31 }                  // once, before the first version
 { "event": "version", "index": 1, "total": 31,     // one per completed version
   "slug": "carom", "version": "v1.0.0",
   "ingested": true, "renderedReferences": 3 }
+{ "event": "version", "index": 2, "total": 31,     // a version a `changed` scan skipped
+  "slug": "coil", "version": "v1.1.0",
+  "ingested": false, "renderedReferences": 0, "reason": "unchanged" }
+{ "event": "version", "index": 3, "total": 31,     // a version that failed to resolve
+  "slug": "carom-efficiency", "version": "v1.0.0",
+  "ingested": false, "renderedReferences": 0,
+  "problem": "test suite `carom@v1.0.0` is invalid: test-cases/efficiency.toml: …" }
 { "event": "done", "total": 31, "ingested": 25, "skipped": 6 } // closing summary
+{ "event": "done", "total": 2, "ingested": 0, "skipped": 2,      // a summary with a
+  "refusedPrunes": ["kept 189 stored authored version(s): …"] } // refused prune
 { "event": "error", "message": "…" }               // closing line if the scan aborts
 ```
+
+A suite version or definition that fails to resolve is a `version` line carrying
+`ingested: false` and a `problem` naming the file and the failure, and it counts
+toward `skipped`.
+
+The default JSON report carries `testCaseVersions`, `testSuites` and, when a
+prune was refused, `refusedPrunes`. The closing `done` line carries
+`refusedPrunes` the same way, and both omit it when nothing was refused.
 
 The stream has already sent a `200` by the time it knows the outcome, so a late
 failure arrives as a closing `error` line rather than an HTTP error status.
 
-A scan that actually (re)ingested a version queues a [public
-snapshot](/components/backend/snapshot/) refresh.
+A scan that actually (re)ingested a version rewrites the [public
+dataset](/components/backend/snapshot/)'s case documents and index objects.
 
 ## Test case resolution
 
@@ -222,7 +237,7 @@ Experimental versions are included only when the backend is configured to offer
 them. Each entry also carries the display metadata a listing renders, the name,
 test type, asset shape, difficulty, tags, and summary, read from the case's
 latest visible version, plus the case's
-[showcase](/components/core/showcase/#the-case-showcase) preview when that
+[showcase](/components/driver/showcase/#the-case-showcase) preview when that
 version has one: the first variant, in manifest order, that declares a
 showcase, with its media list. The preview carries only the addressing; each
 file is fetched from the [showcase
@@ -241,6 +256,12 @@ description rides the resolved version's variant.
       "difficulty": "easy",
       "tags": ["arcade"],
       "summary": "A duel of angles.",
+      // The suite coordinate, present only on a case a test suite defines.
+      "suite": {
+        "suite": "carom",
+        "suiteVersion": "v1.0.0",
+        "definition": "end-to-end",
+      },
       // The showcase preview, or null when no variant of the latest visible
       // version declares a showcase.
       "showcase": {
@@ -265,6 +286,11 @@ heavier, the description, the variants with their prompts, seeded specs,
 references and checklists, plus the changelog and errata, lives on [`GET
 /test-cases/{slug}/versions/{version}`](#get-test-casesslugversionsversion) and
 is fetched only for the case a visitor opens.
+
+A case a [test suite](/test-suites/overview/) defines carries the `suite`
+coordinate it was lowered from: the suite, the suite version, and the definition
+inside it. An authored case carries none, which is how a client tells the two
+apart and groups the suite-defined ones under their suite.
 
 A case whose latest manifest cannot be read is omitted from this listing rather
 than failing it.
@@ -309,6 +335,12 @@ A representative response:
   "testType": "end-to-end",
   "tags": ["arcade", "2d"],
   "summary": "A two-paddle rally game.",
+  // Present only on a version a test suite defines; see `GET /test-cases`.
+  "suite": {
+    "suite": "carom",
+    "suiteVersion": "v1.0.0",
+    "definition": "end-to-end",
+  },
   "description": "## Carom\n…",
   "changelog": "…",
   "maxRuntimeSeconds": 1800,
@@ -343,7 +375,7 @@ A representative response:
           "mediaUrl": "/test-cases/carom/versions/v1.0.0/references/base/title.png",
         },
       ],
-      // Variant-specific reviewer checklist items, for the web console's
+      // Variant-specific reviewer checklist items, for the console's
       // guided review. Empty when the variant declares none. On an engine-format
       // version each graded point carries its `domains` and `failureCap`.
       "reviewItems": [],
@@ -392,6 +424,11 @@ A representative response:
 }
 ```
 
+A version a test suite defines carries on each variant the `referenceBuilds` of
+its suite version: each engine the version supports with an [uploaded reference
+build](#put-suitesslugversionsversionreference-buildsengine), mapped to the URL it
+is played at, relative to the backend.
+
 The response also carries the type-specific manifest blocks the case declares,
 such as an asset case's `tool`, `output`, and per-kind spec, and a simulation,
 match, or replay block. `404` if the version has not been ingested. Schema:
@@ -400,7 +437,7 @@ match, or replay block. `404` if the version has not been ingested. Schema:
 #### Rendering for an engine
 
 An optional `engine` query parameter names the
-[engine](/components/core/engines/) each variant's `prompt` is rendered for. The
+[engine](/components/engines/engines/) each variant's `prompt` is rendered for. The
 [rendered specs route](#get-test-casesslugversionsversionspecsvariant) takes the
 same parameter, under the same rule. A case's `prompt.hbs` and its `.hbs` specs
 branch on the selected engine, so one stored template renders into different
@@ -439,26 +476,38 @@ automated-validation directory (`validation/`), as a sorted JSON string array,
 walked recursively. It covers the debug drivers plus the shared modules they
 import, such as `validation/_helpers.mjs`. A backend-driven run fetches the
 whole set through the artifacts route so a script's sibling imports resolve when
-the [validator](/components/core/validation/) runs it. These files are
+the [validator](/components/driver/validation/) runs it. These files are
 reporter-side and are never seeded into the model's run container. The array is
 empty for a version that declares no scripted items.
+
+### `GET /test-cases/{slug}/versions/{version}/suite-files`
+
+List the store-relative keys of the suite version a suite-defined version was
+lowered from, as a sorted JSON string array: its suite manifest and `version.toml`, its specification
+folders, its definition files, its validator project, and its debug API
+declaration. A run of a suite-defined case is judged against its suite, so a
+backend-driven run fetches the whole set through the artifacts route and rebuilds
+the version folder in its definition store. The prompt the harness receives is
+rendered from that model, and the [requirement
+outcomes](/test-suites/validators/) are recorded against the requirements it
+declares. The array is empty for an authored version.
 
 ### `GET /test-cases/{slug}/versions/{version}/validation-baseline/{engine}/{variant}/{file}`
 
 Fetch one reference build's committed baseline validation media
 (`<item>__<output>.<ext>`, or one of the `img.<id>.<ext>` files of the [shared
-image store](/components/core/validation/#the-shared-image-store) its recordings
+image store](/components/driver/validation/#the-shared-image-store) its recordings
 draw from), synthesized from the reference implementation. The engine is part of
 the address because a variant has one reference implementation per
-[engine](/components/core/engines/), and a run is only comparable against the
+[engine](/components/engines/engines/), and a run is only comparable against the
 one it was itself built on. A version captured before engines existed answers
 under the `none` engine; see
-[where baselines live](/components/core/validation/#where-baselines-live).
+[where baselines live](/components/driver/validation/#where-baselines-live).
 
 ### `GET /test-cases/{slug}/versions/{version}/showcase/{variant}/{file}`
 
 Fetch one media file of a variant's authored
-[case showcase](/components/core/showcase/#the-case-showcase), where `{file}` is
+[case showcase](/components/driver/showcase/#the-case-showcase), where `{file}` is
 the plain file name the carousel declares. It is the case-side counterpart of a
 run's `GET /runs/{id}/showcase/{file}`, addressed by case, version, and variant
 because the showcase is authored material committed with the version rather than
@@ -474,11 +523,108 @@ across every harness. The driver reads this before seeding a repeated jam run so
 the run can be briefed on earlier entries. Earlier runs count whether or not
 they were published; only those that captured a README appear.
 
+## Test suites
+
+These endpoints present the [test suites](/test-suites/overview/) the backend has
+ingested. They read the definition store rather than the checkout, so a
+deployment whose checkout is absent still serves what it ingested. The test cases
+a suite defines are resolved through the `/test-cases` family above like any
+other case, addressed by the catalog identity each definition was ingested under.
+
+### `GET /test-suites`
+
+Every ingested suite, under `testSuites`, with the versions it holds oldest
+first. Each version carries the identity a listing renders: its name, summary,
+tags, and whether it is experimental. Experimental versions are included only
+when the backend is configured to offer them, and a suite left with no visible
+version is omitted with them.
+
+```jsonc
+{
+  "testSuites": [
+    {
+      "slug": "carom",
+      "versions": [
+        {
+          "version": "v1.0.0",
+          "name": "Carom",
+          "summary": "A pool-table arcade game.",
+          "tags": ["arcade", "2d"],
+          "experimental": false,
+        },
+      ],
+    },
+  ],
+}
+```
+
+A version whose stored record cannot be read is omitted from this listing rather
+than failing it.
+
+### `GET /test-suites/{slug}/{version}`
+
+One suite version resolved: its [manifest](/test-suites/suite-manifest/) with the
+described prose and changelog inlined, the
+[specifications](/test-suites/specifications/) with their requirements and the
+[validator](/test-suites/validators/) modules each requirement claims, the [test
+case definitions](/test-suites/test-case-definition/), the
+[demonstrations](/test-suites/demonstrations/), the engines the version ships a
+[reference implementation](/test-suites/reference-implementations/) for, the
+bundled [assets](/test-suites/assets/), and the
+[showcase](/test-suites/showcase/).
+
+Each definition carries the catalog identity it was ingested under, so a reader
+moves from a definition to the test case it became in one step. Beside the
+record, `referenceBuilds` maps each engine with an [uploaded reference
+build](#put-suitesslugversionsversionreference-buildsengine) to the URL the build
+is played at, relative to the backend. An experimental
+version resolves only when the backend is configured to offer experimental
+versions; otherwise it answers `404` as if it were not ingested.
+
+### `GET /test-suites/{slug}/{version}/showcase/{path...}`
+
+Fetch one media file of the version's showcase, where `{path}` is the plain file
+name its carousel declares. The content type follows the extension.
+
+### `GET /test-suites/{slug}/{version}/assets/{path...}`
+
+Fetch one file of one bundled asset, addressed as `<asset id>/<file>`. The
+content type follows the extension.
+
+Both byte routes resolve the path inside the stored suite version and refuse one
+that leaves it.
+
+### `PUT /suites/{slug}/versions/{version}/reference-builds/{engine}`
+
+Upload the static build of the version's
+[reference implementation](/test-suites/reference-implementations/) for one
+engine, as a gzipped tar whose root is the build's root and holds its
+`index.html`. The backend unpacks it into the definition store beside the suite
+record at `suites/<slug>/<version>/reference-builds/<engine>/`, replacing any
+previous upload for that engine atomically. It answers `201` for a first upload
+and `200` for a replacement, with the `engine` and the `url` the build is played
+at.
+
+The backend refuses a version it has not ingested with `404` and an engine none
+of the version's definitions declare with `422`, each naming the reason. Uploads
+to preview versions are accepted, so a reference implementation can be played
+from a preview. The route takes the same authorization as `POST /ingest`.
+
+A whole-catalog prune that drops a suite version drops its reference builds with
+it.
+
+### `GET /suites/{slug}/versions/{version}/reference-builds/{engine}/{path...}`
+
+Serve one file of an uploaded reference build, with the content types and index
+fallback the [artifacts service](/components/artifacts/overview/) uses for a run's
+`build/`. The build's root, with or without the trailing slash, serves its
+`index.html`.
+
 ## Test case groups
 
 ### `GET /test-case-groups`
 
-The ingested [test-case groups](/components/core/test-case-groups/), under
+The ingested [test-case groups](/components/backend/test-case-groups/), under
 `groups`, in display order: the ordering rank is applied before serving and
 does not ride the wire. Each entry carries the group's slug, name, optional
 summary, and its member case slugs in authored order. An open read.
@@ -499,15 +645,18 @@ summary, and its member case slugs in authored order. An open read.
 ## Reviewing, publishing, and reading runs
 
 A run reaches the gallery through two mutating steps: attach one or more
-reviews, then publish it (the [lifecycle](/components/core/results/#lifecycle)).
-Each requires a bearer token. Reads require none.
+reviews, then publish it (the
+[lifecycle](/components/backend/results/#lifecycle)). Each takes a person's
+assertion.
 
-A produced run's [run record](/components/core/run-records/) is stored privately
-when the run finishes, reported by the [driver](/components/driver/overview/)
-with the job's terminal status, and the produced build and media land on the
-[artifact service](/components/artifacts/overview/), playable for review. The
-public release of the source repo and the Cloudflare build happens at publish
-time.
+A produced run's [run record](/components/contracts/run-records/) is stored
+privately when the run finishes, reported by the
+[driver](/components/driver/overview/) with the job's terminal status; the
+produced build and media land on the [artifacts
+service](/components/artifacts/overview/), playable for review, and the
+implementation's bundle on the [repos service](/components/repos/overview/).
+The public release of the source repository and the Cloudflare build happens at
+publish time.
 
 `POST /jobs/{id}/status`, the driver-authenticated status endpoint that carries
 that record, also accepts a `canceled` status, and it is the only status
@@ -516,66 +665,99 @@ report from a winding-down driver is discarded. A `canceled` status must carry a
 run record (`422` without one), normally a complete partial record: the driver
 [winds a gg run down](/components/driver/overview/#cancellation) and posts what
 the ordinary post-session path produced, including metrics, the collected tree
-and the session summary. The backend persists it with the events its relay
-accumulated and attaches the record id to the already-canceled job. The job
+and the session summary. The backend stores it beside the events already stored
+for the job and attaches the record id to the already-canceled job. The job
 keeps its `canceled` state and its cancellation detail, no completion
 notification fires, and no retry is enqueued.
 
-A `storing` status is the driver reporting that it is
-[waiting on the artifact store](/components/driver/overview/#waiting-on-the-store),
-with the upload's failure as `detail`. It moves a `dispatched`, `starting`,
-`running`, `validating` or `storing` job to `storing` and records the detail, and
-it moves no job in any other state. The first one of a wait carries the run's `record`, and
-`runFailure` when the run failed, which the backend keeps on the job and
-[finishes the run from](/components/backend/overview/#a-driver-lost-while-it-waits)
-if the driver is lost. A later `validating` status returns the job to
-`validating`, and carries `artifactsStored` to say how the wait ended. A
-`storing` job is in
-flight: `GET /jobs/active` lists it with its `detail`, it can be canceled, and
-the dispatcher can report it lost.
+The driver of a killed gg run whose session had been launched posts this
+status, and so does the driver of a run of any harness canceled while it was
+[finishing the run](/components/driver/overview/#retries), which posts
+`canceled` carrying the record it holds. Any other killed run, a gg run killed
+before its session was launched among them, is destroyed by its driver, which
+posts nothing further, so the job stays `canceled` with no record attached.
 
-A terminal status may carry `artifactsStored`, the driver's account of its
-[tree upload](/components/driver/overview/#artifacts): `true` when the artifact
-service acknowledged the run's tree and `false` when the upload failed. The
-backend records it as the run's
-[artifact presence](/components/backend/overview/#artifact-presence). A report
-that omits it leaves the run's recorded presence as it was. A report with
-`artifactsStored: false` carries `storeFault`, the failure's text, when the
-upload ended on a condition of the store rather than of the run's own tree.
+### The held record
 
-What a report says of the store is
-[evidence](/components/backend/overview/#evidence-from-uploads) whatever state
-its job is in: a `storing` status and a `storeFault` each record a failed
-upload, and `artifactsStored: true` records a tree that landed.
+The driver reports `storing` carrying the run record before it uploads
+anything, with the failure detail when the run failed (see [finishing a
+run](/components/driver/overview/#finishing-a-run)). The backend stores that
+record and detail in Postgres on the job's row before it answers, and a
+repeated `storing` report replaces them. A held record is what the backend
+finishes the run from when the driver cannot: a job reported lost while it
+holds one is recorded from it, with the state the held record carries, and no
+retry is enqueued.
 
-Only the driver of a killed gg run whose session had been launched posts this
-status. A killed run of any other harness, and a gg run killed before its
-session was launched, is destroyed by its driver, which posts nothing further,
-so the job stays `canceled` with no record attached.
+The terminal report carries the record with its build link, and may also carry
+`artifactsStored` and `storeFault`. `artifactsStored` is `true` when the
+artifacts service acknowledged the run tree, `false` when it did not, and
+absent when the driver has no artifacts service; the backend leaves what it
+recorded for the run as it is when the field is absent. `storeFault` is the
+last upload failure when `artifactsStored` is `false` because of the store
+rather than the run's own tree, and the backend reads it as evidence about the
+store whatever state the job is in. A terminal report repeated for a job that
+already holds that terminal state answers `204` and changes nothing.
 
-`POST /jobs/{id}/lost` is the dispatcher's report of a job whose driver is
-[gone without reporting](/components/dispatcher/overview/#lost-drivers). It
-requires the service token and takes a `failed` status with a detail and no record
-(`422` otherwise). A job still `dispatched`, `starting`, `running`, `validating`
-or `storing` is failed exactly as the driver's own `failed` report would fail it, unless it
-holds a report its driver
-[handed over](/components/backend/overview/#a-driver-lost-while-it-waits), which
-lands in its place. A job in any other state is left alone. Either way the
-answer is `204`.
+### Leases and lost jobs
+
+`POST /jobs/next` stores a lease expiry on the claimed job's row, two minutes
+after the claim. `POST /jobs/leases`, with the service token, takes a set of job
+ids and extends the lease of each job still driven to two minutes after the
+call. `GET /jobs/active` reports each job's lease expiry beside its state. See
+[claim leases](/components/dispatcher/overview/#claim-leases).
+
+A `dispatched` job whose lease has lapsed is back in the queue: the next claim
+takes it at its original queue position and mints a fresh per-job token, and no
+attempt is counted. The backend refuses the old token from then on.
+
+`POST /jobs/{id}/lost` is the dispatcher's report of a job whose lease lapsed
+past `dispatched`, its driver [gone without
+reporting](/components/dispatcher/overview/#lost-drivers). It requires the
+service token and takes a `failed` status with a detail and no record (`422`
+otherwise). A `starting`, `running`, `validating` or `storing` job that holds a record is
+finished from it. One that holds none is failed as
+[`infrastructure`](/components/contracts/run-records/#status), exactly as the
+driver's own `failed` report would fail it. A job in any other state is left
+alone. Either way the answer is `204`.
+
+A terminal report that reaches the backend after the job was reported lost
+supersedes the lost outcome (see [late terminal
+reports](/components/driver/overview/#late-terminal-reports)). The backend
+records the run from the report and withdraws the automatic retry the lost
+outcome enqueued: a retry still queued is removed, and one already claimed is
+canceled.
+
+Publish jobs are leased and reported lost the same way, by their own routes.
+`POST /publish-jobs/next` stores a lease expiry two minutes after the claim.
+`POST /publish-jobs/leases`, with the service token, takes a set of publish job
+ids and extends the lease of each one still `dispatched` to two minutes after
+the call, leaving the instant it was dispatched as it was. `GET
+/publish-jobs/active`, with the service token, lists the `queued` and
+`dispatched` publish jobs, each with its run, its state and its lease expiry.
+`POST /publish-jobs/{id}/lost` is the dispatcher's report of a `dispatched`
+publish job whose lease lapsed with no active publisher Job. It requires the
+service token and takes a `failed` publish result with a detail (`422`
+otherwise; `404` for an unknown publish job). The backend records the job failed
+with that detail, raises the publish-failed notification and ends the job's live
+stream, as it does for the publisher's own failed report, and the failure is
+[retried](/components/backend/results/#retrying-a-failed-publish) like any
+other. A publish job in any other state is left alone. Either way the answer is
+`204`. See [a publisher that
+stops](/components/backend/results/#a-publisher-that-stops).
 
 ### `POST /runs/{id}/reviews`
 
-Submit a [review](/components/core/results/#reviews) for a produced run: the
+Submit a [review](/components/backend/results/#reviews) for a produced run: the
 per-domain functional `ratings`, the run-wide `aesthetic` tier, the markdown
 `writeup`, the checklist verdicts, and an `editNote`. Which of them a run
 accepts follows its case version. A validator-rated run requires the single
 `aesthetic` tier and refuses `ratings`, since the functional verdicts are the
 validators'; its `checklist` is optional and partial, carrying only the points
 the reviewer overrides. A legacy run takes `ratings` and the full checklist and
-refuses `aesthetic`. The review is attributed to the account the bearer token
-resolves to, taken from the token rather than the body. A run carries many
-reviews, one per account, and re-submitting from the same account updates that
-account's own review.
+refuses `aesthetic`. The review is attributed to the assertion's `email`, taken
+from the assertion rather than the body. A run carries many reviews, one per
+reviewer identity, and re-submitting under the same identity updates that
+reviewer's own review.
 
 On a validator-rated run each `checklist` entry is the reviewer's verdict for
 one declared verdict id, an item id or an `<item>.<sub>` composite, with a
@@ -606,11 +788,15 @@ when an edit arrives without a note. Schema:
 Release a run and make it public. The endpoint gates the run (`422` when it
 fails), then enqueues a per-publish `tcab-publisher` Job and answers
 `202 Accepted` with the publish-job id and the live URL to observe the release
-on. The run flips public when that Job reports a terminal success.
+on. When that Job reports a terminal success carrying the repository and build
+links, the backend marks the run published, has the artifacts service copy the
+run's media to the public bucket, writes the run's document and the index
+objects through it, and mints the run's short code; see
+[Publish](/components/backend/results/#publish).
 
 A run whose release is already under way answers with that publish job rather
 than a second one, whether an operator or the backend's
-[automatic publishing](/components/core/results/#automatic-publishing) enqueued
+[automatic publishing](/components/backend/results/#automatic-publishing) enqueued
 it. A completed validator-rated run is enqueued by the backend when it finishes,
 so this endpoint is how every other publishable run is released and how a failed
 release is retried.
@@ -621,48 +807,43 @@ completed validator-rated run is admitted with or without a review, since its
 functional rating and score are on the record. A publishable failure needs no
 review, since it has no review checklist.
 
-A run that passes the gate is then checked for its [stored artifact
-tree](/components/backend/overview/#artifact-presence), which is what a release
-publishes. A run with no stored tree is refused with `409`, and the message says
-the tree is not stored. A run whose tree was reclaimed is refused with `409` as
-well. For a failed or canceled run the message says its artifacts were removed
-after the retention period, and for a published run it says the tree was removed
-once the release was confirmed, which is why a published run cannot be published
-again after that. When the artifact service gives no answer the request is
-refused with `503` and can be repeated.
-
 ```jsonc
 { "publishJobId": "clx…", "liveUrl": "/publish-jobs/clx…/live" }
 ```
 
 The endpoint is idempotent while a release is under way. A run that already has
 a live publish job gets that job's id and live URL back rather than a second
-enqueue, and two concurrent requests cannot both enqueue. A publish is not
-idempotent externally: every publish job mints a brand-new Cloudflare Pages
-deployment, so two jobs for one run would leave an orphaned public build behind.
+enqueue, and two concurrent requests cannot both enqueue.
 
-A publish job whose publisher died before reporting stops blocking after an
-hour, and a failed publish never blocks at all: it stays immediately retryable.
-As a second layer, the publisher itself re-checks the run's publication state
-before doing any external work, and skips the release, reporting the links the
-run already carries, when the run is already published.
+A publish is resumable and idempotent end to end, as [repeating a
+step](/components/backend/results/#repeating-a-step) states. The publisher
+first asks whether the run is already published and reports the links it
+carries when it is. The Pages deploy makes one deployment per run, looked up by
+the digest of the scrubbed build, so a repeat reuses it, and the repository
+publish reproduces its commit. The backend accepts a repeated success result,
+which re-asserts the same links and keeps the run's publication time.
+
+A publish job whose publisher stops without reporting is failed by the bounds
+[a publisher that stops](/components/backend/results/#a-publisher-that-stops)
+lists, and a failed publish never blocks: it stays immediately retryable.
 
 ### `DELETE /runs/{id}`
 
-Permanently delete a run: its record, its reviews, its links, and its folder in
-the backend store, a gg run's session record included. A published run whose
-record this build can read is refused (`422`), because a public run is in the
-snapshot and the gallery. A published run whose
+Permanently delete a run: its record, its reviews, its links, and its stored
+media. A published run whose record this build can read is refused (`422`),
+because a public run is in the snapshot and the gallery. A published run whose
 record this build cannot read is deleted, since it is already absent from both.
 `404` if unknown. The response reports the run id and `deleted: true`.
 
 The job that produced the run is deleted with it.
 
-The run's playable build and recorded logs live in the separate [artifact
-service](/components/artifacts/overview/), which the backend asks over
-`TCAB_ARTIFACTS_URL` to prune the run's tree as well. That prune is best-effort
-and never fails the delete; it runs only when that URL and the service token are
-both configured. A tree a failed prune leaves behind is reclaimed by the
+The run's playable build and recorded logs live on the separate [artifacts
+service](/components/artifacts/overview/), and its bundle on the [repos
+service](/components/repos/overview/); the backend asks each over
+`TCAB_ARTIFACTS_URL` and `TCAB_REPOS_URL` to prune the run's tree and bundle as
+well. Each prune is best-effort and never fails the delete; it runs only when
+that URL and the service token are both configured. A tree a failed prune
+leaves behind is reclaimed by the
 [sweep](/components/backend/overview/#artifact-reclamation).
 
 Deletion acts on the stored row rather than on the record, so it also deletes a
@@ -698,8 +879,8 @@ List stored runs, newest first. A `state` query parameter selects which runs:
 - `state=failures` — the publishable-failure worklist: catastrophic, timed-out,
   hung, and harness-error runs, pending and published. Infrastructure failures
   are excluded, as they are never publishable.
-- `state=unreviewed` — the strict subset of the review worklist that no account
-  has reviewed yet. The automatically graded test types are excluded, since no
+- `state=unreviewed` — the strict subset of the review worklist that no
+  reviewer has reviewed yet. The automatically graded test types are excluded, since no
   reviewer can clear them from the list.
 - `state=unpublished` — every unpublished run whatever its terminal state,
   including infrastructure failures and the canceled gg runs that were recorded,
@@ -707,11 +888,8 @@ List stored runs, newest first. A `state` query parameter selects which runs:
   the default published listing.
 - `state=publishable` — the publish worklist: the subset of `state=unpublished`
   the publish gate accepts right now, which is a validator-rated completed run,
-  a reviewed legacy completed run, or one of the publishable failure tiers. A
-  run whose artifact tree is recorded as not stored is left out, since its
-  publish is refused. A listed run whose tree has not been checked yet can
-  still be refused by the publish endpoint, which asks the artifact service as
-  it enqueues.
+  a reviewed legacy completed run, or one of the publishable failure tiers.
+  Every listed run is one the publish endpoint will accept.
 - `state=any` — the union of the published and unpublished slices: every
   recorded run, with no lifecycle predicate at all. This is what the web
   console's run listings draw from.
@@ -732,25 +910,14 @@ launched, leaves no record, so it is listed by no selector.
 - Default, `fields` omitted — the full stored run per row, in the shape of the
   [detail endpoint](#get-runsid) (record, reviews, ratings, and score).
 - `fields=summary` — a lightweight summary card per row: the run's id and
-  timestamps, its [subject](/components/core/run-records/#subject) including the
-  test type, [metrics](/components/core/metrics/), the `validationLoaded`
+  timestamps, its [subject](/components/contracts/run-records/#subject) including the
+  test type, [metrics](/components/contracts/metrics/), the `validationLoaded`
   signal, state, the functional `rating`, the `aesthetic` rating,
   `validatorRated`, the `score` and `reviewCount`, the denormalized case name, a
   performance run's fuel result, the ranking slice of a run's code analysis, and
   links. This is the same summary shape the [public
-  snapshot](/components/backend/snapshot/#runsjson--the-run-index) ships as its
-  run index, whose schema is
-  [`snapshot/runs.schema.json`](https://docs.testcabinet.ai/schema/snapshot/runs.schema.json).
-  The page carries `artifactsNotStored` beside its rows: the ids, among the
-  rows of this page, of the runs whose
-  [artifact tree is recorded as not stored](/components/backend/overview/#artifact-presence).
-  It is a property of the page rather than of the card, so the summary shape
-  the snapshot ships is unchanged. Every console response that returns summary
-  cards carries the same list, `GET /account/reviews` among them. A run whose
-  tree the backend
-  [reclaimed](/components/backend/overview/#what-a-reclaim-records) is left out
-  of it and named in `artifactsReclaimed`, a second list of ids beside the
-  first.
+  dataset](/components/backend/snapshot/#runsjson--the-run-index)'s run index
+  holds as its row.
 
 #### Two pagination modes
 
@@ -782,7 +949,7 @@ The offset mode additionally accepts:
   matching any of them. Like `version`, it silences `latestVersions`.
 - Filter `testCases`, a comma-separated list of case slugs, narrowing to runs
   matching any of them, so one query covers a [test-case
-  group](/components/core/test-case-groups/)'s member cases. It ANDs with the
+  group](/components/backend/test-case-groups/)'s member cases. It ANDs with the
   other filters, `testCase` included, and `latestVersions` composes with it as
   with any case slice.
 - Filter `ggConfigId`, the id of a [gg configuration](/gg/configurations/),
@@ -818,11 +985,10 @@ The offset mode additionally accepts:
 
 ### `GET /runs/{id}`
 
-One stored run, as `{ record, reviews, published, artifactsStored,
-artifactsReclaimed, links, rating, aesthetic, validatorRated, score }`: its
-record with links populated, the array of reviews it carries with each
-reviewer's identity, whether it is published, whether its artifact tree is
-stored, whether that tree was reclaimed, its links, and the run's ratings and
+One stored run, as `{ record, reviews, published, links, rating, aesthetic,
+validatorRated, score }`: its record with links populated, the array of reviews
+it carries with each reviewer's identity, whether it is published, its links
+with the short `code` a published run carries, and the run's ratings and
 score. Each review carries the `ratings` or the
 run-wide `aesthetic` its run's channel accepts. `404` if unknown. The same
 shape is what the default projection of [`GET /runs`](#get-runs) lists per row.
@@ -831,16 +997,6 @@ This endpoint answers with the record, so a run whose stored record this build
 cannot read answers `404` here and is reached through [`GET
 /runs/unreadable`](#get-runsunreadable).
 
-- `artifactsStored`: the run's
-  [artifact presence](/components/backend/overview/#artifact-presence). `true`
-  when the artifact service holds the run's tree, `false` when it does not, in
-  which case the run cannot be published, and `null` while unknown.
-- `artifactsReclaimed`: `null`, or `{ "at", "reason" }` for a run whose tree the
-  backend
-  [reclaimed](/components/backend/overview/#what-a-reclaim-records): the RFC
-  3339 time and one of `published`, `failed` and `canceled`. Such a run reports
-  `artifactsStored: false`, and a consumer reads `artifactsReclaimed` first to
-  tell a tree removed on purpose from one that was lost.
 - `validatorRated`: whether the run's case version is
   [validator-rated](/testing/end-to-end/evaluation/#rating-channels), so a
   consumer can show the run's points and functional rating from the record
@@ -870,23 +1026,20 @@ cannot read answers `404` here and is reached through [`GET
   run's case version is not ingested, and `null` for every run that did not
   complete, for the same reason its `rating` is.
 
-The six are always present, `null` rather than omitted when unset. A run's
+The four are always present, `null` rather than omitted when unset. A run's
 detail and its summary card always report the same functional rating and score.
 
 ```jsonc
 {
   "record": { "…": "full RunRecord, links populated" },
   "published": false,
-  "artifactsStored": true,
   "validatorRated": true,
   "rating": "great",
   "aesthetic": "amazing",
   "score": { "earned": 64, "total": 68, "reviews": 1, "overallGrade": null },
   "reviews": [
     {
-      "reviewerId": "acct_7yq…",
-      "reviewer": "Ada",
-      "username": "ada",
+      "reviewer": "ada@clockwyrks.com",
       "ratings": [],
       "aesthetic": "amazing",
       "writeup": "Plays well, but…",
@@ -904,98 +1057,42 @@ detail and its summary card always report the same functional rating and score.
   "links": {
     "sourceRepo": "https://github.com/…",
     "playableBuild": "https://…",
+    "code": "d483a2f9",
   },
 }
 ```
 
 ### `GET /runs/{id}/events`
 
-The run's recorded normalized [event stream](/components/core/events/) as a JSON
-array, empty when the run recorded none. Raw harness output is never served.
-`404` for an unknown run.
+The run's recorded normalized [event stream](/components/driver/events/) as a JSON
+array, empty when the run recorded none. The stream is the run's job's events as
+the backend stored them on receipt, in sequence order (see [delivery to the
+backend](/components/driver/events/#delivery-to-the-backend)). Raw harness output
+is never served. `404` for an unknown run.
 
-### Run files
+### `GET /runs/{id}/bundle`
 
-The files a run's driver mirrored into the backend, each served under the name
-its record gives it:
-
-| Route                               | File                                                                 |
-| ----------------------------------- | -------------------------------------------------------------------- |
-| `GET /runs/{id}/proof/{file}`       | One proof image or video                                             |
-| `GET /runs/{id}/validation/{file}`  | One synthesized validation output, or a file of the image store      |
-| `GET /runs/{id}/asset/{file}`       | One generated asset, adversarial replay, scenario or engine module   |
-| `GET /runs/{id}/showcase/{file}`    | One showcase file                                                    |
-| `GET /runs/{id}/code-analysis`      | The run's code-analysis document                                     |
-| `GET /runs/{id}/controller.wasm`    | An adversarial run's controller module                               |
-| `GET /runs/{id}/replay`             | A gg run's session record                                            |
-
-The content type follows the file's extension. A `.json.gz` file is served as
-JSON with a gzip content encoding. The code-analysis document and the session
-record are stored gzipped and are served that way to a request that accepts
-gzip and decoded for one that does not.
-
-Each route answers from the backend store when the store holds the file.
-Otherwise it answers from the [public
-bucket](/components/backend/snapshot/#the-file-manifest), which is how a
-published run's files are served once the store no longer holds them:
-
-1. The run's file manifest is read. A run with no manifest recorded against
-   the configured bucket, which is every run no refresh has ever confirmed
-   there, answers `404`, as does a backend with no bucket. The manifest is read
-   whether or not the run's confirmation still holds: an upload, a push of the
-   run's record or a refresh can withdraw the confirmation, and the objects are
-   where the manifest says all the same.
-2. A file the manifest does not name answers `404`, and so does one it records
-   as unrecoverable with no transcoded copy.
-3. The object the manifest names is fetched from the bucket and passed through
-   as it arrives, without being held in memory. Its content type follows the
-   extension of the object's key.
-
-A transcoded video is requested by its recorded `.webm` name and is answered
-with the recorded webm, as `video/webm`. When the manifest records that
-recording as unrecoverable and names the mp4 made from it, the route answers
-with the mp4 as `video/mp4` under the same `.webm` name, so a reader takes the
-type from the response and not from the name.
-
-The code-analysis and session-record objects in the bucket are plain JSON with
-any leaked credential redacted. A document answered from the bucket is the
-stored one's JSON written again, so it holds the same values except where a
-credential was redacted, and is not the same bytes: the whitespace differs, and
-[a session record's numbers](/components/backend/snapshot/#the-session-record)
-are written in their shortest form.
-
-A bucket that answers that it holds no object under the key answers `404`, and
-the backend logs the run, the file and the key at `error`, since the manifest
-says the object is there. A bucket that does not answer, or answers with any
-other error, answers `502`, and a manifest that cannot be read answers `500`, so
-a fault is never read as a file the run does not have.
-
-No route serves a byte range, from the store or from the bucket.
-
-Each `GET` route has a `POST` on the same path, which a driver uploads the file
-to. The file is written whole or not at all: a
-request that fails leaves no part of it under the run's name. An upload for a
-run that is published [withdraws the run's confirmation and has a snapshot
-refresh requested](/components/backend/overview/#uploads-after-a-confirmation),
-so the file is published before the store's copy can be removed, and the run's
-other files stay served meanwhile.
+The run's implementation as a git bundle, fetched from the
+[repos service](/components/repos/overview/) with the service token and
+streamed as `application/octet-stream` under the file name `<run-id>.bundle`.
+The route takes a person's assertion. `404` for an unknown run or a run with no
+bundle.
 
 ### `POST /snapshot/refresh`
 
-Force an immediate [public snapshot](/components/backend/snapshot/)
-regeneration, upload, and deploy-hook fire, outside the normal [refresh
-batching](/components/backend/overview/#refresh-batching). It waits for a
-refresh already running, carries every pending request, and starts the minimum
-interval before the next batch. The response reports whether the snapshot was
-refreshed, the run count it covers, and whether the deploy hook fired.
+Rewrite the whole [public dataset](/components/backend/snapshot/) from the full
+published set, outside the normal coalescing window: every document and index
+object is written through the artifacts service and the `index.json` pointer
+swapped last. The route takes the service token. The response reports whether
+the dataset was rewritten and the run count it covers.
 
 ## Coverage plans and ladders
 
-The reviewer scheduling surface: what runs an account wants to exist, and how
-many of them it keeps in flight at once. Every endpoint here requires a bearer
-token and is keyed to the token's account. There is no path parameter naming a
-user, and an id that belongs to another account answers `404` rather than `403`,
-so one account cannot probe another's plan ids. The concepts live on
+The reviewer scheduling surface: what runs a reviewer wants to exist, and how
+many of them it keeps in flight at once. Every endpoint here takes a person's
+assertion and is keyed to its `email`. There is no path parameter naming a
+reviewer, and an id that belongs to another reviewer answers `404` rather than
+`403`, so one reviewer cannot probe another's plan ids. The concepts live on
 [Coverage plans](/components/backend/coverage/) and
 [Ladders](/components/backend/ladders/); this section is the wire contract.
 
@@ -1042,7 +1139,7 @@ configuration's current `ggConfigName`, and the `model` its root agent binds to.
 A member's runs and a run launched by hand from the same configuration share one
 [coverage cell](/components/backend/coverage/#what-identifies-a-gg-cell), so every
 endpoint that enqueues a gg run applies one rule to the capability set it carries.
-The set's `presetId` must name a gg configuration the token's account holds, or the
+The set's `presetId` must name a gg configuration the caller holds, or the
 launch is refused with `400`; `POST /gg/runs` and the gg runs of `POST /jobs` and
 `POST /jobs/batch` each answer to it, and a batch reports the refusal at that run's
 own index. The enqueued set records that configuration's current name in
@@ -1052,17 +1149,17 @@ as it arrived and belongs to no configuration's cell.
 
 ### The runs-in-flight limit
 
-- `GET|PUT /coverage-settings` — the account-wide `inFlightLimit`: how many of a
+- `GET|PUT /coverage-settings` — the reviewer-wide `inFlightLimit`: how many of a
   plan's or a ladder's jobs may be in flight at once. It is a
   [tagged shape](/components/backend/coverage/#the-runs-in-flight-limit),
   `{ "kind": "bounded", "runs": N }` or `{ "kind": "unbounded" }`: a bound of `0`
   is a legitimate value that launches nothing, and unbounded launches every
-  missing cell at once. `GET` reports `isDefault` when the account has never
+  missing cell at once. `GET` reports `isDefault` when the reviewer has never
   chosen one, and no row is materialized on read.
   Schema: [`coverage/coverage-settings.schema.json`](https://docs.testcabinet.ai/schema/coverage/coverage-settings.schema.json).
 
 A plan's and a ladder's `inFlightLimit` override takes the same shape and is
-nullable: null inherits the account's setting.
+nullable: null inherits the reviewer's setting.
 
 ### Groups and plans
 
@@ -1071,8 +1168,8 @@ nullable: null inherits the account's setting.
   [pinned cases](#pinned-cases) (`kind: "case"`). Plans and ladders reference them
   by id, so editing a group reshapes everything that points at it. A plan that
   references a deleted group ignores the dangling id at coverage time; there is no
-  cascade. A `combo` member naming a gg configuration the account does not own is
-  refused with `400`.
+  cascade. A `combo` member naming a gg configuration the caller does not own
+  is refused with `400`.
 - `GET|POST /coverage-plans`, `PUT|DELETE /coverage-plans/{id}` — the plans
   themselves: members, `runsPerCell`, `outerAxis`, the optional
   `inFlightLimit` override, and `retryCount`, the
@@ -1108,11 +1205,9 @@ it](/components/backend/coverage/#a-cells-runs): the first `runsPerCell` counted
 of the cell to land. Every count on the cell, and every roll-up, is computed over
 those runs, so a cell never reads more than its target.
 
-- `GET /coverage-plans/{id}/runs` — `{ "runs": [...], "artifactsNotStored": [...] }`,
-  the run summary card of every run the plan's cells hold, in the matrix's cell
-  order, and the ids among them whose
-  [artifact tree is recorded as not stored](/components/backend/overview/#artifact-presence).
-  The console's dashboard breakdowns read it.
+- `GET /coverage-plans/{id}/runs` — `{ "runs": [...] }`, the run summary card of
+  every run the plan's cells hold, in the matrix's cell order. The console's
+  dashboard breakdowns read it.
 
 ### Filling a plan
 
@@ -1131,7 +1226,7 @@ those runs, so a cell never reads more than its target.
   cell's shortfall. Answers `204`; `404` when the cell is not one of the plan's,
   and `409` when it is not blocked.
 - `GET /coverage-plans/{id}/queue` — the plan's completed runs the requesting
-  account has not reviewed, among the runs its cells hold, in the plan's own
+  reviewer has not reviewed, among the runs its cells hold, in the plan's own
   order rather than newest-first like the global unreviewed listing. Capped rather
   than paginated, with `truncated` set when there is more behind it.
 
@@ -1217,7 +1312,7 @@ starts a dispatch of it.
   when no dispatch is running or the climber is not blocked for one of those two
   reasons.
 - `GET /ladders/{id}/queue` — the completed runs the latest dispatch counts that
-  the requesting account has not reviewed, in the ladder's own order. A run the
+  the requesting reviewer has not reviewed, in the ladder's own order. A run the
   dispatch read rather than launched is offered the same way.
 
 The backend runs every launch pass of a dispatch itself, prompted by Run, a
@@ -1226,7 +1321,7 @@ climber's Retry, and every finishing run of one of its rung slots' cells
 
 ## Stopping runs in bulk
 
-Three global sweeps. All require a bearer token, and all answer
+Three global sweeps. All take a person's assertion, and all answer
 `{ "canceled": n, "includedWaiting": bool, "includedActive": bool }`.
 
 | endpoint                    | sweeps                                                       |
@@ -1237,7 +1332,7 @@ Three global sweeps. All require a bearer token, and all answer
 
 These are global and scoped to nothing: they cancel matching jobs whatever
 launched them, including runs launched by hand and runs launched by another
-account. They are the "stop the cabinet" controls; the scoped equivalent is a
+reviewer. They are the "stop the cabinet" controls; the scoped equivalent is a
 plan's [`halt`](#halting-a-plan) or a ladder's
 [`stop`](#ladders). Cancelling a single job by id remains
 `POST /jobs/{id}/cancel`, which these reuse rather than reimplement.
@@ -1249,18 +1344,19 @@ first. `cancel-waiting` needs no confirmation.
 
 The model catalog is the list of subjects a run can be attributed to (see
 [Adding or Updating a Model](/guides/devops/adding-or-updating-a-model/)).
-`GET /models` and `GET /models/seed` are open; the rest require a bearer token.
+`GET /models` and `GET /models/seed` are open; the rest take a person's
+assertion.
 
-| endpoint                           | does                                                  |
-| ---------------------------------- | ----------------------------------------------------- |
-| `GET /models`                      | the merged catalog of curated and run-derived entries |
-| `POST /models`                     | create a curated entry                                |
-| `PUT /models/{slug}`               | update a curated entry                                |
-| `DELETE /models/{slug}`            | remove a curated entry                                |
-| `GET /models/seed?runId=`          | a blank form seeded from a run's model id             |
-| `GET /models/openrouter?slug=`     | OpenRouter's facts about a model, for Fill            |
-| `POST /models/list-prices/refresh` | refresh every curated entry's list price              |
-| `POST /models/logo`                | fetch and sanitize an svgl.app logo                   |
+| endpoint                            | does                                                  |
+| ----------------------------------- | ----------------------------------------------------- |
+| `GET /models`                       | the merged catalog of curated and run-derived entries |
+| `POST /models`                      | create a curated entry                                |
+| `PUT /models/{slug}`                | update a curated entry                                |
+| `DELETE /models/{slug}`             | remove a curated entry                                |
+| `GET /models/seed?runId=`           | a blank form seeded from a run's model id             |
+| `GET /models/openrouter?slug=`      | OpenRouter's facts about a model, for Fill            |
+| `POST /models/list-prices/refresh`  | refresh every curated entry's list price              |
+| `POST /models/logo`                 | fetch and sanitize an svgl.app logo                   |
 
 Each `GET /models` entry carries its display fields, aliases with their harness
 families, OpenRouter slug, developer provider (`providerPin`), and provider
@@ -1268,7 +1364,7 @@ policy. `listPrice` is the list price, per token, with `listPriceAsOf` the date
 the figures were taken and `listPriceSource` where they came from: `hand` for a
 set the operator entered on the form, by changing a rate or the date,
 `openrouter` for one
-[resolved from OpenRouter](/components/core/metrics/#list-price-resolution). All
+[resolved from OpenRouter](/components/contracts/metrics/#list-price-resolution). All
 three are null until all three rates are set. The list price is the only price
 an entry carries.
 
@@ -1293,7 +1389,7 @@ from them. A slug OpenRouter does not list is a
 `404`.
 
 `POST /models/list-prices/refresh` runs a
-[list price refresh](/components/core/metrics/#list-price-refresh) over every
+[list price refresh](/components/contracts/metrics/#list-price-refresh) over every
 curated entry and queues a snapshot refresh when any rate changed, including
 when the refresh stopped part-way through. It takes no body and answers a
 `ListPriceRefreshOut` when the refresh has finished:
@@ -1307,7 +1403,7 @@ when the refresh stopped part-way through. It takes no body and answers a
 - `unchanged`: entries whose resolved rate equals the stored one, dated again.
 - `unresolved`: entries OpenRouter yielded no rate for, kept as they were.
 
-A run's [comparable cost](/components/core/metrics/#cost) is priced from the
+A run's [comparable cost](/components/contracts/metrics/#cost) is priced from the
 list price. Every enqueue path fills a curated entry's missing list price by the
 list price resolution, and refuses a launch naming a model the catalog has no
 entry for, or one OpenRouter yields no rate for, with the reason named; a gg
@@ -1355,11 +1451,14 @@ least 80% of its scored calls, and `not-ready` otherwise.
 
 Probes are append-only history: a re-run is a new dated record. They are
 console-only data and never feed the public snapshot. A probe executes inside
-the backend process, so a backend restart fails any probe still `running`.
+a backend process, which records each call's item as the call completes and
+holds a lease on the probe's row while it runs. A probe still `running` whose
+lease has lapsed, as one does when its backend restarts, is resumed by a
+running backend, which issues only the calls the probe has no item for.
 
 ### `POST /models/{slug}/probes`
 
-Trigger a probe. Requires a bearer token: the backend spends its own OpenRouter
+Trigger a probe. Takes a person's assertion: the backend spends its own OpenRouter
 key (`TCAB_OPENROUTER_API_KEY`, see
 [Configuration](/components/backend/overview/#configuration)) on the caller's
 behalf. The request body is optional JSON, every field optional:
@@ -1405,7 +1504,7 @@ the error that voided the call. An open read.
 ### `GET /models/{slug}/probe-providers`
 
 The providers OpenRouter lists for the model, as name and context length, for
-pinning a probe to one. Requires a bearer token, because it reaches a third
+pinning a probe to one. Takes a person's assertion, because it reaches a third
 party on the caller's behalf.
 
 ### `GET /models/{slug}/candidates`
@@ -1418,7 +1517,7 @@ is the developer's endpoint, and its recorded fault rate, `null` for a provider
 with no recorded calls, which orders as a rate of zero. The response also
 reports the native level the filter used, null when the catalog entry switches
 the quantization filter off and no endpoint declares a level, and a `refusal`
-naming why the list is empty when it is. Requires a bearer token, because it
+naming why the list is empty when it is. Takes a person's assertion, because it
 reaches a third party on the caller's behalf.
 
 ```jsonc
@@ -1463,7 +1562,7 @@ therefore answer different questions.
 - `runs`: the total recorded run count.
 - `tokens`: the summed total tokens, with `unreportedRuns` counting the runs
   whose metrics reported no tokens; those contribute nothing to the sum.
-- `cost`: the summed [comparable cost](/components/core/metrics/#cost) in USD,
+- `cost`: the summed [comparable cost](/components/contracts/metrics/#cost) in USD,
   with `unreportedRuns` counting the runs whose comparable cost is unknown;
   those contribute nothing to the sum.
 - `testCases` and `models`: distinct test-case slugs and distinct model ids
@@ -1559,14 +1658,13 @@ backlog to catch up on.
 Opens the stream. Every frame is a named SSE event, so there is no unnamed
 `message` frame and a client using `EventSource.onmessage` alone receives nothing.
 
-| `event:`       | payload                 | topic                         |
-| -------------- | ----------------------- | ----------------------------- |
-| `stream`       | `{ "streamId": "…" }`   | always — the first frame      |
-| `notification` | `Notification`          | `notifications`               |
-| `run`          | `RunEvent`              | `runs`                        |
-| `resync`       | `{ "dropped": n }`      | always                        |
-| `storage`      | `ArtifactStorageStatus` | always                        |
-| `heartbeat`    | _(none)_                | always — every 15s while idle |
+| `event:`       | payload               | topic                         |
+| -------------- | --------------------- | ----------------------------- |
+| `stream`       | `{ "streamId": "…" }` | always — the first frame      |
+| `notification` | `Notification`        | `notifications`               |
+| `run`          | `RunEvent`            | `runs`                        |
+| `resync`       | `{ "dropped": n }`    | always                        |
+| `heartbeat`    | _(none)_              | always — every 15s while idle |
 
 The hello frame (`stream`) arrives first and carries the id the client quotes
 back to change its topics. The id is minted per connection rather than per
@@ -1578,12 +1676,6 @@ The `resync` frame says this client fell behind far enough that the backend
 dropped messages for it. Nothing can be replayed, so the client's recovery is to
 re-read the authoritative lists (`GET /jobs/active`, and the run listing if it is
 showing produced runs).
-
-The `storage` frame carries the body of
-[`GET /artifacts/capacity`](#get-artifactscapacity). One follows the hello frame
-on every connection, and another is sent each time `state`, `runsOnHold`,
-`holdReason`, `runsWaitingToStore`, `publishFailingRuns` or `detail` changes, so
-a client holds the current state without asking for it.
 
 The `heartbeat` frame carries no payload; its arrival is the whole message. A
 client arms a watchdog, rearms it on every frame, and treats an overdue one as a
@@ -1634,12 +1726,11 @@ reported start and the recorded one name the same moment. A queued, pending, or
 dispatched run omits the field, since it has not started.
 
 A duration ticked from `startedAt` is elapsed wall clock, so it reads higher than the
-[run time](/components/core/metrics/#durations) the finished run records, and steps
+[run time](/components/contracts/metrics/#durations) the finished run records, and steps
 down once the run lands.
 
 `kind` is `enqueued` (joined the queue), `state-changed` (moved between two
-non-terminal states, a move into `storing` adding the driver's reason as
-`detail`), or `finished` (reached `succeeded`, `failed`, or `canceled`,
+non-terminal states), or `finished` (reached `succeeded`, `failed`, or `canceled`,
 and left the in-flight set). A `finished` event adds `recordId` when the run
 produced one and `detail` when it failed or was cancelled. A cancelled run raises
 a run event but no notification, since it is an operator action rather than a
@@ -1697,6 +1788,6 @@ Two client-side details are load-bearing:
 A test case's reference mockups are rendered to screenshots once, by the
 backend, at ingest. Rendering there makes the validation baseline byte-identical
 across every runner: a runner downloads the rendered image, seeds it as the
-visual target, and uses it as the [validation](/components/core/validation/)
+visual target, and uses it as the [validation](/components/driver/validation/)
 baseline. Runners still need a headless browser locally for the load check and
 per-check capture; only the reference baseline render lives on the backend.

@@ -5,7 +5,7 @@
 //! The probe itself — the per-language case fixtures, the two scenarios, the
 //! classification of each submitted program, and the verdict — is
 //! [`crate::probe`]; these handlers own only the HTTP surface and the row
-//! lifecycle. Triggering requires a bearer token (the backend spends the
+//! lifecycle. Triggering takes a person's assertion (the backend spends the
 //! operator's OpenRouter credit on their behalf), as does the provider
 //! enumeration (a third-party reach, like the OpenRouter form fill); the reads
 //! are open like the rest of the catalog. Probe results are console-only data
@@ -14,172 +14,29 @@
 use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
-use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
 
 use test_cabinet_entities::{model_probe, model_probe_item};
 
-use crate::auth::AuthUser;
+use crate::auth::Person;
 use crate::error::ApiError;
 use crate::probe;
 
 use super::AppState;
 
-/// The `POST /models/{slug}/probes` request body. Everything is optional: an
-/// empty body probes every language arm over the default route with the
-/// default sampling.
-#[derive(Debug, Default, Deserialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub struct ProbeTriggerInput {
-    /// Pin every call to this provider (`provider.order` with fallbacks
-    /// disabled). Absent probes the default route.
-    pub provider: Option<String>,
-    /// Probe this one program-language arm, by its wire id (`typescript`,
-    /// `rust`, …). Absent probes every arm.
-    pub language: Option<String>,
-    /// Completion calls per input prompt (default 8, at most 128).
-    pub samples: Option<i32>,
-    /// Completion-token cap per call (default 3500).
-    pub max_tokens: Option<i32>,
-}
+pub use test_cabinet_contracts::backend_api::models::{
+    ModelProbeDetailResponse, ModelProbeItemOut, ModelProbeOut, ModelProbesResponse,
+    ProbeProviderOut, ProbeProvidersResponse, ProbeTriggerInput, ProbeTriggerResponse,
+};
 
-/// One probe, as every probe read returns it (the detail read adds the items
-/// and the per-case requests).
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub struct ModelProbeOut {
-    pub id: String,
-    /// The catalog slug the probe was triggered from.
-    pub model_slug: String,
-    /// The OpenRouter slug the completions were requested under.
-    pub openrouter_slug: String,
-    /// The pinned provider, or null for the default route.
-    pub provider: Option<String>,
-    /// The probed program-language arm's wire id, or null for every language.
-    pub language: Option<String>,
-    /// Completion calls requested per input prompt.
-    pub samples: i32,
-    pub max_tokens: i32,
-    /// `running`, `complete`, or `failed`.
-    pub status: String,
-    /// Why the probe failed, or null.
-    pub error: Option<String>,
-    /// `ready` or `not-ready`; null until the probe completes.
-    pub verdict: Option<String>,
-    /// The probe's overall case-check pass rate (0..=1), or null.
-    pub pass_rate: Option<f64>,
-    /// Total USD spend across the probe's calls, as OpenRouter reported it.
-    pub spend: f64,
-    pub created_at: String,
-    pub finished_at: Option<String>,
-}
-
-/// One completion call inside a probe: which case it sampled, which provider
-/// served it, how it finished, whether the submitted program passed its case's
-/// check, and the raw reply.
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub struct ModelProbeItemOut {
-    pub id: String,
-    /// The program-language arm's wire id this call probed.
-    pub language: String,
-    /// The case's scenario: `baseline` or `missing-docview`.
-    pub scenario: String,
-    /// The case's input prompt id.
-    pub prompt: String,
-    /// The sample index within the case, from 0.
-    pub sample: i32,
-    /// The provider OpenRouter reported serving the call, or null on error.
-    pub provider: Option<String>,
-    pub finish_reason: Option<String>,
-    pub native_finish_reason: Option<String>,
-    /// The classified outcome (`correct-calls`, `docview-first`,
-    /// `called-undocumented`, `fenced`, …), or null when the call errored.
-    pub label: Option<String>,
-    /// Whether the submitted program passed its case's check.
-    pub pass: bool,
-    /// The program string the reply's first `submit_program` call carried, or
-    /// null.
-    pub program_text: Option<String>,
-    /// The reply's text content beside the call, verbatim.
-    pub response_text: String,
-    /// The reply's separate reasoning stream, or null.
-    pub reasoning_text: Option<String>,
-    pub prompt_tokens: Option<i64>,
-    pub completion_tokens: Option<i64>,
-    /// The call's USD cost, or null.
-    pub cost: Option<f64>,
-    pub duration_ms: i64,
-    /// The transport or gateway error that voided the call, or null.
-    pub error: Option<String>,
-    pub created_at: String,
-}
-
-/// The `POST /models/{slug}/probes` response: the probe row, already running.
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub struct ProbeTriggerResponse {
-    pub probe: ModelProbeOut,
-}
-
-/// The `GET /models/{slug}/probes` response, newest first.
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub struct ModelProbesResponse {
-    pub probes: Vec<ModelProbeOut>,
-}
-
-/// The `GET /model-probes/{id}` response: the probe with everything the console
-/// shows — every case's request messages exactly as sent, every call's
-/// classification, the submitted programs, and the raw replies. Each request
-/// also carried the case's `submit_program` tool definition with `tool_choice`
-/// forced to it; that pair is part of the embedded fixture rather than a
-/// response field.
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub struct ModelProbeDetailResponse {
-    pub probe: ModelProbeOut,
-    pub items: Vec<ModelProbeItemOut>,
-    /// The per-case requests exactly as sent, one entry per probed
-    /// (language, scenario, prompt).
-    pub requests: Vec<probe::ProbeRequestOut>,
-}
-
-/// The `GET /models/{slug}/probe-providers` response.
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub struct ProbeProvidersResponse {
-    /// The OpenRouter slug the providers were enumerated for.
-    pub openrouter_slug: String,
-    pub providers: Vec<ProbeProviderOut>,
-}
-
-/// One provider route OpenRouter lists for the model.
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub struct ProbeProviderOut {
-    /// The provider's display name — the value a probe pins with.
-    pub name: String,
-    /// The route's context window in tokens, or null when unreported.
-    pub context_length: Option<u64>,
-}
-
-/// `POST /models/{slug}/probes` — trigger a probe. Requires a bearer token; the
+/// `POST /models/{slug}/probes` — trigger a probe. Takes a person's assertion; the
 /// probe runs in the background and the row is returned `running` immediately.
 #[tracing::instrument(name = "model_probes.trigger", skip(state, user, input), fields(model.slug = %slug), err(Debug))]
 pub async fn trigger(
     State(state): State<AppState>,
     Path(slug): Path<String>,
-    user: AuthUser,
+    user: Person,
     input: Option<Json<ProbeTriggerInput>>,
 ) -> Result<(StatusCode, Json<ProbeTriggerResponse>), ApiError> {
     let Some(api_key) = state.config.openrouter_api_key.clone() else {
@@ -228,12 +85,17 @@ pub async fn trigger(
         )));
     }
 
+    // The trigger hands the probe to its runner under a fresh lease, renewed while
+    // the runner runs, so a probe whose backend is gone is seen to have lost it.
+    let created_at = now()?;
+    let holder = cuid2::create_id();
+    let lease_expires_at = crate::db::probe_lease_expiry(&created_at).map_err(ApiError::from)?;
     let row = model_probe::Model {
         id: cuid2::create_id(),
         model_slug: slug,
         openrouter_slug,
         provider,
-        user_id: user.0.id.clone(),
+        user_id: user.0.clone(),
         language,
         samples,
         max_tokens,
@@ -244,8 +106,10 @@ pub async fn trigger(
         verdict: None,
         pass_rate: None,
         spend: 0.0,
-        created_at: now()?,
+        created_at,
         finished_at: None,
+        lease_expires_at: Some(lease_expires_at),
+        lease_holder: Some(holder.clone()),
     };
     state
         .db
@@ -260,6 +124,8 @@ pub async fn trigger(
         http: state.http.clone(),
         endpoint: probe::DEFAULT_COMPLETIONS_ENDPOINT.to_string(),
         api_key,
+        holder,
+        renew_every: probe::PROBE_LEASE_RENEWAL,
     };
     let spawned = row.clone();
     tokio::spawn(async move { runner.run(spawned).await });
@@ -321,13 +187,13 @@ pub async fn get(
 }
 
 /// `GET /models/{slug}/probe-providers` — the providers OpenRouter lists for
-/// the model, so a probe can be pinned to one. Requires a bearer token (a
+/// the model, so a probe can be pinned to one. Takes a person's assertion (a
 /// third-party reach on the caller's behalf, like the OpenRouter form fill).
 #[tracing::instrument(name = "model_probes.providers", skip(state, _user), fields(model.slug = %slug), err(Debug))]
 pub async fn providers(
     State(state): State<AppState>,
     Path(slug): Path<String>,
-    _user: AuthUser,
+    _user: Person,
 ) -> Result<Json<ProbeProvidersResponse>, ApiError> {
     let openrouter_slug = resolve_openrouter_slug(&state, &slug).await?;
     let routes = state

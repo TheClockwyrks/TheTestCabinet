@@ -1,17 +1,12 @@
 //! Adds the `held_report_json` column to the `job` table.
 //!
-//! A driver whose run has finished can wait hours on an artifact store that will
-//! not take the run's tree, and for that whole wait the run's record exists only
-//! in the driver's pod: it travels on the terminal report. So the driver hands the
-//! record over with its first `storing` report, and the backend keeps it here. If
-//! the driver is then lost, the backend finishes the run from the kept record
-//! rather than failing a finished run as infrastructure and running it again.
-//!
-//! The column is nullable text and holds the report as JSON: the record, the
-//! failure reason when the run failed, and whether the tree was stored once the
-//! wait ended. It is `NULL` for every job whose driver never waited, which is
-//! every row already stored, and is cleared when the job's own terminal report
-//! lands.
+//! Kept registered for the databases that applied it: staging's schema holds this
+//! migration, and a migrator refuses to start over an applied migration it does
+//! not list. The feature that wrote the column is not part of this design (the
+//! backend keeps no copy of a run's files and the artifacts service holds no
+//! volume; see `components/backend/overview.md#durable-state`), so nothing reads
+//! or writes it now. The column is nullable or defaulted, so a row written without
+//! it is valid.
 
 use sea_orm_migration::prelude::*;
 

@@ -2,10 +2,11 @@
 //!
 //! A produced run is stored privately when it finishes (the driver reports it via
 //! `POST /jobs/{id}/status`) — its build playable for reviewers but absent from the
-//! public snapshot. Any account may then **review** it (one review per account). An
-//! explicit **publish** flips it public, and is refused unless it has at least one
-//! review. Review and publish each require a valid bearer token (see
-//! [`crate::auth::AuthUser`]); reads stay open on the private network.
+//! public snapshot. Any identity may then **review** it (one review per identity),
+//! a person under their `email` or an Access service token under its `common_name`
+//! (see [`crate::auth::Reviewer`]). An explicit **publish** flips it public, and
+//! takes a person's assertion (see [`crate::auth::Person`]), as does a delete. The
+//! reads are open to any identity.
 
 use axum::Json;
 use axum::extract::{Path, Query, State};
@@ -15,24 +16,17 @@ use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
 
-use test_cabinet_core::match_play::{ControllerKind, ControllerRef};
-use test_cabinet_core::review::{
-    AestheticRating, DomainRating, Rating, ReviewRevision, ReviewVerdict,
-};
-use test_cabinet_core::run_record::RunRecord;
+use crate::review::{AestheticRating, DomainRating, Rating, ReviewRevision, ReviewVerdict};
+use test_cabinet_contracts::match_play::{ControllerKind, ControllerRef};
+use test_cabinet_contracts::run_record::RunRecord;
 
-use crate::auth::AuthUser;
-use crate::db::{
-    Reviewer, SortDir, StoredReview, StoredRun, SummaryFilter, SummarySort, SummaryState,
-};
+use crate::auth::{Person, Reviewer as ReviewerIdentity, ServiceCaller};
+use crate::db::{SortDir, StoredReview, StoredRun, SummaryFilter, SummarySort, SummaryState};
 use crate::error::ApiError;
-use crate::snapshot::{RunSummary, run_summary_score};
+use crate::snapshot::{RunSummary, RunSummaryExt, run_summary_score};
 use crate::store::{CaseNames, DefinitionStore, StoredManifest, case_display_name};
 
 use super::AppState;
-use super::publish_gate::{
-    GatedEnqueue, artifacts_unavailable_message, no_stored_tree_message, reclaimed_message,
-};
 
 use std::collections::HashMap;
 
@@ -41,19 +35,20 @@ const DEFAULT_LIMIT: usize = 50;
 const MAX_LIMIT: usize = 200;
 
 /// `POST /runs/{id}/reviews` — submit a review for a run, attributed to the
-/// token's account. The review gate (at least one domain rated, a non-empty
-/// writeup) applies here. An account reviews a run at most once: re-submitting
-/// updates that review. Requires a bearer token. `404` for an unknown run.
+/// caller's identity: a person's `email`, or an Access service token's
+/// `common_name`. The review gate (at least one domain rated, a non-empty writeup)
+/// applies here. An identity reviews a run at most once: re-submitting updates that
+/// review. A backend-minted token is a `403`. `404` for an unknown run.
 #[tracing::instrument(
     name = "runs.add_review",
     skip(state, user, request),
-    fields(run.id = %id, reviewer = %user.0.username),
+    fields(run.id = %id, reviewer = %user.0),
     err(Debug),
 )]
 pub async fn add_review(
     State(state): State<AppState>,
     Path(id): Path<String>,
-    user: AuthUser,
+    user: ReviewerIdentity,
     Json(request): Json<ReviewRequest>,
 ) -> Result<Json<ReviewResponse>, ApiError> {
     // A domain-scored legacy case rates at least one domain; a game jam rates none
@@ -117,11 +112,8 @@ pub async fn add_review(
         .format(&Rfc3339)
         .map_err(|e| ApiError::internal(format!("formatting reviewedAt: {e}")))?;
     let review = StoredReview {
-        reviewer: Reviewer {
-            user_id: user.0.id,
-            username: user.0.username,
-            display_name: user.0.display_name,
-        },
+        // The identity the assertion carries, never one the body names.
+        reviewer: user.0,
         ratings: request.ratings,
         aesthetics: Vec::new(),
         aesthetic: request.aesthetic,
@@ -147,7 +139,7 @@ pub async fn add_review(
     // A review on an already-published run changes its public aggregate, so a
     // refresh is queued; on a pending run it is not yet public.
     if published {
-        state.publisher.queue_refresh();
+        state.publisher.queue_refresh().await;
     }
 
     Ok(Json(ReviewResponse { id, published }))
@@ -165,7 +157,7 @@ pub async fn add_review(
 /// is a `422` naming what is wrong.
 fn validate_validator_rated_review(
     request: &ReviewRequest,
-    items: &[test_cabinet_core::ReviewItem],
+    items: &[test_cabinet_suites::test_case::ReviewItem],
 ) -> Result<(), ApiError> {
     if !request.ratings.is_empty() {
         return Err(ApiError::unprocessable(
@@ -211,12 +203,8 @@ fn validate_validator_rated_review(
 /// not an infrastructure failure, and a completed run with ≥1 review) and enqueues
 /// a publish job. It no longer flips `published` synchronously — that happens when
 /// the publisher reports a terminal success (see [`crate::api::publish_jobs`]).
-/// Requires a bearer token. `404` for an unknown run. Returns `202 Accepted` with
+/// Takes a person's assertion. `404` for an unknown run. Returns `202 Accepted` with
 /// the publish-job id and the live URL to observe it on.
-///
-/// A run that passes the gate is enqueued only when the artifact service holds its
-/// tree (see [`super::publish_gate`]): `409` when it holds none, `503` when it
-/// could not be asked.
 ///
 /// **Idempotent while a release is under way.** When the run already has a live
 /// publish job ([`crate::db::Db::active_publish_job_for_run`]) this answers with
@@ -227,13 +215,13 @@ fn validate_validator_rated_review(
 #[tracing::instrument(
     name = "runs.publish",
     skip(state, _user),
-    fields(run.id = %id, reviewer = %_user.0.username),
+    fields(run.id = %id, reviewer = %_user.0),
     err(Debug),
 )]
 pub async fn publish(
     State(state): State<AppState>,
     Path(id): Path<String>,
-    _user: AuthUser,
+    _user: Person,
 ) -> Result<Response, ApiError> {
     // Gate at enqueue so the user is rejected immediately (rather than after a
     // publish Job spins up and fails). This is the same gate the legacy
@@ -258,28 +246,11 @@ pub async fn publish(
     //
     // The same enqueue an automatic publish goes through, so a run that published
     // itself and a person publishing it by hand converge on one job.
-    //
-    // The enqueue is gated on the run having a stored artifact tree, which is what
-    // a release publishes. The two refusals are different facts and get different
-    // statuses: a run with no tree cannot be released until it has one (`409`),
-    // while a service that gave no answer says nothing about the run (`503`).
-    let outcome = match super::publish_gate::enqueue_publish(&state, &id, &created_at)
+    let outcome = state
+        .db
+        .enqueue_publish_job_once(&id, &created_at)
         .await
-        .map_err(ApiError::from)?
-    {
-        GatedEnqueue::Enqueued(outcome) => outcome,
-        GatedEnqueue::NoStoredTree => {
-            return Err(ApiError::conflict(no_stored_tree_message(&id)));
-        }
-        GatedEnqueue::Reclaimed(reason) => {
-            return Err(ApiError::conflict(reclaimed_message(&id, reason)));
-        }
-        GatedEnqueue::ArtifactsUnavailable(error) => {
-            return Err(ApiError::unavailable(artifacts_unavailable_message(
-                &id, &error,
-            )));
-        }
-    };
+        .map_err(ApiError::from)?;
     if let crate::db::PublishEnqueue::Attached(existing) = &outcome {
         tracing::info!(
             publish_job.id = %existing,
@@ -296,7 +267,7 @@ pub async fn publish(
 
 /// `DELETE /runs/{id}` — permanently delete a run. Refused with `422` when the
 /// run is **published** and this build can read its record (a public run is in the
-/// snapshot and gallery). Requires a bearer token. `404` for an unknown run.
+/// snapshot and gallery). Takes a person's assertion. `404` for an unknown run.
 /// Removes the run record, its reviews, its links, and its stored media.
 ///
 /// Operates on the stored row rather than on the record, so it deletes a run whose
@@ -306,13 +277,13 @@ pub async fn publish(
 #[tracing::instrument(
     name = "runs.delete",
     skip(state, _user),
-    fields(run.id = %id, reviewer = %_user.0.username),
+    fields(run.id = %id, reviewer = %_user.0),
     err(Debug),
 )]
 pub async fn delete(
     State(state): State<AppState>,
     Path(id): Path<String>,
-    _user: AuthUser,
+    _user: Person,
 ) -> Result<Response, ApiError> {
     // The system of record is the run row: deleting it (and its cascaded reviews
     // and links) makes the run vanish from every listing. This also enforces the
@@ -420,8 +391,6 @@ pub async fn list(
             .map_err(ApiError::from)?;
         return Ok(Json(SummaryListResponse {
             runs: summary_cards(&state.store, &case_names, &runs),
-            artifacts_not_stored: artifacts_not_stored(&runs),
-            artifacts_reclaimed: artifacts_reclaimed(&runs),
             next_before: None,
             total: Some(total),
         })
@@ -459,8 +428,6 @@ pub async fn list(
         let case_names = state.store.case_names().map_err(ApiError::from)?;
         Ok(Json(SummaryListResponse {
             runs: summary_cards(&state.store, &case_names, &runs),
-            artifacts_not_stored: artifacts_not_stored(&runs),
-            artifacts_reclaimed: artifacts_reclaimed(&runs),
             next_before,
             total: None,
         })
@@ -506,34 +473,6 @@ impl ManifestCache {
     }
 }
 
-/// The ids, in page order, of the runs of a page recorded as having no stored
-/// artifact tree. A run whose presence is unknown is not among them.
-///
-/// Carried beside a summary page's cards rather than on each card: the card is the
-/// shape the public snapshot ships as its run index, and whether a run can be
-/// released is the console's concern alone. Every console response that returns
-/// summary cards carries it, so a run reads the same wherever it is listed.
-///
-/// A run whose tree the reclamation sweep reclaimed is recorded as not stored as
-/// well, and is left out: its tree was removed on purpose, and
-/// [`artifacts_reclaimed`] names it instead.
-pub(super) fn artifacts_not_stored(runs: &[StoredRun]) -> Vec<String> {
-    runs.iter()
-        .filter(|run| run.artifacts_stored == Some(false) && run.artifacts_reclaimed.is_none())
-        .map(|run| run.record.id.clone())
-        .collect()
-}
-
-/// The ids, in page order, of the runs of a page whose artifact tree the
-/// reclamation sweep reclaimed. Carried beside the cards for the reason
-/// [`artifacts_not_stored`] is, and disjoint from it.
-pub(super) fn artifacts_reclaimed(runs: &[StoredRun]) -> Vec<String> {
-    runs.iter()
-        .filter(|run| run.artifacts_reclaimed.is_some())
-        .map(|run| run.record.id.clone())
-        .collect()
-}
-
 /// Build the summary cards for a page of runs, enriching each with the two fields
 /// [`RunSummary::from_stored`] cannot fill without the case catalog: its case's
 /// display `case_name` (from `case_names`, the same map the `testCase` sort orders
@@ -572,61 +511,24 @@ pub(super) fn summary_cards(
 
 /// `GET /adversarial/controllers?testCase=<slug>` — the pushed adversarial
 /// controllers for a case: every stored run (pending or published) that produced
-/// an adversarial result and whose controller wasm can be served. The arena
-/// resolves these as [`ControllerKind::PushedRun`] (fetching the wasm from
+/// an adversarial result and uploaded a controller wasm. The arena resolves these
+/// as [`ControllerKind::PushedRun`] (fetching the wasm from
 /// `GET /runs/{id}/controller.wasm`), so a reviewer can pit a pushed
-/// implementation from any host. A read; no auth on the private network.
-///
-/// A controller can be served from two places, and the listing offers a run for
-/// either: the backend store holds the module, or the run has a [file
-/// manifest](crate::db::MediaManifest) in the configured bucket that names the
-/// module with an object, which is where the route reads it from once the store
-/// no longer holds it (see [`RunFileBucket`](super::RunFileBucket)). The manifest
-/// counts whether or not the confirmation it was recorded with still holds
-/// ([`Db::file_locations_of`](crate::db::Db::file_locations_of)), so a run does
-/// not leave the listing while it waits to be confirmed again. A module the
-/// manifest records as unrecoverable is one nothing can serve, so its run is not
-/// offered.
+/// implementation from any host. A read, open to any identity.
 pub async fn adversarial_controllers(
     State(state): State<AppState>,
     Query(params): Query<ControllersParams>,
 ) -> Result<Json<ControllersResponse>, ApiError> {
-    let runs: Vec<_> = state
+    let runs = state
         .db
         .list_for_case(&params.test_case)
         .await
-        .map_err(ApiError::from)?
-        .into_iter()
-        .filter(|run| run.record.validation.adversarial.is_some())
-        .collect();
-    // Only the runs the store cannot answer for are looked up, and only on a
-    // backend with a bucket to read them from.
-    let bucket = state.run_files.as_ref().map(|bucket| bucket.identity());
-    let off_disk: Vec<String> = runs
-        .iter()
-        .map(|run| &run.record.id)
-        .filter(|id| !state.store.has_run_controller(id))
-        .cloned()
-        .collect();
-    let manifests = if bucket.is_some() && !off_disk.is_empty() {
-        state
-            .db
-            .file_locations_of(&off_disk, bucket)
-            .await
-            .map_err(ApiError::from)?
-    } else {
-        std::collections::HashMap::new()
-    };
-    let in_bucket = |id: &str| {
-        manifests
-            .get(id)
-            .and_then(|manifest| manifest.file(test_cabinet_core::TREE_ROOT_CONTROLLER))
-            .is_some_and(|file| file.key.is_some())
-    };
+        .map_err(ApiError::from)?;
     let controllers = runs
         .into_iter()
-        // Only runs whose controller wasm can actually be served can be pitted.
-        .filter(|run| state.store.has_run_controller(&run.record.id) || in_bucket(&run.record.id))
+        .filter(|run| run.record.validation.adversarial.is_some())
+        // Only runs whose controller wasm actually landed can be pitted.
+        .filter(|run| state.store.has_run_controller(&run.record.id))
         .map(|run| ControllerRef {
             id: run.record.id.clone(),
             kind: ControllerKind::PushedRun,
@@ -672,7 +574,7 @@ pub async fn get(
 /// reachable from nowhere while still occupying the store. Each row carries the
 /// identity the run's lifted columns hold plus the error decoding its record
 /// produces now; deleting one goes through [`delete`], which acts on the row. A
-/// read; no auth on the private network, like the other run reads.
+/// read, open to any identity like the other run reads.
 #[tracing::instrument(name = "runs.unreadable", skip(state), err(Debug))]
 pub async fn unreadable(
     State(state): State<AppState>,
@@ -711,10 +613,11 @@ fn unreadable_run_out(run: &crate::db::UnreadableRun) -> UnreadableRunOut {
     }
 }
 
-/// `GET /runs/{id}/events` — the published run's recorded normalized event
-/// stream, as a JSON array (an empty array when the run recorded none). Raw
-/// harness output is never published, so it is not served here. `404` for an
-/// unknown run.
+/// `GET /runs/{id}/events` — the run's recorded normalized event stream, as a
+/// JSON array (an empty array when the run recorded none): its job's events as the
+/// backend stored them on receipt, in sequence order, written to the run when its
+/// record was persisted. Raw harness output is never published, so it is not
+/// served here. `404` for an unknown run.
 pub async fn events(
     State(state): State<AppState>,
     Path(id): Path<String>,
@@ -738,9 +641,13 @@ pub async fn events(
         .into_response())
 }
 
-/// `POST /snapshot/refresh` — force an immediate regen + upload + hook fire.
-#[tracing::instrument(name = "snapshot.refresh", skip(state), err(Debug))]
-pub async fn refresh(State(state): State<AppState>) -> Result<Json<RefreshResponse>, ApiError> {
+/// `POST /snapshot/refresh` — force an immediate regen + upload. Takes
+/// the service token or an Access service token's assertion.
+#[tracing::instrument(name = "snapshot.refresh", skip(state, _caller), err(Debug))]
+pub async fn refresh(
+    State(state): State<AppState>,
+    _caller: ServiceCaller,
+) -> Result<Json<RefreshResponse>, ApiError> {
     let outcome = state
         .publisher
         .refresh_now()
@@ -749,29 +656,28 @@ pub async fn refresh(State(state): State<AppState>) -> Result<Json<RefreshRespon
     Ok(Json(RefreshResponse {
         refreshed: true,
         run_count: outcome.run_count,
-        deploy_hook_fired: outcome.deploy_hook_fired,
     }))
 }
 
-/// `GET /account/reviews` — the signed-in account's own submitted reviews, newest
+/// `GET /account/reviews` — the signed-in person's own submitted reviews, newest
 /// first (by when they reviewed), for the account page's Reviews tab. A numbered
 /// pager: `limit` + `offset`, with the total count so the console can size it. Each
 /// entry pairs the reviewed run's summary card with this account's review of it.
-/// Requires a bearer token; an account only ever lists its own reviews.
+/// Takes a person's assertion; a person only ever lists their own reviews.
 #[tracing::instrument(
     name = "runs.my_reviews",
     skip(state, user, params),
-    fields(reviewer = %user.0.username),
+    fields(reviewer = %user.0),
     err(Debug),
 )]
 pub async fn my_reviews(
     State(state): State<AppState>,
-    user: AuthUser,
+    user: Person,
     Query(params): Query<MyReviewsParams>,
 ) -> Result<Json<MyReviewsResponse>, ApiError> {
     let limit = params.limit.unwrap_or(DEFAULT_LIMIT).clamp(1, MAX_LIMIT);
     let offset = params.offset.unwrap_or(0);
-    let user_id = user.0.id;
+    let user_id = user.0;
 
     let (runs, total) = state
         .db
@@ -788,7 +694,7 @@ pub async fn my_reviews(
             let review = run
                 .reviews
                 .iter()
-                .find(|review| review.reviewer.user_id == user_id)?;
+                .find(|review| review.reviewer == user_id)?;
             Some(MyReviewOut {
                 run: RunSummary::from_stored(run),
                 review: review_out(review),
@@ -796,12 +702,7 @@ pub async fn my_reviews(
         })
         .collect();
 
-    Ok(Json(MyReviewsResponse {
-        reviews,
-        artifacts_not_stored: artifacts_not_stored(&runs),
-        artifacts_reclaimed: artifacts_reclaimed(&runs),
-        total,
-    }))
+    Ok(Json(MyReviewsResponse { reviews, total }))
 }
 
 /// How many of the account's most recent reviews the Profile-tab breakdown charts
@@ -810,26 +711,26 @@ pub async fn my_reviews(
 /// not their all-time totals.
 const REVIEW_STATS_WINDOW: usize = 100;
 
-/// `GET /account/review-stats` — aggregate breakdowns of the signed-in account's
+/// `GET /account/review-stats` — aggregate breakdowns of the signed-in person's
 /// recent reviews, for the account page's Profile tab: how those reviews split across
 /// **test cases** (all variants and versions of a case folded together), across
 /// **models**, and across the **ratings** the account gave. Computed over the
 /// account's most recent [`REVIEW_STATS_WINDOW`] reviews (the "recently reviewed"
-/// window), each breakdown ordered largest-first (ratings best-to-worst). Requires a
-/// bearer token; an account only ever sees its own activity.
+/// window), each breakdown ordered largest-first (ratings best-to-worst). Takes a
+/// person's assertion; a person only ever sees their own activity.
 #[tracing::instrument(
     name = "runs.review_stats",
     skip(state, user),
-    fields(reviewer = %user.0.username),
+    fields(reviewer = %user.0),
     err(Debug),
 )]
 pub async fn review_stats(
     State(state): State<AppState>,
-    user: AuthUser,
+    user: Person,
 ) -> Result<Json<ReviewStatsResponse>, ApiError> {
     let (subjects, total) = state
         .db
-        .recent_review_subjects(&user.0.id, REVIEW_STATS_WINDOW)
+        .recent_review_subjects(&user.0, REVIEW_STATS_WINDOW)
         .await
         .map_err(ApiError::from)?;
 
@@ -901,8 +802,7 @@ fn stat_slices(counts: HashMap<String, usize>) -> Vec<StatSlice> {
 }
 
 /// Map a stored run to the read-side wire shape: `record` (links populated), the
-/// reviews array, the resolved links, the published flag, the run's artifact
-/// presence, the two rating
+/// reviews array, the resolved links, the published flag, the two rating
 /// channels (the functional `rating`, the aggregate `aesthetic`) with the
 /// `validator_rated` flag that says which way the functional one was decided,
 /// and the run's `score`.
@@ -927,8 +827,6 @@ fn stored_run_out(run: &StoredRun, manifest: Option<&StoredManifest>) -> StoredR
             playable_build: run.links.playable_build.clone(),
         },
         published: run.published,
-        artifacts_stored: run.artifacts_stored,
-        artifacts_reclaimed: run.artifacts_reclaimed.clone(),
         rating,
         aesthetic: crate::db::aggregate_review_aesthetic(&run.reviews),
         validator_rated: manifest.map_or(run.validator_rated, StoredManifest::validator_rated),
@@ -940,9 +838,7 @@ fn stored_run_out(run: &StoredRun, manifest: Option<&StoredManifest>) -> StoredR
 /// public identity.
 fn review_out(review: &StoredReview) -> ReviewOut {
     ReviewOut {
-        reviewer_id: review.reviewer.user_id.clone(),
-        reviewer: review.reviewer.display_name.clone(),
-        username: review.reviewer.username.clone(),
+        reviewer: review.reviewer.clone(),
         ratings: review.ratings.clone(),
         aesthetic: review.aesthetic,
         writeup: review.writeup.clone(),
@@ -1092,13 +988,6 @@ pub struct ListResponse {
 #[serde(rename_all = "camelCase")]
 pub struct SummaryListResponse {
     runs: Vec<RunSummary>,
-    /// The ids, among [`runs`](Self::runs), of the runs recorded as having no
-    /// stored artifact tree, which therefore cannot be published. Always present,
-    /// empty when the page holds none.
-    artifacts_not_stored: Vec<String>,
-    /// The ids, among [`runs`](Self::runs), of the runs whose artifact tree the
-    /// reclamation sweep reclaimed. Disjoint from the list above. Always present.
-    artifacts_reclaimed: Vec<String>,
     next_before: Option<String>,
     /// The total number of matching rows, ignoring the page window — present only
     /// on the numbered-pager (offset) path, to size the console's pager. Absent on
@@ -1231,14 +1120,6 @@ pub struct StoredRunOut {
     links: LinksOut,
     /// Whether the run is published (in the public snapshot).
     published: bool,
-    /// Whether the artifact service holds the run's tree: `false` means the run
-    /// cannot be published, and `null` that nothing is known. Always present.
-    artifacts_stored: Option<bool>,
-    /// The record that the reclamation sweep deleted the run's tree on purpose:
-    /// when, and for which reason. `null` for a run whose tree was never
-    /// reclaimed. Such a run reports `artifactsStored: false`, and this is what
-    /// tells it from a run whose tree was lost. Always present.
-    artifacts_reclaimed: Option<crate::db::ArtifactsReclaimed>,
     /// The run's **functional** rating: on a validator-rated run the validators'
     /// decision as overridden by its reviews (present from completion — the
     /// validators' own figure while unreviewed), the review aggregate on a legacy
@@ -1266,9 +1147,8 @@ pub struct StoredRunOut {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct ReviewOut {
-    reviewer_id: String,
+    /// The identity the review is attributed to: the Access assertion's email.
     reviewer: String,
-    username: String,
     ratings: Vec<DomainRating>,
     /// The reviewer's run-wide aesthetic tier (a legacy per-domain row already
     /// collapsed to its worst); absent on a legacy run's review.
@@ -1298,7 +1178,6 @@ struct LinksOut {
 pub struct RefreshResponse {
     refreshed: bool,
     run_count: usize,
-    deploy_hook_fired: bool,
 }
 
 /// Query parameters for `GET /account/reviews`: the numbered-pager window.
@@ -1325,12 +1204,6 @@ pub struct MyReviewOut {
 #[serde(rename_all = "camelCase")]
 pub struct MyReviewsResponse {
     reviews: Vec<MyReviewOut>,
-    /// The ids, among the reviewed runs, of the runs recorded as having no stored
-    /// artifact tree. Always present, empty when the page holds none.
-    artifacts_not_stored: Vec<String>,
-    /// The ids, among the reviewed runs, of the runs whose artifact tree the
-    /// reclamation sweep reclaimed. Disjoint from the list above. Always present.
-    artifacts_reclaimed: Vec<String>,
     total: usize,
 }
 

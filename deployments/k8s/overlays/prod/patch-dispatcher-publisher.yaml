@@ -6,10 +6,11 @@
 # keyvault-csi component. The publisher needs no Kubernetes API access.
 #
 # TCAB_PUBLISHER_IMAGE, which enables the publish path, is set by
-# scripts/ci/pin-images.sh to the tcab-publisher image of the commit being deployed.
+# scripts/ci/pin-images.sh to the microservice-publisher image at the commit its
+# submodule pointer names at the commit being deployed.
 #
 # TCAB_GITHUB_ORG + TCAB_PAGES_PROJECT are the crux of publish decoupling:
-# core::publish::PublishConfig::from_env requires both (no compiled-in fallback), so
+# microservice-publisher's release::PublishConfig::from_env requires both (no compiled-in fallback), so
 # every environment names its own org and Cloudflare Pages project. The dispatcher
 # forwards both into every publish Job (PUBLISHER_PASSTHROUGH_VARS), where from_env
 # reads them.

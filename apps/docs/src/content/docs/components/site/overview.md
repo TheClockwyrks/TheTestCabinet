@@ -2,81 +2,34 @@
 title: Overview
 ---
 
-The public site lives at [testcabinet.ai](https://testcabinet.ai) and is where
+The public gallery lives at [testcabinet.ai](https://testcabinet.ai) and is where
 published runs are browsed and played. It is a gallery first: visitors compare
 implementations above all by playing them. Each run carries a numeric score and
-[rating](/components/core/results/#reviews), and each test case has a
+[rating](/components/backend/results/#reviews), and each test case has a
 [leaderboard](#leaderboard). Only published runs appear.
 
-## A static site
+The gallery is the `testcabinet.ai` repository: the static site (`apps/site`),
+the `tcab.ai` share-link Worker, and the preview-tag Worker in front of the
+site's run routes.
 
-The site is fully static, with no backend, no accounts, and no database of its
-own. Interactivity such as filtering and sorting is handled client-side. The
-built bundle is deployed to Cloudflare Pages at the project's custom domain, and
-Cloudflare builds it directly from the repository.
+## How it is served
 
-The gallery is the same routed application the [web
-console](/components/web/overview/) renders, shared through the [UI
-library](/components/ui/overview/). The site mounts it with the build-time
-snapshot as its data source and `canExecute` false, so it shows the published
-gallery without the console's run, monitor, review, or connection screens.
-Signing in and launching runs stay with the console.
+The gallery is a static site on Cloudflare Pages that reads the public dataset
+at runtime, so a run appears as soon as its publish has written the bucket. See
+[Serving](/components/site/serving/).
 
-The dataset is the public snapshot the
-[backend](/components/backend/overview/#public-snapshot) exports to a Cloudflare
-R2 bucket. A build-time Vite plugin fetches that snapshot once from
-`TCAB_SNAPSHOT_URL` and writes it into the build, so the shipped output never
-queries the backend at runtime. A backend deploy hook triggers a rebuild whenever
-the snapshot changes. An unset URL, or a bucket whose `index.json` is absent
-because nothing has been published yet, resolves to an empty dataset and still
-builds; a reachable but broken snapshot fails the build.
+The gallery is the same routed application the
+[console](/components/web/overview/) renders, shared through
+[`ui-common`](/components/ui/overview/), mounted with execution disabled so it
+shows the published gallery alone. Signing in and launching runs stay with the
+console.
 
-### Where the data lives
-
-The build places each piece of the snapshot by the kind of data it is, the same
-way for every run and every case:
-
-| Data | Location in the build | Read |
-| --- | --- | --- |
-| The index | Inlined into the application bundle | With the page |
-| One run's detail | `runs/<id>.json` | When a page of that run opens |
-| One run's event log | `run-events/<id>.json` | When its Events tab opens |
-| One case's detail | `cases/<slug>.json` | When a page of that case opens |
-| One case version | `cases/<slug>/<version>.json` | When that version is shown |
-
-The index is what a listing shows for every run and every case. It holds the
-snapshot's [summary index](/components/backend/snapshot/#runsjson--the-run-index),
-one `RunSummary` card per published run, which every list, card, leaderboard and
-metric reads. It also holds one listing card per case, the address of the
-showcase media each card previews, the model catalog, the test-case groups, the
-comparisons and the gg document corpus. A case is listed once any run of it is
-published, and its card previews the showcase of its newest version that has
-one, from the snapshot's
-[case showcases](/components/backend/snapshot/#case-showcasesjson--case-showcases),
-so the preview does not wait on a run of that version.
-
-A run's file holds its full record, its reviews and the address of every media
-file the run published. A case's file holds what spans its versions: each
-version's description, the changelog, the errata, and the variants and engines
-each version offers. A case version's file holds that version's variants, with
-their prompts, seeded specs and checklists rendered for each engine, and the
-address of the version's baseline, showcase and reference media.
-
-The files are copies made at build time and deployed with the site, so the
-browser reads them from the site's own domain. Images, videos, starter-workspace
-files and code-analysis documents stay in the bucket, and a page loads them from
-there by the address its run or case file recorded.
-
-A listing therefore costs one index entry per run, and a detail costs nothing
-until a visitor opens it. The bundle grows with the number of runs and cases and
-is independent of how much any one of them carries.
-
-Cloudflare Pages refuses a deployment that holds a file over 25 MiB. The build
-reports the size of the bundle and of its largest data file, and fails naming
-the file when one exceeds that limit.
-
-A request for a file the deployment does not hold is answered with the
-application shell. The site reads that answer as the file's absence.
+The dataset is the public bucket described in
+[Public Snapshot](/components/backend/snapshot/). Run listings, search, and
+leaderboards are answered from the index objects the backend writes as it
+publishes. A run's full record, its events, and all media are objects fetched
+when that run's page opens, so what a page carries stays the same as the corpus
+grows.
 
 ### Fetching the snapshot
 
@@ -112,22 +65,33 @@ fetched, how many of them needed a retry, and the elapsed time.
 
 The site presents published runs as a browsable gallery. Each run is attributed
 to the [variant](/testing/end-to-end/overview/#variants) of the case it built,
-taken from its [run record](/components/core/run-records/#subject). Listings are
-paged rather than loaded whole, and their search and sorting run client-side
-over the run index. The authoritative ranking of models for a given case
-and variant lives in that case's [leaderboard](#leaderboard).
+taken from its [run record](/components/contracts/run-records/#subject).
+Listings are paged rather than loaded whole, and their search and sorting are
+answered in the browser from the run index. The authoritative ranking of models
+for a given case and variant lives in that case's [leaderboard](#leaderboard).
 
 A validator-rated run carries a read-only browser of its automated
-[validation](/components/core/validation/) items, in which a visitor replays the
-implementation against the reference baseline. Every visitor sees that browser.
+[validation](/components/driver/validation/) items, in which a visitor replays
+the implementation against the reference baseline. Every visitor sees that
+browser.
 
 ## Playing and cloning
 
 A run's page links to the run's public source repository so a visitor can clone
 and run it themselves, embeds its playable build, and shows the run's
-[showcase](/components/core/showcase/) when its record carries one. A published
+[showcase](/components/driver/showcase/) when its record carries one. A published
 implementation is released as it is and may be incomplete or visibly broken, so
 the embed loads on demand rather than with the page.
+
+## Share links
+
+A published run carries a short code, assigned the first time it publishes and
+never reassigned. [tcab.ai](https://tcab.ai) resolves `/r/<code>` to the run's
+verdict page and `/p/<code>` to its play page, so a run is shared by a link
+that stays short and stays valid. The [console](/components/web/overview/)
+offers both links on a published run. How a code is minted is under [Short
+codes](/components/backend/snapshot/#short-codes), and how a link resolves under
+[Serving](/components/site/serving/#share-links).
 
 ## Leaderboard
 
@@ -136,8 +100,8 @@ Each test case has a leaderboard, scoped to the selected
 model pair, folded across every scored run that pair produced of this case and
 variant. Splitting by harness as well as model keeps a model's results under two
 harnesses from merging into one rank. A [test-case
-group](/components/core/test-case-groups/) carries a cross-case leaderboard of
-its own.
+group](/components/backend/test-case-groups/) carries a cross-case leaderboard
+of its own.
 
 The board draws its cohort from the page's [anchored
 coordinate](/components/ui/overview/#the-case-detail-coordinate), and a visitor
@@ -153,10 +117,10 @@ comparable cost, mean token total, and mean session duration, each taken over
 the runs that recorded the figure. A game jam carries a whole-game overall
 grade in place of a domain rating.
 
-A run's score is carried on its summary card in the snapshot's run index. A
+A run's score is carried on its summary card in the run index. A
 validator-rated run's score is its validators' earned share of the checklist
-weight they decided, or zero of the declared weight when they decided none, while
-the run has no reviews, and the average of its reviews'
+weight they decided, or zero of the declared weight when they decided none,
+while the run has no reviews, and the average of its reviews'
 effective scores once it has any. A legacy run's reviews each contribute their
 earned share, averaged across the run's reviews.
 
@@ -178,27 +142,26 @@ writeup is curatorial: it calls out known-broken elements, caveats, and things
 worth noticing, so a visitor knows what to expect before playing.
 
 A writeup and its ratings, together with its checklist on a legacy run, form one
-[review](/components/core/results/#reviews). Reviews are authored separately
-from the machine-generated [run record](/components/core/run-records/) and each
-is attributed to the [account](/components/auth/overview/) that wrote it.
+[review](/components/backend/results/#reviews). Reviews are authored separately
+from the machine-generated [run record](/components/contracts/run-records/) and
+each is attributed to the [identity](/components/auth/overview/) that wrote it.
 Publishing a legacy run requires a review, so a published legacy run carries at
 least one. A published validator-rated run may carry none, standing on its
 functional rating and score alone until someone rates its aesthetics. A run may
 carry several reviews from different reviewers, and its overall rating on the
-reviewer-given channel is the worst across them. Reviews travel to the site in
-the exported snapshot alongside the run record, and the run's page reads them
-from the run's file.
+reviewer-given channel is the worst across them. Reviews travel to the gallery
+in the run's published document alongside the record.
 
 ## Hosting
 
 Each run's generated code and playable build are hosted independently of the
-site, as described in [Results](/components/core/results/#generated-code). Every
-run is its own repository with its own build, and the gallery embeds each build
-rather than bundling every implementation, which keeps the site lightweight as
-the number of published runs grows.
+site, as described in [Results](/components/backend/results/#generated-code).
+Every run is its own repository with its own build, and the gallery embeds each
+build rather than bundling every implementation, which keeps the site
+lightweight as the number of published runs grows.
 
 Each build is deployed to its own Cloudflare Pages URL and embedded from there.
 The gallery points an iframe at the deployment URL the deploy reported, recorded
-as a link in the run's [record](/components/core/run-records/#links). That
+as a link in the run's [record](/components/contracts/run-records/#links). That
 reported URL is used verbatim, because a host constructed from the run id and
 project may not match Cloudflare's sanitized branch alias.
