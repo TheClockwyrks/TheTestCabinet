@@ -7,7 +7,8 @@ number: 7
 title: Repair the-test-cabinet failing on staging
 type: ci
 priority: 0
-state: open
+state: blocked
+reason: Promote nightly (which carries NYX-3's fix 5a53793e4, 16 commits ahead) into staging; run 18599 at 2343daf3c is the same failure NYX-4/5/6 diagnosed and no code change remains.
 created: 2026-10-23T07:22:20.420664051Z
 ---
 
