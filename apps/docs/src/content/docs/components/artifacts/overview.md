@@ -41,19 +41,21 @@ with any other, so the deployment scales it horizontally.
 
 The path `{id}` on every route is the run record's id.
 
-| Route                                                                                    | Caller                                                                              |
-| ---------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
-| `POST /runs/{id}/artifacts`                                                              | The driver, uploading a finished run's tree as a tar                                |
-| `DELETE /runs/{id}/artifacts`                                                            | The backend, pruning a deleted run's tree                                           |
-| `GET /runs`                                                                              | The backend, listing every stored tree for its reclamation sweep                    |
-| `GET /runs/{id}/tree.tar`                                                                | The publisher Job, pulling the source tree to release                               |
-| `GET /runs/{id}/build[/{path}]`                                                          | A console, loading the playable build                                               |
-| `GET /runs/{id}/proof/{file}`, `/asset/{file}`, `/validation/{file}`, `/showcase/{file}` | A console, loading a run's media                                                    |
-| `GET /runs/{id}/events.jsonl`, `/raw.jsonl`                                              | A console, reading the recorded logs                                                |
-| `GET /runs/{id}/archive.tar.gz`                                                          | A reviewer, downloading the whole run                                               |
-| `GET /runs/{id}/replay`, `/code-analysis`                                                | A person or an analysis tool, reading the gg session record or the code analysis    |
-| `POST /runs/{id}/publish-media`                                                          | The backend, copying a published run's media from Blob to R2                        |
-| `PUT /public/{key}`                                                                      | The backend, writing one object of the public dataset; the CLI, an asset reference  |
+| Route                                                                                    | Caller                                                                                                                                  |
+| ---------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| `POST /runs/{id}/artifacts`                                                              | The driver, uploading a finished run's tree as a tar                                                                                    |
+| `DELETE /runs/{id}/artifacts`                                                            | The backend, pruning a deleted run's tree                                                                                               |
+| `GET /runs`                                                                              | The backend, listing every stored tree for its reclamation sweep                                                                        |
+| `GET /runs/{id}/tree.tar`                                                                | The publisher Job, pulling the source tree to release                                                                                   |
+| `GET /runs/{id}/build[/{path}]`                                                          | A console, loading the playable build                                                                                                   |
+| `GET /runs/{id}/proof/{file}`, `/asset/{file}`, `/validation/{file}`, `/showcase/{file}` | A console, loading a run's media                                                                                                        |
+| `GET /runs/{id}/events.jsonl`, `/raw.jsonl`                                              | A console, reading the recorded logs                                                                                                    |
+| `GET /runs/{id}/archive.tar.gz`                                                          | A reviewer, downloading the whole run                                                                                                   |
+| `GET /runs/{id}/replay`, `/code-analysis`                                                | A person or an analysis tool, reading the gg session record or the code analysis                                                        |
+| `POST /runs/{id}/publish-media`                                                          | The backend, copying a published run's media from Blob to R2                                                                            |
+| `PUT /public/{key}`                                                                      | The backend, writing one object of the public dataset; the CLI, an asset reference                                                      |
+| `GET /public?prefix={prefix}`                                                            | The backend, listing the public keys under a prefix (the publish's skip sets, the prune of superseded generations, reference discovery) |
+| `DELETE /public/{key}`                                                                   | The backend, deleting one public object (pruning superseded generations)                                                                |
 
 An upload is written straight through to the run's prefix in the private
 container, and the response lands once the tree is stored. A read is answered
@@ -95,6 +97,17 @@ the index objects and the `index.json` pointer with it, and the
 an asset-generation case's reference frames with it. A key is written whole, so
 a reader sees either the previous object or the new one.
 
+### Listing and deleting public objects
+
+`GET /public?prefix={prefix}` answers every object of the public bucket whose key
+starts with the prefix, each with its key, its size in bytes and its
+last-modified time. An absent or empty prefix lists the whole bucket. The answer
+is one response, because the service follows the store's paging itself. A prefix
+may end in `/` and is otherwise validated like a key.
+
+`DELETE /public/{key}` deletes one object of the public bucket. It is idempotent:
+deleting a key the bucket does not hold succeeds.
+
 ## Auth
 
 The artifacts service has no Kubernetes API access. It only talks HTTP.
@@ -104,13 +117,20 @@ The artifacts service has no Kubernetes API access. It only talks HTTP.
   which is a different UUID from the run id in the upload path, so the driver
   sends its job id in the `x-tcab-job-id` header and the service verifies
   against that. Only the driver holding a job's token can upload for it.
-- The tree delete, the `GET /runs` listing, `publish-media` and the backend's
-  `PUT /public/{key}` writes present the shared control-plane service token
+- The tree delete, the `GET /runs` listing, `publish-media`, the backend's
+  `PUT /public/{key}` writes, and the `GET /public` listing and
+  `DELETE /public/{key}` present the shared control-plane service token
   (`TCAB_BACKEND_SERVICE_TOKEN`, the same secret the backend and dispatcher
   share). When the token is unset these routes reject every caller.
 
   `GET /runs` answers one entry per stored tree carrying the run id and the
-  tree's last-modified time, which is when the driver uploaded it.
+  tree's last-modified time, which is when the driver uploaded it. `GET /public`
+  answers one entry per object carrying its key, its size and its last-modified
+  time.
+
+  The `GET /public` listing and `DELETE /public/{key}` admit the service token
+  alone. The CLI's Access service token writes with `PUT /public/{key}` and is
+  refused by both.
 
 - The publisher's `tree.tar` pull presents its per-publish-job token, verified
   the same way against the backend's publish-job endpoint, with the publish job
