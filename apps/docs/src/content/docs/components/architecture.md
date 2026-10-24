@@ -26,7 +26,7 @@ step, lives in `contracts`.
 | Libraries          | [`engines`](/components/engines/overview/), `ui-common` (the [UI library](/components/ui/overview/))                                                                                 |
 | Tools              | `tool-model-core`, `tool-sprite`, `tool-paint`, `tool-voxel`, `tool-mc`, `tool-sn`, `tool-dc`, `tool-particle`, `tool-audio-core`, `tool-sfx-synth`, `tool-sfx-sample`, `tool-music` |
 | Services           | `microservice-backend`, `microservice-dispatcher`, `microservice-driver`, `microservice-artifacts`, `microservice-repos`, `microservice-publisher`, `microservice-arena`             |
-| Other applications | [`gg`](/gg/overview/), `the-spec-cabinet`                                                                                                                                            |
+| Other applications | [`gg`](/gg/overview/), `the-spec-cabinet` ([The Spec Cabinet](/the-spec-cabinet/overview/))                                                                                          |
 | Sites              | `testcabinet.ai` (the [gallery](/components/site/overview/)), `console.testcabinet.ai` (the [console](/components/web/overview/)), `gg.rocks`                                        |
 | The shell          | [`client-tauri`](/components/client/overview/)                                                                                                                                       |
 | Content            | `test-suites`                                                                                                                                                                        |
@@ -219,12 +219,15 @@ Progress that happens inside the run container reaches a watching viewer in real
 time over a dedicated channel. See [Live
 Streaming](/components/live-streaming/).
 
-## The two meanings of "harness"
+## The three meanings of "harness"
 
-The word harness is used two ways throughout these docs.
+The word harness is used three ways throughout these docs.
 
 - The testing harness is The Test Cabinet's own application that runs
   benchmarks.
 - An agent harness is a coding tool, for example Claude Code or Codex, that
   drives a model through a test case. See [Agent
   Harnesses](/components/driver/harnesses/).
+- The Spec Cabinet's harness is the agentic harness, built on gg's design, that
+  drives its authoring workflows and its assistant. See
+  [Harness](/the-spec-cabinet/harness/).

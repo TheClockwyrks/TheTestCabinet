@@ -22,6 +22,8 @@ same task in full. A machine that has never run The Test Cabinet starts with
   variant through a harness and watches it finish.
 - [Run the Local Service Stack](/quickstarts/development/run-the-local-service-stack/)
   brings up the backend, dispatcher, artifacts and repos services on local k3d.
+- [Launch The Spec Cabinet](/quickstarts/development/launch-the-spec-cabinet/)
+  starts The Spec Cabinet beside the local stack and creates a test suite.
 - [Review a Run](/quickstarts/development/review-a-run/) submits a review for a
   produced run.
 

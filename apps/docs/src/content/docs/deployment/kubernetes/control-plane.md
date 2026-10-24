@@ -119,6 +119,11 @@ fetch fails, the refresh prints
 test cases and the reference-build lockfile the checkout already holds. Every
 other step of `tcab ingest --env <env>` fails it before anything is ingested.
 
+The Spec Cabinet's [Publish page](/the-spec-cabinet/user-interface/#suite)
+publishes to an environment through the same route as `tcab ingest --env <env>`,
+after pushing the test suites repository and the superrepo branch the
+environment ingests.
+
 ## Planned disruption
 
 A node drain, a node-image upgrade and a deploy each restart service pods. A

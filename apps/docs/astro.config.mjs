@@ -175,6 +175,7 @@ export default defineConfig({
               items: [
                 "quickstarts/development/run-a-test-case",
                 "quickstarts/development/run-the-local-service-stack",
+                "quickstarts/development/launch-the-spec-cabinet",
                 "quickstarts/development/review-a-run",
               ],
             },
@@ -1112,6 +1113,24 @@ export default defineConfig({
             "comparisons/diagnostics",
             "comparisons/statistics",
             "comparisons/publishing",
+          ],
+        },
+        // The companion authoring app, held in the `the-spec-cabinet` repository.
+        // It runs on a development machine and is the only thing that writes a
+        // test suite definition; The Test Cabinet consumes what it produces.
+        {
+          label: "The Spec Cabinet",
+          collapsed: true,
+          items: [
+            "the-spec-cabinet/overview",
+            "the-spec-cabinet/architecture",
+            "the-spec-cabinet/test-suites",
+            "the-spec-cabinet/user-interface",
+            "the-spec-cabinet/assets",
+            "the-spec-cabinet/game-design",
+            "the-spec-cabinet/harness",
+            "the-spec-cabinet/chat",
+            "the-spec-cabinet/collaboration",
           ],
         },
         // Test suite definitions — the authored projects a test case is drawn

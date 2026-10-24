@@ -15,7 +15,7 @@ corrected.
 - **System overview & how the pieces fit:**
   [`components/architecture.md`](apps/docs/src/content/docs/components/architecture.md).
 - **Glossary:** [`terminology.md`](apps/docs/src/content/docs/terminology.md)
-  (note the two meanings of "harness", and the two of "coverage").
+  (note the three meanings of "harness", and the two of "coverage").
 
 ## Component docs ↔ code
 
@@ -45,6 +45,7 @@ lives in, checked out as a submodule at this repository's root.
 | UI library (`ui-common`: `@clockwyrks/ui` and `@clockwyrks/run-stats`) | [`components/ui/overview.md`](apps/docs/src/content/docs/components/ui/overview.md) | `ui-common/` |
 | Voxel runtime (`@clockwyrks/voxel-runtime` — poses/renders a produced voxel rig; pure-core + three) | [`components/voxel-runtime/overview.md`](apps/docs/src/content/docs/components/voxel-runtime/overview.md) | `engines/` |
 | Particle runtime (`@clockwyrks/particle-runtime` — simulates/renders a produced particle `system.json`; pure-core + three + canvas) | [`components/particle-runtime/overview.md`](apps/docs/src/content/docs/components/particle-runtime/overview.md) | `engines/` |
+| The Spec Cabinet (`tcab-spec-cabinet` and its browser UI: the test suite authoring app, run on a development machine, with its own agentic harness built on gg's design) | [`the-spec-cabinet/overview.md`](apps/docs/src/content/docs/the-spec-cabinet/overview.md) | `the-spec-cabinet/` |
 | Docs site | [`components/docs/overview.md`](apps/docs/src/content/docs/components/docs/overview.md) | `apps/docs/` |
 
 Where each responsibility lives, the edges between the repositories and how a
@@ -261,7 +262,7 @@ Task-oriented walkthroughs:
 - All commits must use the Conventional Commits format and use imperative form
   for the subject.
 
-## Test suites
+## The Spec Cabinet & test suites
 
 Test suites are the authored projects test cases are drawn from. The docs
 site's [`test-suites/`](apps/docs/src/content/docs/test-suites/) section is
@@ -277,9 +278,19 @@ Suites tab and detail pages in `ui-common`.
 Authored suites live in a separate test suites repository, included here as a
 git submodule at [`test-suites/`](test-suites/), one folder per suite holding
 its editable drafts and the immutable versions exported from them. The Test
-Cabinet ingests only exported versions (and the previews beside them); it
-never writes that tree. The authoring app, The Spec Cabinet, is the
-`the-spec-cabinet` repository.
+Cabinet ingests only exported versions (and the previews beside them), and The
+Spec Cabinet is the only writer of that tree.
+
+The Spec Cabinet is the companion app that authors them, the
+`the-spec-cabinet` repository checked out at `the-spec-cabinet/`. Its pages are
+the docs site's
+[`the-spec-cabinet/`](apps/docs/src/content/docs/the-spec-cabinet/) section: the
+overview, the
+[architecture](apps/docs/src/content/docs/the-spec-cabinet/architecture.md)
+(the Rust backend at its `crates/spec-cabinet/`, the React frontend at its
+`apps/spec-cabinet/`), the agentic harness, the assistant and the asset
+workflow. Launching it beside the local stack:
+[`development/running.md`](apps/docs/src/content/docs/development/running.md#the-spec-cabinet-against-the-local-stack).
 
 ## Working in this repo (skills)
 

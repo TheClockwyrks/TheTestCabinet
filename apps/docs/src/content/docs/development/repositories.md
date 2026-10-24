@@ -66,7 +66,7 @@ The kind decides a repository's shape.
 | `microservice-publisher` | application | `tcab-publisher`, the per-publish Job |
 | `microservice-arena` | application | `tcab-arena` |
 | `gg` | application | gg, its SDKs, the program-language toolchains, the sandbox packages and artifact crates, the `agent-prompts` and `gg-sdk-documentation` skills, and gg's documentation pages |
-| `the-spec-cabinet` | application | The authoring tool for test suites |
+| `the-spec-cabinet` | application | [The Spec Cabinet](/the-spec-cabinet/overview/), the authoring tool for test suites: `tcab-spec-cabinet`, its browser UI, and the sandbox packages and artifact crates of its harness |
 | `testcabinet.ai` | site | The public gallery, the `tcab.ai` share-link Worker and the gallery's preview-tag Worker |
 | `console.testcabinet.ai` | site | The operator console |
 | `gg.rocks` | site | gg's public site |

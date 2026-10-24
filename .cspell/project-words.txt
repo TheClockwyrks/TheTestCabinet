@@ -690,6 +690,7 @@ nyxsis
 nyxsisdev
 offence
 offsuit
+oneline
 opencode
 openrouter
 optimiser

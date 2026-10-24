@@ -102,9 +102,9 @@ The devcontainer populates `contracts/`, `engines/`, `gg/`,
 `tool-sfx-synth/`, `tool-sfx-sample/`, `tool-music/`, `client-tauri/`,
 `the-spec-cabinet/`, `test-suites/`, `ui-common/` and `console.testcabinet.ai/`
 when it creates a container,
-`test-suites/` because a local backend ingests its suites from that checkout
-and `console.testcabinet.ai/` because the console's development server runs
-from it.
+`test-suites/` because The Spec Cabinet authors suites in that checkout and a
+local backend ingests them from it, and `console.testcabinet.ai/` because the
+console's development server runs from it.
 `.gitmodules` gives every repository but `cold-storage` the branch `.`, the
 branch of the superrepo's own name. `git submodule update --remote <name>` on
 the superrepo's `nightly` therefore moves that checkout to the tip of its

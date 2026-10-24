@@ -158,7 +158,8 @@ Cloudflare. The overlay sets no Access audience, so the services verify no
 assertion and record the identity the local console and `tcab` send in
 `Cf-Access-Authenticated-User-Email`, `dev@local` by default.
 
-After editing a test case or suite, run `tcab ingest --changed` against the
+After editing a test case or suite, publish the change from The Spec Cabinet's
+Publish page, or run `tcab ingest --changed` from the command line against the
 forwarded backend. `local-ingest` force-ingests the whole catalog. See
 [Starting the backend](#starting-the-backend) for the `tcab ingest` forms.
 
@@ -229,6 +230,66 @@ reports each forwarded port as free or still held and exits non-zero if any is
 still held. A port held by something other than one of our forwards is reported
 and left alone; in a devcontainer that is usually the editor auto-forwarding the
 port, which you stop in its PORTS panel.
+
+## The Spec Cabinet against the local stack
+
+[The Spec Cabinet](/the-spec-cabinet/overview/) runs on the development machine
+beside the forwarded stack, from the `the-spec-cabinet` checkout. Previews,
+publishing, and run import reach the local stack's backend, so they need the
+stack up and forwarded. The Spec Cabinet's frontend listens on `127.0.0.1:1432`
+and its backend on `TCAB_SPEC_CABINET_BIND`, which defaults to `127.0.0.1:8792`.
+`local-forward` holds `8792` for the repos service, so a Spec Cabinet run beside
+the forwarded stack binds another port, such as `127.0.0.1:8793`.
+
+Bring the stack up and hold the forward open in its own terminal, as described
+above:
+
+```sh
+make -C deployments/local local-up
+make -C deployments/local local-forward
+```
+
+The devcontainer checks out the `the-spec-cabinet` and `test-suites`
+submodules. From the `the-spec-cabinet/` checkout, install its npm workspace and,
+once, the toolchains its harness sandbox is built with, then create its env file
+from the example. The example lists every variable the backend reads, and every
+one has a default. `TCAB_SPEC_CABINET_BACKEND_URL` defaults to the forwarded
+backend on `http://127.0.0.1:8787`, so nothing needs setting to reach the local
+stack. Set `OPENROUTER_API_KEY` in it to run workflows and use the assistant,
+either now or while The Spec Cabinet is running.
+
+```sh
+npm ci
+scripts/ci/install-sandbox-toolchains.sh
+cp .env.spec-cabinet.example .env.spec-cabinet
+echo TCAB_SPEC_CABINET_BIND=127.0.0.1:8793 >> .env.spec-cabinet
+```
+
+Launch it from the `the-spec-cabinet/` checkout and open
+<http://127.0.0.1:1432>:
+
+```sh
+npm run spec-cabinet
+```
+
+`npm run spec-cabinet` builds and runs `tcab-spec-cabinet` rooted at the
+superrepo's `test-suites` submodule, `../test-suites`, and runs the Vite dev
+server beside it. Ctrl-C stops both. A missing submodule checkout is reported
+with `git -C .. submodule update --init test-suites`. `TCAB_SPEC_CABINET_ROOT`
+roots the backend at another checkout, and `TCAB_SPEC_CABINET_STATE` moves the
+state root holding the conversations, workflow runs, imported runs, and build
+working directories it records, which defaults to `.scab/` in the
+`the-spec-cabinet` checkout. The test suites checkout itself holds suite data
+alone. The frontend's `/api` proxy targets `VITE_SPEC_CABINET_API`, which the
+command sets from `TCAB_SPEC_CABINET_BIND`.
+
+The status strip along the bottom of every page reports the checkout and whether
+it is a git repository tracked by the superproject, the configured backend and
+whether its `/healthz` answers, and whether `OPENROUTER_API_KEY` is set. When a
+preview, publish, or import is unavailable, the status strip shows which of
+these is missing. Check again re-reads `.env.spec-cabinet` for the provider key,
+so a key added after launch is picked up without a restart. The other variables
+are read once at startup.
 
 ## Pointing `tcab` at a deployment
 
@@ -369,7 +430,16 @@ tcab ingest carom --force         # one case or suite, overwriting what is store
 tcab ingest carom@v1.2.0 --force  # exactly one version
 ```
 
-It wraps the endpoint's streamed (`Accept: application/x-ndjson`) progress
+A suite authored in The Spec Cabinet is published from the suite's Publish page,
+which lists its exported versions and previews with what the chosen target holds
+of each. Publishing a version ingests it and uploads its verified reference
+builds. The page also publishes the whole suite, the changed catalog, or
+everything, each with a streaming log. The target is the local stack unless the
+staging or production environment is chosen, which The Spec Cabinet reaches
+through the edge with the same `TCAB_ACCESS_*` credentials `tcab` reads. See
+[The Spec Cabinet against the local stack](#the-spec-cabinet-against-the-local-stack).
+
+Both wrap the endpoint's streamed (`Accept: application/x-ndjson`) progress
 feed; the raw call is:
 
 ```sh

@@ -232,10 +232,11 @@ case version declares one.
 
 ## Harness
 
-In the context of The Test Cabinet, "harness" refers to two elements:
+In the context of The Test Cabinet, "harness" refers to three elements:
 
 1. The Test Cabinet itself
 2. Agentic harnesses used to drive models
+3. The Spec Cabinet's agentic harness, which drives its authoring workflows
 
 The Test Cabinet runs other harnesses. It hits no LLM API and implements no
 agentic loop; that responsibility lies entirely with the agentic harnesses it
