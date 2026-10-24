@@ -6,8 +6,35 @@ zone: REPOS
 number: 2
 title: Split the Spec Cabinet into its own repository
 type: generic
-state: open
+priority: 3
+state: done
 created: 2026-10-13T21:11:39.153491809Z
+done: 2026-10-24T04:52:58.220878047Z
+outcome: |
+  Done:
+
+  - The `the-spec-cabinet` repository on Azure holds the branch's Spec Cabinet
+    paths, with their history (see its `history/README.md`), is rendered by the
+    kit, and is a submodule of the superrepo. The pointer is moved to `c33c415`
+    (its `nightly`).
+  - `make gate` passes in a standalone clone of `the-spec-cabinet` at `c33c415`
+    (2623 Rust tests pass and the npm workspace's tests pass). Run in place in the
+    nyxsis worktree, `cspell`, `typescript` and one browser-served Rust test fail
+    only because the checkout's path lies under `.git/`: Vite refuses to serve
+    from it and cspell finds no files there.
+  - The branch's shared-code edits are carried elsewhere. ui-common v0.1.4
+    exports `@clockwyrks/ui/embed`, the fixture check became the-spec-cabinet's
+    `fixture-suite-drift` gate, and its sandbox build is its own. The branch's
+    documentation landed in `c018cd1da`, adapted to the split.
+  - In the superrepo, every gate passes, `dependency-graph` included. `cspell`
+    and `workspace-test` fail in place for the same `.git/` path reason, and pass
+    outside it: cspell from a worktree under /tmp, and the four engines packages'
+    tests from a clone at the pinned commit. No `spec-cabinet` crate, app or
+    package is in the tree.
+
+  Left: deleting `feat/the-spec-cabinet` waits until this branch reaches
+  `nightly` (REPOS-25). The default port clash with the repos forward is
+  REPOS-26.
 ---
 
 The Spec Cabinet lives on `feat/the-spec-cabinet` in the superrepo. The
