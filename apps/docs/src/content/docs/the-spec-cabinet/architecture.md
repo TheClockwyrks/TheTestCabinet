@@ -18,7 +18,7 @@ HTTP API describing them.
 Configuration is environment-driven:
 
 - `TCAB_SPEC_CABINET_BIND` is the listen address, defaulting to
-  `127.0.0.1:8792`.
+  `127.0.0.1:8793`.
 - `TCAB_SPEC_CABINET_ROOT` points at the test suites submodule checkout and is
   the only suite tree the backend reads or writes. It defaults to
   `../test-suites`, the superrepo's submodule beside the `the-spec-cabinet`

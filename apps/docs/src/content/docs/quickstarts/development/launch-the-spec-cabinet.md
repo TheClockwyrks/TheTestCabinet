@@ -37,7 +37,6 @@ Then, from the `the-spec-cabinet/` checkout:
 npm ci                                            # the repository's npm workspace
 scripts/ci/install-sandbox-toolchains.sh          # once: the harness sandbox's toolchains
 cp .env.spec-cabinet.example .env.spec-cabinet    # every variable the backend reads
-echo TCAB_SPEC_CABINET_BIND=127.0.0.1:8793 >> .env.spec-cabinet  # clear of local-forward
 npm run spec-cabinet                              # backend and frontend; Ctrl-C stops both
 ```
 

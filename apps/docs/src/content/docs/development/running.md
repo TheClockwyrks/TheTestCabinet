@@ -237,9 +237,9 @@ port, which you stop in its PORTS panel.
 beside the forwarded stack, from the `the-spec-cabinet` checkout. Previews,
 publishing, and run import reach the local stack's backend, so they need the
 stack up and forwarded. The Spec Cabinet's frontend listens on `127.0.0.1:1432`
-and its backend on `TCAB_SPEC_CABINET_BIND`, which defaults to `127.0.0.1:8792`.
-`local-forward` holds `8792` for the repos service, so a Spec Cabinet run beside
-the forwarded stack binds another port, such as `127.0.0.1:8793`.
+and its backend on `TCAB_SPEC_CABINET_BIND`, which defaults to `127.0.0.1:8793`,
+clear of every port `local-forward` holds, so the two run side by side without
+setting it.
 
 Bring the stack up and hold the forward open in its own terminal, as described
 above:
@@ -262,7 +262,6 @@ either now or while The Spec Cabinet is running.
 npm ci
 scripts/ci/install-sandbox-toolchains.sh
 cp .env.spec-cabinet.example .env.spec-cabinet
-echo TCAB_SPEC_CABINET_BIND=127.0.0.1:8793 >> .env.spec-cabinet
 ```
 
 Launch it from the `the-spec-cabinet/` checkout and open
