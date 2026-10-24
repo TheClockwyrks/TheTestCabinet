@@ -4476,5 +4476,13 @@ name = "test-cabinet-backend-client"
 version = "0.2.4"
 
 [[patch.unused]]
+name = "spec-cabinet-sandbox-artifacts"
+version = "0.0.0"
+
+[[patch.unused]]
+name = "test-cabinet-spec-cabinet"
+version = "0.0.0"
+
+[[patch.unused]]
 name = "test-cabinet-client-tauri"
 version = "0.1.0"

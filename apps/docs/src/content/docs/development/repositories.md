@@ -81,7 +81,7 @@ Every repository but `console.testcabinet.ai`,
 `tool-audio-core`, `tool-dc`, `tool-mc`, `tool-model-core`, `tool-music`,
 `tool-paint`, `tool-particle`,
 `tool-sfx-sample`, `tool-sfx-synth`, `tool-sn`, `tool-sprite`, `tool-voxel`,
-`test-suites`, `testcabinet.ai`,
+`test-suites`, `testcabinet.ai`, `the-spec-cabinet`,
 `ui-common` and `cold-storage` is still a directory of the
 superrepo's own tree today.
 

@@ -109,3 +109,7 @@
 	path = client-tauri
 	url = ../client-tauri
 	branch = .
+[submodule "the-spec-cabinet"]
+	path = the-spec-cabinet
+	url = ../the-spec-cabinet
+	branch = .

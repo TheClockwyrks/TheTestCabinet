@@ -163,9 +163,9 @@ test-cabinet-arena = { path = "microservice-arena/crates/arena" }
 [patch."https://github.com/TheClockwyrks/gg"]
 test-cabinet-gg = { path = "gg/crates/gg" }
 
-# the-spec-cabinet is not checked out; the table joins once it is bootstrapped:
-#   [patch."https://github.com/TheClockwyrks/the-spec-cabinet"]
-#   test-cabinet-spec-cabinet = { path = "the-spec-cabinet/crates/spec-cabinet" }
+[patch."https://github.com/TheClockwyrks/the-spec-cabinet"]
+test-cabinet-spec-cabinet = { path = "the-spec-cabinet/crates/spec-cabinet" }
+spec-cabinet-sandbox-artifacts = { path = "the-spec-cabinet/crates/spec-cabinet-sandbox-artifacts" }
 
 [patch."https://github.com/TheClockwyrks/client-tauri"]
 test-cabinet-client-tauri = { path = "client-tauri/crates/client-tauri" }

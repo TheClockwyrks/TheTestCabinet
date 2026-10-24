@@ -35,6 +35,11 @@
     "testcabinet.ai": {
       "@clockwyrks/site": "apps/site"
     },
+    "the-spec-cabinet": {
+      "@clockwyrks/spec-cabinet": "apps/spec-cabinet",
+      "@clockwyrks/spec-cabinet-sandbox": "packages/spec-cabinet-sandbox",
+      "@clockwyrks/spec-cabinet-sandbox-purescript": "packages/spec-cabinet-sandbox-purescript"
+    },
     "ui-common": {
       "@clockwyrks/run-stats": "packages/run-stats",
       "@clockwyrks/ui": "packages/ui"
