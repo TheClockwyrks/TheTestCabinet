@@ -205,7 +205,9 @@ EXTRA_GATES: dict[str, dict[str, tuple[str, ...]]] = {
     # The Spec Cabinet's browser tests mount a JSON rendering of the contracts
     # crate's fixture suite, which its crate generates with cargo; the gate
     # regenerates it and fails on a difference, so it runs where cargo does.
-    "the-spec-cabinet": {"rust": ("fixture-suite-drift",)},
+    # Its launcher's Node helpers keep their tests beside them, as the
+    # superrepo's `scripts-test` runs its own.
+    "the-spec-cabinet": {"rust": ("fixture-suite-drift",), "checks": ("scripts-test",)},
 }
 # The jobs of the gates stage an extra gate may name.
 GATE_JOBS = ("rust", "checks")

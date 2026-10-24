@@ -266,8 +266,12 @@ def test_the_windows_and_extra_gate_tables_name_repositories_carrying_a_crate() 
     assert render.extra_gates("console.testcabinet.ai", "site") == {"checks": ("web-lint", "web-browser-test")}
     # The gallery lints its TypeScript beside the kit's `typescript` gate.
     assert render.extra_gates("testcabinet.ai", "site") == {"checks": ("web-lint",)}
-    # The Spec Cabinet regenerates its browser fixture with cargo, in the Rust job.
-    assert render.extra_gates("the-spec-cabinet", "application") == {"rust": ("fixture-suite-drift",)}
+    # The Spec Cabinet regenerates its browser fixture with cargo, in the Rust
+    # job, and tests its launcher's Node helpers in the checks job.
+    assert render.extra_gates("the-spec-cabinet", "application") == {
+        "rust": ("fixture-suite-drift",),
+        "checks": ("scripts-test",),
+    }
     # gg, an application, takes the kit's `build-context` gate, which holds its
     # Dockerfiles (the `gg-toolchains` image's among them) to its build context.
     assert render.extra_gates("gg", "application") == {}
