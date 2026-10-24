@@ -447,7 +447,8 @@ The kit renders the gate runner into every repository, with these gates:
 A repository may add gates of its own, such as `contracts`' `contract-drift`,
 `engines`' `seeded-contract`, `ui-common`'s `web-lint`,
 `console.testcabinet.ai`'s `web-lint` and `web-browser-test`, `testcabinet.ai`'s
-`web-lint`, or `test-suites`' `frozen-paths`, `spec-prose`, `spec-vocabulary`,
+`web-lint`, `the-spec-cabinet`'s `fixture-suite-drift` and `scripts-test`, or
+`test-suites`' `frozen-paths`, `spec-prose`, `spec-vocabulary`,
 `audio-packs` and `validators-typecheck`. The gate is a file
 the repository writes under `ci/gates/`, and the kit leaves it to the
 repository; `EXTRA_GATES` in `render.py` names it and the job it runs in, and

@@ -382,8 +382,9 @@ own.
 
 The gates over code live with the code. A Rust workspace's `rust-*` gates, an
 npm workspace's `typescript` gate, `contracts`' `contract-drift`, `engines`'
-`seeded-contract` and `test-suites`' `frozen-paths`, `spec-prose`,
-`spec-vocabulary`, `audio-packs` and `validators-typecheck` each run in that
+`seeded-contract`, `the-spec-cabinet`'s `fixture-suite-drift` and
+`test-suites`' `frozen-paths`, `spec-prose`, `spec-vocabulary`, `audio-packs`
+and `validators-typecheck` each run in that
 repository's checkout and pipeline, by the same runner and the same command.
 A change to a repository runs that repository's gates from its directory:
 
