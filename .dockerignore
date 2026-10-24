@@ -28,7 +28,7 @@
 # baseline media included. client-tauri, contracts, engines, gg, microservice-arena, microservice-artifacts, microservice-dispatcher, microservice-driver,
 # microservice-publisher, microservice-repos, tool-model-core, tool-paint, tool-particle, tool-sprite,
 # tool-voxel, tool-mc, tool-sn, tool-dc, tool-audio-core, tool-sfx-synth,
-# tool-sfx-sample, tool-music and ui-common are the ones named, below. What
+# tool-sfx-sample, tool-music, the-spec-cabinet and ui-common are the ones named, below. What
 # a submodule path adds is a precondition: the build reads what the checkout it runs in
 # holds, and a checkout leaves every submodule empty until it is initialized. So the
 # image jobs run `scripts/ci/submodules.sh init --build-context`, which initializes
@@ -130,6 +130,25 @@
 !/client-tauri/crates/client-tauri/build.rs
 !/client-tauri/crates/client-tauri/src/lib.rs
 !/client-tauri/crates/client-tauri/src/main.rs
+# The the-spec-cabinet repository's two crates the patch table names, which no image
+# compiles either, for the same reason: cargo reads their manifests, the workspace
+# manifest they inherit from, the manifests of the two path crates they name (the
+# PureScript artifacts and the build support), their build scripts and target files,
+# and records the entries in the lock as `[[patch.unused]]`; nothing more of
+# the-spec-cabinet enters a `COPY . .`.
+!/the-spec-cabinet/Cargo.toml
+!/the-spec-cabinet/crates/spec-cabinet/Cargo.toml
+!/the-spec-cabinet/crates/spec-cabinet/build.rs
+!/the-spec-cabinet/crates/spec-cabinet/src/lib.rs
+!/the-spec-cabinet/crates/spec-cabinet/src/main.rs
+!/the-spec-cabinet/crates/spec-cabinet-sandbox-artifacts/Cargo.toml
+!/the-spec-cabinet/crates/spec-cabinet-sandbox-artifacts/build.rs
+!/the-spec-cabinet/crates/spec-cabinet-sandbox-artifacts/src/lib.rs
+!/the-spec-cabinet/crates/spec-cabinet-sandbox-artifacts/purescript/Cargo.toml
+!/the-spec-cabinet/crates/spec-cabinet-sandbox-artifacts/purescript/build.rs
+!/the-spec-cabinet/crates/spec-cabinet-sandbox-artifacts/purescript/src/lib.rs
+!/the-spec-cabinet/crates/spec-cabinet-sandbox-artifacts/build-support/Cargo.toml
+!/the-spec-cabinet/crates/spec-cabinet-sandbox-artifacts/build-support/src/lib.rs
 
 # The backend service image (services.Dockerfile, `--target backend`) bakes
 # contracts' Playwright browser-driver into its runtime to render references at
