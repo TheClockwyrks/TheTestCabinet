@@ -6,7 +6,9 @@ zone: REPOS
 number: 12
 title: Extract the backend into microservice-backend
 type: generic
-state: open
+priority: 3
+state: blocked
+reason: 'Decide where microservice-backend''s image reads gg''s pin: A (mirrored gg-release-version held equal by dependency-graph, docs drop "declared once"), B (a data edge backend -> driver or gg), or C (move the pin into contracts).'
 depends_on:
   - txf8l556rdhfmbw9k1bxwvet
 created: 2026-10-13T21:13:08.379701475Z
