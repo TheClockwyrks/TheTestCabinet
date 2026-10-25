@@ -4,14 +4,6 @@
 # the npm script where the Makefile has none (`make docs` builds the site; the `docs`
 # command below serves it live).
 
-# What removes this project's build output.
-clean = ["make", "clean"]
-
-# The issues board Nyxsis reads.
-[issues]
-format = "files"
-root = "tasks"
-
 # Every gate, through the ci project's runner.
 [[command]]
 name = "gate"
@@ -23,3 +15,30 @@ name = "docs"
 run = ["npm", "run", "--workspace", "apps/docs", "dev"]
 background = true
 ports = [4321]
+
+# The cloud resources the project deploys to, by name: Azure resource groups,
+# Cloudflare R2 buckets and Cloudflare Pages projects, at most 32 of each.
+# Nyxsis reads this table from the default branch and shows what it claims on
+# the project's Cloud page; see the `[cloud]` section of
+# `.claude/skills/nyxsis/SKILL.md`. The two resource groups hold each
+# environment's cluster, registry, storage and key vault (a cluster's node
+# resource group is claimed through the cluster); the buckets are each
+# environment's public snapshot; the Pages projects are the gallery, the docs,
+# the per-run playable builds, the reference implementations and gg's site,
+# each with its staging twin (see the static site topology in
+# `apps/docs/src/content/docs/development/releasing.md`).
+[cloud]
+resource_groups = ["testcabinet-prod-westus2-rg", "testcabinet-staging-westus2-rg"]
+r2_buckets = ["test-cabinet-snapshot", "test-cabinet-snapshot-staging"]
+pages_projects = [
+  "the-test-cabinet",
+  "the-test-cabinet-staging",
+  "test-cabinet-docs",
+  "test-cabinet-docs-staging",
+  "test-cabinet-runs",
+  "test-cabinet-runs-staging",
+  "test-cabinet-references",
+  "test-cabinet-references-staging",
+  "gg-rocks",
+  "gg-rocks-staging",
+]

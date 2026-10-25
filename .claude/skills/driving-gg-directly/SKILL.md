@@ -1,6 +1,6 @@
 ---
 name: driving-gg-directly
-description: Read this skill before running gg outside The Test Cabinet — "try model X on this issue with gg", "drive gg from this session", "run gg against a tasks/ file". gg is normally launched by core inside a run container; this is the recipe for launching the bare binary from a dev box with a hand-written invocation, in responses-as-code or tool-calling mode, and reading its telemetry. Verified in the devcontainer on 2026-09-22.
+description: Read this skill before running gg outside The Test Cabinet — "try model X on this issue with gg", "drive gg from this session", "run gg against an issue file". gg is normally launched by core inside a run container; this is the recipe for launching the bare binary from a dev box with a hand-written invocation, in responses-as-code or tool-calling mode, and reading its telemetry. Verified in the devcontainer on 2026-09-22.
 ---
 
 # Driving gg directly
@@ -8,7 +8,7 @@ description: Read this skill before running gg outside The Test Cabinet — "try
 gg is a standalone binary: `gg --config <invocation.json>`, one credential in
 the environment, NDJSON telemetry on stdout. Nothing in the run path needs
 `core`, a run container, or a test case. The `prompt` field is simply the first
-user message, so an issue file from `tasks/` works as the whole brief.
+user message, so an issue file from `.nyxsis/issues/` works as the whole brief.
 
 Authoritative references: the invocation contract is `GgInvocation` in
 `contracts/crates/contracts/src/gg.rs`; the configuration surface is
@@ -78,7 +78,7 @@ and the launch having been accepted is the result you were after.
 
 ## The issue study
 
-The setup used to trial a model on an open `tasks/` issue. One run per model
+The setup used to trial a model on an open issue. One run per model
 per issue, in a worktree, on a branch named for the model.
 
 ### The configuration
@@ -207,7 +207,7 @@ run the model at its provider's default.
 
 ## Prompting an issue
 
-Paste the `tasks/` file verbatim into `prompt`, preceded by one line saying the
+Paste the issue file verbatim into `prompt`, preceded by one line saying the
 workspace is the repository the issue describes and that the session ends by
 calling `finish` once the change is complete and the gates named in the issue
 pass. Anything you would put in a system prompt goes in the profile's

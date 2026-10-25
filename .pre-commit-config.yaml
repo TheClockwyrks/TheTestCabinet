@@ -19,14 +19,10 @@
 # intra-doc links resolve, which no other gate sees, and rust-doctest runs the
 # examples in those comments, which nextest cannot.
 #
-# The hooks run at one of two moments, and which one a hook gets is decided by
-# its cost. Everything else runs on every `git commit`; rust-clippy and rust-doc
-# run on `git push` instead (`stages: [pre-push]`), so the commit stays
-# interactive and the lint verdict still arrives before anything leaves the
-# machine. A pre-push hook sees the files that differ across the range being
-# pushed, not the ones in the last commit, so a `files:` pattern keeps its
-# meaning: touch any Rust source anywhere in the push and the Rust gates run.
-# rust-test and rust-doctest have no hook at all (see below).
+# rust-clippy and rust-doc run on every `git commit` that touches a Rust source
+# or a manifest, sharing the `cargo check` artifacts, so the lint verdict
+# arrives before anything leaves the machine. rust-test and rust-doctest have
+# no hook at all (see below).
 #
 # The documentation hooks (markdownlint, cspell, format, docs-typecheck,
 # docs-build) run the npm workspace's own locked tools, so they need `npm ci`
@@ -34,21 +30,25 @@
 # browser tests and build are console.testcabinet.ai's gates, and the
 # gallery's lint, typecheck, tests and build are testcabinet.ai's.
 #
+# Every hook runs at commit time but one: submodule-remotes runs before a push,
+# since what it refuses is a push of a commit pinning a submodule commit that
+# submodule's remote lacks, which no commit-time check can see. The stages are
+# pinned below: `default_stages` holds every hook that names none to the commit,
+# and the upstream hooks whose own manifests also name the push stage are held
+# to the commit one by one.
+#
 # Setup is a single idempotent command: `scripts/setup-hooks.sh`, which the
-# devcontainer runs when it is created. It installs both hook types;
-# `default_install_hook_types` below is what makes a plain `pre-commit install`
-# wire up the pre-push hook too, so a clone that never gets the pre-push hook
-# installed silently loses the heavy gates entirely. If a hook ever blocks work
-# you know is fine, `git commit --no-verify` and `git push --no-verify` bypass
-# the respective stage.
+# devcontainer runs when it is created, and which installs the commit hook and
+# the push hook both. If a hook ever blocks a commit you know is fine,
+# `git commit --no-verify` bypasses it, and `git push --no-verify` a push.
 #
 # Revisions are pinned; refresh them with `pre-commit autoupdate`. The version
 # below is the framework's own, and the toolchain image the devcontainer is
 # built on is what holds it: match this floor and scripts/setup-hooks.sh's
 # fallback install to the pre-commit that image carries.
 minimum_pre_commit_version: "4.6.0"
-
 default_install_hook_types: [pre-commit, pre-push]
+default_stages: [pre-commit]
 
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
@@ -62,8 +62,10 @@ repos:
         # those is a mistake this hook should stop, so the copies are left out,
         # as they are for end-of-file-fixer below.
         exclude: "^crates/[^/]+/testdata/definitions/"
+        stages: [pre-commit]
       - id: check-case-conflict
       - id: check-executables-have-shebangs
+        stages: [pre-commit]
       - id: check-illegal-windows-names
       - id: check-json
         # tsconfig, devcontainer.json, and VSCode's .json are JSON-with-comments
@@ -71,6 +73,7 @@ repos:
         exclude: '(^|/)tsconfig[^/]*\.json$|(^|/)devcontainer\.json$|(^|/)\.vscode/.*\.json$'
       - id: check-merge-conflict
       - id: end-of-file-fixer
+        stages: [pre-commit]
         # Every text file ends with a newline, which nothing else here checks.
         # A reviewer that has to notice a missing one is being spent on what a
         # hook settles. Binary assets are left alone, and so are the copies of
@@ -78,6 +81,7 @@ repos:
         # bytes, some of them files that end without a newline.
         exclude: '\.(svg|png|ico|woff2?)$|^crates/[^/]+/testdata/definitions/'
       - id: check-shebang-scripts-are-executable
+        stages: [pre-commit]
         # Rust files open with inner attributes like `#![forbid(unsafe_code)]`,
         # which this hook mistakes for a shebang; opt them out entirely.
         exclude: '\.rs$'
@@ -165,9 +169,8 @@ repos:
         description: Run Clippy across the workspace with warnings denied.
         entry: uv run --quiet --project ci gate run rust-clippy
         language: system
-        # One of the two heavy gates: it compiles the workspace, so it runs on
-        # push rather than on every commit (see the header).
-        stages: [pre-push]
+        # One of the two heavy gates: it compiles the workspace (see the
+        # header).
         # The manifests and the lockfile are here because a lint policy in
         # Cargo.toml or a `--locked` mismatch changes the verdict for every
         # source.
@@ -179,9 +182,8 @@ repos:
         description: Run rustdoc across the workspace with warnings denied, catching broken intra-doc links.
         entry: uv run --quiet --project ci gate run rust-doc
         language: system
-        # The other heavy gate, and it pairs with clippy: run on push, where it
-        # reuses the `cargo check` artifacts clippy just built.
-        stages: [pre-push]
+        # The other heavy gate, and it pairs with clippy: it reuses the
+        # `cargo check` artifacts clippy just built.
         files: '\.rs$|(^|/)Cargo\.(toml|lock)$|^rust-toolchain\.toml$|^ci/gates/rust-doc\.py$'
         pass_filenames: false
 
@@ -218,7 +220,7 @@ repos:
         # `npm run lint:md`), so don't pass paths; trigger whenever a linted
         # Markdown file is staged, or whenever the rule config itself changes,
         # since that re-judges every document.
-        files: '^apps/docs/src/content/docs/.*\.mdx?$|^tasks/.*\.md$|^[^/]*\.md$|^\.[^/]+/.*\.md$|^\.markdownlint-cli2\.yaml$|^ci/gates/markdownlint\.py$'
+        files: '^apps/docs/src/content/docs/.*\.mdx?$|^[^/]*\.md$|^\.[^/]+/.*\.md$|^\.markdownlint-cli2\.yaml$|^ci/gates/markdownlint\.py$'
         pass_filenames: false
 
       - id: cspell
@@ -230,7 +232,7 @@ repos:
         # `npm run spell`), so don't pass paths; trigger whenever a checked file
         # is staged, or whenever the config or the project dictionary changes,
         # since deleting a word there can unmask a spelling anywhere.
-        files: '^apps/docs/src/content/docs/.*\.mdx?$|^tasks/.*\.md$|^[^/]*\.md$|^\.[^/]+/.*\.md$|^cspell\.json$|^\.cspell/|^ci/gates/cspell\.py$'
+        files: '^apps/docs/src/content/docs/.*\.mdx?$|^[^/]*\.md$|^\.[^/]+/.*\.md$|^cspell\.json$|^\.cspell/|^ci/gates/cspell\.py$'
         pass_filenames: false
 
       - id: format
@@ -337,4 +339,17 @@ repos:
         language: system
         # The library, its tests and the gate script.
         files: '^scripts/lib/.*\.m?js$|^ci/gates/scripts-test\.py$'
+        pass_filenames: false
+
+      # The one push hook. It judges the commits a push would publish rather
+      # than any file, so it runs on every push and takes no paths, and it
+      # runs at no commit: what it asks, whether a submodule's remote holds
+      # the commit a pin names, is only settled when the push is made.
+      - id: submodule-remotes
+        name: submodule pins on their remotes
+        description: Refuse a push whose commits pin a submodule commit no branch of the submodule's remote the push can target holds.
+        entry: uv run --quiet --project ci gate run submodule-remotes
+        language: system
+        stages: [pre-push]
+        always_run: true
         pass_filenames: false

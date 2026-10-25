@@ -2,13 +2,10 @@
 # Idempotent one-shot setup for this repo's git hooks.
 #
 # Run this once after cloning (the devcontainer runs it for you on create). It
-# installs the pre-commit framework's hooks into .git/hooks so the gates in
-# .pre-commit-config.yaml run: the fast ones on every `git commit`, the two heavy
-# Rust gates (clippy, rustdoc) on `git push`. Both hook types are installed by the
-# one `pre-commit install` below, because the config declares
-# `default_install_hook_types: [pre-commit, pre-push]`. Safe to re-run any time —
-# and worth re-running on a clone set up before the pre-push hook existed, which
-# would otherwise never run the heavy gates at all.
+# installs the pre-commit framework's hooks into .git/hooks: the commit hook, so
+# the gates in .pre-commit-config.yaml run on every `git commit`, and the push
+# hook, so the one gate that judges a push, submodule-remotes, runs on every
+# `git push`. Safe to re-run any time.
 #
 # Because git never runs committed hooks until something wires them into a clone,
 # this is the single command that does that wiring.
@@ -38,16 +35,20 @@ if ! command -v pre-commit >/dev/null 2>&1; then
 	fi
 fi
 
+# Both hook types are named, as .pre-commit-config.yaml's
+# `default_install_hook_types` names them, so a clone set up by an older copy of
+# this script, which installed the commit hook alone, gains the push hook too.
+HOOK_TYPES=(--hook-type pre-commit --hook-type pre-push)
+
 echo "Installing the pre-commit and pre-push hooks..."
-pre-commit install
+pre-commit install "${HOOK_TYPES[@]}"
 
 # Best-effort: pre-build the hook environments now so the first real commit or
 # push isn't slowed by cloning/bootstrapping them. Needs network; a failure here is not fatal
 # (the environments build lazily on first use instead).
-if ! pre-commit install --install-hooks; then
+if ! pre-commit install "${HOOK_TYPES[@]}" --install-hooks; then
 	echo "Note: could not pre-build hook environments (offline?); they will build" >&2
 	echo "      on your first commit or push instead." >&2
 fi
 
-echo "Done. Hooks are active: the fast gates run on every 'git commit', and the"
-echo "heavy Rust gates (clippy, rustdoc) run on 'git push'."
+echo "Done. Hooks are active; they run on every 'git commit' and 'git push'."

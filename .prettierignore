@@ -94,7 +94,6 @@ deployments/k8s/
 /console.testcabinet.ai/**
 /testcabinet.ai/**
 /the-spec-cabinet/**
-/tasks/**/done/**
 /.claude/workflows/**
 /.claude/worktrees/**
 /crates/*/testdata/definitions/**

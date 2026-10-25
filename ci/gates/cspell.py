@@ -11,7 +11,7 @@ Running the locked binary keeps both verdicts identical, and deferring to the
 
 import os
 
-from the_test_cabinet_ci import enter_repo_root, fail, succeeded
+from the_test_cabinet_ci import enter_repo_root, fail, run_lint
 
 # From the workspace root, so npm finds package.json and cspell finds
 # cspell.json regardless of the caller's working directory.
@@ -20,8 +20,10 @@ root = enter_repo_root()
 if not os.access(root / "node_modules" / ".bin" / "cspell", os.X_OK):
     fail("cspell is not installed. Install the npm workspace first:", "    npm ci")
 
-# No file arguments: cspell.json's `files` globs already scope the check.
-if not succeeded(["npm", "run", "--silent", "spell"]):
+# No file arguments: cspell.json's `files` globs already scope the check. Its
+# summary states how many files it read, and a run that read none fails with
+# why rather than with cspell's usage text.
+if run_lint("cspell", ["npm", "run", "--silent", "spell"], counted=r"Files checked: (\d+)").returncode != 0:
     fail(
         "",
         "cspell found unknown words. Fix the typo, or, if the word is a real",

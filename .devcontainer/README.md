@@ -163,15 +163,16 @@ rather than one that quietly passes.
 `console.testcabinet.ai/` submodule, whose development server runs the console (not
 `cold-storage/`, which is optional and about 2 GB), through
 `tools/submodule-checkout.sh` (see [Submodule checkout](#submodule-checkout)),
-installs the git hook through `scripts/setup-hooks.sh`, places cargo's target
-directory (see [Where cargo builds](#where-cargo-builds)) and installs the npm
+installs the commit and push hooks through `scripts/setup-hooks.sh`, places
+cargo's target directory (see [Where cargo builds](#where-cargo-builds)) and
+installs the npm
 workspace's locked dependencies, and gg's own in `gg/`, and links the TypeScript
 packages the checked-out repositories produce into the workspaces that name them
 through `scripts/repos/link-packages.sh`, when the container is created. A link
 that fails says so and names that command to run again, without failing the
 creation.
 A folder that `git init` has not been run in yet takes the rest and says the
-hook was skipped. Nothing runs in the background afterwards: when it returns,
+hooks were skipped. Nothing runs in the background afterwards: when it returns,
 the container builds the whole workspace.
 
 ## The published images

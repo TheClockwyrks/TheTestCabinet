@@ -1,53 +1,44 @@
 ---
-description: Required reading when modifying this repository's tasks/ folder.
+description: Required reading when filing, editing or closing an issue of this repository.
 name: repo-tasks
 ---
+
+<!-- cspell:words nyxsis -->
 
 # Repo Tasks Policies
 
 ## Overview
 
-This repo's `tasks/` folder is used as an issues board for work tracking. Follow
-all policies documented here when filing new issues or working with existing
-issues. Several of these rules are the same as those that apply to the repo's
+This repository's issues are filed, started, blocked, released and closed
+through the issues server's MCP tools, `nyxsis-issues`. Follow all policies
+documented here when filing new issues or working with existing issues.
+Several of these rules are the same as those that apply to the repo's
 documentation.
 
-The board is one level of area folders, so an issue lives at
-`tasks/<area>/<issue>.md`, and every issue is in one of three places:
+The server assigns each issue its id, its file under `.nyxsis/issues/` and its
+label, and the file's frontmatter holds its state, so no issue is moved
+between folders or renamed. An issue's state is one of the following:
 
-- An area's folder
-  - Issues directly under an area's folder are referred to as "open" issues and
-    are ones that are ready to be implemented. Open issues may depend on other
-    open issues but may not require user input prior to beginning implementation
-    work.
-- The `done/` folder within an area
-  - Files in this folder are for historical context while working through a set
-    of issues and are periodically pruned. Do **NOT** use completed issues for
-    recording important information.
-- The `blocked/` folder within an area
-  - This is used exclusively for issues that need user input to resolve some
-    blocking issue. All open questions requiring clarification must be grouped
-    together within the issue in one location rather than being spread across
-    the file. The folder is created beside `done/` when an area's first issue
-    is blocked.
+- `open`
+  - Ready to be implemented. Open issues may depend on other open issues but
+    may not require user input prior to beginning implementation work.
+- `done`
+  - Closed with the `close` tool, carrying its outcome. A done issue is history.
+    Do **NOT** use completed issues for recording important information.
+- `blocked`
+  - Blocked with the `block` tool, carrying a reason that states what the user
+    must decide or provide, and set open again with the `release` tool. This is
+    used exclusively for issues that need user input to resolve some blocking
+    issue.
 
 ## Policies
 
-### All Issues Must Be Sorted
+### File the Design With the Issue
 
-All issues must be placed into an area folder directly under `tasks/`. Do not
-place any in the folder itself, and do not nest areas. Use the `backlog/` area
-for any miscellaneous items that don't make sense to place in other areas.
-
-### Completed Issues
-
-Once an issue has been completed, it should be moved into a `done/` folder in
-the same area folder it's already in. This makes it easy to check what issues
-have and have not been completed without needing to inspect file contents.
-
-A finished issue is immutable, and a `PreToolUse` hook refuses every write to
-one. Work a finished issue describes that needs reopening is filed as a new
-issue, and the finished one stays where it is.
+An issue records the work needed to align the code with the design, so the
+design is edited in the same commit as the filing. That commit carries the
+issue file the server wrote, since the server leaves committing it to the
+session that filed it.
 
 ### Critical Cross-Linking Only
 
@@ -80,10 +71,6 @@ prefer a specific verb over "fix", "update" or "ensure".
 BAD:  The rendered security headers are verified in a browser
 GOOD: Verify rendered security headers in a browser
 ```
-
-The filename is the kebab-case slug of the title, so that issue lives at
-`verify-rendered-security-headers-in-a-browser.md`: lowercase ASCII letters and
-digits, words joined by single hyphens, punctuation dropped, ending in `.md`.
 
 ### Minimize Interjections
 
@@ -137,7 +124,7 @@ Section 3 is superseded by ...
 Issues may list different designs that were considered and not selected, but
 must **NEVER** contain factual inaccuracies that were corrected or references to
 material that has been removed from the issue. Correct inaccuracies immediately
-so that only accurate information exists in issue files.
+with the `update` tool so that only accurate information exists in issues.
 
 ### No "Narrative" Issues
 
@@ -186,8 +173,8 @@ unnecessarily.
 ### No Open Questions
 
 Open issues are not allowed to contain open questions. If an issue requires user
-input to resolve a blocking question, it must be placed under a `blocked/`
-folder.
+input to resolve a blocking question, it is blocked with the `block` tool, its
+reason stating what the user must decide or provide.
 
 ### No Walls of Text
 

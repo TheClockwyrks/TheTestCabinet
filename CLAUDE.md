@@ -147,8 +147,13 @@ uv run --quiet --project ci gate run <id>...  # run some of them
 ```
 
 `.pre-commit-config.yaml` runs each gate as one hook, triggered by the files it
-judges. The superrepo's gates are the template's over its tree plus the
-project's over the set:
+judges, every one at the commit but `submodule-remotes`, which runs before a
+push and refuses one whose commits pin a submodule commit that no branch of the
+submodule's remote the push can target holds: for a push to `<b>`, the
+submodule's branch `<b>`, or any of its branches that is no `issue/`, `task/`
+or `filing/` branch, and never a tag alone. Push each submodule's branch before
+the repository pinning it. The superrepo's gates are the template's over its
+tree plus the project's over the set:
 
 ```text
 ci-image-pins            every CI image reference reads ciImageTag, and
@@ -169,6 +174,7 @@ python-lint              ruff over ci/, scripts/repos/ and the repository kit
 scripts-test             node --test over scripts/lib
 shell-tests              every *.test.sh under scripts/, scripts/ci/ and
                          scripts/repos/
+submodule-remotes        at a push: each pin it moves is on a branch it can land
 ```
 
 The gates over code live with the code. Every repository carries the same
@@ -304,9 +310,11 @@ template's, and are edited like any other file.
   [`documentation`](.claude/skills/documentation/SKILL.md) skill.
 - Filing or editing an issue: the
   [`repo-tasks`](.claude/skills/repo-tasks/SKILL.md) skill, which describes
-  the one-level board and has an issue cite the documentation rather than
+  the issues server's tools and has an issue cite the documentation rather than
   requirement identifiers; draining the queue:
-  [`drain-issues-queue`](.claude/skills/drain-issues-queue/SKILL.md).
+  [`drain-issues-queue`](.claude/skills/drain-issues-queue/SKILL.md). The
+  move off the former `tasks/` board, taken once:
+  [`tasks-migration`](.claude/skills/tasks-migration/SKILL.md).
 - Test cases: [`authoring-test-cases`](.claude/skills/authoring-test-cases/SKILL.md)
   and [`test-cases`](.claude/skills/test-cases/SKILL.md).
 - gg: [`agent-prompts`](gg/.claude/skills/agent-prompts/SKILL.md) and
@@ -334,10 +342,9 @@ Open issues are filed through the Nyxsis issues server, which writes one file
 per issue under [`.nyxsis/issues/`](.nyxsis/issues/) in a zone
 [`.nyxsis/zones.toml`](.nyxsis/zones.toml) registers; an issue's prose follows
 the [`repo-tasks`](.claude/skills/repo-tasks/SKILL.md) policies and cites the
-documentation page the code is aligned with. [`tasks/`](tasks/) holds the
-finished issues of the former file board, under each area's `done/` folder; a
-finished issue is immutable (a hook refuses writes under `done/`), and work it
-describes that needs reopening is filed anew. Nothing on either board is
+documentation page the code is aligned with. The former file board under
+`tasks/` is gone; git history keeps every issue it held, and work a closed
+issue describes that needs reopening is filed anew. Nothing on the board is
 authoritative; when an issue lands, its durable conclusions belong in
 `apps/docs/`.
 

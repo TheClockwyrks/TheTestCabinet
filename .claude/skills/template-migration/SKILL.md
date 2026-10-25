@@ -150,6 +150,12 @@ everywhere else.
   itself (`ci/gates/dependency-graph.py`) and its library module
   (`ci/src/the_test_cabinet_ci/graph.py`, `ci/tests/test_graph.py`) are the
   project's own files in the template's directories.
+- The worktree test, `ci/tests/test_gates_in_a_worktree.py`: the template's
+  shares the root's and `apps/web`'s `node_modules` with the throwaway
+  checkouts and runs the web app's vitest suite in the worktree, and the
+  superrepo carries no web app (the console is `console.testcabinet.ai`'s, with
+  its own gates). The project's `INSTALLED` is the root alone, and the vitest
+  test skips while `apps/web/vite.config.ts` is absent; keep both.
 - The devcontainer's build context and its own steps: the `dev` service in
   `.devcontainer/docker-compose.yml` builds from the repository root
   (`context: ..`, `dockerfile: ./.devcontainer/ubuntu.dockerfile`), because

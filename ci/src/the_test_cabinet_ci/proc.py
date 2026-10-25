@@ -7,6 +7,7 @@ one down to the commands it runs and the message it prints when they fail.
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -72,6 +73,7 @@ def git(
     cwd: str | os.PathLike[str] | None = None,
     text: bool = True,
     quiet: bool = False,
+    stdin: str | bytes | None = None,
 ) -> subprocess.CompletedProcess:
     """Run git on the checkout `cwd` is in, and return what it did.
 
@@ -83,6 +85,9 @@ def git(
     `argv` is git's arguments without the `git`. stdout is always captured;
     `quiet` discards stderr rather than letting it reach the gate's log. A git
     that is not installed raises FileNotFoundError, which the caller judges.
+    `stdin` is written to git's standard input, for the commands that read a
+    list there (`cat-file --batch-check`, `rev-list --stdin`); without it git
+    inherits this process's.
     """
     # As in `run`: this process's own buffered output has to be out before a
     # child writes to the same descriptor.
@@ -94,6 +99,7 @@ def git(
         env=git_environment(),
         stdout=subprocess.PIPE,
         stderr=subprocess.DEVNULL if quiet else None,
+        input=stdin,
         text=text,
         check=False,
     )
@@ -166,13 +172,15 @@ def run(
     env: Mapping[str, str] | None = None,
     unset: Sequence[str] = (),
     capture: bool = False,
+    combine: bool = False,
 ) -> subprocess.CompletedProcess[str]:
     """Run a tool and return what it did. A failure is the caller's to judge.
 
     The tool inherits this process's streams, so under the runner its output
-    lands in the gate's log. `capture` collects stdout as text instead. `env`
-    is laid over the inherited environment, and `unset` names the inherited
-    variables the tool must not see.
+    lands in the gate's log. `capture` collects stdout as text instead, and
+    `combine` with it collects stderr into the same text, in the order the
+    tool wrote them. `env` is laid over the inherited environment, and `unset`
+    names the inherited variables the tool must not see.
 
     A tool that is absent is reported the way a shell does, with status 127, so
     a gate handles it like any other failure.
@@ -191,12 +199,82 @@ def run(
             cwd=cwd,
             env=environment,
             stdout=subprocess.PIPE if capture else None,
+            stderr=subprocess.STDOUT if capture and combine else None,
             text=True,
             check=False,
         )
     except FileNotFoundError:
         say(f"{command[0]}: command not found", err=True)
         return subprocess.CompletedProcess(command, 127, "" if capture else None)
+
+
+# A terminal's colour codes, which a tool may write around the figures it reports.
+_COLOUR = re.compile(r"\x1b\[[0-9;]*m")
+
+# The line a tool's usage text opens with, and everything after it.
+_USAGE = re.compile(r"^Usage: .*", re.MULTILINE | re.DOTALL)
+
+
+def files_checked(output: str, pattern: str) -> int | None:
+    """The number of files a lint tool's output says it checked, or None.
+
+    `pattern` is a regular expression whose first group is the number, such as
+    `r"Files checked: (\\d+)"` for cspell's summary or `r"Linting: (\\d+) file"`
+    for markdownlint-cli2's. None means the output states no number at all.
+    """
+    found = re.search(pattern, _COLOUR.sub("", output))
+    return int(found.group(1)) if found else None
+
+
+def require_files_checked(tool: str, output: str, pattern: str) -> int:
+    """The number of files `tool` checked, or fail the gate where it checked none.
+
+    A lint tool whose globs and ignore patterns leave it no file passes having
+    read nothing (markdownlint-cli2) or prints its usage and fails without
+    naming a file (cspell), and either reads as a verdict on files nobody
+    checked. Both are turned here into a failure that names the tool and says
+    why, which is most often an ignore pattern that matches the checkout's own
+    path rather than a path inside it.
+    """
+    checked = files_checked(output, pattern)
+    if checked:
+        return checked
+    fail(
+        "",
+        f"{tool} reported no count of the files it checked." if checked is None else f"{tool} checked no file.",
+        "Its globs and ignore patterns left it no file to check. An ignore pattern not",
+        "anchored to the checkout's root is the usual cause: `**/.git/**` matches every",
+        "file of a checkout that itself sits under a `.git` directory, as a worktree",
+        "added under the repository's `.git` does. Anchor such a pattern to the root,",
+        "as `/.git/**` in cspell.json.",
+    )
+
+
+def run_lint(
+    tool: str,
+    argv: Sequence[str | os.PathLike[str]],
+    *,
+    counted: str,
+    cwd: str | os.PathLike[str] | None = None,
+    env: Mapping[str, str] | None = None,
+) -> subprocess.CompletedProcess[str]:
+    """Run a lint tool, echo what it said, and fail the gate where it checked no file.
+
+    The tool's stdout and stderr are collected together and written to this
+    process's stdout, so the gate's log reads as if the tool had written it.
+    `counted` is the pattern `files_checked` reads the number of files from;
+    where the output states none, the tool's usage text, which says
+    nothing about the files, is left out of the echo. A tool that checked at
+    least one file is returned, its exit status the caller's to judge.
+    """
+    done = run(argv, cwd=cwd, env=env, capture=True, combine=True)
+    output = done.stdout or ""
+    if files_checked(output, counted) is None:
+        output = _USAGE.sub("", output)
+    sys.stdout.write(output)
+    sys.stdout.flush()
+    require_files_checked(tool, output, counted)
+    return done
 
 
 def succeeded(

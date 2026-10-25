@@ -12,7 +12,13 @@
 //
 // Usage: `node scripts/copy-contract-schemas.mjs` (from any directory).
 
-import { cpSync, existsSync, rmSync } from "node:fs";
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  rmSync,
+} from "node:fs";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -39,9 +45,21 @@ for (const dir of DIRECTORIES) {
   }
 }
 
+// One file at a time rather than `cpSync`: Node's native directory copy fails
+// with EACCES on a virtiofs mount, which is what a devcontainer on a macOS
+// host works in, and the schemas are a few dozen small files.
+function copyTree(from, to) {
+  mkdirSync(to, { recursive: true });
+  for (const entry of readdirSync(from, { withFileTypes: true })) {
+    const next = [join(from, entry.name), join(to, entry.name)];
+    if (entry.isDirectory()) copyTree(...next);
+    else copyFileSync(...next);
+  }
+}
+
 for (const dir of DIRECTORIES) {
   rmSync(join(target, dir), { recursive: true, force: true });
-  cpSync(join(source, dir), join(target, dir), { recursive: true });
+  copyTree(join(source, dir), join(target, dir));
 }
 console.log(
   `copy-contract-schemas: copied ${DIRECTORIES.map((d) => `schema/${d}/`).join(", ")} from contracts/`,

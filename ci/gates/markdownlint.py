@@ -9,7 +9,7 @@ whatever the transitive `markdownlint` range happens to resolve to today.
 import os
 import sys
 
-from the_test_cabinet_ci import enter_repo_root, fail, run
+from the_test_cabinet_ci import enter_repo_root, fail, run_lint
 
 # From the workspace root, so npm finds package.json and markdownlint-cli2
 # finds .markdownlint-cli2.yaml regardless of the caller's working directory.
@@ -19,5 +19,9 @@ if not os.access(root / "node_modules" / ".bin" / "markdownlint-cli2", os.X_OK):
     fail("markdownlint-cli2 is not installed. Install the npm workspace first:", "    npm ci")
 
 # No file arguments: .markdownlint-cli2.yaml's globs already scope the lint, and
-# CLI paths would be *added* to those globs rather than replacing them.
-sys.exit(run(["npm", "run", "--silent", "lint:md"]).returncode)
+# CLI paths would be *added* to those globs rather than replacing them. It states
+# how many files it lints, and a run that lints none, which markdownlint-cli2
+# passes, fails here with why.
+sys.exit(
+    run_lint("markdownlint-cli2", ["npm", "run", "--silent", "lint:md"], counted=r"Linting: (\d+) file").returncode
+)

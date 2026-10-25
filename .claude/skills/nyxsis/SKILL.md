@@ -1,5 +1,5 @@
 ---
-description: Required reading when configuring this repository for Nyxsis or changing anything Nyxsis reads from it, such as the .nyxsis/ folder (project.toml, mirrors.toml), the declared commands, issues, clean command or build deadline, .copier-answers.yml, the devcontainer's compose file and its variables, forwardPorts, the cargo wrapper, or the pipeline's test results.
+description: Required reading when configuring this repository for Nyxsis or changing anything Nyxsis reads from it, such as the .nyxsis/ folder (project.toml, mirrors.toml), the declared commands, cloud claims or build deadline, .copier-answers.yml, the devcontainer's compose file and its variables, forwardPorts, the cargo wrapper, or the pipeline's test results.
 name: nyxsis
 ---
 
@@ -10,16 +10,16 @@ name: nyxsis
 ## Overview
 
 Nyxsis manages the fleet's projects and their workspaces: it builds and starts
-a workspace's devcontainer, runs its commands, reclaims its build output,
-forwards its ports, reads its issues, mirrors and test results, and keeps it
-on the template it was rendered from. Everything it learns about this
+a workspace's devcontainer, runs its commands, forwards its ports, reads its
+issues, mirrors and test results, and keeps it on the template it was rendered
+from. Everything it learns about this
 repository it reads from the files below, so configuring the repository for
 Nyxsis means editing them. This skill states each file's shape, its default
 where the repository declares nothing, and what Nyxsis does with it.
 
 Read it before adding or changing any of them, and before changing anything
-they name: a `make` target the clean command runs, the devcontainer's compose
-file, or the pipeline's test steps.
+they name: a `make` target a declared command runs, the devcontainer's
+compose file, or the pipeline's test steps.
 
 ## The one rule
 
@@ -32,7 +32,7 @@ the repository needs Nyxsis to build or run.
 
 `.nyxsis/` at the repository's root is the one place for what only Nyxsis
 reads. What it holds are facts about the repository itself, true whoever works
-on it: the command that removes its build output, the commands it is worked
+on it: how long its devcontainer takes to build, the commands it is worked
 with, the issues it keeps, the repositories that mirror it. Nothing else in the
 repository is written for Nyxsis alone: keep anything new Nyxsis should read
 in this folder, and name Nyxsis nowhere outside it but in this skill and where
@@ -46,13 +46,14 @@ repository leaves out takes the default stated below.
 
 The project declaration. It is at most 16 KiB, and is read from the checkout
 as it stands, so a workspace follows the branch it is on: a bring-up reads it
-when the build begins, and each report of the workspace reads its commands and
-its issues afresh. A file that cannot be read as TOML is malformed for every
-key; a malformed value of one key is reported with the reason and leaves the
-other keys read.
+when the build begins, and each report of the workspace reads its commands
+afresh. A file that cannot be read as TOML is malformed for every key; a
+malformed value of one key is reported with the reason and leaves the other
+keys read. A top-level key this skill names nowhere is ignored. The `[cloud]`
+table alone is read from the default branch instead, as [its section](#cloud)
+states.
 
 ```toml
-clean = ["make", "clean"]
 build_timeout_seconds = 5400
 
 [[command]]
@@ -65,21 +66,7 @@ name = "docs"
 run = ["npm", "run", "-w", "apps/docs", "dev"]
 background = true
 ports = [4321]
-
-[issues]
-format = "files"
-root = "tasks"
 ```
-
-### `clean`
-
-A list of words, at least one and none empty, run as one command with no shell
-inside the workspace's running devcontainer to reclaim its build output. The
-render declares `clean = ["make", "clean"]`, so the `clean` target of the
-`Makefile` is what is reclaimed: extend that target when the project grows
-build output of its own, rather than naming paths here. Without `clean`, or
-with it malformed, the workspace is reported as having no build output to
-reclaim, a malformed one with the reason.
 
 ### `build_timeout_seconds`
 
@@ -132,25 +119,57 @@ commands among it, is still read.
 Since `run` takes no shell, a command needing pipes, `&&` or variables runs a
 script the repository carries, or names `bash` and `-c` as its first words.
 
-### `[issues]`
+### `[cloud]`
 
-The issues the project keeps. Without the table Nyxsis reads no issues.
+The cloud resources the project deploys to, which Nyxsis reads for their
+health, state and cost and shows on the project's Cloud page. Unlike the rest
+of the file, the table is read by the controller from `.nyxsis/project.toml` on
+the primary remote's default branch, and read again whenever that branch's head
+moves, so a claim takes effect with a commit there and needs no workspace
+checked out. Without the table, or with the table empty, the project claims
+nothing.
 
-- `format`: the issues format the root is read by. `"files"` is the one format.
-- `root`: the issues root, a folder relative to the checkout's root, `tasks`
-  where the table states none.
+```toml
+[cloud]
+resource_groups = ["example-prod-rg"]
+r2_buckets = ["example-assets"]
+pages_projects = ["example-docs"]
+```
 
-Under the `files` format each Markdown file below the root other than a
-`README.md` is one issue. A file under a `done/` folder is done, one under a
-`blocked/` folder is blocked, and any other is open. The folders between the
-root and the file, `done/` and `blocked/` left out, are the issue's area. Its
-key is its path relative to the root with every `done/` and `blocked/` segment
-removed and `.md` dropped, so moving an issue between states keeps its key,
-and its title is the text of its first heading, or the file's stem where it
-has none. The board is read from the checkout as it stands, so a workspace
-states the issues of its branch, and a project's issues roll up from the
-boards of all of its workspaces. A malformed table is reported with the reason
-and the file's other keys are read.
+- `resource_groups`: the Azure resource groups, by name, matched in every
+  subscription Nyxsis reads. A managed cluster in a claimed group claims its
+  node resource group with it, so that group is not listed.
+- `r2_buckets`: the Cloudflare R2 buckets, by name, matched in every account
+  the fleet's Cloudflare login reaches.
+- `pages_projects`: the Cloudflare Pages projects, by name, matched the same
+  way.
+
+Each key is optional and a list of at most 32 names, each a non-empty string
+named once and matched without regard to case. Claim every group, bucket and
+Pages project holding something the project deploys, its cluster, registry,
+storage and key vault among them, since what no claim names is read as no
+project's. A table holding another key, a key that is not a list of names, or
+one listing more than 32 names or a name twice is malformed: it is reported on
+the project with the reason and claims nothing, and the file's other keys are
+read. A file that cannot be read at all is reported with the reason, and the
+claims last read from it stand.
+
+The project's Cloud page lists each claimed name under Claims with its kind and
+the subscriptions or accounts it matched in, or Unmatched where nothing read
+holds it, and names any other project claiming it too, in whose figures it
+also counts. Below that it shows, for what the claims hold, each cluster with
+its power and provisioning states, its Kubernetes version and its node pools,
+each registry with its repositories, each storage account with its capacity and
+containers, each key vault's secrets and certificates by expiry, the R2 buckets
+and Pages projects, the month's spend per resource group, and every Azure
+resource of the claimed groups with its availability. A project claiming
+nothing says "The project claims no cloud resources."
+
+## `.nyxsis/issues/`
+
+The project's issues, one Markdown file each, which the issues server
+(`nyxsis-issues`) writes as a session files and changes them. The `repo-tasks`
+skill states how an issue is filed and written.
 
 ## `.nyxsis/mirrors.toml`
 

@@ -144,3 +144,103 @@ def test_the_helpers_flush_before_a_child_writes(tmp_path: Path) -> None:
     with out.open("wb") as sink:
         subprocess.run([sys.executable, "-c", script], stdout=sink, check=True)
     assert out.read_text(encoding="utf-8").splitlines() == ["unflushed", "child", "after"]
+
+
+# The figures cspell's and markdownlint-cli2's summaries state, as the gates read them.
+CSPELL_COUNT = r"Files checked: (\d+)"
+MARKDOWNLINT_COUNT = r"Linting: (\d+) file"
+
+# What cspell 10 prints, and nothing else, when its globs and ignores leave it no file.
+CSPELL_USAGE = "Usage: cspell lint [options] [globs...]\n\nPatterns:\n - [globs...]            Glob Patterns\n"
+
+
+@pytest.mark.parametrize(
+    ("output", "pattern", "count"),
+    [
+        ("CSpell: Files checked: 73, Issues found: 0 in 0 files.\n", CSPELL_COUNT, 73),
+        ("CSpell: Files checked: 74 (74 from cache), Issues found: 1 in 1 file.\n", CSPELL_COUNT, 74),
+        ("CSpell: Files checked: 0, Issues found: 0 in 0 files.\n", CSPELL_COUNT, 0),
+        ("\x1b[1mCSpell: Files checked: \x1b[32m5\x1b[0m, Issues found: 0\n", CSPELL_COUNT, 5),
+        (CSPELL_USAGE, CSPELL_COUNT, None),
+        ("Finding: **/*.md !.git/**\nLinting: 12 file(s)\nSummary: 0 error(s)\n", MARKDOWNLINT_COUNT, 12),
+        ("Finding: **/*.md !.git/**\nLinting: 0 file(s)\nSummary: 0 error(s)\n", MARKDOWNLINT_COUNT, 0),
+        ("", MARKDOWNLINT_COUNT, None),
+    ],
+)
+def test_files_checked_reads_the_count_a_tool_states(output: str, pattern: str, count: int | None) -> None:
+    assert proc.files_checked(output, pattern) == count
+
+
+def test_a_lint_tool_that_checked_files_passes_with_its_count(capfd: pytest.CaptureFixture[str]) -> None:
+    assert proc.require_files_checked("cspell", "CSpell: Files checked: 3, Issues found: 0", CSPELL_COUNT) == 3
+    assert capfd.readouterr() == ("", "")
+
+
+@pytest.mark.parametrize(
+    ("output", "found"),
+    [
+        ("Linting: 0 file(s)\nSummary: 0 error(s)\n", "markdownlint-cli2 checked no file."),
+        ("", "markdownlint-cli2 reported no count of the files it checked"),
+    ],
+)
+def test_a_lint_tool_that_checked_no_file_fails_saying_why(
+    output: str, found: str, capfd: pytest.CaptureFixture[str]
+) -> None:
+    with pytest.raises(SystemExit) as exited:
+        proc.require_files_checked("markdownlint-cli2", output, MARKDOWNLINT_COUNT)
+    assert exited.value.code == 1
+    err = capfd.readouterr().err
+    assert found in err
+    assert "Its globs and ignore patterns left it no file to check" in err
+    assert "`**/.git/**`" in err
+    assert "`/.git/**`" in err
+
+
+def _tool(tmp_path: Path, output: str, status: int) -> list[str]:
+    """A command that writes `output`, half on stdout and half on stderr, and exits `status`."""
+    middle = len(output) // 2
+    script = tmp_path / "tool.py"
+    script.write_text(
+        "import sys\n"
+        f"sys.stdout.write({output[:middle]!r}); sys.stdout.flush()\n"
+        f"sys.stderr.write({output[middle:]!r}); sys.stderr.flush()\n"
+        f"raise SystemExit({status})\n",
+        encoding="utf-8",
+    )
+    return [sys.executable, str(script)]
+
+
+def test_run_lint_echoes_the_tool_and_returns_its_status(tmp_path: Path, capfd: pytest.CaptureFixture[str]) -> None:
+    """The tool's verdict is the gate's to judge once it checked a file: a
+    failure from a real lint error comes back, with every line it wrote."""
+    output = "notes.md:1:3 - Unknown word (qzxvbnmk)\nCSpell: Files checked: 2, Issues found: 1 in 1 file.\n"
+    done = proc.run_lint("cspell", _tool(tmp_path, output, 1), counted=CSPELL_COUNT)
+    assert done.returncode == 1
+    assert capfd.readouterr() == (output, "")
+
+
+def test_run_lint_fails_on_no_file_without_the_usage_text(tmp_path: Path, capfd: pytest.CaptureFixture[str]) -> None:
+    """cspell finding no file prints its whole usage and fails, which names no
+    cause; the gate leaves that out and says what happened instead."""
+    with pytest.raises(SystemExit) as exited:
+        proc.run_lint("cspell", _tool(tmp_path, CSPELL_USAGE, 1), counted=CSPELL_COUNT)
+    assert exited.value.code == 1
+    out, err = capfd.readouterr()
+    assert "Usage:" not in out + err
+    assert "Glob Patterns" not in out + err
+    assert "cspell reported no count of the files it checked" in err
+
+
+def test_run_lint_fails_on_a_count_of_zero_though_the_tool_passed(
+    tmp_path: Path, capfd: pytest.CaptureFixture[str]
+) -> None:
+    with pytest.raises(SystemExit) as exited:
+        proc.run_lint(
+            "markdownlint-cli2",
+            _tool(tmp_path, "Linting: 0 file(s)\nSummary: 0 error(s)\n", 0),
+            counted=MARKDOWNLINT_COUNT,
+        )
+    assert exited.value.code == 1
+    out, err = capfd.readouterr()
+    assert "Linting: 0 file(s)" in out
+    assert "markdownlint-cli2 checked no file." in err

@@ -33,6 +33,16 @@ globs:
 # submodule with gates of its own, is added here, to `cspell.json`'s
 # `ignorePaths` and to `.prettierignore` together, so the gates never disagree
 # about a path.
+#
+# markdownlint-cli2 reads each pattern relative to the checkout's root, the
+# directory it runs in, so `.git/**` is the repository's own `.git` and
+# `**/build/**` a `build` directory inside the checkout, wherever the checkout
+# stands. A checkout may itself sit under a `.git` or a `build` directory, as a
+# worktree added under the repository's `.git` does. cspell matches a pattern
+# opening with `**` against the whole path instead, which is why `cspell.json`
+# writes the same paths anchored, as `/.git/**` and `/**/build/**`: unanchored,
+# they leave every file of such a checkout out, and the gate fails on checking
+# no file.
 ignores:
   - ".git/**"
   - "**/.venv/**"
@@ -68,7 +78,6 @@ ignores:
   - "console.testcabinet.ai/**"
   - "testcabinet.ai/**"
   - "the-spec-cabinet/**"
-  - "tasks/**/done/**"
   - ".claude/workflows/**"
   - ".claude/worktrees/**"
   - "crates/*/testdata/definitions/**"

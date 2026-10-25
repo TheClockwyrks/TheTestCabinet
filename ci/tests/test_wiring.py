@@ -18,6 +18,11 @@ exceptions are the gates a project has found too slow for a commit, which it
 names in `HOOKLESS` below when it drops their hooks and which are held to
 having none.
 
+A push gate, named in `PUSH_GATES`, judges what a push would publish rather
+than what a commit holds, so its hook runs at the push stage alone and every
+other hook at the commit stage alone, and the pipeline, which runs on commits
+already pushed, gives it no step.
+
 The image each track runs inside is read here too. A track names a
 purpose-built CI image at the commit whose image pipeline run built it, which
 `ci/images/tags.yml`, the variables template the pipeline includes, holds as
@@ -69,6 +74,15 @@ HOOKLESS: set[str] = {
     # suite.
     "workspace-test",
 }
+
+# The gates that judge a push, which run as the pre-push hook and in no
+# pipeline step: what they ask is only settled when a push is made.
+PUSH_GATES = {"submodule-remotes"}
+# The stage a hook runs at when it names none, which the configuration states.
+DEFAULT_STAGES = re.compile(r"^default_stages: *\[(?P<stages>[^\]]*)\] *$", re.MULTILINE)
+INSTALLED_TYPES = re.compile(r"^default_install_hook_types: *\[(?P<types>[^\]]*)\] *$", re.MULTILINE)
+# The stages a hook names, inside its own block.
+HOOK_STAGES = re.compile(r"^ +stages: *\[(?P<stages>[^\]]*)\] *$", re.MULTILINE)
 
 # The service connection the agent pulls a CI image with. One connection holds
 # push rights on the registry, so it serves this pipeline's pull and the image
@@ -294,6 +308,49 @@ def test_a_slow_gate_has_no_hook() -> None:
     assert hooked == set(), f"these gates are named too slow for a commit and have a hook: {sorted(hooked)}"
 
 
+def _listed(text: str) -> list[str]:
+    return [item.strip() for item in text.split(",") if item.strip()]
+
+
+def _hook_stages() -> dict[str, list[str]]:
+    """The stages each hook runs at: the ones its block names, else the configuration's default.
+
+    An upstream hook's own manifest may name stages of its own, which this
+    text cannot see, so every such hook names its stage in its block.
+    """
+    text = CONFIG.read_text(encoding="utf-8")
+    default = DEFAULT_STAGES.search(text)
+    assert default is not None, f"{CONFIG.name} states no default_stages, so a hook naming none runs at every stage"
+    blocks = _sections(HOOK_ID, text)
+    stages: dict[str, list[str]] = {}
+    for hook, block in blocks.items():
+        named = HOOK_STAGES.search(block)
+        stages[hook] = _listed((named or default).group("stages"))
+    return stages
+
+
+def test_every_hook_but_a_push_gate_runs_at_commit_time_alone() -> None:
+    stages = _hook_stages()
+    assert {hook: found for hook, found in stages.items() if hook not in PUSH_GATES and found != ["pre-commit"]} == {}
+
+
+def test_a_push_gate_runs_at_the_push_alone() -> None:
+    stages = _hook_stages()
+    assert {gate: stages.get(gate) for gate in sorted(PUSH_GATES)} == {
+        gate: ["pre-push"] for gate in sorted(PUSH_GATES)
+    }
+    pushed = sorted(hook for hook, found in stages.items() if "pre-push" in found)
+    assert pushed == sorted(PUSH_GATES), (
+        f"the hooks run at the push are {pushed}, and the push gates {sorted(PUSH_GATES)}"
+    )
+
+
+def test_both_stages_are_installed() -> None:
+    found = INSTALLED_TYPES.search(CONFIG.read_text(encoding="utf-8"))
+    assert found is not None, f"{CONFIG.name} states no default_install_hook_types"
+    assert sorted(_listed(found.group("types"))) == ["pre-commit", "pre-push"]
+
+
 def test_the_gates_stage_runs_its_checks_on_two_tracks() -> None:
     by_job = _gates_by_job()
     assert len(by_job) >= 2, f"the gates stage reads as one job: {sorted(by_job)}"
@@ -302,7 +359,7 @@ def test_the_gates_stage_runs_its_checks_on_two_tracks() -> None:
 
 
 def test_a_gate_has_a_step_in_exactly_one_job_of_the_gates_stage() -> None:
-    assert _misplaced(GATE_IDS, _gates_by_job()) == {
+    assert _misplaced(GATE_IDS - PUSH_GATES, _gates_by_job()) == {
         "given no step": [],
         "given a step more than once": [],
         "run but not a check": [],
@@ -346,7 +403,18 @@ def test_every_upstream_hook_has_a_step_in_exactly_one_job() -> None:
 
 def test_the_pipeline_runs_every_gate() -> None:
     ran = _named(PIPELINE.read_text(encoding="utf-8"))
-    assert ran >= GATE_IDS, f"the pipeline runs these gates nowhere: {sorted(GATE_IDS - ran)}"
+    checks = GATE_IDS - PUSH_GATES
+    assert ran >= checks, f"the pipeline runs these gates nowhere: {sorted(checks - ran)}"
+
+
+def test_the_pipeline_runs_no_push_gate() -> None:
+    """A pipeline runs on commits already pushed, where a push gate has nothing to judge."""
+    ran = _named(PIPELINE.read_text(encoding="utf-8"))
+    assert ran & PUSH_GATES == set()
+
+
+def test_every_push_gate_is_a_gate() -> None:
+    assert PUSH_GATES <= GATE_IDS
 
 
 def test_the_pipeline_includes_the_tags() -> None:

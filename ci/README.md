@@ -58,6 +58,17 @@ if not succeeded([*clippy, "--", "-D", "warnings"]):
   other helpers in [`proc`](src/the_test_cabinet_ci/proc.py) run a tool
   (`run`, `succeeded`), run a command in another uv project's environment
   (`uv_project`), and end the gate (`fail`, `skip`).
+- `run_lint()` runs a lint tool that states how many files it checked, echoes
+  what it said, and fails the gate naming the tool where that number is zero
+  or absent, as `cspell` and `markdownlint` use it. A tool whose globs and
+  ignore patterns leave it no file otherwise passes having read nothing
+  (markdownlint-cli2) or fails with its usage text (cspell). The usual cause is
+  an ignore pattern the tool matches against the whole path rather than from
+  the checkout's root, such as cspell's `**/.git/**` in a worktree added under
+  the repository's `.git`, which is why `cspell.json` writes its ignores
+  anchored (`/.git/**`, `/**/node_modules/**`). `files_checked()` and
+  `require_files_checked()` are its two halves, for a gate that runs the tool
+  itself.
 - `git()` is the only way this project runs git, in the library, in a gate and
   in the tests alike. It removes the variables that point git at another
   repository (`GIT_DIR`, `GIT_INDEX_FILE` and the rest of
@@ -136,8 +147,10 @@ and its job publishes its test results as above.
 another, and every gate that calls `artifacts_dir()` to such a step in a job
 that publishes them. A gate too slow for a commit gets no hook and is named in
 that test's `HOOKLESS` instead; it then runs in `make gate` and the pipeline
-only. Those files are rendered by the template, and a template update carries
-these edits through its merge.
+only. A gate that judges a push rather than a commit, as `submodule-remotes`
+does, gets a hook at the `pre-push` stage and no pipeline step, and is named in
+that test's `PUSH_GATES`. Those files are rendered by the template, and a
+template update carries these edits through its merge.
 
 This project's own gates, wired in the same way:
 

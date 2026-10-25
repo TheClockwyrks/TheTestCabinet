@@ -222,7 +222,8 @@ submodule at its root:
 - `.claude/`: the harness settings, its hooks and its skills.
 - `scripts/`: the hook installer and devcontainer check, the project's
   scripts, and under `scripts/ci/` the scripts the pipelines run.
-- `tasks/`: the issue board.
+- `.nyxsis/`: the fleet's declarations and, under `issues/`, the issues board
+  the issues server writes.
 - `<repository>/`: each repository of the set, and `cold-storage/`.
 
 ### A repository's layout
@@ -285,7 +286,7 @@ The template renders most of what surrounds the superrepo's content:
 `.devcontainer/`, `ci/`, `azure-pipelines.yml`, `azure-pipelines-ci-images.yml`,
 `.pre-commit-config.yaml`, the lint and format configurations, `Makefile`,
 `rust-toolchain.toml`, `.config/nextest.toml`, `.claude/settings.json` with its
-hooks and four skills, `tasks/README.md`, and a few scripts.
+hooks and its skills, and a few scripts.
 `.copier-answers.yml` records the template's source, the version the
 repository was last rendered against, and the answers the template asks; every
 other value it derives from those by the fleet's conventions.
@@ -360,6 +361,12 @@ The template's gates:
 | `docs-build` | This site's build |
 | `python-lint` | ruff over `ci/`, `scripts/repos/` and the repository kit's `templates/repository/` |
 | `ci-tests` | pytest over `ci/` and `scripts/repos/`, the latter rendering the repository kit for each kind |
+| `submodule-remotes` | At a push to `<b>`, every submodule pin its commits move is on that submodule's branch `<b>` or on a branch of it that is no `issue/`, `task/` or `filing/` branch; a tag alone admits none |
+
+`markdownlint` and `cspell` each fail when their tool checked no file, which is
+what an ignore pattern matching the checkout's own path does: a checkout may
+sit under a `.git` directory, as a worktree added under the repository's `.git`
+does, so the ignores are written from the checkout's root.
 
 The project's own gates, wired the same way:
 
@@ -371,8 +378,13 @@ The project's own gates, wired the same way:
 | `scripts-test` | `node --test` over `scripts/lib` and `scripts/*.test.mjs` |
 
 `.pre-commit-config.yaml` runs each gate as one hook, triggered by the files it
-judges. `scripts/setup-hooks.sh` installs the hooks, and the dev container runs
-it when the container is created. `git commit --no-verify` bypasses them.
+judges, but `submodule-remotes`, which runs on every push instead: a commit
+pinning a submodule commit that no branch of the submodule's remote the push
+can target holds is one no landing can carry, and only a push settles which
+branches hold it. The pipeline runs on commits already pushed and gives it no
+step. `scripts/setup-hooks.sh` installs both hooks, and the dev container runs
+it when the container is created. `git commit --no-verify` bypasses the commit
+hooks, and `git push --no-verify` the push hook.
 
 The same file carries the checks the hook framework brings from its pinned
 upstream repositories, the file checks of `pre-commit-hooks` and `shellcheck`;

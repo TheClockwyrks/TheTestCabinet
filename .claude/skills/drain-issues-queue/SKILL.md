@@ -3,6 +3,8 @@ description: Describes the policies to follow when instructed to drain the issue
 name: drain-issues-queue
 ---
 
+<!-- cspell:words nyxsis -->
+
 ## Context
 
 The standard development pattern within this repository is as follows:
@@ -16,7 +18,7 @@ The standard development pattern within this repository is as follows:
 
 This skill covers how the issues queue should be drained. The `repo-tasks` skill
 is mandatory reading when using this skill as it provides the policies that
-govern how the `tasks/` folder is used, and the `coding` skill governs every
+govern how issues are filed and written, and the `coding` skill governs every
 commit the work makes.
 
 This project's changelogs, under `apps/docs/src/content/docs/changelogs/`, are
@@ -29,28 +31,19 @@ a new version of the case, or it is blocked. gg's unit tests are not part of
 
 ## Scope
 
-All issues are located under `tasks/` in the repo root. The "repo-tasks" skill
-covers policies for issue files.
-
-An issue is a Markdown file, filed under the one area it is work on, at
-`tasks/<area>/<issue>.md`. An open one sits in that area folder, a finished one
-in a `done/` folder beside it, and one awaiting user input in a `blocked/`
-folder, so the open issues are what this finds:
-
-```sh
-find tasks -name '*.md' -not -path '*/done/*' -not -path '*/blocked/*' \
-  -not -name 'README.md'
-```
+Every issue is filed, read, blocked and closed through the issues server's MCP
+tools, `nyxsis-issues`, and the `repo-tasks` skill covers the policies for
+them. The open issues are what the server's `list` tool answers with state
+`open`.
 
 Whenever this skill is used, the expectation is that **ALL** open issues are to
 be implemented. If any issues are to be excluded, they will be explicitly
 mentioned when using this skill. If no issues are mentioned, then all open
 issues are in scope.
 
-An issue names the work and the documentation it aligns the code with, and
-nothing about its state: the folder it sits in is the whole of that. Read each
-issue in scope before planning the run, because a dependency between two issues
-is stated in their text rather than recorded anywhere a command can read.
+Read each issue in scope with the `read` tool before planning the run. An
+issue's dependencies are the ones its frontmatter names, and an issue may state
+more of them in its text.
 
 ## Gates
 
@@ -161,14 +154,14 @@ satisfy the documented specification.
 Workflows must be designed such that an agent may return without completing its
 issue and signal that the issue is blocked. This **MUST** be accompanied by the
 agent's explanation of why the issue is blocked, and the workflow **MUST** have
-a reviewer verify the rationale. If the reviewer agrees, the reviewer must move
-the issue to its area's `blocked/` folder, write the reason for why it's blocked
-(what needs to be addressed to unblock the issue) into the issue, and commit the
-updated issue. If the reviewer rejects the implementer's rationale, it must
-provide the resolution and the workflow must run an implementer agent again. The
-prior objection, the reviewer's rejection, and the reviewer's resolution must be
-provided to the new implementation agent. This also means that implementers are
-**NEVER** allowed to mark an issue as blocked themselves.
+a reviewer verify the rationale. If the reviewer agrees, the reviewer must block
+the issue with the `block` tool, its reason stating what needs to be addressed
+to unblock the issue, and commit the updated issue. If the reviewer rejects the
+implementer's rationale, it must provide the resolution and the workflow must
+run an implementer agent again. The prior objection, the reviewer's rejection,
+and the reviewer's resolution must be provided to the new implementation agent.
+This also means that implementers are **NEVER** allowed to mark an issue as
+blocked themselves.
 
 When configuring the reviewer agent in the workflow, make it very clear to the
 reviewer that it must read the docs itself, verify the implementer's objection
@@ -214,10 +207,9 @@ Other notes with respect to how this must be handled:
 ### Completing an Issue
 
 An issue is complete once the work is committed, the gates that cover it pass
-and the reviewer has no finding left open. Completing it is a move: the issue's
-file goes into a `done/` folder beside where it sat, which is how the board says
-the work is finished without anyone opening the file. Commit that move with the
-work rather than after it.
+and the reviewer has no finding left open. Completing it is a close: the
+`close` tool sets the issue done, carrying its outcome. Commit the issue file it
+writes with the work rather than after it.
 
 ### Use Workflows
 
@@ -255,7 +247,7 @@ apply the following:
   payloads)
   - This avoids length and/or complexity issues when returning output
   - Write them outside the repository, so that a run leaves nothing behind to
-    commit and no file the board could be mistaken for
+    commit and no file that could be mistaken for an issue
   - This only applies if the agent output doesn't need to be branched on in the
     workflow script itself
 - Agent output should be kept terse
