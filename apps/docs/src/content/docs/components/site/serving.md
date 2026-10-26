@@ -50,9 +50,24 @@ generation's run index, and answers one of two ways:
 - An unknown id: the shell with a 404, and the application renders the
   not-found page inside it.
 
-The Worker holds a generation's run index in its cache for as long as the
-pointer names it, because a generation is never rewritten. Every other route is
-served by Pages directly.
+The gallery's own pages beneath `/runs/`, the comparisons index at
+`/runs/comparisons` and `/runs/` itself, are the shell with a 200 and no tags.
+While the bucket cannot be read, every run route is answered with the shell
+with a 200, uncached and without tags, since the application reads the bucket
+for itself and may still load.
+
+The title and the description are written from the card: the case, the model
+and the harness, and the run's rating, score and review count. The image is the
+first still image of the run's document, which the card names by its
+`documentKey`, taken in the order the run's page presents its media: the
+showcase, then the produced asset, then the proof. A run with none is given no
+image, and its card is a summary card without one.
+
+The Worker holds a generation's run index in memory for as long as the pointer
+names it, because a generation is never rewritten, and a run's document for as
+long as it can, because the document's key is content-addressed. It reads the
+pointer again once the pointer's freshness window has passed. Every other route
+is served by Pages directly.
 
 ## Share links
 
@@ -60,14 +75,16 @@ served by Pages directly.
 the object `codes/<code>` and redirects with a 302 to the run's verdict page,
 `https://testcabinet.ai/runs/<id>/verdict`; `/p/<code>` redirects the same way
 to its play page, `https://testcabinet.ai/runs/<id>`. A code the bucket holds
-no object for is answered with a 404. A code addresses the same run for as long
+no object for is answered with a 404, and so is any other path, except the bare
+host, which redirects to the gallery's home page. A code addresses the same run for as long
 as the gallery exists, because it is [assigned
 once](/components/backend/snapshot/#short-codes) and never reassigned.
 
 ## The public read surface
 
 Everything on the public plane reads. The shell fetches public objects, each
-Worker's bucket binding is read-only, and each Worker answers GET alone.
+Worker only reads its bucket binding, and each Worker answers GET and HEAD
+alone.
 Enqueueing a run, reviewing, and publishing stay behind
 [Access](/components/auth/overview/) on the private plane, so the credentials
 that spend money live only there.
@@ -80,6 +97,26 @@ freshness window, because a publish replaces it, and a miss on a `codes/`
 object is left uncached, because the next publish may write it. Every other
 object is immutable once written: a generation's index objects, a run's
 document, a `codes/` object, and media are cached indefinitely.
+
+The headers are these:
+
+| Response                                  | `Cache-Control`                       |
+| ----------------------------------------- | ------------------------------------- |
+| `index.json`                              | `public, max-age=60`                  |
+| Every other bucket object                 | `public, max-age=31536000, immutable` |
+| A bucket miss, a `codes/` miss included   | Left uncached                         |
+| A published run's page, from the Worker   | `public, max-age=60`                  |
+| An unknown run id's page, from the Worker | `no-store`                            |
+| A share link's redirect                   | `public, max-age=31536000, immutable` |
+| The bare `tcab.ai` host's redirect        | `public, max-age=3600`                |
+| An unknown share code                     | `no-store`                            |
+
+The [artifacts service](/components/artifacts/overview/) stores a bucket
+object's header on the object when it writes it, so the bucket's custom domain
+serves it with the object. A Worker's response carries its header to the
+browser and to any cache downstream of it, and the Worker holds what it reads
+from the bucket in memory. A run's page holds a minute because a publish or a
+deploy may change it.
 
 ## Staging
 

@@ -173,8 +173,8 @@ the run's full document by `documentKey`.
 
 The gallery fetches full records lazily, one per run page. This summary index
 is the whole dataset the list, home, leaderboard, and metrics views read, and
-the preview-tag Worker takes a run page's title, description and image from the
-run's card.
+the preview-tag Worker takes a run page's title and description from the
+run's card, and its image from the document the card names.
 
 Schema:
 [`snapshot/runs.schema.json`](https://docs.testcabinet.ai/schema/snapshot/runs.schema.json).

@@ -218,12 +218,22 @@ In the Cloudflare dashboard:
   The pipeline definition holds the two as `TCAB_SNAPSHOT_URL_MASTER` and
   `TCAB_SNAPSHOT_URL_STAGING`, and the deploy stage hands the build the one
   its branch names.
-- Deploy the two Workers from the same repository with `wrangler deploy`: the
-  `tcab.ai` Worker, bound to the production bucket and routed at `tcab.ai`,
-  with `staging.tcab.ai` over the staging bucket; and the preview-tag Worker,
-  bound to the same bucket and routed on the gallery's run routes.
+- Create the R2 buckets `tcab-snapshot` and `tcab-snapshot-staging`, with the
+  custom domains `snapshot.testcabinet.ai` and `snapshot.staging.testcabinet.ai`.
+  On each custom domain add a cache rule that makes every response eligible for
+  cache, takes the edge TTL from the origin's `Cache-Control`, and sets the
+  status-code TTL of a 404 to no-store, so the headers the artifacts service
+  stores on each object decide its caching and a miss is never held.
+- Add the `tcab.ai` zone. The pipeline deploys the two Workers from the same
+  repository with `wrangler deploy`: the share-link Worker, bound to the
+  production bucket at the custom domain `tcab.ai`, with `staging.tcab.ai` over
+  the staging bucket; and the preview-tag Worker, bound to the same bucket and
+  routed on the gallery's run routes. The deploy creates each route and custom
+  domain.
 - Set `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` on the pipeline, a
-  token holding "Cloudflare Pages: Edit" and "Workers Scripts: Edit".
+  token holding "Cloudflare Pages: Edit" and "Workers Scripts: Edit" on the
+  account, and "Workers Routes: Edit" and "DNS: Edit" on the `testcabinet.ai`
+  and `tcab.ai` zones.
 
 Every other project is served from `*.pages.dev` or a subdomain, so no
 `*.testcabinet.ai` wildcard or organization domain verification is required.

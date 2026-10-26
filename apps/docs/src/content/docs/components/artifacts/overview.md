@@ -111,6 +111,11 @@ the index objects and the `index.json` pointer with it, and the
 an asset-generation case's reference frames with it. A key is written whole, so
 a reader sees either the previous object or the new one.
 
+Every object written to the R2 bucket carries the `Cache-Control` the bucket's
+custom domain serves it with, decided by its key: `index.json` takes a short
+freshness window and every other key is immutable. See
+[Caching](/components/site/serving/#caching).
+
 ### Listing and deleting public objects
 
 `GET /public?prefix={prefix}` answers every object of the public bucket whose key
