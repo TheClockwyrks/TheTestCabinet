@@ -130,9 +130,11 @@ spec:
               memory: 1536Mi
           ports:
             - containerPort: 8790
+          # /readyz answers 503 from the moment the service is told to stop;
+          # /healthz answers 200 for as long as the process serves.
           readinessProbe:
             httpGet:
-              path: /healthz
+              path: /readyz
               port: 8790
             periodSeconds: 5
           lifecycle:
