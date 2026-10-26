@@ -43,7 +43,7 @@ use test_cabinet_entities::{
     gg_saved_query, harness_config, job, job_event, ladder, ladder_dispatch,
     ladder_dispatch_climber, ladder_dispatch_outcome, ladder_rung, model, model_alias, model_price,
     model_probe, model_probe_item, publish_job, review, review_plan, review_revision, run,
-    run_link, snapshot_state, tournament,
+    run_controller, run_link, snapshot_state, tournament,
 };
 use test_cabinet_suites::test_case::{TestType, version_key};
 use time::OffsetDateTime;
@@ -1062,8 +1062,8 @@ impl Db {
 
     /// Delete a stored run and its dependent rows (its reviews and links cascade
     /// via their `ON DELETE CASCADE` foreign keys; its run- and publish-queue rows
-    /// are deleted explicitly, as they reference the run by a plain column with no
-    /// foreign key). [`crate::error::BackendError::NotFound`] when no run with
+    /// and its pushed controller are deleted explicitly, as they reference the run by
+    /// a plain column with no foreign key). [`crate::error::BackendError::NotFound`] when no run with
     /// `run_id` is stored.
     ///
     /// Refused with [`crate::error::BackendError::Unprocessable`] for a published
@@ -1109,6 +1109,11 @@ impl Db {
             .await?;
         publish_job::Entity::delete_many()
             .filter(publish_job::Column::RunId.eq(run_id))
+            .exec(&txn)
+            .await?;
+        // The run's pushed controller is keyed by the run id with no foreign key, since
+        // it arrives before the row (see `db.run_controller.rs`), so it goes here too.
+        run_controller::Entity::delete_by_id(run_id.to_string())
             .exec(&txn)
             .await?;
 
@@ -10195,6 +10200,13 @@ mod publish_lease_tests;
 #[cfg(test)]
 #[path = "db.job_events.test.rs"]
 mod job_events_tests;
+
+#[path = "db.run_controller.rs"]
+mod run_controller_store;
+
+#[cfg(test)]
+#[path = "db.run_controller.test.rs"]
+mod run_controller_tests;
 
 #[path = "db.tool_calls.rs"]
 mod tool_calls;

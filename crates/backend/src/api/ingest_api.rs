@@ -67,7 +67,7 @@ pub async fn ingest(
             mode: IngestBodyMode::scan_mode(body.mode),
             catalog_version: body.catalog_version,
         },
-        state.ready.is_ready(),
+        state.ready.is_store_populated(),
     );
 
     if wants_ndjson(&headers) {

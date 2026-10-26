@@ -331,3 +331,282 @@ async fn a_probe_whose_lease_lapsed_is_resumed_with_only_its_missing_calls() {
     assert_eq!(probe.lease_holder, None);
     drop(backend);
 }
+
+/// Issue one request against a built backend's router, under the local operator's
+/// identity unless `bearer` names a token, and answer its status and body bytes.
+async fn request(
+    router: &axum::Router,
+    method: &str,
+    uri: &str,
+    bearer: Option<&str>,
+    body: Vec<u8>,
+) -> (axum::http::StatusCode, Vec<u8>) {
+    use tower::ServiceExt;
+    let mut request = axum::http::Request::builder().method(method).uri(uri);
+    request = match bearer {
+        Some(token) => request.header("authorization", format!("Bearer {token}")),
+        None => request.header(crate::auth::LOCAL_IDENTITY_HEADER, "dev@local"),
+    };
+    let response = router
+        .clone()
+        .oneshot(request.body(axum::body::Body::from(body)).unwrap())
+        .await
+        .unwrap();
+    let status = response.status();
+    let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    (status, bytes.to_vec())
+}
+
+/// An adversarial run's record: [`crate::db::tests::record`] with a match result, so
+/// the arena's controller listing offers it once its controller is pushed.
+fn adversarial_record(id: &str) -> test_cabinet_contracts::RunRecord {
+    let mut record = crate::db::tests::record(id);
+    record.validation.adversarial = Some(
+        serde_json::from_value(serde_json::json!({
+            "replayJson": "replay.json",
+            "opponent": "border-soldier",
+            "submissionTeam": "red",
+            "winner": "red",
+            "redScore": 3,
+            "blueScore": 1,
+            "ended": "swept",
+            "ticks": 120,
+            "outcome": "win",
+            "controllerModule": "build/controller.wasm",
+        }))
+        .unwrap(),
+    );
+    record
+}
+
+#[tokio::test]
+async fn a_backend_on_an_empty_store_serves_a_pushed_controller_and_a_stored_match_replay() {
+    // The pod's disk holds nothing durable: a controller pushed to this backend lives in
+    // the database and a match replay on the artifact service, so a backend whose
+    // definition store starts empty — a replaced pod — serves both.
+    let dir = tempfile::tempdir().unwrap();
+    let url = format!(
+        "sqlite://{}?mode=rwc",
+        dir.path().join("backend.sqlite").display()
+    );
+    let store_root = dir.path().join("store");
+    let artifacts = crate::artifacts::stub::spawn().await;
+    // nextest runs each test in its own process, so this environment is this test's alone.
+    unsafe {
+        std::env::set_var("TCAB_BACKEND_CHECKOUT", dir.path());
+        std::env::set_var("TCAB_BACKEND_STORE", &store_root);
+        std::env::set_var("TCAB_BACKEND_DATABASE_URL", &url);
+        std::env::set_var("TCAB_BACKEND_SERVICE_TOKEN", crate::artifacts::stub::TOKEN);
+        std::env::set_var("TCAB_ARTIFACTS_URL", &artifacts.url);
+    }
+    {
+        use test_cabinet_migration::MigratorTrait;
+        let db = Db::connect(&url).await.unwrap();
+        test_cabinet_migration::Migrator::up(&db.connection(), None)
+            .await
+            .unwrap();
+        db.enqueue_job(crate::db::tests::new_job("j1", "2026-10-23T00:00:00Z"))
+            .await
+            .unwrap();
+        db.push(
+            &adversarial_record("r1"),
+            &crate::db::tests::links(),
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+    }
+
+    let prices = || crate::pricing::OpenRouterPrices::with_endpoint("http://127.0.0.1:0/models");
+    let backend = build_with_prices(Config::from_env().unwrap(), prices(), NO_GATEWAY)
+        .await
+        .unwrap();
+    let (status, _) = request(
+        &backend.router,
+        "POST",
+        "/runs/r1/controller.wasm",
+        Some("token-j1"),
+        b"\0asm-r1".to_vec(),
+    )
+    .await;
+    assert_eq!(status, axum::http::StatusCode::NO_CONTENT);
+    let (status, _) = request(
+        &backend.router,
+        "POST",
+        "/tournaments/t1/matches/m1/replay.json",
+        Some(crate::artifacts::stub::TOKEN),
+        br#"{"ticks":120}"#.to_vec(),
+    )
+    .await;
+    assert_eq!(status, axum::http::StatusCode::NO_CONTENT);
+    drop(backend);
+
+    // The pod is replaced: a new backend over an empty definition store.
+    std::fs::remove_dir_all(&store_root).unwrap();
+    let backend = build_with_prices(Config::from_env().unwrap(), prices(), NO_GATEWAY)
+        .await
+        .unwrap();
+
+    let (status, body) = request(
+        &backend.router,
+        "GET",
+        "/adversarial/controllers?testCase=pong",
+        None,
+        Vec::new(),
+    )
+    .await;
+    assert_eq!(status, axum::http::StatusCode::OK);
+    let listing: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(listing["controllers"][0]["id"], "r1", "{listing}");
+
+    let (status, body) = request(
+        &backend.router,
+        "GET",
+        "/runs/r1/controller.wasm",
+        None,
+        Vec::new(),
+    )
+    .await;
+    assert_eq!(status, axum::http::StatusCode::OK);
+    assert_eq!(body, b"\0asm-r1");
+
+    let (status, body) = request(
+        &backend.router,
+        "GET",
+        "/tournaments/t1/matches/m1/replay.json",
+        None,
+        Vec::new(),
+    )
+    .await;
+    assert_eq!(status, axum::http::StatusCode::OK);
+    assert_eq!(body, br#"{"ticks":120}"#);
+
+    // A run with no pushed controller, and a match with no stored replay, are absent.
+    for uri in [
+        "/runs/r2/controller.wasm",
+        "/tournaments/t1/matches/m2/replay.json",
+    ] {
+        let (status, _) = request(&backend.router, "GET", uri, None, Vec::new()).await;
+        assert_eq!(status, axum::http::StatusCode::NOT_FOUND, "{uri}");
+    }
+
+    // Neither was ever written to the pod's disk.
+    assert!(!store_root.join("runs").exists());
+    assert!(!store_root.join("tournaments").exists());
+    drop(backend);
+}
+
+#[tokio::test]
+async fn a_start_moves_an_earlier_release_s_controllers_and_match_replays() {
+    let dir = tempfile::tempdir().unwrap();
+    let url = format!(
+        "sqlite://{}?mode=rwc",
+        dir.path().join("backend.sqlite").display()
+    );
+    let store_root = dir.path().join("store");
+    let artifacts = crate::artifacts::stub::spawn().await;
+    // nextest runs each test in its own process, so this environment is this test's alone.
+    unsafe {
+        std::env::set_var("TCAB_BACKEND_CHECKOUT", dir.path());
+        std::env::set_var("TCAB_BACKEND_STORE", &store_root);
+        std::env::set_var("TCAB_BACKEND_DATABASE_URL", &url);
+        std::env::set_var("TCAB_BACKEND_SERVICE_TOKEN", crate::artifacts::stub::TOKEN);
+        std::env::set_var("TCAB_ARTIFACTS_URL", &artifacts.url);
+    }
+    {
+        use test_cabinet_migration::MigratorTrait;
+        let db = Db::connect(&url).await.unwrap();
+        test_cabinet_migration::Migrator::up(&db.connection(), None)
+            .await
+            .unwrap();
+        db.push(
+            &crate::db::tests::record("r1"),
+            &crate::db::tests::links(),
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+    }
+    // What the earlier release left on its volume.
+    for (path, bytes) in [
+        ("runs/r1/controller.wasm", &b"\0asm-r1"[..]),
+        ("runs/r1/replay.json", &b"{}"[..]),
+        (
+            "tournaments/t1/matches/m1/replay.json",
+            &br#"{"ticks":7}"#[..],
+        ),
+    ] {
+        let path = store_root.join(path);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, bytes).unwrap();
+    }
+
+    let prices = crate::pricing::OpenRouterPrices::with_endpoint("http://127.0.0.1:0/models");
+    let backend = build_with_prices(Config::from_env().unwrap(), prices, NO_GATEWAY)
+        .await
+        .unwrap();
+    // The move runs beside the server, holding it unready until it is done.
+    backend.state_move.await.unwrap();
+
+    let db = Db::connect(&url).await.unwrap();
+    assert_eq!(
+        db.run_controller("r1").await.unwrap().as_deref(),
+        Some(&b"\0asm-r1"[..])
+    );
+    assert_eq!(
+        artifacts.held.replay("t1", "m1").as_deref(),
+        Some(&br#"{"ticks":7}"#[..])
+    );
+    assert!(!store_root.join("runs/r1/controller.wasm").exists());
+    assert!(!store_root.join("tournaments").exists());
+    // The run's other files are left where they are, unread.
+    assert!(store_root.join("runs/r1/replay.json").exists());
+}
+
+#[tokio::test]
+async fn without_an_artifact_service_the_match_replay_routes_answer_unavailable() {
+    let dir = tempfile::tempdir().unwrap();
+    // nextest runs each test in its own process, so this environment is this test's alone.
+    unsafe {
+        std::env::set_var("TCAB_BACKEND_CHECKOUT", dir.path());
+        std::env::set_var("TCAB_BACKEND_STORE", dir.path().join("store"));
+        std::env::set_var(
+            "TCAB_BACKEND_DATABASE_URL",
+            format!(
+                "sqlite://{}?mode=rwc",
+                dir.path().join("backend.sqlite").display()
+            ),
+        );
+        std::env::set_var("TCAB_BACKEND_SERVICE_TOKEN", "service-secret");
+        std::env::remove_var("TCAB_ARTIFACTS_URL");
+    }
+    let prices = crate::pricing::OpenRouterPrices::with_endpoint("http://127.0.0.1:0/models");
+    let backend = build_with_prices(Config::from_env().unwrap(), prices, NO_GATEWAY)
+        .await
+        .unwrap();
+
+    let (status, _) = request(
+        &backend.router,
+        "POST",
+        "/tournaments/t1/matches/m1/replay.json",
+        Some("service-secret"),
+        b"{}".to_vec(),
+    )
+    .await;
+    assert_eq!(status, axum::http::StatusCode::SERVICE_UNAVAILABLE);
+    let (status, _) = request(
+        &backend.router,
+        "GET",
+        "/tournaments/t1/matches/m1/replay.json",
+        None,
+        Vec::new(),
+    )
+    .await;
+    assert_eq!(status, axum::http::StatusCode::SERVICE_UNAVAILABLE);
+    assert!(!dir.path().join("store/tournaments").exists());
+    drop(backend);
+}

@@ -1,10 +1,11 @@
-//! The backend's ownership of a run's tree on the **artifact service** (the data
-//! plane): the delete-time prune, and the periodic reclamation sweep.
+//! The backend's side of the **artifact service** (the data plane): the delete-time
+//! prune of a run's tree, the periodic reclamation sweep, and the
+//! [client](ArtifactsClient) of the routes that keep tournament match replays, copy a
+//! published run's media and read a run's code analysis.
 //!
-//! The backend is the system of record: deleting a run removes its row (and the
-//! backend's own proof/asset/controller media). A run's *playable build* and the
-//! recorded logs live in the separate artifact service, so a delete asks that
-//! service to drop the tree too.
+//! The backend is the system of record: deleting a run removes its row and the rows
+//! beside it. Everything a run produced lives in its tree on the separate artifact
+//! service, so a delete asks that service to drop the tree too.
 //!
 //! Both paths go through the backend's **in-cluster** artifact URL
 //! ([`Config::artifacts_internal_url`](crate::config::Config::artifacts_internal_url)),
@@ -37,6 +38,19 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use time::OffsetDateTime;
+
+#[path = "artifacts.client.rs"]
+mod client;
+pub use client::{ArtifactsClient, ArtifactsError, PublishedMedia};
+
+/// Test support: a stub artifact service holding what the client stores.
+#[cfg(test)]
+#[path = "artifacts.stub.test.rs"]
+pub(crate) mod stub;
+
+#[cfg(test)]
+#[path = "artifacts.client.test.rs"]
+mod client_tests;
 
 /// One stored artifact tree, as the artifact service's `GET /runs` listing reports
 /// it.

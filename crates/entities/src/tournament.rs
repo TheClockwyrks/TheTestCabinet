@@ -4,7 +4,7 @@
 //!
 //! Unlike a `run`, a tournament has no review or links siblings — it is a
 //! self-contained record of a field's standings and per-match summaries. The
-//! per-match replays live on disk in the [`crate::store`](../../backend/src/store.rs)
+//! per-match replays live on the artifact service's private container
 //! (`tournaments/<id>/matches/<match_id>/replay.json`), referenced by the record.
 
 use sea_orm::entity::prelude::*;

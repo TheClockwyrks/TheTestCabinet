@@ -22,8 +22,8 @@
 //! per-route gates, each answering `403` to an identity of the wrong kind:
 //! [`Person`] for the routes that take a person's assertion, [`Reviewer`] for a
 //! review, [`ServiceCaller`] for the routes automation drives, [`ServiceAuth`] for
-//! the dispatcher's queue routes and [`JobCaller`] for a driver's or publisher's
-//! uploads. A route that takes none of them is a read, open to any identity.
+//! the dispatcher's queue routes and [`JobCaller`] for a job's controller push. A
+//! route that takes none of them is a read, open to any identity.
 //!
 //! [conventions]: https://docs.testcabinet.ai/components/backend/api/#conventions
 //! [Identity]: https://docs.testcabinet.ai/components/auth/overview/
@@ -281,8 +281,9 @@ impl<S: Send + Sync> FromRequestParts<S> for ServiceAuth {
     }
 }
 
-/// A driver or publisher `Job`, by its per-job token: the gate of the run media a
-/// job uploads. Any other identity is a `403`.
+/// A driver or publisher `Job`, by its per-job token: the gate of the one file a job
+/// hands the backend, an adversarial run's controller wasm. Any other identity is a
+/// `403`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct JobCaller(pub Identity);
 

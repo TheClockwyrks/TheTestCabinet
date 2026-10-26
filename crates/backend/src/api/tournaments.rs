@@ -1,8 +1,10 @@
 //! Publishing and reading adversarial tournaments, and serving per-match replays.
 //!
-//! Tournaments mirror runs (a verbatim record in SQLite plus on-disk assets) but
-//! are **live-only**: they are served straight from the store and are not folded
-//! into the public-site snapshot, and they carry no review gate.
+//! A tournament is a verbatim record in the database, and each of its match replays
+//! is kept on the artifact service's private container, written and read back through
+//! [`ArtifactsClient`] (the backend overview's "Durable state"). Tournaments are
+//! **live-only**: they are not folded into the public-site snapshot, and they carry
+//! no review gate.
 
 use axum::Json;
 use axum::extract::{Path, Query, State};
@@ -14,6 +16,7 @@ use time::format_description::well_known::Rfc3339;
 
 use test_cabinet_contracts::match_play::TournamentRecord;
 
+use crate::artifacts::{ArtifactsClient, ArtifactsError};
 use crate::auth::ServiceCaller;
 use crate::db::StoredTournament;
 use crate::error::ApiError;
@@ -91,16 +94,22 @@ pub async fn get(
     Ok(Json(tournament_out(&tournament)))
 }
 
-/// `GET /tournaments/{id}/matches/{matchId}/replay.json` — one match's replay,
-/// served immutable (replays never change once published).
+/// `GET /tournaments/{id}/matches/{matchId}/replay.json` — one match's replay, read
+/// from the artifact service and served immutable (replays never change once
+/// published). `404` when the service holds none for the match.
 pub async fn match_replay(
     State(state): State<AppState>,
     Path((id, match_id)): Path<(String, String)>,
 ) -> Result<Response, ApiError> {
-    let bytes = state
-        .store
-        .read_tournament_match(&id, &match_id)
-        .map_err(ApiError::from)?;
+    let bytes = artifacts(&state)?
+        .match_replay(&id, &match_id)
+        .await
+        .map_err(replay_error)?
+        .ok_or_else(|| {
+            ApiError::not_found(format!(
+                "replay for match `{match_id}` of tournament `{id}` not stored"
+            ))
+        })?;
     Ok((
         [
             (header::CONTENT_TYPE, "application/json"),
@@ -112,18 +121,53 @@ pub async fn match_replay(
 }
 
 /// `POST /tournaments/{id}/matches/{matchId}/replay.json` — store one match's
-/// replay, uploaded by the publisher alongside the tournament record.
+/// replay, uploaded by the arena alongside the tournament record, through the
+/// artifact service. The service answers only once the replay is stored, so a
+/// `204` means it is durable.
 pub async fn put_match_replay(
     State(state): State<AppState>,
     _caller: ServiceCaller,
     Path((id, match_id)): Path<(String, String)>,
     body: axum::body::Bytes,
 ) -> Result<Response, ApiError> {
-    state
-        .store
-        .write_tournament_match(&id, &match_id, &body)
-        .map_err(ApiError::from)?;
+    artifacts(&state)?
+        .put_match_replay(&id, &match_id, body.to_vec())
+        .await
+        .map_err(replay_error)?;
     Ok((StatusCode::NO_CONTENT, ()).into_response())
+}
+
+/// The artifact-service client the replay routes go through, or `503` when the
+/// deployment configures no artifact service (`TCAB_ARTIFACTS_URL`) or no service
+/// token to present to it: the replays have nowhere else to live.
+fn artifacts(state: &AppState) -> Result<ArtifactsClient, ApiError> {
+    ArtifactsClient::from_config(
+        state.http.clone(),
+        state.config.artifacts_internal_url.as_deref(),
+        state.config.service_token.as_deref(),
+    )
+    .ok_or_else(|| {
+        ApiError::unavailable(
+            "tournament match replays are kept on the artifact service, and none is \
+             configured (TCAB_ARTIFACTS_URL and TCAB_BACKEND_SERVICE_TOKEN)",
+        )
+    })
+}
+
+/// A failed replay call, as the route answers it: an id that cannot name one path
+/// segment is the caller's mistake (`400`), and the service refusing or not
+/// answering is a gateway failure (`502`).
+fn replay_error(err: ArtifactsError) -> ApiError {
+    match err {
+        ArtifactsError::BadSegment(_) => {
+            ApiError::bad_request(format!("invalid tournament id or match id: {err}"))
+        }
+        ArtifactsError::Refused(_) | ArtifactsError::Transport(_) => ApiError::new(
+            StatusCode::BAD_GATEWAY,
+            "artifacts_unavailable",
+            format!("storing or reading the match replay failed: {err}"),
+        ),
+    }
 }
 
 /// Map a stored tournament to its wire shape (`record` + `publishedAt`).

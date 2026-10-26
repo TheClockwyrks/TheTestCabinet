@@ -22,14 +22,13 @@
 //! case metadata into the set of `(key, bytes, content_type)` objects, and
 //! [`upload_snapshot`] PUTs them to R2 in dependency order. The split lets the generation be unit-tested without R2.
 //!
-//! A run's proof/asset media lives under the content-stable `MEDIA_PREFIX`
-//! (`media/runs/<id>/…`), outside any single snapshot's prefix, and is written once:
-//! a refresh that finds an object already there references it without touching the
-//! source bytes (see [`SnapshotBuilder::with_existing_media`]). Only media not yet in
-//! the bucket is read from the local store (where the driver mirrors it at run time),
-//! falling back to the artifact service for anything missing — the store is an
-//! ephemeral volume in production, so this fallback lets a refresh export new media to
-//! durable R2 even after a restart wiped it (see [`SnapshotBuilder::with_artifacts`]).
+//! A run's media lives under the content-stable `MEDIA_PREFIX` (`media/runs/<id>/…`),
+//! outside any single snapshot's prefix, and is written once. The backend never holds
+//! its bytes: the artifact service copies it from the run's stored tree with
+//! `POST /runs/{id}/publish-media`, skipping every key already published, and answers
+//! the keys the run's document names (see [`SnapshotBuilder::with_artifacts`]). A
+//! run's code-analysis document is read from the same service, scrubbed, and
+//! published beside the run.
 
 use serde::Serialize;
 use sha2::{Digest, Sha256};
@@ -43,6 +42,7 @@ use test_cabinet_redact::SecretScrubber;
 use test_cabinet_suites::content_labels::{self, ContentLabels};
 
 use crate::api::ModelOut;
+use crate::artifacts::{ArtifactsClient, PublishedMedia};
 use crate::db::StoredRun;
 use crate::error::{BackendError, Result};
 use crate::r2::R2Client;
@@ -66,6 +66,14 @@ pub use test_cabinet_contracts::backend_api::snapshot::{
 /// carries a `runsPrefix` and each run summary now names its own `documentKey`.
 const SCHEMA_VERSION: u32 = 2;
 
+/// How many runs' media publishes are in flight on the artifact service at once.
+///
+/// Each is one call the service answers once it has listed the run's published keys
+/// and copied any missing file, so a refresh over the whole published set would
+/// otherwise pay that round trip per run in series. Bounded so a first refresh does
+/// not open a copy per run against the service at once.
+const MEDIA_PUBLISH_CONCURRENCY: usize = 8;
+
 /// How many snapshot objects are PUT to R2 at once.
 ///
 /// The uploads are independent — the only ordering the snapshot requires is that
@@ -75,16 +83,14 @@ const SCHEMA_VERSION: u32 = 2;
 /// connection per object against R2.
 const UPLOAD_CONCURRENCY: usize = 16;
 
-/// The bucket prefix a run's proof/asset media is stored under, **outside** any
-/// single snapshot's `snapshots/<id>/` prefix. A published run's media is immutable,
-/// so it is keyed by the run id (not the snapshot id) and written **once**: every
-/// subsequent snapshot references the same `media/runs/<id>/<kind>/<file>` object
-/// rather than re-reading and re-uploading it. This is what stops each refresh from
-/// re-exporting (and, for a video, re-transcoding) every run's media — the growing
-/// cost as asset-generation runs accumulate — and lets a refresh keep a run's media
-/// even when the ephemeral store and the artifact service have both lost the bytes
-/// (as after a cluster recreate): if the object already exists here, the builder
-/// references it without needing the source bytes at all.
+/// The bucket prefix a run's media and its code-analysis document are stored under,
+/// **outside** any single snapshot's `snapshots/<id>/` prefix. A published run's media
+/// is immutable, so it is keyed by the run id (not the snapshot id) and written
+/// **once**: every subsequent snapshot references the same
+/// `media/runs/<id>/<kind>/<file>` object rather than re-uploading it. The artifact
+/// service writes the media here ([`SnapshotBuilder::run_media`]) and skips every key
+/// already present; the builder writes the code-analysis document here itself
+/// ([`SnapshotBuilder::run_code_analysis`]).
 const MEDIA_PREFIX: &str = "media/runs";
 
 /// The bucket prefix a **case version's** media — its rendered reference baselines
@@ -209,16 +215,10 @@ pub struct SnapshotBuilder {
     runs: Vec<StoredRun>,
     cases: Vec<StoredManifest>,
     store: DefinitionStore,
-    /// The artifact service's **in-cluster** base URL, used to fall back for a run's
-    /// proof/asset media when it is absent from the local store. `None` disables the
-    /// fallback (store-only) — the dev/single-box default, and what the unit tests
-    /// use.
-    artifacts_url: Option<String>,
-    /// The shared service token the fallback presents to the artifact service, whose
-    /// reads all need an identity. `None` presents none, which the service refuses.
-    artifacts_service_token: Option<String>,
-    /// The HTTP client for that fallback. Unused when `artifacts_url` is `None`.
-    http: reqwest::Client,
+    /// The artifact service a run's media is published through and its code-analysis
+    /// document read from. `None` publishes no run media and no code-analysis
+    /// document — the dev/single-box default, with no artifact service.
+    artifacts: Option<ArtifactsClient>,
     /// The composed model catalog exported alongside the runs, so the public site
     /// renders the Models section from the snapshot. Empty by default.
     models: Vec<ModelOut>,
@@ -241,13 +241,13 @@ pub struct SnapshotBuilder {
     /// a variant absent from its inner map, simply exports `referenceSheet: null`).
     reference_sheets:
         std::collections::HashMap<(String, String), std::collections::HashMap<String, Vec<u32>>>,
-    /// The set of media object keys (`media/runs/<id>/<kind>/<file>`) — and the
-    /// case-workspace file keys under [`CASE_FILES_PREFIX`] — already present in the
-    /// bucket, so the builder references an existing object rather than re-reading
-    /// and re-uploading its bytes. Populated from the bucket before a real
-    /// refresh (see [`Self::with_existing_media`]); empty by default, which makes the
-    /// builder upload every run's media as it did before this optimization — the
-    /// correct behavior for the dev/single-box path (no R2) and the unit tests.
+    /// The set of media object keys (a run's code-analysis document and the case
+    /// media) — and the case-workspace file keys under [`CASE_FILES_PREFIX`] —
+    /// already present in the bucket, so the builder references an existing object
+    /// rather than re-reading and re-uploading its bytes. Populated from the bucket
+    /// before a real refresh (see [`Self::with_existing_media`]); empty by default,
+    /// which makes the builder upload every such object — the correct behavior for
+    /// the dev/single-box path (no R2) and the unit tests.
     existing_media: std::collections::HashSet<String>,
     /// The set of run-document keys (`documents/runs/<id>/<digest>.json`) already
     /// present in the bucket, so a run whose document is byte-identical to the one
@@ -281,16 +281,14 @@ impl SnapshotBuilder {
     /// metadata files, and the definition store the rendered reference baselines
     /// are read from (so they can be exported alongside the case metadata).
     ///
-    /// The artifact-service fallback is off by default; call [`Self::with_artifacts`]
-    /// to enable it for a real deployment.
+    /// No artifact service is called by default; call [`Self::with_artifacts`] to
+    /// publish run media and code analysis for a real deployment.
     pub fn new(runs: Vec<StoredRun>, cases: Vec<StoredManifest>, store: DefinitionStore) -> Self {
         Self {
             runs,
             cases,
             store,
-            artifacts_url: None,
-            artifacts_service_token: None,
-            http: reqwest::Client::new(),
+            artifacts: None,
             models: Vec::new(),
             reference_builds: std::collections::HashMap::new(),
             reference_sheets: std::collections::HashMap::new(),
@@ -355,10 +353,11 @@ impl SnapshotBuilder {
     /// Supply the set of media object keys already present in the bucket (from
     /// [`R2Client::list_keys`](crate::r2::R2Client::list_keys) over the
     /// `media/` and `files/` prefixes).
-    /// For any run-media object whose stable key is in this set, the builder emits the
-    /// snapshot metadata pointing at it but does **not** read the source bytes or
-    /// re-upload it — so unchanged media is exported exactly once across all snapshots,
-    /// and a run keeps its media even when the source bytes are no longer available.
+    /// For any code-analysis, case-media or case-file object whose stable key is in
+    /// this set, the builder emits the snapshot metadata pointing at it but does
+    /// **not** read the source bytes or re-upload it — so unchanged objects are
+    /// exported exactly once across all snapshots. A run's media is not decided here:
+    /// the artifact service skips the keys it already published.
     pub fn with_existing_media(
         mut self,
         existing_media: std::collections::HashSet<String>,
@@ -429,27 +428,13 @@ impl SnapshotBuilder {
         self
     }
 
-    /// Enable the artifact-service fallback: when a run's proof/asset media is not in
-    /// the local store, the builder fetches it from `artifacts_url` (the artifact
-    /// service's in-cluster base URL, the one the backend itself can reach) using
-    /// `http`, presenting `service_token` (`TCAB_BACKEND_SERVICE_TOKEN`), since every
-    /// read of the artifact service needs an identity.
-    ///
-    /// The backend store that media is normally mirrored into is an ephemeral
-    /// emptyDir in production, so it can be wiped between a run finishing and a later
-    /// snapshot refresh. The artifact service holds the run tree durably, so this
-    /// fallback lets a refresh re-export the media (to durable R2) even after the
-    /// store loses it — without it a backend restart would silently drop media from
-    /// the published site. A `None` URL leaves behavior store-only.
-    pub fn with_artifacts(
-        mut self,
-        artifacts_url: Option<String>,
-        service_token: Option<String>,
-        http: reqwest::Client,
-    ) -> Self {
-        self.artifacts_url = artifacts_url;
-        self.artifacts_service_token = service_token;
-        self.http = http;
+    /// Publish run media and read code analysis through `artifacts`, the artifact
+    /// service's in-cluster client presenting the service token. Each published run's
+    /// media is copied to the bucket by the service with `POST /runs/{id}/publish-media`,
+    /// and its code-analysis document read from the run's tree with
+    /// `GET /runs/{id}/code-analysis`. `None` (the default) publishes neither.
+    pub fn with_artifacts(mut self, artifacts: Option<ArtifactsClient>) -> Self {
+        self.artifacts = artifacts;
         self
     }
 
@@ -472,12 +457,11 @@ impl SnapshotBuilder {
 
         // `documents/runs/<id>/<digest>.json` — per-run record + reviews + links, plus
         // the recorded normalized event stream (when captured) so the site can serve
-        // the run's Events tab. Raw harness output is never published. The run's
-        // uploaded proof media is named by snapshot-relative key in `proofMedia`, and
-        // an asset-generation run's media (regenerated/preview image + action log) in
-        // `assetMedia`. That media lives under the content-stable `media/runs/<id>/…`
-        // prefix (NOT this snapshot's prefix), uploaded once and shared across
-        // snapshots — see [`MEDIA_PREFIX`] and [`SnapshotBuilder::with_existing_media`].
+        // the run's Events tab. Raw harness output is never published. The run's media
+        // is named by bucket key in `proofMedia`, `validationMedia`, `assetMedia` and
+        // `showcaseMedia`. That media lives under the content-stable
+        // `media/runs/<id>/…` prefix (NOT this snapshot's prefix), copied there once by
+        // the artifact service — see [`MEDIA_PREFIX`] and [`Self::run_media`].
         //
         // The document itself is likewise content-addressed outside this snapshot's
         // prefix ([`RUN_DOCUMENT_PREFIX`]), so a run whose public content has not moved
@@ -485,7 +469,25 @@ impl SnapshotBuilder {
         // before `runs.json` because each summary carries its run's document key.
         let mut document_keys: Vec<String> = Vec::with_capacity(self.runs.len());
         let mut reused_documents = 0usize;
-        for run in &self.runs {
+        // Each run's media publish is one call to the artifact service, independent of
+        // every other run's, so they run a bounded few at a time rather than one
+        // round trip after another.
+        let published: Vec<PublishedMedia> = {
+            use futures_util::{StreamExt as _, TryStreamExt as _};
+            // The calls are made into futures up front rather than inside a stream
+            // combinator's closure, whose borrow of `self` the refresh's `Send` bound
+            // cannot see through.
+            let calls: Vec<_> = self
+                .runs
+                .iter()
+                .map(|run| self.run_media(&run.record.id))
+                .collect();
+            futures_util::stream::iter(calls)
+                .buffered(MEDIA_PUBLISH_CONCURRENCY)
+                .try_collect()
+                .await?
+        };
+        for (run, media) in self.runs.iter().zip(published) {
             let events = run
                 .events_json
                 .as_deref()
@@ -497,17 +499,18 @@ impl SnapshotBuilder {
                         run.record.id
                     ))
                 })?;
-            let (proof_media, proof_objects) = self.run_proofs(&run.record).await;
-            let (validation_media, validation_objects) =
-                self.run_validation_media(&run.record).await;
-            let (asset_media, asset_objects) = self.run_assets(run).await;
-            let (showcase_media, showcase_objects) = self.run_showcase(&run.record).await;
+            let PublishedMedia {
+                proof_media,
+                validation_media,
+                asset_media,
+                showcase_media,
+            } = media;
             // The unbounded code-analysis document is the one per-run object whose
             // bytes are not media: it is published beside the run rather than inside
             // it, so it is scrubbed *here*, on its own, before it becomes an object
             // (see [`Self::run_code_analysis`]).
             let (code_analysis_key, code_analysis_object) =
-                self.run_code_analysis(&run.record, &scrubber);
+                self.run_code_analysis(&run.record, &scrubber).await;
             // Serialize the public document, then redact any leaked secret from
             // it (across the record, its events, and any other captured text)
             // before it becomes a snapshot object bound for R2.
@@ -557,10 +560,6 @@ impl SnapshotBuilder {
                 });
             }
             document_keys.push(key);
-            objects.extend(proof_objects);
-            objects.extend(validation_objects);
-            objects.extend(asset_objects);
-            objects.extend(showcase_objects);
             objects.extend(code_analysis_object);
         }
         tracing::debug!(
@@ -938,245 +937,6 @@ impl SnapshotBuilder {
         (metas, objects)
     }
 
-    /// Collect a run's proof media: the `proofMedia[]` metadata entries
-    /// (snapshot-relative keys + kind) and the media objects to upload.
-    ///
-    /// The set of proofs is taken from the run record's `validation.proofs` (the
-    /// authoritative declaration), not from whatever happens to be in the store — so
-    /// a wiped store still produces the full list, each resolved through the
-    /// store-then-artifact-service fallback ([`Self::read_media`]). A proof the
-    /// agent did not produce, or whose bytes are in neither place, contributes
-    /// nothing.
-    ///
-    /// A **video** proof is published as `<proof-id>.mp4`, transcoded here from the
-    /// `.webm` a run captures natively (see [`transcode_webm_to_mp4`]) so the public
-    /// gallery plays on every browser — webm/VP8 does not on iOS/Safari. An **image**
-    /// proof is published under its recorded extension unchanged. Either way the
-    /// published name matches [`proof_published_extension`](test_cabinet_contracts::layout::proof_published_extension), which the gallery keys
-    /// its snapshot lookup off. If the clip is already `.mp4` in the store (a legacy
-    /// capture, or a re-run snapshot) it is used as-is; only a raw `.webm` is
-    /// transcoded, and a transcode that fails falls back to serving the webm so the
-    /// proof still appears rather than vanishing.
-    async fn run_proofs(&self, record: &RunRecord) -> (Vec<RunProofOut>, Vec<SnapshotObject>) {
-        let mut metas = Vec::new();
-        let mut objects = Vec::new();
-        let run_id = &record.id;
-        for proof in &record.validation.proofs {
-            if !proof.present {
-                continue;
-            }
-            let published_ext =
-                test_cabinet_contracts::layout::proof_published_extension(proof.kind, &proof.dest);
-            let published_file = format!("{}.{}", proof.id, published_ext);
-            // The stable, snapshot-independent key this proof is published under. When
-            // it is already in the bucket, reference it without touching the source
-            // bytes — no store/artifact read, and (for a video) no re-transcode.
-            let published_key = format!("{MEDIA_PREFIX}/{run_id}/proof/{published_file}");
-            if self.existing_media.contains(&published_key) {
-                metas.push(RunProofOut {
-                    id: proof.id.clone(),
-                    kind: proof.kind,
-                    key: published_key,
-                });
-                continue;
-            }
-
-            // Prefer a copy already at the published extension (an image, or a clip
-            // that is already mp4); otherwise pull the raw webm and transcode it.
-            let (file, bytes) = if let Some(bytes) =
-                self.read_media(run_id, "proof", &published_file).await
-            {
-                (published_file, bytes)
-            } else if proof.kind == test_cabinet_suites::test_case::MediaKind::Video {
-                let served_ext =
-                    test_cabinet_contracts::layout::proof_served_extension(&proof.dest);
-                let served_file = format!("{}.{}", proof.id, served_ext);
-                let Some(raw) = self.read_media(run_id, "proof", &served_file).await else {
-                    continue;
-                };
-                match transcode_webm_to_mp4(&raw).await {
-                    Some(mp4) => (published_file, mp4),
-                    None => {
-                        tracing::warn!(
-                            run_id = %run_id,
-                            proof = %proof.id,
-                            "webm→mp4 transcode unavailable; publishing raw webm (not iOS-playable)"
-                        );
-                        (served_file, raw)
-                    }
-                }
-            } else {
-                continue;
-            };
-
-            // Key by the produced file name (the transcode-fallback path can publish
-            // the raw webm under its served name rather than the mp4 published name).
-            let key = format!("{MEDIA_PREFIX}/{run_id}/proof/{file}");
-            // A video publishes under a name the transcode decided, so that name is
-            // what describes it; anything else publishes under its recorded `dest`'s
-            // extension, and only the dest carries a compound `.json.gz` suffix whole.
-            let labelled = if proof.kind == test_cabinet_suites::test_case::MediaKind::Video {
-                file.as_str()
-            } else {
-                test_cabinet_contracts::layout::proof_labelled_name(&proof.dest, &file)
-            };
-            objects.push(SnapshotObject::media(key.clone(), bytes, labelled));
-            metas.push(RunProofOut {
-                id: proof.id.clone(),
-                kind: proof.kind,
-                key,
-            });
-        }
-        (metas, objects)
-    }
-
-    /// Collect a run's synthesized *actual* validation media: the `validationMedia[]`
-    /// metadata entries (served file name + snapshot-relative key) and the media
-    /// objects to upload.
-    ///
-    /// The set is the union of two things. The **declared outputs** come from the run
-    /// record's `validation.debugScripts[].outputs[]` (the authoritative declaration),
-    /// not from whatever is in the store — so each present output is resolved through
-    /// the store-then-artifact-service fallback ([`Self::read_media`],
-    /// `kind = "validation"`), and one whose bytes are in neither place contributes
-    /// nothing. The recordings' **shared image store**
-    /// (`img.<id>.png`/`img.<id>.bin`, see
-    /// [`VALIDATION_IMAGE_PREFIX`](test_cabinet_contracts::layout::VALIDATION_IMAGE_PREFIX)) cannot
-    /// come from the record at all — a store file backs no verdict and is named by its
-    /// own bytes — so it is enumerated off
-    /// [`list_run_validation`](crate::store::DefinitionStore::list_run_validation),
-    /// exactly as [`Self::run_showcase`] unions its listing with the record's entries.
-    /// Without it a published replay resolves nothing and draws holes.
-    ///
-    /// Each output is addressed by the flat `<item>__<output>.<ext>` name the gallery
-    /// requests — a still under `.png`, a clip under the `.webm` it is captured as. The
-    /// entry's `file` is that requested name, so the static gallery keys its lookup off
-    /// it; a **video** output is transcoded to `<item>__<output>.mp4` for the public
-    /// gallery (as a video proof is — see [`transcode_webm_to_mp4`]) and published under
-    /// the mp4 name, while `file` stays the requested `.webm` so the flat name the UI
-    /// requests still resolves. A transcode that fails falls back to publishing the raw
-    /// webm so the media still appears. An already-present media key is referenced
-    /// without re-reading or re-transcoding.
-    async fn run_validation_media(
-        &self,
-        record: &RunRecord,
-    ) -> (Vec<RunValidationMediaOut>, Vec<SnapshotObject>) {
-        let mut metas = Vec::new();
-        let mut objects = Vec::new();
-        let run_id = &record.id;
-        for script in &record.validation.debug_scripts {
-            // The verdict id keys this script's media — the item's own id, or the
-            // composite `<item>.<sub>` for a per-sub-item driver.
-            let verdict_id = match &script.sub_item_id {
-                Some(sub) => test_cabinet_suites::test_case::ReviewItem::sub_item_verdict_id(
-                    &script.item_id,
-                    sub,
-                ),
-                None => script.item_id.clone(),
-            };
-            for output in &script.outputs {
-                if !output.actual_present {
-                    continue;
-                }
-                // The flat name the gallery requests (`.png`/`.webm`) — the on-disk name
-                // the driver mirrored and the artifact service serves.
-                let requested_file = test_cabinet_contracts::layout::validation_media_name(
-                    &verdict_id,
-                    &output.id,
-                    output.kind,
-                );
-                let published_ext =
-                    test_cabinet_contracts::layout::validation_published_extension(output.kind);
-                let published_file = format!("{verdict_id}__{}.{published_ext}", output.id);
-                // The stable, snapshot-independent key. When it is already in the
-                // bucket, reference it without touching the source bytes (no store read,
-                // and — for a video — no re-transcode).
-                let published_key = format!("{MEDIA_PREFIX}/{run_id}/validation/{published_file}");
-                if self.existing_media.contains(&published_key) {
-                    metas.push(RunValidationMediaOut {
-                        file: requested_file,
-                        key: published_key,
-                    });
-                    continue;
-                }
-
-                // Prefer a copy already at the published extension (an image, or a clip
-                // already mp4); otherwise pull the raw webm and transcode it.
-                let (file, bytes) = if let Some(bytes) =
-                    self.read_media(run_id, "validation", &published_file).await
-                {
-                    (published_file, bytes)
-                } else if output.kind == test_cabinet_suites::test_case::MediaKind::Video {
-                    let Some(raw) = self.read_media(run_id, "validation", &requested_file).await
-                    else {
-                        continue;
-                    };
-                    match transcode_webm_to_mp4(&raw).await {
-                        Some(mp4) => (published_file, mp4),
-                        None => {
-                            tracing::warn!(
-                                run_id = %run_id,
-                                item = %script.item_id,
-                                output = %output.id,
-                                "webm→mp4 transcode unavailable; publishing raw webm (not iOS-playable)"
-                            );
-                            (requested_file.clone(), raw)
-                        }
-                    }
-                } else {
-                    continue;
-                };
-
-                let key = format!("{MEDIA_PREFIX}/{run_id}/validation/{file}");
-                objects.push(SnapshotObject::media(key.clone(), bytes, &file));
-                metas.push(RunValidationMediaOut {
-                    file: requested_file,
-                    key,
-                });
-            }
-        }
-
-        // Then the recordings' shared image store, which the record cannot name: a
-        // store file backs no verdict and is named by its own bytes, so it is
-        // enumerated off the store's own listing instead. Published entries are the
-        // union of the declared outputs and the listed store files — the same shape
-        // (and the same precedent) as [`Self::run_showcase`], including its stance on
-        // the artifact-service fallback: the listing comes from the store only, so a
-        // run whose media exists *only* in the artifact service publishes its store
-        // files once the driver's mirror has run. That is already true of showcase
-        // media and is not a new hole.
-        //
-        // No transcode branch and no published-extension branch: a store file is
-        // never a video, and it publishes under the very name it is served under —
-        // which is what lets a recording's entry resolve it through the resolver the
-        // recording itself came from.
-        for file in self
-            .store
-            .list_run_validation(run_id)
-            .unwrap_or_default()
-            .into_iter()
-            .filter(|file| test_cabinet_contracts::layout::is_validation_image_name(file))
-        {
-            let published_key = format!("{MEDIA_PREFIX}/{run_id}/validation/{file}");
-            if self.existing_media.contains(&published_key) {
-                metas.push(RunValidationMediaOut {
-                    file,
-                    key: published_key,
-                });
-                continue;
-            }
-            let Some(bytes) = self.read_media(run_id, "validation", &file).await else {
-                continue;
-            };
-            objects.push(SnapshotObject::media(published_key.clone(), bytes, &file));
-            metas.push(RunValidationMediaOut {
-                file,
-                key: published_key,
-            });
-        }
-        (metas, objects)
-    }
-
     /// Collect a version's committed **baseline** validation media: the
     /// `validationBaselines[]` metadata entries (requested file name + snapshot-relative
     /// key) and the media objects to upload.
@@ -1189,8 +949,9 @@ impl SnapshotBuilder {
     /// variant ([`crate::store::DefinitionStore::list_validation_baseline`]), the
     /// same pairing the reference implementations themselves come in; a **video**
     /// baseline (`.webm`) is transcoded to `.mp4` for the public gallery, with `file`
-    /// kept as the requested `.webm` so the gallery's flat lookup resolves (mirrors
-    /// [`Self::run_validation_media`]). A transcode failure publishes the raw webm.
+    /// kept as the requested `.webm` so the gallery's flat lookup resolves (the
+    /// convention a run's published validation media follows). A transcode failure
+    /// publishes the raw webm.
     ///
     /// The enumeration is deliberately of the *whole* committed directory rather than
     /// of the outputs some record declares, and that is what carries the recordings'
@@ -1365,7 +1126,7 @@ impl SnapshotBuilder {
                 // The published name is decided from the authored one, so the whole
                 // key — digest included — is known before any transcoding happens. A
                 // video publishes as `.mp4` — decided from the entry's [`MediaKind`],
-                // as [`Self::run_proofs`] does — while an authored `.mp4` already
+                // as a run's video proof is — while an authored `.mp4` already
                 // carries that name and needs no transcode.
                 let digest = content_digest(&raw);
                 let published_name =
@@ -1519,251 +1280,31 @@ impl SnapshotBuilder {
         (by_variant, objects)
     }
 
-    /// Collect a run's published media: the `assetMedia[]` metadata entries
-    /// (served file name + snapshot-relative key) and the media objects to upload.
+    /// Have the artifact service publish run `run_id`'s media, and answer the keys
+    /// the run's document names it by.
     ///
-    /// The asset-media plumbing is test-type-agnostic — an `assetMedia[]` entry is
-    /// just a `{ file, key }` pair the result view fetches over `/asset/{file}` —
-    /// so this branches on the run's type to pick the served names:
+    /// The service decides which files a run publishes, from the run's stored record
+    /// and tree, copies each one not yet in the bucket under `media/runs/<run-id>/`
+    /// (a video transcoded to mp4 once), and answers every key, those it skipped
+    /// included. The backend never holds the bytes (see the public snapshot's "Run
+    /// media").
     ///
-    /// - An **asset-generation** run exports the result view's images and log. A
-    ///   single sprite serves under bare names (`regenerated.png`, `preview.png`,
-    ///   `actions.json`); a sprite sheet suffixes each frame with `-<index>`
-    ///   (`regenerated-<index>.png`, etc.).
-    /// - An **adversarial** run exports its browser-playable `replay.json`, which
-    ///   the replay player loads through the foray-core wasm renderer (the renderer
-    ///   itself ships with the UI/site bundle, not per run, so nothing else is
-    ///   exported here).
-    ///
-    /// Each named file is resolved through the store-then-artifact-service fallback
-    /// ([`Self::read_media`]) and skipped if it is in neither. A run that is neither
-    /// type contributes nothing.
-    async fn run_assets(&self, run: &StoredRun) -> (Vec<RunAssetOut>, Vec<SnapshotObject>) {
-        let mut metas = Vec::new();
-        let mut objects = Vec::new();
-        let files: Vec<String> = if let Some(asset) = run.record.validation.asset.as_ref() {
-            // A single sprite serves under bare names; a sheet suffixes each frame
-            // with `-<index>`, matching `playable::serve_asset_file` and the publisher.
-            let is_sheet = asset.sheet.is_some();
-            asset
-                .frames
-                .iter()
-                .flat_map(|frame| {
-                    let suffix = if is_sheet {
-                        format!("-{}", frame.index)
-                    } else {
-                        String::new()
-                    };
-                    [
-                        format!("regenerated{suffix}.png"),
-                        format!("preview{suffix}.png"),
-                        format!("actions{suffix}.json"),
-                    ]
-                })
-                .collect()
-        } else if let Some(voxel) = run.record.validation.voxel.as_ref() {
-            // A voxel run publishes each part's per-part `.glb` (what the 3D viewer
-            // renders), the model's own isometric preview PNG, and the op log — a
-            // static model under bare names, an animated model suffixing each part
-            // with `-<index>`, matching `playable::serve_asset_file` and the driver
-            // mirror. Cheat detection is retired for voxel, so there is no regenerated
-            // PNG. The rig itself travels inline in the run record.
-            let animated = voxel.model.is_some() || voxel.rig.is_some();
-            voxel
-                .parts
-                .iter()
-                .enumerate()
-                .flat_map(|(index, _)| {
-                    let suffix = if animated {
-                        format!("-{index}")
-                    } else {
-                        String::new()
-                    };
-                    [
-                        format!("preview{suffix}.png"),
-                        format!("actions{suffix}.json"),
-                        format!("mesh{suffix}.glb"),
-                    ]
-                })
-                .collect()
-        } else if let Some(ui) = run.record.validation.ui.as_ref() {
-            // A UI run publishes its flattened per-element PNG(s) — a single-image
-            // case under the bare `element.png`, a kit suffixing each element with
-            // `-<index>` — plus the `ui.json` manifest. Matches
-            // `playable::serve_asset_file` and the driver mirror.
-            let is_kit = ui.elements.len() > 1;
-            std::iter::once("ui.json".to_string())
-                .chain(ui.elements.iter().enumerate().map(|(index, _)| {
-                    let suffix = if is_kit {
-                        format!("-{index}")
-                    } else {
-                        String::new()
-                    };
-                    format!("element{suffix}.png")
-                }))
-                .collect()
-        } else if let Some(material) = run.record.validation.material.as_ref() {
-            // Each map by its declared index (always suffixed) plus `material.json`.
-            std::iter::once("material.json".to_string())
-                .chain(
-                    material
-                        .maps
-                        .iter()
-                        .enumerate()
-                        .map(|(index, _)| format!("map-{index}.png")),
-                )
-                .collect()
-        } else if let Some(particle) = run.record.validation.particle.as_ref() {
-            // The authored `system.json` plus, when rendered, the preview GIF.
-            let mut files = vec!["system.json".to_string()];
-            if particle.preview.is_some() {
-                files.push("preview.gif".to_string());
-            }
-            files
-        } else if let Some(audio) = run.record.validation.audio.as_ref() {
-            // The rendered `clip.wav`, the portable `score.mid` (music), and the
-            // waveform/spectrogram preview PNG.
-            let mut files = vec!["clip.wav".to_string()];
-            if audio.midi.is_some() {
-                files.push("score.mid".to_string());
-            }
-            if audio.preview.is_some() {
-                files.push("preview.png".to_string());
-            }
-            files
-        } else if run.record.validation.adversarial.is_some() {
-            vec!["replay.json".to_string()]
-        } else {
-            return (metas, objects);
+    /// A run without media is the empty answer: no artifact service configured, or
+    /// no stored tree for the run (`404`). A call the service refuses or that cannot
+    /// reach it fails the refresh instead: every run's document is rebuilt on every
+    /// refresh, so publishing through an outage would put a generation live whose
+    /// documents name no media at all. Failing leaves the previous generation live and
+    /// the snapshot dirty, so the refresh is retried.
+    async fn run_media(&self, run_id: &str) -> Result<PublishedMedia> {
+        let Some(artifacts) = &self.artifacts else {
+            return Ok(PublishedMedia::default());
         };
-        let run_id = &run.record.id;
-        for file in &files {
-            let file = file.as_str();
-            let key = format!("{MEDIA_PREFIX}/{run_id}/asset/{file}");
-            // Already uploaded (immutable per run): reference it without reading the
-            // source bytes or re-uploading.
-            if self.existing_media.contains(&key) {
-                metas.push(RunAssetOut {
-                    file: file.to_string(),
-                    key,
-                });
-                continue;
-            }
-            let Some(bytes) = self.read_media(run_id, "asset", file).await else {
-                continue;
-            };
-            objects.push(SnapshotObject::media(key.clone(), bytes, file));
-            metas.push(RunAssetOut {
-                file: file.to_string(),
-                key,
-            });
+        match artifacts.publish_run_media(run_id).await {
+            Ok(media) => Ok(media.unwrap_or_default()),
+            Err(err) => Err(BackendError::Snapshot(format!(
+                "publishing the media of run {run_id}: {err}"
+            ))),
         }
-        (metas, objects)
-    }
-
-    /// Collect a run's [showcase](test_cabinet_contracts::run_record::RunShowcase) files: the
-    /// `showcaseMedia[]` metadata entries (recorded file name + snapshot-relative
-    /// key) and the media objects to upload.
-    ///
-    /// The record decides whether a showcase exists at all — a run whose record
-    /// carries none contributes nothing, whatever the store happens to hold — but
-    /// the file *set* is everything in the store's showcase dir, not just the
-    /// carousel: an image the description references by bare relative path must be
-    /// published even when the carousel does not list it, which is why the driver
-    /// mirrors the whole directory (see `upload_showcase_to_backend`). Any name
-    /// the store listing misses — a carousel entry, or an image reference
-    /// extracted from the record's description
-    /// ([`description_image_references`](test_cabinet_contracts::showcase::description_image_references))
-    /// — is still tried through the store-then-artifact-service fallback
-    /// ([`Self::read_media`]): the backend store is an ephemeral emptyDir, so a
-    /// run mirrored before a restart may list nothing at publish time, and a
-    /// description-only image is named nowhere else on the record. A file whose
-    /// bytes are in neither place contributes nothing.
-    ///
-    /// Each entry's `file` is the recorded name the gallery requests. A `.json.gz`
-    /// replay publishes verbatim (JSON travelling gzip-framed, exactly as it is
-    /// served); a **video** (`.webm`) is transcoded to `.mp4` for the public gallery
-    /// and published under the mp4 name, while `file` stays the recorded `.webm` so
-    /// the name the UI requests still resolves — copying the validation-media
-    /// convention ([`Self::run_validation_media`]). A transcode that fails falls
-    /// back to publishing the raw webm so the media still appears. An
-    /// already-present media key is referenced without re-reading or re-transcoding.
-    async fn run_showcase(&self, record: &RunRecord) -> (Vec<RunShowcaseOut>, Vec<SnapshotObject>) {
-        let mut metas = Vec::new();
-        let mut objects = Vec::new();
-        let Some(showcase) = record.showcase.as_ref() else {
-            return (metas, objects);
-        };
-        let run_id = &record.id;
-        // Everything the store holds, then any carousel entry or
-        // description-referenced image the listing missed — deduplicated, so a file
-        // several of them know about publishes once. `showcase.toml` is never
-        // stored (nor uploaded), but a stray copy is filtered rather than
-        // published: the manifest is capture-side input, already on the record.
-        let mut files: Vec<String> = self
-            .store
-            .list_run_showcase(run_id)
-            .unwrap_or_default()
-            .into_iter()
-            .filter(|file| file != "showcase.toml")
-            .collect();
-        for media in &showcase.media {
-            if !files.contains(&media.file) {
-                files.push(media.file.clone());
-            }
-        }
-        for file in
-            test_cabinet_contracts::showcase::description_image_references(&showcase.description)
-        {
-            if !files.contains(&file) {
-                files.push(file);
-            }
-        }
-        for file in &files {
-            let file = file.as_str();
-            let is_video = file.to_ascii_lowercase().ends_with(".webm");
-            let published_file = if is_video {
-                format!("{}.mp4", file.strip_suffix(".webm").unwrap_or(file))
-            } else {
-                file.to_string()
-            };
-            // The stable, snapshot-independent key. When it is already in the bucket,
-            // reference it without touching the source bytes (no store read, and — for
-            // a video — no re-transcode).
-            let published_key = format!("{MEDIA_PREFIX}/{run_id}/showcase/{published_file}");
-            if self.existing_media.contains(&published_key) {
-                metas.push(RunShowcaseOut {
-                    file: file.to_string(),
-                    key: published_key,
-                });
-                continue;
-            }
-            let Some(raw) = self.read_media(run_id, "showcase", file).await else {
-                continue;
-            };
-            let (published_file, bytes) = if is_video {
-                match transcode_webm_to_mp4(&raw).await {
-                    Some(mp4) => (published_file, mp4),
-                    None => {
-                        tracing::warn!(
-                            run_id = %run_id,
-                            file = %file,
-                            "webm→mp4 transcode unavailable; publishing raw showcase webm (not iOS-playable)"
-                        );
-                        (file.to_string(), raw)
-                    }
-                }
-            } else {
-                (published_file, raw)
-            };
-            let key = format!("{MEDIA_PREFIX}/{run_id}/showcase/{published_file}");
-            objects.push(SnapshotObject::media(key.clone(), bytes, &published_file));
-            metas.push(RunShowcaseOut {
-                file: file.to_string(),
-                key,
-            });
-        }
-        (metas, objects)
     }
 
     /// Publish a run's **unbounded** code-analysis document as its own object, and
@@ -1771,9 +1312,9 @@ impl SnapshotBuilder {
     ///
     /// Three properties are load-bearing, and each is asserted by a test.
     ///
-    /// **The record decides, not the store.** The bounded summary on the record is the
+    /// **The record decides, not the tree.** The bounded summary on the record is the
     /// authoritative statement that this run was analysed — the same posture proofs take
-    /// — so a document left in the store by a run whose record carries none is not
+    /// — so a document in the tree of a run whose record carries none is not read or
     /// published. Absent an analysis there is nothing to publish and nothing to link.
     ///
     /// **The generation is in the key.** `media/runs/<id>/code-analysis/v<gen>.json`,
@@ -1793,16 +1334,14 @@ impl SnapshotBuilder {
     /// [`SecretScrubber::scrub_json`] here, as a parsed document rather than as opaque
     /// bytes.
     ///
-    /// The stored bytes are gzip (what the driver mirrors from the run tree) or plain
-    /// JSON (what a hand-written fixture or an older mirror holds); both are accepted, by
-    /// the gzip magic, exactly as the serving route does. Anything unreadable or
-    /// unparseable yields `None` and a warning rather than failing the refresh: the
-    /// bounded summary still reaches the card and the record, so the surface degrades to
-    /// the figures instead of offering a link that 404s. There is no artifact-service
-    /// fallback for this document (the service exposes no route for a tree-root file), so
-    /// a run whose ephemeral store copy is lost before its first publish keeps its summary
-    /// and loses its explorer.
-    fn run_code_analysis(
+    /// The document is read from the run's tree with the artifact service's
+    /// `GET /runs/{id}/code-analysis`, which answers it gzip-framed (as the driver
+    /// stores it) or plain (a tree uploaded with it uncompressed); both are accepted, by
+    /// the gzip magic. Anything absent, unreachable, unreadable or unparseable yields
+    /// `None` and a warning rather than failing the refresh: the bounded summary still
+    /// reaches the card and the record, so the surface degrades to the figures instead
+    /// of offering a link that 404s, and the next refresh tries again.
+    async fn run_code_analysis(
         &self,
         record: &RunRecord,
         scrubber: &SecretScrubber,
@@ -1822,20 +1361,35 @@ impl SnapshotBuilder {
             return (Some(key), None);
         }
 
-        let Ok(stored) = self.store.read_run_code_analysis(run_id) else {
-            tracing::warn!(
-                run.id = %run_id,
-                "run record carries a code analysis but its document is not stored; \
-                 publishing the summary without the explorer"
-            );
+        let Some(artifacts) = &self.artifacts else {
             return (None, None);
+        };
+        let stored = match artifacts.run_code_analysis(run_id).await {
+            Ok(Some(stored)) => stored,
+            Ok(None) => {
+                tracing::warn!(
+                    run.id = %run_id,
+                    "run record carries a code analysis but its tree holds no document; \
+                     publishing the summary without the explorer"
+                );
+                return (None, None);
+            }
+            Err(err) => {
+                tracing::warn!(
+                    run.id = %run_id,
+                    error = %err,
+                    "reading the run's code-analysis document failed; publishing the \
+                     summary without the explorer"
+                );
+                return (None, None);
+            }
         };
         let plain = match decode_maybe_gzip(&stored) {
             Some(plain) => plain,
             None => {
                 tracing::warn!(
                     run.id = %run_id,
-                    "decoding the stored code-analysis document failed; publishing the \
+                    "decoding the code-analysis document failed; publishing the \
                      summary without the explorer"
                 );
                 return (None, None);
@@ -1847,7 +1401,7 @@ impl SnapshotBuilder {
                 tracing::warn!(
                     run.id = %run_id,
                     error = %err,
-                    "the stored code-analysis document is not JSON; publishing the \
+                    "the code-analysis document is not JSON; publishing the \
                      summary without the explorer"
                 );
                 return (None, None);
@@ -1871,63 +1425,6 @@ impl SnapshotBuilder {
                 content_encoding: None,
             }),
         )
-    }
-
-    /// Resolve one run media file (`kind` is `proof`, `validation`, `showcase`, or
-    /// `asset`) to its bytes, preferring the local store and falling back to the
-    /// artifact service.
-    ///
-    /// The store is the fast path — the driver mirrors a run's media there at run
-    /// time — but it is an ephemeral emptyDir in production, so it may be empty for a
-    /// run published before a backend restart. The artifact service holds the run
-    /// tree durably and serves it under the same `<kind>/<file>` names, so it backs
-    /// the miss. `None` only when the file is in neither place (or the fallback is
-    /// disabled) — the caller then omits that media from the snapshot.
-    async fn read_media(&self, run_id: &str, kind: &str, file: &str) -> Option<Vec<u8>> {
-        let from_store = match kind {
-            "proof" => self.store.read_run_proof(run_id, file),
-            "validation" => self.store.read_run_validation(run_id, file),
-            "showcase" => self.store.read_run_showcase(run_id, file),
-            _ => self.store.read_run_asset(run_id, file),
-        };
-        if let Ok(bytes) = from_store {
-            return Some(bytes);
-        }
-        self.fetch_artifact(run_id, kind, file).await
-    }
-
-    /// Fetch one run media file from the artifact service over the backend's
-    /// in-cluster URL (`GET {artifacts_url}/runs/{run_id}/{kind}/{file}`, a media read
-    /// presenting the service token), or `None` when the
-    /// fallback is disabled (`artifacts_url` unset), the file is absent (404), or the
-    /// request fails. A non-404 failure is logged — it means the durable copy could
-    /// not be read, so the media will be missing from the snapshot until the next
-    /// refresh.
-    async fn fetch_artifact(&self, run_id: &str, kind: &str, file: &str) -> Option<Vec<u8>> {
-        let base = self.artifacts_url.as_deref()?;
-        let url = format!("{base}/runs/{run_id}/{kind}/{file}");
-        let mut request = self.http.get(&url);
-        if let Some(token) = &self.artifacts_service_token {
-            request = request.bearer_auth(token);
-        }
-        match request.send().await {
-            Ok(resp) if resp.status().is_success() => match resp.bytes().await {
-                Ok(bytes) => Some(bytes.to_vec()),
-                Err(err) => {
-                    tracing::warn!(run.id = run_id, %url, error = %err, "reading artifact media body failed");
-                    None
-                }
-            },
-            Ok(resp) if resp.status() == reqwest::StatusCode::NOT_FOUND => None,
-            Ok(resp) => {
-                tracing::warn!(run.id = run_id, %url, status = %resp.status(), "artifact media fetch failed");
-                None
-            }
-            Err(err) => {
-                tracing::warn!(run.id = run_id, %url, error = %err, "artifact media request failed");
-                None
-            }
-        }
     }
 
     /// Compute the snapshot id: a compact RFC-3339 timestamp plus a short hash of

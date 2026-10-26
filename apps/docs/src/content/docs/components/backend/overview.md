@@ -304,10 +304,21 @@ The driver's upload of the run tree is what stores a run's media, its
 `replay.json.gz` and its `code-analysis.json.gz`, and the artifacts service
 serves them (see [Routes](/components/artifacts/overview/#routes)), so the
 backend keeps no copy. The backend writes each tournament match replay through
-the artifacts service when the arena persists it, and reads it back from there
-to serve `GET /tournaments/{id}/matches/{matchId}/replay.json`. The object route
-it writes and reads through is listed with the artifacts service's
-[routes](/components/artifacts/overview/#routes).
+the artifacts service when the arena persists it, with
+`PUT /tournaments/{id}/matches/{matchId}/replay`, and reads it back from there
+with the matching `GET` to serve
+`GET /tournaments/{id}/matches/{matchId}/replay.json` (see [tournament match
+replays](/components/artifacts/overview/#tournament-match-replays)).
+
+A backend whose store still holds what an earlier release kept on the pod's disk
+moves it on start, before it reports ready: each `runs/<id>/controller.wasm`
+into its run's row, and each
+`tournaments/<id>/matches/<matchId>/replay.json` through the artifacts service.
+A file is removed once its new home holds it, and one that cannot move stays for
+the next start, so a store that holds none of them costs the start nothing. The
+run copies of the session record, the code analysis and the media are left where
+they are and never read, since the run's tree holds them, and they go with the
+volume.
 
 Each accepted batch of relayed events is written to the database before the
 backend acknowledges it, as [delivery to the
@@ -446,7 +457,7 @@ marks runs published, skipping the dataset writes.
 | `TCAB_OPENROUTER_API_KEY`            | OpenRouter key the backend's own [model probes](/components/backend/api/#model-probes) are billed to. Distinct from the runners' `OPENROUTER_API_KEY`. Unset, a probe trigger fails with `openrouter_key_missing`.                   | —                                         |
 | `TCAB_REFERENCE_BROWSER`             | Headless browser used to render references at ingest.                                                                                                                                                                                | image Chromium                            |
 | `TCAB_GG_REFERENCE`                  | Directory holding gg's projected reference documents. The deployed image bakes them at `/opt/gg-reference`, fetched for the gg release the driver pins.                                                                              | `<checkout>/target/gg-reference`          |
-| `TCAB_ARTIFACTS_URL`                 | Artifacts service base URL the backend calls to prune and sweep run trees and to write the public dataset. Unset disables the prune, the sweep and the dataset writes.                                                               | —                                         |
+| `TCAB_ARTIFACTS_URL`                 | Artifacts service base URL the backend calls to prune and sweep run trees, to store and read match replays, and to write the public dataset. Unset disables those, and the replay routes answer `503`.                               | —                                         |
 | `TCAB_REPOS_URL`                     | Repos service base URL the backend calls to serve a bundle download and prune a deleted run's bundle. Unset disables both.                                                                                                           | —                                         |
 | `TCAB_ARTIFACT_SWEEP_INTERVAL_HOURS` | Interval between reclamation sweeps; `0` disables the sweep.                                                                                                                                                                         | `6`                                       |
 | `TCAB_ARTIFACT_SWEEP_GRACE_HOURS`    | How old a run-less tree must be before a sweep deletes it.                                                                                                                                                                           | `24`                                      |
