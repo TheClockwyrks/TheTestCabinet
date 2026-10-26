@@ -6,10 +6,43 @@ zone: SITE
 number: 2
 title: Ship the tcab.ai share-link Worker and the preview-tag Worker
 type: generic
-state: open
+priority: 3
+state: done
 depends_on:
   - tx7vcyi2kctg8wr9v5qfr9jf
 created: 2026-10-13T21:14:18.240469223Z
+done: 2026-10-26T07:21:34.188015413Z
+outcome: |
+  Both Workers are in the `testcabinet.ai` repository as npm workspace members,
+  each with a `wrangler.toml` declaring a `production` and a `staging`
+  environment. `apps/preview-tags` is on `testcabinet.ai/runs/*`. It writes a
+  published run's title and description from its card, and its image from the run
+  document the card names, into the Pages shell with a 200. An unknown id gets the
+  shell with an uncached 404. `/runs/comparisons` and `/runs/` get the shell
+  untagged, and a bucket that cannot be read gets the shell with an uncached 200.
+  `apps/share-links` is the Worker custom domain `tcab.ai`. It redirects
+  `/r/<code>` and `/p/<code>` through `codes/<code>` with a 302 and answers an
+  unknown code with an uncached 404. `scripts/ci/deploy-workers.sh`, a new
+  `workers` job of the deploy stage, deploys both: `master` to production and
+  `staging` to staging (`staging.testcabinet.ai/runs/*`, `staging.tcab.ai`).
+
+  For the Caching section, `microservice-artifacts` now stores a `Cache-Control`
+  on every R2 write: `index.json` gets `public, max-age=60` and every other key
+  `public, max-age=31536000, immutable`. The Worker responses carry the headers in
+  the Serving page's new table. The serving, public-gallery, releasing, snapshot
+  and artifacts pages now state the image source, the bucket names
+  (`tcab-snapshot` and `tcab-snapshot-staging`, since an R2 bucket name cannot
+  contain dots), the custom domains, the token's permissions and the bucket's
+  one-time cache rule.
+
+  Verified here: the Workers' suites, type-check and `web-lint`, the wrangler
+  4.40.3 dry-run deploys of both environments, `deploy-workers.test.sh`, the
+  artifacts Rust gates and the docs gates. Not verified here: the site's
+  `typescript` gate, because the linked install needs a feed token this machine
+  lacks. Nothing was deployed, so the live checks in the issue's Verify section
+  remain for the first `staging` and `master` deploys, after the buckets, the
+  `tcab.ai` zone, the cache rule and the token are set up as the Releasing page
+  states.
 ---
 
 No Worker exists in front of the gallery, every run page is answered with the
