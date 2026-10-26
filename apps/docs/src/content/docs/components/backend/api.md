@@ -1679,9 +1679,11 @@ new subscriber with default topics, so a client must re-apply what it wanted
 each time a hello frame arrives.
 
 The `resync` frame says this client fell behind far enough that the backend
-dropped messages for it. Nothing can be replayed, so the client's recovery is to
-re-read the authoritative lists (`GET /jobs/active`, and the run listing if it is
-showing produced runs).
+dropped messages for it, or that the replica serving the stream lost the
+[announcements](/components/backend/overview/#replicas) of other replicas for a
+while, in which case `dropped` is `0` because the count is unknown. Nothing can
+be replayed, so the client's recovery is to re-read the authoritative lists
+(`GET /jobs/active`, and the run listing if it is showing produced runs).
 
 The `heartbeat` frame carries no payload; its arrival is the whole message. A
 client arms a watchdog, rearms it on every frame, and treats an overdue one as a
@@ -1762,7 +1764,9 @@ client's stream died and its `EventSource` has reconnected (or is about to) unde
 new id. The recovery is to wait for the next hello frame and re-apply.
 
 The topic change applies to the already-open stream, taking effect on the very
-next message.
+next message. The request may reach a replica other than the one serving the
+stream, which forwards the change and answers `204` once the serving replica
+acknowledges it, or `404` when no replica does within two seconds.
 
 ### Staying current without polling
 

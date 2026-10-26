@@ -242,12 +242,15 @@ A pass acts only on a run-id set the backend read and found at least one run in.
 A query that fails and one that comes back empty both abandon the pass, which is
 retried at the next interval, so a database fault or a backend brought up
 against a fresh database beside a populated container leaves the container
-intact. A failing tree listing abandons the pass the same way.
+intact. A failing tree listing abandons the pass the same way. A pass holds the
+sweep's [database lock](#replicas) and is abandoned when another replica's pass
+holds it, or when the lock cannot be taken.
 
 Every pass logs exactly one line: `artifact sweep pass complete` with the trees
 it listed, the orphans it found, and how many it reclaimed and failed to
 reclaim, a pass that reclaimed nothing included, or `artifact sweep pass
-abandoned` with its reason (`no_runs`, `runs_unreadable` or `listing_failed`).
+abandoned` with its reason (`no_runs`, `runs_unreadable`, `listing_failed`,
+`lock_held` or `lock_failed`).
 A pass that did nothing can therefore be told apart from a sweep that is not
 running.
 
@@ -335,12 +338,66 @@ claimed through the database:
 - a launch pass claims its plan's or ladder's row with a lease;
 - a snapshot refresh and a publish's index rewrite hold a database lock;
 - a model probe holds a lease on its row, renewed while it runs;
-- a reclamation sweep pass holds a database lock.
+- a reclamation sweep pass holds a database lock;
+- a start's schema migration holds a database lock.
 
-Each stored event batch and each [console stream](/components/backend/api/#the-console-stream)
-message is announced through PostgreSQL `LISTEN`/`NOTIFY`, so a subscriber
-connected to any replica receives what every replica accepts. An embedded SQLite
-database is single-writer, so a SQLite deployment runs one replica.
+A database lock is a PostgreSQL session advisory lock, held on a connection of
+its own for as long as the work runs, so a replica that dies while holding one
+releases it with its connection, and so does a caller that stops waiting for
+one. A snapshot refresh waits for the lock, and once it holds it runs only if
+the snapshot is still marked dirty, since the refresh it waited behind may
+already have covered its mark. A forced refresh waits and always runs. A
+replica whose definition store is not populated yet runs no refresh, since the
+dataset's case metadata is read from it: its coalesced refresh is left marked
+dirty, and its forced refresh is refused. A sweep pass that finds the lock held
+is abandoned, because the other replica is sweeping.
+
+What one replica accepts and a subscriber of another wants is announced through
+PostgreSQL `LISTEN`/`NOTIFY` on one channel, each replica listening on a
+connection of its own and skipping its own announcements, since it delivered
+those to its subscribers directly:
+
+- each stored event batch, as its job and sequence range, which a replica with a
+  subscriber to the job reads back from the database;
+- each preview frame, as its job and frame index. On PostgreSQL the latest frame
+  per index is stored in the database before it is acknowledged, a subscriber
+  that connects mid-run is sent the stored frames, and a job's frames are
+  deleted once it ends;
+- a job's end, so a stream on any replica closes;
+- each [console stream](/components/backend/api/#the-console-stream) message;
+- a [topic change](/components/backend/api/#put-notificationsstreamtopics--change-topics)
+  for a stream connected to another replica, which the replica holding the
+  stream applies and acknowledges;
+- each progress line and the result of a publish job's live stream;
+- a queued snapshot refresh, which wakes every replica's refresher, so a replica
+  that stops before its refresh runs leaves it to another;
+- an ingest that asked for a refresh of the checkout, once it succeeded, which
+  every other replica then runs into its own store, refreshing its own checkout
+  first. A pod's startup ingest of the checkout its sidecar fetched asks for no
+  refresh and is not announced.
+
+An announcement whose payload exceeds PostgreSQL's notification limit is stored
+in the database and announced by its key. A replica whose listening connection
+is interrupted reconnects and resynchronizes every stream it serves, because
+announcements made in the gap are lost: a job's stream reads the events it
+missed from the database and closes if the job ended, and a console stream is
+sent a `resync` frame, and a publish job's stream is sent the result its row
+holds. A replica finds a connection that silently stopped delivering by pinging
+itself on the channel whenever it has been quiet for a while, and reconnects
+when the ping does not come back. A replica listens before it serves, and a
+stopping replica sends every announcement it has queued before it exits.
+
+A job's stream treats the stored events as the authority over what it was
+announced. An event past the next sequence it expects means the ones between
+are stored and were missed, so it reads them back first. A stream that is told
+its job ended reads any stored event it has not delivered before it closes,
+since a batch's announcement can arrive after the end's, and an idle stream
+reads its job's state and closes when the job ended unannounced. A subscriber
+that connects reads its job's state again after it subscribes, so an end
+announced in between is not missed.
+
+An embedded SQLite database is single-writer, so a SQLite deployment runs one
+replica, which serializes the same work in its process and announces nothing.
 
 ## Finishing a job
 
