@@ -7,10 +7,11 @@ number: 12
 title: Resolve the conflict landing DEPLOY-2
 type: conflict
 priority: 0
-state: open
+state: blocked
+reason: Fast-forward microservice-repos' origin/nightly (stale at scaffold 783a27e) to 30f3f78, the commit the superrepo's nightly pins; DEPLOY-2's commits then replay cleanly.
 branch: issue/ak5nksdbxdkkx19zwqvv9jo7
 created: 2026-10-26T21:27:36.96747467Z
-modified: 2026-10-26T21:28:48.446436976Z
+modified: 2026-10-26T21:29:22.146830002Z
 ---
 
 The landing of DEPLOY-2 stopped at a submodule's rebase, in the submodule
