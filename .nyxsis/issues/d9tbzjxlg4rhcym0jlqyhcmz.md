@@ -7,10 +7,52 @@ number: 17
 title: Resolve the conflict landing NYX-8
 type: conflict
 priority: 0
-state: open
+state: done
 branch: issue/o7hwklyhcecnv0j6u9k4aavr
 created: 2026-10-26T22:13:46.028989415Z
-modified: 2026-10-26T22:13:46.028989415Z
+modified: 2026-10-26T22:27:54.218719267Z
+done: 2026-10-26T22:27:54.218719267Z
+outcome: |
+  Cause: `tool-particle`'s `nightly` (9553ce9) had not yet taken master's two
+  earlier kit updates, 00a92d8 (ciImageTag ed9c9929f) and 43a556c (32214df70). The
+  superrepo's `nightly` records master's 6b70638 for the submodule, so the landing
+  replayed 7383b49 on its own onto a `nightly` that was missing the commits it
+  builds on, and both `.copier-answers.yml` and `azure-pipelines.yml` conflicted.
+
+  Done:
+
+  - `tool-particle`: `issue/o7hwklyhcecnv0j6u9k4aavr` is now one commit, 140a864,
+    on `nightly` 9553ce9. Its tree is identical to 7383b49's, so it carries both
+    master's earlier kit updates and NYX-8's update to 6c195c0f2. I tried the
+    landing's replay (`rebase --onto nightly 6b70638`) and it applies cleanly. The
+    submodule's gates pass except cspell. cspell fails the same way at 7383b49:
+    the `spell` script hits a cspell 10 usage error.
+  - Superrepo: rebased `issue/o7hwklyhcecnv0j6u9k4aavr` onto `nightly` 3476d1d4b.
+    Four gitlinks conflicted: contracts, engines, microservice-arena and
+    ui-common. For contracts, engines and microservice-arena I rebased each
+    submodule's issue branch onto its `nightly`, to e7cf3ca, 6a36386 and 21f7445.
+    Each resulting tree is exactly the old branch plus `nightly`'s own work.
+    ui-common takes 276cffd9, its landed commit, which already contains both
+    sides. NYX-8's issue file keeps the branch's done state and outcome together
+    with `nightly`'s Cause and Repair sections.
+  - I also ran the landing's replay for engines, microservice-arena, contracts and
+    ui-common, each against the commit `nightly` records, and all four apply
+    cleanly.
+
+  Left:
+
+  - Superrepo gates: 18 of 22 pass, including rust-test with 1522 tests. Four
+    fail, all for reasons that were already there. `dependency-graph` and two
+    ci-tests: `.package-links.json` lacks `@clockwyrks/preview-tags` and
+    `@clockwyrks/share-links`, which NYX-8 had already found stale. `markdownlint`
+    and one ci-test: long lines of git output in the conflict issue files Nyxsis
+    writes. `workspace-test`: 90 engines vitest files can't resolve `/src/...` in
+    a checkout under `.git/nyxsis/worktrees/`, as NYX-8 recorded.
+  - Nothing is pushed. The submodule branches must reach their remotes before the
+    superrepo's push, so that `submodule-remotes` admits it.
+  - On `nightly`, NYX-8 is blocked on an operator decision about which branch each
+    repository's render lands on. This branch closes it, and the landing that is
+    now underway lands that work onto `nightly`.
 ---
 
 The landing of NYX-8 stopped at a submodule's rebase, in the submodule
