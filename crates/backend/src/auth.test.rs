@@ -217,6 +217,19 @@ async fn a_running_state_move_holds_readiness_but_not_liveness() {
 }
 
 #[tokio::test]
+async fn a_draining_backend_fails_readiness_but_not_liveness() {
+    // Told to stop, the backend leaves its Service at once and stays live while it
+    // finishes what it accepted.
+    let (_dir, state, router) = local_backend().await;
+    state.ready.mark_draining();
+    let (status, body) = call(&router, "GET", "/healthz", &[Cred::None], None).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let (status, body) = call(&router, "GET", "/readyz", &[Cred::None], None).await;
+    assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE, "{body}");
+    assert_eq!(body["status"], "draining");
+}
+
+#[tokio::test]
 async fn token_verification_is_reached_without_an_identity() {
     // The artifacts service forwards a driver's token in the body; the route checks
     // that token itself.

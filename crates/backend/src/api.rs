@@ -768,7 +768,8 @@ async fn health(
 /// versions yet.
 ///
 /// `200` once the definition store holds versions and the start's move of an earlier
-/// release's on-disk state ([`crate::state_move`]) has finished, `503` until both.
+/// release's on-disk state ([`crate::state_move`]) has finished, `503` until both,
+/// and `503` (`draining`) again from the moment the backend is told to stop.
 /// Kept apart from the `/healthz` liveness probe because the unready state is
 /// *long*: a deployment with an ephemeral `/state` re-ingests the whole catalog on
 /// start, which runs for minutes. Pointing a liveness probe at this signal would
@@ -790,6 +791,8 @@ async fn ready(
         axum::Json(serde_json::json!({
             "status": if ready {
                 "ready"
+            } else if state.ready.is_draining() {
+                "draining"
             } else if !store_ready {
                 "ingesting"
             } else {

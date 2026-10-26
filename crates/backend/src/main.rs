@@ -68,14 +68,30 @@ async fn main() -> ExitCode {
     tracing::info!("backend listening on {}", backend.bind);
 
     // Told to stop, the backend drains: it fails readiness and ends every long-lived
-    // stream, and the server stops accepting and finishes the requests in flight
-    // before it exits (the control plane's "Graceful termination").
+    // stream at once, keeps accepting through the drain delay when told by `SIGTERM`,
+    // and only then stops accepting and finishes the requests in flight before it
+    // exits (the control plane's "Graceful termination").
     let ready = backend.ready.clone();
     let bus = backend.bus;
     let shutdown = async move {
-        stop_requested().await;
-        tracing::info!("stopping: draining the backend");
+        let stop = stop_requested().await;
         ready.mark_draining();
+        match stop {
+            // A request routed by an endpoint list that has not yet dropped this pod
+            // still lands for the delay; `/readyz` answers `503` meanwhile.
+            Stop::Terminate => {
+                tracing::info!(
+                    "stopping on SIGTERM: draining, accepting for the {}s drain delay",
+                    DRAIN_DELAY.as_secs()
+                );
+                tokio::time::sleep(DRAIN_DELAY).await;
+            }
+            // An interrupt at a terminal has no endpoint list to wait out.
+            Stop::Interrupt => {
+                tracing::info!("stopping on interrupt: draining without the drain delay");
+            }
+        }
+        tracing::info!("no longer accepting; finishing the requests in flight");
     };
     if let Err(err) = axum::serve(listener, backend.router)
         .with_graceful_shutdown(shutdown)
@@ -92,8 +108,20 @@ async fn main() -> ExitCode {
     ExitCode::SUCCESS
 }
 
-/// Resolve on `SIGTERM`, which Kubernetes sends a pod it stops, or on Ctrl-C.
-async fn stop_requested() {
+/// How long a backend told to stop by `SIGTERM` keeps accepting after it fails
+/// readiness, while its endpoint's removal from the Service propagates.
+const DRAIN_DELAY: std::time::Duration = std::time::Duration::from_secs(5);
+
+/// What told the backend to stop.
+enum Stop {
+    /// `SIGTERM`, which Kubernetes sends a pod it stops: drain with the delay.
+    Terminate,
+    /// Ctrl-C (`SIGINT`) at a terminal: drain without it.
+    Interrupt,
+}
+
+/// Resolve on `SIGTERM` or on Ctrl-C, naming which arrived.
+async fn stop_requested() -> Stop {
     let interrupt = tokio::signal::ctrl_c();
     #[cfg(unix)]
     {
@@ -103,16 +131,17 @@ async fn stop_requested() {
                 Err(err) => {
                     tracing::warn!("cannot listen for SIGTERM ({err}); stopping on Ctrl-C only");
                     let _ = interrupt.await;
-                    return;
+                    return Stop::Interrupt;
                 }
             };
         tokio::select! {
-            _ = interrupt => {}
-            _ = terminate.recv() => {}
+            _ = interrupt => Stop::Interrupt,
+            _ = terminate.recv() => Stop::Terminate,
         }
     }
     #[cfg(not(unix))]
     {
         let _ = interrupt.await;
+        Stop::Interrupt
     }
 }
