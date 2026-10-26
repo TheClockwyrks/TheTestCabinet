@@ -7,10 +7,45 @@ number: 11
 title: Resolve the conflict landing NYX-8
 type: conflict
 priority: 0
-state: open
+state: done
 branch: issue/o7hwklyhcecnv0j6u9k4aavr
 created: 2026-10-26T21:27:24.814560052Z
-modified: 2026-10-26T21:27:24.814560052Z
+modified: 2026-10-26T21:36:21.973576447Z
+done: 2026-10-26T21:36:21.973576447Z
+outcome: |
+  Rebased `tool-voxel`'s branch `issue/o7hwklyhcecnv0j6u9k4aavr` onto its
+  `nightly` (990f19a); it now stands at 2c4cc50, and the superrepo records it in
+  441166e5b.
+
+  The conflict had a structural cause: `tool-voxel`'s `nightly` is an ancestor of
+  1badff4, the commit the superrepo's `nightly` already pins. Replaying only the
+  kit commit onto `nightly` would have dropped master's work from what the
+  superrepo pins: contracts v0.2.4, tool-model-core v0.1.2, and the kit and CI
+  image updates at ed9c9929f and 32214df70. So the branch is now two commits on
+  `nightly`:
+
+  - 325564e takes 1badff4's tree onto `nightly` as it stands.
+  - 2c4cc50 is the kit commit for 6c195c0f2, unchanged.
+
+  The resulting tree is byte-identical to the original 7d38891, which keeps both
+  sides' intent. The landing's own replay (`git rebase --onto nightly 1badff4`) is
+  a no-op on this branch.
+
+  Gates in `tool-voxel`: build-context, ci-tests, dependency-edges, format,
+  markdownlint, no-nul-bytes, python-lint, shell-tests and rust-fmt passed. cspell
+  passed on an exported copy of the tree; in the worktree it checks no files
+  because the worktree path is under `.git/`, which cspell.json ignores.
+  rust-clippy, rust-doc, rust-test and typescript were not run: the change touches
+  no Rust or TypeScript, and the tree's code is 1badff4's.
+
+  The superrepo's dependency-graph gate passed.
+
+  Left: the superrepo branch was not rebased onto `nightly` here. Its 216ae79da
+  moves the `microservice-artifacts` and `testcabinet.ai` pins, which `nightly`
+  also moved. This issue names neither submodule, so the superrepo rebase is left
+  to Nyxsis's landing. `microservice-artifacts`'s kit commit b735a17 merges
+  cleanly onto aa49638, the commit `nightly` pins for it. `testcabinet.ai`'s
+  da38dca conflicts with df38522, so that landing is expected to stop there.
 ---
 
 The landing of NYX-8 stopped at a submodule's rebase, in the submodule
