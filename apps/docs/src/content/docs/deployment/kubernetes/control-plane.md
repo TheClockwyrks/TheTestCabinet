@@ -182,7 +182,11 @@ service then handles `SIGTERM` the same way:
    request routed by an endpoint list not yet updated still lands, and its
    readiness probe answers `503` meanwhile.
 3. It stops accepting connections and finishes every request in flight.
-4. It exits with status 0 before `terminationGracePeriodSeconds` ends.
+4. It exits with status 0 before `terminationGracePeriodSeconds` ends. A
+   request still in flight at its stop deadline, the grace less 10 seconds
+   after the signal, is abandoned so that the exit is still clean. The grace
+   counts from the start of the `preStop` hook, so the deadline falls 5 seconds
+   before the kill.
 
 An interrupt (`Ctrl-C`) at a terminal skips the drain delay; the rest is the
 same.

@@ -98,15 +98,27 @@ restart never runs more matches at once than the cap allows.
 
 ### Shutdown
 
-On `SIGTERM` the arena stops accepting matches and tournaments, answering each
-with `503`, and its readiness probe fails. A tournament finishes the match it is
-on and records it when that match completes within the shutdown grace
-(`TCAB_ARENA_SHUTDOWN_GRACE_SECONDS`, default `50`), then stops without
-starting another. A match still running when the grace ends is abandoned
-without a recorded result, so the next arena plays it again from the start.
-Every match recorded before the signal is kept, and every event stream ends.
-The arena keeps its listener open until the last tournament stops, so new work
-meets the `503` rather than a refused connection.
+The arena stops as the control plane's
+[graceful termination](/deployment/kubernetes/control-plane/#graceful-termination)
+describes. On `SIGTERM` its readiness probe, `/readyz`, answers `503` at once,
+while its liveness probe, `/healthz`, stays `200`. Every live progress stream
+sends the matches already recorded and then ends, so its console reconnects to
+the arena that replaces this one. Through the 5-second drain delay the arena
+still accepts and serves matches and tournaments; a tournament submitted then is
+recorded as pending and left for the next arena to play. When the delay ends it
+stops accepting connections, and a match or tournament that arrives after that
+on a connection already open is answered `503`. Whether a request is refused
+depends on when it arrived, so one that arrived in time is served however long
+its identity check takes. An interrupt (`Ctrl-C`) skips the drain delay.
+
+At the signal each tournament finishes the match it is on and records it when
+that match completes within the shutdown grace
+(`TCAB_ARENA_SHUTDOWN_GRACE_SECONDS`, default `50`, counted from the signal),
+then stops without starting another. The arena exits with status 0 once every
+request and tournament in flight has finished, or when the grace ends,
+abandoning what still runs then: a match still running is left without a
+recorded result, so the next arena plays it again from the start. Every match
+recorded before the signal is kept.
 
 The grace is shorter than the pod's `terminationGracePeriodSeconds` (`60`), so
 the arena exits on its own before the kubelet kills it.

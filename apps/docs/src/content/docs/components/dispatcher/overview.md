@@ -13,7 +13,7 @@ at the backend and never addresses the dispatcher.
 
 ## The control loop
 
-The dispatcher runs one loop forever. Each tick:
+The dispatcher runs one loop until it is [stopped](#shutdown). Each tick:
 
 1. Reconcile against the live cluster: list the `Job`s this dispatcher owns
    (selected by their `app.kubernetes.io/managed-by` label), count the
@@ -328,6 +328,24 @@ reaping fails in that namespace, which is logged and never fatal. Naming a
 `Secret` on a `Job` needs no `secrets` rule, because the kubelet reads and
 projects it. The manifests are in `deployments/k8s/base/rbac.yaml`. See
 [Run plane](/deployment/kubernetes/run-plane/#rbac).
+
+## Shutdown
+
+The dispatcher stops on `SIGTERM`, and on an interrupt (`Ctrl-C`) the same way. It
+never cuts a tick short, since a tick stopped between a claim and its `Job`'s
+creation would leave a claimed run with no driver.
+
+- A signal that arrives during a tick lets that tick finish. A claim already made
+  receives its `Job`, and a lane the tick has not yet reached claims nothing.
+- A signal that arrives between ticks, or while the loop backs off for the poll
+  interval, stops the loop at once.
+
+Either way it starts no further tick and exits with status 0. It serves no
+`Service`, so it has no readiness to fail and no drain delay to hold, and the
+[grace](/deployment/kubernetes/control-plane/#graceful-termination) it is given is
+spent on the tick in progress. A claim lost anyway, to a `SIGKILL` between the claim
+and the `Job`, is recovered by its lapsed [lease](#claim-leases): the backend
+returns the `dispatched` job to the queue.
 
 ## Deployment
 
