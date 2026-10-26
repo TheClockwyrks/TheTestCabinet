@@ -7,10 +7,35 @@ number: 21
 title: Resolve the conflict landing NYX-8
 type: conflict
 priority: 0
-state: open
+state: done
 branch: issue/o7hwklyhcecnv0j6u9k4aavr
 created: 2026-10-26T22:47:18.350465593Z
-modified: 2026-10-26T22:47:18.350465593Z
+modified: 2026-10-26T22:49:53.368390138Z
+done: 2026-10-26T22:49:53.368390138Z
+outcome: |
+  Rebased `tool-mc`'s branch `issue/o7hwklyhcecnv0j6u9k4aavr` onto `nightly`
+  (44d9f3c): its one commit, "ci: take the kit and the CI images built at
+  6c195c0f2", now stands at f6eb343 on top of nightly, and the superrepo records
+  it in f04b98a6f. The superrepo branch already contained `nightly`.
+
+  The conflicts in `.copier-answers.yml` and `azure-pipelines.yml` came from
+  nightly lacking the two kit renders master took at ed9c9929f and 32214df70 (the
+  npm feed credential for image builds, the edge walk leaving out a crate's case
+  copies, and their tests). Nightly differs from the original commit only in
+  kit-rendered files, so the resolution takes the commit's full kit state at
+  9ecc82fe9: the image pins at 6c195c0f2, those earlier renders, and the CLAUDE.md
+  change. That way the rendered files agree with the kit version
+  `.copier-answers.yml` records. The commit message says so.
+
+  Gates in tool-mc: build-context, ci-tests (311 passed), dependency-edges,
+  format, markdownlint, no-nul-bytes, python-lint, shell-tests and rust-fmt pass.
+  cspell fails before checking anything, because the `spell` npm script runs
+  `cspell lint` with no glob and only prints usage. That comes from nightly: the
+  change touches no file it reads. rust-clippy, rust-doc, rust-test and typescript
+  were not run because the change touches no Rust or TypeScript.
+
+  Left: the submodule branch is not pushed (the remote has no such branch yet), so
+  the landing pushes it.
 ---
 
 The landing of NYX-8 stopped at a submodule's rebase, in the submodule
