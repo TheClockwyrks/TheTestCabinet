@@ -455,3 +455,111 @@ def test_a_relative_address_is_read_against_the_superrepository(repos: Repos) ->
     done = _push(repos)
     assert done.returncode == 1
     assert f"outer {pinned}" in done.stderr
+
+
+def _target(holder: Path, name: str, branch: str) -> None:
+    """Have the `.gitmodules` of `holder` name `branch` for the submodule `name`, and stage it."""
+    _git(holder, "config", "-f", ".gitmodules", f"submodule.{name}.branch", branch)
+    _git(holder, "add", ".gitmodules")
+
+
+def _on_nightly_alone(repos: Repos) -> str:
+    """A commit of outer its nightly holds, behind its tip, and its master lacks, outer checked out at it."""
+    pinned = _commit(repos.outer, "outer's development commit")
+    _commit(repos.outer, "a development commit after it")
+    _git(repos.outer, "push", "-q", "origin", "HEAD:refs/heads/nightly")
+    _git(repos.outer, "checkout", "-q", pinned)
+    # The checkout knows nothing of nightly, so the gate fetches it.
+    _git(repos.outer, "update-ref", "-d", "refs/remotes/origin/nightly")
+    return pinned
+
+
+def test_a_pin_the_pushed_branchs_namesake_holds_fails_while_gitmodules_targets_a_branch_lacking_it(
+    repos: Repos,
+) -> None:
+    pinned = _on_nightly_alone(repos)
+    _target(repos.root, "outer", "master")
+    pinning = _move(repos.root, "outer")
+    done = _push(repos, branch="nightly")
+    assert done.returncode == 1
+    assert f"outer {pinned}, pinned by {pinning[:12]}, is held by nightly of {repos.remote('outer')}" in done.stderr
+    assert "names the branch master, which does not hold it" in done.stderr
+    # The two ways out.
+    assert "git config -f .gitmodules submodule.outer.branch ." in done.stderr
+    assert "or pin a commit master holds" in done.stderr
+
+
+@pytest.mark.parametrize(("named", "judged"), [("master", False), ("release", True)])
+def test_without_a_repository_a_named_branch_is_judged_only_where_its_tip_tells(
+    repos: Repos, named: str, judged: bool
+) -> None:
+    pinned = _commit(repos.outer, "outer's development commit")
+    _git(repos.outer, "push", "-q", "origin", "HEAD:refs/heads/nightly")
+    _target(repos.root, "outer", named)
+    _move(repos.root, "outer")
+    _git(repos.root, "submodule", "deinit", "-q", "--force", "outer")
+    shutil.rmtree(_modules_dir(repos, "outer"))
+    done = _push(repos, branch="nightly")
+    # Whether master's tip reaches the pin takes a repository to tell, so it is
+    # not judged; a branch the remote lacks holds nothing, which needs none.
+    if judged:
+        assert done.returncode == 1
+        assert f"outer {pinned}" in done.stderr
+        assert f"names the branch {named}" in done.stderr
+    else:
+        assert done.returncode == 0, done.stderr
+
+
+@pytest.mark.parametrize("branch", [".", "nightly", None])
+def test_an_entry_naming_the_pushed_branch_or_its_own_or_none_passes(repos: Repos, branch: str | None) -> None:
+    _on_nightly_alone(repos)
+    if branch is not None:
+        _target(repos.root, "outer", branch)
+    _move(repos.root, "outer")
+    done = _push(repos, branch="nightly")
+    assert done.returncode == 0, done.stderr
+
+
+def test_a_pin_the_named_branch_holds_passes(repos: Repos) -> None:
+    pinned = _on_nightly_alone(repos)
+    _git(repos.outer, "push", "-q", "origin", f"{pinned}:refs/heads/master")
+    _target(repos.root, "outer", "master")
+    _move(repos.root, "outer")
+    done = _push(repos, branch="nightly")
+    assert done.returncode == 0, done.stderr
+
+
+def test_a_pin_on_a_branch_other_than_the_pushed_one_is_left_to_the_other_checks(repos: Repos) -> None:
+    _commit(repos.outer, "outer's feature commit")
+    _git(repos.outer, "push", "-q", "origin", "HEAD:refs/heads/feature")
+    _git(repos.outer, "push", "-q", "origin", "origin/master:refs/heads/nightly")
+    _target(repos.root, "outer", "master")
+    _move(repos.root, "outer")
+    done = _push(repos, branch="nightly")
+    assert done.returncode == 0, done.stderr
+
+
+def test_a_named_branch_the_remote_lacks_holds_no_pin(repos: Repos) -> None:
+    pinned = _on_nightly_alone(repos)
+    _target(repos.root, "outer", "release")
+    _move(repos.root, "outer")
+    done = _push(repos, branch="nightly")
+    assert done.returncode == 1
+    assert f"outer {pinned}" in done.stderr
+    assert "names the branch release, which does not hold it" in done.stderr
+
+
+def test_a_nested_pin_is_held_to_its_holders_gitmodules(repos: Repos) -> None:
+    inner = _commit(repos.inner, "inner's development commit")
+    _git(repos.inner, "push", "-q", "origin", "HEAD:refs/heads/nightly")
+    _target(repos.outer, "inner", "master")
+    _move(repos.outer, "inner")
+    _git(repos.outer, "push", "-q", "origin", "HEAD:refs/heads/nightly")
+    _move(repos.root, "outer")
+    done = _push(repos, branch="nightly")
+    assert done.returncode == 1
+    assert f"outer/inner {inner}" in done.stderr
+    assert "names the branch master" in done.stderr
+    assert "submodule.inner.branch ." in done.stderr
+    # outer's own entry names no branch, so its pin passes.
+    assert "outer " + _git(repos.outer, "rev-parse", "HEAD") not in done.stderr

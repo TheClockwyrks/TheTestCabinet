@@ -36,39 +36,51 @@ ARG DOTNET_IMAGE
 ARG RUBY_IMAGE
 ARG SWIFT_IMAGE
 ARG PURESCRIPT_IMAGE
+# The platform the builder targets, which it supplies itself, and which every
+# `FROM` naming a published image states.
+#
+# A `FROM` with no platform takes whatever the machine's image store holds
+# under the tag, and Podman builds from it even when its platform is not the
+# machine's, warning and failing at the first `RUN` with `exec format error`.
+# One `podman pull --platform` of the other architecture, by any workspace on
+# the machine, points the shared tag at that image and breaks every build on
+# the machine until something pulls it again. Naming the platform has the
+# runtime compare what the store holds with it and pull the image it was built
+# for in its place.
+ARG TARGETPLATFORM
 
 # The browser engines.
-FROM ${PLAYWRIGHT_IMAGE} AS playwright
+FROM --platform=$TARGETPLATFORM ${PLAYWRIGHT_IMAGE} AS playwright
 
 # The wasm-components language image.
-FROM ${WASM_COMPONENTS_IMAGE} AS wasm-components
+FROM --platform=$TARGETPLATFORM ${WASM_COMPONENTS_IMAGE} AS wasm-components
 
 # The wasi-sdk language image.
-FROM ${WASI_SDK_IMAGE} AS wasi-sdk
+FROM --platform=$TARGETPLATFORM ${WASI_SDK_IMAGE} AS wasi-sdk
 
 # The python language image.
-FROM ${PYTHON_IMAGE} AS python
+FROM --platform=$TARGETPLATFORM ${PYTHON_IMAGE} AS python
 
 # The jvm language image.
-FROM ${JVM_IMAGE} AS jvm
+FROM --platform=$TARGETPLATFORM ${JVM_IMAGE} AS jvm
 
 # The dotnet language image.
-FROM ${DOTNET_IMAGE} AS dotnet
+FROM --platform=$TARGETPLATFORM ${DOTNET_IMAGE} AS dotnet
 
 # The ruby language image.
-FROM ${RUBY_IMAGE} AS ruby
+FROM --platform=$TARGETPLATFORM ${RUBY_IMAGE} AS ruby
 
 # The swift language image.
-FROM ${SWIFT_IMAGE} AS swift
+FROM --platform=$TARGETPLATFORM ${SWIFT_IMAGE} AS swift
 
 # The purescript language image.
-FROM ${PURESCRIPT_IMAGE} AS purescript
+FROM --platform=$TARGETPLATFORM ${PURESCRIPT_IMAGE} AS purescript
 
 # The toolchain image, whose account, `dev` at uid and gid 1000, is the one
 # every step below runs as. It sets the PATH every process in the image is
 # given, ~/.local/bin and ~/.cargo/bin among it, and the linker cargo links the
 # two glibc targets with, so neither is stated here.
-FROM ${TOOLCHAIN_IMAGE}
+FROM --platform=$TARGETPLATFORM ${TOOLCHAIN_IMAGE}
 
 # Each tool image holds its tree at the path it takes here, with the account's
 # ownership on the tree and on every directory above it, so a copy of its root

@@ -151,9 +151,13 @@ judges, every one at the commit but `submodule-remotes`, which runs before a
 push and refuses one whose commits pin a submodule commit that no branch of the
 submodule's remote the push can target holds: for a push to `<b>`, the
 submodule's branch `<b>`, or any of its branches that is no `issue/`, `task/`
-or `filing/` branch, and never a tag alone. Push each submodule's branch before
-the repository pinning it. The superrepo's gates are the template's over its
-tree plus the project's over the set:
+or `filing/` branch, and never a tag alone. It also refuses a pin the
+submodule's branch `<b>` holds while the `branch` the pinning commit's
+`.gitmodules` names for it is another, not `.`, that lacks the pin, which a
+landing of `<b>` would take the submodule's work to; set that entry's `branch`
+to `.`, or pin a commit the named branch holds. Push each submodule's branch
+before the repository pinning it. The superrepo's gates are the template's over
+its tree plus the project's over the set:
 
 ```text
 ci-image-pins            every CI image reference reads ciImageTag, and

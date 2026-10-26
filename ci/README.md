@@ -82,6 +82,22 @@ if not succeeded([*clippy, "--", "-D", "warnings"]):
   is a helper and stays out of the list.
 - A gate is also runnable alone: `uv run --project ci python ci/gates/<id>.py`.
 
+`submodule-remotes` is the push gate: it refuses a push whose commits pin a
+submodule commit, nested pins among them, that no branch of the submodule's
+remote the push can target holds. For a push to `<b>`, those are the
+submodule's branch `<b>` and every branch of it that is no `issue/`, `task/`
+or `filing/` branch, and never a tag alone. It refuses one more: a pin the
+submodule's own branch `<b>` holds while the `branch` the pinning commit's
+`.gitmodules` names for it is another, not `.`, that does not hold the pin. A
+landing lands a submodule on the branch its entry names, so such a push has
+the landing of `<b>` take the submodule's work to that branch instead, as a
+repository whose entries name `master` while its `nightly` pins its
+submodules' `nightly` commits would. The failure names the submodule, the pin,
+the branch named and that `<b>` holds it, and the two ways out: set the
+entry's `branch` to `.`, or pin a commit the named branch holds. A pin the
+named branch holds, a pin on a branch other than `<b>`, and an entry naming
+`<b>`, `.` or no branch are held to the first rule alone.
+
 ### Artifacts
 
 When `CI_GATE_ARTIFACTS` names a directory, a gate that runs tests writes its

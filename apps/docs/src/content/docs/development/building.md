@@ -361,7 +361,7 @@ The template's gates:
 | `docs-build` | This site's build |
 | `python-lint` | ruff over `ci/`, `scripts/repos/` and the repository kit's `templates/repository/` |
 | `ci-tests` | pytest over `ci/` and `scripts/repos/`, the latter rendering the repository kit for each kind |
-| `submodule-remotes` | At a push to `<b>`, every submodule pin its commits move is on that submodule's branch `<b>` or on a branch of it that is no `issue/`, `task/` or `filing/` branch; a tag alone admits none |
+| `submodule-remotes` | At a push to `<b>`, every submodule pin its commits move is on that submodule's branch `<b>` or on a branch of it that is no `issue/`, `task/` or `filing/` branch; a tag alone admits none. A pin `<b>` holds fails while the `branch` the pinning commit's `.gitmodules` names for it is another, not `.`, that lacks it |
 
 `markdownlint` and `cspell` each fail when their tool checked no file, which is
 what an ignore pattern matching the checkout's own path does: a checkout may

@@ -57,6 +57,25 @@ not checked out; with neither, a pin passes only when a branch considered
 stands at it. Both use the developer's own credentials, as every fetch of
 theirs does.
 
+A pin the push can take is held to one more rule, so that a landing of the
+pushed branch does not take a submodule's work to a branch it was never meant
+for. A landing lands a submodule on the `branch` its `.gitmodules` entry
+names. For a push to `<b>`, where the submodule remote's own branch `<b>`
+holds a pin a published commit moved, the `branch` that commit's `.gitmodules`
+names for the submodule is read; where it names a branch other than `<b>` and
+`.`, and that branch of the remote does not hold the pin, the push fails,
+naming the submodule, the pin, the branch named and that `<b>` holds it, with
+the two ways out: set the entry's `branch` to `.`, or pin a commit the named
+branch holds. A repository whose entries name `master` while its `nightly`
+pins its submodules' `nightly` commits is the case it catches: a landing of
+`nightly` would push the submodules' development work straight to their
+`master`. A pin the named branch holds, a pin on a branch other than `<b>`, an
+entry naming `<b>` or `.`, an entry naming no branch and a push to no branch
+are left to the checks above. Whether a branch holds the pin is read as the
+rest is, from the branch's tip, fetched into the submodule's repository when
+that lacks it; with no repository to look in, a named branch not standing at
+the pin is not judged, since whether it holds it is unknown.
+
 A repository whose working tree and pushed commit hold no `.gitmodules`, and
 whose push touches none, pins nothing, and the gate passes at once.
 """
@@ -89,6 +108,8 @@ MISSING = "missing"
 NOT_CHECKED_OUT = "not checked out"
 UNLISTED = "remote not listed"
 NO_ADDRESS = "no address"
+# What `branch = .` in a `.gitmodules` entry means: the superrepository's own branch.
+SAME_BRANCH = "."
 OPTION_ADDRESS = "address read as an option"
 NO_GITMODULES = "submodule-remotes: this repository has no .gitmodules, so it pins no submodule."
 
@@ -118,11 +139,13 @@ class Remote:
     """What `git ls-remote` listed for one address, read once per run.
 
     `tips` maps each branch the push can take a pin from to the commit it
-    stands at; it is None when the remote could not be listed.
+    stands at, and `heads` every branch of the remote, worktree branches
+    among them; both are None when the remote could not be listed.
     """
 
     url: str
     tips: dict[str, str] | None = None
+    heads: dict[str, str] | None = None
 
 
 def _out(argv: list[str], cwd: Path, data: str | None = None) -> str | None:
@@ -304,12 +327,13 @@ def list_remote(url: str, cwd: Path, target: str | None) -> Remote:
     listed = _out(["ls-remote", "--heads", "--end-of-options", url], cwd)
     if listed is None:
         return Remote(url)
-    tips: dict[str, str] = {}
+    heads: dict[str, str] = {}
     for line in listed.splitlines():
         sha, _, ref = line.partition("\t")
-        if admits(ref, target) and COMMIT.fullmatch(sha):
-            tips[ref] = sha
-    return Remote(url, tips)
+        if ref.startswith(BRANCHES) and COMMIT.fullmatch(sha):
+            heads[ref] = sha
+    tips = {ref: sha for ref, sha in heads.items() if admits(ref, target)}
+    return Remote(url, tips, heads)
 
 
 def _held(repository: Path, commits: set[str]) -> set[str]:
@@ -319,7 +343,24 @@ def _held(repository: Path, commits: set[str]) -> set[str]:
     return {line.split()[0] for line in answered.splitlines() if line.endswith(" commit")}
 
 
-def on_remote(pin: Pin, remote: Remote, repository: Path | None, fetched: set[tuple[str, Path]]) -> bool:
+def _fetch(remote: Remote, repository: Path, refs: set[str], fetched: set[tuple[str, Path, str]]) -> None:
+    """Fetch into the repository the tips of the remote's branches `refs` it lacks, each once per run.
+
+    The fetch writes no ref and no FETCH_HEAD: the commits are wanted, not the names.
+    """
+    assert remote.heads is not None
+    asked = {ref for ref in refs if ref in remote.heads and (remote.url, repository, ref) not in fetched}
+    if not asked:
+        return
+    fetched.update((remote.url, repository, ref) for ref in asked)
+    lacking = {remote.heads[ref] for ref in asked} - _held(repository, {remote.heads[ref] for ref in asked})
+    wanted = "".join(f"{ref}\n" for ref in sorted(asked) if remote.heads[ref] in lacking)
+    if wanted:
+        fetch = ["fetch", "--quiet", "--no-tags", "--no-write-fetch-head", "--recurse-submodules=no", "--stdin"]
+        _out([*fetch, "--end-of-options", remote.url], repository, wanted)
+
+
+def on_remote(pin: Pin, remote: Remote, repository: Path | None, fetched: set[tuple[str, Path, str]]) -> bool:
     """Whether a branch of the remote the push can take it from holds the pinned commit.
 
     A branch standing at the pin answers at once. Otherwise the repository
@@ -333,13 +374,7 @@ def on_remote(pin: Pin, remote: Remote, repository: Path | None, fetched: set[tu
         return True
     if repository is None or not tips:
         return False
-    if (remote.url, repository) not in fetched:
-        fetched.add((remote.url, repository))
-        lacking = tips - _held(repository, tips)
-        wanted = "".join(f"{ref}\n" for ref, sha in sorted(remote.tips.items()) if sha in lacking)
-        if wanted:
-            fetch = ["fetch", "--quiet", "--no-tags", "--no-write-fetch-head", "--recurse-submodules=no", "--stdin"]
-            _out([*fetch, "--end-of-options", remote.url], repository, wanted)
+    _fetch(remote, repository, set(remote.tips), fetched)
     if not _held(repository, {pin.commit}):
         return False
     # Every commit the pin reaches that no tip reaches: none when a tip holds
@@ -348,6 +383,68 @@ def on_remote(pin: Pin, remote: Remote, repository: Path | None, fetched: set[tu
     asked = f"{pin.commit}\n--not\n" + "".join(f"{sha}\n" for sha in sorted(tips))
     beyond = _out(["rev-list", "--count", "--ignore-missing", "--stdin"], repository, asked)
     return beyond is not None and beyond.strip() == "0"
+
+
+def branch_holds(
+    pin: Pin, remote: Remote, ref: str, repository: Path | None, fetched: set[tuple[str, Path, str]]
+) -> bool | None:
+    """Whether the remote's branch `ref` holds the pinned commit, or None when that cannot be told.
+
+    A branch the remote lacks holds nothing, and one standing at the pin holds
+    it. Otherwise the branch's tip is fetched into the submodule's repository
+    when it lacks it, and the pin has to be its ancestor; without a repository,
+    or with the tip or the pin missing from it, the answer is unknown.
+    """
+    assert remote.heads is not None
+    tip = remote.heads.get(ref)
+    if tip is None:
+        return False
+    if tip == pin.commit:
+        return True
+    if repository is None:
+        return None
+    _fetch(remote, repository, {ref}, fetched)
+    if _held(repository, {pin.commit, tip}) != {pin.commit, tip}:
+        return None
+    done = git(["merge-base", "--is-ancestor", "--end-of-options", pin.commit, tip], cwd=repository, quiet=True)
+    if done.returncode not in (0, 1):
+        return None
+    return done.returncode == 0
+
+
+def branch_named(pin: Pin) -> tuple[str, str] | None:
+    """The submodule's name and the `branch` the pinning commit's `.gitmodules` names for it, if it names one."""
+    name = _modules(pin.holder, pin.holder_commit).get(pin.path, (None, None))[0]
+    if name is None:
+        return None
+    blob = f"{pin.holder_commit}:.gitmodules"
+    named = _out(["config", "--blob", blob, "--get", f"submodule.{name}.branch"], pin.holder)
+    return (name, named.strip()) if named and named.strip() else None
+
+
+def mistargeted(
+    pin: Pin, remote: Remote, target: str | None, repository: Path | None, fetched: set[tuple[str, Path, str]]
+) -> tuple[str, str] | None:
+    """The branch a landing would take the pin to that lacks it, while the pushed branch's namesake holds it.
+
+    For a push to `<b>`, a pin the submodule remote's branch `<b>` holds, and
+    a `.gitmodules` entry naming a branch other than `<b>` and `.` that does
+    not hold it, the submodule's name and that named branch; None otherwise,
+    and wherever either holding cannot be told.
+    """
+    if target is None or remote.heads is None:
+        return None
+    entry = branch_named(pin)
+    if entry is None:
+        return None
+    name, named = entry
+    if named == SAME_BRANCH or f"{BRANCHES}{named}" == target:
+        return None
+    if branch_holds(pin, remote, target, repository, fetched) is not True:
+        return None
+    if branch_holds(pin, remote, f"{BRANCHES}{named}", repository, fetched) is not False:
+        return None
+    return name, named
 
 
 def _links(repository: Path, commit: str) -> dict[str, str] | None:
@@ -412,6 +509,17 @@ def _problem(verdict: str, label: str, commit: str, url: str, branches: tuple[st
     return f"{pinned}: no address is configured for the submodule, so whether its remote holds it is unknown."
 
 
+def _mistarget_problem(label: str, commit: str, url: str, name: str, named: str, target: str, holders: set[str]) -> str:
+    """What is wrong with a pin a landing would take to the branch `.gitmodules` names, which lacks it."""
+    pinned = f"{label} {commit}, pinned by {', '.join(sorted(_short(holder) for holder in holders))}"
+    return (
+        f"{pinned}, is held by {target} of {url}, but the submodule's .gitmodules entry names the branch "
+        f"{named}, which does not hold it, so a landing of {target} would take the submodule's work to {named}. "
+        f"Set the entry's branch to '.' (`git config -f .gitmodules submodule.{name}.branch .`), or pin a "
+        f"commit {named} holds."
+    )
+
+
 def _modules_anywhere(root: Path, revisions: list[str]) -> bool:
     """Whether the working tree, the pushed commit or any commit the push publishes holds a `.gitmodules`."""
     if (root / ".gitmodules").is_file():
@@ -447,11 +555,14 @@ def main() -> None:
     commits, pending = moved_pins(root, revisions, base)
     target = pushed_branch()
     remotes: dict[str, Remote] = {}
-    fetched: set[tuple[str, Path]] = set()
+    fetched: set[tuple[str, Path, str]] = set()
     verdicts: dict[tuple[str, str, Path | None], str] = {}
     # Each pin that fails, by what is wrong with it and the branches it was
     # looked for on, with the commits pinning it.
     failing: dict[tuple[str, str, str, str, tuple[str, ...]], set[str]] = {}
+    # Each pin a landing would take to a branch lacking it, by the submodule,
+    # the pin, its remote and the branch named, with the commits pinning it.
+    misdirected: dict[tuple[str, str, str, str, str], set[str]] = {}
     passed = 0
     while pending:
         pin = pending.pop(0)
@@ -475,22 +586,43 @@ def main() -> None:
                     pending.extend(nested_pins(pin, repository, url))
             else:
                 verdicts[key] = MISSING if repository is not None else NOT_CHECKED_OUT
+        if verdicts[key] == ON_REMOTE:
+            entry = mistargeted(pin, remotes[url], target, repository, fetched)
+            if entry is not None:
+                name, named = entry
+                misdirected.setdefault((pin.label, pin.commit, url, name, named), set()).add(pin.holder_commit)
+                continue
         if verdicts[key] != ON_REMOTE:
             branches = tuple(sorted(remotes[url].tips or ()))
             failing.setdefault((verdicts[key], pin.label, pin.commit, url, branches), set()).add(pin.holder_commit)
 
-    if failing:
-        fail(
-            *(
-                _problem(verdict, label, commit, url, branches, holders)
-                for (verdict, label, commit, url, branches), holders in sorted(failing.items())
-            ),
-            "",
-            "A commit pinning a submodule commit that no branch of its remote the push can target holds is one a",
-            "landing of the push's branch stops on: the submodule's branch it lands on lacks the pin. For a push to",
-            "<b>, the submodule's branch <b> admits a pin, and so does any branch of it that is no issue/, task/ or",
-            "filing/ branch; a tag alone does not. Push each submodule's branch first, then the repository pinning it.",
-        )
+    if failing or misdirected:
+        lines: list[str] = [
+            _problem(verdict, label, commit, url, branches, holders)
+            for (verdict, label, commit, url, branches), holders in sorted(failing.items())
+        ]
+        assert target is not None or not misdirected
+        lines += [
+            _mistarget_problem(label, commit, url, name, named, (target or "").removeprefix(BRANCHES), holders)
+            for (label, commit, url, name, named), holders in sorted(misdirected.items())
+        ]
+        if failing:
+            lines += [
+                "",
+                "A commit pinning a submodule commit that no branch of its remote the push can target holds is one a",
+                "landing of the push's branch stops on: the submodule's branch it lands on lacks the pin. For a push",
+                "to <b>, the submodule's branch <b> admits a pin, and so does any branch of it that is no issue/,",
+                "task/ or filing/ branch; a tag alone does not. Push each submodule's branch first, then the",
+                "repository pinning it.",
+            ]
+        if misdirected:
+            lines += [
+                "",
+                "A landing lands a submodule on the branch its .gitmodules entry names. A pin the pushed branch's",
+                "namesake holds while the entry names another branch that lacks it is development work that landing",
+                "would push to the branch named.",
+            ]
+        fail(*lines)
     branch = f" to {target.removeprefix(BRANCHES)}" if target else ""
     say(
         f"submodule-remotes: {commits} commit(s) to publish{branch}, {passed} pin(s) they moved, each on a branch",

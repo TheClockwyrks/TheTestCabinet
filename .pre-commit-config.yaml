@@ -347,7 +347,7 @@ repos:
       # the commit a pin names, is only settled when the push is made.
       - id: submodule-remotes
         name: submodule pins on their remotes
-        description: Refuse a push whose commits pin a submodule commit no branch of the submodule's remote the push can target holds.
+        description: Refuse a push whose commits pin a submodule commit no branch of the submodule's remote the push can target holds, or one the pushed branch's namesake holds while the branch its .gitmodules entry names lacks it.
         entry: uv run --quiet --project ci gate run submodule-remotes
         language: system
         stages: [pre-push]

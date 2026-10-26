@@ -184,6 +184,18 @@ only as long as the steps above. Each image is published for amd64 and arm64
 under one tag, built on a machine of each architecture, so the runtime pulls
 the one for the machine it runs on.
 
+Every `FROM` in `ubuntu.dockerfile` that names a published image names the
+platform too, `--platform=$TARGETPLATFORM`, which the builder supplies. A
+`FROM` without it takes whatever the machine's image store holds under the
+tag: the store keeps one image per tag, and a `podman pull --platform` of the
+other architecture, run by any workspace on the machine, points the tag at
+that image. Podman then builds from it, warning that the platform does not
+match the machine's, and the first `RUN` fails with `exec format error`, for
+every workspace on the machine built on the tag. Naming the platform has the
+runtime compare what the store holds with it and pull the image built for the
+machine in its place, at the cost of one registry check per published image
+on every build.
+
 ## Architecture
 
 The published images are built on a machine of each architecture they are
