@@ -7,9 +7,10 @@ number: 8
 title: Repair the-test-cabinet failing on nightly
 type: ci
 priority: 0
-state: open
+state: blocked
+reason: Authorize landing render.py --update of the 6c195c0f2 ciImageTag in the 26 kit-rendered repositories (PRs as CICD-1 did) and say whether each lands on master or nightly, since 8 gitlinks are off master.
 created: 2026-10-26T08:32:11.802822694Z
-modified: 2026-10-26T22:01:01.317428056Z
+modified: 2026-10-26T22:01:39.806580156Z
 ---
 
 The latest run of `the-test-cabinet` on the promotion branch `nightly` failed at
