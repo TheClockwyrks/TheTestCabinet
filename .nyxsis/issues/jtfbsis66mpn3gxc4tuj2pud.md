@@ -7,10 +7,34 @@ number: 13
 title: Resolve the conflict landing NYX-8
 type: conflict
 priority: 0
-state: open
+state: done
 branch: issue/o7hwklyhcecnv0j6u9k4aavr
 created: 2026-10-26T21:40:04.39705979Z
-modified: 2026-10-26T21:40:04.39705979Z
+modified: 2026-10-26T21:52:36.761401113Z
+done: 2026-10-26T21:52:36.761401113Z
+outcome: |
+  Rebased `tool-sprite`'s branch `issue/o7hwklyhcecnv0j6u9k4aavr` (its work past
+  `a0659e8`) onto its `nightly` at `d784be5`, now `fd2d5bf`. Both conflicts were
+  the kit stamp in `.copier-answers.yml` and the CI image pins in
+  `azure-pipelines.yml`; the branch's side is newer on both (kit `9ecc82fe9` over
+  `4ad039d7d`, images `6c195c0f2` over `af509db60`, the superrepo's `ciImageTag`),
+  so it was kept, with nightly's other content carried. Its gates pass but
+  `cspell`, which fails identically on nightly because its `spell` script runs
+  `cspell lint` with no globs.
+
+  The superrepo branch was rebased onto `nightly` too. Its CI-image commit
+  conflicted on the `microservice-artifacts` and `testcabinet.ai` pins; each
+  submodule's branch was rebased cleanly onto its `nightly` (`9eb3e8b`, `df9a972`)
+  and those pins recorded. The `tool-sprite` pin, like `tool-voxel`'s after
+  NYX-11, no longer contains master's `a0659e8`, as the submodule's `nightly` does
+  not.
+
+  Left: superrepo gates failing independently of this change: `dependency-graph`
+  (`.package-links.json` lacks `@clockwyrks/preview-tags` and
+  `@clockwyrks/share-links` from nightly's `testcabinet.ai`), `markdownlint` (long
+  git-output lines in Nyxsis-written issue files), the `ci-tests` checks over
+  those two, and `workspace-test` (engines' simple-2d tests cannot resolve
+  `/src/*.test.ts` locally).
 ---
 
 The landing of NYX-8 stopped at a submodule's rebase, in the submodule
