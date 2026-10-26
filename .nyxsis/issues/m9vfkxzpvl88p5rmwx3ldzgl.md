@@ -7,10 +7,27 @@ number: 18
 title: Resolve the conflict landing NYX-8
 type: conflict
 priority: 0
-state: open
+state: done
 branch: issue/o7hwklyhcecnv0j6u9k4aavr
 created: 2026-10-26T22:31:25.063429935Z
-modified: 2026-10-26T22:31:25.063429935Z
+modified: 2026-10-26T22:33:12.753257849Z
+done: 2026-10-26T22:33:12.753257849Z
+outcome: |
+  Rebased `tool-paint`'s `issue/o7hwklyhcecnv0j6u9k4aavr` onto `nightly`
+  (3346d5d), replaying its one commit past 103a96d as b2d9727. The conflicts were
+  in `.copier-answers.yml` and `azure-pipelines.yml`. Both took the branch's newer
+  pins (kit `_commit` v0.6.3-5579-g9ecc82fe9, CI images at 6c195c0f2) on top of
+  `nightly`'s version of each file. The pipeline's other changes from the four
+  master-only kit commits (ce07d4b..103a96d) were not carried over: `nightly`
+  lacks the matching `scripts/ci` changes. The CLAUDE.md change applied cleanly.
+  The superrepo branch was rebased onto `nightly` and the new submodule pin
+  recorded.
+
+  Gates in `tool-paint`: no-nul-bytes, ci-tests, shell-tests, markdownlint and
+  format pass. cspell fails with a cspell CLI usage error, and fails the same way
+  at `nightly`'s own 3346d5d, so it was there before this change. Left: that
+  cspell failure on `tool-paint`'s `nightly`, and the master-only kit commits,
+  which `nightly` gets when master is brought into it.
 ---
 
 The landing of NYX-8 stopped at a submodule's rebase, in the submodule
