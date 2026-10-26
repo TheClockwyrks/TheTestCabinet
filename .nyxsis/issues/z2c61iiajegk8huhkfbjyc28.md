@@ -48,7 +48,9 @@ outcome: |
   - A local build inside the superrepo, with `@clockwyrks/ui` linked to the
     ui-common checkout, bundles two copies of react-router, and every route fails
     with "useLocation() may be used only in the context of a <Router>". A build
-    from the feed is unaffected, and so was the built-in snapshot this replaces.
+    from the feed holds one copy. Adding react, react-dom and react-router to
+    `resolve.dedupe` in `vite.config.ts` fixed it for the verification, but that
+    change was not committed.
 ---
 
 The gallery is built with the whole published snapshot baked into it, so a
