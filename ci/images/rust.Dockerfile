@@ -70,6 +70,9 @@ ENV PATH=/home/dev/.cargo/bin:/home/dev/.local/bin:/usr/local/bin:/usr/bin:/bin:
 #   - cmake
 #   - ffmpeg
 #   - libicu-dev
+#   - postgresql: the server binaries the backend's tests start a throwaway
+#     PostgreSQL server with (crates/backend/src/test_postgres.rs). The server
+#     refuses to run as root, which no step does: Azure runs each as uid 1001.
 #   - ruby
 #
 # libstdc++6 is named rather than left to the toolchain image's build-essential,
@@ -84,6 +87,7 @@ RUN apt-get update -y && \
 		libicu-dev \
 		libstdc++6 \
 		musl-tools \
+		postgresql \
 		ruby && \
 	rm -rf /var/lib/apt/lists/*
 

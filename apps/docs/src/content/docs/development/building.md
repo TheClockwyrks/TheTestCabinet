@@ -527,6 +527,17 @@ its crate's `CARGO_MANIFEST_DIR`, as the nearest ancestor holding a
 `package.json` and a `node_modules`, and stops at the repository's root, so a
 checkout inside the superrepo never borrows another repository's install.
 
+### Tests that need PostgreSQL
+
+The backend's tests of [replicas](/components/backend/overview/#replicas) run two
+backends over one PostgreSQL database. Each starts a throwaway server in a
+temporary directory with `initdb` and `pg_ctl`, found in
+`TCAB_TEST_POSTGRES_BIN`, on the `PATH`, or in the newest
+`/usr/lib/postgresql/<major>/bin`. The dev container and the Rust CI images
+install the `postgresql` package for them. A machine without the binaries
+prints `skipped:` and the test passes, and `TCAB_REQUIRE_POSTGRES=1`, which the
+superrepo's `rust` job sets, fails the test instead.
+
 ### The Rust toolchain pin
 
 `rust-toolchain.toml` is the template's in the superrepo and the kit's in

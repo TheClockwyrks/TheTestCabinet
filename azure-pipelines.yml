@@ -191,6 +191,10 @@ stages:
           # The image carries the browser toolchain, so a Rust test that would
           # skip for want of it fails instead (contracts/crates/suites/src/test_browser.rs).
           TCAB_REQUIRE_BROWSER: 1
+          # The image carries PostgreSQL's server binaries, so a backend test of
+          # two replicas over one database fails rather than skips without them
+          # (crates/backend/src/test_postgres.rs).
+          TCAB_REQUIRE_POSTGRES: 1
         steps:
           - checkout: self
             fetchDepth: 1

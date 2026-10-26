@@ -42,11 +42,16 @@ DEBIAN_FRONTEND=noninteractive apt-get install -y \
 #     tooling (deployments/local/Makefile) and scripts/free-local-forward.sh,
 #     each of which guards its use with `command -v` and does nothing when the
 #     tool is missing.
+#   - postgresql: the server binaries (`initdb`, `pg_ctl`) the backend's tests
+#     start a throwaway PostgreSQL server with, to run two replicas over one
+#     database. Only the binaries are used; the cluster the package creates is
+#     never started.
 DEBIAN_FRONTEND=noninteractive apt-get install -y \
 	cmake \
 	ffmpeg \
 	iproute2 \
 	libicu-dev \
 	lsof \
+	postgresql \
 	procps \
 	ruby
