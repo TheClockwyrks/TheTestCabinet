@@ -7,10 +7,36 @@ number: 16
 title: Resolve the conflict landing NYX-8
 type: conflict
 priority: 0
-state: open
+state: done
 branch: issue/o7hwklyhcecnv0j6u9k4aavr
 created: 2026-10-26T22:08:17.329141509Z
-modified: 2026-10-26T22:08:17.329141509Z
+modified: 2026-10-26T22:10:08.331196082Z
+done: 2026-10-26T22:10:08.331196082Z
+outcome: |
+  Rebased `tool-sfx-sample`'s branch `issue/o7hwklyhcecnv0j6u9k4aavr` onto
+  `nightly` (86186bb), replaying its own work past c6dd217 (the commit 54cff91,
+  now 1075ef5) alone, and recorded the new commit in the superrepo.
+
+  The two conflicts were the kit commit in `.copier-answers.yml` and the CI image
+  pins in `azure-pipelines.yml`. Both take the branch's values: `_commit:
+  v0.6.3-5579-g9ecc82fe9`, and the rust and web images at
+  `6c195c0f290db7a98daa4bc811ae915cfcfd889c`. Everything else in
+  `azure-pipelines.yml` stays as `nightly` has it. The two `npm-feed.sh` steps and
+  their comment come from master's kit updates 34dac66 and 508f0b1, which
+  `nightly` doesn't hold, so they were not carried over. The CLAUDE.md change
+  applied cleanly.
+
+  What was left: master's earlier kit updates (34dac66, 508f0b1: the npm-feed
+  steps, the `ci/` edges and wiring tests, and the `scripts/ci` changes) are still
+  not on `nightly`. They reach it through master's own flow, not through this
+  branch. Note that `.copier-answers.yml` on the branch now records the kit at
+  9ecc82fe9 even though those intermediate renders are missing.
+
+  Gates: ci-tests, format, markdownlint, no-nul-bytes, python-lint, shell-tests,
+  dependency-edges and build-context passed. cspell fails, but it fails the same
+  way on `nightly` itself: `npm run spell` runs `cspell lint` with no globs and
+  prints its usage. The Rust gates were not run because the change touches no
+  Rust.
 ---
 
 The landing of NYX-8 stopped at a submodule's rebase, in the submodule
