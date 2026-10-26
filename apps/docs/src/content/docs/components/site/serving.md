@@ -29,9 +29,11 @@ Snapshot](/components/backend/snapshot/) over its public hostname,
 `snapshot.testcabinet.ai`, which the build takes as `TCAB_SNAPSHOT_URL`. On load
 it fetches `index.json` and follows it to the run index, the model catalog, the
 comparison index, the test-case group set, and the gg document corpus, which
-together are what the list, home, leaderboard, model, and Discover views read. A
-case's metadata, a run's document, its code analysis, and its media are fetched
-when the page that shows them opens.
+together are what the list, home, leaderboard, model, and Discover views read,
+and mounts its routes once they are in. It then reads the case metadata of every
+case version the run index names, and the case showcases, from which it builds
+the case catalog, while the pages already render. A run's document, its code
+analysis, and its media are fetched when the page that shows them opens.
 
 Listing pages are answered in the browser from the run index with the same
 paged, filtered, sorted semantics as the console's backend query, so paging is

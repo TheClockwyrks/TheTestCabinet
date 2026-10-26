@@ -32,7 +32,11 @@ public plane holds a route into it. The clusters are reached through the
 [edge](/deployment/kubernetes/edge/) alone.
 
 Each Worker only reads its bucket binding, and the bucket's custom domain is a
-public read. The credentials that spend money at a model provider live on the
+public read. The shell reads the bucket from the gallery's origin, so the
+bucket carries a CORS policy allowing `GET` from `https://testcabinet.ai`, and
+the staging bucket one allowing it from `https://staging.testcabinet.ai`; a
+development server reading a bucket adds its own origin to that bucket's
+policy. The credentials that spend money at a model provider live on the
 private plane, and starting a run remains an action behind Access.
 
 ## The Workers
