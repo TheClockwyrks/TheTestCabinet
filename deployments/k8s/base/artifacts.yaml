@@ -153,38 +153,39 @@ spec:
             - name: TCAB_ARTIFACTS_BLOB_CONTAINER
               value: "run-trees"
             # The public dataset's R2 bucket, its endpoint and credentials: the keys
-            # of tcab-backend-secrets keyvault-csi materializes. Optional here so the
-            # local stack, whose Secret carries none, uses its Azurite container
-            # instead; the service itself refuses to start with a partial set, or
-            # with no public store at all.
+            # of tcab-artifacts-secrets keyvault-csi materializes. The artifacts
+            # service is the bucket's one writer, so no other Secret carries them.
+            # Optional here so the local stack, which has no such Secret, uses its
+            # Azurite container instead; the service itself refuses to start with a
+            # partial set, or with no public store at all.
             - name: TCAB_R2_ACCOUNT_ID
               valueFrom:
                 secretKeyRef:
-                  name: tcab-backend-secrets
+                  name: tcab-artifacts-secrets
                   key: TCAB_R2_ACCOUNT_ID
                   optional: true
             - name: TCAB_R2_BUCKET
               valueFrom:
                 secretKeyRef:
-                  name: tcab-backend-secrets
+                  name: tcab-artifacts-secrets
                   key: TCAB_R2_BUCKET
                   optional: true
             - name: TCAB_R2_ACCESS_KEY_ID
               valueFrom:
                 secretKeyRef:
-                  name: tcab-backend-secrets
+                  name: tcab-artifacts-secrets
                   key: TCAB_R2_ACCESS_KEY_ID
                   optional: true
             - name: TCAB_R2_SECRET_ACCESS_KEY
               valueFrom:
                 secretKeyRef:
-                  name: tcab-backend-secrets
+                  name: tcab-artifacts-secrets
                   key: TCAB_R2_SECRET_ACCESS_KEY
                   optional: true
             - name: TCAB_R2_ENDPOINT
               valueFrom:
                 secretKeyRef:
-                  name: tcab-backend-secrets
+                  name: tcab-artifacts-secrets
                   key: TCAB_R2_ENDPOINT
                   optional: true
             # The backend a driver's per-job or a publisher's per-publish-job token is
@@ -193,8 +194,9 @@ spec:
             - name: TCAB_BACKEND_URL
               value: "http://tcab-backend:8787"
             # The shared control-plane service token the backend's own calls present:
-            # the tree delete, the `GET /runs` listing, `publish-media` and the
-            # `PUT /public/{key}` snapshot writes. It must equal the backend's own
+            # the tree delete, the `GET /runs` listing, `publish-media`, the
+            # `PUT /public/{key}` snapshot writes, and the `GET /public` listing and
+            # `DELETE /public/{key}` the backend prunes and discovers with. It must equal the backend's own
             # TCAB_BACKEND_SERVICE_TOKEN — sourced from the same secret (the backend is
             # the presenter). Optional: when the secret/key is absent those routes
             # reject every caller and uploads/reads are unaffected.

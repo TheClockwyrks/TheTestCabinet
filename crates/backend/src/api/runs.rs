@@ -829,6 +829,7 @@ fn stored_run_out(run: &StoredRun, manifest: Option<&StoredManifest>) -> StoredR
         links: LinksOut {
             source_repo: run.links.source_repo.clone(),
             playable_build: run.links.playable_build.clone(),
+            code: run.links.code.clone(),
         },
         published: run.published,
         rating,
@@ -1175,6 +1176,10 @@ struct ReviewOut {
 struct LinksOut {
     source_repo: Option<String>,
     playable_build: Option<String>,
+    /// The run's short code, which its share links are built from. Present once
+    /// the run has published; omitted before.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    code: Option<String>,
 }
 
 #[derive(Serialize)]

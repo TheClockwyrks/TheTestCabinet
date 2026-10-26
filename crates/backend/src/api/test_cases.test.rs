@@ -169,7 +169,7 @@ fn a_variant_reference_sheet_is_folded_onto_the_matching_variant() {
 #[test]
 fn no_reference_sheets_leaves_every_variant_without_one() {
     // The empty-map case (no variant of this version has a published asset reference,
-    // or the backend has no R2 configured to have discovered one): every variant
+    // or the backend has no artifacts service configured to have discovered one): every variant
     // resolves to `None` rather than to an empty frame list, so a client can tell
     // "no reference" from "a reference with no frames".
     let response =

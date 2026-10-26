@@ -1,7 +1,8 @@
 //! The backend's reads and writes of what the artifact service keeps for it: each
-//! tournament match's replay, a published run's media copied to the public bucket,
-//! and a run's code-analysis document (the backend overview's "Durable state" and the
-//! public snapshot's "Writing through the artifacts service").
+//! tournament match's replay and a run's code-analysis document (the backend
+//! overview's "Durable state" and the public snapshot's "Code analysis"). A
+//! published run's media copy goes through the public-dataset routes beside it
+//! ([`publish_media`](super::publish_media)).
 //!
 //! Every call goes to the service's **in-cluster** URL
 //! ([`Config::artifacts_internal_url`](crate::config::Config::artifacts_internal_url))
@@ -11,16 +12,10 @@
 use std::time::Duration;
 
 use reqwest::{StatusCode, Url};
-use serde::Deserialize;
-use test_cabinet_contracts::backend_api::snapshot::{
-    RunAssetOut, RunProofOut, RunShowcaseOut, RunValidationMediaOut,
-};
-use test_cabinet_suites::test_case::MediaKind;
 
 /// How long one call waits for its answer. A replay or a code-analysis document is
-/// bounded by the run upload limit, and a media publish copies object store to object
-/// store, so a minute is generous for each while still freeing a caller stuck on an
-/// unresponsive service.
+/// bounded by the run upload limit, so a minute is generous for each while still
+/// freeing a caller stuck on an unresponsive service.
 const CALL_TIMEOUT: Duration = Duration::from_secs(60);
 
 /// Why a call to the artifact service did not succeed.
@@ -44,87 +39,6 @@ pub struct ArtifactsClient {
     http: reqwest::Client,
     base: Url,
     token: String,
-}
-
-/// What `POST /runs/{id}/publish-media` answers: each kind's entries, pairing the
-/// name the run recorded with the public key the file was copied to, in the shapes the
-/// run's public document names them by.
-#[derive(Default)]
-pub struct PublishedMedia {
-    /// The proof media, by proof id and kind.
-    pub proof_media: Vec<RunProofOut>,
-    /// The synthesized validation outputs and the recordings' image store.
-    pub validation_media: Vec<RunValidationMediaOut>,
-    /// An asset-generation run's produced media.
-    pub asset_media: Vec<RunAssetOut>,
-    /// The showcase's files.
-    pub showcase_media: Vec<RunShowcaseOut>,
-}
-
-/// The `publish-media` body as it arrives. The contract's entry shapes are
-/// serialize-only, so they are read through these and converted.
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct PublishedMediaWire {
-    proof_media: Vec<ProofWire>,
-    validation_media: Vec<FileWire>,
-    asset_media: Vec<FileWire>,
-    showcase_media: Vec<FileWire>,
-}
-
-/// One `proofMedia` entry.
-#[derive(Deserialize)]
-struct ProofWire {
-    id: String,
-    kind: MediaKind,
-    key: String,
-}
-
-/// One `validationMedia`, `assetMedia` or `showcaseMedia` entry.
-#[derive(Deserialize)]
-struct FileWire {
-    file: String,
-    key: String,
-}
-
-impl From<PublishedMediaWire> for PublishedMedia {
-    fn from(wire: PublishedMediaWire) -> Self {
-        Self {
-            proof_media: wire
-                .proof_media
-                .into_iter()
-                .map(|p| RunProofOut {
-                    id: p.id,
-                    kind: p.kind,
-                    key: p.key,
-                })
-                .collect(),
-            validation_media: wire
-                .validation_media
-                .into_iter()
-                .map(|f| RunValidationMediaOut {
-                    file: f.file,
-                    key: f.key,
-                })
-                .collect(),
-            asset_media: wire
-                .asset_media
-                .into_iter()
-                .map(|f| RunAssetOut {
-                    file: f.file,
-                    key: f.key,
-                })
-                .collect(),
-            showcase_media: wire
-                .showcase_media
-                .into_iter()
-                .map(|f| RunShowcaseOut {
-                    file: f.file,
-                    key: f.key,
-                })
-                .collect(),
-        }
-    }
 }
 
 impl ArtifactsClient {
@@ -187,32 +101,6 @@ impl ArtifactsClient {
     ) -> Result<Option<Vec<u8>>, ArtifactsError> {
         let url = self.url(&["tournaments", tournament_id, "matches", match_id, "replay"])?;
         self.get_bytes(url).await
-    }
-
-    /// `POST /runs/{id}/publish-media`: have the service copy run `run_id`'s
-    /// publishable media from its stored tree to the public bucket, and answer the keys
-    /// it was copied to. `None` when the service holds no tree, or no record, for the
-    /// run. The copy is idempotent, so a repeat answers the same keys.
-    pub async fn publish_run_media(
-        &self,
-        run_id: &str,
-    ) -> Result<Option<PublishedMedia>, ArtifactsError> {
-        let url = self.url(&["runs", run_id, "publish-media"])?;
-        let response = self
-            .http
-            .post(url)
-            .bearer_auth(&self.token)
-            .timeout(CALL_TIMEOUT)
-            .send()
-            .await?;
-        match response.status() {
-            StatusCode::NOT_FOUND => Ok(None),
-            status if status.is_success() => {
-                let wire: PublishedMediaWire = response.json().await?;
-                Ok(Some(wire.into()))
-            }
-            status => Err(ArtifactsError::Refused(status)),
-        }
     }
 
     /// `GET /runs/{id}/code-analysis`: run `run_id`'s code-analysis document as the

@@ -3,8 +3,8 @@
 # bucket. Endpoint and key together select Shared Key, so the service needs no
 # workload identity here, and it creates both containers at start-up. The public
 # dataset is the Azurite container `public` (TCAB_ARTIFACTS_PUBLIC_BLOB_CONTAINER);
-# the base's TCAB_R2_* keys are optional and absent from the local
-# tcab-backend-secrets, so the R2 bucket is never named locally. Everything else
+# there is no R2 locally: tcab-artifacts-secrets is absent and the base's TCAB_R2_*
+# refs are optional, so the R2 bucket is never named locally. Everything else
 # (bind address, backend URL, replicas) carries over from the base manifest.
 apiVersion: apps/v1
 kind: Deployment

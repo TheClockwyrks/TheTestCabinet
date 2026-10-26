@@ -352,6 +352,30 @@ fn the_run_detail_always_emits_its_rating_aesthetic_and_score_keys() {
 }
 
 #[test]
+fn a_published_run_detail_carries_its_short_code_in_its_links() {
+    let mut run = detail_run(detail_record(&[]), false);
+    run.published = true;
+    run.links.source_repo = Some("https://github.com/x/y".to_string());
+    run.links.code = Some("d483a2f9".to_string());
+    let json = serde_json::to_value(stored_run_out(&run, None)).unwrap();
+    assert_eq!(
+        json["links"],
+        serde_json::json!({
+            "sourceRepo": "https://github.com/x/y",
+            "playableBuild": null,
+            "code": "d483a2f9",
+        })
+    );
+}
+
+#[test]
+fn an_unpublished_run_detail_carries_no_short_code() {
+    let run = detail_run(detail_record(&[]), false);
+    let json = serde_json::to_value(stored_run_out(&run, None)).unwrap();
+    assert!(json["links"].get("code").is_none(), "{json}");
+}
+
+#[test]
 fn an_unreadable_run_carries_its_lifted_identity_and_its_error_onto_the_wire() {
     // The row has no readable record, so everything a console shows has to come off
     // the lifted columns; the error is the field that tells an operator why the run

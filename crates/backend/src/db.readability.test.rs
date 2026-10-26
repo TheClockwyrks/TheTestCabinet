@@ -353,8 +353,10 @@ const SCHEMA_BASE_URL: &str = "https://docs.testcabinet.ai/schema/";
 /// Generation 3 is the toolchain summary's `ToolchainTests` gaining `tests` and
 /// `testsTruncated` — the per-test entries beside the per-file rows. Neither is
 /// optional or defaulted, so a record stored with a test report before this change
-/// lacks both keys and no longer reads. Its digest last moved when the branch that
-/// brought test suites met the one that grew gg's run record, and holds both sides'
+/// lacks both keys and no longer reads. Its digest last moved when the run's links
+/// gained the optional short `code`, absent on every record stored before it, so
+/// stored records go on reading. Before that it moved when the branch that brought
+/// test suites met the one that grew gg's run record, and holds both sides'
 /// changes, each of which stored records survive.
 ///
 /// On the test suites side, the suite test case definition gained the optional
@@ -400,7 +402,7 @@ const RECORD_SHAPES: &[(u32, &str)] = &[
     ),
     (
         3,
-        "bbe1f923fe4573ea89370946910360f43f9ffca44a4c8e8f2beac1a8509ae045",
+        "dfa585ae33a1672bfe4750d778d3cccb39a12527235c7e89af6d244aa81e52c7",
     ),
 ];
 

@@ -161,6 +161,7 @@ fn record(r: Run) -> RunRecord {
         links: RunLinks {
             source_repo: None,
             playable_build: None,
+            code: None,
         },
         status: RunStatus {
             state: RunState::Completed,

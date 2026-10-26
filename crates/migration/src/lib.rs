@@ -97,6 +97,7 @@ mod m20261019_000063_add_snapshot_dirty_generation;
 mod m20261019_000064_add_model_probe_lease;
 mod m20261019_000065_add_publish_job_lease;
 mod m20261023_000066_create_run_controller;
+mod m20261023_000067_add_run_link_code;
 
 pub struct Migrator;
 
@@ -181,6 +182,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20261019_000064_add_model_probe_lease::Migration),
             Box::new(m20261019_000065_add_publish_job_lease::Migration),
             Box::new(m20261023_000066_create_run_controller::Migration),
+            Box::new(m20261023_000067_add_run_link_code::Migration),
         ]
     }
 }

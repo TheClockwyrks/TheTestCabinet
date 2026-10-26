@@ -2,7 +2,6 @@
 //! body and status handling.
 
 use reqwest::StatusCode;
-use test_cabinet_suites::test_case::MediaKind;
 
 use super::stub::{self, TOKEN};
 use super::*;
@@ -110,40 +109,6 @@ async fn an_unreachable_service_is_a_transport_error() {
         client(&url).match_replay("t1", "m1").await,
         Err(ArtifactsError::Transport(_))
     ));
-}
-
-#[tokio::test]
-async fn publish_media_answers_the_published_keys_and_none_for_a_run_without_a_tree() {
-    let stub = stub::spawn().await;
-    stub.held.published.lock().unwrap().insert(
-        "r1".to_string(),
-        serde_json::json!({
-            "proofMedia": [{ "id": "rally", "kind": "video", "key": "media/runs/r1/proof/rally.mp4" }],
-            "validationMedia": [{ "file": "spin__still.png", "key": "media/runs/r1/validation/spin__still.png" }],
-            "assetMedia": [{ "file": "preview.png", "key": "media/runs/r1/asset/preview.png" }],
-            "showcaseMedia": [{ "file": "clip.webm", "key": "media/runs/r1/showcase/clip.mp4" }],
-        }),
-    );
-    let client = client(&stub.url);
-
-    let media = client.publish_run_media("r1").await.unwrap().unwrap();
-    assert_eq!(media.proof_media.len(), 1);
-    assert_eq!(media.proof_media[0].id, "rally");
-    assert_eq!(media.proof_media[0].kind, MediaKind::Video);
-    assert_eq!(media.proof_media[0].key, "media/runs/r1/proof/rally.mp4");
-    assert_eq!(media.validation_media[0].file, "spin__still.png");
-    assert_eq!(media.asset_media[0].key, "media/runs/r1/asset/preview.png");
-    assert_eq!(media.showcase_media[0].file, "clip.webm");
-    assert_eq!(
-        media.showcase_media[0].key,
-        "media/runs/r1/showcase/clip.mp4"
-    );
-
-    assert!(client.publish_run_media("r2").await.unwrap().is_none());
-    assert_eq!(
-        stub.held.requests(),
-        ["POST /runs/r1/publish-media", "POST /runs/r2/publish-media"]
-    );
 }
 
 #[tokio::test]

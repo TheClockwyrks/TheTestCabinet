@@ -12,7 +12,7 @@ use axum::extract::{Path, Request, State};
 use axum::http::{HeaderMap, StatusCode, header};
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
-use axum::routing::{get, post};
+use axum::routing::get;
 
 /// The service token the stub requires.
 pub(crate) const TOKEN: &str = "artifacts-service-token";
@@ -22,9 +22,6 @@ pub(crate) const TOKEN: &str = "artifacts-service-token";
 pub(crate) struct Held {
     /// Each stored match replay, by `(tournament id, match id)`.
     pub replays: Mutex<HashMap<(String, String), Vec<u8>>>,
-    /// The body `POST /runs/{id}/publish-media` answers for each run id; a run absent
-    /// here answers `404`, as a run with no stored tree does.
-    pub published: Mutex<HashMap<String, serde_json::Value>>,
     /// Each run's code-analysis document, served gzip-labelled when it is gzip.
     pub code_analyses: Mutex<HashMap<String, Vec<u8>>>,
     /// Every request, as `METHOD /path`, in arrival order.
@@ -65,7 +62,6 @@ pub(crate) async fn spawn() -> Stub {
             "/tournaments/{id}/matches/{match_id}/replay",
             get(get_replay).put(put_replay),
         )
-        .route("/runs/{id}/publish-media", post(publish_media))
         .route("/runs/{id}/code-analysis", get(code_analysis))
         .layer(axum::middleware::from_fn_with_state(
             Arc::clone(&held),
@@ -124,13 +120,6 @@ async fn get_replay(
 ) -> Response {
     match held.replay(&id, &match_id) {
         Some(bytes) => ([(header::CONTENT_TYPE, "application/json")], bytes).into_response(),
-        None => StatusCode::NOT_FOUND.into_response(),
-    }
-}
-
-async fn publish_media(State(held): State<Arc<Held>>, Path(id): Path<String>) -> Response {
-    match held.published.lock().unwrap().get(&id) {
-        Some(body) => axum::Json(body.clone()).into_response(),
         None => StatusCode::NOT_FOUND.into_response(),
     }
 }

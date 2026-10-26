@@ -42,10 +42,11 @@ async fn main() -> ExitCode {
         }
     };
 
-    if config.r2.is_none() {
+    if config.artifacts_internal_url.is_none() || config.service_token.is_none() {
         tracing::warn!(
-            "R2 is not configured (TCAB_R2_* unset); publishes will record to SQLite and \
-             regenerate the snapshot but will not upload it. This is a dev-only mode."
+            "TCAB_ARTIFACTS_URL or TCAB_BACKEND_SERVICE_TOKEN is unset; the public dataset is \
+             not written: publishes record to the database and regenerate the dataset without \
+             writing it. This is a dev-only mode."
         );
     }
 

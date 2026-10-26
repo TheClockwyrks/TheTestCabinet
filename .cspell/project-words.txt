@@ -500,6 +500,7 @@ hitbox
 hitmarker
 hitpoints
 hitscan
+hmac
 hollowdeep
 hostnames
 hotbar

@@ -26,13 +26,13 @@ const DEFAULT_STORE: &str = "./tcab-store";
 /// This is a **sliding** debounce: each publish restarts the window, so a batch is
 /// only regenerated once the operator stops publishing. It was 5s, which is shorter
 /// than the gap between two console publishes — a sweep of N runs therefore minted N
-/// full snapshot generations (and N site rebuilds) instead of one. A minute
-/// comfortably spans a hand-driven batch while staying far below the site build it
-/// triggers, so a single publish still reaches the gallery about as fast as before.
+/// full snapshot generations instead of one. A minute comfortably spans a
+/// hand-driven batch, and a single publish still reaches the gallery within it.
 const DEFAULT_COALESCE_MS: u64 = 60_000;
 /// The default retention for superseded snapshot generations, in hours, when
-/// `TCAB_SNAPSHOT_RETENTION_HOURS` is unset. Long enough that any site build already
-/// reading a just-superseded generation finishes against a complete dataset.
+/// `TCAB_SNAPSHOT_RETENTION_HOURS` is unset. Long enough that any reader (a gallery
+/// session or a Worker) that already read `index.json` finishes fetching the
+/// generation it points at against a complete dataset.
 const DEFAULT_SNAPSHOT_RETENTION_HOURS: u64 = 24;
 /// The default interval between artifact reclamation sweeps, in hours, when
 /// `TCAB_ARTIFACT_SWEEP_INTERVAL_HOURS` is unset. An orphaned tree costs only disk,
@@ -47,17 +47,6 @@ const DEFAULT_ARTIFACT_SWEEP_INTERVAL_HOURS: u64 = 6;
 /// has to exceed the longest upload-to-report gap, which is seconds; a day of it
 /// leaves the sweep correct under any restart or clock skew a deployment can produce.
 const DEFAULT_ARTIFACT_SWEEP_GRACE_HOURS: u64 = 24;
-
-/// The R2 (S3-compatible) credentials and bucket the public snapshot is uploaded
-/// to.
-///
-/// Defined with the R2 client in the artifacts service's crate, the object-store
-/// writer, which `tcab publish-asset-reference` also writes the bucket through (an
-/// asset-generation reference sheet is regenerated and uploaded rather than
-/// committed, so it cannot travel through the backend's git checkout). Re-exported
-/// here so `Config`'s field type reads naturally alongside the rest of the
-/// backend's configuration.
-pub use crate::r2::R2Config;
 
 /// The fully resolved backend configuration.
 #[derive(Debug, Clone)]
@@ -117,10 +106,6 @@ pub struct Config {
     /// makes a probe trigger fail with a structured `openrouter_key_missing`
     /// error.
     pub openrouter_api_key: Option<String>,
-    /// R2 upload configuration, or `None` when snapshot upload is disabled
-    /// because the R2 variables were not all supplied (only valid in dev: see
-    /// [`Config::from_env`]).
-    pub r2: Option<R2Config>,
     /// The coalescing window for bursts of publishes (`TCAB_SNAPSHOT_COALESCE_MS`).
     pub coalesce: Duration,
     /// How long a superseded snapshot generation is kept in the bucket before the
@@ -184,11 +169,15 @@ pub struct Config {
     /// This is what every backend-originated artifact call uses, each presenting
     /// [`service_token`](Self::service_token): pruning a deleted run's tree, the
     /// periodic reclamation sweep (see [`crate::artifacts`]), writing and reading each
-    /// tournament match replay, the snapshot builder's publish of a run's media and
-    /// read of its code analysis, and the start's move of what an earlier release kept
-    /// on the pod's disk (see [`crate::state_move`]). `None` disables all of them,
-    /// which is correct for a single-box dev setup with no artifact service; the
-    /// replay routes then answer `503`.
+    /// tournament match replay, writing the public dataset (`PUT /public/{key}`,
+    /// `GET /public`, `DELETE /public/{key}` and a run's
+    /// `POST /runs/{id}/publish-media`), the snapshot builder's read of a run's code
+    /// analysis, discovering the published reference sheets at ingest, and the start's
+    /// move of what an earlier release kept on the pod's disk (see
+    /// [`crate::state_move`]). `None` disables all of them, which is correct for a
+    /// single-box dev setup with no artifact service: the snapshot is still built but
+    /// nothing is written to the public bucket, the reference-sheet table is left as it
+    /// is, and the replay routes answer `503`.
     pub artifacts_internal_url: Option<String>,
     /// How often the artifact reclamation sweep runs
     /// (`TCAB_ARTIFACT_SWEEP_INTERVAL_HOURS`). `Duration::ZERO` disables the sweep,
@@ -223,11 +212,11 @@ impl Config {
     /// Resolve the configuration from the process environment.
     ///
     /// `TCAB_BACKEND_CHECKOUT` is the only unconditionally required variable. The
-    /// R2 group is required for production publishing, but the backend is allowed
-    /// to start without it so a developer can exercise ingest and the read API
-    /// offline; in that mode a publish still records into SQLite and regenerates
-    /// the snapshot on disk, only skipping the R2 upload. Production deployments
-    /// supply the full set.
+    /// public dataset is written through the artifacts service, so publishing needs
+    /// `TCAB_ARTIFACTS_URL` and `TCAB_BACKEND_SERVICE_TOKEN`, but the backend starts
+    /// without them so a developer can exercise ingest and the read API offline; in
+    /// that mode a publish still records into the database and regenerates the
+    /// dataset, only skipping its writes.
     pub fn from_env() -> Result<Self, ConfigError> {
         let bind = env_or("TCAB_BACKEND_BIND", DEFAULT_BIND);
         let env = env_or("TCAB_ENV", "local");
@@ -241,8 +230,6 @@ impl Config {
         )?;
         let service_token = nonempty("TCAB_BACKEND_SERVICE_TOKEN");
         let openrouter_api_key = nonempty("TCAB_OPENROUTER_API_KEY");
-
-        let r2 = R2Config::from_env();
 
         let coalesce_ms = std::env::var("TCAB_SNAPSHOT_COALESCE_MS")
             .ok()
@@ -295,7 +282,6 @@ impl Config {
             access,
             service_token,
             openrouter_api_key,
-            r2,
             coalesce: Duration::from_millis(coalesce_ms),
             snapshot_retention: Duration::from_secs(snapshot_retention_hours * 3600),
             reference_browser,

@@ -1,34 +1,38 @@
-//! Public snapshot generation and atomic upload (§3 of
-//! `design/v0.2.0-contracts.md`).
+//! Public snapshot generation and its write through the artifacts service (the
+//! backend's [Public Snapshot] page).
 //!
-//! The snapshot is what the **site fetches at build time**. It is regenerated
-//! from the full published set on each (coalesced) publish, written under a
-//! content-addressed `snapshots/<snapshot-id>/` prefix, and cut over atomically
-//! by writing the small top-level `index.json` pointer last. Regenerating the
-//! whole set (not deltas) keeps the operation idempotent.
+//! The snapshot is the public dataset the gallery and its Workers **read at
+//! runtime**. It is regenerated from the full published set on each (coalesced)
+//! publish, its index objects written under a new `snapshots/<snapshot-id>/`
+//! generation prefix, and cut over atomically by writing the small top-level
+//! `index.json` pointer last. Regenerating the whole set (not deltas) keeps the
+//! operation idempotent.
 //!
 //! Regenerating is not the same as re-*uploading*, though, and the difference is
-//! what keeps a refresh from costing one PUT per published run forever. Everything
-//! whose content did not change is **content-addressed under a snapshot-independent
-//! prefix** and referenced by the key it already occupies: a run's proof/asset media
-//! (`MEDIA_PREFIX`), a case version's baselines (`CASE_MEDIA_PREFIX`), and — the
-//! bulk of the set — each published run's own JSON document
-//! ([`RUN_DOCUMENT_PREFIX`]). A refresh therefore rebuilds every document in memory
-//! (cheap) but uploads only the ones whose bytes actually differ from what is in the
-//! bucket, so the steady-state cost of a publish tracks the runs that *changed*
+//! what keeps a refresh from costing one write per published run forever.
+//! Everything whose content did not change is **content-addressed under a
+//! snapshot-independent prefix** and referenced by the key it already occupies: a
+//! case version's media (`CASE_MEDIA_PREFIX`) and files (`CASE_FILES_PREFIX`), a
+//! run's code-analysis document, and — the bulk of the set — each published run's
+//! own JSON document ([`RUN_DOCUMENT_PREFIX`]). A refresh therefore rebuilds every
+//! document in memory (cheap) but writes only the ones the bucket does not already
+//! hold, so the steady-state cost of a publish tracks the runs that *changed*
 //! rather than the runs that exist.
 //!
 //! This module is split in two: [`SnapshotBuilder`] turns the published runs +
 //! case metadata into the set of `(key, bytes, content_type)` objects, and
-//! [`upload_snapshot`] PUTs them to R2 in dependency order. The split lets the generation be unit-tested without R2.
+//! [`write_snapshot`] writes them through the artifacts service's
+//! `PUT /public/{key}` in dependency order. The split lets the generation be
+//! unit-tested without a bucket.
 //!
-//! A run's media lives under the content-stable `MEDIA_PREFIX` (`media/runs/<id>/…`),
-//! outside any single snapshot's prefix, and is written once. The backend never holds
-//! its bytes: the artifact service copies it from the run's stored tree with
-//! `POST /runs/{id}/publish-media`, skipping every key already published, and answers
-//! the keys the run's document names (see [`SnapshotBuilder::with_artifacts`]). A
-//! run's code-analysis document is read from the same service, scrubbed, and
-//! published beside the run.
+//! A run's proof, validation, asset and showcase media are not composed here: the
+//! artifacts service copies them from the run's stored tree into the bucket
+//! (`POST /runs/{id}/publish-media`) and answers with the keys, which the caller
+//! hands the builder ([`SnapshotBuilder::with_published_media`]) to name in each
+//! run's document. A run's code-analysis document is read from the same service
+//! ([`SnapshotBuilder::with_artifacts`]), scrubbed, and published beside the run.
+//!
+//! [Public Snapshot]: https://docs.testcabinet.ai/components/backend/snapshot/
 
 use serde::Serialize;
 use sha2::{Digest, Sha256};
@@ -45,7 +49,6 @@ use crate::api::ModelOut;
 use crate::artifacts::{ArtifactsClient, PublishedMedia};
 use crate::db::StoredRun;
 use crate::error::{BackendError, Result};
-use crate::r2::R2Client;
 use crate::store::{DefinitionStore, StoredManifest};
 
 pub use test_cabinet_contracts::backend_api::snapshot::{
@@ -66,32 +69,27 @@ pub use test_cabinet_contracts::backend_api::snapshot::{
 /// carries a `runsPrefix` and each run summary now names its own `documentKey`.
 const SCHEMA_VERSION: u32 = 2;
 
-/// How many runs' media publishes are in flight on the artifact service at once.
+/// How many objects of one write phase are written through the artifacts service
+/// at once.
 ///
-/// Each is one call the service answers once it has listed the run's published keys
-/// and copied any missing file, so a refresh over the whole published set would
-/// otherwise pay that round trip per run in series. Bounded so a first refresh does
-/// not open a copy per run against the service at once.
-const MEDIA_PUBLISH_CONCURRENCY: usize = 8;
+/// The writes within a phase are independent — the only ordering the snapshot
+/// requires is between phases, the content-addressed objects before the generation
+/// that names them and every object before the `index.json` cut-over — so
+/// serializing them just paid one round trip per object, and the refresh's wall
+/// clock grew with the corpus. Bounded rather than unbounded so a large first-time
+/// refresh cannot open a connection per object against the service.
+pub const UPLOAD_CONCURRENCY: usize = 16;
 
-/// How many snapshot objects are PUT to R2 at once.
+/// The bucket prefix a run's media is stored under, **outside** any single
+/// snapshot's `snapshots/<id>/` prefix. A published run's media is immutable, so it
+/// is keyed by the run id (not the snapshot id) and written **once**.
 ///
-/// The uploads are independent — the only ordering the snapshot requires is that
-/// every object land before the `index.json` cut-over — so serializing them just
-/// paid one bucket round trip per object, and the refresh's wall clock grew with the
-/// corpus. Bounded rather than unbounded so a large first-time refresh cannot open a
-/// connection per object against R2.
-const UPLOAD_CONCURRENCY: usize = 16;
-
-/// The bucket prefix a run's media and its code-analysis document are stored under,
-/// **outside** any single snapshot's `snapshots/<id>/` prefix. A published run's media
-/// is immutable, so it is keyed by the run id (not the snapshot id) and written
-/// **once**: every subsequent snapshot references the same
-/// `media/runs/<id>/<kind>/<file>` object rather than re-uploading it. The artifact
-/// service writes the media here ([`SnapshotBuilder::run_media`]) and skips every key
-/// already present; the builder writes the code-analysis document here itself
-/// ([`SnapshotBuilder::run_code_analysis`]).
-const MEDIA_PREFIX: &str = "media/runs";
+/// The artifacts service writes a run's proof, validation, asset and showcase media
+/// here itself, copying it from the run's stored tree. The one object the backend
+/// writes under it is the run's code-analysis document,
+/// `media/runs/<id>/code-analysis/v<generation>.json` (`SnapshotBuilder::run_code_analysis`), which a refresh that finds it already in the bucket references
+/// without re-reading or re-uploading.
+pub const MEDIA_PREFIX: &str = "media/runs";
 
 /// The bucket prefix a **case version's** media — its rendered reference baselines
 /// and its committed validation baselines — is stored under, likewise **outside**
@@ -108,24 +106,24 @@ const MEDIA_PREFIX: &str = "media/runs";
 /// build can legitimately produce different bytes for the same view. Keying purely
 /// by `(slug, version, view)` would therefore pin the gallery to whichever render
 /// landed first. Each object is instead **content-addressed** — the key carries a
-/// short digest of the source bytes ([`content_digest`]) — so identical bytes reuse
+/// short digest of the source bytes (`content_digest`) — so identical bytes reuse
 /// the identical key (the dedup that makes a refresh cheap) while genuinely changed
 /// bytes mint a new key and get uploaded. Hashing needs only a local store read; it
-/// is the R2 upload, and for a video the ffmpeg transcode, that the skip avoids.
+/// is the upload, and for a video the ffmpeg transcode, that the skip avoids.
 ///
 /// [frozen]: https://docs.testcabinet.ai/development/frozen-versions/
-const CASE_MEDIA_PREFIX: &str = "media/cases";
+pub const CASE_MEDIA_PREFIX: &str = "media/cases";
 
 /// The bucket prefix a **case version's** starter-workspace file bytes are
 /// published under — likewise **outside** any single snapshot's prefix, and
 /// content-addressed exactly as [`CASE_MEDIA_PREFIX`] objects are (the key
-/// carries a [`content_digest`] of the bytes plus the file's base name), so an
+/// carries a `content_digest` of the bytes plus the file's base name), so an
 /// unchanged file keeps its key across refreshes and a changed one mints a new
 /// key. Its own prefix rather than `media/cases` because these are not media:
 /// they are the text files a run is seeded with, published so the static
 /// gallery's Inputs tab can fetch a starter file lazily the way the live console
 /// fetches it over the artifact route.
-const CASE_FILES_PREFIX: &str = "files/cases";
+pub const CASE_FILES_PREFIX: &str = "files/cases";
 
 /// A version's exported starter-workspace sets, keyed by variant slug and then by
 /// [engine](test_cabinet_suites::engine) slug — what
@@ -166,7 +164,7 @@ type VariantWorkspaceFiles = std::collections::HashMap<
 /// *supersession*, and the only clock a bucket listing offers is the object's
 /// creation time — which for a document written months ago says nothing about when it
 /// fell out of use. Pruning on that clock would delete a just-orphaned document
-/// immediately and 404 any site build still fetching the previous generation, so
+/// immediately and 404 any reader still fetching the previous generation, so
 /// [`stale_generation_keys`]' rule cannot be reused here. The leak this leaves is a
 /// different order from the one that prune exists for: it accrues per *content
 /// change* (a new review, a proof arriving) rather than per refresh, so it is a small
@@ -175,10 +173,10 @@ type VariantWorkspaceFiles = std::collections::HashMap<
 /// same future cleanup orphaned run media is already waiting on.
 pub const RUN_DOCUMENT_PREFIX: &str = "documents/runs";
 
-/// One object to upload: its R2 key, bytes, and the labels it is served under.
+/// One object to upload: its bucket key, bytes, and the labels it is served under.
 #[derive(Debug, Clone, PartialEq)]
 pub struct SnapshotObject {
-    /// The R2 key (e.g. `snapshots/<id>/runs.json`).
+    /// The bucket key (e.g. `snapshots/<id>/runs.json`).
     pub key: String,
     /// The object's bytes.
     pub bytes: Vec<u8>,
@@ -197,9 +195,11 @@ pub struct SnapshotObject {
 pub struct Snapshot {
     /// The snapshot id (timestamp + short hash).
     pub snapshot_id: String,
-    /// Objects under the versioned prefix (runs index, per-run, per-case).
+    /// Every object to write but the pointer: the content-addressed objects the
+    /// bucket does not hold yet ([`Snapshot::content_objects`]) and this
+    /// generation's index objects ([`Snapshot::generation_objects`]).
     pub objects: Vec<SnapshotObject>,
-    /// The top-level `index.json` pointer, uploaded after `objects`.
+    /// The top-level `index.json` pointer, written after `objects`.
     pub index: SnapshotObject,
     /// Number of published runs in this snapshot.
     pub run_count: usize,
@@ -215,9 +215,13 @@ pub struct SnapshotBuilder {
     runs: Vec<StoredRun>,
     cases: Vec<StoredManifest>,
     store: DefinitionStore,
-    /// The artifact service a run's media is published through and its code-analysis
-    /// document read from. `None` publishes no run media and no code-analysis
-    /// document — the dev/single-box default, with no artifact service.
+    /// The public keys of each run's media, keyed by run id, as the artifacts
+    /// service's `POST /runs/{id}/publish-media` answered them (see
+    /// [`Self::with_published_media`]). A run absent from the map names no media.
+    published_media: std::collections::HashMap<String, PublishedMedia>,
+    /// The artifact service a run's code-analysis document is read from. `None`
+    /// publishes no code-analysis document — the dev/single-box default, with no
+    /// artifact service.
     artifacts: Option<ArtifactsClient>,
     /// The composed model catalog exported alongside the runs, so the public site
     /// renders the Models section from the snapshot. Empty by default.
@@ -241,20 +245,21 @@ pub struct SnapshotBuilder {
     /// a variant absent from its inner map, simply exports `referenceSheet: null`).
     reference_sheets:
         std::collections::HashMap<(String, String), std::collections::HashMap<String, Vec<u32>>>,
-    /// The set of media object keys (a run's code-analysis document and the case
-    /// media) — and the case-workspace file keys under [`CASE_FILES_PREFIX`] —
+    /// The set of content-addressed media and file keys — a case version's media
+    /// under [`CASE_MEDIA_PREFIX`], a run's code-analysis document under
+    /// [`MEDIA_PREFIX`], and the case-workspace files under [`CASE_FILES_PREFIX`] —
     /// already present in the bucket, so the builder references an existing object
     /// rather than re-reading and re-uploading its bytes. Populated from the bucket
     /// before a real refresh (see [`Self::with_existing_media`]); empty by default,
-    /// which makes the builder upload every such object — the correct behavior for
-    /// the dev/single-box path (no R2) and the unit tests.
+    /// which writes every such object — correct for the dev/single-box path and
+    /// the unit tests.
     existing_media: std::collections::HashSet<String>,
     /// The set of run-document keys (`documents/runs/<id>/<digest>.json`) already
     /// present in the bucket, so a run whose document is byte-identical to the one
     /// already uploaded is referenced rather than re-uploaded. Populated from the
     /// bucket before a real refresh (see [`Self::with_existing_documents`]); empty by
     /// default, which uploads every run's document — correct for the dev/single-box
-    /// path (no R2) and the unit tests, and the one-time cost of a first refresh.
+    /// path and the unit tests, and the one-time cost of a first refresh.
     existing_documents: std::collections::HashSet<String>,
     /// The published harness comparisons to fold into the snapshot, each already
     /// computed to its full read model (arms + distributions + diagnostics) by the
@@ -281,13 +286,15 @@ impl SnapshotBuilder {
     /// metadata files, and the definition store the rendered reference baselines
     /// are read from (so they can be exported alongside the case metadata).
     ///
-    /// No artifact service is called by default; call [`Self::with_artifacts`] to
-    /// publish run media and code analysis for a real deployment.
+    /// No run names any media until [`Self::with_published_media`] supplies the
+    /// keys the artifacts service published them under, and no code-analysis
+    /// document is read until [`Self::with_artifacts`] supplies the service.
     pub fn new(runs: Vec<StoredRun>, cases: Vec<StoredManifest>, store: DefinitionStore) -> Self {
         Self {
             runs,
             cases,
             store,
+            published_media: std::collections::HashMap::new(),
             artifacts: None,
             models: Vec::new(),
             reference_builds: std::collections::HashMap::new(),
@@ -350,14 +357,12 @@ impl SnapshotBuilder {
         self
     }
 
-    /// Supply the set of media object keys already present in the bucket (from
-    /// [`R2Client::list_keys`](crate::r2::R2Client::list_keys) over the
-    /// `media/` and `files/` prefixes).
-    /// For any code-analysis, case-media or case-file object whose stable key is in
-    /// this set, the builder emits the snapshot metadata pointing at it but does
-    /// **not** read the source bytes or re-upload it — so unchanged objects are
-    /// exported exactly once across all snapshots. A run's media is not decided here:
-    /// the artifact service skips the keys it already published.
+    /// Supply the set of media and file keys already present in the bucket (from
+    /// [`list_public`](crate::artifacts::list_public) over the `media/` and
+    /// `files/` prefixes). For any case-media, code-analysis or case-file object
+    /// whose key is in this set, the builder emits the metadata pointing at it but
+    /// does **not** re-upload it (nor, for a video baseline, re-transcode it) — so
+    /// unchanged media is exported exactly once across all snapshots.
     pub fn with_existing_media(
         mut self,
         existing_media: std::collections::HashSet<String>,
@@ -367,7 +372,7 @@ impl SnapshotBuilder {
     }
 
     /// Supply the set of run-document keys already present in the bucket (from
-    /// [`R2Client::list_keys`](crate::r2::R2Client::list_keys) over
+    /// [`list_public`](crate::artifacts::list_public) over
     /// [`RUN_DOCUMENT_PREFIX`]). A run whose freshly built document hashes to a key in
     /// this set is referenced from `runs.json` without being uploaded again, which is
     /// what makes the steady-state cost of a refresh proportional to the runs that
@@ -412,8 +417,8 @@ impl SnapshotBuilder {
     /// asset-generation counterpart of [`Self::with_reference_builds`]: an asset
     /// case's reference is a set of published frames rather than a deployed site, and
     /// each frame's object key is derivable from the triple plus its index (see
-    /// `test_cabinet_contracts::asset_reference`), so only the indices are exported and the
-    /// site builds the URLs by joining them onto its snapshot base. These come from the
+    /// `test_cabinet_contracts::asset_reference`), so only the indices are exported and a
+    /// reader builds the URLs by joining them onto its snapshot base. These come from the
     /// `case_reference_sheet` table (read by the caller from the database), which ingest
     /// reconciles against the bucket. A `(slug, version)` or variant absent from the map
     /// exports `referenceSheet: null`.
@@ -428,11 +433,22 @@ impl SnapshotBuilder {
         self
     }
 
-    /// Publish run media and read code analysis through `artifacts`, the artifact
-    /// service's in-cluster client presenting the service token. Each published run's
-    /// media is copied to the bucket by the service with `POST /runs/{id}/publish-media`,
-    /// and its code-analysis document read from the run's tree with
-    /// `GET /runs/{id}/code-analysis`. `None` (the default) publishes neither.
+    /// Supply the public keys of each run's media, keyed by run id, as the
+    /// artifacts service answered the run's `POST /runs/{id}/publish-media`: the
+    /// service copies a run's proof, validation, asset and showcase media from its
+    /// stored tree into the bucket, so the builder only names the keys in the run's
+    /// document. A run absent from the map names empty media lists.
+    pub fn with_published_media(
+        mut self,
+        published_media: std::collections::HashMap<String, PublishedMedia>,
+    ) -> Self {
+        self.published_media = published_media;
+        self
+    }
+
+    /// Read each run's code-analysis document through `artifacts`, the artifact
+    /// service's in-cluster client presenting the service token, from the run's tree
+    /// with `GET /runs/{id}/code-analysis`. `None` (the default) reads none.
     pub fn with_artifacts(mut self, artifacts: Option<ArtifactsClient>) -> Self {
         self.artifacts = artifacts;
         self
@@ -448,7 +464,8 @@ impl SnapshotBuilder {
         let mut objects = Vec::new();
 
         // The backend's stored runs keep full fidelity for the private console,
-        // but this snapshot is published to R2 and served on the open internet.
+        // but this snapshot is published to the public bucket and served on the open
+        // internet.
         // A model that dumped its environment can have printed the run's provider
         // API key into the recorded events or a failure detail, so every per-run
         // document is scrubbed before it is uploaded. The backend never holds a
@@ -457,11 +474,11 @@ impl SnapshotBuilder {
 
         // `documents/runs/<id>/<digest>.json` — per-run record + reviews + links, plus
         // the recorded normalized event stream (when captured) so the site can serve
-        // the run's Events tab. Raw harness output is never published. The run's media
-        // is named by bucket key in `proofMedia`, `validationMedia`, `assetMedia` and
-        // `showcaseMedia`. That media lives under the content-stable
-        // `media/runs/<id>/…` prefix (NOT this snapshot's prefix), copied there once by
-        // the artifact service — see [`MEDIA_PREFIX`] and [`Self::run_media`].
+        // the run's Events tab. Raw harness output is never published. The run's
+        // media is named by bucket-relative key in `proofMedia`, `validationMedia`,
+        // `assetMedia` and `showcaseMedia`, the keys the artifacts service published
+        // it under (see [`SnapshotBuilder::with_published_media`]), all under the
+        // content-stable `media/runs/<id>/…` prefix (NOT this snapshot's prefix).
         //
         // The document itself is likewise content-addressed outside this snapshot's
         // prefix ([`RUN_DOCUMENT_PREFIX`]), so a run whose public content has not moved
@@ -469,25 +486,7 @@ impl SnapshotBuilder {
         // before `runs.json` because each summary carries its run's document key.
         let mut document_keys: Vec<String> = Vec::with_capacity(self.runs.len());
         let mut reused_documents = 0usize;
-        // Each run's media publish is one call to the artifact service, independent of
-        // every other run's, so they run a bounded few at a time rather than one
-        // round trip after another.
-        let published: Vec<PublishedMedia> = {
-            use futures_util::{StreamExt as _, TryStreamExt as _};
-            // The calls are made into futures up front rather than inside a stream
-            // combinator's closure, whose borrow of `self` the refresh's `Send` bound
-            // cannot see through.
-            let calls: Vec<_> = self
-                .runs
-                .iter()
-                .map(|run| self.run_media(&run.record.id))
-                .collect();
-            futures_util::stream::iter(calls)
-                .buffered(MEDIA_PUBLISH_CONCURRENCY)
-                .try_collect()
-                .await?
-        };
-        for (run, media) in self.runs.iter().zip(published) {
+        for run in &self.runs {
             let events = run
                 .events_json
                 .as_deref()
@@ -499,12 +498,18 @@ impl SnapshotBuilder {
                         run.record.id
                     ))
                 })?;
+            // The run's media was copied into the bucket by the artifacts service,
+            // which answered with the keys; the document only names them.
             let PublishedMedia {
                 proof_media,
                 validation_media,
                 asset_media,
                 showcase_media,
-            } = media;
+            } = self
+                .published_media
+                .get(&run.record.id)
+                .cloned()
+                .unwrap_or_default();
             // The unbounded code-analysis document is the one per-run object whose
             // bytes are not media: it is published beside the run rather than inside
             // it, so it is scrubbed *here*, on its own, before it becomes an object
@@ -513,7 +518,7 @@ impl SnapshotBuilder {
                 self.run_code_analysis(&run.record, &scrubber).await;
             // Serialize the public document, then redact any leaked secret from
             // it (across the record, its events, and any other captured text)
-            // before it becomes a snapshot object bound for R2.
+            // before it becomes a snapshot object bound for the public bucket.
             let mut document = serde_json::to_value(PerRun {
                 schema_version: SCHEMA_VERSION,
                 record: run.record.clone(),
@@ -949,9 +954,9 @@ impl SnapshotBuilder {
     /// variant ([`crate::store::DefinitionStore::list_validation_baseline`]), the
     /// same pairing the reference implementations themselves come in; a **video**
     /// baseline (`.webm`) is transcoded to `.mp4` for the public gallery, with `file`
-    /// kept as the requested `.webm` so the gallery's flat lookup resolves (the
-    /// convention a run's published validation media follows). A transcode failure
-    /// publishes the raw webm.
+    /// kept as the requested `.webm` so the gallery's flat lookup resolves, as the
+    /// artifacts service publishes a run's own validation media. A transcode
+    /// failure publishes the raw webm.
     ///
     /// The enumeration is deliberately of the *whole* committed directory rather than
     /// of the outputs some record declares, and that is what carries the recordings'
@@ -1125,9 +1130,8 @@ impl SnapshotBuilder {
                 );
                 // The published name is decided from the authored one, so the whole
                 // key — digest included — is known before any transcoding happens. A
-                // video publishes as `.mp4` — decided from the entry's [`MediaKind`],
-                // as a run's video proof is — while an authored `.mp4` already
-                // carries that name and needs no transcode.
+                // video, by the entry's `MediaKind`, publishes as `.mp4`, while an
+                // authored `.mp4` already carries that name and needs no transcode.
                 let digest = content_digest(&raw);
                 let published_name =
                     if media.kind == test_cabinet_suites::test_case::MediaKind::Video {
@@ -1278,33 +1282,6 @@ impl SnapshotBuilder {
             by_variant.insert(variant.slug.clone(), by_engine);
         }
         (by_variant, objects)
-    }
-
-    /// Have the artifact service publish run `run_id`'s media, and answer the keys
-    /// the run's document names it by.
-    ///
-    /// The service decides which files a run publishes, from the run's stored record
-    /// and tree, copies each one not yet in the bucket under `media/runs/<run-id>/`
-    /// (a video transcoded to mp4 once), and answers every key, those it skipped
-    /// included. The backend never holds the bytes (see the public snapshot's "Run
-    /// media").
-    ///
-    /// A run without media is the empty answer: no artifact service configured, or
-    /// no stored tree for the run (`404`). A call the service refuses or that cannot
-    /// reach it fails the refresh instead: every run's document is rebuilt on every
-    /// refresh, so publishing through an outage would put a generation live whose
-    /// documents name no media at all. Failing leaves the previous generation live and
-    /// the snapshot dirty, so the refresh is retried.
-    async fn run_media(&self, run_id: &str) -> Result<PublishedMedia> {
-        let Some(artifacts) = &self.artifacts else {
-            return Ok(PublishedMedia::default());
-        };
-        match artifacts.publish_run_media(run_id).await {
-            Ok(media) => Ok(media.unwrap_or_default()),
-            Err(err) => Err(BackendError::Snapshot(format!(
-                "publishing the media of run {run_id}: {err}"
-            ))),
-        }
     }
 
     /// Publish a run's **unbounded** code-analysis document as its own object, and
@@ -1508,16 +1485,17 @@ pub const SNAPSHOT_PREFIX: &str = "snapshots/";
 ///    live public dataset and is never touched, however old it is — a bucket whose
 ///    live snapshot predates the retention window (nothing published in a while) must
 ///    not have the site deleted out from under it.
-/// 2. It is older than `retention`. A site build that already read `index.json` is
-///    still fetching that generation's files, so a just-superseded generation has to
-///    outlive the build it is serving. The window is the grace period.
+/// 2. It is older than `retention`. A reader (a gallery session or a Worker) that
+///    already read `index.json` may still be fetching that generation's files, so a
+///    just-superseded generation has to outlive the readers it is serving. The
+///    window is the grace period.
 ///
 /// A generation id that does not parse as a timestamp is **kept**: an id shape this
 /// does not recognize is not something to delete on a guess.
 ///
 /// The returned keys are exactly the input keys that belong to a pruned generation,
-/// so a caller can hand them straight to
-/// [`R2Client::delete_objects`](crate::r2::R2Client::delete_objects).
+/// so a caller can hand each straight to
+/// [`PublicDataset::delete`](crate::artifacts::PublicDataset::delete).
 /// Keys outside [`SNAPSHOT_PREFIX`] are ignored entirely — run media, case media and
 /// `index.json` are never candidates.
 pub fn stale_generation_keys(
@@ -1679,44 +1657,69 @@ fn json_object<T: Serialize>(key: String, value: &T) -> Result<SnapshotObject> {
     })
 }
 
-/// Upload a generated snapshot to R2.
-///
-/// Objects are uploaded first, `UPLOAD_CONCURRENCY` at a time; the top-level
-/// `index.json` pointer is written **last** so the cut-over is atomic — a reader
-/// of `index.json` always follows it to a complete prefix. The upload ends when
-/// `index.json` is written: nothing is rebuilt or deployed after it.
-///
-/// The objects have no ordering constraint among themselves (nothing reaches any of
-/// them until `index.json` names their generation), only the barrier before the
-/// pointer — so they go up concurrently. Uploading them one at a time spent the
-/// refresh's wall clock on bucket round trips, which is what made a large snapshot
-/// slow even once it had little new to say. As soon as any upload fails the error
-/// propagates and `index.json` is never written, leaving the previous generation live.
-pub async fn upload_snapshot(snapshot: &Snapshot, r2: &R2Client) -> Result<()> {
+impl Snapshot {
+    /// The objects shared across generations: every run document, a case version's
+    /// media and files, and a run's code-analysis document. Each is content-addressed
+    /// (or keyed by an immutable run), so every one of them is written before the
+    /// generation that names it.
+    pub fn content_objects(&self) -> impl Iterator<Item = &SnapshotObject> {
+        self.objects
+            .iter()
+            .filter(|object| !object.key.starts_with(SNAPSHOT_PREFIX))
+    }
+
+    /// The index objects of this generation, under `snapshots/<snapshot-id>/`.
+    pub fn generation_objects(&self) -> impl Iterator<Item = &SnapshotObject> {
+        self.objects
+            .iter()
+            .filter(|object| object.key.starts_with(SNAPSHOT_PREFIX))
+    }
+}
+
+/// Write `objects` through the artifacts service, [`UPLOAD_CONCURRENCY`] at a time,
+/// failing on the first write that does not land.
+pub async fn write_objects<'a>(
+    public: &crate::artifacts::PublicDataset,
+    objects: impl Iterator<Item = &'a SnapshotObject>,
+) -> Result<()> {
     use futures_util::TryStreamExt;
 
-    futures_util::stream::iter(snapshot.objects.iter().map(Ok::<_, BackendError>))
+    futures_util::stream::iter(objects.map(Ok::<_, BackendError>))
         .try_for_each_concurrent(UPLOAD_CONCURRENCY, |object| async move {
-            r2.put_object(
-                &object.key,
-                object.bytes.clone(),
-                &object.content_type,
-                object.content_encoding.as_deref(),
-            )
-            .await
-            .map_err(BackendError::from)
+            public
+                .put(
+                    &object.key,
+                    object.bytes.clone(),
+                    &object.content_type,
+                    object.content_encoding.as_deref(),
+                )
+                .await
+                .map_err(BackendError::from)
         })
-        .await?;
-    // index.json last: this single small overwrite is the atomic cut-over.
-    r2.put_object(
-        &snapshot.index.key,
-        snapshot.index.bytes.clone(),
-        &snapshot.index.content_type,
-        snapshot.index.content_encoding.as_deref(),
-    )
-    .await?;
+        .await
+}
 
-    Ok(())
+/// Write a generated snapshot through the artifacts service's `PUT /public/{key}`,
+/// in the order the [Atomic swap] section states.
+///
+/// The content-addressed objects go first (each run document, case media and file,
+/// and code-analysis document the bucket does not already hold), then the index
+/// objects of the new generation under `snapshots/<snapshot-id>/`, then the
+/// top-level `index.json` pointer **last**, so the cut-over is atomic: a reader of
+/// `index.json` always follows it to a complete generation whose documents and
+/// media are already in place. Each phase is written concurrently. As soon as any
+/// write fails the error propagates and `index.json` is never written, leaving the
+/// previous generation live. Nothing is rebuilt or deployed after it.
+///
+/// [Atomic swap]: https://docs.testcabinet.ai/components/backend/snapshot/#atomic-swap
+pub async fn write_snapshot(
+    snapshot: &Snapshot,
+    public: &crate::artifacts::PublicDataset,
+) -> Result<()> {
+    write_objects(public, snapshot.content_objects()).await?;
+    write_objects(public, snapshot.generation_objects()).await?;
+    // index.json last: this single small overwrite is the atomic cut-over.
+    write_objects(public, std::iter::once(&snapshot.index)).await
 }
 
 /// The summary card of a stored run, built by the backend.
@@ -2108,6 +2111,7 @@ fn links_out(links: &test_cabinet_contracts::run_record::RunLinks) -> LinksOut {
     LinksOut {
         source_repo: links.source_repo.clone(),
         playable_build: links.playable_build.clone(),
+        code: links.code.clone(),
     }
 }
 

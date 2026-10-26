@@ -92,9 +92,9 @@ images:
 #   - tcab-driver-secrets — the harness provider API key(s) read from
 #     $ANTHROPIC_API_KEY / $OPENAI_API_KEY / $OPENROUTER_API_KEY.
 # The manifests reference these by fixed name; the Makefile creates them with those
-# exact names (no hash suffix), so the references match. The backend's R2
-# keys stay absent locally (the backend skips the snapshot upload when unset), and
-# the artifacts service's public store is an Azurite container instead.
+# exact names (no hash suffix), so the references match. There is no R2 locally:
+# tcab-artifacts-secrets is absent and the artifacts service's TCAB_R2_* refs are
+# optional, so its public store is an Azurite container instead.
 
 patches:
   # Per-environment overrides for the always-on workloads (TCAB_ENV, the repo mount,

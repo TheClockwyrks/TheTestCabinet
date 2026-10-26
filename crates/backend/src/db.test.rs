@@ -338,6 +338,7 @@ pub(crate) fn links() -> RunLinks {
     RunLinks {
         source_repo: Some("https://github.com/x/y".to_string()),
         playable_build: Some("https://abc.pages.dev".to_string()),
+        code: None,
     }
 }
 
@@ -5142,7 +5143,7 @@ async fn sync_reference_sheets_reconciles_the_table_to_the_bucket() {
             .unwrap()
     );
 
-    // Nor does the *order* R2 happened to list the keys in count as a change: the
+    // Nor does the *order* the bucket happened to list the keys in count as a change: the
     // stored form is canonical, so an out-of-order (or duplicated) frame list of the
     // same set compares equal and writes nothing.
     let shuffled = vec![

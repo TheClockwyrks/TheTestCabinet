@@ -102,7 +102,8 @@ patches:
   # retarget the dispatcher's sandbox/Job namespace to tcab-staging.
   - path: patch-env.yaml
   # In-cluster publishing: the publisher credential Secret, plus the STAGING
-  # GitHub org + Cloudflare Pages project the dispatcher forwards into publish Jobs.
+  # Cloudflare Pages project the dispatcher forwards into publish Jobs (the GitHub
+  # org is the repos service's, patch-repos-github.yaml).
   - path: patch-dispatcher-publisher.yaml
   # Subscription auth (Codex + Claude Code), identical to prod.
   - path: patch-dispatcher-subscription.yaml

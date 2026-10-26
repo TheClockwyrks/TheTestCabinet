@@ -10,6 +10,13 @@ pub struct Model {
     pub run_id: String,
     pub source_repo: Option<String>,
     pub playable_build: Option<String>,
+    /// The run's short code, minted the first time it publishes and never
+    /// reassigned; unique across every row. `None` until then.
+    pub code: Option<String>,
+    /// The JSON the artifacts service answered the run's
+    /// `POST /runs/{id}/publish-media` with: the public keys of its media. `None`
+    /// until that copy first succeeds.
+    pub public_media: Option<String>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

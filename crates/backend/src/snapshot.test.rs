@@ -6,7 +6,9 @@ use test_cabinet_contracts::metrics::RunMetrics;
 use test_cabinet_contracts::run_record::{
     HarnessSlug, RunEnvironment, RunLinks, RunState, RunStatus, RunSubject, RunTooling,
 };
-use test_cabinet_contracts::validation::{DebugScriptResult, ValidationSummary};
+use test_cabinet_contracts::validation::{
+    AssetFrameResult, AssetGenResult, DebugScriptResult, ValidationSummary,
+};
 use test_cabinet_suites::test_case::MediaKind;
 
 use crate::artifacts::stub::{self, Stub, TOKEN};
@@ -92,6 +94,7 @@ fn stored_run(id: &str, published_at: &str) -> StoredRun {
             links: RunLinks {
                 source_repo: Some("https://github.com/x/y".to_string()),
                 playable_build: Some("https://abc.pages.dev".to_string()),
+                code: None,
             },
             status: RunStatus {
                 state: RunState::Completed,
@@ -125,11 +128,33 @@ fn stored_run(id: &str, published_at: &str) -> StoredRun {
         links: RunLinks {
             source_repo: Some("https://github.com/x/y".to_string()),
             playable_build: Some("https://abc.pages.dev".to_string()),
+            code: None,
         },
         published: true,
         published_at: Some(published_at.to_string()),
         events_json: None,
     }
+}
+
+/// An asset-generation variant of [`stored_run`]: its `validation.asset` is
+/// populated, as the record of a run whose media the artifacts service publishes.
+fn asset_run(id: &str, published_at: &str) -> StoredRun {
+    let mut run = stored_run(id, published_at);
+    run.record.subject.test_type = test_cabinet_suites::test_case::TestType::AssetGeneration;
+    run.record.validation.asset = Some(AssetGenResult {
+        frames: vec![AssetFrameResult {
+            index: 0,
+            regenerated_image: "regenerated.png".to_string(),
+            preview_image: "preview.png".to_string(),
+            actions_log: "actions.json".to_string(),
+            operation_count: 3,
+            cheat_divergence: Some(0.05),
+            detail: None,
+        }],
+        sheet: None,
+        detail: None,
+    });
+    run
 }
 
 fn manifest() -> StoredManifest {
@@ -649,168 +674,124 @@ async fn per_run_file_includes_events_when_present_and_omits_them_when_absent() 
     assert!(r2.get("events").is_none());
 }
 
-/// The artifact-service client the builder publishes run media and reads code
-/// analysis through, pointed at `stub`.
+/// The artifact-service client the builder reads code analysis through, pointed at
+/// `stub`.
 fn artifacts(stub: &Stub) -> Option<ArtifactsClient> {
     ArtifactsClient::from_config(reqwest::Client::new(), Some(&stub.url), Some(TOKEN))
 }
 
-/// What the stub's `publish-media` answers for run `id`: one entry of each kind,
-/// keyed under the run's media prefix, the video's key transcoded to mp4.
-fn published_media(id: &str) -> serde_json::Value {
-    serde_json::json!({
-        "proofMedia": [
-            { "id": "rally", "kind": "video", "key": format!("media/runs/{id}/proof/rally.mp4") },
-        ],
-        "validationMedia": [
-            { "file": "spin__still.png", "key": format!("media/runs/{id}/validation/spin__still.png") },
-            { "file": "img.9f2c1ab4.png", "key": format!("media/runs/{id}/validation/img.9f2c1ab4.png") },
-        ],
-        "assetMedia": [
-            { "file": "regenerated.png", "key": format!("media/runs/{id}/asset/regenerated.png") },
-        ],
-        "showcaseMedia": [
-            { "file": "clip.webm", "key": format!("media/runs/{id}/showcase/clip.mp4") },
-        ],
-    })
+/// The keys the artifacts service answered `publish-media` with for an asset run.
+fn published_asset_media(run_id: &str) -> PublishedMedia {
+    PublishedMedia {
+        proof_media: vec![RunProofOut {
+            id: "title".to_string(),
+            kind: MediaKind::Image,
+            key: format!("media/runs/{run_id}/proof/title.png"),
+        }],
+        validation_media: vec![RunValidationMediaOut {
+            file: "spin__clip.webm".to_string(),
+            key: format!("media/runs/{run_id}/validation/spin__clip.mp4"),
+        }],
+        asset_media: vec![RunAssetOut {
+            file: "regenerated.png".to_string(),
+            key: format!("media/runs/{run_id}/asset/regenerated.png"),
+        }],
+        showcase_media: vec![RunShowcaseOut {
+            file: "title.png".to_string(),
+            key: format!("media/runs/{run_id}/showcase/title.png"),
+        }],
+    }
 }
 
 #[tokio::test]
-async fn each_run_s_media_is_published_by_the_artifact_service_and_named_by_its_keys() {
-    // The service decides what a run publishes and copies it bucket to bucket; the
-    // builder only names the keys it answers, and never holds or uploads the bytes.
+async fn per_run_file_names_the_media_the_artifacts_service_published() {
+    // The artifacts service copies a run's media into the bucket and answers with the
+    // keys; the builder names them in the run's document verbatim and writes none of
+    // the media itself, so the store holding nothing for the run changes nothing.
     let (_tmp, store) = empty_store();
-    let stub = stub::spawn().await;
-    for id in ["r1", "r2"] {
-        stub.held
-            .published
-            .lock()
-            .unwrap()
-            .insert(id.to_string(), published_media(id));
-    }
     let snapshot = SnapshotBuilder::new(
-        vec![
-            stored_run("r1", "2026-06-17T21:40:00Z"),
-            stored_run("r2", "2026-06-17T21:41:00Z"),
-        ],
+        vec![asset_run("a1", "2026-06-17T21:40:00Z")],
         vec![manifest()],
         store,
     )
-    .with_artifacts(artifacts(&stub))
+    .with_published_media(std::collections::HashMap::from([(
+        "a1".to_string(),
+        published_asset_media("a1"),
+    )]))
     .build(now())
     .await
     .unwrap();
 
-    for id in ["r1", "r2"] {
-        let parsed = run_document_json(&snapshot, id);
-        let expected = published_media(id);
-        for kind in [
-            "proofMedia",
-            "validationMedia",
-            "assetMedia",
-            "showcaseMedia",
-        ] {
-            assert_eq!(parsed[kind], expected[kind], "{id} {kind}");
-        }
-    }
+    let parsed = run_document_json(&snapshot, "a1");
+    assert_eq!(
+        parsed["proofMedia"],
+        serde_json::json!([{ "id": "title", "kind": "image", "key": "media/runs/a1/proof/title.png" }])
+    );
+    assert_eq!(
+        parsed["validationMedia"],
+        serde_json::json!([{ "file": "spin__clip.webm", "key": "media/runs/a1/validation/spin__clip.mp4" }])
+    );
+    assert_eq!(
+        parsed["assetMedia"],
+        serde_json::json!([{ "file": "regenerated.png", "key": "media/runs/a1/asset/regenerated.png" }])
+    );
+    assert_eq!(
+        parsed["showcaseMedia"],
+        serde_json::json!([{ "file": "title.png", "key": "media/runs/a1/showcase/title.png" }])
+    );
     assert!(
         !snapshot
             .objects
             .iter()
-            .any(|object| object.key.starts_with("media/runs/")),
-        "the builder uploaded run media the artifact service publishes",
-    );
-    let mut requests = stub.held.requests();
-    requests.sort();
-    assert_eq!(
-        requests,
-        ["POST /runs/r1/publish-media", "POST /runs/r2/publish-media"]
+            .any(|object| object.key.starts_with("media/runs/a1/")),
+        "the backend writes no run media of its own"
     );
 }
 
 #[tokio::test]
-async fn a_run_with_no_stored_tree_publishes_no_media() {
+async fn a_run_without_published_media_names_empty_lists() {
+    // A run whose copy has not succeeded yet still publishes: an empty list is a
+    // valid document, and the next refresh names the media once it is copied.
     let (_tmp, store) = empty_store();
-    let stub = stub::spawn().await;
     let snapshot = SnapshotBuilder::new(
-        vec![stored_run("r1", "2026-06-17T21:40:00Z")],
+        vec![asset_run("a1", "2026-06-17T21:40:00Z")],
         vec![manifest()],
         store,
     )
-    .with_artifacts(artifacts(&stub))
     .build(now())
     .await
     .unwrap();
-
-    let parsed = run_document_json(&snapshot, "r1");
-    for kind in [
+    let parsed = run_document_json(&snapshot, "a1");
+    for list in [
         "proofMedia",
         "validationMedia",
         "assetMedia",
         "showcaseMedia",
     ] {
-        assert_eq!(parsed[kind], serde_json::json!([]), "{kind}");
+        assert_eq!(parsed[list], serde_json::json!([]), "{list}");
     }
 }
 
 #[tokio::test]
-async fn a_refused_media_publish_fails_the_build() {
-    // Every run's document is rebuilt on every refresh, so publishing through an
-    // outage would put a generation live whose documents name no media. The build
-    // fails instead, leaving the previous generation live.
+async fn the_short_code_rides_the_document_and_the_card() {
     let (_tmp, store) = empty_store();
-    let stub = stub::spawn().await;
-    stub.held
-        .published
-        .lock()
-        .unwrap()
-        .insert("r1".to_string(), published_media("r1"));
-    *stub.held.failing.lock().unwrap() = Some(reqwest::StatusCode::INTERNAL_SERVER_ERROR);
-    let result = SnapshotBuilder::new(
-        vec![stored_run("r1", "2026-06-17T21:40:00Z")],
-        vec![manifest()],
-        store,
-    )
-    .with_artifacts(artifacts(&stub))
-    .build(now())
-    .await;
-
-    let Err(err) = result else {
-        panic!("a refused media publish must fail the build");
-    };
-    assert!(err.to_string().contains("r1"), "{err}");
-}
-
-#[tokio::test]
-async fn an_unreachable_artifact_service_fails_the_build() {
-    let (_tmp, store) = empty_store();
-    // A port bound and released: nothing answers on it.
-    let addr = std::net::TcpListener::bind("127.0.0.1:0")
-        .unwrap()
-        .local_addr()
+    let mut run = stored_run("r1", "2026-06-17T21:40:00Z");
+    run.links.code = Some("r1abcdef".to_string());
+    run.record.links.code = Some("r1abcdef".to_string());
+    let snapshot = SnapshotBuilder::new(vec![run], vec![manifest()], store)
+        .build(now())
+        .await
         .unwrap();
-    let artifacts = ArtifactsClient::from_config(
-        reqwest::Client::new(),
-        Some(&format!("http://{addr}")),
-        Some(TOKEN),
-    );
-    let result = SnapshotBuilder::new(
-        vec![stored_run("r1", "2026-06-17T21:40:00Z")],
-        vec![manifest()],
-        store,
-    )
-    .with_artifacts(artifacts)
-    .build(now())
-    .await;
 
-    assert!(
-        result.is_err(),
-        "an unreachable service must fail the build"
-    );
+    let document = run_document_json(&snapshot, "r1");
+    assert_eq!(document["links"]["code"], "r1abcdef");
+    assert_eq!(document["record"]["links"]["code"], "r1abcdef");
+    let index = runs_index(&snapshot);
+    assert_eq!(index["runs"][0]["links"]["code"], "r1abcdef");
 }
 
 #[tokio::test]
-async fn without_an_artifact_service_a_run_publishes_no_media() {
+async fn the_objects_split_into_shared_content_and_the_generation() {
     let (_tmp, store) = empty_store();
     let snapshot = SnapshotBuilder::new(
         vec![stored_run("r1", "2026-06-17T21:40:00Z")],
@@ -821,9 +802,45 @@ async fn without_an_artifact_service_a_run_publishes_no_media() {
     .await
     .unwrap();
 
+    let generation: Vec<&str> = snapshot
+        .generation_objects()
+        .map(|object| object.key.as_str())
+        .collect();
+    let content: Vec<&str> = snapshot
+        .content_objects()
+        .map(|object| object.key.as_str())
+        .collect();
+    let prefix = format!("snapshots/{}/", snapshot.snapshot_id);
+    assert!(generation.contains(&format!("{prefix}runs.json").as_str()));
+    assert!(generation.iter().all(|key| key.starts_with(&prefix)));
+    assert!(
+        content
+            .iter()
+            .any(|key| key.starts_with("documents/runs/r1/"))
+    );
+    assert!(content.iter().all(|key| !key.starts_with("snapshots/")));
+    assert_eq!(
+        generation.len() + content.len(),
+        snapshot.objects.len(),
+        "every object is in exactly one phase"
+    );
+}
+
+#[tokio::test]
+async fn per_run_file_omits_asset_media_for_a_non_asset_run() {
+    let (_tmp, store) = empty_store();
+    let snapshot = SnapshotBuilder::new(
+        vec![stored_run("r1", "2026-06-17T21:40:00Z")],
+        vec![manifest()],
+        store,
+    )
+    .build(now())
+    .await
+    .unwrap();
     let parsed = run_document_json(&snapshot, "r1");
-    assert_eq!(parsed["proofMedia"], serde_json::json!([]));
-    assert_eq!(parsed["showcaseMedia"], serde_json::json!([]));
+    // An end-to-end run carries an empty assetMedia list and exports no asset objects.
+    assert_eq!(parsed["assetMedia"].as_array().unwrap().len(), 0);
+    assert!(!snapshot.objects.iter().any(|o| o.key.contains("/asset/")));
 }
 
 #[tokio::test]
@@ -2237,7 +2254,7 @@ fn prune_keeps_the_live_generation_however_old_it_is() {
 
 #[test]
 fn prune_spares_generations_inside_the_retention_window() {
-    // A generation superseded 10 minutes ago may still be feeding a site build
+    // A generation superseded 10 minutes ago may still be feeding a reader
     // that already read the old index.json.
     let now = time::macros::datetime!(2026 - 07 - 31 12:00:00 UTC);
     let keys = vec![
@@ -2330,11 +2347,12 @@ fn generation_timestamp_round_trips_a_real_snapshot_id() {
 async fn a_run_tree_artifact_never_reaches_the_public_snapshot() {
     // R7, and owner decision Q1. The **session record** is never published: it is a
     // private, whole-run capture of everything the model was sent, so it never goes to
-    // R2 at all (and could not be redacted usefully if it did — it is opaque, possibly
-    // gzipped bytes the scrubber cannot walk). The builder has no call that reads one. A
-    // code-analysis document *is* published, but only when the run **record** says the
-    // run was analysed — the tree holding one is not the authority, exactly as it is
-    // not for proofs. This run's record carries none, so the document is never read.
+    // the public bucket at all (and could not be redacted usefully if it did — it is
+    // opaque, possibly gzipped bytes the scrubber cannot walk). The builder has no call
+    // that reads one. A code-analysis document *is* published, but only when the run
+    // **record** says the run was analysed — the tree holding one is not the
+    // authority, exactly as it is not for proofs. This run's record carries none, so
+    // the document is never read.
     //
     // This is the regression that would be silent: adding a new sibling object to the
     // snapshot is a two-line change, and nothing else in the builder would notice.
@@ -2355,10 +2373,10 @@ async fn a_run_tree_artifact_never_reaches_the_public_snapshot() {
     .await
     .unwrap();
 
-    assert_eq!(
+    assert!(
+        stub.held.requests().is_empty(),
+        "the builder read a run-tree artifact the record did not call for: {:?}",
         stub.held.requests(),
-        ["POST /runs/r1/publish-media"],
-        "the builder read a run-tree artifact the record did not call for",
     );
 
     for object in snapshot
@@ -2537,7 +2555,7 @@ async fn the_published_code_analysis_document_is_scrubbed() {
     let body = String::from_utf8(document.bytes.clone()).unwrap();
     assert!(
         !body.contains("sk-ant-api03-notreal-value"),
-        "a leaked key reached R2 through the code-analysis object: {body}",
+        "a leaked key reached the bucket through the code-analysis object: {body}",
     );
     assert!(body.contains(test_cabinet_redact::PLACEHOLDER));
 }
@@ -2757,7 +2775,7 @@ async fn the_gg_corpus_is_published_and_the_index_points_at_it() {
 async fn the_gg_corpus_passes_the_scrubber_like_every_other_public_object() {
     // R7, on the object this milestone adds. `build` scrubs the `PerRun` document by
     // walking it individually, so **every sibling object has to opt in** — a new one
-    // reaches R2 unredacted by default, and that is a two-line change nothing else in
+    // reaches the bucket unredacted by default, and that is a two-line change nothing else in
     // the builder would notice. A gg document is derived from a run's configuration, and
     // an operator who pasted a provider key into a capability parameter has put it into
     // a field short enough to survive the document's own redaction.

@@ -208,9 +208,11 @@ the driver poll Key Vault and reconcile a changed value into the synced Secrets
 on its own, so a refreshed credential reaches the cluster without a restart.
 Enable it once per cluster with
 `scripts/enable-secret-rotation.sh --env <prod|staging>`, which is add-on
-configuration rather than a Kubernetes object. Adding a brand-new key to a
-Secret still needs
-`kubectl delete secret <name> && kubectl rollout restart deploy/tcab-keyvault-sync`.
+configuration rather than a Kubernetes object. The driver never adds a key to
+a synced Secret or removes one from it, and creates a Secret newly declared in
+the `SecretProviderClass` only when a pod mounts the class, so every deploy
+brings them to the render before it applies anything; see
+[Syncing the Secrets](#syncing-the-secrets).
 
 Keep each cluster on a supported Kubernetes version. An upgrade AKS initiates
 for an unsupported version overrides every `PodDisruptionBudget`, the run pod
@@ -234,8 +236,10 @@ around it (`.azure/project/deploy-steps.yml`):
    it refuses has retired nothing, pins the overlay with
    `pin-images.sh` from the commit's submodule pointers, records the commit the
    backend runs now as `TCAB_PREVIOUS_COMMIT`, sets a 600-second rollout
-   timeout, and retires the objects of an earlier shape (see
-   [Retiring an earlier shape](#retiring-an-earlier-shape));
+   timeout, retires the objects of an earlier shape (see
+   [Retiring an earlier shape](#retiring-an-earlier-shape)), and syncs the
+   Secrets the pinned render declares (see
+   [Syncing the Secrets](#syncing-the-secrets));
 2. the template's `scripts/ci/deploy.sh <sha>` renders the pinned overlay, runs
    the project's `scripts/ci/deploy-preflight.sh` (the catalog preflight, see
    [The catalog checks](#the-catalog-checks)) before it changes anything,
@@ -264,7 +268,8 @@ around it (`.azure/project/deploy-steps.yml`):
    binds a workload to a workload identity whose client id is still
    `unprovisioned` (a pod that cannot reach its store never becomes ready);
 3. runs the catalog preflight against that file;
-4. retires the objects of an earlier shape;
+4. retires the objects of an earlier shape, and syncs the Secrets the file
+   declares;
 5. runs `kubectl apply -f` on the file inside the cluster through
    `az aks command invoke`, which uploads the file with the command;
 6. waits up to 600 seconds, concurrently, on every `Deployment` and
@@ -299,6 +304,36 @@ deployed before:
 
 It waits for the deleted workloads' pods to be gone, and it is idempotent, so
 every deploy runs it.
+
+### Syncing the Secrets
+
+The Key Vault CSI driver creates a Secret the `SecretProviderClass` declares
+when a pod mounts the class, and auto-rotation refreshes its values, but it
+never adds a key to a synced Secret or removes one from it. A render that
+declares a new Secret, or changes the keys of one, would otherwise roll its
+workloads onto a Secret that is not there or still holds what the class dropped.
+`scripts/ci/sync-secrets.sh`, run after the retirement and before every apply,
+sends one command into the cluster that:
+
+1. applies the render's `SecretProviderClass`, so the mount below reads the
+   class this deploy declares;
+2. deletes each synced Secret whose keys differ from the ones the class declares
+   for it;
+3. when a Secret was missing or deleted, restarts `tcab-keyvault-sync`, waits
+   for its rollout, and then waits until every such Secret holds its declared
+   keys, failing the deploy, with nothing applied, if one does not.
+
+This is what lets a service that refuses to start without a Secret roll in the
+same deploy that declares it: the artifacts service's `tcab-artifacts-secrets`,
+which carries the `TCAB_R2_*` keys of its public store, exists before the apply
+restarts its pods. It is also what takes a credential away from a workload that
+`envFrom`s its Secret: the backend's `tcab-backend-secrets` no longer carries the
+`TCAB_R2_*` keys, nor the publisher's `tcab-publisher-secrets` a `GH_TOKEN`, and
+the sync deletes each so it is recreated without them. Running pods keep the
+environment they started with until the apply restarts them. The command is
+idempotent: when every Secret holds its declared keys it changes nothing, so
+every deploy runs it. A namespace without `tcab-keyvault-sync` yet is left to the
+apply, which creates the mounter, whose start syncs every Secret.
 
 ### The catalog checks
 
@@ -582,7 +617,8 @@ these differ:
 
 Give each environment its own [public plane](/deployment/public-gallery/) so
 staging publishes stay out of the prod gallery dataset; point each artifacts
-service's `TCAB_R2_*` at the right bucket.
+service's `TCAB_R2_*`, in that environment's `tcab-artifacts-secrets`, at the
+right bucket.
 
 ## Next steps
 

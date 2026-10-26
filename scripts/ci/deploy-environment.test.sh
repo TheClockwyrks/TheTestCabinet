@@ -96,7 +96,7 @@ metadata:
   namespace: tcab-$environment
 YAML
 	done
-	for name in pin-images catalog-ingest retire-legacy-backend settle-workloads; do
+	for name in pin-images catalog-ingest retire-legacy-backend sync-secrets settle-workloads; do
 		cat >"$repo/scripts/ci/$name.sh" <<STUB
 #!/usr/bin/env bash
 echo "$name \$* [k8s=\${TCAB_K8S_ROOT:-} rg=\${THE_TEST_CABINET_RESOURCE_GROUP:-} cluster=\${THE_TEST_CABINET_CLUSTER:-} ns=\${THE_TEST_CABINET_NAMESPACE:-} timeout=\${THE_TEST_CABINET_ROLLOUT_TIMEOUT:-}]" >>"\$STUB_LOG"
@@ -137,16 +137,17 @@ run() { # repo [env-assignment...] -- [argument...]
 		PATH="$repo/bin:$PATH" STUB_LOG="$repo/calls.log" "${assignments[@]}" \
 		"$repo/scripts/ci/deploy-environment.sh" "$@" 2>&1)
 }
-calls() { sed "s|/tmp/[^ ]*/k8s|K8S|; s|--file /tmp/[^ ]*/|--file TMP/|" "$1/calls.log"; }
+calls() { sed "s|/tmp/[^ ]*/k8s|K8S|; s|--file /tmp/[^ ]*/|--file TMP/|; s|^sync-secrets /tmp/[^ ]*/|sync-secrets TMP/|" "$1/calls.log"; }
 
 echo "--- a staging deploy ---"
 repo="$(fresh_repo)"
 out="$(run "$repo" -- staging "$COMMIT")"
 check_equal "succeeds" "0" "$?"
-check_equal "pins a copy, checks the catalog, retires the legacy backend, applies, settles, then reads the ingest" \
+check_equal "pins a copy, checks the catalog, retires the legacy backend, syncs the Secrets, applies, settles, then reads the ingest" \
 	"pin-images staging $COMMIT [k8s=K8S rg= cluster= ns= timeout=]
 catalog-ingest preflight staging $COMMIT [k8s= rg= cluster= ns= timeout=]
 retire-legacy-backend  [k8s= rg=testcabinet-staging-westus2-rg cluster=testcabinet-staging-westus2-aks ns=tcab-staging timeout=600s]
+sync-secrets TMP/tcab-staging.yaml [k8s= rg=testcabinet-staging-westus2-rg cluster=testcabinet-staging-westus2-aks ns=tcab-staging timeout=600s]
 az aks command invoke --resource-group testcabinet-staging-westus2-rg --name testcabinet-staging-westus2-aks --file TMP/tcab-staging.yaml --command kubectl apply -f tcab-staging.yaml -o json
 settle-workloads --include-backend $COMMIT [k8s= rg=testcabinet-staging-westus2-rg cluster=testcabinet-staging-westus2-aks ns=tcab-staging timeout=600s]
 catalog-ingest verify staging [k8s= rg=testcabinet-staging-westus2-rg cluster=testcabinet-staging-westus2-aks ns=tcab-staging timeout=600s]" \

@@ -58,13 +58,10 @@ reqwest = { workspace = true }
 # Verifies the Cloudflare Access assertion every edge request carries (`src/access.rs`).
 jsonwebtoken = { workspace = true }
 sha2 = { workspace = true }
-hmac = { workspace = true }
 hex = { workspace = true }
-# The R2 client's (`src/r2.rs`) `Content-MD5` of a `DeleteObjects` body, which
-# it sends base64-encoded (the Access tests decode their fixed test keys with
-# `base64` too).
-md-5 = { workspace = true }
-base64 = { workspace = true }
+# Percent-encodes a public-dataset key's path segments on the artifacts
+# service's `/public/{key}` routes (`src/artifacts.rs`).
+percent-encoding = { workspace = true }
 # Gzip decoding for the run-tree artifact routes. The store keeps a run's analysis
 # documents exactly as they were uploaded (gzipped), so serving a client that does
 # not advertise `Accept-Encoding: gzip` — every caller built on the workspace
@@ -77,8 +74,8 @@ tar = "0.4"
 [dev-dependencies]
 tempfile = { workspace = true }
 tokio = { workspace = true, features = ["full", "test-util"] }
-# Decodes the query strings the stub R2 bucket (`r2.stub.test.rs`) receives.
-percent-encoding = { workspace = true }
+# The Access tests decode their fixed test keys with it.
+base64 = { workspace = true }
 
 [lints]
 workspace = true

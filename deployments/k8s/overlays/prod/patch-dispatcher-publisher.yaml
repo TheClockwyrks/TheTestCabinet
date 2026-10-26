@@ -1,19 +1,20 @@
 # Enable in-cluster publishing and point it at the prod publish targets.
 #
 # TCAB_DISPATCHER_PUBLISHER_SECRETS names the Secret the dispatcher envFrom-mounts into
-# each publish Job (tcab-publisher-secrets: GH_TOKEN for `gh`, CLOUDFLARE_API_TOKEN +
-# CLOUDFLARE_ACCOUNT_ID for `wrangler`), synced from the prod Key Vault by the
-# keyvault-csi component. The publisher needs no Kubernetes API access.
+# each publish Job (tcab-publisher-secrets: CLOUDFLARE_API_TOKEN + CLOUDFLARE_ACCOUNT_ID
+# for `wrangler`), synced from the prod Key Vault by the keyvault-csi component. The
+# publisher needs no Kubernetes API access, and its GitHub push goes through the repos
+# service, whose organization and token patch-repos-github.yaml sets.
 #
 # TCAB_PUBLISHER_IMAGE, which enables the publish path, is set by
 # scripts/ci/pin-images.sh to the microservice-publisher image at the commit its
 # submodule pointer names at the commit being deployed.
 #
-# TCAB_GITHUB_ORG + TCAB_PAGES_PROJECT are the crux of publish decoupling:
-# microservice-publisher's release::PublishConfig::from_env requires both (no compiled-in fallback), so
-# every environment names its own org and Cloudflare Pages project. The dispatcher
-# forwards both into every publish Job (PUBLISHER_PASSTHROUGH_VARS), where from_env
-# reads them.
+# TCAB_PAGES_PROJECT is the publisher's one target setting:
+# microservice-publisher's release::PublishConfig::from_env requires it (no
+# compiled-in fallback), so every environment names its own Cloudflare Pages project.
+# The dispatcher forwards it into every publish Job (PUBLISHER_PASSTHROUGH_VARS),
+# where from_env reads it.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -28,7 +29,5 @@ spec:
           env:
             - name: TCAB_DISPATCHER_PUBLISHER_SECRETS
               value: "tcab-publisher-secrets"
-            - name: TCAB_GITHUB_ORG
-              value: "TheClockwyrks"
             - name: TCAB_PAGES_PROJECT
               value: "test-cabinet-runs"

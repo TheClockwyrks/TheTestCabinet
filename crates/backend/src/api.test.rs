@@ -124,8 +124,6 @@ async fn harness_with_prices(prices: crate::pricing::OpenRouterPrices) -> Harnes
         Arc::clone(&db),
         store.clone(),
         None,
-        config.artifacts_internal_url.clone(),
-        None,
         crate::publisher::PublisherTiming {
             coalesce: config.coalesce,
             snapshot_retention: config.snapshot_retention,
