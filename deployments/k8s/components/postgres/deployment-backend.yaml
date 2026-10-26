@@ -1,7 +1,8 @@
-# Backend, managed-PostgreSQL shape: a stateless Deployment that replaces the
-# base's single-replica StatefulSet + PVC (deleted by this component's kustomization).
-# The base's `tcab-backend` ClusterIP Service is kept and still selects this pod by
-# its `app.kubernetes.io/name: tcab-backend` label. TCAB_ENV defaults to `prod` here
+# Backend, managed-PostgreSQL shape: a stateless Deployment of two replicas, and their
+# PodDisruptionBudget, that replace the base's single-replica StatefulSet + PVC
+# (deleted by this component's kustomization). The base's `tcab-backend` ClusterIP
+# Service is kept and still selects these pods by their
+# `app.kubernetes.io/name: tcab-backend` label. TCAB_ENV defaults to `prod` here
 # (matching the base); the staging overlay patches it to `staging`.
 #
 # The Deployment itself is named `the-test-cabinet-backend`, the name the workspace
@@ -9,63 +10,46 @@
 # name changed: its selector and pod labels are still `tcab-backend`, so the Service
 # and every NetworkPolicy select it as before. A namespace that still runs the old
 # `tcab-backend` Deployment has it deleted before each deploy
-# (scripts/ci/retire-legacy-backend.sh), because the old pod holds the RWO
-# `tcab-backend-state` claim the new one mounts.
+# (scripts/ci/retire-legacy-backend.sh), because its pod carries the label the
+# Service selects, so the Service would keep routing to it.
 #
 # With the record store on managed PostgreSQL the database leaves local disk, so the
-# single-writer pin goes away. Two base constraints still hold (see
-# deployment/kubernetes/control-plane.md#backend), and shape this manifest:
+# single-writer pin goes away and the backend runs two replicas (Planned disruption,
+# in deployment/kubernetes/control-plane.md). Work one replica does on behalf of all
+# is claimed through the database (Replicas, in components/backend/overview.md). Two
+# base constraints still hold (see deployment/kubernetes/control-plane.md#backend),
+# and shape this manifest:
 #   - The image must still ship a headless Chromium for reference rendering — same
 #     `tcab-backend` image as the base (deployments/images/services.Dockerfile,
 #     `--target backend`).
 #   - The definition store and ingest checkout still live on local disk, so /state
-#     stays mounted — and on a PersistentVolumeClaim, not an emptyDir.
+#     stays mounted — on an ephemeral volume of each pod's own.
 #
-# Why /state is durable even though everything on it is regenerable. It is still not
-# a backup target: losing it costs a re-ingest, not data (deployment/backups.md). But
-# "regenerable" is not "free". Regenerating means cloning the catalog and re-ingesting
-# every version, which runs for minutes, and until it finishes the backend cannot
-# resolve a single test case — it is held out of its Service by /readyz for that whole
-# window, so the queue stalls. An emptyDir paid that cost on EVERY reschedule, and
-# reschedules are not rare: AKS node-image auto-upgrade drains nodes on its own
-# schedule and moved this pod repeatedly. A disk that survives the move turns a
-# multi-minute cold rebuild into an attach.
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: tcab-backend-state
-  namespace: tcab-prod
-spec:
-  # ReadWriteOnce is correct here and requires the Deployment's `Recreate` strategy:
-  # one pod at a time, old fully terminated before the new one attaches. A rolling
-  # update would deadlock on the disk (new pod Pending on attach, old pod never
-  # released) — which is another reason not to relax `Recreate` below.
-  accessModes: ["ReadWriteOnce"]
-  # The size of /state, for staging and prod alike: no overlay patches it. To grow
-  # the volume, raise this and deploy. The deploy's preflight
-  # (scripts/ci/catalog-ingest.sh) compares it with the live claim: it counts the
-  # growth as free space, and refuses a deploy that asks for a smaller size, which
-  # Kubernetes rejects, or for a larger one on a storage class that cannot expand.
-  resources:
-    requests:
-      storage: 16Gi
-  # storageClassName: <your-block-storage-class>   # defaults to the cluster's default
----
+# Why /state is per-pod and ephemeral. Everything on it is regenerable: losing it
+# costs a re-ingest, not data, and it is not a backup target (deployment/backups.md).
+# A shared ReadWriteOnce claim pinned the backend to one pod at a time under
+# `Recreate`, so every deploy and every node drain was an outage. Each pod now has
+# a volume of its own, created with it and deleted with it, which its ingest sidecar
+# fills while the pod is held unready (/readyz). The rolling update retires an old
+# pod only once the new one is Ready, and the budget below keeps one replica through
+# a drain, so the multi-minute cold ingest of a new pod is paid while the other
+# replica serves, never as an outage.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: the-test-cabinet-backend
   namespace: tcab-prod
 spec:
-  # Postgres lifts the SQLite single-writer pin. Kept at 1 because this pod still
-  # coordinates publishes and owns the run queue, and POST /ingest targets one pod
-  # through the Service; revisit the ingest fan-out and any single-coordinator
-  # assumptions before scaling out.
-  replicas: 1
-  # Never run two backends at once (single active coordinator); Recreate tears the
-  # old pod down before the new one starts rather than overlapping on rollout.
+  # Two replicas: everything durable is in PostgreSQL or the artifacts service, and
+  # work done on behalf of all replicas is claimed through the database, so a
+  # planned disruption of one leaves the other serving. A deploy starts the new pod
+  # and waits for it to be Ready (its store ingested) before terminating an old one.
+  replicas: 2
   strategy:
-    type: Recreate
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
   selector:
     matchLabels:
       app.kubernetes.io/name: tcab-backend
@@ -74,16 +58,21 @@ spec:
       labels:
         app.kubernetes.io/name: tcab-backend
         app.kubernetes.io/part-of: test-cabinet
-      annotations:
-        # Single active coordinator (replicas: 1, Recreate) — cannot be scaled out.
-        # Keep the cluster autoscaler from consolidating a node out from under it:
-        # each move is a ~1-2 min outage (Recreate + 640MB image pull + disk
-        # reattach). Now that /state is a PVC the move no longer also costs a full
-        # re-ingest, but it is still an outage worth not inviting. Planned node
-        # upgrades do not honor this annotation and still move the pod — which is
-        # exactly why /state must survive the move.
-        cluster-autoscaler.kubernetes.io/safe-to-evict: "false"
     spec:
+      # Prefer the two replicas on different nodes, so one node's loss leaves a
+      # backend serving.
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                topologyKey: kubernetes.io/hostname
+                labelSelector:
+                  matchLabels:
+                    app.kubernetes.io/name: tcab-backend
+      # Sized to the longest request the backend answers; the console's event
+      # streams are closed at SIGTERM, so the client reconnects to a ready replica.
+      terminationGracePeriodSeconds: 60
       containers:
         - name: backend
           image: REPLACE_REGISTRY/tcab-backend:latest # the staging and prod overlays name testcabinet.azurecr.io/the-test-cabinet-backend
@@ -100,7 +89,7 @@ spec:
                   name: tcab-backend-secrets
                   key: TCAB_BACKEND_DATABASE_URL
             # Definition store + ingest checkout still live on local disk (the
-            # emptyDir mounted at /state below).
+            # pod's own ephemeral volume mounted at /state below).
             - name: TCAB_BACKEND_STORE
               value: "/state/tcab-store"
             # The test suites checkout inside the superproject's clone, with the
@@ -131,6 +120,12 @@ spec:
           envFrom:
             - secretRef:
                 name: tcab-backend-secrets
+          lifecycle:
+            # Hold the pod while its endpoint's removal from the Service
+            # propagates, so no new request is routed to a stopping replica.
+            preStop:
+              sleep:
+                seconds: 5
           volumeMounts:
             - name: state
               mountPath: /state
@@ -140,9 +135,8 @@ spec:
           #
           # Requests exist mostly so the scheduler stops treating this pod as free.
           # With no requests at all it lands in BestEffort — the first thing evicted
-          # under node pressure — which is a poor fit for a single-replica active
-          # coordinator whose every move is a ~1-2 min outage (see the
-          # safe-to-evict annotation above, which is guarding the same property).
+          # under node pressure — which is a poor fit for a pod whose every move
+          # costs a multi-minute cold ingest before its replacement can serve.
           #
           # The ceilings are deliberately loose rather than tight. Throttling this
           # container surfaces directly as console latency, so the CPU limit is a
@@ -175,12 +169,9 @@ spec:
               cpu: "1500m"
               memory: 2Gi
           # Readiness and liveness MUST stay on different endpoints — and this shape
-          # is exactly why. The definition store on /state can start EMPTY — on a
-          # freshly provisioned PVC, or after the catalog moved on — and the ingest
-          # refills it over minutes. (The PVC is what stops that being EVERY
-          # reschedule, which is the whole reason it replaced an emptyDir; it does
-          # not make a cold store impossible.)
-          # /readyz stays 503 for that whole window, holding the pod out of the
+          # is exactly why. The definition store on /state starts EMPTY in every new
+          # pod — its volume is created with it — and the ingest fills it over
+          # minutes. /readyz stays 503 for that whole window, holding the pod out of the
           # tcab-backend Service until it can actually resolve a test case. Both
           # probes previously pointed at /healthz, which is always 200 while the
           # process serves: the pod joined the Service seconds after start with an
@@ -202,10 +193,39 @@ spec:
               port: 8787
             initialDelaySeconds: 15
             periodSeconds: 20
-      # The definition store + ingest checkout. Durable so a reschedule does not
-      # force a multi-minute cold re-ingest before the backend can serve (see the
-      # header); the only data of record still lives in managed PostgreSQL.
+      # The definition store + ingest checkout: a generic ephemeral volume, a claim
+      # of each pod's own that Kubernetes creates with the pod and deletes with it
+      # (`<pod>-state`). A disk rather than an emptyDir, so a store and a checkout
+      # with cold storage beside it never fill the node's own disk; the only data
+      # of record lives in managed PostgreSQL.
       volumes:
         - name: state
-          persistentVolumeClaim:
-            claimName: tcab-backend-state
+          ephemeral:
+            volumeClaimTemplate:
+              metadata:
+                labels:
+                  app.kubernetes.io/name: tcab-backend
+                  app.kubernetes.io/part-of: test-cabinet
+              spec:
+                accessModes: ["ReadWriteOnce"]
+                # The size of each pod's /state, for staging and prod alike: no
+                # overlay patches it. A new size reaches each pod as the deploy
+                # replaces it, since every pod starts on a new volume.
+                resources:
+                  requests:
+                    storage: 16Gi
+                # storageClassName: <your-block-storage-class>   # defaults to the cluster's default
+---
+# Planned disruption: a drain evicts one replica and waits for its replacement to
+# be Ready before evicting the other. The selector is the service's own name label,
+# so the budget reaches no run pod.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: tcab-backend
+  namespace: tcab-prod
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: tcab-backend

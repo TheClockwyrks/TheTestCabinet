@@ -10,10 +10,10 @@
 # token, which the ingest route takes. It runs a ONE-SHOT forced ingest on backend
 # start, then serves the on-demand refresh (see REFRESH below); every pipeline deploy
 # starts a new backend pod, so every deploy re-ingests the branch tip it shipped (see
-# the prod copy of this patch). /state is a PVC (see
-# components/postgres/deployment-backend.yaml), so on a cold volume (first deploy,
-# replaced disk) this is what fills the store, and /readyz holds the pod out of its
-# Service until it lands.
+# the prod copy of this patch). /state is an ephemeral
+# volume of each pod's own (see components/postgres/deployment-backend.yaml), so every
+# new pod starts cold and this is what fills its store; /readyz holds the pod out of
+# its Service until it lands, while the other replica serves.
 #
 # SUBMODULES: after the superproject, the sidecar updates its two submodules, each in
 # its own step: cold-storage shallowly (the baseline media), and the test suites at the
@@ -83,7 +83,8 @@ spec:
               export GIT_TERMINAL_PROMPT=0
               # THE REFRESH, one script for the startup run below and the on-demand endpoint.
               # It checks out the branch tip (refreshing the live checkout when one survives on
-              # the /state PVC, else cloning it fresh) and its two submodules, each in its own
+              # the pod's /state volume, as it does across a container restart, else
+              # cloning it fresh) and its two submodules, each in its own
               # step. Exit 0: refreshed. Exit 3: refreshed except the test suites, the one
               # step allowed to fail. Exit 1: any other step failed.
               {

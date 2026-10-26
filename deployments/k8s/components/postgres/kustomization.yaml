@@ -18,10 +18,12 @@
 #      patch). Its ClusterIP Service and everything else in the base are untouched;
 #      the replacement Deployment reuses the same selector labels, so the Service
 #      keeps routing.
-#   2. Adds the replacement backend Deployment, with the connection string wired
-#      from the environment's Secret. See secrets.postgres.example.yaml. The backend
-#      keeps ONE volume — a `tcab-backend-state` PVC for its definition store +
-#      ingest checkout, which is regenerable but expensive to regenerate (see
+#   2. Adds the replacement backend Deployment, two replicas rolled one at a time,
+#      and the PodDisruptionBudget that keeps one of them through a drain, with the
+#      connection string wired from the environment's Secret. See
+#      secrets.postgres.example.yaml. Each backend pod keeps ONE volume — an
+#      ephemeral volume of its own for its definition store + ingest checkout, which
+#      its ingest sidecar fills while the pod is held unready (see
 #      deployment-backend.yaml).
 apiVersion: kustomize.config.k8s.io/v1alpha1
 kind: Component

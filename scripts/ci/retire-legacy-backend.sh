@@ -9,9 +9,10 @@
 #
 # The backend's Deployment is now `the-test-cabinet-backend`, the name the workspace
 # template's deploy script waits on. A namespace deployed before the rename still
-# runs `tcab-backend`, whose pod holds the ReadWriteOnce claim `tcab-backend-state`
-# that the renamed Deployment mounts, so the new pod would wait on the disk until
-# the rollout timed out.
+# runs `tcab-backend`, whose pod carries the label the `tcab-backend` Service
+# selects, so the Service would route part of the traffic to the old pod. The
+# claim it mounted, `tcab-backend-state`, is left in place: each backend pod now
+# has a volume of its own, and nothing on the old one is data of record.
 #
 # The artifacts service is now a stateless Deployment of the same name over Blob. A
 # namespace deployed before still runs the StatefulSet, a different kind the apply

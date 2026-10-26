@@ -11,10 +11,8 @@
 #
 #   0. Checks that the catalog the new backend's ingest sidecar will fetch can be
 #      fetched (scripts/ci/catalog-ingest.sh preflight): the overlay's catalog branch
-#      tip on the GitHub mirror and the cold-storage commit it pins, and that the
-#      backend's state volume has room for the fetch and is not resized in a way
-#      the cluster would refuse. It fails here, before anything in the cluster is
-#      changed, when it cannot.
+#      tip on the GitHub mirror and the cold-storage commit it pins. It fails here,
+#      before anything in the cluster is changed, when it cannot.
 #   1. Pins the overlay (scripts/ci/pin-images.sh, in place): the arena's, the
 #      artifacts service's, the dispatcher's, the repos service's, the console's
 #      and the publisher's images at the commits <commit>'s microservice-arena,

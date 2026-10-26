@@ -475,13 +475,10 @@ else
 	check_equal "a catalog that is fetched and ingested passes" 0 "$status"
 	check_contains "the preflight names the tip and its cold storage" \
 		"The tip of staging is $CATALOG_TIP; it pins cold-storage at $CATALOG_PIN" "$out"
-	check_equal "the cluster is reached four times" 4 "$(wc -l <"$repo/az.log")"
-	check_contains "to read the state volume's free space" "bash catalog-ingest-volume.sh" "$(command_of "$repo" 1)"
-	check_contains "to apply and wait" "kubectl apply -f" "$(command_of "$repo" 2)"
-	check_contains "to settle the other workloads" "bash settle-workloads.sh" "$(command_of "$repo" 3)"
-	check_contains "and to read the sidecar's result" "bash catalog-ingest-verify.sh" "$(command_of "$repo" 4)"
-	check_contains "a volume reading it cannot parse is noted and does not stop the deployment" \
-		"Note: the state volume of tcab-staging could not be read, so its free space was not checked." "$out"
+	check_equal "the cluster is reached three times" 3 "$(wc -l <"$repo/az.log")"
+	check_contains "to apply and wait" "kubectl apply -f" "$(command_of "$repo" 1)"
+	check_contains "to settle the other workloads" "bash settle-workloads.sh" "$(command_of "$repo" 2)"
+	check_contains "and to read the sidecar's result" "bash catalog-ingest-verify.sh" "$(command_of "$repo" 3)"
 	check_contains "reports the ingest" "The staging backend ingested the tip of staging." "$out"
 
 	repo="$(fresh_repo)"
@@ -507,16 +504,16 @@ else
 	catalog_fixture "$tmp/fixture-two"
 	repo="$(fresh_repo)"
 	with_project_hooks "$repo"
-	out="$(run "$repo" TCAB_CATALOG_REPO="$CATALOG_REPO" STUB_AZ_FAIL_CALL=4 "$repo/scripts/ci/deploy.sh" "$COMMIT")"
+	out="$(run "$repo" TCAB_CATALOG_REPO="$CATALOG_REPO" STUB_AZ_FAIL_CALL=3 "$repo/scripts/ci/deploy.sh" "$COMMIT")"
 	status=$?
 	check_failed "a sidecar that did not ingest fails the run" "$status"
 	check_contains "after the commit was deployed" "Deployed $COMMIT" "$out"
-	check_contains "prints what the cluster read of the sidecar" "line one of run 4" "$out"
+	check_contains "prints what the cluster read of the sidecar" "line one of run 3" "$out"
 	check_contains "says the backend did not ingest" "the staging backend did not ingest the tip of staging" "$out"
 	check_contains "names the command that ingests once it is fixed" "tcab ingest --env staging" "$out"
 	check_contains "says the deployment stays" "$COMMIT is deployed and stays, but scripts/ci/post-deploy.sh failed" "$out"
 	check_lacks "rolls nothing back" "Rolling back" "$out"
-	check_equal "the cluster is reached four times and no more" 4 "$(wc -l <"$repo/az.log")"
+	check_equal "the cluster is reached three times and no more" 3 "$(wc -l <"$repo/az.log")"
 fi
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"

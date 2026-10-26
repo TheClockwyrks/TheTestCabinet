@@ -101,7 +101,6 @@ YAML
 #!/usr/bin/env bash
 echo "$name \$* [k8s=\${TCAB_K8S_ROOT:-} rg=\${THE_TEST_CABINET_RESOURCE_GROUP:-} cluster=\${THE_TEST_CABINET_CLUSTER:-} ns=\${THE_TEST_CABINET_NAMESPACE:-} timeout=\${THE_TEST_CABINET_ROLLOUT_TIMEOUT:-}]" >>"\$STUB_LOG"
 [[ "$name" == pin-images ]] && echo "pinned" >>"\$TCAB_K8S_ROOT/overlays/\$1/rendered.yaml.pins"
-[[ "$name" == catalog-ingest && -n "\${TCAB_INGEST_MANIFEST:-}" ]] && cp "\$TCAB_INGEST_MANIFEST" "\$STUB_LOG.\$1-manifest"
 mode="STUB_EXIT_catalog_ingest_\${1:-}"
 [[ "$name" == catalog-ingest ]] && exit "\${!mode:-0}"
 exit "\${STUB_EXIT_${name//-/_}:-0}"
@@ -153,9 +152,6 @@ settle-workloads --include-backend $COMMIT [k8s= rg=testcabinet-staging-westus2-
 catalog-ingest verify staging [k8s= rg=testcabinet-staging-westus2-rg cluster=testcabinet-staging-westus2-aks ns=tcab-staging timeout=600s]" \
 	"$(calls "$repo")"
 check_absent "the checkout's overlay is never edited" "$repo/deployments/k8s/overlays/staging/rendered.yaml.pins"
-check_equal "the preflight is handed the file about to be applied" \
-	"$(cat "$repo/deployments/k8s/overlays/staging/rendered.yaml")" "$(cat "$repo/calls.log.preflight-manifest" 2>/dev/null)"
-check_absent "and the verify no file" "$repo/calls.log.verify-manifest"
 check_contains "and the result is reported" "staging is at $COMMIT" "$out"
 check_contains "with the catalog's" "staging serves the catalog of its branch tip" "$out"
 

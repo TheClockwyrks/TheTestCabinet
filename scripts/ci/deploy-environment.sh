@@ -45,14 +45,10 @@
 # backend's ingest sidecar will fetch can be fetched (scripts/ci/catalog-ingest.sh
 # preflight): the environment's catalog branch tip on the GitHub mirror and the
 # cold-storage commit it pins. It fails there, with nothing applied, when it cannot.
-# The same preflight reads the backend's state volume and the render's size for it:
-# it fails when the volume is too full for the sidecar's fetch, the growth this
-# deployment applies counted, and when the render asks for a resize of the volume
-# the cluster would refuse.
 #
 # Before the apply it retires the workloads of an earlier shape
 # (scripts/ci/retire-legacy-backend.sh): the backend Deployment of its old name,
-# which holds the backend's disk, the artifacts service's StatefulSet, and the
+# whose pod the backend's Service would still select, the artifacts service's StatefulSet, and the
 # objects the edge replaced, which an apply never prunes. Then it brings the Secrets
 # the Key Vault CSI driver syncs to the keys the render declares
 # (scripts/ci/sync-secrets.sh), so a workload the apply rolls finds the Secrets it
@@ -146,9 +142,7 @@ if ! ci_assert_identities_provisioned <"$manifest"; then
 	exit 1
 fi
 
-# The preflight is given the file about to be applied, whose size for the backend's
-# state volume it compares with the claim in the cluster.
-if ! TCAB_INGEST_MANIFEST="$manifest" "${CI_DIR}/catalog-ingest.sh" preflight "$ENVIRONMENT" "$COMMIT"; then
+if ! "${CI_DIR}/catalog-ingest.sh" preflight "$ENVIRONMENT" "$COMMIT"; then
 	echo "deploy-environment.sh: the ${ENVIRONMENT} deploy preflight failed, above; nothing was applied." >&2
 	exit 1
 fi

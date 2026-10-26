@@ -285,8 +285,9 @@ longer names. `scripts/ci/retire-legacy-backend.sh` deletes, before every
 apply, the objects of an earlier shape that would otherwise stay in a namespace
 deployed before:
 
-- the backend's `Deployment` of its old name, `tcab-backend`, whose pod holds
-  the `ReadWriteOnce` claim `tcab-backend-state` the renamed one mounts;
+- the backend's `Deployment` of its old name, `tcab-backend`, whose pod carries
+  the label the backend's `Service` selects. The claim `tcab-backend-state` its
+  pod mounted is never deleted;
 - the artifacts service's `StatefulSet`, `tcab-artifacts`, replaced by a
   stateless `Deployment` of the same name. Its claim,
   `artifacts-tcab-artifacts-0`, is never deleted;
@@ -337,23 +338,20 @@ apply, which creates the mounter, whose start syncs every Secret.
 
 ### The catalog checks
 
-Every deploy starts a new backend pod, whose `ingest` sidecar refreshes the
+Every deploy starts new backend pods, each of whose `ingest` sidecar refreshes the
 checkout to the tip of the environment's catalog branch on the GitHub mirror,
 with the `cold-storage` submodule at the commit that tip pins, and asks the
 backend for one forced ingest. `scripts/ci/catalog-ingest.sh` checks that on
 both sides of the rollout:
 
 - `preflight`, before anything is applied, checks that the branch tip and its
-  `cold-storage` commit can be fetched, that the backend's state volume has
-  room for the fetch, and that the render's size for the `tcab-backend-state`
-  claim (16Gi) is one the cluster can apply: never smaller than the claim, and
-  larger only on a storage class that allows expansion. It fails with nothing
-  applied.
+  `cold-storage` commit can be fetched. It fails with nothing applied.
 - `verify`, once the rollout is ready, reads the result the sidecar recorded in
   `/tmp/ingest-result` and fails the deploy unless the sidecar ingested. A
   sidecar whose refresh failed ingests nothing, so the backend keeps the
   catalog and the baselines it had; `tcab ingest --env <env>` ingests again once
-  the cause is fixed.
+  the cause is fixed. A new pod's store starts empty, so a pod whose sidecar
+  ingested nothing stays unready and the rollout never completes.
 
 `verify` spends its wait, at most `TCAB_INGEST_WAIT_SECONDS` (600), in calls of
 at most `TCAB_INGEST_CALL_SECONDS` (240) each, because AKS ends a command after
@@ -364,29 +362,13 @@ command, so it uses only what that image carries: `bash`, `kubectl`, `jq` and
 the common text tools `awk`, `grep`, `head`, `tail`, `cut` and `tr`. The image
 has no `sed`.
 
-#### Growing the backend's claim
+#### The backend's state volume
 
-The overlays mount the backend's definition store and ingest checkout on the
-`tcab-backend-state` claim, declared once in
-`deployments/k8s/components/postgres/deployment-backend.yaml` at 16Gi. No
-overlay patches it, so staging and prod declare the same size and a change of
-it reaches each with that environment's next deploy, through the pipeline:
-
-1. `preflight` counts the growth as free space, so a full volume does not stop
-   the deploy that enlarges it, and refuses a size the cluster would not apply.
-2. The apply resizes the claim. The cluster grows the disk and then the
-   filesystem on it, which rests on the claim's storage class allowing
-   expansion (`allowVolumeExpansion: true`, which the classes AKS ships have).
-3. `verify` fails the deploy if the ingest sidecar did not ingest.
-
-A claim cannot shrink, and `preflight` refuses a deploy that asks for it. Once
-an environment has grown, that covers every checkout that still declares the
-smaller size: re-running an earlier pipeline run, or deploying a branch cut
-before the change, is refused with nothing applied. Put an earlier commit back
-from a checkout that carries the current size
-(`scripts/ci/deploy-environment.sh <env> <sha>`), which changes the images and
-leaves the claim alone. Deploy a change of the size to staging first: it shares
-the manifest, so it takes the same path.
+Each backend pod mounts its definition store and ingest checkout on a generic
+ephemeral volume of its own, a claim created with the pod and deleted with it,
+declared once in `deployments/k8s/components/postgres/deployment-backend.yaml`
+at 16Gi. No overlay patches it, so staging and prod declare the same size, and a
+change of it reaches each pod as the next deploy replaces it.
 
 A namespace deployed before the artifacts service ran over Blob still holds its
 run trees on the claim `artifacts-tcab-artifacts-0`, which the deploy leaves in

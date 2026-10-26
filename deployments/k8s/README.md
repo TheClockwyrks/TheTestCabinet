@@ -63,11 +63,11 @@ Overlays compose in reusable kustomize **components**:
 | `components/web`           | The in-cluster web console (`tcab-web`) `Deployment` + `ClusterIP` `Service` — the static SPA, which carries no service URL and takes no configuration: it addresses `/api`, `/artifacts` and `/arena` of its own origin. Nested in the `edge` component, which serves it at `/` of the environment's origin. `overlays/local` deliberately does NOT include it — locally the console runs from source (`npm run dev` in `console.testcabinet.ai/`) against a `kubectl port-forward`ed backend, so a UI edit needs no image rebuild.                                                                                                                                                                                                                                                                                                              |
 | `components/edge`          | The `tcab-cloudflared` Cloudflare Tunnel connector (`Deployment`, 2 replicas, `cloudflare/cloudflared` at a pinned version), its generated `tcab-cloudflared` `ConfigMap` routing the origin by path (`/api/`, `/artifacts/`, `/arena/`, `/` to the console) and the Grafana host to `tcab-lgtm`, and the `NetworkPolicy` admitting it to those services. Nests `components/web`. Defaults to prod's tunnel and hostnames; `overlays/staging` patches the `ConfigMap`. The tunnel credentials are the `tcab-cloudflared` `Secret` `keyvault-csi` syncs. See [Edge](../../apps/docs/src/content/docs/deployment/kubernetes/edge.md).                                                                                                                                                                                                               |
 
-`components/postgres` declares the backend's `tcab-backend-state` claim, 16Gi, the same
-in both overlays. It holds `/state`, the definition store and the ingest checkout.
-To grow it, raise the size in `components/postgres/deployment-backend.yaml` and
-deploy; see
-[growing the backend's claim](../../apps/docs/src/content/docs/deployment/kubernetes/overview.md#growing-the-backends-claim).
+`components/postgres` runs the backend as two replicas with a `PodDisruptionBudget`,
+each pod holding `/state`, the definition store and the ingest checkout, on an
+ephemeral volume of its own, 16Gi, the same in both overlays. To change the size,
+change it in `components/postgres/deployment-backend.yaml` and deploy: every pod the
+deploy starts has a new volume of that size.
 
 The service container images are built from [`../images/`](../images/) — every Rust
 service is a `--target` of the shared `services.Dockerfile` (`backend`). The repos
