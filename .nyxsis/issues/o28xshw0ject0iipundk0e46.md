@@ -7,10 +7,27 @@ number: 23
 title: Resolve the conflict landing NYX-8
 type: conflict
 priority: 0
-state: open
+state: done
 branch: issue/o7hwklyhcecnv0j6u9k4aavr
 created: 2026-10-26T22:58:47.003793867Z
-modified: 2026-10-26T22:58:47.003793867Z
+modified: 2026-10-26T23:00:16.270250133Z
+done: 2026-10-26T23:00:16.270250133Z
+outcome: |
+  Rebased `tool-audio-core`'s branch `issue/o7hwklyhcecnv0j6u9k4aavr` onto
+  `nightly` (0003f4cc9), replaying only the work past e1e0c21e9: the commit "ci:
+  take the kit and the CI images built at 6c195c0f2", now b23cdd0. Both conflicts
+  were the kit's pins. `.copier-answers.yml`'s `_commit` and
+  `azure-pipelines.yml`'s two CI image tags kept the branch's side, the kit at
+  9ecc82fe9 and the images at 6c195c0f2. Each is a descendant of the one `nightly`
+  held (35ac7aff7 and af509db60), so `nightly`'s intent is kept. The CLAUDE.md
+  change applied cleanly. The superrepo records the new submodule commit in
+  e2df5924d.
+
+  The submodule's `make gate` passes every gate but `cspell`. That gate fails with
+  cspell's usage message, an invocation error in the kit's gate, and it fails the
+  same way at `nightly`'s 0003f4cc9 untouched, so it is not caused by this change
+  and is left as it was. `nightly` lacks the master commits between it and
+  e1e0c21e9 (such as the contracts v0.2.4 pin). This landing does not carry them.
 ---
 
 The landing of NYX-8 stopped at a submodule's rebase, in the submodule
