@@ -163,7 +163,8 @@ them, so their restart is made safe by graceful termination alone.
 
 - The dispatcher holds no inbound connection, so its restart only pauses
   admission.
-- The arena's tournament registry is in-memory and per-pod.
+- The arena records every tournament through the backend and resumes the
+  unfinished ones on start.
 - The observability stack is outside the run path, and telemetry export is
   best effort.
 
@@ -182,7 +183,9 @@ Every service handles `SIGTERM` the same way:
 The grace is sized to the longest request the service answers. The artifacts
 and repos services take `300s` so a run-tree or bundle upload in progress
 completes on the terminating replica. The dispatcher spends its grace finishing
-the tick in progress, so a run it has claimed always receives its `Job`.
+the tick in progress, so a run it has claimed always receives its `Job`. The
+arena spends its grace finishing and recording the match each tournament is on
+(see [Shutdown](/components/arena/overview/#shutdown)).
 
 ## Identity
 

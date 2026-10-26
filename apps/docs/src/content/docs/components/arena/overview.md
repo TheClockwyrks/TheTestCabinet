@@ -25,6 +25,7 @@ tournament's live progress from it, while arena reads stay on the backend.
 | `POST /tournaments`            | Record a tournament and drive it in background   |
 | `GET /tournaments/{id}`        | Read a tournament's recorded status              |
 | `GET /tournaments/{id}/events` | Stream a tournament's live progress              |
+| `GET /readyz`                  | Readiness: `503` once the arena is shutting down |
 
 Every request reaches the arena through the [edge](/deployment/kubernetes/edge/)
 and carries an Access assertion, which the arena verifies as the backend does.
@@ -60,7 +61,9 @@ A tournament is durable from the moment the arena accepts it. `POST
 the backend with its test case, variant, participants and the full list of its
 pairings, each pairing a match with no result. The arena returns `202` only
 once that record is stored, so an accepted tournament survives any restart that
-follows.
+follows. A field naming one controller twice is refused with `400`. The routes
+the arena records through are the backend's
+[tournament routes](/components/backend/api/#tournaments).
 
 Each match is recorded as it completes. The arena stores the match's replay
 first and then records its summary, so a match with a recorded result always
@@ -68,11 +71,17 @@ has its replay stored. A match that ends in a load forfeit produces no replay
 and records its result alone. A match id is derived from its pairing, so
 recording a match again overwrites it with identical content.
 
-A tournament is complete once every pairing has a recorded result. The arena
-then records the standings and marks the tournament succeeded, which is the
-state the gallery reads. A tournament the gallery lists as succeeded therefore
-holds every replay its matches name. A tournament that cannot complete, such as
-one whose engine fails a match, is marked failed with its reason.
+A recorded tournament is `queued` until an arena holds a capacity permit for
+it and starts playing, when it becomes `running`. It is complete once every
+pairing has a recorded result. The arena then records the standings and marks
+the tournament succeeded, which is the state the gallery reads. A tournament the
+gallery lists as succeeded therefore holds every replay its matches name.
+
+A tournament that cannot complete is marked failed with its reason: one whose
+engine fails a match, or one with a participant the backend no longer resolves.
+A write the backend keeps refusing is retried with backoff for about a minute
+and then abandoned, leaving the tournament unfinished for the next arena start
+to resume.
 
 `GET /tournaments/{id}` reads the recorded tournament, so its status is the same
 from any arena process. `GET /tournaments/{id}/events` replays the recorded
@@ -89,11 +98,15 @@ restart never runs more matches at once than the cap allows.
 ### Shutdown
 
 On `SIGTERM` the arena stops accepting matches and tournaments, answering each
-with `503`. A tournament finishes the match it is on and records it when that
-match completes within the pod's termination grace period. A match still
-running when the grace period ends is abandoned without a recorded result, so
-the next arena plays it again from the start. Every match recorded before the
-signal is kept.
+with `503`, and its readiness probe fails. A tournament finishes the match it is
+on and records it when that match completes within the shutdown grace
+(`TCAB_ARENA_SHUTDOWN_GRACE_SECONDS`, default `50`), then stops without
+starting another. A match still running when the grace ends is abandoned
+without a recorded result, so the next arena plays it again from the start.
+Every match recorded before the signal is kept, and every event stream ends.
+
+The grace is shorter than the pod's `terminationGracePeriodSeconds` (`60`), so
+the arena exits on its own before the kubelet kills it.
 
 ## Capacity guard
 

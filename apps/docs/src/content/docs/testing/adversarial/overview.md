@@ -70,8 +70,9 @@ action loses, and the match continues.
 In a deployment, both quick matches and whole tournaments run on the dedicated
 [arena service](/components/arena/overview/), which keeps this CPU-bound work off
 the single-replica control-plane backend. The arena fetches each controller's
-wasm from the backend, runs the field, and persists the finished tournament and
-its per-match replays back to the backend, which serves arena reads. The console
+wasm from the backend, runs the field, and records the tournament and each
+match's replay through the backend as it plays, so the backend serves arena
+reads. The console
 reaches the arena at `/arena/` on its own origin.
 
 ## Lockstep simulation and replays

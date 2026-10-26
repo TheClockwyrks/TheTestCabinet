@@ -1346,6 +1346,91 @@ plan's [`halt`](#halting-a-plan) or a ladder's
 `cancel-active` and `cancel-all` discard work in progress, so a client confirms
 first. `cancel-waiting` needs no confirmation.
 
+## Tournaments
+
+The [arena](/components/arena/overview/) records every tournament it accepts
+here and each match as it completes, so a tournament outlives the arena process
+that runs it (see [Durable
+tournaments](/components/arena/overview/#durable-tournaments)). Every write and
+the unfinished listing take the service token; the reads are open.
+
+A tournament is in one of four states:
+
+| State       | Meaning                                                    |
+| ----------- | ---------------------------------------------------------- |
+| `queued`    | Recorded, with no arena playing it yet                     |
+| `running`   | An arena is playing its pairings                           |
+| `succeeded` | Every pairing has a result, and its standings are recorded |
+| `failed`    | It cannot complete; `detail` carries the reason            |
+
+A recorded tournament is answered as:
+
+```jsonc
+{
+  "record": {/* a TournamentRecord */},
+  "state": "queued | running | succeeded | failed",
+  "detail": "string", // present when failed
+  "pairings": [{ "matchId": "string", "redId": "string", "blueId": "string" }],
+  "publishedAt": "RFC 3339",
+}
+```
+
+`pairings` lists every match of the field in the order it is played. The
+record's `matches` holds the summary of each pairing with a recorded result, in
+that order, and its `standings` are empty until the tournament succeeds.
+`publishedAt` is when the tournament was recorded, and once it succeeds, when it
+succeeded.
+
+### `PUT /tournaments/{id}`
+
+Record a pending tournament, in state `queued`: its test case, version,
+variant, participants and pairings, with no result. Answers `201` once stored. A
+repeat with identical content answers `200` and changes nothing, and a
+different tournament under a recorded id is a `409`.
+
+### `PUT /tournaments/{id}/matches/{matchId}`
+
+Record one pairing's `MatchSummary`. A tournament still `queued` becomes
+`running`. Recording a match again overwrites it. Answers `204`; an unknown
+tournament or pairing is a `404`, a summary naming another pairing is a `400`,
+and a terminal tournament is a `409` unless the summary is the one it holds.
+
+### `POST /tournaments/{id}/state`
+
+Move a tournament to `running`, `succeeded` with its standings, or `failed`
+with its reason:
+
+```jsonc
+{ "state": "running" }
+{ "state": "succeeded", "standings": [/* Standing */] }
+{ "state": "failed", "detail": "string" }
+```
+
+`succeeded` is refused with `409` while any pairing lacks a result. A terminal
+tournament takes only a repeat of its own state, and any other move is a `409`.
+Answers `204`.
+
+### `GET /tournaments`
+
+The succeeded tournaments, newest `publishedAt` first, paged by `limit`
+(default `50`, at most `200`) and the `before` cursor. Answers `{ "tournaments":
+[...], "nextBefore": "string | null" }`.
+
+### `GET /tournaments/unfinished`
+
+Every `queued` and `running` tournament, oldest first, as
+`{ "tournaments": [...] }`. The arena resumes each of them on start.
+
+### `GET /tournaments/{id}`
+
+One recorded tournament, in any state.
+
+### Match replays
+
+`POST /tournaments/{id}/matches/{matchId}/replay.json` stores a match's replay
+through the artifacts service and answers `204` once it is stored, and
+`GET /tournaments/{id}/matches/{matchId}/replay.json` reads it back.
+
 ## Model catalog
 
 The model catalog is the list of subjects a run can be attributed to (see
