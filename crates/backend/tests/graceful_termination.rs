@@ -45,6 +45,20 @@ impl Backend {
     /// Start the binary on a free port, wait until it answers, and fill its store
     /// from the fixture catalog so it reports ready.
     fn start() -> Self {
+        let mut backend = Self::spawn();
+        backend.wait_until("it answers /healthz", |b| {
+            b.try_get("/healthz")
+                .is_some_and(|(status, _)| status == 200)
+        });
+        let (status, body) = backend.ingest_all_at_once();
+        assert_eq!(status, 200, "the ingest failed: {body}");
+        let (status, body) = backend.get("/readyz");
+        assert_eq!(status, 200, "the filled backend is not ready: {body}");
+        backend
+    }
+
+    /// Start the binary on a free port without waiting for it.
+    fn spawn() -> Self {
         let dir = tempfile::tempdir().unwrap();
         let checkout = dir.path().join("checkout");
         let suites = dir.path().join("suites");
@@ -87,21 +101,12 @@ impl Backend {
             .stderr(output)
             .spawn()
             .unwrap();
-        let mut backend = Self {
+        Self {
             child,
             addr,
             log,
             _dir: dir,
-        };
-        backend.wait_until("it answers /healthz", |b| {
-            b.try_get("/healthz")
-                .is_some_and(|(status, _)| status == 200)
-        });
-        let (status, body) = backend.ingest_all_at_once();
-        assert_eq!(status, 200, "the ingest failed: {body}");
-        let (status, body) = backend.get("/readyz");
-        assert_eq!(status, 200, "the filled backend is not ready: {body}");
-        backend
+        }
     }
 
     /// Deliver `signal` (a `kill` signal name) to the process.
@@ -294,4 +299,18 @@ fn an_interrupt_drains_without_the_delay() {
         "{}",
         backend.log()
     );
+}
+
+#[test]
+fn sigterm_while_starting_exits_cleanly() {
+    // The handlers are installed before the start, which the log records; a
+    // `SIGTERM` from then on, during the start or after it, is a request to stop
+    // rather than the signal's default action (exit status 143).
+    let mut backend = Backend::spawn();
+    backend.wait_until("the stop handlers are installed", |b| {
+        b.log().contains("listening for SIGTERM and interrupts")
+    });
+    backend.signal("TERM");
+    let exit = backend.wait_for_exit();
+    assert_eq!(exit.code(), Some(0), "{}", backend.log());
 }
