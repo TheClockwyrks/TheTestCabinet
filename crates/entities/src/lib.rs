@@ -50,3 +50,4 @@ pub mod run_controller;
 pub mod run_link;
 pub mod snapshot_state;
 pub mod tournament;
+pub mod tournament_match;

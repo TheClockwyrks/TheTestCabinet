@@ -78,10 +78,11 @@ the tournament succeeded, which is the state the gallery reads. A tournament the
 gallery lists as succeeded therefore holds every replay its matches name.
 
 A tournament that cannot complete is marked failed with its reason: one whose
-engine fails a match, or one with a participant the backend no longer resolves.
-A write the backend keeps refusing is retried with backoff for about a minute
-and then abandoned, leaving the tournament unfinished for the next arena start
-to resume.
+engine fails a match, or one whose test case or participant no longer resolves:
+the arena refuses the participant, or the backend answers `404` for it. A call
+the backend keeps failing or leaves unanswered for a minute is retried with
+backoff for about a minute and then abandoned, leaving the tournament
+unfinished for the next arena start to resume.
 
 `GET /tournaments/{id}` reads the recorded tournament, so its status is the same
 from any arena process. `GET /tournaments/{id}/events` replays the recorded
@@ -104,6 +105,8 @@ on and records it when that match completes within the shutdown grace
 starting another. A match still running when the grace ends is abandoned
 without a recorded result, so the next arena plays it again from the start.
 Every match recorded before the signal is kept, and every event stream ends.
+The arena keeps its listener open until the last tournament stops, so new work
+meets the `503` rather than a refused connection.
 
 The grace is shorter than the pod's `terminationGracePeriodSeconds` (`60`), so
 the arena exits on its own before the kubelet kills it.

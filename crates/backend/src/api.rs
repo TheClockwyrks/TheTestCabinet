@@ -439,15 +439,22 @@ fn routes() -> Router<AppState> {
         // raw harness output is never published). Backs the run-detail Events tab
         // for the web console reading published runs.
         .route("/runs/{id}/events", get(runs::events))
-        // Adversarial tournaments: a persisted field's standings + per-match
-        // summaries (live-only — not folded into the public-site snapshot), with
+        // Adversarial tournaments, recorded by the arena from acceptance: the field
+        // and its pairings, each match's summary as it completes, and the state it
+        // moves through (live-only — not folded into the public-site snapshot), with
         // each match's replay written through and read back from the artifact
         // service, for browser playback.
+        .route("/tournaments", get(tournaments::list))
+        .route("/tournaments/unfinished", get(tournaments::unfinished))
         .route(
-            "/tournaments",
-            post(tournaments::publish).get(tournaments::list),
+            "/tournaments/{id}",
+            get(tournaments::get).put(tournaments::record_pending),
         )
-        .route("/tournaments/{id}", get(tournaments::get))
+        .route(
+            "/tournaments/{id}/matches/{matchId}",
+            put(tournaments::record_match),
+        )
+        .route("/tournaments/{id}/state", post(tournaments::transition))
         .route(
             "/tournaments/{id}/matches/{matchId}/replay.json",
             get(tournaments::match_replay)

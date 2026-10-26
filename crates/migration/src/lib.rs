@@ -99,6 +99,7 @@ mod m20261019_000065_add_publish_job_lease;
 mod m20261023_000066_create_run_controller;
 mod m20261023_000067_add_run_link_code;
 mod m20261026_000068_create_relay_tables;
+mod m20261026_000069_record_tournament_progress;
 
 pub struct Migrator;
 
@@ -185,6 +186,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20261023_000066_create_run_controller::Migration),
             Box::new(m20261023_000067_add_run_link_code::Migration),
             Box::new(m20261026_000068_create_relay_tables::Migration),
+            Box::new(m20261026_000069_record_tournament_progress::Migration),
         ]
     }
 }

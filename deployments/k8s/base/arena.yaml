@@ -4,9 +4,10 @@
 #
 # This is a DATA-plane peer, deliberately separate from the backend: the console
 # POSTs a match/tournament here and streams live tournament progress from here; the
-# service fetches every controller input from the backend and persists finished
-# tournaments + replays back to it over HTTP. It is STATELESS — no database, no PVC —
-# so it is a plain Deployment, NOT a StatefulSet. It binds 0.0.0.0:8791 and is reached
+# service fetches every controller input from the backend and records each
+# tournament, its matches and their replays through it over HTTP as it plays, and
+# resumes the unfinished ones on start. It is STATELESS — no database, no PVC — so
+# it is a plain Deployment, NOT a StatefulSet. It binds 0.0.0.0:8791 and is reached
 # over the cluster network, and by the console through the edge at `/arena/` of the
 # environment's origin, where it verifies the Access assertion (TCAB_ACCESS_TEAM_DOMAIN
 # / TCAB_ACCESS_AUDIENCE, set by the staging and prod overlays' patch-access.yaml;
@@ -42,11 +43,15 @@ metadata:
   name: tcab-arena
   namespace: tcab-prod
 spec:
-  # MUST stay 1: the in-flight tournament registry and its live NDJSON progress
-  # channel are in-memory and per-pod, so a tournament submitted to one replica would
-  # be invisible to another (status/events 404). Scale the cap (TCAB_ARENA_MAX_CONCURRENT)
-  # and the pod's CPU, not the replica count.
+  # MUST stay 1: a tournament's live NDJSON progress channel is in-memory and
+  # per-pod, and one arena owns resuming every unfinished tournament the backend
+  # records, so two replicas would drive one tournament twice. Scale the cap
+  # (TCAB_ARENA_MAX_CONCURRENT) and the pod's CPU, not the replica count.
   replicas: 1
+  # The old pod stops (recording the match each tournament is on) before the new
+  # one starts and resumes them, so no tournament is ever driven by two pods.
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       app.kubernetes.io/name: tcab-arena
@@ -57,19 +62,42 @@ spec:
         app.kubernetes.io/part-of: test-cabinet
     spec:
       serviceAccountName: tcab-arena # no API access — its own identity only
+      # On SIGTERM the arena finishes and records the match each tournament is on
+      # within TCAB_ARENA_SHUTDOWN_GRACE_SECONDS (50), then exits; this leaves the
+      # preStop hook's five seconds and a margin before the kubelet kills it.
+      terminationGracePeriodSeconds: 60
       containers:
         - name: arena
           image: REPLACE_REGISTRY/tcab-arena:latest # the staging and prod overlays name testcabinet.azurecr.io/microservice-arena
           ports:
             - containerPort: 8791
+          # Fails once the arena is shutting down, so its endpoint leaves the
+          # Service; liveness stays on /healthz.
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: 8791
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8791
+            periodSeconds: 10
+          lifecycle:
+            # Hold the pod while its endpoint's removal from the Service
+            # propagates, so no new request is routed to a stopping replica.
+            preStop:
+              sleep:
+                seconds: 5
           env:
             - name: TCAB_ARENA_BIND
               value: "0.0.0.0:8791"
-            # The backend it fetches controller inputs from and persists results to.
+            # The backend it fetches controller inputs from and records tournaments
+            # through.
             - name: TCAB_BACKEND_URL
               value: "http://tcab-backend:8787"
             # The shared service token the arena presents on every backend call: every
-            # backend read needs an identity, and persisting a tournament takes the
+            # backend read needs an identity, and recording a tournament takes the
             # service token. The same secret the backend verifies it against; without
             # it the backend refuses every call the arena makes.
             - name: TCAB_BACKEND_SERVICE_TOKEN
@@ -81,6 +109,10 @@ spec:
             # before the service rejects with 503. Tune with the CPU limit below.
             - name: TCAB_ARENA_MAX_CONCURRENT
               value: "2"
+            # How long after SIGTERM the arena waits for each tournament's match in
+            # progress to finish and be recorded; below terminationGracePeriodSeconds.
+            - name: TCAB_ARENA_SHUTDOWN_GRACE_SECONDS
+              value: "50"
             - name: TCAB_ENV
               value: "prod"
           resources:

@@ -1,10 +1,11 @@
-//! Publishing and reading adversarial tournaments, and serving per-match replays.
+//! Recording and reading adversarial tournaments, and serving per-match replays.
 //!
-//! A tournament is a verbatim record in the database, and each of its match replays
-//! is kept on the artifact service's private container, written and read back through
-//! [`ArtifactsClient`] (the backend overview's "Durable state"). Tournaments are
-//! **live-only**: they are not folded into the public-site snapshot, and they carry
-//! no review gate.
+//! The arena records a tournament from the moment it accepts it: the field and its
+//! pairings, each match as it completes, and the state it moves through (the API's
+//! "Tournaments"). Each match replay is kept on the artifact service's private
+//! container, written and read back through [`ArtifactsClient`] (the backend
+//! overview's "Durable state"). Tournaments are **live-only**: they are not folded
+//! into the public-site snapshot, and they carry no review gate.
 
 use axum::Json;
 use axum::extract::{Path, Query, State};
@@ -14,11 +15,13 @@ use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
 
-use test_cabinet_contracts::match_play::TournamentRecord;
+use test_cabinet_contracts::match_play::{
+    MatchSummary, PendingTournament, RecordedTournament, TournamentTransition,
+};
 
 use crate::artifacts::{ArtifactsClient, ArtifactsError};
 use crate::auth::ServiceCaller;
-use crate::db::StoredTournament;
+use crate::db::PendingRecorded;
 use crate::error::ApiError;
 
 use super::AppState;
@@ -27,43 +30,91 @@ use super::AppState;
 const DEFAULT_LIMIT: usize = 50;
 const MAX_LIMIT: usize = 200;
 
-/// `POST /tournaments` — publish a tournament record. Idempotent on `record.id`
-/// (201 newly published, 200 re-publish). The per-match replays are uploaded
-/// separately to `POST /tournaments/{id}/matches/{matchId}/replay.json`.
-#[tracing::instrument(
-    name = "tournaments.publish",
-    skip(state, record),
-    fields(tournament.id = %record.id, case.slug = %record.test_case_slug),
-    err(Debug),
-)]
-pub async fn publish(
-    State(state): State<AppState>,
-    _caller: ServiceCaller,
-    Json(record): Json<TournamentRecord>,
-) -> Result<Response, ApiError> {
-    let published_at = OffsetDateTime::now_utc()
+/// Now, as RFC 3339.
+fn now() -> Result<String, ApiError> {
+    OffsetDateTime::now_utc()
         .format(&Rfc3339)
-        .map_err(|e| ApiError::internal(format!("formatting published_at: {e}")))?;
-
-    let outcome = state
-        .db
-        .publish_tournament(&record, &published_at)
-        .await
-        .map_err(ApiError::from)?;
-
-    let body = PublishResponse {
-        id: record.id.clone(),
-        newly_published: outcome.newly_published,
-    };
-    let status = if outcome.newly_published {
-        StatusCode::CREATED
-    } else {
-        StatusCode::OK
-    };
-    Ok((status, Json(body)).into_response())
+        .map_err(|e| ApiError::internal(format!("formatting the time: {e}")))
 }
 
-/// `GET /tournaments?limit=&before=` — list tournaments, newest first, paginated.
+/// `PUT /tournaments/{id}` — record a pending tournament in state `queued`: `201`
+/// newly recorded, `200` for a repeat with identical content, `409` for a
+/// different tournament under a recorded id.
+#[tracing::instrument(
+    name = "tournaments.record_pending",
+    skip(state, pending),
+    fields(tournament.id = %id, case.slug = %pending.test_case_slug),
+    err(Debug),
+)]
+pub async fn record_pending(
+    State(state): State<AppState>,
+    _caller: ServiceCaller,
+    Path(id): Path<String>,
+    Json(pending): Json<PendingTournament>,
+) -> Result<Response, ApiError> {
+    if pending.id != id {
+        return Err(ApiError::bad_request(format!(
+            "the body records tournament `{}`, not `{id}`",
+            pending.id
+        )));
+    }
+    let recorded = state
+        .db
+        .record_pending_tournament(&pending, &now()?)
+        .await
+        .map_err(ApiError::from)?;
+    let status = match recorded {
+        PendingRecorded::Recorded => StatusCode::CREATED,
+        PendingRecorded::Unchanged => StatusCode::OK,
+    };
+    Ok(status.into_response())
+}
+
+/// `PUT /tournaments/{id}/matches/{matchId}` — record one pairing's result.
+#[tracing::instrument(
+    name = "tournaments.record_match",
+    skip(state, summary),
+    fields(tournament.id = %id, match.id = %match_id),
+    err(Debug),
+)]
+pub async fn record_match(
+    State(state): State<AppState>,
+    _caller: ServiceCaller,
+    Path((id, match_id)): Path<(String, String)>,
+    Json(summary): Json<MatchSummary>,
+) -> Result<StatusCode, ApiError> {
+    state
+        .db
+        .record_tournament_match(&id, &match_id, &summary)
+        .await
+        .map_err(ApiError::from)?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// `POST /tournaments/{id}/state` — move a tournament to `running`, `succeeded`
+/// with its standings, or `failed` with its reason.
+#[tracing::instrument(
+    name = "tournaments.transition",
+    skip(state, transition),
+    fields(tournament.id = %id, tournament.state = %transition.state().as_str()),
+    err(Debug),
+)]
+pub async fn transition(
+    State(state): State<AppState>,
+    _caller: ServiceCaller,
+    Path(id): Path<String>,
+    Json(transition): Json<TournamentTransition>,
+) -> Result<StatusCode, ApiError> {
+    state
+        .db
+        .transition_tournament(&id, &transition, &now()?)
+        .await
+        .map_err(ApiError::from)?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// `GET /tournaments?limit=&before=` — the succeeded tournaments, newest first,
+/// paginated.
 pub async fn list(
     State(state): State<AppState>,
     Query(params): Query<ListParams>,
@@ -75,23 +126,37 @@ pub async fn list(
         .await
         .map_err(ApiError::from)?;
     Ok(Json(ListResponse {
-        tournaments: tournaments.iter().map(tournament_out).collect(),
+        tournaments,
         next_before,
     }))
 }
 
-/// `GET /tournaments/{id}` — one tournament.
+/// `GET /tournaments/unfinished` — every `queued` and `running` tournament,
+/// oldest first, for the arena to resume.
+pub async fn unfinished(
+    State(state): State<AppState>,
+    _caller: ServiceCaller,
+) -> Result<Json<UnfinishedResponse>, ApiError> {
+    let tournaments = state
+        .db
+        .unfinished_tournaments()
+        .await
+        .map_err(ApiError::from)?;
+    Ok(Json(UnfinishedResponse { tournaments }))
+}
+
+/// `GET /tournaments/{id}` — one recorded tournament, in any state.
 pub async fn get(
     State(state): State<AppState>,
     Path(id): Path<String>,
-) -> Result<Json<TournamentOut>, ApiError> {
+) -> Result<Json<RecordedTournament>, ApiError> {
     let tournament = state
         .db
         .get_tournament(&id)
         .await
         .map_err(ApiError::from)?
         .ok_or_else(|| ApiError::not_found(format!("tournament `{id}` not found")))?;
-    Ok(Json(tournament_out(&tournament)))
+    Ok(Json(tournament))
 }
 
 /// `GET /tournaments/{id}/matches/{matchId}/replay.json` — one match's replay, read
@@ -121,8 +186,8 @@ pub async fn match_replay(
 }
 
 /// `POST /tournaments/{id}/matches/{matchId}/replay.json` — store one match's
-/// replay, uploaded by the arena alongside the tournament record, through the
-/// artifact service. The service answers only once the replay is stored, so a
+/// replay, uploaded by the arena before it records the match's summary, through
+/// the artifact service. The service answers only once the replay is stored, so a
 /// `204` means it is durable.
 pub async fn put_match_replay(
     State(state): State<AppState>,
@@ -170,22 +235,7 @@ fn replay_error(err: ArtifactsError) -> ApiError {
     }
 }
 
-/// Map a stored tournament to its wire shape (`record` + `publishedAt`).
-fn tournament_out(tournament: &StoredTournament) -> TournamentOut {
-    TournamentOut {
-        record: tournament.record.clone(),
-        published_at: tournament.published_at.clone(),
-    }
-}
-
 // --- Wire shapes ------------------------------------------------------------
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-struct PublishResponse {
-    id: String,
-    newly_published: bool,
-}
 
 #[derive(Deserialize)]
 pub struct ListParams {
@@ -196,13 +246,11 @@ pub struct ListParams {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ListResponse {
-    tournaments: Vec<TournamentOut>,
+    tournaments: Vec<RecordedTournament>,
     next_before: Option<String>,
 }
 
 #[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct TournamentOut {
-    record: TournamentRecord,
-    published_at: String,
+pub struct UnfinishedResponse {
+    tournaments: Vec<RecordedTournament>,
 }

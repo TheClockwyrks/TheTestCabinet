@@ -674,3 +674,184 @@ async fn open(router: &axum::Router, uri: &str) -> axum::body::BodyDataStream {
     assert_eq!(response.status(), axum::http::StatusCode::OK, "{uri}");
     response.into_body().into_data_stream()
 }
+
+/// [`request`] with a JSON body, as the arena sends its tournament writes.
+async fn send_json(
+    router: &axum::Router,
+    method: &str,
+    uri: &str,
+    bearer: Option<&str>,
+    body: Vec<u8>,
+) -> (axum::http::StatusCode, Vec<u8>) {
+    use tower::ServiceExt;
+    let mut request = axum::http::Request::builder()
+        .method(method)
+        .uri(uri)
+        .header("content-type", "application/json");
+    request = match bearer {
+        Some(token) => request.header("authorization", format!("Bearer {token}")),
+        None => request.header(crate::auth::LOCAL_IDENTITY_HEADER, "dev@local"),
+    };
+    let response = router
+        .clone()
+        .oneshot(request.body(axum::body::Body::from(body)).unwrap())
+        .await
+        .unwrap();
+    let status = response.status();
+    let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    (status, bytes.to_vec())
+}
+
+#[tokio::test]
+async fn the_arena_records_a_tournament_through_the_routes_and_the_gallery_lists_it_once_succeeded()
+{
+    // nextest runs each test in its own process, so this environment is this test's alone.
+    let dir = tempfile::tempdir().unwrap();
+    let url = format!(
+        "sqlite://{}?mode=rwc",
+        dir.path().join("backend.sqlite").display()
+    );
+    const TOKEN: &str = "svc";
+    unsafe {
+        std::env::set_var("TCAB_BACKEND_CHECKOUT", dir.path());
+        std::env::set_var("TCAB_BACKEND_STORE", dir.path().join("store"));
+        std::env::set_var("TCAB_BACKEND_DATABASE_URL", &url);
+        std::env::set_var("TCAB_BACKEND_SERVICE_TOKEN", TOKEN);
+    }
+    let prices = crate::pricing::OpenRouterPrices::with_endpoint("http://127.0.0.1:0/models");
+    let backend = build_with_prices(Config::from_env().unwrap(), prices, NO_GATEWAY)
+        .await
+        .unwrap();
+    let router = &backend.router;
+    let json = |value: serde_json::Value| serde_json::to_vec(&value).unwrap();
+    let ids = ["a", "b", "c"];
+    let pairings: Vec<(&str, &str)> = vec![("a", "b"), ("a", "c"), ("b", "c")];
+    let pending = serde_json::json!({
+        "id": "t1",
+        "createdAt": "2026-10-26T00:00:00Z",
+        "testCaseSlug": "foray",
+        "testCaseVersion": "v1.0.0",
+        "variant": "base",
+        "participants": ids.iter().map(|id| serde_json::json!({ "id": id, "kind": "baseline" })).collect::<Vec<_>>(),
+        "pairings": pairings.iter().map(|(red, blue)| serde_json::json!({
+            "matchId": format!("{red}__vs__{blue}"), "redId": red, "blueId": blue,
+        })).collect::<Vec<_>>(),
+    });
+    let summary = |red: &str, blue: &str| {
+        serde_json::json!({
+            "matchId": format!("{red}__vs__{blue}"),
+            "redId": red,
+            "blueId": blue,
+            "winner": red,
+            "winType": "swept",
+            "outcomeForRed": "win",
+            "redScore": 3, "blueScore": 0, "ticks": 9,
+            "redKills": 0, "blueKills": 0, "redFuel": 1, "blueFuel": 2,
+            "replayKey": format!("{red}__vs__{blue}"),
+        })
+    };
+    use axum::http::StatusCode;
+
+    // Recording takes the service token; a person is refused.
+    let (status, _) = send_json(
+        router,
+        "PUT",
+        "/tournaments/t1",
+        None,
+        json(pending.clone()),
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    let put = |body: Vec<u8>| send_json(router, "PUT", "/tournaments/t1", Some(TOKEN), body);
+    assert_eq!(put(json(pending.clone())).await.0, StatusCode::CREATED);
+    assert_eq!(put(json(pending.clone())).await.0, StatusCode::OK);
+
+    let (status, body) = send_json(
+        router,
+        "GET",
+        "/tournaments/unfinished",
+        Some(TOKEN),
+        Vec::new(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let unfinished: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(unfinished["tournaments"][0]["record"]["id"], "t1");
+    assert_eq!(unfinished["tournaments"][0]["state"], "queued");
+    let (status, _) = send_json(router, "GET", "/tournaments/unfinished", None, Vec::new()).await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+
+    let (status, _) = send_json(
+        router,
+        "PUT",
+        "/tournaments/t1/matches/a__vs__b",
+        Some(TOKEN),
+        json(summary("a", "b")),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    let (status, body) = send_json(router, "GET", "/tournaments/t1", None, Vec::new()).await;
+    assert_eq!(status, StatusCode::OK);
+    let read: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(read["state"], "running");
+    assert_eq!(read["record"]["matches"].as_array().unwrap().len(), 1);
+    assert_eq!(read["pairings"].as_array().unwrap().len(), 3);
+
+    let succeed = json(serde_json::json!({ "state": "succeeded", "standings": [] }));
+    let (status, _) = send_json(
+        router,
+        "POST",
+        "/tournaments/t1/state",
+        Some(TOKEN),
+        succeed.clone(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CONFLICT, "pairings are unplayed");
+    let (status, body) = send_json(router, "GET", "/tournaments", None, Vec::new()).await;
+    assert_eq!(status, StatusCode::OK);
+    let listed: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert!(
+        listed["tournaments"].as_array().unwrap().is_empty(),
+        "{listed}"
+    );
+
+    for (red, blue) in &pairings[1..] {
+        let (status, _) = send_json(
+            router,
+            "PUT",
+            &format!("/tournaments/t1/matches/{red}__vs__{blue}"),
+            Some(TOKEN),
+            json(summary(red, blue)),
+        )
+        .await;
+        assert_eq!(status, StatusCode::NO_CONTENT);
+    }
+    let (status, _) = send_json(
+        router,
+        "POST",
+        "/tournaments/t1/state",
+        Some(TOKEN),
+        succeed,
+    )
+    .await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    let (_, body) = send_json(router, "GET", "/tournaments", None, Vec::new()).await;
+    let listed: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(listed["tournaments"][0]["record"]["id"], "t1");
+    assert_eq!(listed["tournaments"][0]["state"], "succeeded");
+    let (_, body) = send_json(
+        router,
+        "GET",
+        "/tournaments/unfinished",
+        Some(TOKEN),
+        Vec::new(),
+    )
+    .await;
+    let unfinished: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert!(unfinished["tournaments"].as_array().unwrap().is_empty());
+    let (status, _) = send_json(router, "GET", "/tournaments/nope", None, Vec::new()).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    drop(backend);
+}

@@ -364,7 +364,10 @@ async fn automation_routes_refuse_a_person_and_take_the_service_token() {
     for (method, path) in [
         ("POST", "/snapshot/refresh"),
         ("POST", "/ingest"),
-        ("POST", "/tournaments"),
+        ("PUT", "/tournaments/t1"),
+        ("PUT", "/tournaments/t1/matches/m1"),
+        ("POST", "/tournaments/t1/state"),
+        ("GET", "/tournaments/unfinished"),
         ("POST", "/tournaments/t1/matches/m1/replay.json"),
         ("PUT", "/suites/s/versions/v1.0.0/reference-builds/none"),
     ] {
