@@ -7,10 +7,33 @@ number: 22
 title: Resolve the conflict landing NYX-8
 type: conflict
 priority: 0
-state: open
+state: done
 branch: issue/o7hwklyhcecnv0j6u9k4aavr
 created: 2026-10-26T22:54:04.629416908Z
-modified: 2026-10-26T22:54:04.629416908Z
+modified: 2026-10-26T22:55:21.65634024Z
+done: 2026-10-26T22:55:21.65634024Z
+outcome: |
+  Rebased `tool-dc`'s branch `issue/o7hwklyhcecnv0j6u9k4aavr` onto
+  `origin/nightly` (416560430), replaying only its own commit past 85f195144 ("ci:
+  take the kit and the CI images built at 6c195c0f2"), now `aae030f`-lineage on
+  top of nightly. Both conflicts were the branch's newer values over nightly's
+  older ones, so they were resolved to the branch's: `.copier-answers.yml` takes
+  the kit at `v0.6.3-5579-g9ecc82fe9` (02159d3c2 is its ancestor), and
+  `azure-pipelines.yml`'s two CI image pins take `6c195c0f2`, the superrepo's
+  `ciImageTag` (af509db60 is its ancestor). Every other line of
+  `azure-pipelines.yml` is nightly's. Master's npm-feed steps, which nightly does
+  not carry, were not brought in. The rebased commit's diff over nightly is the
+  same as the original commit's diff over its base. The superrepo records the new
+  submodule commit in "chore(submodules): move tool-dc onto its branch rebased
+  onto nightly".
+
+  Gates in `tool-dc`: ci-tests, dependency-edges, no-nul-bytes, python-lint and
+  shell-tests pass. The Rust gates were not run because no Rust code changed. The
+  submodule has no npm workspace installed, so its prettier, markdownlint and
+  cspell gates could not run there. Running the superrepo's prettier and
+  markdownlint on the three changed files passed. cspell's configuration excluded
+  the files, so it checked nothing. Nothing is left: Nyxsis can land the branch
+  again.
 ---
 
 The landing of NYX-8 stopped at a submodule's rebase, in the submodule
