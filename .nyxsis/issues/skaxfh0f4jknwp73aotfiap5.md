@@ -7,10 +7,30 @@ number: 19
 title: Resolve the conflict landing NYX-8
 type: conflict
 priority: 0
-state: open
+state: done
 branch: issue/o7hwklyhcecnv0j6u9k4aavr
 created: 2026-10-26T22:36:48.666311616Z
-modified: 2026-10-26T22:36:48.666311616Z
+modified: 2026-10-26T22:38:24.94854328Z
+done: 2026-10-26T22:38:24.94854328Z
+outcome: |
+  Rebased `tool-music`'s branch `issue/o7hwklyhcecnv0j6u9k4aavr` onto `nightly`
+  (412a48f), replaying its one commit past d451f67 as f427840 "ci: take the kit
+  and the CI images built at 6c195c0f2". Both conflicts took the branch's values:
+  `.copier-answers.yml` now records the kit at `v0.6.3-5579-g9ecc82fe9`, and
+  `azure-pipelines.yml` pins both CI images at
+  `6c195c0f290db7a98daa4bc811ae915cfcfd889c`. The CLAUDE.md line about filing
+  issues through the superrepo's issues server applied cleanly.
+  `azure-pipelines.yml` is otherwise nightly's own file. Master's npm-feed steps
+  and comment, which reached the file from master's commits 90da3c9 and 06547cc
+  and not from this branch, were left out on purpose. Those commits also change
+  `scripts/ci/npm-feed.sh` and other kit files, and they reach `nightly` through
+  master's own flow. The superrepo records the new submodule commit in 11b5160d7.
+
+  Gates run in `tool-music`: build-context, ci-tests, dependency-edges,
+  no-nul-bytes, python-lint, shell-tests, format and markdownlint pass. cspell
+  fails with a usage error from the cspell CLI. It fails the same way at nightly's
+  own commit 412a48f, so this change did not cause it, and it is left as is. The
+  Rust gates were not run because the change touches no Rust.
 ---
 
 The landing of NYX-8 stopped at a submodule's rebase, in the submodule
