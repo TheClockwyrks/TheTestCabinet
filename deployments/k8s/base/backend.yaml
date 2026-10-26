@@ -35,6 +35,9 @@ spec:
         app.kubernetes.io/name: tcab-backend
         app.kubernetes.io/part-of: test-cabinet
     spec:
+      # Sized to the longest request the backend answers; the console's event
+      # streams are closed at SIGTERM, so the client reconnects when it is back.
+      terminationGracePeriodSeconds: 60
       containers:
         - name: backend
           image: REPLACE_REGISTRY/tcab-backend:latest # the local overlay runs it as built; the Azure overlays use the postgres component
@@ -131,6 +134,12 @@ spec:
               port: 8787
             initialDelaySeconds: 15
             periodSeconds: 20
+          lifecycle:
+            # Hold the pod while its endpoint's removal from the Service
+            # propagates, so no new request is routed to a stopping backend.
+            preStop:
+              sleep:
+                seconds: 5
   volumeClaimTemplates:
     - metadata:
         name: state

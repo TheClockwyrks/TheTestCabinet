@@ -49,7 +49,8 @@ spec:
   # (TCAB_ARENA_MAX_CONCURRENT) and the pod's CPU, not the replica count.
   replicas: 1
   # The old pod stops (recording the match each tournament is on) before the new
-  # one starts and resumes them, so no tournament is ever driven by two pods.
+  # one starts and resumes them, so no tournament is ever driven by two pods. It
+  # carries no budget (One replica, in deployment/kubernetes/control-plane.md).
   strategy:
     type: Recreate
   selector:
