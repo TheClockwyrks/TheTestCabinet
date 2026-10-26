@@ -16,9 +16,16 @@
 //! it calls the artifact service once per moved match replay, and a start held off
 //! its liveness probe for that long would be killed mid-move. It holds only
 //! readiness, and only until it finishes.
+//!
+//! A backend told to stop drains: it fails readiness at once, so its endpoint
+//! leaves the Service, and ends every long-lived stream it serves, so each client
+//! reconnects to a ready replica, while the server finishes the requests in flight
+//! (the control plane's "Graceful termination").
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+
+use tokio::sync::watch;
 
 /// A monotonic latch: whether the definition store has been populated at least
 /// once during this process's lifetime.
@@ -33,7 +40,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 /// which swaps each version into place atomically, so resolution keeps working
 /// throughout one — there is no moment a re-ingest makes the backend unservable.
 /// Dropping out of readiness for the duration would therefore buy nothing and cost
-/// a great deal: the backend runs at `replicas: 1`, so an unready pod empties its
+/// a great deal: a SQLite backend runs one replica, so an unready pod empties its
 /// Service of endpoints and every caller fails outright, which is strictly worse
 /// than the per-case 404 it would replace. Once populated, stay ready.
 #[derive(Clone, Debug)]
@@ -41,6 +48,8 @@ pub struct Readiness {
     populated: Arc<AtomicBool>,
     /// Set while the start's move of an earlier release's state is running.
     moving: Arc<AtomicBool>,
+    /// Set once the backend was told to stop; never cleared.
+    draining: Arc<watch::Sender<bool>>,
 }
 
 impl Readiness {
@@ -54,13 +63,34 @@ impl Readiness {
         Self {
             populated: Arc::new(AtomicBool::new(store_populated)),
             moving: Arc::new(AtomicBool::new(false)),
+            draining: Arc::new(watch::channel(false).0),
         }
     }
 
     /// Whether the backend is ready to serve: the store is populated and no move of
     /// an earlier release's state is running.
     pub fn is_ready(&self) -> bool {
-        self.is_store_populated() && !self.moving.load(Ordering::Acquire)
+        self.is_store_populated() && !self.moving.load(Ordering::Acquire) && !self.is_draining()
+    }
+
+    /// Whether the backend was told to stop.
+    pub fn is_draining(&self) -> bool {
+        *self.draining.borrow()
+    }
+
+    /// Start draining: fail readiness from now on and end every stream waiting on
+    /// [`Self::drained`]. Idempotent.
+    pub fn mark_draining(&self) {
+        self.draining.send_replace(true);
+    }
+
+    /// A future that resolves once the backend drains, which a long-lived stream
+    /// ends on.
+    pub fn drained(&self) -> impl std::future::Future<Output = ()> + Send + use<> {
+        let mut draining = self.draining.subscribe();
+        async move {
+            let _ = draining.wait_for(|draining| *draining).await;
+        }
     }
 
     /// Whether the definition store has been populated, regardless of the move.

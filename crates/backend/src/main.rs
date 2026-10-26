@@ -67,9 +67,52 @@ async fn main() -> ExitCode {
     };
     tracing::info!("backend listening on {}", backend.bind);
 
-    if let Err(err) = axum::serve(listener, backend.router).await {
+    // Told to stop, the backend drains: it fails readiness and ends every long-lived
+    // stream, and the server stops accepting and finishes the requests in flight
+    // before it exits (the control plane's "Graceful termination").
+    let ready = backend.ready.clone();
+    let bus = backend.bus;
+    let shutdown = async move {
+        stop_requested().await;
+        tracing::info!("stopping: draining the backend");
+        ready.mark_draining();
+    };
+    if let Err(err) = axum::serve(listener, backend.router)
+        .with_graceful_shutdown(shutdown)
+        .await
+    {
         eprintln!("server error: {err}");
         return ExitCode::FAILURE;
     }
+    // What this replica accepted last, a job's end among it, reaches the others
+    // before it exits.
+    if let Some(bus) = &bus {
+        bus.flush(std::time::Duration::from_secs(5)).await;
+    }
     ExitCode::SUCCESS
+}
+
+/// Resolve on `SIGTERM`, which Kubernetes sends a pod it stops, or on Ctrl-C.
+async fn stop_requested() {
+    let interrupt = tokio::signal::ctrl_c();
+    #[cfg(unix)]
+    {
+        let mut terminate =
+            match tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()) {
+                Ok(terminate) => terminate,
+                Err(err) => {
+                    tracing::warn!("cannot listen for SIGTERM ({err}); stopping on Ctrl-C only");
+                    let _ = interrupt.await;
+                    return;
+                }
+            };
+        tokio::select! {
+            _ = interrupt => {}
+            _ = terminate.recv() => {}
+        }
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = interrupt.await;
+    }
 }

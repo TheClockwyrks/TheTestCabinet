@@ -19,6 +19,11 @@
 //! restart drops the live buffers; a subscriber that reconnects afterward falls
 //! back to the persisted publish-job state. Losing the live buffer never loses the
 //! publish.
+//!
+//! On PostgreSQL a publisher may report to one replica while a console watches
+//! through another, so a relay built [`shared`](PublishRelay::shared) announces each
+//! item through the [replica bus](crate::bus), and every replica records the items
+//! the others announce in its own backlog.
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -27,6 +32,8 @@ use test_cabinet_contracts::publish_job_api::PublishProgress;
 
 use test_cabinet_contracts::publish_job_api::PublishResult;
 use tokio::sync::broadcast;
+
+use crate::bus::{Announcement, Announcer};
 
 /// The capacity of each publish job's live broadcast channel. A publish emits few
 /// items (a handful of progress lines then one terminal result), so a small buffer
@@ -64,20 +71,50 @@ struct LiveInner {
 /// broadcast. Cloning shares the same underlying state (it is `Arc`-backed).
 #[derive(Debug, Clone)]
 pub struct LivePublish {
+    id: Arc<str>,
     inner: Arc<Mutex<LiveInner>>,
     tx: broadcast::Sender<PublishStreamItem>,
+    /// Where each item is announced to the other replicas, when shared.
+    announcer: Option<Announcer>,
 }
 
 impl LivePublish {
+    /// [`deliver_progress`](Self::deliver_progress), and announce the line to the
+    /// other replicas when it was recorded.
+    pub fn push_progress(&self, progress: PublishProgress) {
+        if self.deliver_progress(progress.clone())
+            && let Some(announcer) = &self.announcer
+        {
+            announcer.announce(Announcement::PublishProgress {
+                job: self.id.to_string(),
+                progress,
+            });
+        }
+    }
+
+    /// [`deliver_finish`](Self::deliver_finish), and announce the result to the
+    /// other replicas when it was recorded.
+    pub fn finish(&self, result: PublishResult) {
+        if self.deliver_finish(result.clone())
+            && let Some(announcer) = &self.announcer
+        {
+            announcer.announce(Announcement::PublishResult {
+                job: self.id.to_string(),
+                result,
+            });
+        }
+    }
+
     /// Append a progress line to the backlog and publish it to every live
     /// subscriber. Recording under the lock before broadcasting keeps a fresh
     /// subscriber's replayed backlog consistent with the live items it then
-    /// receives. A no-op after the terminal result has been pushed.
-    pub fn push_progress(&self, progress: PublishProgress) {
+    /// receives. A no-op after the terminal result has been pushed. Answers whether
+    /// the line was recorded.
+    pub fn deliver_progress(&self, progress: PublishProgress) -> bool {
         {
             let mut inner = self.inner.lock().expect("publish relay mutex poisoned");
             if inner.terminated {
-                return;
+                return false;
             }
             inner
                 .backlog
@@ -88,16 +125,18 @@ impl LivePublish {
         let _ = self
             .tx
             .send(PublishStreamItem::Progress(Box::new(progress)));
+        true
     }
 
     /// Record the terminal result, mark the publish finished, and signal every live
     /// stream to close after delivering it. Idempotent — a second terminal result
     /// (e.g. a retried report) is ignored so the recorded outcome is the first one.
-    pub fn finish(&self, result: PublishResult) {
+    /// Answers whether the result was recorded.
+    pub fn deliver_finish(&self, result: PublishResult) -> bool {
         {
             let mut inner = self.inner.lock().expect("publish relay mutex poisoned");
             if inner.terminated {
-                return;
+                return false;
             }
             inner.terminated = true;
             inner
@@ -105,6 +144,7 @@ impl LivePublish {
                 .push(PublishStreamItem::Result(Box::new(result.clone())));
         }
         let _ = self.tx.send(PublishStreamItem::Result(Box::new(result)));
+        true
     }
 
     /// Subscribe to the publish job's live stream: the backlog accumulated so far
@@ -145,12 +185,39 @@ pub struct PublishSubscription {
 #[derive(Clone, Default)]
 pub struct PublishRelay {
     jobs: Arc<Mutex<HashMap<String, LivePublish>>>,
+    announcer: Option<Announcer>,
 }
 
 impl PublishRelay {
-    /// Create an empty publish relay.
+    /// Create an empty publish relay for a backend that runs as one replica.
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Create an empty publish relay for a replica that shares its database with
+    /// others, announcing each item through `announcer`.
+    pub fn shared(announcer: Announcer) -> Self {
+        Self {
+            jobs: Arc::default(),
+            announcer: Some(announcer),
+        }
+    }
+
+    /// Every publish job this replica relays whose result it has not recorded.
+    pub fn unfinished(&self) -> Vec<(String, LivePublish)> {
+        self.jobs
+            .lock()
+            .expect("publish relay registry mutex poisoned")
+            .iter()
+            .filter(|(_, live)| {
+                !live
+                    .inner
+                    .lock()
+                    .expect("publish relay mutex poisoned")
+                    .terminated
+            })
+            .map(|(id, live)| (id.clone(), live.clone()))
+            .collect()
     }
 
     /// The live relay for a publish job, creating an empty one if none exists yet.
@@ -165,8 +232,10 @@ impl PublishRelay {
             .or_insert_with(|| {
                 let (tx, _rx) = broadcast::channel(PUBLISH_CHANNEL_CAPACITY);
                 LivePublish {
+                    id: Arc::from(id),
                     inner: Arc::new(Mutex::new(LiveInner::default())),
                     tx,
+                    announcer: self.announcer.clone(),
                 }
             })
             .clone()

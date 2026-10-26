@@ -59,6 +59,7 @@ pub async fn ingest(
     body: Option<Json<IngestBody>>,
 ) -> Result<Response, ApiError> {
     let body = body.map(|Json(b)| b).unwrap_or_default();
+    let announced = body.clone();
     let request = promote_for_store_readiness(
         IngestRequest {
             test_cases: body.test_cases,
@@ -70,19 +71,66 @@ pub async fn ingest(
     );
 
     if wants_ndjson(&headers) {
-        return Ok(ingest_streaming(state, request, body.refresh));
+        return Ok(ingest_streaming(state, request, announced));
     }
 
-    refresh_if_asked(&state, body.refresh)
-        .await
-        .map_err(|error| {
-            ApiError::new(
-                StatusCode::BAD_GATEWAY,
-                "ingest_refresh_failed",
-                error.to_string(),
-            )
-        })?;
-    let scan = prepare_scan(&state).await?;
+    let report = run_ingest(&state, request, announced.refresh).await?;
+    announce_ingest(&state, announced);
+    Ok(Json(ingest_response(report)).into_response())
+}
+
+/// Run the ingest another replica announced, the same ingest that replica ran
+/// (the backend overview's "Replicas"), into this replica's own store, refreshing
+/// its own checkout first. Its outcome is logged; nobody waits on it.
+pub(crate) async fn ingest_announced(state: AppState, body: IngestBody) {
+    tracing::info!("running the ingest another replica ran");
+    let request = promote_for_store_readiness(
+        IngestRequest {
+            test_cases: body.test_cases,
+            force: body.force,
+            mode: IngestBodyMode::scan_mode(body.mode),
+            catalog_version: body.catalog_version,
+        },
+        state.ready.is_store_populated(),
+    );
+    match run_ingest(&state, request, body.refresh).await {
+        Ok(report) => tracing::info!(
+            versions = report.test_case_versions.len(),
+            "ran the ingest another replica ran"
+        ),
+        Err(error) => tracing::warn!(
+            error = %error.message,
+            "the ingest another replica ran failed here"
+        ),
+    }
+}
+
+/// Announce a succeeded ingest that refreshed the checkout, so every other replica
+/// runs it into its own store. An ingest that asked for no refresh is a pod's own
+/// startup ingest of the checkout its sidecar fetched, which every replica runs.
+fn announce_ingest(state: &AppState, body: IngestBody) {
+    if body.refresh
+        && let Some(announcer) = state.relay.announcer()
+    {
+        announcer.announce(crate::bus::Announcement::Ingest { body });
+    }
+}
+
+/// Refresh the checkout when asked, scan it, and settle what a scan that changed
+/// the store affects: the default, unstreamed ingest.
+async fn run_ingest(
+    state: &AppState,
+    request: IngestRequest,
+    refresh: bool,
+) -> Result<IngestReport, ApiError> {
+    refresh_if_asked(state, refresh).await.map_err(|error| {
+        ApiError::new(
+            StatusCode::BAD_GATEWAY,
+            "ingest_refresh_failed",
+            error.to_string(),
+        )
+    })?;
+    let scan = prepare_scan(state).await?;
 
     // Default: run the scan to completion and answer with the full report.
     let report = tokio::task::spawn_blocking(move || scan.run(&request, |_| {}))
@@ -118,7 +166,7 @@ pub async fn ingest(
         state.ready.mark_store_populated();
     }
 
-    Ok(Json(ingest_response(report)).into_response())
+    Ok(report)
 }
 
 /// Refresh the checkout when the body asked for it and this backend has an ingest
@@ -407,7 +455,8 @@ fn wants_ndjson(headers: &HeaderMap) -> bool {
 /// The scan outpaces no realistic consumer here, so an unbounded channel buffers the
 /// handful of small lines without backpressure; the response ends when the task
 /// drops its sender.
-fn ingest_streaming(state: AppState, request: IngestRequest, refresh: bool) -> Response {
+fn ingest_streaming(state: AppState, request: IngestRequest, body: IngestBody) -> Response {
+    let refresh = body.refresh;
     let (tx, rx) = tokio::sync::mpsc::unbounded_channel::<Bytes>();
 
     tokio::spawn(async move {
@@ -433,6 +482,7 @@ fn ingest_streaming(state: AppState, request: IngestRequest, refresh: bool) -> R
         let publisher = state.publisher.clone();
         let gg_docs = state.gg_docs.clone();
         let readiness = state.ready.clone();
+        let announced = state.clone();
         let joined = tokio::task::spawn_blocking(move || {
             let tx = blocking_tx;
             let store = scan.store.clone();
@@ -468,6 +518,7 @@ fn ingest_streaming(state: AppState, request: IngestRequest, refresh: bool) -> R
                     if store.is_servable() {
                         readiness.mark_store_populated();
                     }
+                    announce_ingest(&announced, body);
                     done_line(&report)
                 }
                 Err(err) => IngestProgress::Error {

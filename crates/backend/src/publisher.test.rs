@@ -201,3 +201,49 @@ async fn a_refresher_started_over_a_dirty_snapshot_runs_the_refresh() {
 
     handle.join().await;
 }
+
+#[tokio::test]
+async fn a_refresh_waiting_behind_one_that_covered_its_mark_does_not_run() {
+    let (_dir, publisher, db) = dev_publisher().await;
+    db.mark_dirty().await.unwrap();
+    // Another refresh holds the lock.
+    let held = db.lock(crate::db::DbLockKey::Snapshot).await.unwrap();
+    let waiting = tokio::spawn({
+        let publisher = publisher.clone();
+        async move { refresh_if_dirty(&publisher.inner).await }
+    });
+    // The holder covers the mark: it read the state before it and clears it.
+    let generation = db.snapshot_state().await.unwrap().generation;
+    db.mark_uploaded("2026-10-26T00:00:00Z", 0, generation)
+        .await
+        .unwrap();
+    held.release().await;
+
+    assert_eq!(waiting.await.unwrap().unwrap(), None);
+}
+
+#[tokio::test]
+async fn a_refresh_waiting_behind_one_that_missed_its_mark_runs() {
+    let (_dir, publisher, db) = dev_publisher().await;
+    let held = db.lock(crate::db::DbLockKey::Snapshot).await.unwrap();
+    let waiting = tokio::spawn({
+        let publisher = publisher.clone();
+        async move { refresh_if_dirty(&publisher.inner).await }
+    });
+    db.mark_dirty().await.unwrap();
+    held.release().await;
+
+    assert!(waiting.await.unwrap().unwrap().is_some());
+    assert!(!db.snapshot_state().await.unwrap().dirty);
+}
+
+#[tokio::test]
+async fn a_replica_with_an_unpopulated_store_leaves_the_refresh_queued() {
+    let (_dir, publisher, db) = dev_publisher().await;
+    publisher.hold_until_populated(crate::readiness::Readiness::new(false));
+    db.mark_dirty().await.unwrap();
+
+    assert_eq!(refresh_if_dirty(&publisher.inner).await.unwrap(), None);
+    assert!(db.snapshot_state().await.unwrap().dirty);
+    assert!(publisher.refresh_now().await.is_err());
+}

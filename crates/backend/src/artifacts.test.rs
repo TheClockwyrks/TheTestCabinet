@@ -454,6 +454,29 @@ async fn a_scheduled_pass_with_no_run_rows_is_abandoned_before_it_lists() {
 }
 
 #[tokio::test]
+async fn a_scheduled_pass_while_another_pass_holds_the_lock_is_abandoned_before_it_lists() {
+    let db = db_with(&["kept"]).await;
+    let (base, stub) = spawn_stub(listing(&[("orphan", 200)]), StatusCode::NO_CONTENT).await;
+    let held = db.lock(crate::db::DbLockKey::Sweep).await.unwrap();
+
+    let pass = scheduled(&db, &base).await;
+
+    let ScheduledPass::Abandoned(why) = pass else {
+        panic!("expected an abandoned pass, got {pass:?}");
+    };
+    assert_eq!(why.as_str(), "lock_held");
+    assert!(
+        stub.recorder.lock().unwrap().deleted.is_empty(),
+        "nothing is swept"
+    );
+    held.release().await;
+    assert!(matches!(
+        scheduled(&db, &base).await,
+        ScheduledPass::Complete(_)
+    ));
+}
+
+#[tokio::test]
 async fn a_scheduled_pass_whose_listing_fails_is_abandoned() {
     let db = db_with(&["kept"]).await;
     // A base URL nothing answers on: a listener bound, then dropped.

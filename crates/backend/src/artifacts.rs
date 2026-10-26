@@ -349,6 +349,10 @@ pub enum AbandonedPass {
     RunsUnreadable(crate::error::BackendError),
     /// The artifact service's trees could not be listed.
     ListingFailed(reqwest::Error),
+    /// Another replica's pass holds the sweep's database lock.
+    LockHeld,
+    /// The sweep's database lock could not be taken.
+    LockFailed(crate::error::BackendError),
 }
 
 impl AbandonedPass {
@@ -358,6 +362,8 @@ impl AbandonedPass {
             Self::NoRuns => "no_runs",
             Self::RunsUnreadable(_) => "runs_unreadable",
             Self::ListingFailed(_) => "listing_failed",
+            Self::LockHeld => "lock_held",
+            Self::LockFailed(_) => "lock_failed",
         }
     }
 }
@@ -376,9 +382,10 @@ impl ScheduledPass {
             ),
             Self::Abandoned(why) => {
                 let error = match why {
-                    AbandonedPass::NoRuns => None,
+                    AbandonedPass::NoRuns | AbandonedPass::LockHeld => None,
                     AbandonedPass::RunsUnreadable(err) => Some(err.to_string()),
                     AbandonedPass::ListingFailed(err) => Some(err.to_string()),
+                    AbandonedPass::LockFailed(err) => Some(err.to_string()),
                 };
                 tracing::warn!(
                     reason = why.as_str(),
@@ -390,12 +397,32 @@ impl ScheduledPass {
     }
 }
 
-/// Run one scheduled pass: read the run ids, then [`sweep_orphaned_trees`]
-/// against them.
+/// Run one scheduled pass: take the sweep's database lock, read the run ids, then
+/// [`sweep_orphaned_trees`] against them.
 ///
 /// The pass acts only on a run-id set that was read and holds at least one run,
-/// because an empty set makes every tree an orphan.
+/// because an empty set makes every tree an orphan. A pass that finds the lock held
+/// is abandoned, since another replica is sweeping.
 pub async fn scheduled_pass(
+    db: &crate::db::Db,
+    http: &reqwest::Client,
+    base: &str,
+    token: &str,
+    now: OffsetDateTime,
+    grace: Duration,
+) -> ScheduledPass {
+    let lock = match db.try_lock(crate::db::DbLockKey::Sweep).await {
+        Ok(Some(lock)) => lock,
+        Ok(None) => return ScheduledPass::Abandoned(AbandonedPass::LockHeld),
+        Err(err) => return ScheduledPass::Abandoned(AbandonedPass::LockFailed(err)),
+    };
+    let pass = locked_pass(db, http, base, token, now, grace).await;
+    lock.release().await;
+    pass
+}
+
+/// [`scheduled_pass`] once the lock is held.
+async fn locked_pass(
     db: &crate::db::Db,
     http: &reqwest::Client,
     base: &str,

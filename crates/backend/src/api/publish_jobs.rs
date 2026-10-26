@@ -135,7 +135,10 @@ pub async fn live(
         .is_terminal()
         .then(|| terminal_from_row(&job));
     let live = state.publish_relay.live(&id);
-    let body = Body::from_stream(publish_stream(live, persisted_terminal));
+    // A draining backend ends the stream, so the client reconnects to a ready replica.
+    let body = Body::from_stream(
+        publish_stream(live, persisted_terminal).take_until(state.ready.drained()),
+    );
     Ok((
         [
             (header::CONTENT_TYPE, "application/x-ndjson"),
@@ -491,7 +494,7 @@ async fn authorize_publish_job(
 
 /// Reconstruct the terminal [`PublishResult`] from a persisted publish-job row, for
 /// a live subscriber that connects after the in-memory buffer was lost.
-fn terminal_from_row(job: &publish_job::Model) -> PublishResult {
+pub(crate) fn terminal_from_row(job: &publish_job::Model) -> PublishResult {
     let state = match PublishJobState::from_db(&job.state) {
         PublishJobState::Succeeded => PublishState::Succeeded,
         // Anything else reaching here is a failed (or otherwise non-success)

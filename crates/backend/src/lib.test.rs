@@ -610,3 +610,67 @@ async fn without_an_artifact_service_the_match_replay_routes_answer_unavailable(
     assert!(!dir.path().join("store/tournaments").exists());
     drop(backend);
 }
+
+#[tokio::test]
+async fn a_draining_backend_fails_readiness_and_ends_its_live_streams() {
+    use futures_util::StreamExt;
+
+    // nextest runs each test in its own process, so this environment is this test's alone.
+    let dir = tempfile::tempdir().unwrap();
+    let url = format!(
+        "sqlite://{}?mode=rwc",
+        dir.path().join("backend.sqlite").display()
+    );
+    unsafe {
+        std::env::set_var("TCAB_BACKEND_CHECKOUT", dir.path());
+        std::env::set_var("TCAB_BACKEND_STORE", dir.path().join("store"));
+        std::env::set_var("TCAB_BACKEND_DATABASE_URL", &url);
+    }
+    let prices = crate::pricing::OpenRouterPrices::with_endpoint("http://127.0.0.1:0/models");
+    let backend = build_with_prices(Config::from_env().unwrap(), prices, NO_GATEWAY)
+        .await
+        .unwrap();
+    // Held ready, as a pod whose store is populated is.
+    backend.ready.mark_store_populated();
+    Db::connect(&url)
+        .await
+        .unwrap()
+        .enqueue_job(crate::db::tests::new_job("j1", "2026-10-26T00:00:00Z"))
+        .await
+        .unwrap();
+
+    let streams = [
+        open(&backend.router, "/jobs/j1/live").await,
+        open(&backend.router, "/notifications").await,
+    ];
+    backend.ready.mark_draining();
+
+    let (status, _) = request(&backend.router, "GET", "/readyz", None, Vec::new()).await;
+    assert_eq!(status, axum::http::StatusCode::SERVICE_UNAVAILABLE);
+    for mut body in streams {
+        tokio::time::timeout(std::time::Duration::from_secs(10), async {
+            while body.next().await.is_some() {}
+        })
+        .await
+        .expect("a live stream outlived the drain");
+    }
+    drop(backend);
+}
+
+/// Open a streaming route and answer its body.
+async fn open(router: &axum::Router, uri: &str) -> axum::body::BodyDataStream {
+    use tower::ServiceExt;
+    let response = router
+        .clone()
+        .oneshot(
+            axum::http::Request::builder()
+                .uri(uri)
+                .header(crate::auth::LOCAL_IDENTITY_HEADER, "dev@local")
+                .body(axum::body::Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), axum::http::StatusCode::OK, "{uri}");
+    response.into_body().into_data_stream()
+}

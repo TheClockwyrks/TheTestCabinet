@@ -24,6 +24,7 @@ pub mod api;
 pub mod artifacts;
 pub mod auth;
 pub mod bootstrap;
+pub mod bus;
 pub mod comparison;
 pub mod comparison_aggregate;
 pub mod comparison_stats;
@@ -70,6 +71,9 @@ pub struct Backend {
     pub router: axum::Router,
     /// The bind address resolved from configuration.
     pub bind: String,
+    /// The backend's readiness, which the server [drains](crate::readiness::Readiness::mark_draining)
+    /// when it is told to stop.
+    pub ready: crate::readiness::Readiness,
     /// The background refresher handle; kept alive for the server's lifetime.
     pub refresher: crate::publisher::RefresherHandle,
     /// The periodic refresher of list prices and catalog facts; kept alive for the
@@ -91,7 +95,14 @@ pub struct Backend {
     /// The start's [move](crate::state_move) of an earlier release's on-disk state,
     /// which holds the backend unready until it finishes.
     pub state_move: tokio::task::JoinHandle<()>,
+    /// The [replica bus](crate::bus) on PostgreSQL, through which this replica's
+    /// live streams reach the subscribers of every other replica; kept alive for the
+    /// server's lifetime. `None` on SQLite, which runs one replica.
+    pub bus: Option<crate::bus::BusHandle>,
 }
+
+/// How long a start waits for the replica bus to listen before it serves anyway.
+const BUS_START_WAIT: std::time::Duration = std::time::Duration::from_secs(10);
 
 /// Assemble a backend from a configuration: open the definition store, connect
 /// the database and migrate its schema, build the publisher (writing the public
@@ -161,7 +172,12 @@ async fn build_with_prices(
     // Apply the schema before serving. The migration is idempotent, so an
     // already-migrated store (a restart, or a shared deployment database) is a
     // no-op beyond the version check.
-    test_cabinet_migration::Migrator::up(&db.connection(), None).await?;
+    // Replicas starting together migrate one at a time: the second finds the schema
+    // applied.
+    let migrating = db.lock(crate::db::DbLockKey::Migration).await?;
+    let migrated = test_cabinet_migration::Migrator::up(&db.connection(), None).await;
+    migrating.release().await;
+    migrated?;
 
     // Backfill the run row's sort/filter columns for any rows that predate them
     // (the migration stamps them with defaults; this fills the real record- and
@@ -322,6 +338,42 @@ async fn build_with_prices(
         );
     }
 
+    // Every test-case resolution reads the definition store, and on a deployment
+    // whose /state is ephemeral it starts EMPTY — the ingest sidecar refills it, but
+    // that takes minutes on a cold catalog. Hold the backend out of its Service until
+    // then, or every run launched in the gap dies on a spurious "is not ingested"
+    // 404. A store that already holds readable versions has nothing to wait for.
+    let readiness = crate::readiness::Readiness::new(store.is_servable());
+    if !readiness.is_ready() {
+        // A store written in another record format is held out for the same reason an
+        // empty one is, and says so distinctly: it looks full, and serving it would
+        // answer with whatever subset an ingest has since rewritten.
+        let reason = if store.needs_reingest() {
+            "definition store was written in another record format; staying unready \
+             until an ingest rewrites it"
+        } else {
+            "definition store is empty; staying unready until an ingest populates it"
+        };
+        tracing::info!(store = %store.root().display(), "{reason}");
+    }
+    // On PostgreSQL other replicas may share the database, so what this replica
+    // accepts is announced to them and what they announce is delivered here (see
+    // `crate::bus`, started once the state it delivers into exists).
+    let (relay, publish_relay, announcer) = if db.is_postgres() {
+        let (announcer, queue) = crate::bus::Announcer::new();
+        (
+            crate::relay::Relay::shared(announcer.clone()),
+            crate::publish_relay::PublishRelay::shared(announcer.clone()),
+            Some((announcer, queue)),
+        )
+    } else {
+        (
+            crate::relay::Relay::new(),
+            crate::publish_relay::PublishRelay::new(),
+            None,
+        )
+    };
+
     let publisher = Publisher::new(
         Arc::clone(&db),
         store.clone(),
@@ -331,6 +383,10 @@ async fn build_with_prices(
             snapshot_retention: config.snapshot_retention,
         },
     );
+    publisher.hold_until_populated(readiness.clone());
+    if let Some((announcer, _)) = &announcer {
+        publisher.share(announcer.clone());
+    }
     let refresher = publisher.spawn();
 
     // Model catalog bootstrap: seed the curated configs into an empty store and
@@ -405,24 +461,6 @@ async fn build_with_prices(
     );
 
     let bind = config.bind.clone();
-    // Every test-case resolution reads the definition store, and on a deployment
-    // whose /state is ephemeral it starts EMPTY — the ingest sidecar refills it, but
-    // that takes minutes on a cold catalog. Hold the backend out of its Service until
-    // then, or every run launched in the gap dies on a spurious "is not ingested"
-    // 404. A store that already holds readable versions has nothing to wait for.
-    let readiness = crate::readiness::Readiness::new(store.is_servable());
-    if !readiness.is_ready() {
-        // A store written in another record format is held out for the same reason an
-        // empty one is, and says so distinctly: it looks full, and serving it would
-        // answer with whatever subset an ingest has since rewritten.
-        let reason = if store.needs_reingest() {
-            "definition store was written in another record format; staying unready \
-             until an ingest rewrites it"
-        } else {
-            "definition store is empty; staying unready until an ingest populates it"
-        };
-        tracing::info!(store = %store.root().display(), "{reason}");
-    }
     // Move what an earlier release kept on the pod's disk into its durable home: each
     // pushed controller into its run's row, each match replay through the artifact
     // service. It runs beside the server rather than before it binds, holding only
@@ -444,18 +482,31 @@ async fn build_with_prices(
             readiness.mark_state_moved();
         }
     });
+    let ready = readiness.clone();
     let state = AppState {
         db,
         store,
         ready: readiness,
         publisher,
         access,
-        relay: crate::relay::Relay::new(),
-        publish_relay: crate::publish_relay::PublishRelay::new(),
+        relay,
+        publish_relay,
         config: Arc::new(config),
         http,
         prices,
         gg_docs: crate::gg_docs::GgDocIndex::new(),
+    };
+    // Listen before serving, so a stream opened on this replica misses nothing
+    // another replica announces.
+    let bus = match announcer {
+        Some((announcer, queue)) => {
+            let bus = crate::bus::spawn(state.clone(), announcer, queue);
+            if !bus.wait_listening(BUS_START_WAIT).await {
+                tracing::warn!("the replica bus is not listening yet; serving without it");
+            }
+            Some(bus)
+        }
+        None => None,
     };
     // A running ladder dispatch and a filling plan are fed when one of their runs
     // finishes, and a restart loses some of those moments: a feed that was spawned but had
@@ -470,12 +521,14 @@ async fn build_with_prices(
     Ok(Backend {
         router,
         bind,
+        ready,
         refresher,
         price_refresher,
         artifact_sweeper,
         probe_resumer,
         publish_retry,
         state_move,
+        bus,
     })
 }
 
@@ -485,3 +538,6 @@ mod tests;
 
 #[cfg(test)]
 mod test_paths;
+
+#[cfg(test)]
+mod test_postgres;

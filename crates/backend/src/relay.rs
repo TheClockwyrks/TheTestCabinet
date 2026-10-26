@@ -30,6 +30,13 @@
 //! while connected, so a console subscribes to the churn only while it is on a page
 //! that shows it. That is a different thing from the per-job relay above — this one
 //! is about *every* run's coarse lifecycle, not one run's harness output.
+//!
+//! On PostgreSQL the backend runs as more than one replica, and a subscriber may be
+//! connected to a replica other than the one the driver posts to. A relay built
+//! [`shared`](Relay::shared) therefore also announces what it fans out through the
+//! [replica bus](crate::bus), which delivers the other replicas' announcements back
+//! into it with the `deliver_*` methods, and a job's latest preview frames are kept
+//! in the database rather than only here.
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -39,6 +46,8 @@ use test_cabinet_contracts::preview::AssetPreview;
 
 use test_cabinet_contracts::event::HarnessEvent;
 use tokio::sync::broadcast;
+
+use crate::bus::{Announcement, Announcer};
 
 /// The capacity of each job's live broadcast channel. A slow streaming client
 /// that falls this far behind is lagged (the stream handler reads what it missed
@@ -71,8 +80,15 @@ pub enum StreamItem {
     /// A live asset-generation preview frame. Carried on the same channel as
     /// events but never stored; a viewer renders it to watch the sprite form.
     Preview(Box<AssetPreview>),
-    /// The run reached a terminal state; no further items will arrive.
+    /// The run reached a terminal state; no further items will arrive. A
+    /// subscriber reads any stored event it has not delivered before it closes,
+    /// since another replica's announcement of a batch can arrive after the end.
     Done,
+    /// Items for this job may have been lost: the replica's bus reconnected after
+    /// losing announcements, or an announced batch could not be read back. A
+    /// subscriber reads what it missed from the database, and closes if the job
+    /// ended meanwhile.
+    Resync,
 }
 
 /// One running job's shared live state, behind a `Mutex` because ingestion writes
@@ -92,15 +108,33 @@ struct LiveInner {
 /// Cloning shares the same underlying state (it is `Arc`-backed).
 #[derive(Debug, Clone)]
 pub struct LiveJob {
+    id: Arc<str>,
     inner: Arc<Mutex<LiveInner>>,
     tx: broadcast::Sender<StreamItem>,
+    /// Where what this replica accepts is announced to the others, when shared.
+    announcer: Option<Announcer>,
 }
 
 impl LiveJob {
     /// Publish events the backend has just stored, each with its sequence, in order
-    /// to every live subscriber. A subscriber connecting later is replayed them from
-    /// the database instead.
+    /// to every live subscriber, and announce them to the other replicas. A
+    /// subscriber connecting later is replayed them from the database instead.
     pub fn push_events(&self, events: Vec<(u64, HarnessEvent)>) {
+        if let (Some(announcer), Some((first, _)), Some((last, _))) =
+            (&self.announcer, events.first(), events.last())
+        {
+            announcer.announce(Announcement::Events {
+                job: self.id.to_string(),
+                first: *first,
+                last: *last,
+            });
+        }
+        self.deliver_events(events);
+    }
+
+    /// Publish stored events to this replica's live subscribers only: another
+    /// replica's batch, which that replica announced.
+    pub fn deliver_events(&self, events: Vec<(u64, HarnessEvent)>) {
         for (sequence, event) in events {
             // A send error only means there are no live subscribers, which is fine —
             // the event is stored for a later one.
@@ -111,10 +145,22 @@ impl LiveJob {
         }
     }
 
-    /// Record the latest preview for its frame and publish it to live subscribers.
-    /// Overwrites rather than appends — a viewer shows the current image, not a
-    /// history.
+    /// Record the latest preview for its frame, publish it to live subscribers, and
+    /// announce it to the other replicas, which read it back from the database the
+    /// caller stored it in. Overwrites rather than appends — a viewer shows the
+    /// current image, not a history.
     pub fn push_preview(&self, preview: AssetPreview) {
+        if let Some(announcer) = &self.announcer {
+            announcer.announce(Announcement::Preview {
+                job: self.id.to_string(),
+                frame: preview.frame,
+            });
+        }
+        self.deliver_preview(preview);
+    }
+
+    /// Record and publish a preview to this replica's live subscribers only.
+    pub fn deliver_preview(&self, preview: AssetPreview) {
         {
             let mut inner = self.inner.lock().expect("relay mutex poisoned");
             inner.latest_previews.insert(preview.frame, preview.clone());
@@ -122,13 +168,34 @@ impl LiveJob {
         let _ = self.tx.send(StreamItem::Preview(Box::new(preview)));
     }
 
-    /// Mark the job terminal and signal every live stream to close. Idempotent.
+    /// Mark the job terminal, signal every live stream to close, and announce the
+    /// end to the other replicas. Idempotent.
     pub fn finish(&self) {
+        if let Some(announcer) = &self.announcer {
+            announcer.announce(Announcement::Finished {
+                job: self.id.to_string(),
+            });
+        }
+        self.deliver_finish();
+    }
+
+    /// Mark the job terminal and signal this replica's live streams to close.
+    pub fn deliver_finish(&self) {
         {
             let mut inner = self.inner.lock().expect("relay mutex poisoned");
             inner.terminated = true;
         }
         let _ = self.tx.send(StreamItem::Done);
+    }
+
+    /// Tell this replica's live streams of the job to resynchronize.
+    pub fn resync(&self) {
+        let _ = self.tx.send(StreamItem::Resync);
+    }
+
+    /// Whether any live stream of the job is connected to this replica.
+    pub fn has_subscribers(&self) -> bool {
+        self.tx.receiver_count() > 0
     }
 
     /// Subscribe to the job's live stream: the latest preview per frame, a live
@@ -173,15 +240,39 @@ pub struct Subscription {
 pub struct Relay {
     jobs: Arc<Mutex<HashMap<String, LiveJob>>>,
     notifier: Notifier,
+    announcer: Option<Announcer>,
 }
 
 impl Relay {
-    /// Create an empty relay.
+    /// Create an empty relay for a backend that runs as one replica.
     pub fn new() -> Self {
         Self {
             jobs: Arc::new(Mutex::new(HashMap::new())),
             notifier: Notifier::new(),
+            announcer: None,
         }
+    }
+
+    /// Create an empty relay for a replica that shares its database with others,
+    /// announcing what it fans out through `announcer`.
+    pub fn shared(announcer: Announcer) -> Self {
+        Self {
+            jobs: Arc::new(Mutex::new(HashMap::new())),
+            notifier: Notifier::shared(announcer.clone()),
+            announcer: Some(announcer),
+        }
+    }
+
+    /// The announcer of a shared relay, which forwards what this replica cannot
+    /// answer alone.
+    pub fn announcer(&self) -> Option<&Announcer> {
+        self.announcer.as_ref()
+    }
+
+    /// Whether the relay is shared with other replicas, in which case a job's
+    /// latest preview frames are kept in the database.
+    pub fn is_shared(&self) -> bool {
+        self.announcer.is_some()
     }
 
     /// The live relay for a job, creating an empty one if none exists yet. Both
@@ -193,11 +284,38 @@ impl Relay {
             .or_insert_with(|| {
                 let (tx, _rx) = broadcast::channel(EVENT_CHANNEL_CAPACITY);
                 LiveJob {
+                    id: Arc::from(id),
                     inner: Arc::new(Mutex::new(LiveInner::default())),
                     tx,
+                    announcer: self.announcer.clone(),
                 }
             })
             .clone()
+    }
+
+    /// The live relay for a job, if this replica has one.
+    pub fn existing(&self, id: &str) -> Option<LiveJob> {
+        self.jobs
+            .lock()
+            .expect("relay registry mutex poisoned")
+            .get(id)
+            .cloned()
+    }
+
+    /// Tell every live stream this replica serves to resynchronize, after its bus
+    /// lost announcements.
+    pub fn resync(&self) {
+        let jobs: Vec<LiveJob> = self
+            .jobs
+            .lock()
+            .expect("relay registry mutex poisoned")
+            .values()
+            .cloned()
+            .collect();
+        for live in jobs {
+            live.resync();
+        }
+        self.notifier.resync();
     }
 
     /// The worker-wide console stream (the `/notifications` feed).
@@ -240,6 +358,9 @@ pub enum StreamMessage {
     Notification(Box<Notification>),
     /// An in-flight list transition: gated on the `runs` topic.
     Run(Box<RunEvent>),
+    /// This replica's bus lost the other replicas' announcements for a while, so
+    /// the client must re-read the authoritative lists. Sent whatever the topics.
+    Resync,
 }
 
 /// Which topics one connected stream currently wants.
@@ -269,6 +390,7 @@ impl StreamTopics {
         match message {
             StreamMessage::Notification(_) => self.notifications.load(Ordering::Relaxed),
             StreamMessage::Run(_) => self.runs.load(Ordering::Relaxed),
+            StreamMessage::Resync => true,
         }
     }
 
@@ -340,6 +462,8 @@ pub struct Notifier {
     /// Every connected stream's topic set, keyed by stream id, so the `PUT` handler
     /// can reach a stream being served by a different request.
     streams: Arc<Mutex<HashMap<String, Arc<StreamTopics>>>>,
+    /// Where each message is announced to the other replicas, when shared.
+    announcer: Option<Announcer>,
 }
 
 impl Notifier {
@@ -349,6 +473,15 @@ impl Notifier {
         Self {
             tx,
             streams: Arc::new(Mutex::new(HashMap::new())),
+            announcer: None,
+        }
+    }
+
+    /// A notifier that also announces each message to the other replicas.
+    fn shared(announcer: Announcer) -> Self {
+        Self {
+            announcer: Some(announcer),
+            ..Self::new()
         }
     }
 
@@ -395,14 +528,32 @@ impl Notifier {
     /// send with no subscribers is fine — the channel is live-only, so it is simply
     /// dropped.
     pub fn notify(&self, notification: Notification) {
-        let _ = self
-            .tx
-            .send(StreamMessage::Notification(Box::new(notification)));
+        let notification = Box::new(notification);
+        if let Some(announcer) = &self.announcer {
+            announcer.announce(Announcement::Notification(notification.clone()));
+        }
+        self.deliver(StreamMessage::Notification(notification));
     }
 
     /// Publish a run-lifecycle event to every stream subscribed to the `runs` topic.
     pub fn publish_run(&self, event: RunEvent) {
-        let _ = self.tx.send(StreamMessage::Run(Box::new(event)));
+        let event = Box::new(event);
+        if let Some(announcer) = &self.announcer {
+            announcer.announce(Announcement::Run(event.clone()));
+        }
+        self.deliver(StreamMessage::Run(event));
+    }
+
+    /// Publish a message to the streams connected to this replica only: another
+    /// replica's message, which that replica announced.
+    pub fn deliver(&self, message: StreamMessage) {
+        let _ = self.tx.send(message);
+    }
+
+    /// Tell every stream connected to this replica to re-read the authoritative
+    /// lists.
+    fn resync(&self) {
+        self.deliver(StreamMessage::Resync);
     }
 
     /// How many streams are connected right now. Test/diagnostic only.

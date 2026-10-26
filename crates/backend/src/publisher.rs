@@ -43,6 +43,20 @@
 //! runs that changed rather than the runs that exist — see
 //! [`crate::snapshot::RUN_DOCUMENT_PREFIX`].
 //!
+//! On PostgreSQL more than one replica shares the database, and each runs this
+//! loop. A refresh therefore holds the snapshot's database lock while it runs
+//! ([`crate::db::DbLockKey::Snapshot`]), so two replicas never write the dataset at
+//! once. A coalesced or startup refresh waits for the lock and then runs only if
+//! the snapshot is still dirty, since the refresh it waited behind may have covered
+//! its mark; a forced refresh waits and always runs. A queued refresh is announced
+//! through the [replica bus](crate::bus), which wakes every replica's loop, so a
+//! replica that stops inside the coalescing window leaves the refresh to another.
+//!
+//! A replica whose definition store has not been populated yet regenerates nothing,
+//! since the dataset's case metadata is read from it: its coalesced refresh is left
+//! dirty for a replica that can serve, or for the refresh the ingest that populates
+//! it queues, and its forced refresh is refused.
+//!
 //! [Public Snapshot]: https://docs.testcabinet.ai/components/backend/snapshot/
 
 use std::sync::Arc;
@@ -54,7 +68,7 @@ use tokio::sync::{Notify, mpsc};
 use tracing::Instrument;
 
 use crate::artifacts::{PublicDataset, PublishedMedia};
-use crate::db::{Db, StoredRun};
+use crate::db::{Db, DbLockKey, StoredRun};
 use crate::error::{BackendError, Result};
 use crate::snapshot::SnapshotBuilder;
 use crate::store::DefinitionStore;
@@ -86,6 +100,11 @@ struct PublisherInner {
     snapshot_retention: Duration,
     /// Pinged when a publish marks the store dirty, waking the debounce loop.
     wake: Notify,
+    /// Where a queued refresh is announced to the other replicas, when shared.
+    announcer: std::sync::OnceLock<crate::bus::Announcer>,
+    /// This backend's readiness, whose populated store a refresh waits on. Unset,
+    /// the store is taken as populated.
+    ready: std::sync::OnceLock<crate::readiness::Readiness>,
     /// How many refreshes the background loop has finished (the startup refresh included), so a
     /// test can wait for the loop to act rather than poll the database on a timer.
     #[cfg(test)]
@@ -125,10 +144,30 @@ impl Publisher {
                 coalesce: timing.coalesce,
                 snapshot_retention: timing.snapshot_retention,
                 wake: Notify::new(),
+                announcer: std::sync::OnceLock::new(),
+                ready: std::sync::OnceLock::new(),
                 #[cfg(test)]
                 refreshes: tokio::sync::watch::channel(0).0,
             }),
         }
+    }
+
+    /// Announce every queued refresh through `announcer`, for a replica that shares
+    /// its database with others. Set once, before the loop runs.
+    pub fn share(&self, announcer: crate::bus::Announcer) {
+        let _ = self.inner.announcer.set(announcer);
+    }
+
+    /// Regenerate nothing until `ready` reports a populated definition store. Set
+    /// once, before the loop runs.
+    pub fn hold_until_populated(&self, ready: crate::readiness::Readiness) {
+        let _ = self.inner.ready.set(ready);
+    }
+
+    /// Wake this replica's refresher for a refresh another replica queued, whose
+    /// dirty mark is already written.
+    pub fn wake(&self) {
+        self.inner.wake.notify_one();
     }
 
     /// Queue a refresh: mark the snapshot state dirty in the database, then wake
@@ -144,6 +183,9 @@ impl Publisher {
             return false;
         }
         self.inner.wake.notify_one();
+        if let Some(announcer) = self.inner.announcer.get() {
+            announcer.announce(crate::bus::Announcement::RefreshQueued);
+        }
         true
     }
 
@@ -175,7 +217,7 @@ impl Publisher {
                 // Recover a refresh that was pending when the process last stopped: one
                 // queued (its dirty mark written) but not yet run, or one that was running.
                 if matches!(inner.db.snapshot_state().await, Ok(state) if state.dirty) {
-                    if let Err(err) = run_refresh(&inner).await {
+                    if let Err(err) = refresh_if_dirty(&inner).await {
                         tracing::error!("startup snapshot refresh failed: {err}");
                     }
                     #[cfg(test)]
@@ -195,7 +237,7 @@ impl Publisher {
                                     _ = shutdown_rx.recv() => return,
                                 }
                             }
-                            if let Err(err) = run_refresh(&inner).await {
+                            if let Err(err) = refresh_if_dirty(&inner).await {
                                 tracing::error!("coalesced snapshot refresh failed: {err}");
                             }
                             #[cfg(test)]
@@ -224,7 +266,17 @@ impl Publisher {
     /// Force an immediate refresh, bypassing the debounce (operator recovery via
     /// `POST /snapshot/refresh`). Regenerates the dataset and writes it now.
     pub async fn refresh_now(&self) -> Result<RefreshOutcome> {
-        run_refresh(&self.inner).await
+        if !store_populated(&self.inner) {
+            return Err(BackendError::Snapshot(
+                "this backend's definition store is not populated yet; refresh once it \
+                 is ready"
+                    .to_string(),
+            ));
+        }
+        let lock = self.inner.db.lock(DbLockKey::Snapshot).await?;
+        let outcome = run_refresh(&self.inner).await;
+        lock.release().await;
+        outcome
     }
 }
 
@@ -276,6 +328,33 @@ const CONTENT_PREFIXES: [&str; 4] = ["documents/runs/", "media/cases/", "media/r
 
 /// The prefix the short-code objects live under.
 pub const CODE_PREFIX: &str = "codes/";
+
+/// Whether the definition store the dataset's case metadata is read from has been
+/// populated.
+fn store_populated(inner: &PublisherInner) -> bool {
+    inner
+        .ready
+        .get()
+        .is_none_or(crate::readiness::Readiness::is_store_populated)
+}
+
+/// Take the snapshot's lock, waiting while another refresh holds it, and run a
+/// refresh if the snapshot is still dirty once it is held. Answers `None` when the
+/// refresh that held the lock already covered every mark.
+async fn refresh_if_dirty(inner: &PublisherInner) -> Result<Option<RefreshOutcome>> {
+    if !store_populated(inner) {
+        tracing::info!("the definition store is not populated yet; leaving the refresh queued");
+        return Ok(None);
+    }
+    let lock = inner.db.lock(DbLockKey::Snapshot).await?;
+    let outcome = match inner.db.snapshot_state().await {
+        Ok(state) if state.dirty => run_refresh(inner).await.map(Some),
+        Ok(_) => Ok(None),
+        Err(err) => Err(err),
+    };
+    lock.release().await;
+    outcome
+}
 
 /// Regenerate the full dataset, write it through the artifacts service (when it is
 /// configured), and clear the dirty flag unless a mark landed while it ran. This

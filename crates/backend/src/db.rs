@@ -543,6 +543,8 @@ const RUN_VALIDATOR_RATING_UNDECIDED_BROKEN: &str = "run.validator_rating.undeci
 /// The SeaORM-backed store.
 pub struct Db {
     handle: ConnHandle,
+    /// The locks a SQLite store serializes [database-locked](DbLock) work with.
+    locks: replicas::LocalLocks,
 }
 
 /// How the store reaches its database: a fixed connection (SQLite, or a
@@ -582,6 +584,7 @@ impl Db {
         Self::apply_sqlite_pragmas(&conn).await?;
         Ok(Self {
             handle: ConnHandle::Static(conn),
+            locks: replicas::LocalLocks::default(),
         })
     }
 
@@ -596,6 +599,7 @@ impl Db {
             .map_err(|err| sea_orm::DbErr::Custom(format!("Azure AD Postgres auth: {err}")))?;
         Ok(Self {
             handle: ConnHandle::AzureAd(std::sync::Arc::new(db)),
+            locks: replicas::LocalLocks::default(),
         })
     }
 
@@ -613,6 +617,7 @@ impl Db {
         test_cabinet_migration::Migrator::up(&conn, None).await?;
         Ok(Self {
             handle: ConnHandle::Static(conn),
+            locks: replicas::LocalLocks::default(),
         })
     }
 
@@ -10420,6 +10425,10 @@ mod job_events_tests;
 
 #[path = "db.run_controller.rs"]
 mod run_controller_store;
+
+#[path = "db.replicas.rs"]
+mod replicas;
+pub use replicas::{DbLock, DbLockKey};
 
 #[cfg(test)]
 #[path = "db.run_controller.test.rs"]

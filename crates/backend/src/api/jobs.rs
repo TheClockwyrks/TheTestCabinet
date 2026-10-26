@@ -1156,23 +1156,38 @@ pub async fn live(
     // If the job is already terminal but the relay never saw it finish (e.g. a
     // backend restart), close the stream after the backlog instead of waiting
     // forever for a `Done` that will never come.
-    let db_terminal = JobState::from_db(&job.state).is_terminal();
+    let mut db_terminal = JobState::from_db(&job.state).is_terminal();
     // Subscribe before reading the stored events: an event stored in between then
     // reaches the receiver too, where its sequence marks it as already replayed,
     // and none can fall between the backlog and the live tail.
-    let sub = state.relay.live(&id).subscribe();
+    let mut sub = state.relay.live(&id).subscribe();
+    // Another replica's announcement of the job's end can arrive between the read
+    // above and the subscription, before this replica relays the job at all, so the
+    // state is read again now that any later end reaches the subscription.
+    if !db_terminal && state.relay.is_shared() {
+        db_terminal = state
+            .db
+            .get_job(&id)
+            .await
+            .map_err(ApiError::from)?
+            .is_some_and(|job| JobState::from_db(&job.state).is_terminal());
+    }
     let backlog = state
         .db
         .job_events_after(&id, None)
         .await
         .map_err(ApiError::from)?;
-    let body = Body::from_stream(event_stream(
-        Arc::clone(&state.db),
-        id,
-        sub,
-        backlog,
-        db_terminal,
-    ));
+    // A replica sharing its database keeps the latest frames there, since the driver
+    // may be posting them to another replica. They are read after subscribing for
+    // the reason the events are: a frame stored after the read arrives live.
+    if state.relay.is_shared() {
+        sub.previews = state.db.job_previews(&id).await.map_err(ApiError::from)?;
+    }
+    // A draining backend ends the stream, so the client reconnects to a ready replica.
+    let body = Body::from_stream(
+        event_stream(Arc::clone(&state.db), id, sub, backlog, db_terminal)
+            .take_until(state.ready.drained()),
+    );
     Ok((
         [
             (header::CONTENT_TYPE, "application/x-ndjson"),
@@ -1283,14 +1298,25 @@ pub async fn ingest_events(
 }
 
 /// `POST /jobs/{id}/preview` — the driver streams one live asset-preview frame.
-/// Authenticated by the per-job token. Previews are relayed but never persisted.
+/// Authenticated by the per-job token. A frame is never part of the job's record:
+/// a replica sharing its database stores the latest frame per index there before
+/// acknowledging it, so a subscriber of any replica is sent it, and the frames are
+/// deleted once the job ends.
 pub async fn ingest_preview(
     State(state): State<AppState>,
     Path(id): Path<String>,
     headers: HeaderMap,
     Json(preview): Json<AssetPreview>,
 ) -> Result<StatusCode, ApiError> {
-    authorize_job(&state, &id, &headers).await?;
+    let job = authorize_job(&state, &id, &headers).await?;
+    // A frame arriving after the job ended is not stored: its frames were deleted.
+    if state.relay.is_shared() && !JobState::from_db(&job.state).is_terminal() {
+        state
+            .db
+            .store_job_preview(&id, &preview)
+            .await
+            .map_err(ApiError::from)?;
+    }
     state.relay.live(&id).push_preview(preview);
     Ok(StatusCode::NO_CONTENT)
 }
@@ -2382,6 +2408,11 @@ pub async fn notifications(
                         StreamMessage::Run(run) => Event::default()
                             .event(STREAM_EVENT_RUN)
                             .json_data(run.as_ref()),
+                        // The replica lost other replicas' announcements for a while;
+                        // how many messages that dropped is unknown.
+                        StreamMessage::Resync => Event::default()
+                            .event(STREAM_EVENT_RESYNC)
+                            .json_data(StreamResync { dropped: 0 }),
                     }
                     .unwrap_or_else(|_| Event::default());
                     return Some((Ok(event), handle));
@@ -2405,7 +2436,8 @@ pub async fn notifications(
     });
 
     let stream = stream::once(async move { Ok(hello) }).chain(tail);
-    Sse::new(stream).keep_alive(KeepAlive::default())
+    // A draining backend ends the stream, so the client reconnects to a ready replica.
+    Sse::new(stream.take_until(state.ready.drained())).keep_alive(KeepAlive::default())
 }
 
 /// `PUT /notifications/{stream}/topics` — change which topics an already-connected
@@ -2421,16 +2453,28 @@ pub async fn notifications(
 /// An omitted field leaves that topic unchanged. `404` when no such stream is
 /// connected, which tells a client its `EventSource` has reconnected under a new id
 /// (or the backend restarted) and it must re-apply its topics to the new stream.
+///
+/// A stream this replica does not serve may be served by another replica sharing
+/// the database, so the change is forwarded to them and answered `204` once the
+/// replica serving it acknowledges it.
 pub async fn set_stream_topics(
     State(state): State<AppState>,
     Path(stream_id): Path<String>,
     Json(body): Json<StreamTopicsBody>,
 ) -> Result<StatusCode, ApiError> {
-    if state
+    let applied = state
         .relay
         .notifier()
-        .set_topics(&stream_id, body.notifications, body.runs)
-    {
+        .set_topics(&stream_id, body.notifications, body.runs);
+    let applied = match state.relay.announcer() {
+        Some(announcer) if !applied => {
+            announcer
+                .forward_topics(&stream_id, body.notifications, body.runs)
+                .await
+        }
+        _ => applied,
+    };
+    if applied {
         Ok(StatusCode::NO_CONTENT)
     } else {
         Err(ApiError::not_found(format!(
@@ -2598,6 +2642,7 @@ fn event_stream(
         tokio::time::interval_at(tokio::time::Instant::now() + LIVE_HEARTBEAT, LIVE_HEARTBEAT);
     let tail = LiveTail {
         done: terminated,
+        closing: false,
         receiver: sub.receiver,
         heartbeat,
         last: last_replayed,
@@ -2617,6 +2662,8 @@ fn event_stream(
 struct LiveTail {
     /// The run ended (or was already over at subscribe time); no line follows.
     done: bool,
+    /// The run ended, and the stream closes once `caught_up` is delivered.
+    closing: bool,
     receiver: tokio::sync::broadcast::Receiver<StreamItem>,
     heartbeat: tokio::time::Interval,
     /// The sequence of the last event delivered, backlog included. An event at or
@@ -2630,6 +2677,37 @@ struct LiveTail {
 }
 
 impl LiveTail {
+    /// Queue every stored event after the last one delivered, read back from the
+    /// database; the channel's later copies of them are skipped by their sequence.
+    async fn catch_up(&mut self) {
+        match self.db.job_events_after(&self.job_id, self.last).await {
+            Ok(events) => self.caught_up.extend(events),
+            Err(error) => tracing::warn!(
+                job = %self.job_id,
+                %error,
+                "reading a live stream's missed events back failed"
+            ),
+        }
+    }
+
+    /// Whether the job's row says it ended. A failed read answers no; the next
+    /// idle check reads it again.
+    async fn job_ended(&self) -> bool {
+        match self.db.get_job(&self.job_id).await {
+            Ok(job) => job.is_some_and(|job| JobState::from_db(&job.state).is_terminal()),
+            Err(error) => {
+                tracing::warn!(job = %self.job_id, %error, "reading a live stream's job failed");
+                false
+            }
+        }
+    }
+
+    /// The sequence of the next event this subscriber expects: a job's sequences
+    /// start at `0` and rise by one per event.
+    fn next_sequence(&self) -> u64 {
+        self.last.map_or(0, |last| last + 1)
+    }
+
     /// Whether an event of `sequence` is new to this subscriber.
     fn is_new(&self, sequence: u64) -> bool {
         self.last.is_none_or(|last| sequence > last)
@@ -2648,19 +2726,56 @@ impl LiveTail {
                 }
                 continue;
             }
+            if self.closing {
+                self.done = true;
+                return None;
+            }
             tokio::select! {
-                _ = self.heartbeat.tick() => return Some(Bytes::from_static(b"\n")),
+                _ = self.heartbeat.tick() => {
+                    // An idle stream checks that its job has not ended unseen: an end
+                    // another replica could not announce is in the job's row.
+                    if self.job_ended().await {
+                        self.catch_up().await;
+                        self.closing = true;
+                        continue;
+                    }
+                    return Some(Bytes::from_static(b"\n"));
+                }
                 received = self.receiver.recv() => match received {
                     Ok(StreamItem::Event { sequence, event }) => {
+                        // A batch announced by another replica can arrive after a
+                        // later one, and an announcement can be lost: an event past
+                        // the next one expected means the ones between are stored
+                        // and were missed, so they are read back first.
+                        if self.is_new(sequence) && sequence > self.next_sequence() {
+                            self.catch_up().await;
+                            continue;
+                        }
                         if self.is_new(sequence) {
                             self.last = Some(sequence);
                             return Some(encode_line(&event));
                         }
                     }
                     Ok(StreamItem::Preview(preview)) => return Some(encode_preview_line(&preview)),
-                    Ok(StreamItem::Done) | Err(RecvError::Closed) => {
+                    Ok(StreamItem::Done) => {
+                        // Another replica's announcement of a batch stored before the
+                        // end can arrive after it, so deliver whatever stored event
+                        // this stream has not, then close.
+                        self.catch_up().await;
+                        self.closing = true;
+                    }
+                    Err(RecvError::Closed) => {
                         self.done = true;
                         return None;
+                    }
+                    Ok(StreamItem::Resync) => {
+                        // Announcements for this job may have been lost, the end among
+                        // them: read the missed events back, and close after them if
+                        // the job has ended.
+                        self.catch_up().await;
+                        if self.job_ended().await {
+                            self.closing = true;
+                        }
                     }
                     Err(RecvError::Lagged(_)) => {
                         // The channel dropped items this subscriber had not read. The
@@ -2668,14 +2783,7 @@ impl LiveTail {
                         // last one delivered back from the database; the channel's
                         // later copies of them are skipped by their sequence. Missed
                         // previews are simply gone, as the next frame replaces them.
-                        match self.db.job_events_after(&self.job_id, self.last).await {
-                            Ok(events) => self.caught_up.extend(events),
-                            Err(error) => tracing::warn!(
-                                job = %self.job_id,
-                                %error,
-                                "reading a lagged live stream's missed events back failed"
-                            ),
-                        }
+                        self.catch_up().await;
                     }
                 },
             }

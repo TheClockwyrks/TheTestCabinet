@@ -55,3 +55,22 @@ fn a_finished_state_move_leaves_an_empty_store_unready() {
     readiness.mark_state_moved();
     assert!(!readiness.is_ready());
 }
+
+#[tokio::test]
+async fn a_draining_backend_is_unready_and_ends_its_streams() {
+    let readiness = Readiness::new(true);
+    assert!(readiness.is_ready());
+    let drained = tokio::spawn(readiness.drained());
+
+    readiness.mark_draining();
+
+    assert!(!readiness.is_ready());
+    tokio::time::timeout(std::time::Duration::from_secs(5), drained)
+        .await
+        .expect("a stream waiting on the drain was never ended")
+        .unwrap();
+    // A stream opened while draining ends at once.
+    tokio::time::timeout(std::time::Duration::from_secs(5), readiness.drained())
+        .await
+        .expect("a stream opened while draining was never ended");
+}
