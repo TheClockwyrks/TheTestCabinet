@@ -1,15 +1,75 @@
 ---
 format: nyxsis-issue
-version: 2
+version: 3
 id: tdr9hbk4hq2c93hj9maqvdez
 zone: ARENA
 number: 1
 title: Record and resume arena tournaments through the backend
 type: generic
-state: open
+priority: 3
+state: done
 depends_on:
   - tssf0pps2q535nzes4ewupxm
 created: 2026-10-19T00:39:23.732814668Z
+done: 2026-10-26T08:14:57.310948102Z
+outcome: |
+  Done. Arena tournaments are now recorded through the backend as they play, and
+  resumed after a restart.
+
+  - **Docs** (superrepo `eac579582`, plus the overview in `659edc37d`): the
+    backend API's Tournaments section, and the arena overview's states, failure
+    reasons, resume, retry and shutdown.
+  - **contracts** (`48d4118`): `TournamentState`, `TournamentPairing`,
+    `PendingTournament`, `RecordedTournament` and `TournamentTransition`. The
+    backend client gains the record, transition and read calls;
+    `publish_tournament` is gone.
+  - **engines** (`3786a64`): `run_tournament` plays a given subset of pairings and
+    reports each summary and replay. Adds `tournament_pairings` and
+    `tournament_standings`.
+  - **Backend** (superrepo `659edc37d`):
+    - migration `m20261026_000068` adds the `tournament.state`/`detail` columns
+      and a `tournament_match` table;
+    - new routes: `PUT /tournaments/{id}`, `PUT
+      /tournaments/{id}/matches/{matchId}`, `POST /tournaments/{id}/state` and
+      `GET /tournaments/unfinished`;
+    - the gallery lists succeeded tournaments only.
+  - **microservice-arena** (`51c8c3b`):
+    - The submit records the pending tournament before answering `202`. Each match
+      is recorded replay first, then summary, and the tournament ends succeeded
+      with standings or failed with a reason.
+    - Status and the event stream read the backend's record.
+    - On start the arena resumes queued and running tournaments, playing only
+      unplayed pairings, each under a capacity permit.
+    - On `SIGTERM`: `/readyz` fails, new work gets `503` (the listener stays open
+      until the drives end), the match in progress is recorded within
+      `TCAB_ARENA_SHUTDOWN_GRACE_SECONDS` (default 50), and the process exits.
+    - Every backend call has a 60 s per-attempt timeout.
+    - On resume, a backend that does not answer leaves the tournament for the next
+      start; only a definitive refusal (an arena refusal or a backend `404`) marks
+      it failed.
+  - **ui-common** (`cccfcef0`): the console understands `queued`, and a stream cut
+    short by a shutdown reads as "resumes when the arena restarts".
+  - **k8s**: the arena Deployment uses Recreate, `terminationGracePeriodSeconds:
+    60`, a `/readyz` readiness probe and a preStop sleep.
+
+  **Verified:**
+  - arena: 58 nextest tests, covering a kill between replay and summary, shutdown
+    plus restart resume, the permit wait, a transient vs a refused resume, and the
+    timeout. Its rust-fmt, clippy, doc and test gates pass.
+  - backend: all 1499 nextest tests pass.
+  - superrepo: Rust gates, k8s gates, markdownlint, cspell, prettier and the docs
+    build pass.
+  - ui-common: typescript and web-lint gates pass.
+
+  **Not verified or left:**
+  - No real-cluster pod restart was exercised.
+  - Standalone CI of microservice-arena and ui-common needs new contracts and
+    engines tags, and pin bumps to them. The arena pins contracts v0.2.3 and
+    engines v1.1.2, which lack these APIs.
+  - The submodules' own cspell, format and markdownlint gates could not run here
+    (no `npm ci`, and a `.git` worktree path).
+  - A live-stream subscriber more than 1024 matches behind skips the lagged
+    matches.
 ---
 
 The arena keeps every accepted tournament in an in-memory registry
