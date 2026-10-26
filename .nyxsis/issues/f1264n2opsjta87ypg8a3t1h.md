@@ -7,10 +7,30 @@ number: 20
 title: Resolve the conflict landing NYX-8
 type: conflict
 priority: 0
-state: open
+state: done
 branch: issue/o7hwklyhcecnv0j6u9k4aavr
 created: 2026-10-26T22:42:05.918773019Z
-modified: 2026-10-26T22:42:05.918773019Z
+modified: 2026-10-26T22:43:44.076579096Z
+done: 2026-10-26T22:43:44.076579096Z
+outcome: |
+  Rebased `tool-model-core`'s branch `issue/o7hwklyhcecnv0j6u9k4aavr` onto
+  `nightly` (f9765f3). Its one commit past 69f86d7 was replayed as b43537f "ci:
+  take the kit and the CI images built at 6c195c0f2". Both conflicts were resolved
+  by taking the branch's newer values. `.copier-answers.yml` now records the kit
+  at `v0.6.3-5579-g9ecc82fe9`. `azure-pipelines.yml` pins both CI images at
+  `6c195c0f290db7a98daa4bc811ae915cfcfd889c`. The CLAUDE.md change applied
+  cleanly. Master's earlier commits (the contracts pins v0.2.3 and v0.2.4 and the
+  CI image bumps at ed9c9929f and 32214df70) are not on `nightly` and were left
+  out on purpose. They reach `nightly` through master's own flow, as they did for
+  `tool-music` in NYX-19. The superrepo records the new submodule commit in
+  e55eca6b0.
+
+  Gates run in `tool-model-core` after `npm ci`: ci-tests, dependency-edges,
+  format, markdownlint, no-nul-bytes, python-lint and shell-tests pass. cspell
+  fails with a usage error from the cspell CLI. It fails the same way at
+  `nightly`'s own commit f9765f3, so this change did not cause it, and it is left
+  as is. The Rust and typescript gates were not run because the change touches
+  neither.
 ---
 
 The landing of NYX-8 stopped at a submodule's rebase, in the submodule
