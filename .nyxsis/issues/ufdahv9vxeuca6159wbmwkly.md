@@ -7,10 +7,29 @@ number: 26
 title: Resolve the conflict landing NYX-8
 type: conflict
 priority: 0
-state: open
+state: done
 branch: issue/o7hwklyhcecnv0j6u9k4aavr
 created: 2026-10-27T18:35:59.535765917Z
-modified: 2026-10-27T18:35:59.535765917Z
+modified: 2026-10-27T18:36:53.519981504Z
+done: 2026-10-27T18:36:53.519981504Z
+outcome: |
+  Rebased `microservice-publisher`'s branch `issue/o7hwklyhcecnv0j6u9k4aavr` onto
+  `origin/nightly` (e5645c7). The local `nightly` ref was stale, so the rebase
+  targeted the remote branch. The branch's only commit, d19ac79 (kit
+  `v0.6.3-5579`, CI images `6c195c0f2`), conflicted in `.copier-answers.yml` and
+  `azure-pipelines.yml` with nightly's 81ec7ed (kit `v0.6.3-5599`, CI images
+  `2610dc98c`). `6c195c0f2` is an ancestor of `2610dc98c`, so I kept nightly's
+  side. The commit's other change, to `CLAUDE.md`, is already on nightly, so
+  nothing was left and the commit was skipped. The branch now equals `nightly`.
+  The superrepo's pin for the submodule is moved to e5645c7 in e75de4c0e.
+
+  Left: the superrepo's `dependency-graph` gate reports that this branch's
+  `ciImageTag` (`6c195c0f2`) is older than the CI images pinned by the kit-updated
+  submodules (`microservice-publisher`, `test-suites`). The pin comes from this
+  superrepo branch's own base, not from the rebase, and the superrepo's rebase
+  onto `nightly` (which pins `32214df`) during landing is where it gets settled.
+  Nothing else in the submodule changed, so its own gates had nothing new to
+  check.
 ---
 
 The landing of NYX-8 stopped at a submodule's rebase, in the submodule
