@@ -7,10 +7,29 @@ number: 35
 title: Resolve the conflict landing NYX-8
 type: conflict
 priority: 0
-state: open
+state: done
 branch: issue/o7hwklyhcecnv0j6u9k4aavr
 created: 2026-10-27T19:16:19.043650592Z
-modified: 2026-10-27T19:16:19.043650592Z
+modified: 2026-10-27T19:17:48.42307361Z
+done: 2026-10-27T19:17:48.42307361Z
+outcome: |
+  Rebased `console.testcabinet.ai`'s branch `issue/o7hwklyhcecnv0j6u9k4aavr` onto
+  `nightly` (5d3ac37), now at 1071b12, and pinned it in the superrepo (0126a4077).
+
+  The conflicts were all in `.copier-answers.yml` and `azure-pipelines.yml`, in
+  the branch's three "ci: take the kit and the CI images built at …" commits
+  (ed9c9929f, 32214df70 and 6c195c0f2). `nightly`'s own bump to 2610dc98c (the
+  v0.42.1 template update) comes after all three in the superrepo's history. So
+  each conflict kept `nightly`'s side. That left the three commits empty, and the
+  rebase dropped them. The branch's four web commits applied cleanly on top of
+  `nightly`: pre-bundling three.js when the packages are linked, `@clockwyrks/ui`
+  0.1.2 and then 0.1.3, and the Runs page browser test.
+
+  Gates: `dependency-edges`, `ci-tests`, `no-nul-bytes` and `python-lint` pass.
+  `typescript`, `format`, `cspell`, `markdownlint`, `web-lint` and
+  `web-browser-test` did not run. The package feed refused this machine's npm
+  token (E401), so the npm workspace could not be installed. They are left to the
+  landing's check command.
 ---
 
 The landing of NYX-8 stopped at a submodule's rebase, in the submodule
