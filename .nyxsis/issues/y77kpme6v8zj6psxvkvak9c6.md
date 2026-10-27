@@ -7,10 +7,28 @@ number: 25
 title: Resolve the conflict landing NYX-8
 type: conflict
 priority: 0
-state: open
+state: done
 branch: issue/o7hwklyhcecnv0j6u9k4aavr
 created: 2026-10-27T18:30:20.539738644Z
-modified: 2026-10-27T18:30:20.539738644Z
+modified: 2026-10-27T18:31:24.36242631Z
+done: 2026-10-27T18:31:24.36242631Z
+outcome: |
+  There was no content conflict to resolve. In `microservice-repos`, the remote
+  `nightly` was stale: it sat at the scaffold commit 783a27e, an ancestor of
+  `master`. The superrepo's `nightly` already pins 30f3f78 (`master`) for the
+  submodule. Replaying c9efbcf alone onto the scaffold therefore conflicted in
+  `.copier-answers.yml` and `azure-pipelines.yml`, because the scaffold lacks
+  every `master` commit the change builds on.
+
+  Done: the submodule's `nightly` was fast-forwarded on origin to 30f3f78, the
+  commit the superrepo's `nightly` already records for it (a fast-forward, no
+  history rewritten). The branch `issue/o7hwklyhcecnv0j6u9k4aavr` (c9efbcf) now
+  sits directly on `nightly`. `git rebase origin/nightly` reports it up to date,
+  and the branch is pushed. The superrepo branch already contains `nightly`, and
+  its pin (c9efbcf) is unchanged, so no submodule-pointer commit was needed.
+
+  Left: nothing for this issue. Other submodules whose remote `nightly` lags their
+  `master` may hit the same landing failure.
 ---
 
 The landing of NYX-8 stopped at a submodule's rebase, in the submodule
