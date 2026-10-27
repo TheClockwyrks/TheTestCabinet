@@ -7,10 +7,24 @@ number: 29
 title: Resolve the conflict landing NYX-8
 type: conflict
 priority: 0
-state: open
+state: done
 branch: issue/o7hwklyhcecnv0j6u9k4aavr
 created: 2026-10-27T18:49:52.006833749Z
-modified: 2026-10-27T18:49:52.006833749Z
+modified: 2026-10-27T18:50:44.702402725Z
+done: 2026-10-27T18:50:44.702402725Z
+outcome: |
+  Rebased `microservice-artifacts`'s branch `issue/o7hwklyhcecnv0j6u9k4aavr` onto
+  `nightly` (f3a309d). The only commit on the branch, 9eb3e8b ("ci: take the kit
+  and the CI images built at 6c195c0f2"), conflicted in `.copier-answers.yml` and
+  `azure-pipelines.yml`. Nightly's 3546636 had already made the same change at a
+  later point: it takes the kit at 7da095c32 and the CI images at 2610dc98c, which
+  descends from 6c195c0f2 and so includes the Rust image with PostgreSQL. It also
+  makes the same CLAUDE.md edit about filing issues through the issues server. I
+  kept nightly's side in both files. That left the commit empty, so I skipped it,
+  and the branch now stands at nightly's f3a309d. I force-pushed the branch to the
+  submodule's remote and recorded the new pin in the superrepo as 59d4bb067. I
+  didn't run any gates in the submodule because its tree is identical to
+  nightly's. Nothing is left in the submodule for NYX-8.
 ---
 
 The landing of NYX-8 stopped at a submodule's rebase, in the submodule
