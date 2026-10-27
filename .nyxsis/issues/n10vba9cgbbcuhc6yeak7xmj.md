@@ -7,10 +7,37 @@ number: 31
 title: Resolve the conflict landing NYX-8
 type: conflict
 priority: 0
-state: open
+state: done
 branch: issue/o7hwklyhcecnv0j6u9k4aavr
 created: 2026-10-27T18:57:18.20325185Z
-modified: 2026-10-27T18:57:18.20325185Z
+modified: 2026-10-27T18:59:43.402466653Z
+done: 2026-10-27T18:59:43.402466653Z
+outcome: |
+  Rebased `gg.rocks`'s branch `issue/o7hwklyhcecnv0j6u9k4aavr` onto `nightly`
+  (8bdce01), replaying only the work past 3f0ea47 (`git rebase --onto
+  origin/nightly 3f0ea47`) so master's own commits stay off nightly. The one
+  commit, "ci: take the kit and the CI images built at 6c195c0f2", conflicted on
+  `.copier-answers.yml` (`_commit`) and `azure-pipelines.yml` (the web CI image).
+  Both conflicts resolve to the commit's side: kit 9ecc82fe9 and image 6c195c0f2,
+  which matches the superrepo's `ciImageTag`.
+
+  `nightly` was at kit d81afb803, so recording 9ecc82fe9 without the files in
+  between would have made the answers file claim a kit version that nightly did
+  not have. So I re-ran `render.py --update` from d81afb803 and folded it into the
+  commit. It brings the kit's changes to `ci/src/the_test_cabinet_ci/edges.py`,
+  `ci/tests/test_edges.py`, `ci/tests/test_wiring.py` and
+  `scripts/ci/npm-feed{,.test}.sh`. Those files now match master's render exactly.
+  The new `gg.rocks` commit is 4557a3c, and the superrepo pins it in f47be2bd0.
+
+  Gates in `gg.rocks`: ci-tests (297 tests), dependency-edges, format,
+  markdownlint, no-nul-bytes, python-lint, shell-tests and typescript (52 tests)
+  all pass. `cspell` fails in this worktree and also on unchanged `nightly`. The
+  cause is that the worktree sits under `.git/nyxsis/…`, and cspell.json's
+  `**/.git/**` ignore then matches every file. Run on a copy of the same tree
+  outside `.git/`, it passes (6 files, 0 issues).
+
+  Left: the cspell `**/.git/**` ignore in the repository kit breaks that gate in
+  any Nyxsis worktree. This is not filed yet.
 ---
 
 The landing of NYX-8 stopped at a submodule's rebase, in the submodule
