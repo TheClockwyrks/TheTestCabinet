@@ -7,10 +7,21 @@ number: 30
 title: Resolve the conflict landing NYX-8
 type: conflict
 priority: 0
-state: open
+state: done
 branch: issue/o7hwklyhcecnv0j6u9k4aavr
 created: 2026-10-27T18:53:40.020419303Z
-modified: 2026-10-27T18:53:40.020419303Z
+modified: 2026-10-27T18:54:17.415191186Z
+done: 2026-10-27T18:54:17.415191186Z
+outcome: |
+  Rebased `microservice-arena`'s branch `issue/o7hwklyhcecnv0j6u9k4aavr` onto
+  `nightly` (2dbc633). Its one commit, 21f7445, took the kit at v0.6.3-5579 and
+  the CI images built at 6c195c0f2. It conflicted in `.copier-answers.yml` and
+  `azure-pipelines.yml` with nightly's newer change, which takes the kit at
+  v0.6.3-5599 and the images built at 2610dc98c (a descendant of 6c195c0f2). I
+  kept nightly's side in both files, so the commit became empty and was dropped.
+  The branch now stands at nightly's tip, and the superrepo records it in
+  2d3f61b76. Nothing changed in the submodule's content, so there was nothing new
+  for its gates to judge. Nothing is left.
 ---
 
 The landing of NYX-8 stopped at a submodule's rebase, in the submodule
