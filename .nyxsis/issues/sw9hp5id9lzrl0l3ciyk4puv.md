@@ -7,10 +7,42 @@ number: 38
 title: Resolve the conflict landing NYX-37
 type: conflict
 priority: 0
-state: open
+state: done
 branch: issue/pirgps90ev3ruerfcjaeqbwh
 created: 2026-10-27T20:44:52.888892276Z
-modified: 2026-10-27T20:44:52.888892276Z
+modified: 2026-10-27T20:53:41.314312219Z
+done: 2026-10-27T20:53:41.314312219Z
+outcome: |
+  Rebased `issue/pirgps90ev3ruerfcjaeqbwh` onto `nightly` (d197d28f9). The
+  branch's four commits now sit on top, with NYX-37's fix at a87729d2f.
+
+  The conflicts were all in the CI image pins. `nightly` had taken the CI images
+  built at 6c195c0f2, and the branch takes the ones built at 2610dc98c (the
+  v0.42.1 template update), which come later. Each conflict was resolved as
+  follows:
+
+  - `ci/images/tags.yml`: kept `ciImageTag: 2610dc98c…`.
+  - Fifteen submodules (`client-tauri`, `gg`, `gg.rocks` and the twelve `tool-*`):
+    the branch's commit was on the submodule's `master` and `nightly`'s was on the
+    submodule's `nightly`, so neither contained the other. In each submodule I
+    merged `origin/nightly` into its `issue/pirgps90ev3ruerfcjaeqbwh` branch.
+    Where the two clashed, the merge kept the 2610dc98c side: the `_commit` line
+    in `.copier-answers.yml`, the image tags in `azure-pipelines.yml` and, in
+    `gg`, the image tag in `ci/tests/test_wiring.py`. Each merge's tree is
+    identical to the branch's original pin, and those merge commits are now
+    pinned. Each submodule's `nightly` fast-forwards to its merge.
+  - `console.testcabinet.ai`, `contracts`, `engines`, `microservice-driver`,
+    `microservice-publisher`, `test-suites`: `nightly`'s pin already contains the
+    branch's, so `nightly`'s pin was kept. Those submodules' issue branches were
+    fast-forwarded to it.
+  - `ui-common`, `testcabinet.ai`, `the-spec-cabinet` and the four microservices
+    `nightly` left alone fast-forward to the branch's pin.
+
+  Gates: `ci-image-pins`, `dependency-graph`, `ci-tests`, `k8s-deploy-sets` and
+  `no-nul-bytes` pass. I didn't push the fifteen submodule merge commits, so the
+  landing has to carry them onto each submodule's `nightly` before
+  `submodule-remotes` will accept the pins. The docs, format and spelling gates
+  didn't run, because this commit changes no file they check.
 ---
 
 The landing of NYX-37 stopped at the rebase: rebasing
