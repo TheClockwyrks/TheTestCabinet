@@ -7,10 +7,29 @@ number: 32
 title: Resolve the conflict landing NYX-8
 type: conflict
 priority: 0
-state: open
+state: done
 branch: issue/o7hwklyhcecnv0j6u9k4aavr
 created: 2026-10-27T19:02:49.188655975Z
-modified: 2026-10-27T19:02:49.188655975Z
+modified: 2026-10-27T19:04:47.100761752Z
+done: 2026-10-27T19:04:47.100761752Z
+outcome: |
+  Rebased gg's `issue/o7hwklyhcecnv0j6u9k4aavr` onto `nightly` (d590c7cd). Once
+  the branch's own pin commits came along, nothing conflicted. The rebase replayed
+  the three pin commits (ed9c9929f, 32214df70, 6c195c0f2), and the two older ones
+  were superseded. I squashed them into one commit, 1635f7a1 "ci: pin the CI
+  images built at 6c195c0f2". Its tree is the same as the full rebase's tree. Its
+  diff against nightly moves the pipeline's three image pins and the wiring test's
+  `rustImage` from af509db6 to 6c195c0f. I pushed the branch to gg's remote and
+  recorded it in the superrepo with 8f8c6f041.
+
+  Gates run in gg: ci-tests (302 passed, 1 skipped), format, python-lint and
+  no-nul-bytes all passed. cspell failed when run in place, but the failure is in
+  the environment, not the code. The Nyxsis worktree path contains `.git/`, so
+  cspell.json's `**/.git/**` ignore excludes every file. cspell then finds no
+  files and exits with usage. The same gate run over a `git archive` export of
+  HEAD checked 105 files and found no issues. That cspell config problem is left
+  as it is. The Rust and typescript gates were not run because the change touches
+  no code they judge.
 ---
 
 The landing of NYX-8 stopped at a submodule's rebase, in the submodule `gg`: the
