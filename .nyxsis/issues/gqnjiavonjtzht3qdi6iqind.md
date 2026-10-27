@@ -7,10 +7,60 @@ number: 12
 title: Resolve the conflict landing DEPLOY-2
 type: conflict
 priority: 0
-state: open
+state: done
 branch: issue/ak5nksdbxdkkx19zwqvv9jo7
 created: 2026-10-26T21:27:36.96747467Z
-modified: 2026-10-27T18:32:34.557792176Z
+modified: 2026-10-27T19:02:35.23887283Z
+done: 2026-10-27T19:02:35.23887283Z
+outcome: |
+  The operator fast-forwarded `microservice-repos`' `nightly` to `30f3f78`, so its
+  branch `issue/ak5nksdbxdkkx19zwqvv9jo7` (`b51c21a`) now stands on `nightly` and
+  rebases as a no-op.
+
+  Since the landing would stop next at other submodules whose `nightly` moved,
+  each DEPLOY-2 submodule branch was rebased onto its `nightly` too:
+
+  - `microservice-arena` (`a839c42`): a real merge with nightly's tournament
+    record/resume. The branch's drain latch was folded into nightly's `Shutdown`
+    (Serving → Draining → Refusing). `/readyz` answers 503 at SIGTERM while
+    `/healthz` stays 200, and live streams end. Requests are served through the 5
+    s drain delay, then refused with 503 `stopping`, judged by arrival. Each
+    tournament finishes and records its current match within
+    `TCAB_ARENA_SHUTDOWN_GRACE_SECONDS` (50), and the arena exits 0. The listener
+    now closes at the end of the delay instead of staying open until the last
+    tournament stops, and the error code is `stopping` instead of `shutting_down`
+    (nothing else uses it).
+  - `console.testcabinet.ai` (`5d3ac37`): only the stop-signal commit was replayed
+    onto `nightly`, which is a separate lineage from the `master` the branch sat
+    on.
+  - `microservice-artifacts` (`c491f09`) and `microservice-dispatcher` (`f3831c6`)
+    rebased cleanly.
+
+  The superrepo branch was rebased onto `nightly`.
+  `deployments/k8s/base/arena.yaml` keeps nightly's comments plus DEPLOY-2's note
+  that the arena has no disruption budget. The arena's Shutdown section in
+  `components/arena/overview.md` was rewritten for the merged behaviour. The
+  submodule pointers now record the rebased commits. NYX-9's issue file was
+  wrapped so markdownlint passes.
+
+  Gates:
+  - artifacts, dispatcher, repos: every gate passes. cspell can't run without an
+    npm install, and it checks only Markdown, which these commits don't touch.
+  - superrepo: 19 of 23 pass, including rust-test (1528), docs-build and
+    k8s-manifests. These failures are already on `nightly`:
+    - dependency-graph: the submodules' pipelines name the CI images at
+      `2610dc98c`, but `ciImageTag` is `32214df70`, and the root lock reports
+      stale. No DEPLOY-2 commit touches a manifest or lock.
+    - ci-tests: two tests that mirror those gates.
+    - workspace-test: the engines packages aren't installed in this worktree
+      ("Cannot find module").
+  - arena: in its own checkout, `rust-clippy`, `rust-doc` and `rust-test` fail to
+    compile against the `contracts` `v0.2.3` and `engines` `v1.1.2` tags it pins.
+    That comes from nightly's 6f4dad2 and is filed as ARENA-2. The merge itself
+    passes fmt, clippy, doc and 70/70 tests in a build against `contracts` 48d4118
+    and `engines` bf06d7f.
+
+  Left: ARENA-2, and nightly's CI image pin following `2610dc98c`.
 ---
 
 The landing of DEPLOY-2 stopped at a submodule's rebase, in the submodule
