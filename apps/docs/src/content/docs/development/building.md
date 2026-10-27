@@ -375,6 +375,7 @@ The project's own gates, wired the same way:
 | `k8s-deploy-sets` | The staging and prod deploy sets, every image pinned to a commit |
 | `ci-image-pins` | The root pipelines name every CI image as `<repository>:${{ variables.ciImageTag }}` and include `ci/images/tags.yml`, and no file under `.azure/` names one |
 | `dependency-graph` | The submodules, the patch table and the package links against the repositories' [edges](/development/repositories/#the-edges), and every checked-out repository's lock and links |
+| `npm-lock` | `npm ci --dry-run` installs the npm workspace from `package-lock.json` as committed: every workspace manifest, the three submodules' packages among them, agrees with the lock, so a submodule pin move cannot leave `npm ci` asking the registry for a workspace package's version the workspace does not hold |
 | `scripts-test` | `node --test` over `scripts/lib` and `scripts/*.test.mjs` |
 
 `.pre-commit-config.yaml` runs each gate as one hook, triggered by the files it

@@ -175,6 +175,7 @@ This project's own gates, wired in the same way:
 | `build-context` | Dockerfile build contexts | web | yes |
 | `k8s-deploy-sets` | kubernetes deploy sets | web | yes |
 | `ci-image-pins` | project jobs pin the Rust CI image | web | yes |
+| `npm-lock` | the npm workspace installs from its lock | web | yes |
 | `scripts-test` | script library tests (node --test) | web | yes |
 | `workspace-test` | npm workspace tests (vitest) | web | no |
 

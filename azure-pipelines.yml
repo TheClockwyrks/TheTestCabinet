@@ -552,6 +552,12 @@ stages:
             displayName: "dependency graph (edges, patch table, package links)"
             condition: eq(variables['checksReady'], 'true')
 
+          # The install above already runs `npm ci` and stops the job on the
+          # same disagreement; this step names it as the check it is.
+          - script: uv run --quiet --project ci gate run npm-lock
+            displayName: "the npm workspace installs from its lock"
+            condition: eq(variables['checksReady'], 'true')
+
           # As the web tests do, the two test gates below name an artifact
           # directory, which has each leave its JUnit report there for the
           # collection at the end of the job.

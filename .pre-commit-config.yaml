@@ -333,6 +333,22 @@ repos:
         files: '^\.gitmodules$|^\.cargo/config\.toml$|^\.package-links\.json$|^templates/repository/ci/src/the_test_cabinet_ci/(edges|links)\.py$|^scripts/repos/render\.py$|^ci/images/tags\.yml$|^ci/src/the_test_cabinet_ci/graph\.py$|^ci/gates/dependency-graph\.py$'
         pass_filenames: false
 
+      - id: npm-lock
+        name: "the npm workspace installs from its lock"
+        entry: uv run --quiet --project ci gate run npm-lock
+        language: system
+        # What `npm ci` holds the lock to: the root manifest, the lock, every
+        # workspace manifest, and the gitlinks of the three submodules whose
+        # packages the workspace lists, since a pin move is staged as the
+        # submodule's path alone and changes its manifests all the same.
+        files: '^package(-lock)?\.json$|^apps/[^/]+/package\.json$|^(contracts|engines|ui-common)/packages/[^/]+/package\.json$|^(contracts|engines|ui-common)$|^ci/gates/npm-lock\.py$'
+        # pre-commit reads a checked-out gitlink as a directory, and a hook's
+        # default `types: [file]` drops every directory before `files` is
+        # matched, so the pin moves above would never fire it without this.
+        types_or: [file, directory]
+        types: []
+        pass_filenames: false
+
       - id: scripts-test
         name: "script library tests (node --test)"
         entry: uv run --quiet --project ci gate run scripts-test

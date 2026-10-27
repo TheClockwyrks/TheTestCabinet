@@ -174,6 +174,8 @@ k8s-deploy-sets          the staging and prod deploy sets, pinned
 k8s-manifests            the render of every overlay
 markdownlint             the Markdown style (90 columns)
 no-nul-bytes             a NUL byte in a file not declared binary
+npm-lock                 npm ci installs the workspace from the lock as
+                         committed
 python-lint              ruff over ci/, scripts/repos/ and the repository kit
 scripts-test             node --test over scripts/lib
 shell-tests              every *.test.sh under scripts/, scripts/ci/ and

@@ -115,6 +115,7 @@ gates for what it touched:
 | `deployments/k8s/`, the deploy scripts | `k8s-manifests`, `k8s-deploy-sets` |
 | `scripts/` | `shell-tests`, `scripts-test`, and `shellcheck` (`pre-commit run shellcheck --files …`) |
 | `ci/`, `.azure/project/`, `ci/images/tags.yml`, a Playwright pin | `python-lint`, `ci-tests`, `ci-image-pins` |
+| `package.json`, `package-lock.json`, a workspace manifest, the `contracts`, `engines` or `ui-common` pin | `npm-lock` |
 | The repository kit (`copier.yml`, `templates/repository/`, `scripts/repos/`), `.gitmodules`, `.cargo/config.toml`, `.package-links.json` | `python-lint`, `ci-tests`, `shell-tests`, `dependency-graph` |
 | `.claude/hooks/` | every `.claude/hooks/*.test.sh`, run directly, and `shellcheck` |
 | Anything | `no-nul-bytes`, and `pre-commit run --all-files` for the upstream file checks |
