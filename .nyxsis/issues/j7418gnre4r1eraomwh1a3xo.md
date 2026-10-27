@@ -7,10 +7,36 @@ number: 28
 title: Resolve the conflict landing NYX-8
 type: conflict
 priority: 0
-state: open
+state: done
 branch: issue/o7hwklyhcecnv0j6u9k4aavr
 created: 2026-10-27T18:43:54.66031531Z
-modified: 2026-10-27T18:43:54.66031531Z
+modified: 2026-10-27T18:46:39.841325935Z
+done: 2026-10-27T18:46:39.841325935Z
+outcome: |
+  Rebased `microservice-dispatcher`'s branch `issue/o7hwklyhcecnv0j6u9k4aavr` onto
+  `nightly` (9de90f0). The branch's one commit, 3afa9de ("ci: take the kit and the
+  CI images built at 6c195c0f2"), conflicted in `.copier-answers.yml` and
+  `azure-pipelines.yml` with nightly's bbc8b07 ("ci: take the kit and the CI
+  images built at 2610dc98c"). Nightly's commit supersedes it completely: it has
+  the same CLAUDE.md wording (issues filed through the issues server), a newer kit
+  commit (7da095c32 instead of 9ecc82fe9), and newer CI images (2610dc98c instead
+  of 6c195c0f2, which is an ancestor of 2610dc98c and also has PostgreSQL in the
+  Rust image). Keeping nightly's side left the commit empty, so the rebase skipped
+  it. The branch now stands at nightly's 9de90f0 and is pushed, and the
+  superrepo records that pin.
+
+  The dispatcher's gates pass, except that cspell fails in this worktree because
+  of where it lives: its path runs through `.git/nyxsis/worktrees/`, which
+  `cspell.json`'s `**/.git/**` ignore matches, so cspell checks nothing and exits
+  with an error. Run on an exported copy of the same tree, cspell checks 6 files
+  and finds 0 issues. A gate run also adds `[[patch.unused]]` entries to the
+  dispatcher's Cargo.lock from the superrepo's local patch table. That's a local
+  artifact, so I reverted it and didn't commit it.
+
+  Left: the superrepo's `ci/images/tags.yml` on this branch still pins
+  `ciImageTag` 6c195c0f2, while the dispatcher's nightly pipeline now uses
+  2610dc98c. The superrepo's own nightly PR that moves the pin to 2610dc98c
+  settles that.
 ---
 
 The landing of NYX-8 stopped at a submodule's rebase, in the submodule
