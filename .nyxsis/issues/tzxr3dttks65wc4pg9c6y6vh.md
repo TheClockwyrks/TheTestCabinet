@@ -10,7 +10,7 @@ priority: 0
 state: open
 branch: issue/o7hwklyhcecnv0j6u9k4aavr
 created: 2026-10-26T23:03:54.128612159Z
-modified: 2026-10-26T23:03:54.128612159Z
+modified: 2026-10-27T18:26:04.273850587Z
 ---
 
 The landing of NYX-8 stopped at a submodule's rebase, in the submodule
