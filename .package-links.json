@@ -33,6 +33,8 @@
       "@clockwyrks/lattice-designer": "tools/lattice-designer"
     },
     "testcabinet.ai": {
+      "@clockwyrks/preview-tags": "apps/preview-tags",
+      "@clockwyrks/share-links": "apps/share-links",
       "@clockwyrks/site": "apps/site"
     },
     "the-spec-cabinet": {
