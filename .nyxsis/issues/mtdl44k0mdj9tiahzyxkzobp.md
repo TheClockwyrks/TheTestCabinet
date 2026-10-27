@@ -7,10 +7,47 @@ number: 36
 title: Resolve the conflict landing NYX-8
 type: conflict
 priority: 0
-state: open
+state: done
 branch: issue/o7hwklyhcecnv0j6u9k4aavr
 created: 2026-10-27T19:22:55.17511344Z
-modified: 2026-10-27T19:22:55.17511344Z
+modified: 2026-10-27T19:43:29.165507487Z
+done: 2026-10-27T19:43:29.165507487Z
+outcome: |
+  Rebased `issue/o7hwklyhcecnv0j6u9k4aavr` onto `nightly` (a8d4c5a7d). All 78
+  commits replayed, and no file outside a submodule conflicted.
+
+  Every conflict was a submodule pin: `console.testcabinet.ai`, `engines`,
+  `microservice-arena`, `microservice-artifacts` and `microservice-dispatcher`
+  (plus `microservice-repos`, which fast-forwarded). Each was resolved to the
+  descendant of the two pins. In the commits where the two pins diverged, these
+  were the branch's pre-rebase submodule states, so nightly's pin was kept and a
+  later commit of the branch moved it on. The resulting pins:
+
+  - `engines` (d47b0440e) and `console.testcabinet.ai` (1071b12d3) keep the
+    branch's pins, which already contain nightly's.
+  - `microservice-arena` (a839c42f2), `microservice-artifacts` (c491f09af),
+    `microservice-dispatcher` (f3831c6c9) and `microservice-repos` (c34051bb2)
+    take nightly's pins, which contain the branch's. Each submodule's
+    `issue/o7hwklyhcecnv0j6u9k4aavr` branch was fast-forwarded to its pin.
+
+  Every file outside the submodules is identical to the pre-rebase branch.
+  d9fe5b372 adds `cacheinfo` to the cspell dictionary, because this issue's body
+  quotes it from git's output.
+
+  Gates: 20 of 24 pass, including rust-test, rust-clippy, docs-build,
+  k8s-manifests and shell-tests. Since then, cspell passes, which leaves three
+  failing:
+
+  - `dependency-graph`, and `ci-tests`' `test_this_superrepo_passes`, which checks
+    the same thing: the submodules' pipelines name the CI images built at
+    2610dc98c for some repositories and at 6c195c0f2 for others, while
+    `ci/images/tags.yml` names 6c195c0f2. Nightly is mixed the same way: its
+    submodules are at 2610dc98c and 32214df70, and its `tags.yml` names 32214df70.
+    The pin move is on `origin/fix/nightly-ci-images-and-issue-lint` (7da095c32,
+    e3f3ffb3c) and has not landed on nightly yet. This issue does not repin it.
+  - `workspace-test`: the engines vitest files cannot resolve `/src/<file>` in a
+    worktree under `.git/nyxsis/worktrees/`. NYX-8 recorded this as a problem of
+    the local environment.
 ---
 
 The landing of NYX-8 stopped at the rebase: rebasing
