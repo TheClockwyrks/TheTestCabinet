@@ -7,10 +7,23 @@ number: 34
 title: Resolve the conflict landing NYX-8
 type: conflict
 priority: 0
-state: open
+state: done
 branch: issue/o7hwklyhcecnv0j6u9k4aavr
 created: 2026-10-27T19:12:23.09990997Z
-modified: 2026-10-27T19:12:23.09990997Z
+modified: 2026-10-27T19:13:18.986068198Z
+done: 2026-10-27T19:13:18.986068198Z
+outcome: |
+  Rebased the `contracts` submodule's branch `issue/o7hwklyhcecnv0j6u9k4aavr` onto
+  `nightly` at 8f9d640. The branch's only commit, e7cf3ca ("ci: take the kit and
+  the CI images built at 6c195c0f2"), conflicted in `.copier-answers.yml` and
+  `azure-pipelines.yml` with nightly's ddc37a2, which took the kit and CI images
+  built at 2610dc98c. 2610dc98c descends from 6c195c0f2, so its Rust image already
+  includes PostgreSQL. The kit's `templates/repository` is identical at both kit
+  commits, and the CLAUDE.md change from both sides merged without conflict.
+  Taking nightly's side therefore keeps both intents. The commit became empty and
+  was dropped, so the branch now stands at nightly's 8f9d640. The superrepo
+  records the new pin in 90d0e0b75. No gates were run inside `contracts` because
+  its tree is identical to nightly. Nothing is left.
 ---
 
 The landing of NYX-8 stopped at a submodule's rebase, in the submodule
