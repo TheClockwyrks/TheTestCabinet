@@ -7,10 +7,27 @@ number: 24
 title: Resolve the conflict landing NYX-8
 type: conflict
 priority: 0
-state: open
+state: done
 branch: issue/o7hwklyhcecnv0j6u9k4aavr
 created: 2026-10-26T23:03:54.128612159Z
-modified: 2026-10-27T18:26:04.273850587Z
+modified: 2026-10-27T18:27:03.824418604Z
+done: 2026-10-27T18:27:03.824418604Z
+outcome: |
+  Rebased the `test-suites` submodule's branch `issue/o7hwklyhcecnv0j6u9k4aavr`
+  onto `origin/nightly` (c01cd1ce3). The issue names the target as a3e21c67d, but
+  that is an old master merge. The current `nightly` is c01cd1ce3, which already
+  contains the branch's base 13963e05a.
+
+  The branch's only commit, e44759c18 ("ci: take the kit and the CI images built
+  at 6c195c0f2"), conflicted in `.copier-answers.yml` and `azure-pipelines.yml`.
+  Nightly's own commit dc6426d48 had already taken a newer kit (`v0.6.3-5599`) and
+  newer CI images (built at 2610dc98c, which descends from 6c195c0f2). Nightly's
+  side was kept, the commit came out empty, and it was dropped. The branch now
+  equals `nightly`.
+
+  The superrepo records the new pin in bb5b98a8b. The pinned commit is on the
+  submodule's remote `nightly`. No gate judges a pin-only change at commit;
+  `submodule-remotes` runs at push. Nothing is left.
 ---
 
 The landing of NYX-8 stopped at a submodule's rebase, in the submodule
