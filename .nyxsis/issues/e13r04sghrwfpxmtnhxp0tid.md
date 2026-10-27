@@ -7,10 +7,25 @@ number: 27
 title: Resolve the conflict landing NYX-8
 type: conflict
 priority: 0
-state: open
+state: done
 branch: issue/o7hwklyhcecnv0j6u9k4aavr
 created: 2026-10-27T18:39:54.934592574Z
-modified: 2026-10-27T18:39:54.934592574Z
+modified: 2026-10-27T18:40:58.420666488Z
+done: 2026-10-27T18:40:58.420666488Z
+outcome: |
+  Rebased `microservice-driver`'s branch `issue/o7hwklyhcecnv0j6u9k4aavr` onto
+  `nightly` (886808f). The branch had one commit, 3fb0a6d, which took the kit at
+  9ecc82fe9 and the CI images built at 6c195c0f2. It conflicted with nightly's
+  47b0d2f, which took a later kit (7da095c32) and the images built at 2610dc98c.
+  Commit 2610dc98c contains 6c195c0f2, so its Rust image already carries
+  PostgreSQL, and the CLAUDE.md change is the same on both sides. I resolved
+  `.copier-answers.yml`, `azure-pipelines.yml` and `ci/tests/test_wiring.py` to
+  nightly's version, so the commit became empty and the rebase dropped it. The
+  branch now stands at nightly's tip and is pushed. The submodule's ci-tests,
+  python-lint, playwright-image and build-context gates passed. I didn't run the
+  Rust gates because the tree is nightly's own. The superrepo records the new pin
+  in d5f237c08. Left: the superrepo branch's `ciImageTag` (6c195c0f2) still
+  differs from nightly's, and the superrepo's own landing handles that.
 ---
 
 The landing of NYX-8 stopped at a submodule's rebase, in the submodule
