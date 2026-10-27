@@ -23,7 +23,7 @@ x-devcontainer-build-args: &devcontainer-build-args
   # every language and tool a workspace carries; each other holds one optional
   # toolchain's files alone, which the Dockerfile copies over it. See "What the
   # image carries" in README.md.
-  TOOLCHAIN_IMAGE: nyxsisdev.azurecr.io/nyxsis-template-k8s-standard/toolchain:ad5bf224e0e39ab7
+  TOOLCHAIN_IMAGE: nyxsisdev.azurecr.io/nyxsis-template-k8s-standard/toolchain:a4594b2261770544
   # The Android toolchain the android CI image copies over the Rust image, for
   # a `shell` repository's Rust job and bundle jobs. Published for amd64 alone,
   # and read by ci/images/android.Dockerfile alone: the devcontainer's
@@ -37,28 +37,28 @@ x-devcontainer-build-args: &devcontainer-build-args
   PLAYWRIGHT_IMAGE: nyxsisdev.azurecr.io/nyxsis-template-k8s-standard/playwright:1.63.0
   # The wasm-components language image the Dockerfile copies over the toolchain image.
   # See "The language toolchains" in README.md.
-  WASM_COMPONENTS_IMAGE: nyxsisdev.azurecr.io/nyxsis-template-k8s-standard/wasm-components:wasmtime-49.0.1_wit-bindgen-0.62.0_wasm-tools-1.259.0_wac-0.11.0_b6aa00c1
+  WASM_COMPONENTS_IMAGE: nyxsisdev.azurecr.io/nyxsis-template-k8s-standard/wasm-components:wasmtime-49.0.1_wit-bindgen-0.62.0_wasm-tools-1.259.0_wac-0.11.0_5d742ee9
   # The wasi-sdk language image the Dockerfile copies over the toolchain image.
   # See "The language toolchains" in README.md.
-  WASI_SDK_IMAGE: nyxsisdev.azurecr.io/nyxsis-template-k8s-standard/wasi-sdk:34.0_1ba18c77
+  WASI_SDK_IMAGE: nyxsisdev.azurecr.io/nyxsis-template-k8s-standard/wasi-sdk:34.0_d2106b19
   # The python language image the Dockerfile copies over the toolchain image.
   # See "The language toolchains" in README.md.
-  PYTHON_IMAGE: nyxsisdev.azurecr.io/nyxsis-template-k8s-standard/python:3.14.6_componentize-py-0.25.1_8017a918
+  PYTHON_IMAGE: nyxsisdev.azurecr.io/nyxsis-template-k8s-standard/python:3.14.6_componentize-py-0.25.1_8ffe0b13
   # The jvm language image the Dockerfile copies over the toolchain image.
   # See "The language toolchains" in README.md.
-  JVM_IMAGE: nyxsisdev.azurecr.io/nyxsis-template-k8s-standard/jvm:jdk-21.0.12.1-1_kotlin-2.4.20_gradle-9.8.0_dokka-2.2.0_teavm-0.13.1_a2c210db
+  JVM_IMAGE: nyxsisdev.azurecr.io/nyxsis-template-k8s-standard/jvm:jdk-21.0.12.1-1_kotlin-2.4.20_gradle-9.8.0_dokka-2.2.0_teavm-0.13.1_0e475a6f
   # The dotnet language image the Dockerfile copies over the toolchain image.
   # See "The language toolchains" in README.md.
-  DOTNET_IMAGE: nyxsisdev.azurecr.io/nyxsis-template-k8s-standard/dotnet:10.0.401_componentize-0.8.0-preview00011_fsharp-core-10.1.401_docfx-2.81.0_fsharp-formatting-22.2.0_77e46f07
+  DOTNET_IMAGE: nyxsisdev.azurecr.io/nyxsis-template-k8s-standard/dotnet:10.0.401_componentize-0.8.0-preview00011_fsharp-core-10.1.401_docfx-2.81.0_fsharp-formatting-22.2.0_956c5a46
   # The ruby language image the Dockerfile copies over the toolchain image.
   # See "The language toolchains" in README.md.
-  RUBY_IMAGE: nyxsisdev.azurecr.io/nyxsis-template-k8s-standard/ruby:ruby-wasm-2.10.1_yard-0.9.45_binaryen-133_12ced05e
+  RUBY_IMAGE: nyxsisdev.azurecr.io/nyxsis-template-k8s-standard/ruby:ruby-wasm-2.10.1_yard-0.9.45_binaryen-133_8e8c4143
   # The swift language image the Dockerfile copies over the toolchain image.
   # See "The language toolchains" in README.md.
-  SWIFT_IMAGE: nyxsisdev.azurecr.io/nyxsis-template-k8s-standard/swift:6.4.0_wasm-sdk-6.4.0_35cffd1c
+  SWIFT_IMAGE: nyxsisdev.azurecr.io/nyxsis-template-k8s-standard/swift:6.4.0_wasm-sdk-6.4.0_050c06af
   # The purescript language image the Dockerfile copies over the toolchain image.
   # See "The language toolchains" in README.md.
-  PURESCRIPT_IMAGE: nyxsisdev.azurecr.io/nyxsis-template-k8s-standard/purescript:0.15.16_spago-1.0.4_5e57dcfb
+  PURESCRIPT_IMAGE: nyxsisdev.azurecr.io/nyxsis-template-k8s-standard/purescript:0.15.16_spago-1.0.4_0d33082b
   # Whether system/cuda.sh installs the CUDA toolkit, which is several GB. Off
   # unless something in this checkout compiles CUDA sources; a host with an
   # NVIDIA GPU behind its runtime turns it on in `.env`. See "GPU access" in

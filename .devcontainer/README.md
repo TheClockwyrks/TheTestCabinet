@@ -700,7 +700,9 @@ the bridge is fine and the host's agent is empty.
 The image's SSH client is configured with `WarnWeakCrypto no` in
 `/etc/ssh/ssh_config.d/50-warn-weak-crypto.conf`, which the toolchain image
 holds, so a connection to a forge offering no post-quantum key exchange prints no
-warning about it.
+warning about it. The file is written with mode `0644` whatever the umask of
+the machine that built the image, since ssh refuses every connection with "Bad
+owner or permissions" while a configuration file is writable by its group.
 
 ## Submodule checkout
 
