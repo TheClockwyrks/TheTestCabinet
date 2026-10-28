@@ -60,7 +60,7 @@ spec:
       containers:
         - name: cloudflared
           # Third-party, pinned to an exact release rather than a moving tag.
-          image: cloudflare/cloudflared:2026.9.3
+          image: cloudflare/cloudflared:2026.10.5
           args:
             - tunnel
             - --config
