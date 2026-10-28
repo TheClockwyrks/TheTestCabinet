@@ -1,0 +1,21 @@
+# markdownlint-cli2 configuration for the Nyxsis declarations.
+#
+# The issues server writes the issue files under issues/, and an issue it files
+# for a failed landing quotes git's output verbatim in a fenced block, whose
+# lines are as long as the paths and commits they name. Here the line-length
+# rule judges the prose alone. A nested `config` replaces the root's rather than
+# merging into it, so the root's rules are repeated here and change with it.
+config:
+  fenced-code-language: false
+  ul-style:
+    style: dash
+  line-length:
+    line_length: 90
+    tables: false
+    code_blocks: false
+  no-duplicate-heading:
+    siblings_only: true
+  descriptive-link-text: false
+  first-line-heading: false
+  no-inline-html:
+    allowed_elements: []

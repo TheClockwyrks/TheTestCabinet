@@ -74,6 +74,8 @@ spec:
         # at itself by the OTEL-endpoint env patches.
     spec:
       serviceAccountName: tcab-lgtm # no API access — its own identity only
+      # Time for the stores to flush to their volumes on stop.
+      terminationGracePeriodSeconds: 60
       containers:
         - name: lgtm
           # PINNED, not :latest. The stack's components (Grafana, Loki, Tempo,
@@ -164,6 +166,12 @@ spec:
               port: 3000
             initialDelaySeconds: 10
             periodSeconds: 10
+          lifecycle:
+            # Hold the pod while its endpoint's removal from the Service
+            # propagates; telemetry export is best effort either way.
+            preStop:
+              sleep:
+                seconds: 5
           resources:
             # The all-in-one stack bundles a collector + three TSDBs + Grafana, so
             # give it real headroom; tune against your telemetry volume.

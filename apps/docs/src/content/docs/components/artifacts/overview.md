@@ -209,3 +209,18 @@ backend and the edge all reach it over the cluster network. It is deployed as a
 `Deployment` behind a `ClusterIP` `Service`, with its own `ServiceAccount` with
 no API access and the workload identity its managed identity binds to, and its
 replica count is a free choice. See [Run plane](/deployment/kubernetes/run-plane/).
+
+### Shutdown
+
+The service answers two probes without an identity: `GET /healthz`, liveness,
+which answers `200` while the process serves, and `GET /readyz`, readiness, which
+the `Deployment`'s readiness probe calls. On `SIGTERM` it stops as every service
+does, per [Graceful termination](/deployment/kubernetes/control-plane/#graceful-termination):
+`/readyz` answers `503` at once, the service keeps accepting for the 5-second
+drain delay, then stops accepting, finishes every request in flight, an upload
+or a streamed download among them, and exits with status 0. It holds no
+long-lived stream, so there is none to close. Its `300s` grace lets a run-tree
+upload in progress complete on the terminating replica; 290 seconds after the
+signal it exits 0 with whatever is still in flight, inside that grace. A
+`SIGTERM` that arrives while the service is still starting, waiting for its
+run-tree container, ends the start and exits 0 too.

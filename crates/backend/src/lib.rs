@@ -50,6 +50,7 @@ pub mod readiness;
 pub mod relay;
 pub mod render;
 pub mod review;
+pub mod shutdown;
 pub mod snapshot;
 pub mod state_move;
 pub mod stats;

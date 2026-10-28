@@ -118,3 +118,15 @@ It binds all interfaces by default (`0.0.0.0:8792`), and is deployed as a
 `Deployment` behind a `ClusterIP` `Service`, with its own `ServiceAccount` with
 no API access and the workload identity its managed identity binds to. See
 [Run plane](/deployment/kubernetes/run-plane/).
+
+The service stops as the control plane's
+[graceful termination](/deployment/kubernetes/control-plane/#graceful-termination)
+states for every service. On `SIGTERM` its readiness probe, `GET /readyz`,
+answers `503` at once while it keeps accepting for the 5-second drain delay;
+it then stops accepting, finishes every upload, download and publish in
+flight, and exits with status 0. Its `300s` grace leaves a bundle upload in
+progress time to complete on the terminating replica; a request still in
+flight at its stop deadline, 290 seconds after the signal, is abandoned and the
+exit is still clean. A signal during the start, while the service still waits
+for its bundle container, ends it at once with status 0. `GET /healthz`, the
+liveness probe, keeps answering `200` throughout.

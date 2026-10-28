@@ -4,13 +4,48 @@
 //! serves the Axum router until terminated. Every request identifies its caller
 //! by a Cloudflare Access assertion or a backend-minted token; see
 //! `test_cabinet_backend::auth`.
+//!
+//! On `SIGTERM` it drains as [`test_cabinet_backend::shutdown`] describes and exits
+//! 0; an interrupt (`Ctrl-C`) skips the drain delay.
 
 use std::process::ExitCode;
 
 use test_cabinet_backend::config::Config;
+use test_cabinet_backend::shutdown::{self, Stopped, Timing};
 
-#[tokio::main]
-async fn main() -> ExitCode {
+fn main() -> ExitCode {
+    let runtime = match tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+    {
+        Ok(runtime) => runtime,
+        Err(err) => {
+            eprintln!("could not start the async runtime: {err}");
+            return ExitCode::FAILURE;
+        }
+    };
+    let code = runtime.block_on(run());
+    // A request still running past the stop deadline may hold a blocking thread (an
+    // ingest's scan runs on one), which dropping the runtime would wait for; it is
+    // abandoned instead, so the exit stays inside the termination grace.
+    runtime.shutdown_background();
+    code
+}
+
+/// Start the backend, serve it until it is told to stop, then drain it.
+async fn run() -> ExitCode {
+    // Listen for the stop signals before anything that can take time, so a
+    // `SIGTERM` during the start is a request to stop rather than the end of the
+    // process by the signal's default action.
+    let stop = match shutdown::stop_signal() {
+        Ok(stop) => stop,
+        Err(err) => {
+            eprintln!("cannot listen for the stop signals: {err}");
+            return ExitCode::FAILURE;
+        }
+    };
+    let mut stop = Box::pin(stop);
+
     // Load `.env.backend` beside the project before anything reads the
     // environment. A missing file is fine (variables can be exported instead);
     // `dotenvy` never overrides already-set variables. This runs before the
@@ -50,7 +85,18 @@ async fn main() -> ExitCode {
         );
     }
 
-    let backend = match test_cabinet_backend::build(config).await {
+    tracing::info!("listening for SIGTERM and interrupts; starting the backend");
+
+    // A stop requested while the backend starts ends the start: nothing has been
+    // accepted yet, so there is nothing to drain.
+    let built = tokio::select! {
+        built = test_cabinet_backend::build(config) => built,
+        stop = &mut stop => {
+            tracing::info!(?stop, "stopped while starting");
+            return ExitCode::SUCCESS;
+        }
+    };
+    let backend = match built {
         Ok(backend) => backend,
         Err(err) => {
             eprintln!("startup error: {err}");
@@ -67,52 +113,29 @@ async fn main() -> ExitCode {
     };
     tracing::info!("backend listening on {}", backend.bind);
 
-    // Told to stop, the backend drains: it fails readiness and ends every long-lived
-    // stream, and the server stops accepting and finishes the requests in flight
-    // before it exits (the control plane's "Graceful termination").
-    let ready = backend.ready.clone();
+    // Told to stop, the backend drains (the control plane's "Graceful termination",
+    // sequenced by `shutdown::serve`). What this replica accepted last, a job's end
+    // among it, reaches the other replicas once the requests in flight finish.
     let bus = backend.bus;
-    let shutdown = async move {
-        stop_requested().await;
-        tracing::info!("stopping: draining the backend");
-        ready.mark_draining();
-    };
-    if let Err(err) = axum::serve(listener, backend.router)
-        .with_graceful_shutdown(shutdown)
-        .await
-    {
-        eprintln!("server error: {err}");
-        return ExitCode::FAILURE;
-    }
-    // What this replica accepted last, a job's end among it, reaches the others
-    // before it exits.
-    if let Some(bus) = &bus {
-        bus.flush(std::time::Duration::from_secs(5)).await;
-    }
-    ExitCode::SUCCESS
-}
-
-/// Resolve on `SIGTERM`, which Kubernetes sends a pod it stops, or on Ctrl-C.
-async fn stop_requested() {
-    let interrupt = tokio::signal::ctrl_c();
-    #[cfg(unix)]
-    {
-        let mut terminate =
-            match tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()) {
-                Ok(terminate) => terminate,
-                Err(err) => {
-                    tracing::warn!("cannot listen for SIGTERM ({err}); stopping on Ctrl-C only");
-                    let _ = interrupt.await;
-                    return;
-                }
-            };
-        tokio::select! {
-            _ = interrupt => {}
-            _ = terminate.recv() => {}
+    let flush = async move {
+        if let Some(bus) = &bus {
+            bus.flush(std::time::Duration::from_secs(5)).await;
         }
-    }
-    #[cfg(not(unix))]
-    {
-        let _ = interrupt.await;
+    };
+    let served = shutdown::serve(
+        listener,
+        backend.router,
+        backend.ready.clone(),
+        stop,
+        flush,
+        Timing::default(),
+    )
+    .await;
+    match served {
+        Ok(Stopped::Drained | Stopped::DeadlinePassed) => ExitCode::SUCCESS,
+        Err(err) => {
+            eprintln!("server error: {err}");
+            ExitCode::FAILURE
+        }
     }
 }

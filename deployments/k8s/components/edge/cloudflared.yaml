@@ -17,6 +17,14 @@ metadata:
     app.kubernetes.io/part-of: test-cabinet
 spec:
   replicas: 2
+  # A deploy starts the new connector and waits for it to be Ready, holding a live
+  # connection, before terminating an old one (Planned disruption, in
+  # deployment/kubernetes/control-plane.md).
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
   selector:
     matchLabels:
       app.kubernetes.io/name: tcab-cloudflared
@@ -27,6 +35,9 @@ spec:
         app.kubernetes.io/part-of: test-cabinet
     spec:
       automountServiceAccountToken: false
+      # cloudflared's own --grace-period below is set inside this, so a stopping
+      # connector finishes its requests in flight before the kill.
+      terminationGracePeriodSeconds: 30
       # Prefer the two replicas on different nodes, so one node's loss leaves a
       # connector running.
       affinity:
@@ -49,11 +60,16 @@ spec:
       containers:
         - name: cloudflared
           # Third-party, pinned to an exact release rather than a moving tag.
-          image: cloudflare/cloudflared:2026.9.3
+          image: cloudflare/cloudflared:2026.10.5
           args:
             - tunnel
             - --config
             - /etc/cloudflared/config/config.yaml
+            # On SIGTERM the connector stops taking new requests, which Cloudflare's
+            # edge routes over the other replica's connections, and waits up to this
+            # for those in flight. It binds no Service, so it needs no preStop hook.
+            - --grace-period
+            - 25s
             - run
           resources:
             # Memory request == limit, as on every always-on service (see
@@ -97,3 +113,20 @@ spec:
             items:
               - key: credentials.json
                 path: credentials.json
+---
+# Planned disruption: a drain evicts one connector and waits for its replacement to
+# be Ready before evicting the other, so the tunnel always holds a connection. The
+# selector is the connector's own name label, so the budget reaches no run pod.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: tcab-cloudflared
+  namespace: tcab-prod
+  labels:
+    app.kubernetes.io/name: tcab-cloudflared
+    app.kubernetes.io/part-of: test-cabinet
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: tcab-cloudflared

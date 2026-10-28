@@ -23,6 +23,10 @@ metadata:
   namespace: tcab-prod
 spec:
   replicas: 1 # one drainer; do not scale out (claims are atomic, extra replicas waste work)
+  # The old pod stops before the new one starts, so two dispatchers never admit at
+  # once. Admission pauses for the restart; no driver call reaches the dispatcher.
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       app.kubernetes.io/name: tcab-dispatcher
@@ -33,6 +37,9 @@ spec:
         app.kubernetes.io/part-of: test-cabinet
     spec:
       serviceAccountName: tcab-dispatcher # RBAC to create+watch driver Jobs
+      # Told to stop, the dispatcher starts no further tick and finishes the one in
+      # progress, so a run it has claimed always receives its Job.
+      terminationGracePeriodSeconds: 60
       containers:
         - name: dispatcher
           image: REPLACE_REGISTRY/tcab-dispatcher:latest # the staging and prod overlays name testcabinet.azurecr.io/microservice-dispatcher

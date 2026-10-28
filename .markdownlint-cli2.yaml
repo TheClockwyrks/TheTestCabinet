@@ -4,6 +4,9 @@
 # listing the exceptions is the smaller list and the safe one: a page added
 # anywhere is checked from the moment it is written, where a list of
 # directories leaves a page outside it as prose nothing checks.
+#
+# `.nyxsis/.markdownlint-cli2.yaml` repeats `config` below for the issue files,
+# leaving their fenced blocks out of the line-length rule; change both together.
 
 config:
   fenced-code-language: false

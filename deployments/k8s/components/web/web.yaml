@@ -35,9 +35,16 @@ metadata:
   name: tcab-web
   namespace: tcab-prod
 spec:
-  # Stateless static-asset server: it holds no per-pod state, so it could scale out,
-  # but one replica is plenty for the operator console. Bump replicas, not state.
-  replicas: 1
+  # Two interchangeable replicas of a stateless static-asset server, so a planned
+  # disruption of one leaves the other serving (Planned disruption, in
+  # deployment/kubernetes/control-plane.md). A deploy starts the new pod and waits
+  # for it to be Ready before terminating an old one.
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
   selector:
     matchLabels:
       app.kubernetes.io/name: tcab-web
@@ -47,6 +54,20 @@ spec:
         app.kubernetes.io/name: tcab-web
         app.kubernetes.io/part-of: test-cabinet
     spec:
+      # Prefer the two replicas on different nodes, so one node's loss leaves the
+      # console served.
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                topologyKey: kubernetes.io/hostname
+                labelSelector:
+                  matchLabels:
+                    app.kubernetes.io/name: tcab-web
+      # nginx stops on its image's stop signal, SIGQUIT, its graceful shutdown: it
+      # finishes the requests in flight, each a static file, well inside this.
+      terminationGracePeriodSeconds: 30
       containers:
         - name: web
           image: REPLACE_REGISTRY/tcab-web:latest # the staging and prod overlays name testcabinet.azurecr.io/console.testcabinet.ai
@@ -87,6 +108,12 @@ spec:
               port: 8080
             initialDelaySeconds: 15
             periodSeconds: 20
+          lifecycle:
+            # Hold the pod while its endpoint's removal from the Service
+            # propagates, so no new request is routed to a stopping replica.
+            preStop:
+              sleep:
+                seconds: 5
           # Static assets only — no host mounts, no Kubernetes API, no privilege.
           securityContext:
             runAsNonRoot: true
@@ -94,3 +121,17 @@ spec:
             readOnlyRootFilesystem: false # nginx writes its pid and temp files, the base entrypoint its conf.d
             capabilities:
               drop: ["ALL"]
+---
+# Planned disruption: a drain evicts one replica and waits for its replacement to
+# be Ready before evicting the other. The selector is the service's own name label,
+# so the budget reaches no run pod.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: tcab-web
+  namespace: tcab-prod
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: tcab-web

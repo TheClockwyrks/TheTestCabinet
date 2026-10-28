@@ -170,15 +170,26 @@ them, so their restart is made safe by graceful termination alone.
 
 ### Graceful termination
 
-Every service handles `SIGTERM` the same way:
+A stopping pod leaves its `Service`'s endpoints as soon as it is marked
+terminating. Every service container that serves a `Service` carries a
+`preStop` hook of `sleep: {seconds: 5}`, which Kubernetes runs before it sends
+`SIGTERM`, so the pod keeps serving while that removal propagates. Every
+service then handles `SIGTERM` the same way:
 
-1. It fails its readiness probe at once, so its endpoint leaves the `Service`.
-2. A `preStop` hook of `sleep: {seconds: 5}` holds the pod while that removal
-   propagates, and the service keeps accepting requests meanwhile.
+1. It fails its readiness probe at once. Long-lived streams, such as the
+   console's event streams, are closed so the client reconnects to a ready pod.
+2. It keeps accepting requests for a further 5 seconds, the drain delay, so a
+   request routed by an endpoint list not yet updated still lands, and its
+   readiness probe answers `503` meanwhile.
 3. It stops accepting connections and finishes every request in flight.
-   Long-lived streams, such as the console's event streams, are closed so the
-   client reconnects to a ready pod.
-4. It exits with status 0 before `terminationGracePeriodSeconds` ends.
+4. It exits with status 0 before `terminationGracePeriodSeconds` ends. A
+   request still in flight at its stop deadline, the grace less 10 seconds
+   after the signal, is abandoned so that the exit is still clean. The grace
+   counts from the start of the `preStop` hook, so the deadline falls 5 seconds
+   before the kill.
+
+An interrupt (`Ctrl-C`) at a terminal skips the drain delay; the rest is the
+same.
 
 The grace is sized to the longest request the service answers. The artifacts
 and repos services take `300s` so a run-tree or bundle upload in progress
@@ -186,6 +197,14 @@ completes on the terminating replica. The dispatcher spends its grace finishing
 the tick in progress, so a run it has claimed always receives its `Job`. The
 arena spends its grace finishing and recording the match each tournament is on
 (see [Shutdown](/components/arena/overview/#shutdown)).
+
+Two workloads are third-party servers that drain on their own terms. The
+console's nginx is stopped with `SIGQUIT`, the stop signal its image declares
+and nginx's graceful shutdown, which finishes every request in flight. The
+tunnel's connector serves no `Service` and carries no `preStop` hook. On
+`SIGTERM` it stops taking new requests from Cloudflare's edge, which routes
+them over the other replica's connections, and waits up to its
+`--grace-period` of `25s` for those in flight, inside its `30s` grace.
 
 ## Identity
 
